@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AutoRoute } from './auto-team.ts';
+import { CandidateComparisonView } from './candidates.ts';
 import { CancelScope, StartFrom } from './commands.ts';
 import {
   DecisionFailureReason,
@@ -124,9 +125,15 @@ export const RunInterrupted = event(
 );
 
 // ── executions and tasks ─────────────────────────────────────────────────────
+export const CandidateComparisonChanged = event(
+  'candidate.comparison_changed',
+  CandidateComparisonView,
+);
+
 export const ExecutionCreated = event(
   'execution.created',
   z.strictObject({
+    candidateId: Identifier.optional(),
     executionId: Identifier,
     parentExecutionId: Identifier.nullable(),
     previousExecutionId: Identifier.optional(),
@@ -767,6 +774,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   HarnessLoadFailed,
   ModelRequestRecorded,
   ModelPayloadRecorded,
+  CandidateComparisonChanged,
   RunStarted,
   RunStateChanged,
   RunInterrupted,

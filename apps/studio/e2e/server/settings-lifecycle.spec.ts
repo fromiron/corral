@@ -13,7 +13,7 @@ test('[TC-UX-006-H] [TC-UX-006-N] settings guard preserves failed edits and save
   await expect(page.getByLabel('Work style name', { exact: true })).toHaveValue('Guarded style');
   await page.getByRole('link', { name: 'Personal default work style', exact: true }).click();
   await guard.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page).toHaveURL(/\/settings\/defaults/);
+  await expect(page).toHaveURL(/settings=defaults/);
   const choose = page.getByRole('combobox', { name: 'Personal default', exact: true });
   await choose.click();
   await page.getByRole('option', { name: 'Guarded style · r1', exact: true }).click();

@@ -42,7 +42,7 @@ test('[TC-ABS-010-H] image profile CRUD and role configuration persist through t
   );
   expect(JSON.stringify(stored)).not.toMatch(/apiKey|accessToken|refreshToken/);
 
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team', exact: true }).click();

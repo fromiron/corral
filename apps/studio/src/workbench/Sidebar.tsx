@@ -10,23 +10,9 @@ import {
   Search,
   Settings,
   SquarePen,
+  TextSearch,
 } from '@corral/react/icons';
-import {
-  Button,
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-  Input,
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuTrigger,
-  Tooltip,
-} from '@corral/react/ui';
+import { Button, Menu, MenuItem, MenuPopup, MenuTrigger, Tooltip } from '@corral/react/ui';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -43,14 +29,20 @@ import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
 import { useSettingsNavigation, workHref } from './navigation.ts';
+import {
+  inboxNotificationTargets,
+  type NotificationTarget,
+  notificationDestination,
+} from './notifications.ts';
 import { changePreferences, preferences } from './preferences.ts';
+import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
 import { useModelProfiles } from './useModels.ts';
 
 export function useCorralSidebar() {
   const { repository, transport, workspaces } = useServices();
   const td = useTranslations('Desktop');
-  const seen = useRef<number | null>(null);
+  const navigate = useNavigate();
   const href = useRouterState({ select: (s) => workHref(s.location.href) ?? s.location.href });
   const version = useProjectsVersion();
   const current = useCurrentProject();
@@ -105,33 +97,37 @@ export function useCorralSidebar() {
   }, [repository, current, href, version]);
   useEffect(() => {
     let live = true;
+    let loading = false;
+    let seen: NotificationTarget[] | null = null;
     const refresh = () => {
+      if (loading) return;
+      loading = Boolean(workspaces);
       void transport.listRuns().then(
         (r) => {
           if (live) setRuns(r);
         },
         () => {},
       );
-      void workspaces?.inbox(current).then(
-        (r) => {
-          if (!live) return;
-          setInbox(r.length);
-          // Desktop: the taskbar shows the count; a notification only for new items, only when
-          // the window is in the background, and only if the person turned it on (CR-017).
-          void desktop?.badge(r.length).catch(() => {});
-          if (
-            seen.current !== null &&
-            r.length > seen.current &&
-            preferences.getState().notify &&
-            !document.hasFocus()
-          )
-            void desktop
-              ?.notify(td('notifyTitle'), td('notifyBody', { count: r.length }))
-              .catch(() => {});
-          seen.current = r.length;
-        },
-        () => {},
-      );
+      void workspaces
+        ?.inbox(current)
+        .then(
+          (r) => {
+            if (!live) return;
+            setInbox(r.length);
+            const added = inboxNotificationTargets(r, seen ?? r);
+            // First load is the baseline; equal counts can still contain a new decision.
+            seen = inboxNotificationTargets(r);
+            void desktop?.badge(r.length).catch(() => {});
+            if (added[0] && preferences.getState().notify && !document.hasFocus())
+              void desktop
+                ?.notify(td('notifyTitle'), td('notifyBody', { count: r.length }), added[0])
+                .catch(() => {});
+          },
+          () => {},
+        )
+        .finally(() => {
+          loading = false;
+        });
     };
     refresh();
     const timer = setInterval(refresh, 2000);
@@ -140,6 +136,29 @@ export function useCorralSidebar() {
       clearInterval(timer);
     };
   }, [transport, workspaces, current, td]);
+  useEffect(() => {
+    if (!desktop?.onNotification || !workspaces) return;
+    let version = 0;
+    const off = desktop.onNotification((target) => {
+      const request = ++version;
+      void notificationDestination(target, {
+        getSession: (id) => repository.getSession(id),
+        inbox: (id) => workspaces.inbox(id),
+      })
+        .then(async (to) => {
+          if (!to || request !== version) return;
+          await navigate({ to });
+          if (request !== version || target.kind !== 'decision' || !target.runId) return;
+          // Existing compact run views own the response form and its initial focus.
+          document.querySelector<HTMLElement>(`[data-run-response="${target.runId}"]`)?.focus();
+        })
+        .catch(() => {});
+    });
+    return () => {
+      version++;
+      off();
+    };
+  }, [repository, workspaces, navigate]);
   return { projects, corrals, sessions, runs, inbox, error, current };
 }
 
@@ -185,7 +204,6 @@ export const Sidebar = memo(function Sidebar({
   const [searchOpen, setSearchOpen] = useState(false);
   const searchText = useTranslations('SessionSearch');
   const [editing, setEditing] = useState<WorkSession | null>(null);
-  const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const needle = query.trim().toLocaleLowerCase();
@@ -258,13 +276,15 @@ export const Sidebar = memo(function Sidebar({
       });
       if (!result.ok) {
         setError(result.message);
-        return;
+        return false;
       }
       setEditing(null);
       projectsChanged();
       await router.invalidate();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -308,7 +328,12 @@ export const Sidebar = memo(function Sidebar({
         </Tooltip>
       </div>
       <div className="px-3 pb-2">
-        <div className="flex h-8 items-center gap-2 rounded-md px-2 text-muted focus-within:bg-raised focus-within:ring-1 focus-within:ring-line">
+        {/* One entry for finding sessions (#92): the field filters titles as you type; its
+            trailing button or Enter carries the same text into the full search. */}
+        <div
+          data-testid="session-search-field"
+          className="flex h-8 items-center gap-2 rounded-md pr-0.5 pl-2 text-muted focus-within:bg-raised focus-within:ring-1 focus-within:ring-line"
+        >
           <Search size={14} aria-hidden="true" />
           <input
             type="search"
@@ -316,26 +341,28 @@ export const Sidebar = memo(function Sidebar({
             placeholder={tw('searchSessions')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (mode === 'server' && e.key === 'Enter' && !e.nativeEvent.isComposing)
+                setSearchOpen(true);
+            }}
             className="min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
           />
+          {mode === 'server' ? (
+            <Tooltip content={searchText('title')}>
+              <Button
+                variant="ghost-muted"
+                size="icon-xs"
+                aria-label={searchText('title')}
+                onClick={() => setSearchOpen(true)}
+              >
+                <TextSearch />
+              </Button>
+            </Tooltip>
+          ) : null}
         </div>
       </div>
       {mode === 'server' ? (
-        <>
-          <Button
-            variant="ghost-muted"
-            size="xs"
-            className="mx-3 mb-1"
-            onClick={() => setSearchOpen(true)}
-          >
-            {searchText('title')}
-          </Button>
-          <SessionSearchDialog
-            open={searchOpen}
-            onOpenChange={setSearchOpen}
-            initialQuery={query}
-          />
-        </>
+        <SessionSearchDialog open={searchOpen} onOpenChange={setSearchOpen} initialQuery={query} />
       ) : null}
       {model.inbox > 0 ? (
         <Link
@@ -496,14 +523,7 @@ export const Sidebar = memo(function Sidebar({
                     <Ellipsis />
                   </MenuTrigger>
                   <MenuPopup align="start" side="right">
-                    <MenuItem
-                      onClick={() => {
-                        setTitle(session.title);
-                        setEditing(session);
-                      }}
-                    >
-                      {t('rename')}
-                    </MenuItem>
+                    <MenuItem onClick={() => setEditing(session)}>{t('rename')}</MenuItem>
                     <MenuItem
                       disabled={busy}
                       onClick={() => void update(session, { pinned: !session.pinned })}
@@ -572,43 +592,13 @@ export const Sidebar = memo(function Sidebar({
           </Tooltip>
         )}
       </div>
-      <Dialog
-        open={Boolean(editing)}
-        onOpenChange={(open) => {
-          if (!open) setEditing(null);
-        }}
-      >
-        <DialogPopup>
-          <DialogHeader>
-            <DialogTitle>{t('rename')}</DialogTitle>
-            <DialogDescription>{t('renameHint')}</DialogDescription>
-          </DialogHeader>
-          <DialogPanel>
-            <Input
-              aria-label={t('sessionTitle')}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing && editing && title.trim())
-                  void update(editing, { title });
-              }}
-            />
-          </DialogPanel>
-          {error ? (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              disabled={busy || !title.trim()}
-              onClick={() => editing && void update(editing, { title })}
-            >
-              {t('save')}
-            </Button>
-          </DialogFooter>
-        </DialogPopup>
-      </Dialog>
+      <RenameSessionDialog
+        title={editing?.title ?? null}
+        busy={busy}
+        error={editing ? error : null}
+        onSave={(title) => (editing ? update(editing, { title }) : Promise.resolve(false))}
+        onClose={() => setEditing(null)}
+      />
     </div>
   );
 });

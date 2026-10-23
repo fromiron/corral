@@ -1,6 +1,7 @@
 import type {
   ChangeScopeQuery,
   ChangeSetView,
+  CopyRemovalPlan,
   FileBrowseScope,
   FileChangeView,
   FileOperationView,
@@ -81,6 +82,7 @@ interface Binding {
 
 interface Copy {
   bindingId: string;
+  copyGeneration: number;
   files: Files;
   baseTree: string;
   reviewedTree: string | null;
@@ -92,6 +94,7 @@ export class DemoWorkspace implements FileTools {
   private readonly store: RunStore;
   private readonly bindings = new Map<string, Binding>();
   private readonly copies = new Map<string, Copy>();
+  private readonly copyGenerations = new Map<string, number>();
   private readonly trees = new Map<string, Files>();
   private readonly runTrees = new Map<
     string,
@@ -178,6 +181,8 @@ export class DemoWorkspace implements FileTools {
     return c
       ? {
           sessionId,
+          bindingId: c.bindingId,
+          copyGeneration: c.copyGeneration,
           baseCommit: c.baseTree,
           createdAt: c.createdAt,
           removedAt: null,
@@ -193,8 +198,11 @@ export class DemoWorkspace implements FileTools {
     if (!b.trusted) throw new Error('trust the repository before making copies');
     if (this.copies.has(sessionId)) throw new Error('this session already has a working copy');
     const files = new Map(b.head);
+    const copyGeneration = (this.copyGenerations.get(sessionId) ?? 0) + 1;
+    this.copyGenerations.set(sessionId, copyGeneration);
     this.copies.set(sessionId, {
       bindingId: b.bindingId,
+      copyGeneration,
       files,
       baseTree: this.keep(files),
       reviewedTree: null,
@@ -207,6 +215,23 @@ export class DemoWorkspace implements FileTools {
   removeWorktree(sessionId: string) {
     this.copies.delete(sessionId);
     return null;
+  }
+
+  /** The demo keeps its copy in memory: no Git state, owners or runs of its own to report. */
+  removalPlan(sessionId: string): CopyRemovalPlan {
+    const c = this.copy(sessionId);
+    return {
+      sessionId,
+      bindingId: c.bindingId,
+      copyGeneration: 1,
+      missing: false,
+      git: null,
+      owners: [],
+      draftComments: this.listComments(sessionId).filter((comment) => comment.state === 'draft')
+        .length,
+      uncertainWrites: 0,
+      openRuns: [],
+    };
   }
 
   private copy(sessionId: string): Copy {

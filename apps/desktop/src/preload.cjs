@@ -23,12 +23,23 @@ contextBridge.exposeInMainWorld(
     shortcuts: (bindings) => ipcRenderer.invoke('desktop:shortcuts', bindings),
     openPreview: (sessionId, leaseId) =>
       ipcRenderer.invoke('desktop:open-preview', sessionId, leaseId),
+    capturePreview: (sessionId, leaseId, options) =>
+      ipcRenderer.invoke('desktop:capture-preview', sessionId, leaseId, options),
+    cancelPreviewCapture: (sessionId, leaseId) =>
+      ipcRenderer.invoke('desktop:cancel-preview-capture', sessionId, leaseId),
     revealWorkspace: () => ipcRenderer.invoke('desktop:reveal-workspace'),
     openExternal: (url) => ipcRenderer.invoke('desktop:external', url),
     retry: () => ipcRenderer.invoke('desktop:retry'),
     theme: (dark) => ipcRenderer.invoke('desktop:theme', dark === true),
-    notify: (title, body) =>
-      ipcRenderer.invoke('desktop:notify', { title: String(title), body: String(body) }),
+    locale: (value) => ipcRenderer.invoke('desktop:locale', String(value)),
+    notify: (title, body, target) =>
+      ipcRenderer.invoke('desktop:notify', { title: String(title), body: String(body), target }),
+    onNotification: (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      const listener = (_event, target) => callback(target);
+      ipcRenderer.on('desktop:notification', listener);
+      return () => ipcRenderer.removeListener('desktop:notification', listener);
+    },
     badge: (count) => ipcRenderer.invoke('desktop:badge', Number(count)),
     onCommand: (callback) => {
       if (typeof callback !== 'function') return () => {};

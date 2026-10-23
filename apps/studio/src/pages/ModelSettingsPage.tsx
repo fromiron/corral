@@ -8,6 +8,7 @@ import {
   useModelSettings,
   useModelSettingsRefresh,
 } from '../workbench/modelSettings.tsx';
+import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
@@ -21,6 +22,9 @@ import { SettingsLayout } from './SettingsPage.tsx';
  */
 export function ModelSettingsPage() {
   const t = useTranslations('Models');
+  const ti = useTranslations('ModelImport');
+  const tim = useTranslations('ImageProfiles');
+  const tr = useTranslations('Reasoning');
   const { models, mode, live } = useServices();
   const { profiles, providers, catalog, config, refresh, error, loading } =
     useModelSettings(models);
@@ -45,15 +49,33 @@ export function ModelSettingsPage() {
           ) : (
             <>
               <p className="text-sm text-muted">{t('intro')}</p>
+              <SectionIndex
+                sections={[
+                  { id: 'models-profiles', label: t('profiles') },
+                  { id: 'models-providers', label: t('providers') },
+                  { id: 'models-import', label: ti('heading') },
+                  { id: 'models-images', label: tim('heading') },
+                  { id: 'models-reasoning', label: tr('workspaceHeading') },
+                ]}
+              />
               {editing && config ? (
-                <ModelConfigEditor
-                  config={config}
-                  catalog={catalog}
-                  onDone={() => setEditing(false)}
-                />
+                <div id="models-profiles" tabIndex={-1} className="outline-none">
+                  <ModelConfigEditor
+                    config={config}
+                    catalog={catalog}
+                    onDone={() => setEditing(false)}
+                  />
+                </div>
               ) : (
-                <>
-                  <ProfilesTable profiles={profiles} />
+                <div
+                  id="models-profiles"
+                  tabIndex={-1}
+                  className="flex flex-col gap-3 outline-none"
+                >
+                  <ProfilesTable
+                    profiles={profiles}
+                    {...(config ? { onEdit: () => setEditing(true) } : {})}
+                  />
                   {config ? (
                     <Button
                       variant="outline"
@@ -65,9 +87,14 @@ export function ModelSettingsPage() {
                       {t('editModels')}
                     </Button>
                   ) : null}
-                </>
+                </div>
               )}
-              <section aria-labelledby="providers-heading" className="flex flex-col gap-2">
+              <section
+                id="models-providers"
+                tabIndex={-1}
+                aria-labelledby="providers-heading"
+                className="flex flex-col gap-2 outline-none"
+              >
                 <h3 id="providers-heading" className="text-sm font-semibold">
                   {t('providers')}
                 </h3>
@@ -79,9 +106,15 @@ export function ModelSettingsPage() {
                   />
                 ))}
               </section>
-              <ModelImportPanel />
-              <ImageProfileSettings modelProfiles={profiles} />
-              <ReasoningSettingsPanel key={config?.revision} />
+              <div id="models-import" tabIndex={-1} className="outline-none">
+                <ModelImportPanel />
+              </div>
+              <div id="models-images" tabIndex={-1} className="outline-none">
+                <ImageProfileSettings modelProfiles={profiles} />
+              </div>
+              <div id="models-reasoning" tabIndex={-1} className="outline-none">
+                <ReasoningSettingsPanel key={config?.revision} />
+              </div>
             </>
           )}
         </main>
@@ -154,7 +187,9 @@ function ProviderCard({
 
   return (
     <article
-      className="settings-surface flex flex-col gap-3"
+      tabIndex={-1}
+      aria-label={provider.name}
+      className="settings-surface flex flex-col gap-3 outline-none focus-visible:outline-2 focus-visible:outline-accent"
       data-testid={`provider-${provider.providerId}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -318,7 +353,14 @@ function ProviderCard({
   );
 }
 
-function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
+function ProfilesTable({
+  profiles,
+  onEdit,
+}: {
+  profiles: ModelProfileView[];
+  /** Opens the in-app editor, the fix for a model a sign-in cannot use (#82 SET-S07). */
+  onEdit?: () => void;
+}) {
   const t = useTranslations('Models');
   const tokens = (count: number | null) => (count === null ? t('unknown') : t('tokens', { count }));
   return (
@@ -343,15 +385,26 @@ function ProfilesTable({ profiles }: { profiles: ModelProfileView[] }) {
                 {tokens(profile.maxOutputTokens)}
               </p>
             </div>
-            <p>
-              {!profile.available
-                ? t('unknownModel')
-                : profile.method === 'oauth' && profile.subscriptionSupported === false
-                  ? t('notWithSubscription')
+            {profile.available &&
+            profile.method === 'oauth' &&
+            profile.subscriptionSupported === false ? (
+              <div className="flex flex-col items-start gap-1.5 sm:items-end">
+                <p title={t('fileHint')}>{t('notWithSubscription')}</p>
+                {onEdit ? (
+                  <Button variant="outline" size="sm" type="button" onClick={onEdit}>
+                    {t('changeModel')}
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <p>
+                {!profile.available
+                  ? t('unknownModel')
                   : profile.keyConfigured
                     ? t('ready')
                     : t('needsSignIn')}
-            </p>
+              </p>
+            )}
           </li>
         ))}
       </ul>

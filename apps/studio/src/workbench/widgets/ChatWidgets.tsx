@@ -1,4 +1,3 @@
-import { RunActions } from '@corral/react';
 import {
   ArrowRight,
   Bot,
@@ -22,8 +21,6 @@ import {
 import { Link } from '@tanstack/react-router';
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useStore } from 'zustand';
-import { useServices } from '../../services.tsx';
 import type { WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
@@ -50,6 +47,16 @@ const CATEGORY_FILL: Record<string, string> = {
 const chipClass =
   'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
 const number = (value: number) => value.toLocaleString();
+/** "Last run" only for the newest finished run; an older one names its position (#72). */
+function viewedLabel(
+  viewed: NonNullable<ChatWidgetModel['viewed']>,
+  t: ReturnType<typeof useTranslations<'Widgets'>>,
+) {
+  if (viewed.latest) return t('lastRun');
+  return viewed.number
+    ? t('selectedRun', { number: viewed.number, total: viewed.total })
+    : t('selectedRunUnordered');
+}
 const compactNumber = (value: number) =>
   value >= 1000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k` : number(value);
 
@@ -75,8 +82,8 @@ export function SessionWidgetCard() {
         <div className="min-w-0">
           <h3 className="text-sm font-medium">{t('summaryHeading')}</h3>
           <p className="mt-1 truncate text-xs text-muted">
-            {model.lastRun
-              ? t('lastRun')
+            {model.viewed
+              ? viewedLabel(model.viewed, t)
               : model.plan.runStatus
                 ? ts(model.plan.runStatus)
                 : t('rail')}
@@ -225,7 +232,11 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
               </span>
             </div>
             <p className="mt-1.5 break-words text-xs text-muted">
-              {[model.lastRun ? t('lastRun') : t('rail'), context.roleLabel, context.modelLabel]
+              {[
+                model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
+                context.roleLabel,
+                context.modelLabel,
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
@@ -588,7 +599,7 @@ export function ComposerDock() {
                   ? ts(model.plan.runStatus)
                   : t('runUnavailable')}
           </span>
-          {model.lastRun ? <span className="text-2xs">{t('lastRun')}</span> : null}
+          {model.viewed ? <span className="text-2xs">{viewedLabel(model.viewed, t)}</span> : null}
         </RunLink>
         {!model.plan.open && 'completed' in status ? (
           <Button
@@ -798,9 +809,6 @@ function WorkPlanStatusIcon({
 function RunActivity({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
-  const { runFor, sessionFor } = useServices();
-  const session = model.runId ? runFor(model.runId) : sessionFor(model.sessionId);
-  const sharedRunId = useStore(session, (state) => state.runId);
   const text = model.action.visible
     ? ''
     : model.activity.text === 'working'
@@ -839,9 +847,7 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
       {elapsed ? (
         <span className="shrink-0 tabular-nums">{t('activityElapsed', { time: elapsed })}</span>
       ) : null}
-      {model.live && sharedRunId === model.runId ? (
-        <RunActions session={session} compact showCancel={false} />
-      ) : null}
+      {/* Pause, resume and cancel live in the dock's active run controls, one place (#91). */}
       <RunLink
         model={model}
         className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-sm hover:text-text focus-visible:ring-2 focus-visible:ring-ring"

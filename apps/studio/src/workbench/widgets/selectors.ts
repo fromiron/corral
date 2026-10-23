@@ -587,3 +587,23 @@ export function activityLine(input: {
     text = elapsedMs != null ? 'elapsed' : 'record';
   return { text, elapsedMs: Number.isFinite(elapsedMs) ? elapsedMs : null, frozen };
 }
+
+/**
+ * The finished run being looked at, and where it sits among the session's runs (#72 IA-13).
+ * Only the newest one is the "last" run; an older choice is a selected run, never relabelled.
+ */
+export function viewedRun(input: {
+  runIds: readonly string[];
+  presentationRunId: string | null;
+  live: boolean;
+}): { latest: boolean; number: number; total: number } | null {
+  if (!input.presentationRunId || input.live) return null;
+  const index = input.runIds.indexOf(input.presentationRunId);
+  // A run the session does not list (started elsewhere) has no known order.
+  if (index === -1) return { latest: false, number: 0, total: input.runIds.length };
+  return {
+    latest: index === input.runIds.length - 1,
+    number: index + 1,
+    total: input.runIds.length,
+  };
+}

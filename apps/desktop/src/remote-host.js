@@ -1,4 +1,5 @@
-const ko = navigator.language.startsWith('ko');
+// The language chosen in Corral, passed by the window (#84); the system's when unknown.
+const ko = (window.corralHosts?.lang ?? navigator.language).startsWith('ko');
 const copy = ko
   ? {
       title: '원격 호스트',

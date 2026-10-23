@@ -17,6 +17,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
   TEXT_ATTACHMENT_MAX_COUNT,
+  type TextAttachmentProvenance,
   UltraSelection,
 } from '@corral/contracts';
 import type {
@@ -30,7 +31,7 @@ import type {
   WorkSession,
 } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
-import { createRunSession, runResults, StatusBadge } from '@corral/react';
+import { runResults, StatusBadge } from '@corral/react';
 import {
   ArrowUp,
   AtSign,
@@ -54,7 +55,6 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
-  Input,
   Menu,
   MenuItem,
   MenuPopup,
@@ -77,6 +77,7 @@ import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import {
   createContext,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -88,7 +89,22 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { type AppCommand, useRegisterCommands, useRegisteredCommands } from '../commandRegistry.ts';
 import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { projectsChanged, setCurrentProject } from '../projects.ts';
-import { type SessionSearch, sessionRoute, validateSessionSearch } from '../router.tsx';
+import { sessionRoute } from '../router.tsx';
+import {
+  PANE_CATALOG,
+  panelKey,
+  SESSION_PANELS,
+  type SessionPanel,
+} from '../workbench/panels/registry.ts';
+import {
+  patchSessionSearch,
+  resolveSessionSearch,
+  type SessionSearch,
+  sessionPanelDescriptor,
+} from '../workbench/panels/routes.ts';
+
+export type { SessionPanel } from '../workbench/panels/registry.ts';
+
 import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
@@ -106,15 +122,37 @@ import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
+import {
+  type AttachmentCapture,
+  type AttachmentRequest,
+  appendComposerAttachment,
+  COMPOSER_ATTACH,
+  mergeComposerCapture,
+} from '../workbench/context/bridge.ts';
+import {
+  SourceAttachments,
+  SourceNavigationContext,
+} from '../workbench/context/SourceAttachments.tsx';
+import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
+import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
+import { DockDocumentPanel } from '../workbench/DockDocumentPanel.tsx';
+import { DockRunControls } from '../workbench/DockRunControls.tsx';
+import { DockWorkbench, type DockWorkbenchHandle } from '../workbench/docking/DockWorkbench.tsx';
+import type { DockContextView } from '../workbench/docking/layout.ts';
+import { documentKey, documentStore } from '../workbench/documents/store.ts';
+import { editorCopyDirty, subscribeEditorCopies } from '../workbench/editorDraft.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { GitPanel } from '../workbench/GitPanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
 import { LiveVoice } from '../workbench/LiveVoice.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
-import { ProjectDocumentPicker } from '../workbench/ProjectDocuments.tsx';
+import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
+import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
+import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
@@ -125,7 +163,7 @@ import {
   readComposerDraft,
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
-import { TabRow } from '../workbench/TabRow.tsx';
+import { TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { defaultUltraSelection, UltraModels } from '../workbench/UltraModels.tsx';
@@ -136,16 +174,18 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
+import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import {
   ComposerDock,
   ComposerPlan,
   SessionWidgetCard,
 } from '../workbench/widgets/ChatWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
+import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
-import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
+import { useRemembered } from './Workbench.tsx';
 
 // A work session (CR-011, roadmap 23–24): what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.
@@ -190,38 +230,30 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
   return { runs, active, refresh, lost };
 }
 
-export type SessionPanel = 'files' | 'changes' | 'artifacts' | 'checks' | 'run';
-const PANELS: SessionPanel[] = ['changes', 'files', 'artifacts', 'checks', 'run'];
-
 /**
- * A session as a workbench (02-UX-Spec §2–§3; Workbench polish P1): the conversation in the
- * middle and, only when asked for, one side panel with Changes / Files / Results / Checks / Run.
- * The session's own actions sit in the top bar. Choices live in the address, so they survive
- * reloads and the back button.
+ * Context panes follow the session URL; document tabs keep their explicit workspace target.
+ * Stores own editing and execution state independently of dock placement.
  */
 export function SessionPage() {
-  const tw = useTranslations('Workbench');
+  const services = useServices();
+  const dock = useRef<DockWorkbenchHandle>(null);
+  const documents =
+    services.mode === 'server' && services.workspaces
+      ? documentStore(services.workspaces)
+      : undefined;
   const { session, corrals } = sessionRoute.useLoaderData();
   const urlSearch = sessionRoute.useSearch();
   const [savedView, rememberView] = useRemembered<Record<string, unknown>>(
     `corral:session-view:v1:${session.sessionId}`,
     {},
   );
-  const explicitTarget = Boolean(
-    urlSearch.run ||
-      urlSearch.view ||
-      urlSearch.artifact ||
-      urlSearch.result ||
-      urlSearch.execution,
-  );
-  const search = {
-    ...(!explicitTarget
-      ? validateSessionSearch(savedView && typeof savedView === 'object' ? savedView : {})
-      : {}),
-    ...urlSearch,
-  };
+  const search = resolveSessionSearch(urlSearch, savedView);
   const viewKey = JSON.stringify(search);
-  useEffect(() => rememberView(JSON.parse(viewKey)), [viewKey, rememberView]);
+  useEffect(() => {
+    const remembered = JSON.parse(viewKey);
+    delete remembered.compose;
+    rememberView(remembered);
+  }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
   const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
@@ -235,7 +267,8 @@ export function SessionPage() {
   useEffect(() => {
     if (panel) rememberPanel(panel);
   }, [panel, rememberPanel]);
-  const reopenPanel = PANELS.includes(rememberedPanel) ? rememberedPanel : 'changes';
+  const reopenPanel = SESSION_PANELS.includes(rememberedPanel) ? rememberedPanel : 'changes';
+  const [panesHidden, setPanesHidden] = useState(false);
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -243,19 +276,53 @@ export function SessionPage() {
   const reference =
     pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
   const setSearch = (patch: Partial<typeof search>) => {
-    const next = validateSessionSearch({
-      ...search,
-      ...patch,
-      ...(patch.view === 'results' ? { artifact: undefined } : {}),
-    });
-    rememberView({ ...next });
+    const next = patchSessionSearch(search, patch);
+    rememberView({ ...next, compose: undefined });
     void navigate({ search: () => next });
+  };
+  const showPanel = (patch: Partial<typeof search>) => {
+    dock.current?.openContext(patch.panel ?? 'chat');
+    setSearch(patch);
+  };
+  const currentTarget = useRef({
+    hostId: services.workspaceId,
+    projectId: session.projectId,
+    sessionId: session.sessionId,
+  });
+  currentTarget.current = {
+    hostId: services.workspaceId,
+    projectId: session.projectId,
+    sessionId: session.sessionId,
+  };
+  const contextMessages = useTranslations('Context');
+  const tdock = useTranslations('Docking');
+  const subscribeGraphs = useCallback(
+    (listener: () => void) => subscribeEditorCopies(services.repository, listener),
+    [services.repository],
+  );
+  const [terminalSource, setTerminalSource] =
+    useState<Extract<TextAttachmentProvenance, { kind: 'terminal' }>>();
+  const handleAttachment = (attachment: TextAttachment, capture: AttachmentCapture) => {
+    if (capture.target.hostId !== currentTarget.current.hostId)
+      throw new Error(contextMessages('attachFailed'));
+    const result = appendComposerAttachment(capture, attachment);
+    if (!result.ok) throw new Error(contextMessages('attachFailed'));
+    if (
+      capture.target.sessionId === currentTarget.current.sessionId &&
+      capture.target.projectId === currentTarget.current.projectId
+    )
+      showPanel({ panel: undefined });
+  };
+  const handleReference = (value: FileReference) => {
+    setReference({ sessionId: session.sessionId, value });
+    showPanel({ panel: undefined });
   };
   const changes = useSessionChanges(session.sessionId, runs);
   const linkedRunIds = session.entries.flatMap((entry) => (entry.runId ? [entry.runId] : []));
   const sessionRuns = runs.filter(
     (run) => run.sessionId === session.sessionId || linkedRunIds.includes(run.runId),
   );
+  const sessionRunIds = sessionRuns.map((run) => run.runId);
   const presentedRun =
     sessionRuns.find((run) => run.runId === search.run) ??
     sessionRuns.findLast((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ??
@@ -264,6 +331,100 @@ export function SessionPage() {
   const liveRun =
     presentedRun && !TERMINAL_RUN_STATUSES.has(presentedRun.status) ? presentedRun : null;
   const presentationRunId = presentedRun?.runId ?? linkedRunIds.at(-1) ?? null;
+  const panelViews: Record<Exclude<SessionPanel, 'terminal' | 'tools'>, () => ReactNode> = {
+    files: () => (
+      <FilePanel
+        projectId={session.projectId}
+        sessionId={session.sessionId}
+        onReference={handleReference}
+        onAttach={handleAttachment}
+        onOpenDocument={(document, range) => dock.current?.openDocument(document, range) ?? false}
+      />
+    ),
+    changes: () => <ChangesPanel session={session} files={changes} />,
+    git: () => <GitPanel sessionId={session.sessionId} projectId={session.projectId} />,
+    debug: () => <DebuggerPanel sessionId={session.sessionId} projectId={session.projectId} />,
+    artifacts: () => (
+      <ArtifactsPanel
+        runs={runs}
+        onOpen={(runId, result) => showPanel({ panel: 'run', run: runId, view: 'results', result })}
+      />
+    ),
+    checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
+    problems: () => <ProblemsPanel sessionId={session.sessionId} />,
+    run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
+  };
+  const renderContext = (view: DockContextView) => {
+    if (view === 'chat')
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          {lost ? (
+            <div
+              role="alert"
+              className="flex items-center gap-2 bg-danger/5 px-4 py-2 text-xs text-danger"
+            >
+              {ts('connectionLost')}
+              <Button variant="outline" size="xs" onClick={refresh}>
+                {ts('retry')}
+              </Button>
+            </div>
+          ) : null}
+          <WorkTab
+            key={panelKey(services, {
+              kind: 'chat',
+              projectId: session.projectId,
+              sessionId: session.sessionId,
+            })}
+            session={session}
+            team={team}
+            corrals={corrals}
+            runs={runs}
+            active={active}
+            liveRunId={liveRun?.runId ?? null}
+            selectedRunId={presentationRunId}
+            onChange={refresh}
+            reference={reference}
+            onReferenceUsed={() => setReference(null)}
+            onPanel={(value, run) => showPanel({ panel: value, ...run })}
+          />
+        </div>
+      );
+    if (view === 'terminal')
+      return (
+        <TerminalPanel
+          key={session.sessionId}
+          sessionId={session.sessionId}
+          projectId={session.projectId}
+          onAttach={handleAttachment}
+          revealSource={
+            terminalSource?.target.sessionId === session.sessionId ? terminalSource : undefined
+          }
+        />
+      );
+    if (view === 'tools')
+      return (
+        <WorkbenchToolsPanel
+          key={session.sessionId}
+          sessionId={session.sessionId}
+          projectId={session.projectId}
+        />
+      );
+    const target = sessionPanelDescriptor(
+      session.projectId,
+      session.sessionId,
+      view,
+      search.run ?? runs.at(-1)?.runId,
+    );
+    return (
+      <div
+        key={target ? panelKey(services, target) : view}
+        className={view === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'}
+      >
+        {view === 'artifacts' && presentationRunId ? <SessionWidgetCard /> : null}
+        {panelViews[view]()}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -273,8 +434,9 @@ export function SessionPage() {
         team={team}
         changes={changes}
         panel={panel}
-        reopenPanel={reopenPanel}
-        onPanel={(value) => setSearch({ panel: value })}
+        onPanel={(value) => showPanel({ panel: value })}
+        panesHidden={panesHidden}
+        onPanesHidden={(hidden) => dock.current?.setPanesHidden(hidden, panel ?? reopenPanel)}
         runs={runs}
         selectedRunId={presentationRunId}
         onSelectRun={(run) =>
@@ -286,100 +448,97 @@ export function SessionPage() {
             result: undefined,
           })
         }
+        onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
-      <ChatWidgetProvider
-        sessionId={session.sessionId}
-        presentationRunId={presentationRunId}
-        live={Boolean(liveRun)}
+      <SourceNavigationContext.Provider
+        value={{
+          openDocument: (target, path, range) =>
+            dock.current?.openDocument(
+              { target, path, documentKey: documentKey(target, path) },
+              range,
+            ) ?? false,
+          openTerminal: (source) => {
+            if (
+              source.target.sessionId !== session.sessionId ||
+              source.target.projectId !== session.projectId
+            )
+              throw new Error(contextMessages('unavailable'));
+            setTerminalSource(source);
+            dock.current?.openContext('terminal');
+          },
+        }}
       >
-        <WorkbenchLayout
-          key={session.sessionId}
-          storageKey={session.sessionId}
-          summary={presentationRunId ? <SessionWidgetCard /> : null}
-          panelOpen={Boolean(panel)}
-          onPanelClose={() => setSearch({ panel: undefined })}
-          panelTabs={
-            panel ? (
-              <TabRow
-                id="session-panels"
-                label={tw('panelTabs')}
-                values={PANELS}
-                current={panel}
-                text={(value) => tw(`panel.${value}`)}
-                onChoose={(value) => setSearch({ panel: value })}
-              />
-            ) : null
-          }
-          main={
-            <div className="flex min-h-0 flex-1 flex-col">
-              {lost ? (
-                <div
-                  role="alert"
-                  className="flex items-center gap-2 border-b border-danger/40 bg-danger/5 px-4 py-2 text-xs text-danger"
-                >
-                  {ts('connectionLost')}
-                  <Button variant="outline" size="xs" onClick={refresh}>
-                    {ts('retry')}
-                  </Button>
-                </div>
-              ) : null}
-              <WorkTab
-                session={session}
-                team={team}
-                corrals={corrals}
-                runs={runs}
-                active={active}
-                liveRunId={liveRun?.runId ?? null}
-                selectedRunId={presentationRunId}
-                onChange={refresh}
-                reference={reference}
-                onReferenceUsed={() => setReference(null)}
-                onPanel={(value, run) => setSearch({ panel: value, ...run })}
-              />
-            </div>
-          }
-          panel={
-            panel ? (
-              <div
-                role="tabpanel"
-                id={`session-panels-${panel}-panel`}
-                aria-labelledby={`session-panels-${panel}-tab`}
-                aria-label={tw(`panel.${panel}`)}
-                className={
-                  panel === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'
-                }
-              >
-                {panel === 'files' ? (
-                  <FilePanel
-                    key={session.sessionId}
-                    projectId={session.projectId}
-                    sessionId={session.sessionId}
-                    onReference={(value) => setReference({ sessionId: session.sessionId, value })}
-                  />
-                ) : panel === 'changes' ? (
-                  <ChangesPanel session={session} files={changes} />
-                ) : panel === 'artifacts' ? (
-                  <ArtifactsPanel
-                    runs={runs}
-                    onOpen={(runId, result) =>
-                      setSearch({ panel: 'run', run: runId, view: 'results', result })
-                    }
-                  />
-                ) : panel === 'checks' ? (
-                  <ChecksPanel session={session} />
-                ) : (
-                  <RunPanel
-                    runs={runs}
-                    search={search}
-                    setSearch={setSearch}
-                    presentationRunId={presentationRunId}
-                  />
-                )}
-              </div>
-            ) : null
-          }
-        />
-      </ChatWidgetProvider>
+        <ChatWidgetProvider
+          sessionId={session.sessionId}
+          presentationRunId={presentationRunId}
+          live={Boolean(liveRun)}
+          runIds={sessionRunIds}
+        >
+          <DockWorkbench
+            key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
+            ref={dock}
+            hostId={services.workspaceId}
+            projectId={session.projectId}
+            sessionId={session.sessionId}
+            selectedPanel={search.compose ? null : panel}
+            selectionKey={`${session.sessionId}:${viewKey}`}
+            documentOwner={documents}
+            renderContext={renderContext}
+            renderDocument={(descriptor, _panelId, selection) =>
+              documents ? (
+                <DockDocumentPanel
+                  owner={documents}
+                  target={descriptor.target}
+                  path={descriptor.path}
+                  viewId={descriptor.viewId}
+                  revealSelection={selection}
+                  onAttach={
+                    descriptor.target.sessionId === session.sessionId ? handleAttachment : undefined
+                  }
+                  onReference={
+                    descriptor.target.sessionId === session.sessionId ? handleReference : undefined
+                  }
+                />
+              ) : null
+            }
+            renderGraph={(descriptor) => <TeamDesign corralId={descriptor.corralId} />}
+            graphTitle={(corralId) =>
+              `${editorCopyDirty(services.repository, session.projectId, corralId) ? '● ' : ''}${
+                corrals.find((c) => c.corralId === corralId)?.name ?? tdock('team')
+              }`
+            }
+            subscribeGraphs={subscribeGraphs}
+            onPanesHiddenChange={setPanesHidden}
+            onActiveContext={(view) => {
+              const next =
+                view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
+              if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
+            }}
+            controls={
+              active ? (
+                <DockRunControls
+                  key={active.runId}
+                  runId={active.runId}
+                  request={session.entries
+                    .find((entry) => entry.runId === active.runId)
+                    ?.text.slice(0, 80)}
+                  viewingOther={presentationRunId !== active.runId}
+                  onOpen={(run) =>
+                    showPanel({
+                      panel: 'run',
+                      run,
+                      view: 'run',
+                      execution: undefined,
+                      artifact: undefined,
+                      result: undefined,
+                    })
+                  }
+                />
+              ) : null
+            }
+          />
+        </ChatWidgetProvider>
+      </SourceNavigationContext.Provider>
     </>
   );
 }
@@ -422,19 +581,25 @@ function SessionActions({
   team,
   changes,
   panel,
-  reopenPanel,
   onPanel,
+  panesHidden,
+  onPanesHidden,
   runs,
   selectedRunId,
   onSelectRun,
+  onEditTeam,
 }: {
   session: WorkSession;
   corrals: CorralSummary[];
   team: CorralSummary | null;
+  /** Opens the saved team as a dock tab; false when it could not, so the route opens it. */
+  onEditTeam: (corralId: string) => boolean;
   changes: FileChangeView[] | null;
   panel: SessionPanel | undefined;
-  reopenPanel: SessionPanel;
   onPanel: (panel: SessionPanel | undefined) => void;
+  /** Only the conversation is on screen; the toggle names what it will do (#71). */
+  panesHidden: boolean;
+  onPanesHidden: (hidden: boolean) => void;
   runs: RunSummary[];
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
@@ -469,6 +634,7 @@ function SessionActions({
     return true;
   };
   const tcmd = useTranslations('Commands');
+  const tdock = useTranslations('Docking');
   const { workspaces } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
@@ -479,25 +645,39 @@ function SessionActions({
       group: panelGroup,
       shortcutId: 'view.panel',
       shortcut: shortcutLabel('view.panel'),
-      run: () => onPanel(panel ? undefined : reopenPanel),
+      run: () => onPanesHidden(!panesHidden),
     },
-    ...(
-      [
-        ['changes', 'changes'],
-        ['files', 'files'],
-        ['artifacts', 'results'],
-        ['checks', 'checks'],
-        ['run', 'run'],
-      ] as const
-    ).map(
-      ([value, slash]): AppCommand => ({
-        id: `panel:${value}`,
-        title: tcmd('openPanel', { panel: tw(`panel.${value}`) }),
+    // Every pane from the one catalog: its dock name, its `/` name and the words other screens
+    // use for it (#70, #86).
+    ...PANE_CATALOG.map(
+      (entry): AppCommand => ({
+        id: `panel:${entry.view}`,
+        title: tcmd('openPanel', { panel: tdock(entry.view) }),
         group: panelGroup,
-        slash,
-        run: () => onPanel(value),
+        keywords: [...entry.aliases, entry.slash],
+        slash: entry.slash,
+        run: () => onPanel(entry.view),
       }),
     ),
+    {
+      id: 'git:commit',
+      title: tcmd('gitCommit'),
+      group: sessionGroup,
+      keywords: ['git', 'commit', 'stage'],
+      disabled: !workspaces,
+      hint: workspaces ? undefined : tw('serverOnly'),
+      run: () => {
+        onPanel('git');
+        // The commit box appears once the Git pane has read the index.
+        let tries = 0;
+        const focus = () => {
+          const box = document.getElementById('git-commit-message');
+          if (box) box.focus();
+          else if (++tries < 40) window.setTimeout(focus, 50);
+        };
+        focus();
+      },
+    },
     {
       id: 'session:review',
       title: tcmd('review'),
@@ -589,15 +769,15 @@ function SessionActions({
         </Button>
       ) : null}
       <Tooltip
-        content={panel ? tw('collapsePanel') : tw('expandPanel')}
+        content={panesHidden ? tw('expandPanel') : tw('collapsePanel')}
         shortcut={shortcutLabel('view.panel')}
       >
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={panel ? tw('collapsePanel') : tw('expandPanel')}
-          aria-pressed={Boolean(panel)}
-          onClick={() => onPanel(panel ? undefined : reopenPanel)}
+          aria-label={panesHidden ? tw('expandPanel') : tw('collapsePanel')}
+          aria-pressed={!panesHidden}
+          onClick={() => onPanesHidden(!panesHidden)}
         >
           <PanelRight />
         </Button>
@@ -646,13 +826,14 @@ function SessionActions({
           </MenuSub>
           {team ? (
             <MenuItem
-              onClick={() =>
-                void navigate({
-                  to: '/corrals/$corralId/edit',
-                  params: { corralId: team.corralId },
-                  search: { fromSession: session.sessionId },
-                })
-              }
+              onClick={() => {
+                if (!onEditTeam(team.corralId))
+                  void navigate({
+                    to: '/corrals/$corralId/edit',
+                    params: { corralId: team.corralId },
+                    search: { fromSession: session.sessionId },
+                  });
+              }}
             >
               {t('editTeam')}
             </MenuItem>
@@ -666,35 +847,11 @@ function SessionActions({
           </MenuItem>
         </MenuPopup>
       </Menu>
-      <Dialog open={renaming !== null} onOpenChange={(open) => !open && setRenaming(null)}>
-        <DialogPopup>
-          <DialogHeader>
-            <DialogTitle>{td('rename')}</DialogTitle>
-            <DialogDescription>{td('renameHint')}</DialogDescription>
-          </DialogHeader>
-          <DialogPanel>
-            <Input
-              aria-label={td('sessionTitle')}
-              value={renaming ?? ''}
-              onChange={(e) => setRenaming(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing && renaming?.trim())
-                  void update({ title: renaming }).then((ok) => ok && setRenaming(null));
-              }}
-            />
-          </DialogPanel>
-          <DialogFooter>
-            <Button
-              disabled={!renaming?.trim()}
-              onClick={() =>
-                void update({ title: renaming ?? '' }).then((ok) => ok && setRenaming(null))
-              }
-            >
-              {td('save')}
-            </Button>
-          </DialogFooter>
-        </DialogPopup>
-      </Dialog>
+      <RenameSessionDialog
+        title={renaming}
+        onSave={(title) => update({ title })}
+        onClose={() => setRenaming(null)}
+      />
     </TopbarActions>
   );
 }
@@ -727,6 +884,7 @@ function WorkTab({
 }) {
   const t = useTranslations('Sessions');
   const { runFor, sessionFor, retainRun, workspaces } = useServices();
+  const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
   const messageId = sessionRoute.useSearch().message;
   useEffect(() => {
@@ -789,9 +947,11 @@ function WorkTab({
               <MessageSquare size={28} strokeWidth={1.25} className="text-muted" />
               <h3 className="text-xl font-medium tracking-tight">{td('noRequests')}</h3>
               <p className="max-w-md text-sm text-muted">
-                {session.objective ? session.objective : td('startHint')}
+                {session.objective
+                  ? session.objective
+                  : td(workspaces && binding ? 'startHintLinked' : 'startHint')}
               </p>
-              {workspaces ? (
+              {workspaces && binding === null ? (
                 <Button variant="ghost-muted" size="sm" onClick={() => onPanel('changes')}>
                   <FolderOpen />
                   {td('workFolder')}
@@ -810,21 +970,15 @@ function RunPanel({
   runs,
   search,
   setSearch,
-  presentationRunId,
 }: {
   runs: RunSummary[];
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>) => void;
-  presentationRunId: string | null;
 }) {
   const tw = useTranslations('Workbench');
   const ts = useTranslations('Status');
-  const { transport } = useServices();
-  const dedicated = useMemo(() => createRunSession(transport), [transport]);
-  useEffect(() => () => dedicated.getState().dispose(), [dedicated]);
   const runId = search.run ?? runs.at(-1)?.runId;
   if (!runId) return <p className="p-4 text-sm text-muted">{tw('noRuns')}</p>;
-  const share = runId === presentationRunId;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
@@ -854,7 +1008,6 @@ function RunPanel({
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
-          sessionStore={share ? undefined : dedicated}
           embedded
           compact
           search={{
@@ -1042,14 +1195,26 @@ function ArtifactsPanel({
 }
 
 /** Checks: the agreed commands and their results, as on the review screen. */
-function ChecksPanel({ session }: { session: WorkSession }) {
+function ChecksPanel({
+  session,
+  onAttach,
+}: {
+  session: WorkSession;
+  onAttach: (attachment: TextAttachment, capture: AttachmentCapture) => void;
+}) {
   const tw = useTranslations('Workbench');
   const { workspaces } = useServices();
   const { binding } = useBinding(session.projectId);
   if (!workspaces) return <p className="text-xs text-muted">{tw('serverOnly')}</p>;
   return (
     <>
-      <Checks sessionId={session.sessionId} binding={binding ?? null} changed={0} />
+      <Checks
+        sessionId={session.sessionId}
+        projectId={session.projectId}
+        binding={binding ?? null}
+        changed={0}
+        onAttach={onAttach}
+      />
       <Button
         variant="outline"
         size="sm"
@@ -1381,7 +1546,7 @@ const pendingSessionCommands = createPendingSessionCommands(
   typeof window !== 'undefined' ? window.corralRemote?.hostId : undefined,
 );
 
-function Composer({
+export function Composer({
   session,
   team,
   corrals,
@@ -1407,6 +1572,8 @@ function Composer({
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const format = useFormatter();
+  const contextMessages = useTranslations('Context');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
   const services = useServices();
@@ -1422,8 +1589,8 @@ function Composer({
   );
   const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
-  const [projectDocumentsBusy, setProjectDocumentsBusy] = useState(false);
-  const [projectDocumentError, setProjectDocumentError] = useState<string | null>(null);
+  const [projectMaterialsBusy, setProjectMaterialsBusy] = useState(false);
+  const [projectMaterialError, setProjectMaterialError] = useState<string | null>(null);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
   const textFiles = useRef<HTMLInputElement>(null);
@@ -1699,21 +1866,58 @@ function Composer({
     ],
   );
   const draftRevision = useRef(0);
+  const currentDraft = useRef({ draft: composerDraft, busy: false });
+  currentDraft.current = {
+    draft: composerDraft,
+    busy: busy || attachmentsBusy || projectMaterialsBusy || imagesBusy,
+  };
+  useEffect(() => {
+    const attach = (event: Event) => {
+      const request = (event as CustomEvent<AttachmentRequest>).detail;
+      const destination = request.capture.target;
+      if (
+        destination.hostId !== services.workspaceId ||
+        destination.projectId !== session.projectId ||
+        destination.sessionId !== session.sessionId
+      )
+        return;
+      if (currentDraft.current.busy) {
+        request.result = { ok: false, reason: 'busy' };
+        return;
+      }
+      const draft = mergeComposerCapture(currentDraft.current.draft, request);
+      if ('ok' in draft) {
+        request.result = draft;
+        return;
+      }
+      currentDraft.current.draft = draft;
+      draftRevision.current = writeComposerDraft(session.sessionId, draft);
+      setAttachments(draft.attachments ?? []);
+      if (request.image !== undefined) setImages(draft.images ?? []);
+      request.result = { ok: true };
+      requestAnimationFrame(() => input.current?.focus());
+    };
+    window.addEventListener(COMPOSER_ATTACH, attach);
+    return () => window.removeEventListener(COMPOSER_ATTACH, attach);
+  }, [services.workspaceId, session.projectId, session.sessionId]);
   useEffect(() => {
     draftRevision.current = writeComposerDraft(session.sessionId, composerDraft);
   }, [session.sessionId, composerDraft]);
   useEffect(() => {
     const sent = (event: Event) => {
       const detail = (
-        event as CustomEvent<{ sessionId: string; revision: number; preserveAttachments?: boolean }>
+        event as CustomEvent<{
+          sessionId: string;
+          revision: number;
+          preserveAttachments?: boolean;
+          preserveImages?: boolean;
+        }>
       ).detail;
       if (detail.sessionId !== session.sessionId || detail.revision !== draftRevision.current)
         return;
       setPicked([]);
-      if (!detail.preserveAttachments) {
-        setAttachments([]);
-        setImages([]);
-      }
+      if (!detail.preserveAttachments) setAttachments([]);
+      if (!detail.preserveImages) setImages([]);
       setAttachmentEpoch((epoch) => epoch + 1);
       setAttachmentsBusy(false);
       setImagesBusy(false);
@@ -2208,6 +2412,7 @@ function Composer({
           intent,
           text: body,
           state: 'queued',
+          ...(attachments.length ? { attachments } : {}),
           ...(permissionMode ? { permissionMode } : {}),
           ...(isAuto && autoHarness ? { harness: autoHarness } : {}),
         });
@@ -2264,7 +2469,12 @@ function Composer({
         return;
       }
       clearPending();
-      clearSentComposerDraft(session.sessionId, submittedRevision, intent !== 'next');
+      clearSentComposerDraft(
+        session.sessionId,
+        submittedRevision,
+        intent !== 'next' && intent !== 'queue',
+        intent !== 'next',
+      );
       await router.invalidate();
       onChange();
     } catch (failure) {
@@ -2375,14 +2585,15 @@ function Composer({
 
   const startQueued = async (entry: SessionEntry) => {
     setBusy(true);
+    const queuedReferences = entry.attachments ?? [];
     try {
       const commandId = commandFor(
-        `queue\u0000${entry.entryId}\u0000${team?.corralId ?? autoCommandSeed(entry.text, [], autoChoice)}\u0000${entry.permissionMode ?? ''}\u0000${JSON.stringify(entry.harness ?? null)}`,
+        `queue\u0000${entry.entryId}\u0000${team ? `${team.corralId}\u0000${JSON.stringify(queuedReferences)}` : autoCommandSeed(entry.text, queuedReferences, autoChoice)}\u0000${entry.permissionMode ?? ''}\u0000${JSON.stringify(entry.harness ?? null)}`,
       );
       const { runId, detail, auto, cancelError } = await startNext(
         entry.text,
         commandId,
-        [],
+        queuedReferences,
         {},
         {},
         {},
@@ -2551,8 +2762,9 @@ function Composer({
   const unavailable =
     liveUnavailable ||
     attachmentsBusy ||
-    projectDocumentsBusy ||
+    projectMaterialsBusy ||
     imagesBusy ||
+    (attachments.length > 0 && intent !== 'next' && intent !== 'queue') ||
     ((reviewOnly || verificationScope === 'release') &&
       intent !== 'next' &&
       intent !== 'explain') ||
@@ -2566,6 +2778,19 @@ function Composer({
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
   const stopping = Boolean(ownActive) && !text.trim();
+  // What Send does now, said where it is pressed (#89).
+  const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
+  // Items this intent does not carry share one notice and one wording (#89).
+  const heldScope =
+    (reviewOnly || verificationScope === 'release') && intent !== 'next' && intent !== 'explain';
+  const heldForNew = [
+    ...(chips.length && intent !== 'next' ? (['references'] as const) : []),
+    ...(images.length > 0 && intent !== 'next' ? (['images'] as const) : []),
+    ...(attachments.length > 0 && intent !== 'next' && intent !== 'queue'
+      ? (['attachments'] as const)
+      : []),
+    ...(heldScope ? (['scope'] as const) : []),
+  ];
   const why = (allowedHere: boolean) => (allowedHere ? undefined : tc('notNow'));
 
   useRegisterCommands('composer', [
@@ -2666,6 +2891,12 @@ function Composer({
     <div className="flex flex-col gap-4">
       <fieldset className="flex min-w-0 flex-col gap-2">
         <legend className="mb-2 text-xs font-medium text-muted">{tc('executionOptions')}</legend>
+        {/* Each group says whom it applies to and when (#77 IA-06). */}
+        {intent === 'next' || intent === 'explain' ? (
+          <p data-testid="applies-session" className="text-2xs text-muted">
+            {tc('appliesSession')}
+          </p>
+        ) : null}
         {intent === 'next' || intent === 'explain' ? (
           <Select
             variant="chip"
@@ -2703,6 +2934,7 @@ function Composer({
         ) : null}
         {intent === 'next' ? (
           <>
+            {roles.length ? <p className="mt-1 text-2xs text-muted">{tc('appliesNext')}</p> : null}
             <RunRoleOverrides
               roles={roles}
               profiles={profiles}
@@ -2720,7 +2952,10 @@ function Composer({
         ) : null}
       </fieldset>
       {intent !== 'explain' ? (
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+        <fieldset className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
+          <legend className="mb-2 text-xs font-medium text-muted">
+            {tc('scopeOptions')} · {tc('appliesNext')}
+          </legend>
           {isAuto && !team ? (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="text-muted">{tc('qualityPreset')}</span>
@@ -2767,17 +3002,21 @@ function Composer({
               ]}
             />
           </div>
-        </div>
+        </fieldset>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-        {intent === 'next' ? (
-          <ProjectDocumentPicker
+      <fieldset className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        <legend className="sr-only">{tc('addToRequest')}</legend>
+        <p aria-hidden="true" className="w-full text-xs font-medium text-muted">
+          {tc('addToRequest')}
+        </p>
+        {intent === 'next' || intent === 'queue' ? (
+          <ProjectMaterialPicker
             key={`documents:${attachmentEpoch}`}
             projectId={session.projectId}
             value={attachments}
             onChange={setAttachments}
-            onBusyChange={setProjectDocumentsBusy}
-            onErrorChange={setProjectDocumentError}
+            onBusyChange={setProjectMaterialsBusy}
+            onErrorChange={setProjectMaterialError}
             disabled={busy || attachmentsBusy || imagesBusy}
           />
         ) : null}
@@ -2820,7 +3059,7 @@ function Composer({
             ))}
           </MenuPopup>
         </Menu>
-      </div>
+      </fieldset>
     </div>
   );
 
@@ -2847,9 +3086,14 @@ function Composer({
           <ul className="mt-1 flex flex-col">
             {queued.map((entry) => (
               <li key={entry.entryId} className="group/queued flex items-center gap-1 text-ui">
-                <span className="min-w-0 flex-1 truncate" title={entry.text}>
-                  {entry.text}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate" title={entry.text}>
+                    {entry.text}
+                  </p>
+                  {entry.attachments?.length ? (
+                    <TextAttachmentList attachments={entry.attachments} />
+                  ) : null}
+                </div>
                 <Button
                   variant="ghost"
                   size="xs"
@@ -2953,16 +3197,16 @@ function Composer({
                 {tc('missingReferences', { count: missingChips.length })}
               </p>
             ) : null}
-            {projectDocumentError ? (
+            {refusal?.code === 'RUN_ALREADY_ACTIVE' ? (
+              <DevelopmentMode sessionId={session.sessionId} onlyActive />
+            ) : null}
+            {projectMaterialError ? (
               <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-danger">
-                <span>{projectDocumentError}</span>
+                <span>{projectMaterialError}</span>
                 <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
                   {tc('retryAttachment')}
                 </Button>
               </div>
-            ) : null}
-            {chips.length && intent !== 'next' ? (
-              <p className="text-2xs text-muted">{tc('referencesNextOnly')}</p>
             ) : null}
             {chips.length ? (
               <ul aria-label={tc('references')} className="flex flex-wrap gap-1">
@@ -3003,11 +3247,6 @@ function Composer({
               onBusyChange={setImagesBusy}
               disabled={busy}
             />
-            {images.length > 0 && intent !== 'next' ? (
-              <p role="status" className="text-xs text-muted">
-                {tc('imagesNextOnly')}
-              </p>
-            ) : null}
             <TextAttachmentPicker
               key={`text:${attachmentEpoch}`}
               inputRef={textFiles}
@@ -3015,8 +3254,31 @@ function Composer({
               onChange={setAttachments}
               onLoading={setAttachmentsBusy}
               disabled={busy}
-              enabled={intent === 'next'}
+              enabled={intent === 'next' || intent === 'queue'}
+              hideList
             />
+            <SourceAttachments
+              value={attachments}
+              onChange={setAttachments}
+              disabled={busy || attachmentsBusy || projectMaterialsBusy}
+            />
+            {attachments.length > 0 && intent !== 'next' && intent !== 'queue' ? (
+              <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>{contextMessages('nextOrQueue')}</span>
+                {allowed
+                  .filter((value) => value === 'next' || value === 'queue')
+                  .map((value) => (
+                    <Button
+                      key={value}
+                      variant="outline"
+                      size="xs"
+                      onClick={() => chooseIntent(value)}
+                    >
+                      {tc(`switchTo.${value}`)}
+                    </Button>
+                  ))}
+              </div>
+            ) : null}
             {optionSummary.length ? (
               <fieldset
                 aria-label={tc('activeOptions')}
@@ -3081,9 +3343,9 @@ function Composer({
                       disabled={
                         busy ||
                         attachmentsBusy ||
-                        projectDocumentsBusy ||
+                        projectMaterialsBusy ||
                         imagesBusy ||
-                        intent !== 'next'
+                        (intent !== 'next' && intent !== 'queue')
                       }
                     />
                   }
@@ -3093,7 +3355,7 @@ function Composer({
                 <MenuPopup align="start">
                   {mode === 'server' ? (
                     <MenuItem
-                      disabled={images.length >= IMAGE_MAX_COUNT}
+                      disabled={intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
                       onClick={() => imageFiles.current?.click()}
                     >
                       {tc('attachImages')}
@@ -3245,10 +3507,11 @@ function Composer({
                     </Button>
                   </Tooltip>
                 ) : (
-                  <Tooltip content={t('send')} shortcut={sendKeyLabel(prefs.sendKey)}>
+                  <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
                     <Button
                       size="icon-sm"
                       aria-label={t('send')}
+                      aria-description={sendMeaning}
                       disabled={busy || !text.trim() || unavailable}
                       className="rounded-full"
                       onClick={() => void send()}
@@ -3270,14 +3533,18 @@ function Composer({
           <span className="text-warning">{t('noResult')}</span>
         ) : null}
         {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
-        {(reviewOnly || verificationScope === 'release') &&
-        intent !== 'next' &&
-        intent !== 'explain' ? (
+        {heldForNew.length ? (
           <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
-            <span>{tc('scopeNextOnly')}</span>
-            <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
-              {tc('changeScope')}
-            </Button>
+            <span>
+              {tc('heldForNew', {
+                items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
+              })}
+            </span>
+            {heldScope ? (
+              <Button variant="outline" size="xs" onClick={() => setRequestOptionsOpen(true)}>
+                {tc('changeScope')}
+              </Button>
+            ) : null}
           </div>
         ) : null}
         {ultraBlocked ? <p role="status">{tc('ultraNeedsModels')}</p> : null}

@@ -147,6 +147,37 @@ export function notificationText(value: unknown): { title: string; body: string 
   return clean.title ? clean : null;
 }
 
+/** Only local inbox identities; destinations are resolved by the current Studio. */
+export function notificationTarget(value: unknown): {
+  kind: string;
+  sessionId: string;
+  runId: string | null;
+} | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (Object.keys(value).some((key) => !['kind', 'sessionId', 'runId'].includes(key))) return null;
+  const { kind, sessionId, runId } = value as Record<string, unknown>;
+  const identifier = (id: unknown): id is string =>
+    typeof id === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(id);
+  if (
+    typeof kind !== 'string' ||
+    ![
+      'decision',
+      'queued',
+      'uncertain_write',
+      'integration',
+      'check_failed',
+      'unreviewed',
+      'recipe_stopped',
+      'lsp_proposal',
+    ].includes(kind) ||
+    !identifier(sessionId) ||
+    !(runId === null || identifier(runId)) ||
+    ((kind === 'decision' || kind === 'recipe_stopped') && !runId)
+  )
+    return null;
+  return { kind, sessionId, runId };
+}
+
 /** Up to five absolute workspace paths, the newest first, without repeats. */
 export function recentWorkspaces(list: unknown, added: string): string[] {
   const previous = Array.isArray(list) ? list : [];

@@ -55,7 +55,7 @@ async function until(check: () => Promise<boolean>) {
   throw new Error('Process did not reach the expected observable state');
 }
 
-it('[TC-ABS-006-H] shares twelve host slots across real commands, registered checks and language servers', async () => {
+it('[TC-ABS-006-H] [TC-WBD-026-H] shares twelve host slots across real commands, registered checks and language servers', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corral-host-capacity-'));
   directories.push(directory);
   const root = join(directory, 'source');

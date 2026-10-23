@@ -187,7 +187,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [WBTST-016] a session work
     await page.getByRole('button', { name: 'Revert' }).click();
     await expect(page.getByTestId('integration').first()).toContainText('Reverted');
     expect(existsSync(join(original, 'notes', 'writer.md'))).toBe(false);
-    const parts = page.getByRole('region', { name: 'Apply selected changes', exact: true });
+    const parts = page.getByRole('region', { name: 'Selected changes', exact: true });
     await parts.getByRole('button', { name: 'Select changed parts' }).click();
     await parts.getByRole('checkbox', { name: /Part 1/ }).check();
     await parts.getByRole('button', { name: 'Preview original-folder changes' }).click();

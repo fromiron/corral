@@ -79,3 +79,38 @@ export function pickedReferences(text: string, picked: readonly MentionItem[]): 
   }
   return out;
 }
+
+/** Fixed window coordinates for the composer menu. */
+export interface MenuPlacement {
+  position: 'fixed';
+  left: number;
+  width: number;
+  maxHeight: number;
+  top?: number;
+  bottom?: number;
+}
+
+// The menu's tallest size (max-h-72) and its gap to the input and the window edge.
+const MENU_MAX = 288;
+const GAP = 8;
+
+/**
+ * Where the menu goes in the window: above the input when it fits there (or has more room
+ * than below), else below. It is fixed to the window so a short composer scroller or a
+ * clipped dock pane never cuts it off (#93).
+ */
+export function menuPlacement(
+  anchor: { top: number; bottom: number; left: number; width: number },
+  viewportHeight: number,
+): MenuPlacement {
+  const above = anchor.top - GAP * 2;
+  const below = viewportHeight - anchor.bottom - GAP * 2;
+  const up = above >= MENU_MAX || above >= below;
+  return {
+    position: 'fixed',
+    left: anchor.left,
+    width: anchor.width,
+    maxHeight: Math.max(96, Math.min(MENU_MAX, up ? above : below)),
+    ...(up ? { bottom: viewportHeight - anchor.top + GAP } : { top: anchor.bottom + GAP }),
+  };
+}

@@ -18,6 +18,7 @@ const INTENTS: readonly SessionIntent[] = ['next', 'queue', 'steer', 'explain'];
 const KINDS = ['file', 'folder', 'result', 'run', 'role'];
 export const COMPOSER_DRAFT_SENT = 'corral:composer-draft-sent';
 const revisions = new Map<string, { value: string | null; revision: number }>();
+const consumed = new Map<string, number>();
 
 export interface ComposerDraft {
   harness?: HarnessBindingRef;
@@ -134,12 +135,25 @@ export function writeComposerDraft(sessionId: string, draft: ComposerDraft) {
   return revision;
 }
 
+export function composerDraftRevision(sessionId: string) {
+  return (
+    revisions.get(sessionId)?.revision ??
+    writeComposerDraft(sessionId, readComposerDraft(sessionId))
+  );
+}
+
+export function isComposerCaptureCurrent(sessionId: string, revision: number) {
+  return revision > (consumed.get(sessionId) ?? -1);
+}
+
 /** Completion may arrive in settings or in a new Composer; only consume the sent draft. */
 export function clearSentComposerDraft(
   sessionId: string,
   revision: number,
   preserveAttachments = false,
+  preserveImages = preserveAttachments,
 ) {
+  consumed.set(sessionId, Math.max(consumed.get(sessionId) ?? -1, revision));
   const current = revisions.get(sessionId);
   if (current?.revision !== revision) return;
   try {
@@ -150,10 +164,13 @@ export function clearSentComposerDraft(
   const previous = parseComposerDraft(current.value);
   writeComposerDraft(sessionId, {
     ...empty(),
-    ...(preserveAttachments ? { attachments: previous.attachments, images: previous.images } : {}),
+    ...(preserveAttachments ? { attachments: previous.attachments } : {}),
+    ...(preserveImages ? { images: previous.images } : {}),
   });
   window.dispatchEvent(
-    new CustomEvent(COMPOSER_DRAFT_SENT, { detail: { sessionId, revision, preserveAttachments } }),
+    new CustomEvent(COMPOSER_DRAFT_SENT, {
+      detail: { sessionId, revision, preserveAttachments, preserveImages },
+    }),
   );
 }
 

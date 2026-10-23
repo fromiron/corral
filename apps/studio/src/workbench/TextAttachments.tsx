@@ -2,11 +2,13 @@ import {
   TEXT_ATTACHMENT_MAX_BYTES,
   TEXT_ATTACHMENT_MAX_COUNT,
   type TextAttachment,
+  textAttachmentKey,
 } from '@corral/contracts';
-import { createTextAttachment } from '@corral/core';
+import { createTextAttachment, validTextAttachments } from '@corral/core';
 import { Button } from '@corral/react/ui';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { AttachmentSource } from './context/ContextAttachments.tsx';
 
 const sourceFile = /\.(txt|md|markdown|json|csv|ts|tsx|js|jsx|py|css|html|xml|ya?ml|log)$/i;
 
@@ -17,6 +19,7 @@ export function TextAttachmentPicker({
   disabled,
   enabled,
   inputRef,
+  hideList = false,
 }: {
   value: TextAttachment[];
   onChange(value: TextAttachment[]): void;
@@ -24,10 +27,13 @@ export function TextAttachmentPicker({
   disabled: boolean;
   enabled: boolean;
   inputRef?: RefObject<HTMLInputElement | null>;
+  hideList?: boolean;
 }) {
   const t = useTranslations('Composer');
   const input = useRef<HTMLInputElement>(null);
   const epoch = useRef(0);
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   useEffect(
@@ -61,12 +67,15 @@ export function TextAttachmentPicker({
           return createTextAttachment(file.name, mime, text);
         }),
       );
-      if (epoch.current === owner)
-        onChange([
+      if (epoch.current === owner) {
+        const next = [
           ...new Map(
-            [...value, ...added].map((item) => [`${item.name}:${item.sha256}`, item]),
+            [...latest.current.value, ...added].map((item) => [textAttachmentKey(item), item]),
           ).values(),
-        ]);
+        ];
+        if (!validTextAttachments(next)) throw new Error('invalid text attachments');
+        latest.current.onChange(next);
+      }
     } catch {
       if (epoch.current === owner) setError(true);
     } finally {
@@ -105,28 +114,28 @@ export function TextAttachmentPicker({
             {t(loading ? 'attachmentLoading' : 'attachText')}
           </Button>
         ) : null}
-        {value.map((item, index) => (
-          <Button
-            key={`${item.name}:${item.sha256}`}
-            type="button"
-            size="xs"
-            variant="outline"
-            disabled={disabled || loading}
-            aria-label={t('removeAttachment', { name: item.name })}
-            onClick={() => onChange(value.filter((_, at) => at !== index))}
-          >
-            {item.name} · {item.bytes} B ×
-          </Button>
-        ))}
+        {!hideList &&
+          value.map((item) => (
+            <Button
+              key={textAttachmentKey(item)}
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={disabled || loading}
+              aria-label={t('removeAttachment', { name: item.name })}
+              onClick={() =>
+                onChange(
+                  value.filter((entry) => textAttachmentKey(entry) !== textAttachmentKey(item)),
+                )
+              }
+            >
+              {item.name} · {item.bytes} B ×
+            </Button>
+          ))}
       </div>
       {error ? (
         <p role="alert" className="text-xs text-danger">
           {t('attachmentError')}
-        </p>
-      ) : null}
-      {value.length && !enabled ? (
-        <p role="status" className="text-xs text-warning">
-          {t('attachmentsNextOnly')}
         </p>
       ) : null}
     </div>
@@ -138,11 +147,12 @@ export function TextAttachmentList({ attachments }: { attachments: TextAttachmen
   return (
     <ul aria-label={t('attachments')} className="mt-2 flex flex-col gap-1 text-xs">
       {attachments.map((item) => (
-        <li key={`${item.name}:${item.sha256}`}>
+        <li key={textAttachmentKey(item)}>
           <details>
             <summary className="cursor-pointer">
               {item.name} · {item.bytes} B · {item.sha256.slice(0, 12)}
             </summary>
+            {item.provenance ? <AttachmentSource source={item.provenance} /> : null}
             <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2">
               {item.text}
             </pre>

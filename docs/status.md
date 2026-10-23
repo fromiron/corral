@@ -16,9 +16,16 @@
 | Skill 평가·채택·업데이트·롤백 | CR-036-C/D | C-138/139, [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) | 텍스트 fixture 비교. 품질 자동 승인이나 모든 공급자의 품질 향상 증거가 아님 |
 | 통합 개선 M0–M3 | CR-025–036, C-088–112 | [M0](evaluation/Integrated-Improvement-M0-2026-10-19.md), [M1](evaluation/Integrated-Improvement-M1-2026-10-19.md), [M2](evaluation/Integrated-Improvement-M2-2026-10-19.md), [M3](evaluation/Integrated-Improvement-M3-2026-10-19.md) | 격리 등 OS 제한과 실제 모델 품질 미측정은 각 기록 참조 |
 | 문맥형 설정·Composer 정돈 | CR-044, [Workbench](current/workbench.md) | C-140, [이번 구현·검증](evaluation/Contextual-Settings-UI-2026-10-21.md) | Linux 브라우저·staged Electron 검증. Windows/macOS·실제 IME·스크린리더는 별도 |
+| 개발 Workbench 소유권·편집·도킹 | CR-046, [계획](plans/workbench-development-implementation-plan-2026-10-21.md) | [C-142·143 기반/비교](evaluation/Development-Workbench-Foundation-2026-10-21.md), [C-144 문서 API](evaluation/Development-Workbench-Documents-2026-10-21.md), [C-145·146 편집/복구](evaluation/Development-Workbench-Editor-2026-10-21.md), [C-147·148 PTY](evaluation/Development-Workbench-Terminal-2026-10-21.md), [C-149 패널·경로](evaluation/Development-Workbench-Panels-2026-10-21.md), [C-150 도킹/복구](evaluation/Development-Workbench-Docking-2026-10-21.md), [C-151 컨텍스트/밀도](evaluation/Development-Workbench-Context-2026-10-21.md), [C-152 Git 관찰](evaluation/Development-Workbench-Git-Observation-2026-10-21.md), [C-153 Git 쓰기](evaluation/Development-Workbench-Git-Write-2026-10-22.md), [C-154 branch·원격](evaluation/Development-Workbench-Git-Remote-2026-10-22.md), [C-155 task·Problems](evaluation/Development-Workbench-Tasks-2026-10-22.md), [C-156 Alpha 인수](evaluation/Development-Workbench-Alpha-2026-10-22.md), [C-157 변경 검토·근거](evaluation/Development-Workbench-Review-Evidence-2026-10-23.md), [C-158 팀 그래프 도킹](evaluation/Development-Workbench-Team-Dock-2026-10-23.md), [C-159 execution 근거·Reins 대상](evaluation/Development-Workbench-Execution-Evidence-2026-10-23.md), [C-160 사본 보관·삭제](evaluation/Development-Workbench-Copy-Lifecycle-2026-10-23.md), [C-161 공유 개발](evaluation/Development-Workbench-Shared-Development-2026-10-23.md), [C-162 언어 지원](evaluation/Development-Workbench-Language-2026-10-23.md), [C-163 파일 내용 검색](evaluation/Development-Workbench-Content-Search-2026-10-23.md), [C-164 preview 피드백](evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md), [C-165 다중 파일 변경](evaluation/Development-Workbench-File-Edits-2026-10-23.md), [C-166 고급 Git·충돌 해결](evaluation/Development-Workbench-Advanced-Git-2026-10-23.md) 구현. 검증 범위는 각 실행 기록 참조 | P00–P18·P20·P21-A·P22·P23·P24-A/B·P25 구현. P20→P24-B→P25 요청을 마쳤고 P26·P27 구현은 아래 별도 행으로 추적한다. P28 로컬 코어와 P29 Linux 코어 인수는 아래 별도 행을 따른다. 수정 제안은 저장된 파일의 텍스트 편집만 지원하며 서버 command·파일 resource operation은 제외. 외부 원격·서명 commit·실제 OS IME·스크린리더·설치판 GUI·지원 OS qualification은 별도 |
+| Node·Chromium 디버깅 | CR-046 P26, [현재 계약](current/workbench.md#nodechromium-디버깅) | C-167 구현. 등록 DAP adapter·소유 launch/attach·중단점/step/stack/variables·명시 평가·동일 command receipt | Linux 관리 사본 범위. [Linux 실제 Node·Chromium 화면과 핵심 회귀](evaluation/Development-Workbench-Debugging-2026-10-23.md) 확인. 원격·다른 OS·설치판과 Chromium 최초 로드 전 중단점 보장은 별도 |
+| 배포 작업·결과 확인 | CR-046 P27, [현재 계약](current/workbench.md#배포-작업과-결과-확인) | C-168 구현. 검토한 구성/환경/source·명시 시작·분리된 결과 확인·동일 operation 조회 | [로컬 실제 화면과 핵심 회귀](evaluation/Development-Workbench-Deployment-2026-10-23.md) 확인. 로컬 fixture는 실제 provider 배포 증거가 아님. 명시 종료 후 외부 결과 미확인을 유지하고 서비스에서 수동 확인 |
+| 일상 개발 코어 인수 | CR-046 P28 / C-169 | [JS/TS 편집·검사·Git·로컬 배포 연결](evaluation/Development-Workbench-Daily-Driver-2026-10-23.md), 실제 초안/설정/교체 화면 확인 | Linux 로컬 결과. 직전 Node/Chromium·preview·충돌 증거를 연결했고 외부 provider/유료 여정은 반복하지 않음 |
+| Linux 설치판·복구 코어 인수 | CR-046 P29 / C-170 | [unpacked native·복구·Monaco worker·390px](evaluation/Development-Workbench-Qualification-2026-10-23.md), 잘못된 재설치 오류 `1553d37` 수정 | P29 전체 플랫폼 qualification은 잔여. 다른 OS/arch·설치/업데이트·IME/스크린리더·부하/성능·외부 환경 별도 |
 | 입력·대화·모델 식별과 테두리 일관성 | CR-045, [Workbench](current/workbench.md) | C-141, [구현·검증](evaluation/Workbench-Identification-2026-10-21.md) | Linux 브라우저·격리 DB 검증. 기존 서버 재시작·패키지·외부 공급자·스크린리더는 별도 |
 | 컴포저·컨텍스트·채팅 위젯 | CR-037–041, C-119–121 | [M4 기록](evaluation/Integrated-Improvement-M4-2026-10-19.md), [위젯 계약·증거](change-requests/CR-041-chat-widgets.md) | native IME·외부 provider 미검증 범위 유지 |
 | Desktop 확장 | CR-042, C-122–136, [상세 계약](current/desktop-contract.md) | [기능별 구현·검증](evaluation/Desktop-Capabilities-Implementation-Progress.md) | 부분 구현과 환경 대기를 아래에서 분리 |
+| 알림 대상 이동 | CR-033-B, C-171, [현재 계약](current/desktop-contract.md) | [Linux Electron 정확한 Run·승인 이동, 중복·늦은 클릭·재시작 경계](evaluation/Desktop-Notification-Targets-2026-10-23.md) | OS 알림 표시/전달·다른 OS·설치판 전체 여정은 별도 |
+| Ultra 후보 비교 | CR-031, C-114, [모델 안내](Models.md#선택적-후보-비교) | [P19 같은 Run·격리 사본·검사·단일 반영의 핵심 회귀와 실제 화면](evaluation/Development-Workbench-Candidates-2026-10-23.md) | 검증된 Linux 격리·등록 검사 필요. 외부 모델 품질/비용·다른 OS는 별도 |
 
 ## 남은 구현·검증
 
@@ -26,13 +33,12 @@
 
 | 추적 | 구현 상태 | 남은 일 | 근거 |
 |---|---|---|---|
-| C-114 | 계획, 예산 helper만 준비 | 격리 후보별 실행·검사·비교·취소·정확한 하나의 승격 | [Ultra 잔여 계획](plans/ultra-and-quality.md), CR-031 |
 | C-118 | 지원 범위 구현·검증, 미지원 계열 잔여 | Linux 격리·Anthropic adaptive conformance·GPT live 완료. Gemini transport 제약, 다른 계정/OS 검증 별도 | [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) |
 | C-125 / ABS-04 | 부분 구현 | Linux AppImage preview 검증 완료. macOS 로컬 앱 TCP 소유권 구현·실기 별도 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |
 | C-135 / ABS-14 | 구현 있음, 외부 통합 검증 대기 | 허용된 SSH host의 실제 연결·실행·끊김·복구 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-136 / ABS-15 | 구현 있음, 장치·provider 검증 대기 | 실제 마이크·양방향 음성·끼어들기·종료·대상 고정 | [음성 기록](evaluation/Desktop-Voice-Verification.md) |
-| CR-033-B / M4-5 | 기존 기능과 중첩, 잔여 대조 필요 | density·알림 deep link·editor 열기·온보딩 등 중 CR-042 충족 범위를 먼저 제외. opt-in 조사 분리 | [Desktop 잔여 계획](plans/desktop-completion.md) |
+| CR-033-B / M4-5 | 알림 대상 이동 C-171 구현, 나머지 기존 기능과 중첩 | density·editor 열기·온보딩 등 중 CR-042 충족 범위를 먼저 제외. opt-in 조사 분리 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 
 유료 이미지·외부 모델·S3와 실제 사용성/품질 평가는 해당 기록의 미검증 경계다. 코드가 없다는 뜻으로 새 구현 목록에 자동 추가하지 않는다. 실행하려면 이번 작업의 외부 호출·비용 승인 범위를 확인한다.
 

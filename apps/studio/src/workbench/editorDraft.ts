@@ -16,7 +16,9 @@ interface EditorWorkingState {
 export type EditorWorkingCopy = StoreApi<EditorWorkingState>;
 
 const copies = new WeakMap<CorralRepository, Map<string, EditorWorkingCopy>>();
-const keyOf = (record: CorralRecord) => JSON.stringify([record.projectId, record.corralId]);
+const listeners = new WeakMap<CorralRepository, Set<() => void>>();
+const keyOf = (record: Pick<CorralRecord, 'projectId' | 'corralId'>) =>
+  JSON.stringify([record.projectId, record.corralId]);
 const dirty = (copy: EditorWorkingCopy) => {
   const state = copy.getState();
   return state.saving || state.editor.getState().draft !== state.saved.draft;
@@ -49,8 +51,50 @@ export function editorWorkingCopy(
     message: null,
   }));
   entries.set(key, copy);
+  const notify = () => {
+    for (const listener of listeners.get(repository) ?? []) listener();
+  };
+  copy.subscribe(notify);
+  copy.getState().editor.subscribe(notify);
+  if (previous) notify();
   return copy;
 }
+
+/** Called when any team draft of this repository changes, e.g. to mark its dock tab dirty. */
+export function subscribeEditorCopies(repository: CorralRepository, listener: () => void) {
+  let set = listeners.get(repository);
+  if (!set) {
+    set = new Set();
+    listeners.set(repository, set);
+  }
+  set.add(listener);
+  return () => {
+    set.delete(listener);
+  };
+}
+
+export function editorCopyDirty(
+  repository: CorralRepository,
+  projectId: string,
+  corralId: string,
+): boolean {
+  const copy = copies.get(repository)?.get(keyOf({ projectId, corralId }));
+  return copy ? dirty(copy) : false;
+}
+
+/**
+ * A team editor opened by its route asks before the person leaves with unsaved changes. Docked in
+ * a session it keeps the same working copy whatever pane or address the session moves to, so it
+ * never asks (CR-046 P18); reloading the page still warns.
+ */
+export const blocksLeaving = (unsaved: boolean, docked: boolean) => unsaved && !docked;
+
+/**
+ * Other dock tabs stay mounted beside a docked team, so Ctrl+S saves the team only while focus is
+ * inside its view; a code document handles its own save.
+ */
+export const ownsSaveShortcut = (docked: boolean, view: Element | null, focused: Element | null) =>
+  !docked || Boolean(view && focused && view.contains(focused));
 
 export function discardEditorCopy(repository: CorralRepository, record: CorralRecord) {
   copies.get(repository)?.delete(keyOf(record));

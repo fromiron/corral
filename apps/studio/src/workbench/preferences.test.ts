@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { isSendKey, parsePreferences } from './preferences.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  changePreferences,
+  isSendKey,
+  PREFERENCES_KEY,
+  parsePreferences,
+  preferences,
+} from './preferences.ts';
 
 describe('DW-02 workbench preferences', () => {
   it('reads explicit themes and clamps an off-screen sidebar', () => {
@@ -12,6 +18,7 @@ describe('DW-02 workbench preferences', () => {
       sidebarOpen: false,
       sendKey: 'enter',
       notify: false,
+      chatDensity: 'basic',
     });
   });
   it('ignores corrupt and future preferences without losing access to navigation', () => {
@@ -28,6 +35,7 @@ describe('DW-02 workbench preferences', () => {
         sidebarOpen: true,
         sendKey: 'enter',
         notify: false,
+        chatDensity: 'basic',
       });
     }
   });
@@ -56,4 +64,22 @@ describe('Workbench polish: send key', () => {
     expect(isSendKey(key({ ctrlKey: true }), 'mod-enter')).toBe(true);
     expect(isSendKey(key({ metaKey: true }), 'mod-enter')).toBe(true);
   });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  preferences.setState(parsePreferences(null));
+});
+it('[TC-WBD-007-H] persists presentation density and defaults old or invalid preferences to basic', () => {
+  expect(parsePreferences('{"version":1}').chatDensity).toBe('basic');
+  expect(parsePreferences('{"version":1,"chatDensity":"unknown"}').chatDensity).toBe('basic');
+  const values = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  });
+  for (const chatDensity of ['results', 'basic', 'detailed'] as const) {
+    changePreferences({ chatDensity });
+    expect(parsePreferences(values.get(PREFERENCES_KEY) ?? null).chatDensity).toBe(chatDensity);
+  }
 });

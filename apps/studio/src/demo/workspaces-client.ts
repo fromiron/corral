@@ -25,8 +25,39 @@ export function createDemoWorkspaces(
   const noCheckpoints = async (): Promise<never> => {
     throw new Error('File checkpoints require the local server.');
   };
+  const noDocuments = async (): Promise<never> => {
+    throw new Error('File editing requires the local server.');
+  };
+  const noGit = async (): Promise<never> => {
+    throw new Error('Git inspection requires the local server.');
+  };
+  const noTasks = async (): Promise<never> => {
+    throw new Error('Development tasks require the local server.');
+  };
   return {
+    candidateComparison: async () => null,
+    candidateChanges: noCheckpoints,
+    candidateFileVersions: noCheckpoints,
+    languageState: noTasks,
+    inspectLanguage: noTasks,
+    startLanguage: noTasks,
+    syncLanguage: noTasks,
+    queryLanguage: noTasks,
+    stopLanguage: noTasks,
+    developmentState: noTasks,
+    startDevelopment: noTasks,
+    finishDevelopment: noTasks,
     commands: async () => [],
+    tasks: async () => ({ candidates: { packageManager: null, scripts: [] }, tasks: [] }),
+    deployments: async () => ({ profiles: [], deployments: [] }),
+    inspectDeployment: noTasks,
+    startDeployment: noTasks,
+    deployment: noTasks,
+    checkDeployment: noTasks,
+    stopDeployment: noTasks,
+    startTask: noTasks,
+    taskOutput: noTasks,
+    stopTask: noTasks,
     commandReport: noCheckpoints,
     commandOutput: noCheckpoints,
     stopCommand: noCheckpoints,
@@ -70,7 +101,39 @@ export function createDemoWorkspaces(
     dismissLspProposal: noLsp,
     listFiles: (scope, path) => as(call('listFiles', scope, path)),
     searchFiles: (scope, query, limit) => as(call('searchFiles', scope, query, limit)),
+    searchContents: noDocuments,
     readFile: (scope, path) => as(call('readFile', scope, path)),
+    gitStatus: noGit,
+    gitDiff: noGit,
+    gitChange: noGit,
+    gitOperation: noGit,
+    cancelGitOperation: noGit,
+    gitHunks: noGit,
+    gitSequence: noGit,
+    gitConflict: noGit,
+    changeGitHunks: noGit,
+    changeGitSequence: noGit,
+    gitAdvancedOperation: noGit,
+    reconcileGitAdvanced: noGit,
+    cancelGitAdvanced: noGit,
+    debugState: noTasks,
+    inspectDebug: noTasks,
+    startDebug: noTasks,
+    setDebugBreakpoints: noTasks,
+    queryDebug: noTasks,
+    commandDebug: noTasks,
+    debugCommand: noTasks,
+    readDocument: noDocuments,
+    changeDocument: noDocuments,
+    documentOperation: noDocuments,
+    fileEditProposals: noDocuments,
+    previewFileEdits: noDocuments,
+    fileEditProposal: noDocuments,
+    applyFileEdits: noDocuments,
+    dismissFileEdits: noDocuments,
+    inverseFileEdits: noDocuments,
+    fileEditOperation: noDocuments,
+    reconcileFileEdits: noDocuments,
     binding: (projectId) => as(call('binding', projectId)),
     bind: (projectId, path) => as(call('bind', projectId, path)),
     configure: (projectId, change) => as(call('configure', projectId, change)),
@@ -79,6 +142,7 @@ export function createDemoWorkspaces(
     createWorktree: async (sessionId) =>
       as(call('createWorktree', sessionId, await projectOf(sessionId))),
     removeWorktree: (sessionId) => as(call('removeWorktree', sessionId)),
+    removalPlan: (sessionId) => as(call('removalPlan', sessionId)),
     changes: (sessionId, scope) => as(call('changes', sessionId, scope)),
     fileVersions: (sessionId, from, to, path) =>
       as(call('fileVersions', sessionId, from, to, path)),

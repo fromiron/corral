@@ -141,7 +141,8 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     await page.getByRole('button', { name: 'Review source', exact: true }).click();
     await expect(page.getByText('Review copy ready', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // The settings dialog itself stays open (#88); the add dialog closes.
+    await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
     const projectId = await page.evaluate(async () => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -160,7 +161,7 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     await page.getByRole('option', { name: 'Mandatory · every turn', exact: true }).click();
     await page.getByRole('combobox', { name: 'Project tools and defaults', exact: true }).click();
     await page.getByRole('option', { name: 'Other project', exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/settings/harness\\?projectId=${projectId}`));
+    await expect(page).toHaveURL(new RegExp(`settings=harness&settingsProject=${projectId}`));
     await expect(page.getByLabel('Work style name', { exact: true })).toHaveValue(
       'Evidence writer',
     );
@@ -189,7 +190,7 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
     ).toBe(1);
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('Always cite the source.');
-    await page.getByRole('link', { name: 'Default work style', exact: true }).click();
+    await page.getByRole('link', { name: 'Project default work style', exact: true }).click();
     await page.getByRole('combobox', { name: 'Project default', exact: true }).click();
     await page.getByRole('option', { name: 'Evidence writer · r1', exact: true }).click();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -225,10 +226,11 @@ test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory 
       );
     await page.getByRole('button', { name: 'Review source', exact: true }).click();
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // The settings dialog itself stays open (#88); the add dialog closes.
+    await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
-    await page.getByRole('link', { name: 'Add to a work style', exact: true }).click();
-    await expect(page).toHaveURL(/settings\/harness/);
+    await page.getByRole('link', { name: 'Connect in Work styles', exact: true }).click();
+    await expect(page).toHaveURL(/settings=harness/);
     await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
     const replacement = page
       .getByRole('checkbox', { name: 'Use skill writing', exact: true })

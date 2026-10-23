@@ -155,3 +155,26 @@ export class RequestLimiter {
     return write ? ++this.writes <= 120 : ++this.reads <= 1200;
   }
 }
+
+/** PTY input/resize are interactive frames, not one ordinary mutation per keystroke. */
+export class InteractiveRequestLimiter {
+  private began = Number.NEGATIVE_INFINITY;
+  private frames = 0;
+  private bytes = 0;
+  private readonly now: () => number;
+  constructor(now: () => number) {
+    this.now = now;
+  }
+
+  allow(bytes: number): boolean {
+    const now = this.now();
+    if (now - this.began >= 1000) {
+      this.began = now;
+      this.frames = 0;
+      this.bytes = 0;
+    }
+    this.frames++;
+    this.bytes += bytes;
+    return this.frames <= 120 && this.bytes <= 256 * 1024;
+  }
+}

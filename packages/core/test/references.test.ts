@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   Coordinator,
+  createTextAttachment,
   exportRunArchive,
   InMemoryRunStore,
   InProcessTransport,
@@ -256,4 +257,54 @@ it('[TC-CHAT-001-H] [TC-CHAT-001-N] text attachments are immutable private input
     expect((await run(s, `invalid_text_${index}`, refs as RunReference[])).result.runId).toBeNull();
   }
   expect(s.coordinator.listRuns()).toHaveLength(1);
+});
+
+it('[TC-WBD-007-H] [TC-WBD-007-N] captures source metadata in private input and keeps identical text from different sources distinct', async () => {
+  const source = {
+    kind: 'code' as const,
+    target: {
+      hostId: 'host',
+      projectId: 'project',
+      bindingId: 'binding',
+      sessionId: 'session',
+      copyGeneration: 1,
+    },
+    path: 'src/a.ts',
+    snapshot: 'draft' as const,
+    baseHash: 'a'.repeat(64),
+    bufferHash: 'b'.repeat(64),
+    editVersion: 2,
+    range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 },
+  };
+  const plain = createTextAttachment('selection.txt', 'text/plain', 'one');
+  const attachments = [
+    createTextAttachment('selection.txt', 'text/plain', 'one', source),
+    { ...plain, provenance: { ...source, path: 'src/b.ts' } },
+  ];
+  const s = setup();
+  const started = await run(s, 'captured_sources', attachments);
+  expect(started.result.receipt.status).toBe('applied');
+  expect(brief(s, 0)).toContain('Captured snapshot');
+  expect(brief(s, 0)).toContain('user-supplied provenance');
+  expect(brief(s, 0)).toContain('src/a.ts');
+  expect(brief(s, 0)).toContain('src/b.ts');
+  expect(brief(s, 0)).toContain('"snapshot":"draft"');
+  expect(brief(s, 0)).toContain('"copyGeneration":1');
+  expect(s.starts[0]?.role.allowedWorkTools).not.toContain('read_file');
+  expect((await run(s, 'captured_sources', attachments)).result.runId).toBe(started.result.runId);
+  const changed = [{ ...attachments[0], provenance: { ...source, editVersion: 3 } }];
+  expect(
+    (await run(s, 'captured_sources', changed as RunReference[])).result.receipt.error?.code,
+  ).toBe('IDEMPOTENCY_CONFLICT');
+  for (const [index, reference] of [
+    { ...attachments[0], text: 'changed after hashing' },
+    { ...plain, provenance: { ...source, path: '../outside.ts' } },
+    {
+      ...plain,
+      provenance: { ...source, range: { startLine: 2, startColumn: 1, endLine: 1, endColumn: 4 } },
+    },
+  ].entries())
+    expect(
+      (await run(s, `invalid_source_${index}`, [reference] as RunReference[])).result.runId,
+    ).toBeNull();
 });

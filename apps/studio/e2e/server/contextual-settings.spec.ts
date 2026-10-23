@@ -73,7 +73,7 @@ test('[TC-UX-006-N] closing a pending save keeps its target and does not overwri
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-  await dialog.getByRole('link', { name: 'Default work style', exact: true }).click();
+  await dialog.getByRole('link', { name: 'Project default work style', exact: true }).click();
   await dialog.getByRole('combobox', { name: 'Project default', exact: true }).click();
   await page.getByRole('option', { name: 'Modal style · r1', exact: true }).click();
   // Browser Back is the same guarded transition as the close control.
@@ -107,7 +107,7 @@ test('[TC-UX-006-N] closing a pending save keeps its target and does not overwri
     await expect(page.getByTestId('settings-operations')).toContainText('pending');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-    await dialog.getByRole('link', { name: 'Default work style', exact: true }).click();
+    await dialog.getByRole('link', { name: 'Project default work style', exact: true }).click();
     await dialog.getByRole('combobox', { name: 'Applies to project', exact: true }).click();
     await page.getByRole('option', { name: 'Other modal project', exact: true }).click();
     const choose = dialog.getByRole('combobox', { name: 'Project default', exact: true });

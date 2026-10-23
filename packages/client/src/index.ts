@@ -1,7 +1,63 @@
 import type {
+  CandidateComparisonView,
   CheckpointRestore,
   CheckpointRestorePlan,
+  ContentSearch,
+  ContentSearchResult,
+  DebugBreakpoints,
+  DebugCommand,
+  DebugCommandResult,
+  DebugInspect,
+  DebugInspection,
+  DebugQuery,
+  DebugQueryResult,
+  DebugSession,
+  DebugStart,
+  DebugState,
+  DeploymentAction,
+  DeploymentInspect,
+  DeploymentList,
+  DeploymentPlan,
+  DeploymentStart,
+  DeploymentView,
+  DevelopmentStart,
+  DevelopmentState,
+  DocumentCommand,
+  DocumentOperation,
   FileCheckpoint,
+  FileDocument,
+  FileEditApply,
+  FileEditDecision,
+  FileEditInverse,
+  FileEditOperation,
+  FileEditPreview,
+  FileEditPreviewResult,
+  FileEditProposal,
+  FileEditProposalSummary,
+  FileEditReconcile,
+  GitAdvancedOperation,
+  GitAdvancedReconcile,
+  GitConflict,
+  GitConflictRequest,
+  GitDiff,
+  GitDiffRequest,
+  GitHunks,
+  GitHunksRequest,
+  GitHunkWrite,
+  GitOperation,
+  GitSequenceCommand,
+  GitSequenceState,
+  GitStatus,
+  GitWriteCommand,
+  LanguageDocumentChange,
+  LanguageInspect,
+  LanguageInspection,
+  LanguageQuery,
+  LanguageQueryResult,
+  LanguageScope,
+  LanguageSession,
+  LanguageStart,
+  LanguageState,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ProfileContextResolution,
@@ -15,11 +71,112 @@ import type {
   SkillKey,
   SkillRollbackRequest,
   SkillUpdatePreview,
+  TaskCandidates,
+  TaskStart,
+  TerminalAck,
+  TerminalControllerChange,
+  TerminalCreate,
+  TerminalIdentity,
+  TerminalInput,
+  TerminalList,
+  TerminalResize,
+  TerminalView,
+  UserTaskView,
+  WorkspaceTarget,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
 import { VaultClient } from './vault-api.ts';
 
+export type {
+  ContentSearch,
+  ContentSearchMatch,
+  ContentSearchResult,
+  DebugBreakpoint,
+  DebugBreakpoints,
+  DebugCommand,
+  DebugCommandResult,
+  DebugInspect,
+  DebugInspection,
+  DebugQuery,
+  DebugQueryResult,
+  DebugScope,
+  DebugSession,
+  DebugSource,
+  DebugStart,
+  DebugState,
+  DeploymentAction,
+  DeploymentInspect,
+  DeploymentList,
+  DeploymentPlan,
+  DeploymentStart,
+  DeploymentView,
+  DevelopmentStart,
+  DevelopmentState,
+  DocumentCommand,
+  DocumentOperation,
+  DocumentVersion,
+  FileDocument,
+  FileEditApply,
+  FileEditDecision,
+  FileEditInverse,
+  FileEditOperation,
+  FileEditOutcome,
+  FileEditPreview,
+  FileEditPreviewResult,
+  FileEditProposal,
+  FileEditProposalContent,
+  FileEditProposalSummary,
+  FileEditReconcile,
+  GitAdvancedCommand,
+  GitAdvancedIntent,
+  GitAdvancedOperation,
+  GitAdvancedReconcile,
+  GitConflict,
+  GitConflictRequest,
+  GitDiff,
+  GitDiffRequest,
+  GitFileSide,
+  GitHead,
+  GitHunks,
+  GitHunksRequest,
+  GitHunkWrite,
+  GitOperation,
+  GitSequence,
+  GitSequenceCommand,
+  GitSequenceState,
+  GitStatus,
+  GitStatusEntry,
+  GitWriteCommand,
+  LanguageDocumentChange,
+  LanguageInspect,
+  LanguageInspection,
+  LanguageQuery,
+  LanguageQueryResult,
+  LanguageRefactor,
+  LanguageRefactorResult,
+  LanguageRefactorSource,
+  LanguageScope,
+  LanguageSession,
+  LanguageStart,
+  LanguageState,
+  ProposedTextFile,
+  TaskCandidates,
+  TaskStart,
+  TerminalAck,
+  TerminalControllerChange,
+  TerminalCreate,
+  TerminalIdentity,
+  TerminalInput,
+  TerminalList,
+  TerminalResize,
+  TerminalStreamMessage,
+  TerminalView,
+  UnsupportedFileEdit,
+  UserGitTarget,
+  UserTaskView,
+  WorkspaceTarget,
+} from '@corral/contracts';
 export type {
   ModelCatalogMetadata,
   ModelImportCommit,
@@ -77,6 +234,7 @@ import {
   type StartRunRequest,
   type StreamFrame,
   type TeamPlan,
+  TerminalStreamMessage,
   type UltraSelection,
   type VerificationReport,
 } from '@corral/contracts';
@@ -574,6 +732,31 @@ async function readEvents(
   stream: (frame: StreamFrame) => void,
   stopped: () => boolean,
 ) {
+  return readSse(
+    body,
+    (frame) => {
+      if (frame.event === 'domain') {
+        let event: RunEvent;
+        try {
+          event = RunEvent.parse(JSON.parse(frame.data));
+        } catch {
+          throw new InvalidEventStream('invalid domain event');
+        }
+        deliver(event);
+      }
+      if (frame.event === 'stream') stream(JSON.parse(frame.data) as StreamFrame);
+    },
+    stopped,
+    true,
+  );
+}
+
+async function readSse(
+  body: ReadableStream<Uint8Array>,
+  receive: (frame: { event: string; data: string }) => void | Promise<void>,
+  stopped: () => boolean,
+  allowLargeDomain = false,
+) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -585,22 +768,13 @@ async function readEvents(
       let end = buffer.indexOf('\n\n');
       while (end >= 0 && !stopped()) {
         const block = buffer.slice(0, end);
-        checkFrameSize(block);
+        checkFrameSize(block, allowLargeDomain);
         buffer = buffer.slice(end + 2);
         const frame = parseFrame(block);
-        if (frame?.event === 'domain') {
-          let event: RunEvent;
-          try {
-            event = RunEvent.parse(JSON.parse(frame.data));
-          } catch {
-            throw new InvalidEventStream('invalid domain event');
-          }
-          deliver(event);
-        }
-        if (frame?.event === 'stream') stream(JSON.parse(frame.data) as StreamFrame);
+        if (frame) await receive(frame);
         end = buffer.indexOf('\n\n');
       }
-      checkFrameSize(buffer);
+      checkFrameSize(buffer, allowLargeDomain);
     }
   } finally {
     await reader.cancel().catch(() => {});
@@ -609,10 +783,10 @@ async function readEvents(
 
 class InvalidEventStream extends Error {}
 
-function checkFrameSize(block: string) {
+function checkFrameSize(block: string, allowLargeDomain: boolean) {
   // A committed record can exceed its HTTP input (patches contain before + after).
   const header = /^(?:id: \d+\n)?event: domain\ndata: /.exec(block.slice(0, 128));
-  if (header && block.indexOf('\n', header[0].length) === -1) return;
+  if (allowLargeDomain && header && block.indexOf('\n', header[0].length) === -1) return;
   if (new TextEncoder().encode(block).byteLength > 2 * 1024 * 1024)
     throw new InvalidEventStream('event stream frame exceeds the size limit');
 }
@@ -651,6 +825,146 @@ async function apiErrorFrom(response: Response, body: unknown): Promise<ApiError
     error?.code ?? 'UNKNOWN',
     error?.message ?? response.statusText,
   );
+}
+
+/** User PTYs use authenticated HTTP controls and an output-only resumable stream. */
+export class TerminalsApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  private path(sessionId: string, terminalId?: string) {
+    return `/sessions/${encodeURIComponent(sessionId)}/terminals${terminalId === undefined ? '' : `/${encodeURIComponent(terminalId)}`}`;
+  }
+  list(sessionId: string): Promise<TerminalList> {
+    return this.http.json(this.path(sessionId));
+  }
+  read(sessionId: string, terminalId: string): Promise<TerminalView> {
+    return this.http.json(this.path(sessionId, terminalId));
+  }
+  create(sessionId: string, input: TerminalCreate): Promise<TerminalView> {
+    return this.http.json(this.path(sessionId), { method: 'POST', body: JSON.stringify(input) });
+  }
+  control(
+    sessionId: string,
+    terminalId: string,
+    input: TerminalControllerChange,
+  ): Promise<TerminalView> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/control`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  input(sessionId: string, terminalId: string, input: TerminalInput): Promise<TerminalAck> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/input`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  resize(sessionId: string, terminalId: string, input: TerminalResize): Promise<TerminalAck> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/resize`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  stop(sessionId: string, terminalId: string, input: TerminalIdentity): Promise<TerminalView> {
+    return this.http.json(`${this.path(sessionId, terminalId)}/stop`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+  subscribe(
+    sessionId: string,
+    terminalId: string,
+    cursor: { generation: string; after: number },
+    handlers: {
+      onEvent: (event: TerminalStreamMessage) => void | Promise<void>;
+      onError?: (error: unknown) => void;
+    },
+  ): () => void {
+    const controller = new AbortController();
+    let lastSequence = cursor.after;
+    let stopped = false;
+    const stop = (error?: unknown) => {
+      if (stopped) return;
+      stopped = true;
+      controller.abort();
+      if (error !== undefined) handlers.onError?.(error);
+    };
+    const connect = async (attempt: number): Promise<void> => {
+      let failure: unknown;
+      try {
+        const query = new URLSearchParams({
+          generation: cursor.generation,
+          after: String(lastSequence),
+        });
+        const response = await this.http.request(
+          `${this.path(sessionId, terminalId)}/events?${query}`,
+          {
+            headers: { accept: 'text/event-stream', 'last-event-id': String(lastSequence) },
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok || !response.body) return stop(await apiError(response));
+        await readSse(
+          response.body,
+          async (frame) => {
+            if (frame.event !== 'terminal') return;
+            let event: TerminalStreamMessage;
+            try {
+              event = TerminalStreamMessage.parse(JSON.parse(frame.data));
+            } catch {
+              throw new InvalidEventStream('invalid terminal event');
+            }
+            const generation =
+              event.type === 'status' ? event.terminal.generation : event.generation;
+            if (
+              generation !== cursor.generation ||
+              (event.type === 'status' &&
+                (event.terminal.terminalId !== terminalId ||
+                  event.terminal.target.sessionId !== sessionId))
+            )
+              throw new InvalidEventStream('terminal event identity does not match');
+            if (event.type !== 'status') {
+              if (event.sequence <= lastSequence) return;
+              if (event.sequence !== lastSequence + 1) throw new Error('terminal output gap');
+            }
+            try {
+              await handlers.onEvent(event);
+            } catch {
+              throw new InvalidEventStream('terminal rendering failed');
+            }
+            if (event.type !== 'status') lastSequence = event.sequence;
+          },
+          () => stopped,
+        );
+        attempt = 0;
+      } catch (error) {
+        if (stopped) return;
+        if (error instanceof InvalidEventStream) return stop(error);
+        failure = error;
+      }
+      if (stopped) return;
+      const delay = RECONNECT_DELAYS_MS[attempt];
+      if (delay === undefined)
+        return stop(failure ?? new Error('terminal stream could not be resumed'));
+      handlers.onError?.(failure ?? new Error('terminal stream disconnected'));
+      if (stopped) return;
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer);
+          controller.signal.removeEventListener('abort', finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, delay);
+        controller.signal.addEventListener('abort', finish, { once: true });
+        if (stopped) finish();
+      });
+      if (!stopped) await connect(attempt + 1);
+    };
+    void connect(0);
+    return () => stop();
+  }
 }
 
 // ── Corral repository ────────────────────────────────────────────────────────
@@ -1478,11 +1792,32 @@ export interface WorkspaceBindingView {
 
 export interface WorktreeView {
   sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
   baseCommit: string;
   createdAt: string;
   removedAt: string | null;
   reviewed: boolean;
   missing: boolean;
+}
+
+export interface CopyRemovalPlan {
+  sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
+  missing: boolean;
+  /** Changes in the copy's own Git state; null when they could not be read. */
+  git: { staged: number; unstaged: number; untracked: number; unmerged: number } | null;
+  owners: {
+    kind: 'run' | 'user';
+    id: string;
+    state: 'active' | 'uncertain';
+    writer: boolean;
+    operation?: string;
+  }[];
+  draftComments: number;
+  uncertainWrites: number;
+  openRuns: string[];
 }
 
 export type ChangeScopeQuery =
@@ -1496,7 +1831,8 @@ export interface FileChangeView {
   additions: number | null;
   deletions: number | null;
   binary: boolean;
-  provenance: 'managed_agent' | 'external_observed';
+  /** `mixed`: Corral changed the file and something else changed it afterwards (CR-046 P17). */
+  provenance: 'managed_agent' | 'mixed' | 'external_observed';
   beforeBlob: string | null;
   afterBlob: string | null;
 }
@@ -1506,6 +1842,12 @@ export interface ChangeSetView {
   to: string | null;
   unavailable: string | null;
   files: FileChangeView[];
+}
+
+export interface CandidateChanges {
+  from: string;
+  to: string;
+  files: { path: string; status: 'A' | 'M' | 'D' | 'T' }[];
 }
 
 export type FileSideView =
@@ -1540,12 +1882,16 @@ export interface VerificationResultView {
   startedAt: string;
   endedAt: string | null;
   stale: boolean;
+  /** This check's registered command changed since it ran; absent from older servers. */
+  configChanged?: boolean;
   report?: VerificationReport | null;
 }
 
 export interface FileOperationView {
   id: string;
   run_id: string;
+  /** The execution whose broker call wrote it; absent from older servers. */
+  execution_id?: string;
   kind: string;
   path: string;
   to_path: string | null;
@@ -1650,6 +1996,19 @@ export class WorkspacesApi {
     const id = encodeURIComponent(scope.id);
     return scope.kind === 'project' ? `/projects/${id}/workspace` : `/sessions/${id}/worktree`;
   }
+  gitStatus(scope: FileBrowseScope): Promise<GitStatus> {
+    return this.send(`${this.browsePath(scope)}/git/status`);
+  }
+  gitDiff(scope: FileBrowseScope, input: GitDiffRequest): Promise<GitDiff> {
+    const query = new URLSearchParams({
+      target: JSON.stringify(input.target),
+      side: input.side,
+      path: input.path,
+      head: input.head ?? '',
+      indexHash: input.indexHash,
+    });
+    return this.send(`${this.browsePath(scope)}/git/diff?${query}`);
+  }
   listFiles(scope: FileBrowseScope, path = ''): Promise<FileListView> {
     return this.send(`${this.browsePath(scope)}/files?${new URLSearchParams({ path })}`);
   }
@@ -1659,8 +2018,350 @@ export class WorkspacesApi {
       `${this.browsePath(scope)}/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
     );
   }
+  searchContents(
+    sessionId: string,
+    input: ContentSearch,
+    signal?: AbortSignal,
+  ): Promise<ContentSearchResult> {
+    return this.http.json(`/sessions/${encodeURIComponent(sessionId)}/worktree/search-contents`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal,
+    });
+  }
   readFile(scope: FileBrowseScope, path: string): Promise<{ path: string; content: FileSideView }> {
     return this.send(`${this.browsePath(scope)}/file?${new URLSearchParams({ path })}`);
+  }
+  readDocument(sessionId: string, path: string): Promise<FileDocument> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/document?${new URLSearchParams({ path })}`,
+    );
+  }
+  fileEditProposals(sessionId: string): Promise<FileEditProposalSummary[]> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals`);
+  }
+  previewFileEdits(
+    sessionId: string,
+    input: FileEditPreview,
+    signal?: AbortSignal,
+  ): Promise<FileEditPreviewResult> {
+    return this.http.json(`/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal,
+    });
+  }
+  fileEditProposal(sessionId: string, proposalId: string): Promise<FileEditProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}`,
+    );
+  }
+  applyFileEdits(
+    sessionId: string,
+    proposalId: string,
+    input: FileEditApply,
+  ): Promise<FileEditOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}/apply`,
+      'POST',
+      input,
+    );
+  }
+  dismissFileEdits(
+    sessionId: string,
+    proposalId: string,
+    input: FileEditDecision,
+  ): Promise<FileEditProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}/dismiss`,
+      'POST',
+      input,
+    );
+  }
+  inverseFileEdits(
+    sessionId: string,
+    proposalId: string,
+    input: FileEditInverse,
+  ): Promise<FileEditProposal> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-proposals/${encodeURIComponent(proposalId)}/inverse`,
+      'POST',
+      input,
+    );
+  }
+  fileEditOperation(sessionId: string, operationId: string): Promise<FileEditOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-operations/${encodeURIComponent(operationId)}`,
+    );
+  }
+  reconcileFileEdits(sessionId: string, input: FileEditReconcile): Promise<FileEditOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/edit-operations/reconcile`,
+      'POST',
+      input,
+    );
+  }
+  languageState(sessionId: string): Promise<LanguageState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/language`);
+  }
+  inspectLanguage(sessionId: string, input: LanguageInspect): Promise<LanguageInspection> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/inspect`,
+      'POST',
+      input,
+    );
+  }
+  startLanguage(sessionId: string, input: LanguageStart): Promise<LanguageSession> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/start`,
+      'POST',
+      input,
+    );
+  }
+  syncLanguage(sessionId: string, input: LanguageDocumentChange): Promise<LanguageSession> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/document`,
+      'POST',
+      input,
+    );
+  }
+  queryLanguage(sessionId: string, input: LanguageQuery): Promise<LanguageQueryResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/query`,
+      'POST',
+      input,
+    );
+  }
+  stopLanguage(sessionId: string, input: LanguageScope): Promise<{ stopped: true }> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/stop`,
+      'POST',
+      input,
+    );
+  }
+  developmentState(sessionId: string): Promise<DevelopmentState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/development`);
+  }
+  startDevelopment(sessionId: string, input: DevelopmentStart): Promise<DevelopmentState> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/development`,
+      'POST',
+      input,
+    );
+  }
+  finishDevelopment(
+    sessionId: string,
+    operationId: string,
+    target: WorkspaceTarget,
+  ): Promise<DevelopmentState> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/development/${encodeURIComponent(operationId)}/finish`,
+      'POST',
+      { target },
+    );
+  }
+  deployments(sessionId: string): Promise<DeploymentList> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/deployments`);
+  }
+  inspectDeployment(sessionId: string, input: DeploymentInspect): Promise<DeploymentPlan> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/inspect`,
+      'POST',
+      input,
+    );
+  }
+  startDeployment(sessionId: string, input: DeploymentStart): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments`,
+      'POST',
+      input,
+    );
+  }
+  deployment(sessionId: string, operationId: string): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/${encodeURIComponent(operationId)}`,
+    );
+  }
+  checkDeployment(
+    sessionId: string,
+    operationId: string,
+    input: DeploymentAction,
+  ): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/${encodeURIComponent(operationId)}/check`,
+      'POST',
+      input,
+    );
+  }
+  stopDeployment(
+    sessionId: string,
+    operationId: string,
+    input: DeploymentAction,
+  ): Promise<DeploymentView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/deployments/${encodeURIComponent(operationId)}/stop`,
+      'POST',
+      input,
+    );
+  }
+  /** Package scripts a person may start, and the session's tasks (CR-046 P15). */
+  tasks(sessionId: string): Promise<{ candidates: TaskCandidates; tasks: UserTaskView[] }> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/tasks`);
+  }
+  startTask(sessionId: string, input: TaskStart): Promise<UserTaskView> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/tasks`, 'POST', input);
+  }
+  taskOutput(
+    sessionId: string,
+    operationId: string,
+    offset = 0,
+  ): Promise<{ text: string; nextOffset: number; bytes: number; truncated: boolean }> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/tasks/${encodeURIComponent(operationId)}/output?offset=${offset}`,
+    );
+  }
+  stopTask(sessionId: string, operationId: string): Promise<UserTaskView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/tasks/${encodeURIComponent(operationId)}/stop`,
+      'POST',
+    );
+  }
+  /** Stage, unstage or commit in a managed copy; a retry reads the same receipt (P13). */
+  gitChange(sessionId: string, command: GitWriteCommand): Promise<GitOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/operations`,
+      'POST',
+      command,
+    );
+  }
+  gitOperation(sessionId: string, operationId: string): Promise<GitOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/operations/${encodeURIComponent(operationId)}`,
+    );
+  }
+  cancelGitOperation(sessionId: string, operationId: string): Promise<GitOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/operations/${encodeURIComponent(operationId)}/cancel`,
+      'POST',
+    );
+  }
+  gitHunks(sessionId: string, input: GitHunksRequest): Promise<GitHunks> {
+    const query = new URLSearchParams({
+      target: JSON.stringify(input.target),
+      side: input.side,
+      path: input.path,
+      head: input.head ?? '',
+      indexHash: input.indexHash,
+    });
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/git/hunks?${query}`);
+  }
+  gitSequence(sessionId: string): Promise<GitSequenceState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/git/sequence`);
+  }
+  gitConflict(sessionId: string, input: GitConflictRequest): Promise<GitConflict> {
+    const query = new URLSearchParams({
+      target: JSON.stringify(input.target),
+      path: input.path,
+      head: input.head ?? '',
+      indexHash: input.indexHash,
+      sequenceIdentity: input.sequenceIdentity ?? '',
+    });
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/git/conflict?${query}`);
+  }
+  changeGitHunks(sessionId: string, command: GitHunkWrite): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations`,
+      'POST',
+      command,
+    );
+  }
+  changeGitSequence(sessionId: string, command: GitSequenceCommand): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations`,
+      'POST',
+      command,
+    );
+  }
+  gitAdvancedOperation(sessionId: string, operationId: string): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations/${encodeURIComponent(operationId)}`,
+    );
+  }
+  reconcileGitAdvanced(
+    sessionId: string,
+    input: GitAdvancedReconcile,
+  ): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations/reconcile`,
+      'POST',
+      input,
+    );
+  }
+  cancelGitAdvanced(sessionId: string, operationId: string): Promise<GitAdvancedOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/git/advanced-operations/${encodeURIComponent(operationId)}/cancel`,
+      'POST',
+      {},
+    );
+  }
+  debugState(sessionId: string): Promise<DebugState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/debug`);
+  }
+  inspectDebug(sessionId: string, input: DebugInspect): Promise<DebugInspection> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/inspect`,
+      'POST',
+      input,
+    );
+  }
+  startDebug(sessionId: string, input: DebugStart): Promise<DebugSession> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/start`,
+      'POST',
+      input,
+    );
+  }
+  setDebugBreakpoints(sessionId: string, input: DebugBreakpoints): Promise<DebugCommandResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/breakpoints`,
+      'POST',
+      input,
+    );
+  }
+  queryDebug(sessionId: string, input: DebugQuery): Promise<DebugQueryResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/query`,
+      'POST',
+      input,
+    );
+  }
+  commandDebug(sessionId: string, input: DebugCommand): Promise<DebugCommandResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/commands`,
+      'POST',
+      input,
+    );
+  }
+  debugCommand(
+    sessionId: string,
+    generation: string,
+    commandId: string,
+  ): Promise<DebugCommandResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/debug/commands/${encodeURIComponent(generation)}/${encodeURIComponent(commandId)}`,
+    );
+  }
+  changeDocument(sessionId: string, command: DocumentCommand): Promise<DocumentOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/documents`,
+      'POST',
+      command,
+    );
+  }
+  documentOperation(sessionId: string, operationId: string): Promise<DocumentOperation> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/document-operations/${encodeURIComponent(operationId)}`,
+    );
   }
   async bind(projectId: string, path: string): Promise<WorkspaceBindingView> {
     const p = encodeURIComponent(projectId);
@@ -1695,8 +2396,16 @@ export class WorkspacesApi {
     return (await this.send<{ worktree: WorktreeView }>(`/sessions/${s}/worktree`, 'POST'))
       .worktree;
   }
-  removeWorktree(sessionId: string): Promise<null> {
-    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree`, 'DELETE');
+  /** Removes the copy; with `generation`, only that copy, never one made again since. */
+  removeWorktree(sessionId: string, generation?: number): Promise<null> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree${generation === undefined ? '' : `?generation=${generation}`}`,
+      'DELETE',
+    );
+  }
+  /** What removing the copy would lose (CR-046 P21-A); reads only. */
+  removalPlan(sessionId: string): Promise<CopyRemovalPlan> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/removal`);
   }
   changes(sessionId: string, scope: ChangeScopeQuery): Promise<ChangeSetView> {
     const query =
@@ -1704,6 +2413,24 @@ export class WorkspacesApi {
         ? `scope=run&runId=${encodeURIComponent(scope.runId)}`
         : `scope=${scope.kind}`;
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes?${query}`);
+  }
+  candidateComparison(runId: string): Promise<CandidateComparisonView | null> {
+    return this.send(`/runs/${encodeURIComponent(runId)}/candidates`);
+  }
+  candidateChanges(runId: string, candidateId: string, tree: string): Promise<CandidateChanges> {
+    return this.send(
+      `/runs/${encodeURIComponent(runId)}/candidates/${encodeURIComponent(candidateId)}/changes?tree=${encodeURIComponent(tree)}`,
+    );
+  }
+  candidateFileVersions(
+    runId: string,
+    candidateId: string,
+    tree: string,
+    path: string,
+  ): Promise<{ path: string; before: FileSideView; after: FileSideView }> {
+    return this.send(
+      `/runs/${encodeURIComponent(runId)}/candidates/${encodeURIComponent(candidateId)}/files?${new URLSearchParams({ tree, path })}`,
+    );
   }
   hunks(
     sessionId: string,

@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ProjectToolConfig } from '@corral/contracts';
 import { openDatabase } from '@corral/storage-sqlite';
 import { FakeClock } from '@corral/testkit';
 import { expect, it } from 'vitest';
@@ -186,9 +187,27 @@ it('exports safe installed references and applies library state through owners w
 it('imports disabled MCP definitions with explicit local bindings and restores the local config without secret export', async () => {
   const s = await setup();
   try {
+    const workbenchTools = {
+      debugAdapters: [{ id: 'js', name: 'JavaScript', argv: ['debug-adapter'], timeoutMs: 1000 }],
+      debugConfigurations: [
+        { id: 'app', name: 'App', adapterId: 'js', cwd: '.', runtime: 'node', request: 'attach' },
+      ],
+      deployments: [
+        {
+          id: 'preview',
+          name: 'Preview',
+          environment: 'preview',
+          argv: ['deploy'],
+          readbackArgv: ['read-deployment'],
+          timeoutMs: 1000,
+          envRefs: ['DEPLOY_TOKEN'],
+        },
+      ],
+    } satisfies Partial<ProjectToolConfig>;
     const original = s.files.configureProjectTools('default', 0, {
       checks: [],
       lspServers: [],
+      ...workbenchTools,
       mcpServers: [
         {
           id: 'docs',
@@ -217,6 +236,7 @@ it('imports disabled MCP definitions with explicit local bindings and restores t
     });
     const applied = await s.adapters.mcp.apply(prepared.value, exported.revision, 'vault_mcp');
     const config = s.service.projectTools.latest('default');
+    expect.soft(config).toMatchObject(workbenchTools);
     expect(config?.mcpServers).toHaveLength(2);
     expect(config?.mcpServers?.[1]).toMatchObject({
       enabled: false,
@@ -229,9 +249,32 @@ it('imports disabled MCP definitions with explicit local bindings and restores t
     expect(await s.adapters.mcp.receipt?.('vault_mcp')).toEqual(applied);
     await s.adapters.mcp.restore(rollback, applied.revision, 'restore_mcp');
     expect(s.service.projectTools.latest('default')?.mcpServers).toEqual(original.mcpServers);
+    expect.soft(s.service.projectTools.latest('default')).toMatchObject(workbenchTools);
     await expect(
       s.adapters.mcp.apply(prepared.value, exported.revision, 'stale_mcp'),
     ).rejects.toThrow('changed since preview');
+    const added = await s.service.saveMcp('default', 3, 'add_standalone', {
+      name: 'Standalone',
+      transport: 'http',
+      url: 'https://example.invalid/standalone',
+      auth: { kind: 'none' },
+      exposure: 'direct',
+      timeoutMs: 1000,
+      enabled: false,
+    });
+    expect.soft(added).toMatchObject(workbenchTools);
+    const serverId = added.mcpServers?.find((server) => server.name === 'Standalone')?.id;
+    if (!serverId) throw new Error('MCP server was not added');
+    const removed = await s.service.removeMcp('default', added.revision, 'remove_mcp', serverId);
+    expect.soft(removed).toMatchObject(workbenchTools);
+    const restored = await s.service.removeMcp(
+      'default',
+      removed.revision,
+      'restore_standalone',
+      serverId,
+      added.revision,
+    );
+    expect.soft(restored).toMatchObject(workbenchTools);
   } finally {
     await s.close();
   }

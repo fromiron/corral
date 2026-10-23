@@ -19,6 +19,12 @@ import {
   runtimeTarget,
 } from '../scripts/packaging.ts';
 
+it('[TC-WBD-004-H] keeps the PTY native dependency on the server Node side', () => {
+  const require = createRequire(new URL('../../server/package.json', import.meta.url));
+  expect(require('node-pty/package.json').version).toBe('1.1.0');
+  expect(typeof require('node-pty').spawn).toBe('function');
+});
+
 it('[TC-ABS-007-N] rejects a junction into staging even when its initial target is inside staging', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-runtime-links-'));
   try {

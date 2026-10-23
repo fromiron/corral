@@ -33,7 +33,11 @@ export function createRunSessions(transport: RuntimeTransport, recovery?: RunRec
         if (remaining > 0) references.set(runId, remaining);
         else {
           references.delete(runId);
-          runs.get(runId)?.getState().dispose();
+          const store = runs.get(runId);
+          // React moves a view by releasing and retaining it in the same commit.
+          queueMicrotask(() => {
+            if (!references.has(runId) && runs.get(runId) === store) store?.getState().dispose();
+          });
         }
       };
     },

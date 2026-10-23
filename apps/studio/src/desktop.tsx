@@ -2,6 +2,7 @@ import { FolderOpen } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { NotificationTarget } from './workbench/notifications.ts';
 
 interface DesktopInfo {
   version: string;
@@ -13,7 +14,16 @@ interface DesktopInfo {
   workspace: string;
   node: string;
 }
-interface DesktopBridge {
+interface PreviewBridge {
+  openPreview(sessionId: string, leaseId: string): Promise<void>;
+  capturePreview?(
+    sessionId: string,
+    leaseId: string,
+    options: { screenshot: boolean; console: boolean },
+  ): Promise<unknown>;
+  cancelPreviewCapture?(sessionId: string, leaseId: string): Promise<void>;
+}
+interface DesktopBridge extends PreviewBridge {
   info(): Promise<DesktopInfo>;
   window(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
   pickFolder(): Promise<string | null>;
@@ -25,10 +35,12 @@ interface DesktopBridge {
   ): Promise<void>;
   revealWorkspace(): Promise<void>;
   openExternal(url: string): Promise<void>;
-  openPreview(sessionId: string, leaseId: string): Promise<void>;
   retry(): Promise<void>;
   theme(dark: boolean): Promise<void>;
-  notify(title: string, body: string): Promise<boolean>;
+  /** Native menus and dialogs follow the app's language (#84); absent in older shells. */
+  locale?(value: 'en' | 'ko'): Promise<void>;
+  notify(title: string, body: string, target?: NotificationTarget): Promise<boolean>;
+  onNotification?(callback: (target: NotificationTarget) => void): () => void;
   badge(count: number): Promise<void>;
   /** Menu commands by name; returns the unsubscribe function. */
   onCommand(callback: (id: string) => void): () => void;
@@ -36,10 +48,7 @@ interface DesktopBridge {
 declare global {
   interface Window {
     corralDesktop?: DesktopBridge;
-    corralRemote?: {
-      readonly hostId: string;
-      openPreview(sessionId: string, leaseId: string): Promise<void>;
-    };
+    corralRemote?: PreviewBridge & { readonly hostId: string };
   }
 }
 export const desktop = typeof window === 'undefined' ? undefined : window.corralDesktop;

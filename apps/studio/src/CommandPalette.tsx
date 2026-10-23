@@ -38,8 +38,13 @@ import {
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
-import { settingsInteractionBlocked, useSettingsNavigation } from './workbench/navigation.ts';
+import {
+  SETTINGS_GROUPS,
+  settingsInteractionBlocked,
+  useSettingsNavigation,
+} from './workbench/navigation.ts';
 import { changePreferences, preferences, usePreferences } from './workbench/preferences.ts';
+import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
 function typing(event: globalThis.KeyboardEvent): boolean {
@@ -202,6 +207,7 @@ function useGlobalCommands(showHelp: () => void) {
   );
   const prefs = usePreferences();
   const go = t('groups.go');
+  const sectionLabel = useSettingsSectionLabel();
   useRegisterCommands('global', [
     {
       id: 'session:new',
@@ -233,6 +239,18 @@ function useGlobalCommands(showHelp: () => void) {
       shortcut: shortcutLabel('settings'),
       run: () => navigate(navigation.link('general')),
     },
+    // Every settings section is found by its name and opens in the settings dialog (#92).
+    ...SETTINGS_GROUPS.flatMap((group) =>
+      group.items.map(
+        (section): AppCommand => ({
+          id: `settings:${section}`,
+          title: sectionLabel(section),
+          group: t('groups.settings'),
+          keywords: [t('settings')],
+          run: () => navigate(navigation.link(section, navigation.projectId)),
+        }),
+      ),
+    ),
     {
       id: 'go:back',
       title: t('back'),

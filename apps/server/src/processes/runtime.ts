@@ -22,13 +22,23 @@ export type CommandOwner = {
   attemptNo: number;
   effectId: string;
 };
-export type OwnedCommandInput = {
+/** A development task a person started (CR-046 P15); its receipt is a workbench operation. */
+export type UserTaskOwner = {
+  kind: 'user';
+  hostId: string;
+  sessionId: string;
   operationId: string;
-  owner: CommandOwner;
+};
+export type OwnedCommandInput<Owner extends { sessionId: string } = CommandOwner> = {
+  operationId: string;
+  owner: Owner;
   /** Broker-resolved directory and shell, already pinned by the approved plan. */
   directory: string;
-  command: ShellCommand;
+  command: Omit<ShellCommand, 'shellId'> & { shellId?: ShellCommand['shellId'] };
   timeoutMs?: number;
+  /** Broker-resolved references only; never populated directly from a renderer request. */
+  environment?: Record<string, string>;
+  secrets?: string[];
 };
 export type OwnedCommandReport = {
   operationId: string;
@@ -39,11 +49,11 @@ export type OwnedCommandReport = {
   cleanupConfirmed: boolean;
   output: ReturnType<CheckOutput['finish']>;
 };
-type Operation = {
+type Operation<Owner extends { sessionId: string }> = {
   started: Promise<boolean>;
   resolveStarted: (started: boolean) => void;
   child?: ChildProcess;
-  input: OwnedCommandInput;
+  input: OwnedCommandInput<Owner>;
   key: string;
   output: CheckOutput;
   completion: Promise<OwnedCommandReport>;
@@ -70,8 +80,8 @@ export class CommandCapacityError extends Error {
 }
 
 /** Callers retain the worktree writer lease until completion AND confirmed cleanup. */
-export class CommandRuntime {
-  private readonly operations = new Map<string, Operation>();
+export class CommandRuntime<Owner extends { sessionId: string } = CommandOwner> {
+  private readonly operations = new Map<string, Operation<Owner>>();
   private readonly maxActiveProcesses: number;
   private activeProcesses = 0;
 
@@ -81,11 +91,14 @@ export class CommandRuntime {
       throw new Error('maxActiveProcesses must be a positive safe integer');
   }
 
-  run(input: OwnedCommandInput, cancellation: ToolCancellation): Promise<OwnedCommandReport> {
+  run(
+    input: OwnedCommandInput<Owner>,
+    cancellation: ToolCancellation,
+  ): Promise<OwnedCommandReport> {
     return this.startService(input, cancellation).completion;
   }
 
-  startService(input: OwnedCommandInput, cancellation: ToolCancellation) {
+  startService(input: OwnedCommandInput<Owner>, cancellation: ToolCancellation) {
     const key = JSON.stringify(input);
     const existing = this.operations.get(input.operationId);
     if (existing) {
@@ -104,12 +117,12 @@ export class CommandRuntime {
     const started = new Promise<boolean>((resolve) => {
       resolveStarted = resolve;
     });
-    const operation: Operation = {
+    const operation: Operation<Owner> = {
       started,
       resolveStarted,
       input,
       key,
-      output: new CheckOutput([input.directory]),
+      output: new CheckOutput([input.directory], input.secrets),
       completion: Promise.resolve(null as unknown as OwnedCommandReport),
       stop: () => {},
     };
@@ -129,7 +142,7 @@ export class CommandRuntime {
     };
   }
 
-  list(owner: Pick<CommandOwner, 'sessionId'>) {
+  list(owner: { sessionId: string }) {
     return [...this.operations.values()]
       .filter((op) => op.input.owner.sessionId === owner.sessionId)
       .map((op) => ({
@@ -152,6 +165,12 @@ export class CommandRuntime {
       bytes: output.bytes,
       truncated: output.truncated,
     };
+  }
+
+  /** The live process group leader, while the command runs. */
+  pid(operationId: string): number | undefined {
+    const operation = this.operations.get(operationId);
+    return operation && !operation.report ? operation.child?.pid : undefined;
   }
 
   stop(operationId: string) {
@@ -184,7 +203,7 @@ export class CommandRuntime {
   }
 
   private async execute(
-    operation: Operation,
+    operation: Operation<Owner>,
     cancellation: ToolCancellation,
   ): Promise<OwnedCommandReport> {
     const { input, output } = operation;
@@ -220,7 +239,7 @@ export class CommandRuntime {
           finish = resolve;
           child = spawnOwnedProcess(input.command.executable, input.command.args, {
             cwd: directory,
-            env: commandEnvironment(home as string),
+            env: { ...commandEnvironment(home as string), ...input.environment },
             shell: false,
             stdio: ['ignore', 'pipe', 'pipe'],
           });

@@ -51,6 +51,152 @@ function until(store: ReturnType<typeof session>, check: (s: RunSessionState) =>
 }
 
 describe('run session', () => {
+  it('[TC-WBD-005-N] shares an in-flight same-run open and starts a fresh read after disposal', async () => {
+    const reads: ((definition: CorralDefinition | null) => void)[] = [];
+    const getRunDefinition = vi.fn(
+      () => new Promise<CorralDefinition | null>((resolve) => reads.push(resolve)),
+    );
+    const unsubscribe = vi.fn();
+    const subscribe = vi.fn(() => unsubscribe);
+    const store = createRunSession({ getRunDefinition, subscribe } as never);
+    const first = store.getState().open('run_current');
+    const second = store.getState().open('run_current');
+    expect(getRunDefinition).toHaveBeenCalledTimes(1);
+    reads[0]?.(linearCorral(['writer']));
+    await Promise.all([first, second]);
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    store.getState().dispose();
+    const stale = store.getState().open('run_current');
+    store.getState().dispose();
+    const current = store.getState().open('run_current');
+    expect(getRunDefinition).toHaveBeenCalledTimes(3);
+    const definition = linearCorral(['current']);
+    reads[2]?.(definition);
+    await current;
+    reads[1]?.(linearCorral(['stale']));
+    await stale;
+    expect(store.getState().definition).toEqual(definition);
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    store.getState().dispose();
+    expect(unsubscribe).toHaveBeenCalledTimes(2);
+    const missing = store.getState().open('run_missing');
+    reads[3]?.(null);
+    await missing;
+    expect(store.getState().missingRunId).toBe('run_missing');
+    const retry = store.getState().open('run_missing');
+    reads[4]?.(definition);
+    await retry;
+    expect(store.getState().missingRunId).toBeNull();
+    expect(subscribe).toHaveBeenCalledTimes(3);
+    store.getState().dispose();
+  });
+
+  it.each(['applied', 'error'] as const)(
+    '[TC-WBD-005-F] keeps a late %s command result across leaving and reopening its run',
+    async (result) => {
+      let finish = (_receipt: Receipt) => {};
+      let reject = (_error: Error) => {};
+      let sent: RunCommand | undefined;
+      const store = createRunSession({
+        getRunDefinition: async () => linearCorral(['writer']),
+        subscribe: () => () => {},
+        sendCommand: (command: RunCommand) => {
+          sent = command;
+          return new Promise<Receipt>((resolve, fail) => {
+            finish = resolve;
+            reject = fail;
+          });
+        },
+      } as never);
+      await store.getState().open('run_selected');
+      store.setState({ artifactTexts: { saved: 'cached text' } });
+      const pending = store.getState().sendCommand({
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason: 'stop selected' },
+      });
+      const outcome = pending.catch(() => undefined);
+      store.getState().dispose();
+      if (!sent) throw new Error('command missing');
+      const receipt: Receipt = {
+        commandId: sent.commandId,
+        runId: sent.runId,
+        status: 'applied',
+        target: `run:${sent.runId}`,
+        acceptedSeq: 1,
+        requestedBoundary: 'immediate',
+        relatedEventIds: [],
+      };
+      if (result === 'applied') finish(receipt);
+      else reject(new Error('response lost'));
+      await outcome;
+      expect(store.getState().pendingCommandIds).toEqual([]);
+      expect(
+        result === 'applied'
+          ? store.getState().receipts[sent.commandId]
+          : store.getState().commandError,
+      ).toEqual(result === 'applied' ? receipt : 'response lost');
+      await store.getState().open('run_selected');
+      expect(store.getState().artifactTexts).toEqual({ saved: 'cached text' });
+      expect(
+        result === 'applied'
+          ? store.getState().receipts[sent.commandId]
+          : store.getState().commandError,
+      ).toEqual(result === 'applied' ? receipt : 'response lost');
+      store.getState().dispose();
+    },
+  );
+
+  it('[TC-WBD-005-N] late commands for another run do not replace its receipt, error or pending command', async () => {
+    const pending: {
+      command: RunCommand;
+      finish: (receipt: Receipt) => void;
+      reject: (error: Error) => void;
+    }[] = [];
+    let sequence = 0;
+    const store = createRunSession(
+      {
+        getRunDefinition: async () => linearCorral(['writer']),
+        subscribe: () => () => {},
+        sendCommand: (command: RunCommand) =>
+          new Promise<Receipt>((finish, reject) => pending.push({ command, finish, reject })),
+      } as never,
+      () => `command_${++sequence}`,
+    );
+    const cancel = (reason: string) =>
+      store.getState().sendCommand({ type: 'cancel', payload: { scope: { kind: 'run' }, reason } });
+    const receipt = (command: RunCommand): Receipt => ({
+      commandId: command.commandId,
+      runId: command.runId,
+      status: 'applied',
+      target: `run:${command.runId}`,
+      acceptedSeq: 1,
+      requestedBoundary: 'immediate',
+      relatedEventIds: [],
+    });
+    await store.getState().open('run_old');
+    const oldSuccess = cancel('old success');
+    const oldFailure = cancel('old failure').catch(() => undefined);
+    await store.getState().open('run_current');
+    const current = cancel('current');
+    const [first, second, third] = pending;
+    if (!first || !second || !third) throw new Error('commands missing');
+    first.finish(receipt(first.command));
+    second.reject(new Error('old response lost'));
+    await Promise.all([oldSuccess, oldFailure]);
+    expect(store.getState()).toMatchObject({
+      runId: 'run_current',
+      receipts: {},
+      commandError: null,
+      pendingCommandIds: [third.command.commandId],
+    });
+    third.finish(receipt(third.command));
+    await current;
+    expect(store.getState().receipts).toEqual({
+      [third.command.commandId]: receipt(third.command),
+    });
+    store.getState().dispose();
+  });
+
   it('[TC-WIDGET-001-N] failed opening stays scoped to its requested run and ignores old failures', async () => {
     let failOld!: (error: Error) => void;
     const getRunDefinition = vi

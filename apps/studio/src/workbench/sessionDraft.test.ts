@@ -12,7 +12,7 @@ const result = {
 };
 
 describe('composer draft (UX-02)', () => {
-  it('[TC-CHAT-001-H] [TC-UX-02-H] keeps text, intent, target and references through storage', () => {
+  it('[TC-CHAT-001-H] [TC-UX-02-H] [TC-ULTRA-002-H] keeps text, intent, target and references through storage', () => {
     const draft = {
       text: 'Compare with @"draft v1"',
       intent: 'steer' as const,
@@ -39,6 +39,7 @@ describe('composer draft (UX-02)', () => {
         version: 1 as const,
         modelProfiles: ['model-a', 'deepseek-hive'],
         verifierProfile: 'deepseek-hive',
+        comparison: { modelProfiles: ['model-a', 'deepseek-hive', 'model-a'] },
       },
     };
     expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);

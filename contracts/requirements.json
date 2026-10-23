@@ -826,5 +826,161 @@
     "requirement": "CR-045: 옅은 기본/선명한 포커스 입력 경계·설정 컨트롤 높이·대화 제목·좁은 화면 모델 식별을 개선하고 필터 범위와 가져오기 안내를 명확히 하며 기존 데이터·명시 이름·초안·실행·접근성을 보존한다.",
     "owner": "studio",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-WBD-001",
+    "requirement": "CR-046: 기존 실행/설정/D&D/Reins를 보존해 기반 엔진을 qualification하고, 관리 사본 generation 및 인간/Run 공통 writer 예약과 durable operation receipt를 제공한다. 같은 ID 재조회, 고정 reader tree, uncertain/restart, 기존 DB 이관과 원본 읽기 전용 경계를 보존한다.",
+    "owner": "server",
+    "phase": "M0"
+  },
+  {
+    "id": "CRL-WBD-002",
+    "requirement": "CR-046 P04: 관리 사본의 target generation과 full-hash 파일 문서를 읽고 사용자 save/create/rename/delete를 공통 writer·신뢰·path·hash precondition과 durable receipt로 수행한다. BOM/EOL/mode·삭제 복구 checkpoint·원본 읽기 전용·중복/불확실 효과 경계를 보존한다.",
+    "owner": "server",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-WBD-003",
+    "requirement": "CR-046 P05–06: 관리 사본 문서당 공유 Monaco 모델과 명시 저장·마지막 view 닫기·IndexedDB 초안 복구를 제공한다. 저장 중 새 편집, 응답 유실, 충돌, 사본 identity, 형식, 원본 읽기 전용을 보존하고 실제 FilePanel·설정 왕복·키보드·좁은 화면에서 검증한다.",
+    "owner": "studio",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-WBD-004",
+    "requirement": "CR-046 P07–08: 관리 사본의 사용자 PTY를 Run과 구분된 owner로 실행하며 공통 writer와 host process capacity를 유지한다. 인증된 attach/input/resize/stop, 단일 입력 controller, 제한된 output 재생과 원래 receipt 복구를 제공하고 실제 터미널→파일/Diff 여정을 검증한다.",
+    "owner": "server",
+    "phase": "M1"
+  },
+  {
+    "id": "CRL-WBD-005",
+    "requirement": "CR-046 P09: 기존 Workbench 화면의 typed panel 대상과 URL 변환을 등록하고 명시 deep link·기억한 선택·설정 왕복을 보존한다. 패널 수명과 root 소유 Run·문서·PTY·graph draft를 분리하며 과거 Run/다른 대상의 상태가 섞이지 않는다.",
+    "owner": "studio",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-WBD-006",
+    "requirement": "CR-046 P10: URL의 세션/Run 문맥과 full WorkspaceTarget/path/viewId의 문서를 구분해 Dockview 배치·preset·키보드 조작·복구를 제공한다. workspaceId/project별 metadata만 저장하고 문서 ID/모델·dirty 초안·PTY/Run 수명을 보존하며 손상 복구·20문서 상한·390px 승인/중지 접근과 기존 graph/review 경로를 유지한다.",
+    "owner": "studio",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-WBD-007",
+    "requirement": "CR-046 P11: 선택 코드·터미널·hunk·검사 결과를 실제 source identity/version/range와 함께 불변 TextAttachment snapshot으로 next/queue에 전달한다. dirty 확인·원본 이동/명시 교체/삭제·stale 표시·원래 command 복구와 late/IME 경계를 유지하며 결과/기본/상세 밀도에서 승인·실패 접근과 원본 이벤트/현재 Run 입력을 보존한다.",
+    "owner": "studio",
+    "phase": "M2"
+  },
+  {
+    "id": "CRL-WBD-008",
+    "requirement": "CR-046 P12: 원본 폴더와 관리 사본의 실제 Git HEAD/branch/upstream·staged/unstaged/untracked 및 rename/binary diff를 읽기 전용으로 관찰한다. 정확한 UserGitTarget과 HEAD/index 기준, raw 상대 경로와 출력 한도를 보존하며 외부 index 변경·사본 교체를 거절하고 hook/filter 등 실행이나 index·내부 snapshot 변경 없이 비지원/필터 제한을 명시한다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-009",
+    "requirement": "CR-046 P13: 관리 사본의 사용자 index에서 파일 단위 stage/unstage와 확인한 staged 목록 그대로의 commit을 인간 operation receipt로 수행한다. 정확한 target·HEAD·index 기준을 확인하고 같은 ID 재조회로 중복 commit을 막으며, hook은 신뢰 프로젝트에서 명시 선택 시에만 실행하고 서명 요구를 충족하지 못하면 거절한다. 원본 폴더와 unstaged·untracked 변경, 내부 snapshot index는 바꾸지 않는다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-010",
+    "requirement": "CR-046 P14: 관리 사본에서 detached HEAD에 명시 branch를 만들어 연결하고 local branch로 전환하며, 신뢰 프로젝트의 사용자 인증으로 fetch, fast-forward 전용 pull, force 없는 push를 인간 operation receipt로 수행한다. 미저장 문서·추적 변경·활성 writer가 있으면 전환하지 않고, 원본의 작업 트리·index·checkout branch를 바꾸지 않으며, 응답 유실 뒤에는 실제 ref를 다시 읽어 중복 push 없이 판정한다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-011",
+    "requirement": "CR-046 P15: 관리 사본의 package.json scripts와 등록 검사를 실행하지 않고 후보로 보여 주며, 사람이 명시해 시작한 개발 task를 사용자 owner의 소유 process group으로 실행하고 출력·중지·정리 확인·재시작 정리를 제공한다. 사용자 task의 포트를 기존 preview lease와 연결 소유 증명으로 미리 보고, 검사·task 출력의 사본 내부 위치를 Problems로 모아 출처 tree와 stale을 표시하며 문서 위치로 이동한다. strict 모드에서 task·터미널이 writer인 동안 같은 사본 저장은 거절하고 중지→정리 확인→저장→명시 재시작 경로를 제공하며, 검사는 고정 snapshot에서 계속 실행할 수 있다.",
+    "owner": "server",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-012",
+    "requirement": "CR-046 P16 Alpha: 모델 미연결 수동 흐름(세션 사본 → 문서 탭 편집·저장 → 개발 task·preview → 검사 → 변경 확인 → 선택 stage → commit → 로컬 원격 push)과 같은 사본에서 결정적 agent 요청 1회의 결과를 사람이 commit·push하는 흐름이 실제 앱에서 끝까지 이어진다. 설정 대화상자 왕복, 디스크 충돌, 잘못된 branch 이름, 실패한 검사, Git 응답 유실과 renderer reload에서 초안·receipt·원본 폴더가 보존되고 같은 ID로만 다시 읽는다.",
+    "owner": "studio",
+    "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-013",
+    "requirement": "CR-046 P17: 변경 검토에서 파일 읽음(내용), 변경 검토(host·경로·이전/이후 blob 쌍), 판단(정확한 from/to), 원본 반영·stage·commit을 구분한다. Corral의 마지막 적용 쓰기 내용과 다른 결과는 mixed로 표시해 agent 단독 성과로 보이지 않고, 검사 결과는 tree와 자기 명령 정의가 바뀌면 현재 유효성을 잃으며, 고정 첨부 출처의 무결성과 현재 사본 적용성을 따로 보인다. 세션 전환 뒤 늦은 응답·표시를 새 세션에 쓰지 않는다.",
+    "owner": "studio",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-WBD-014",
+    "requirement": "CR-046 P18: 저장 팀의 그래프를 route와 같은 working copy를 쓰는 도킹 탭(kind graph)으로 열어, 탭 이동·닫기·복원·설정 왕복에서 초안·undo·revision을 유지하고 저장으로 처리하지 않는다. 팀마다 탭은 하나이며 같은 프로젝트의 팀만 복원하고, 세션 안 편집기는 앱 안 이동에서 초안을 버리지 않으며 Ctrl+S는 그래프에 포커스가 있을 때만 팀을 저장한다.",
+    "owner": "studio",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-WBD-015",
+    "requirement": "CR-046 P18-B: Run 전체·execution 취소 확인과 Reins 지시는 열거나 쓴 시점의 run·execution에만 보내고, 같은 view가 다른 Run을 따라가면 확인을 버리며 보내지 않는다. 세션 도킹의 execution 제어에서 그 run·execution의 파일 쓰기·결과·검사로 이동하고, 결과를 모르는 쓰기를 표시하며, 다른 Run·execution·세션의 기록이나 늦은 응답을 섞지 않는다.",
+    "owner": "studio",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-WBD-016",
+    "requirement": "CR-046 P21-A: 세션 보관은 작업 사본·터미널·task를 지우지 않는다. 사본 삭제 전에 저장하지 않은 문서·복구 초안·사본의 Git 변경·사본을 잡은 owner·보내지 않은 검토 의견·결과를 모르는 쓰기·끝나지 않은 Run을 읽기 전용으로 보여 주고, owner가 있으면 지우지 않으며, 확인한 copy generation만 지우고, 폴더가 남은 정리는 완료로 기록하지 않는다.",
+    "owner": "server",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-WBD-017",
+    "requirement": "신뢰한 로컬 관리 사본의 명시적 공유 개발 owner 아래 사람 저장·task·허용 Git을 병행하고 agent/구조 변경 차단·CAS·snapshot·uncertain 복구를 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-018",
+    "requirement": "CR-046 한 관리 사본의 명시 언어 서버에서 dirty 문서 버전 동기화·진단·completion·definition·references를 제공하고 대상/세대·신뢰·종료·기존 편집을 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-019",
+    "requirement": "CR-046 관리 사본의 ignore·안전한 읽기를 유지한 bounded 내용 검색과 기존 문서 이동을 제공하고 취소·stale 결과·dirty 초안을 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-020",
+    "requirement": "CR-046 현재 Desktop 미리보기의 명시 선택·스크린샷·한정 관측을 검토 후 기존 대화 첨부로 연결하고 lease·대상·탐색 변경과 기존 격리 경계를 보존한다.",
+    "owner": "studio",
+    "phase": "M4"
+  },
+  {
+    "id": "CRL-WBD-021",
+    "requirement": "CR-046 저장된 파일의 다중 교체와 언어 서버 수정 제안을 불변 diff로 검토하고 파일별 사전 조건·공통 writer·receipt로 적용하며 미저장 초안·외부 변경·부분 실패를 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-022",
+    "requirement": "CR-046 실제 index 기준 hunk stage/unstage와 base/ours/theirs 충돌 편집·merge/rebase continue/abort를 기존 Git writer·정책·receipt에 연결하고 HEAD/index/sequencer 변경과 초안을 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-023",
+    "requirement": "CR-046 신뢰한 관리 사본에서 등록된 Node/TypeScript·Chromium 디버그 어댑터의 명시 launch/소유 대상 attach와 중단점·step·stack·variables·evaluate를 제공하고 대상·세대·정지 상태·프로세스 소유권·초안 및 disconnect/terminate 구분을 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-024",
+    "requirement": "CR-046 기존 사람 task와 operation 원장에 환경·source commit/tree·dirty·credential 참조·명시 확인·결과 URL과 배포 결과 재확인을 연결하고 응답 유실/중복 시 재배포하지 않으며 프로세스 종료와 배포 완료를 구분한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-025",
+    "requirement": "CR-046 P28의 지원된 JS/TS 개발 여정에서 저장된 소스·검사·Git commit/push·배포 결과 identity를 유지하고 미저장 초안·오래된 검토·중복 효과를 보존 경계에 따라 처리한다.",
+    "owner": "studio",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-026",
+    "requirement": "CR-046 P29의 현재 Linux 설치판과 핵심 복구·접근성 경로를 확인하고 정상 화면 전환을 시작 실패로 오판하지 않으며 공통 프로세스 상한·초안·실행 상태를 보존한다. 다른 OS·장치·전체 부하·외부 통합의 미검증 조건을 구분한다.",
+    "owner": "desktop",
+    "phase": "M6"
   }
 ]

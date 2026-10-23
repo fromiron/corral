@@ -431,3 +431,23 @@
     padding: 0;
   }
 }
+
+.monaco-editor .corral-debug-breakpoint::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--danger);
+  border-radius: 50%;
+  background: var(--danger);
+}
+.monaco-editor .corral-debug-breakpoint-unverified::before {
+  background: transparent;
+}
+.monaco-editor .corral-debug-paused {
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  border-left: 2px solid var(--warning);
+}

@@ -41,6 +41,44 @@ database.close();
 const judgeRequire = createRequire(resolved('@corral/effort-judge'));
 contained(judgeRequire.resolve('onnxruntime-node'));
 judgeRequire('onnxruntime-node');
+contained(require.resolve('node-pty'));
+const pty = require('node-pty');
+assert.equal(typeof pty.spawn, 'function');
+// P07 currently enables user terminals on Linux; other hosts still verify native loading.
+if (process.platform === 'linux') {
+  await new Promise((resolve, reject) => {
+    const terminal = pty.spawn(
+      '/bin/sh',
+      ['-c', "printf 'CORRAL_PTY_READY\\n'; read -r input; stty size; printf 'CORRAL_PTY_DONE\\n'"],
+      { cols: 80, rows: 24, cwd: server, env: { PATH: '/usr/bin:/bin', TERM: 'xterm-256color' } },
+    );
+    let output = '';
+    let resized = false;
+    const timer = setTimeout(() => {
+      terminal.kill();
+      reject(new Error('Bundled Node PTY shell did not finish'));
+    }, 30000);
+    terminal.onData((data) => {
+      output += data;
+      if (!resized && output.includes('CORRAL_PTY_READY')) {
+        resized = true;
+        terminal.resize(101, 37);
+        terminal.write('continue\r');
+      }
+    });
+    terminal.onExit(({ exitCode }) => {
+      clearTimeout(timer);
+      try {
+        assert.equal(exitCode, 0, 'Bundled Node PTY shell failed');
+        assert.match(output, /\b37 101\b/, 'PTY resize did not reach the shell');
+        assert.match(output, /CORRAL_PTY_DONE/, 'PTY input did not reach the shell');
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
 const native = Object.keys(require.cache).filter((path) => path.endsWith('.node'));
 assert(
   native.some((path) => /better-sqlite3|sqlite/.test(path)),
@@ -49,6 +87,10 @@ assert(
 assert(
   native.some((path) => path.includes('onnxruntime')),
   'ONNX native binding was not loaded',
+);
+assert(
+  native.some((path) => path.includes(`${sep}node-pty${sep}`)),
+  'PTY native binding was not loaded',
 );
 for (const file of Object.keys(require.cache)) contained(file);
 for (const file of native) {
@@ -91,5 +133,5 @@ for (const [entry, start, protocol] of [
   });
 }
 console.log(
-  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/ONNX bindings and both Pi worker handshakes.`,
+  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/ONNX/PTY bindings, both Pi worker handshakes${process.platform === 'linux' ? ', PTY shell input/101x37 resize/exit' : ''}.`,
 );

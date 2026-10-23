@@ -91,6 +91,8 @@ export interface CallableTarget {
 }
 
 export interface AgentStartInput {
+  candidateId?: string;
+  candidateComparison?: true;
   resumeContext?: RuntimeCheckpointState;
   images?: ImageInput[];
   taskBrief?: TaskBrief;

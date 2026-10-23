@@ -91,3 +91,20 @@ it.each([
     await expect(stageLspEdit(value, source, read)).rejects.toThrow();
   },
 );
+
+it('[TC-WBD-021-H] accepts only the captured versions of other synchronized documents', async () => {
+  const change = {
+    documentChanges: [
+      { textDocument: { uri: 'file:///copy/b.ts', version: 3 }, edits: [edit(0, 3, 'new')] },
+    ],
+  };
+  const versions = new Map([
+    [source.uri, 1],
+    ['file:///copy/b.ts', 3],
+  ]);
+  expect((await stageLspEdit(change, source, read, versions))[0]?.after).toBe('new\n');
+  versions.set('file:///copy/b.ts', 4);
+  await expect(stageLspEdit(change, source, read, versions)).rejects.toMatchObject({
+    code: 'REVISION_CONFLICT',
+  });
+});

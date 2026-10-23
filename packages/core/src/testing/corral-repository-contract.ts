@@ -502,6 +502,81 @@ export function describeCorralRepositoryContract(
         });
       });
 
+      it('[TC-WBD-007-H] [TC-WBD-007-F] a queued text snapshot keeps its source through duplicate acceptance and start', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({
+          projectId: 'default',
+          title: 'Captured context',
+        });
+        if (!created.ok) throw new Error(created.message);
+        const attachment = {
+          ...createTextAttachment('check.txt', 'text/plain', 'fixture check output'),
+          provenance: {
+            kind: 'check' as const,
+            hostId: 'host',
+            projectId: 'default',
+            sessionId: created.session.sessionId,
+            verificationId: 'verify_fixture',
+            commandId: 'check_fixture',
+            tree: 'a'.repeat(40),
+          },
+        };
+        const request = {
+          commandId: 'cmd_queue_snapshot',
+          intent: 'queue' as const,
+          text: 'Use this captured output',
+          state: 'queued' as const,
+          attachments: [attachment],
+        };
+        const saved = await repo.addSessionEntry(created.session.sessionId, request);
+        expect(saved.ok).toBe(true);
+        if (!saved.ok) throw new Error(saved.message);
+        const entry = saved.session.entries[0];
+        if (!entry) throw new Error('queued entry missing');
+        expect(entry.attachments).toEqual([attachment]);
+        expect((await repo.addSessionEntry(created.session.sessionId, request)).ok).toBe(true);
+        expect((await repo.getSession(created.session.sessionId))?.entries).toHaveLength(1);
+        const next = await repo.updateSessionEntry(created.session.sessionId, entry.entryId, {
+          state: 'started',
+          runId: 'run_fixture',
+        });
+        expect(next.ok && next.session.entries[0]?.attachments).toEqual([attachment]);
+        expect(
+          await repo.addSessionEntry(created.session.sessionId, {
+            ...request,
+            attachments: [
+              { ...attachment, provenance: { ...attachment.provenance, tree: 'b'.repeat(40) } },
+            ],
+          }),
+        ).toMatchObject({ ok: false });
+        for (const intent of ['steer', 'explain'] as const)
+          expect(
+            await repo.addSessionEntry(created.session.sessionId, {
+              ...request,
+              commandId: `cmd_${intent}`,
+              intent,
+            }),
+          ).toMatchObject({ ok: false });
+        expect(
+          await repo.addSessionEntry(created.session.sessionId, {
+            ...request,
+            commandId: 'cmd_queue_image',
+            images: [
+              {
+                kind: 'image_attachment',
+                imageId: 'image_fixture',
+                name: 'image.png',
+                mime: 'image/png',
+                bytes: 1,
+                sha256: 'a'.repeat(64),
+                width: 1,
+                height: 1,
+              },
+            ],
+          }),
+        ).toMatchObject({ ok: false });
+      });
+
       it('[TC-AUTO-005-H] a queued auto request keeps its routing explanation and reasoning when started', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'Auto queue' });

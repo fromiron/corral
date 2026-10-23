@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, existsSync, realpathSync } from 'node:fs';
 import {
+  chmod,
   link,
   lstat,
   mkdir,
@@ -19,6 +20,10 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { editText, PiEditError } from '@corral/adapter-pi';
 import {
+  type HostProcessReservation,
+  restoreHostProcessGroupReservation,
+} from '@corral/adapter-pi/processes';
+import {
   type BrokerFileToolName,
   CaptureCheckpoint,
   type CheckExecution,
@@ -30,14 +35,64 @@ import {
   type CommandExecution,
   CommandPlan,
   CommandReport,
+  ContentSearch,
+  type ContentSearchResult,
   canonicalJson,
+  type DebugBreakpoints,
+  type DebugCommand,
+  type DebugInspect,
+  type DebugQuery,
+  type DebugStart,
+  type DeploymentAction,
+  type DeploymentInspect,
+  type DeploymentStart,
+  DevelopmentStart,
+  type DevelopmentState,
+  DocumentCommand,
+  type DocumentMutationIntent,
+  type DocumentOperation,
   type EditTextRequest,
   type EditTextResult,
   type FileCheckpoint,
+  type FileDocument,
+  FileEditApply,
+  FileEditDecision,
+  FileEditInverse,
+  type FileEditOperation,
+  FileEditPreview,
+  type FileEditPreviewResult,
+  type FileEditProposal,
+  FileEditProposalContent,
+  type FileEditProposalSummary,
+  FileEditReconcile,
+  type GitAdvancedCommand,
+  type GitAdvancedOperation,
+  GitAdvancedReconcile,
+  type GitConflict,
+  GitConflictRequest,
+  type GitDiff,
+  type GitDiffRequest,
+  type GitFileSide,
+  type GitHunks,
+  GitHunksRequest,
+  GitHunkWrite,
+  type GitOperation,
+  type GitSequence,
+  GitSequenceCommand,
+  type GitSequenceState,
+  type GitStatus,
+  GitWriteCommand,
+  type GitWriteIntent,
+  type GitWriteResult,
   HashlineEditInput,
   HunkPlanRequest,
   HunkRequest,
   type HunkSet,
+  type LanguageDocumentChange,
+  type LanguageInspect,
+  type LanguageQuery,
+  type LanguageScope,
+  type LanguageStart,
   type LspExecution,
   LspProposal,
   LspProposalContent,
@@ -53,22 +108,42 @@ import {
   ReviewRecipeRevision,
   RunCommandArgs,
   type Scheduler,
+  type TaskCandidates,
+  TaskStart,
+  TERMINAL_RUN_STATUSES,
+  type TerminalCreate,
+  type UserGitTarget,
+  type UserTaskView,
   type VerificationOwner,
   VerificationReport,
+  type WorkbenchOperation,
+  type WorkspaceTarget,
 } from '@corral/contracts';
 import {
   type FileTools,
+  type RunProjection,
   rankFuzzy,
   type ToolCancellation,
   ToolRefusal,
   ToolTerminationUnconfirmed,
 } from '@corral/core';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
-import { CommandCapacityError, CommandRuntime } from '../processes/runtime.ts';
+import { confirmOwnedProcessCleanup } from '../processes/owned-process.ts';
+import { PtyRuntime, type PtyRuntimeOptions } from '../processes/pty.ts';
+import {
+  capturePtySession,
+  cleanupPtySession,
+  type PtySessionIdentity,
+} from '../processes/pty-session.ts';
+import { CommandCapacityError, CommandRuntime, type UserTaskOwner } from '../processes/runtime.ts';
 import { commandEnvironment, listShells, resolveShellCommand } from '../processes/shells.ts';
 import { systemTimers } from '../runtime.ts';
+import { CandidateWorkspaces } from './candidate-workspaces.ts';
 import { isolatedChecksAvailable } from './check-isolation.ts';
 import { redactToolText } from './check-output.ts';
+import { type DebugOptions, DebugSessions } from './debug-sessions.ts';
+import { DeploymentTasks } from './deployment-tasks.ts';
+import { FileEditProposals } from './file-edit-proposals.ts';
 import { checkGitEnvironment, GitError, git, gitText } from './git.ts';
 import {
   applyHashline,
@@ -78,12 +153,35 @@ import {
   mergeHashlineEvidence,
   readHashline,
 } from './hashline.ts';
+import { LanguageSessions, type LanguageTransport } from './language-sessions.ts';
 import { checkLaunchFingerprint, launchFingerprint } from './launch-fingerprint.ts';
 import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { RunAccessStore } from './run-access.ts';
+import { readUserGitDiff, readUserGitStatus } from './user-git.ts';
+import { applyGitHunks, readGitHunks } from './user-git-hunks.ts';
+import {
+  planGitSequence,
+  readGitConflict,
+  readGitSequence,
+  startGitSequence,
+} from './user-git-sequence.ts';
+import {
+  commitFacts,
+  GitWriteError,
+  type GitWriteRun,
+  gitIdentity,
+  gitWriteFailure,
+  indexLocked,
+  lockFailure,
+  planGitWrite,
+  remoteBranch,
+  startGitWrite,
+} from './user-git-write.ts';
 import { VerificationRunner } from './verification.ts';
+import { WorkbenchOperations } from './workbench-operations.ts';
+import { WorkspaceAccessStore } from './workspace-access.ts';
 
 // Work folders and file changes (CR-012). A project may link one folder, which is only
 // observed. A session gets its own git worktree outside that folder; agents change files
@@ -91,6 +189,17 @@ import { VerificationRunner } from './verification.ts';
 // Snapshots are git trees written from a temporary index, pinned under refs/corral/.
 
 const MAX_TEXT = 1024 * 1024;
+const ADVANCED_GIT_KINDS = [
+  'git.stage_hunks',
+  'git.unstage_hunks',
+  'git.merge',
+  'git.rebase',
+  'git.continue',
+  'git.abort',
+];
+type GitAdvancedPrivateResult = GitAdvancedOperation['result'] & {
+  processIdentity?: PtySessionIdentity;
+};
 
 export type VerifyCommand = RegisteredCheck;
 
@@ -109,6 +218,8 @@ export interface BindingView {
 
 export interface WorktreeView {
   sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
   baseCommit: string;
   createdAt: string;
   removedAt: string | null;
@@ -126,7 +237,12 @@ export interface FileChange {
   additions: number | null;
   deletions: number | null;
   binary: boolean;
-  provenance: 'managed_agent' | 'external_observed';
+  /**
+   * Who the observed result can be credited to (CR-046 P17): `managed_agent` when the file is as
+   * Corral's last applied write or delete left it, `mixed` when Corral changed it and something
+   * else changed it afterwards, `external_observed` when Corral never changed it.
+   */
+  provenance: 'managed_agent' | 'mixed' | 'external_observed';
   /** Git blob ids of the two sides (null when absent): a file's identity for "reviewed". */
   beforeBlob: string | null;
   afterBlob: string | null;
@@ -168,7 +284,30 @@ export interface VerificationView {
   endedAt: string | null;
   /** The worktree has changed since it ran. */
   stale: boolean;
+  /** The project's registered command with this id is no longer the one that ran (CR-046 P17). */
+  configChanged: boolean;
   report: VerificationReport | null;
+}
+
+export interface CopyRemovalPlan {
+  sessionId: string;
+  bindingId: string;
+  copyGeneration: number;
+  missing: boolean;
+  /** Changes in the copy's own Git state; null when they could not be read. */
+  git: { staged: number; unstaged: number; untracked: number; unmerged: number } | null;
+  owners: {
+    kind: 'run' | 'user';
+    id: string;
+    state: 'active' | 'uncertain';
+    writer: boolean;
+    /** The human operation kind (task, terminal…) when the owner is one. */
+    operation?: string;
+  }[];
+  draftComments: number;
+  uncertainWrites: number;
+  /** This session's runs that have not finished, including ones waiting for a person. */
+  openRuns: string[];
 }
 
 export class WorkspaceError extends Error {
@@ -182,6 +321,17 @@ export class WorkspaceError extends Error {
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 /** A relative path inside the worktree, or a refusal. Never `..`, absolute, or into `.git`. */
+const GIT_KINDS = [
+  'git.stage',
+  'git.unstage',
+  'git.commit',
+  'git.branch',
+  'git.switch',
+  'git.fetch',
+  'git.pull',
+  'git.push',
+];
+
 export function safeRelative(input: string): string {
   if (!input || input.includes('\0') || input.includes('\\') || isAbsolute(input))
     throw new ToolRefusal('SCHEMA_INVALID', 'use a relative path with / separators');
@@ -232,6 +382,7 @@ function decodeText(bytes: Buffer, preserveBom = false): string | null {
 async function boundedFile(
   root: string,
   rel: string,
+  maxBytes = MAX_TEXT,
 ): Promise<{ bytes: Buffer | null; size: number }> {
   if ((await assertPlainPath(root, rel)) !== 'file')
     throw new ToolRefusal('TARGET_NOT_FOUND', `${rel} is not a file`);
@@ -246,8 +397,8 @@ async function boundedFile(
     const current = await lstat(join(root, rel));
     if (current.ino !== info.ino || current.dev !== info.dev)
       throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed while opening`);
-    if (info.size > MAX_TEXT) return { bytes: null, size: info.size };
-    const buffer = Buffer.alloc(MAX_TEXT + 1);
+    if (info.size > maxBytes) return { bytes: null, size: info.size };
+    const buffer = Buffer.alloc(maxBytes + 1);
     let size = 0;
     while (size < buffer.length) {
       const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
@@ -261,7 +412,7 @@ async function boundedFile(
       after.ctimeMs !== info.ctimeMs
     )
       throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed while reading`);
-    return { bytes: size > MAX_TEXT ? null : buffer.subarray(0, size), size };
+    return { bytes: size > maxBytes ? null : buffer.subarray(0, size), size };
   } finally {
     await handle.close();
   }
@@ -302,6 +453,7 @@ interface BindingRow {
 interface WorktreeRow {
   session_id: string;
   binding_id: string;
+  copy_generation: number;
   worktree_path: string;
   base_commit: string;
   base_tree: string;
@@ -311,7 +463,10 @@ interface WorktreeRow {
 }
 
 export class WorkspaceService implements FileTools {
+  readonly terminals: PtyRuntime;
   private readonly commandRuntime = new CommandRuntime();
+  /** Development tasks people start (CR-046 P15); the host process cap is still shared. */
+  private readonly taskRuntime = new CommandRuntime<UserTaskOwner>();
   private readonly pendingCommands = new Map<string, Promise<CommandReport>>();
   private readonly pendingCommandHashes = new Map<string, string>();
   private readonly commandServices = new Map<
@@ -322,9 +477,17 @@ export class WorkspaceService implements FileTools {
   private readonly pendingCommandRuns = new Map<string, string>();
   private disposing = false;
   private readonly runAccess: RunAccessStore;
+  private readonly workspaceAccess: WorkspaceAccessStore;
+  private readonly workbenchOperations: WorkbenchOperations;
+  private readonly removingWorktrees = new Set<string>();
   private readonly preparingRuns = new Map<string, Promise<void>>();
   private readonly criteria = new Map<string, ReviewRecipeRevision['criteriaFiles']>();
   private readonly lsp: Pick<LspRunner, 'query'>;
+  private readonly language: LanguageSessions;
+  private readonly debugger: DebugSessions;
+  private readonly deploymentTasks: DeploymentTasks;
+  private readonly candidateCopies: CandidateWorkspaces;
+  private readonly fileEdits: FileEditProposals;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
   private readonly verificationRunner: VerificationRunner;
@@ -336,7 +499,14 @@ export class WorkspaceService implements FileTools {
   >();
   private readonly db: Db;
   private readonly clock: Clock;
+  private readonly timers: Scheduler;
+  /** Git writes in flight on this host, so a person can cancel one (hooks included). */
+  private readonly liveGit = new Map<string, GitWriteRun>();
+  private readonly advancedCancels = new Map<string, AbortController>();
+  private readonly advancedReservations = new Map<string, HostProcessReservation>();
   private readonly worktreeRoot: string;
+  private readonly hostId: string;
+  private readonly allowSharedDevelopment: boolean;
   /** Folders that may never be linked: Corral's own data and credentials. */
   private readonly forbidden: string[];
   /** Per-worktree write lease: one Corral write at a time (WB-WSP-003). */
@@ -355,29 +525,140 @@ export class WorkspaceService implements FileTools {
     clock: Clock;
     worktreeRoot: string;
     forbidden: string[];
+    hostId?: string;
+    allowSharedDevelopment?: boolean;
     timers?: Scheduler;
     newVerificationId?: () => string;
     newLspProposalId?: () => string;
     io?: Partial<MutationIo>;
+    pty?: Pick<PtyRuntimeOptions, 'spawn' | 'capture' | 'cleanup' | 'shells' | 'newGeneration'>;
     lsp?: Pick<LspRunner, 'query'>;
+    language?: LanguageTransport;
+    debug?: Pick<DebugOptions, 'transport' | 'bridge'>;
+    debugPreview?: DebugOptions['preview'];
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
+    this.hostId = options.hostId ?? 'local';
+    this.allowSharedDevelopment = options.allowSharedDevelopment === true;
     this.runAccess = new RunAccessStore(this.db);
-    this.runAccess.recover();
+    this.workspaceAccess = new WorkspaceAccessStore(this.db);
+    this.workbenchOperations = new WorkbenchOperations(this.db, options.clock);
+    this.workbenchOperations.recover();
+    for (const kind of ['git.merge', 'git.rebase', 'git.continue', 'git.abort']) {
+      for (const operation of this.workbenchOperations.list(kind)) {
+        if (
+          operation.state === 'uncertain' &&
+          (operation.result as GitAdvancedPrivateResult)?.cleanupConfirmed !== true
+        )
+          this.advancedReservations.set(
+            operation.operationId,
+            restoreHostProcessGroupReservation(),
+          );
+      }
+    }
     this.db
       .prepare(`UPDATE checkpoint_restores SET result_json=json_set(result_json, '$.state', 'uncertain')
       WHERE json_extract(result_json, '$.state')='applying'`)
       .run();
     this.io = { writeFile, rename, unlink, link, ...options.io };
     this.clock = options.clock;
+    this.timers = options.timers ?? systemTimers;
     this.db
       .prepare("UPDATE command_operations SET state='uncertain',updated_at=? WHERE state='running'")
       .run(this.clock.nowIso());
     this.projectTools = new SqliteProjectToolStore(options.db, options.clock);
+    this.fileEdits = new FileEditProposals(options.db);
     this.lsp =
       options.lsp ??
       new LspRunner({ clock: options.clock, timers: options.timers ?? systemTimers });
+    this.language = new LanguageSessions({
+      clock: this.clock,
+      timers: this.timers,
+      tools: this.projectTools,
+      operations: this.workbenchOperations,
+      transport: options.language,
+      context: (sessionId, expected) => {
+        const current = this.documentTarget(sessionId, expected);
+        return {
+          target: current.target,
+          path: current.row.worktree_path,
+          trusted: Boolean(current.binding.trusted),
+          closing: this.disposing || this.removingWorktrees.has(sessionId),
+        };
+      },
+      safePath: safeRelative,
+      plainPath: assertPlainPath,
+      read: async (root, path) => {
+        const text = decodeText(await textBytes(root, path), true);
+        if (text === null)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'language documents require UTF-8 text');
+        return text;
+      },
+    });
+    this.debugger = new DebugSessions({
+      clock: this.clock,
+      timers: this.timers,
+      tools: this.projectTools,
+      operations: this.workbenchOperations,
+      ...options.debug,
+      context: (sessionId, expected) => {
+        const current = this.documentTarget(sessionId, expected);
+        return {
+          target: current.target,
+          path: current.row.worktree_path,
+          trusted: Boolean(current.binding.trusted),
+          closing: this.disposing || this.removingWorktrees.has(sessionId),
+        };
+      },
+      safePath: safeRelative,
+      plainPath: assertPlainPath,
+      read: async (root, path) => {
+        const text = decodeText(await textBytes(root, path), true);
+        if (text === null)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'debug source requires UTF-8 text');
+        return text;
+      },
+      sources: async (root) => {
+        // Generated source maps can be Git-ignored. Include them without scanning dependency trees.
+        const scan = await this.folderPaths(root, '', true);
+        const paths = scan.paths.slice(0, 500);
+        const sources: Record<string, string> = {};
+        let bytes = 0;
+        let complete = !scan.truncated;
+        for (const path of paths) {
+          try {
+            const { bytes: content, size } = await boundedFile(root, path, 1024 * 1024);
+            bytes += size;
+            if (bytes > 8 * 1024 * 1024) {
+              complete = false;
+              break;
+            }
+            if (content && decodeText(content, true) !== null) sources[path] = sha256(content);
+            else if (path.endsWith('.map')) complete = false;
+          } catch {
+            if (path.endsWith('.map')) complete = false;
+          }
+        }
+        return { hashes: sources, complete };
+      },
+      task: (sessionId, operationId, target) =>
+        this.userTaskRunning(sessionId, operationId) &&
+        canonicalJson(this.workbenchOperations.get(operationId)?.target) === canonicalJson(target),
+      attest: (sessionId, operationId, port, peerPort) =>
+        this.attestCommandConnection(sessionId, operationId, port, peerPort),
+      preview: options.debugPreview,
+    });
+    this.deploymentTasks = new DeploymentTasks({
+      db: this.db,
+      operations: this.workbenchOperations,
+      runtime: this.taskRuntime,
+      resolveTarget: (sessionId, target) =>
+        this.documentTarget(sessionId, target, true).row.worktree_path,
+      config: (projectId) => this.projectTools.latest(projectId),
+      snapshot: (root) => this.snapshotTree(root, 'linux-bwrap'),
+      lease: (root, work) => this.lease(root, work),
+    });
     this.verificationRunner = new VerificationRunner({
       clock: options.clock,
       timers: options.timers ?? systemTimers,
@@ -388,7 +669,48 @@ export class WorkspaceService implements FileTools {
       options.newLspProposalId ?? (() => `lsp_${randomUUID().replaceAll('-', '')}`);
     this.edit = options.edit ?? ((request, cancellation) => editText(request, { cancellation }));
     this.worktreeRoot = resolve(options.worktreeRoot);
+    this.candidateCopies = new CandidateWorkspaces({
+      db: this.db,
+      clock: this.clock,
+      root: join(this.worktreeRoot, 'candidates'),
+      target: (runId) => {
+        const sessionId = this.sessionOfRun(runId);
+        const row = sessionId ? this.worktree(sessionId) : null;
+        if (
+          !row ||
+          !this.db
+            .prepare('SELECT 1 FROM workspace_bindings WHERE id=? AND trusted=1')
+            .get(row.binding_id)
+        )
+          throw new ToolRefusal('CAPABILITY_DENIED', 'trusted candidate target is unavailable');
+        return {
+          sessionId: row.session_id,
+          bindingId: row.binding_id,
+          copyGeneration: row.copy_generation,
+          path: row.worktree_path,
+        };
+      },
+      snapshot: (path) => this.snapshotTree(path, 'linux-bwrap'),
+      lease: (path, work) => this.lease(path, work),
+    });
     this.forbidden = [...options.forbidden, this.worktreeRoot].map((p) => resolve(p));
+    this.terminals = new PtyRuntime({
+      ...options.pty,
+      operations: this.workbenchOperations,
+      timers: options.timers,
+      target: (sessionId, expected) => {
+        const current = this.documentTarget(sessionId, expected, Boolean(expected));
+        return {
+          target: current.target,
+          path: current.row.worktree_path,
+          writable:
+            Boolean(current.binding.trusted) &&
+            !this.disposing &&
+            !this.removingWorktrees.has(sessionId),
+        };
+      },
+      prepare: (input) => this.prepareTerminal(input),
+    });
     // A write planned before the last stop has an unknown outcome; it is never redone (WB-WSP-005).
     this.db
       .prepare(
@@ -541,6 +863,11 @@ export class WorkspaceService implements FileTools {
           checks: change.verifyCommands,
           lspServers: previous?.lspServers ?? [],
           ...(previous?.mcpServers ? { mcpServers: previous.mcpServers } : {}),
+          ...(previous?.debugAdapters ? { debugAdapters: previous.debugAdapters } : {}),
+          ...(previous?.debugConfigurations
+            ? { debugConfigurations: previous.debugConfigurations }
+            : {}),
+          ...(previous?.deployments ? { deployments: previous.deployments } : {}),
         });
       }
       this.db
@@ -554,6 +881,10 @@ export class WorkspaceService implements FileTools {
           row.id,
         );
     })();
+    if (!trusted || change.verifyCommands) {
+      this.language.invalidate(projectId);
+      this.debugger.invalidate(projectId);
+    }
     return (await this.view(projectId)) as BindingView;
   }
 
@@ -614,7 +945,7 @@ export class WorkspaceService implements FileTools {
   }
 
   configureProjectTools(projectId: string, expectedRevision: number, raw: ProjectToolConfig) {
-    return this.db.transaction(() => {
+    const saved = this.db.transaction(() => {
       const config = this.validateProjectTools(projectId, expectedRevision, raw);
       const binding = this.binding(projectId);
       if (!binding) throw new WorkspaceError('TARGET_NOT_FOUND', 'workspace binding missing');
@@ -624,6 +955,9 @@ export class WorkspaceService implements FileTools {
         .run(JSON.stringify(saved.checks), this.clock.nowIso(), binding.id);
       return saved;
     })();
+    this.language.invalidate(projectId);
+    this.debugger.invalidate(projectId);
+    return saved;
   }
 
   mcpUsages(projectId: string, serverId: string) {
@@ -769,6 +1103,8 @@ export class WorkspaceService implements FileTools {
   }
 
   async runtimeMcp(runId: string, selection: CheckExecution['selection']) {
+    if (this.candidateCopies.enabled(runId))
+      throw new ToolRefusal('CAPABILITY_DENIED', 'candidate executions cannot launch MCP servers');
     const { row, config } = this.projectToolContext({ runId, selection });
     const servers: { server: RegisteredMcpServer; fingerprint: string }[] = [];
     for (const id of selection.mcpServerIds ?? []) {
@@ -818,6 +1154,7 @@ export class WorkspaceService implements FileTools {
     }
     const target = { projectId, kind, id: commandId, fingerprint };
     this.projectTools.setTrust(target, trusted);
+    if (kind === 'lsp' && !trusted) this.language.invalidate(projectId, commandId, fingerprint);
     return { fingerprint, trustedAt: this.projectTools.trust(target) };
   }
 
@@ -834,6 +1171,8 @@ export class WorkspaceService implements FileTools {
     return row
       ? {
           sessionId,
+          bindingId: row.binding_id,
+          copyGeneration: row.copy_generation,
           baseCommit: row.base_commit,
           createdAt: row.created_at,
           removedAt: row.removed_at,
@@ -897,31 +1236,1000 @@ export class WorkspaceService implements FileTools {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO session_worktrees (session_id, binding_id, worktree_path,
-           base_commit, base_tree, reviewed_tree, created_at, removed_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)`,
+           base_commit, base_tree, reviewed_tree, created_at, removed_at, copy_generation)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, NULL,
+           COALESCE((SELECT copy_generation+1 FROM session_worktrees WHERE session_id=?),1))`,
       )
-      .run(sessionId, binding.id, path, head, tree, this.clock.nowIso());
+      .run(sessionId, binding.id, path, head, tree, this.clock.nowIso(), sessionId);
     return this.worktreeView(sessionId) as WorktreeView;
   }
 
   /** Removes the working copy (its files only); the original folder is not touched. */
-  async removeWorktree(sessionId: string) {
+  /**
+   * What removing this copy would lose (CR-046 P21-A), read without changing anything: Git
+   * changes in it, owners still holding it, unsent review comments, writes of unknown outcome and
+   * runs not yet finished. Unsaved editor buffers and recovery drafts live in the client and are
+   * added there. Removal is then confirmed for this exact copy generation.
+   */
+  async removalPlan(sessionId: string): Promise<CopyRemovalPlan> {
+    const row = this.worktree(sessionId);
+    if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
+    const missing = !existsSync(row.worktree_path);
+    let git: CopyRemovalPlan['git'] = null;
+    if (!missing)
+      try {
+        const status = await this.lease(row.worktree_path, () =>
+          readUserGitStatus(row.worktree_path),
+        );
+        git = { staged: 0, unstaged: 0, untracked: 0, unmerged: 0 };
+        for (const entry of status.entries) {
+          if (entry.kind === 'untracked') git.untracked += 1;
+          else if (entry.kind === 'unmerged') git.unmerged += 1;
+          else {
+            if (entry.indexStatus !== '.') git.staged += 1;
+            if (entry.worktreeStatus !== '.') git.unstaged += 1;
+          }
+        }
+      } catch {
+        // Unknown is shown as unknown, never as clean.
+      }
+    const path = missing ? resolve(row.worktree_path) : realpathSync.native(row.worktree_path);
+    const key = process.platform === 'win32' ? path.toLowerCase() : path;
+    const owners = this.workspaceAccess.ownersAt(key).map((access) => {
+      const operation =
+        access.owner_kind === 'user' ? this.workbenchOperations.get(access.owner_id) : undefined;
+      return {
+        kind: access.owner_kind,
+        id: access.owner_id,
+        state: access.state as 'active' | 'uncertain',
+        writer: access.writer === 1,
+        ...(operation ? { operation: operation.kind } : {}),
+      };
+    });
+    const count = (sql: string) => (this.db.prepare(sql).get(sessionId) as { n: number }).n;
+    return {
+      sessionId,
+      bindingId: row.binding_id,
+      copyGeneration: row.copy_generation,
+      missing,
+      git,
+      owners,
+      draftComments: count(
+        "SELECT COUNT(*) AS n FROM review_comments WHERE session_id = ? AND state = 'draft'",
+      ),
+      uncertainWrites: count(
+        "SELECT COUNT(*) AS n FROM file_operations WHERE session_id = ? AND state IN ('planned','uncertain')",
+      ),
+      openRuns: (
+        this.db.prepare('SELECT id, status FROM runs WHERE session_id = ?').all(sessionId) as {
+          id: string;
+          status: string;
+        }[]
+      )
+        .filter((run) => !TERMINAL_RUN_STATUSES.has(run.status as never))
+        .map((run) => run.id),
+    };
+  }
+
+  async removeWorktree(sessionId: string, expectedGeneration?: number) {
     const row = this.worktree(sessionId);
     if (!row) return;
+    if (expectedGeneration !== undefined && row.copy_generation !== expectedGeneration)
+      throw new WorkspaceError(
+        'REVISION_CONFLICT',
+        'the working copy was made again since removal was confirmed (copy generation changed)',
+      );
+    if (this.removingWorktrees.has(sessionId))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy is being removed');
     const binding = this.db
       .prepare('SELECT * FROM workspace_bindings WHERE id = ?')
       .get(row.binding_id) as BindingRow | undefined;
-    await this.lease(row.worktree_path, async () => {
-      if (binding) {
-        await git(binding.root_path, ['worktree', 'remove', '--force', row.worktree_path]).catch(
-          () => rm(row.worktree_path, { recursive: true, force: true }),
-        );
-        await git(binding.root_path, ['worktree', 'prune']).catch(() => undefined);
+    this.removingWorktrees.add(sessionId);
+    try {
+      await this.language.stopCopy(sessionId);
+      await this.debugger.stopCopy(sessionId);
+      await this.lease(row.worktree_path, async () => {
+        const path = existsSync(row.worktree_path)
+          ? realpathSync.native(row.worktree_path)
+          : resolve(row.worktree_path);
+        const key = process.platform === 'win32' ? path.toLowerCase() : path;
+        if (this.workspaceAccess.ownersAt(key).length)
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'working copy access has active or uncertain owners',
+          );
+        if (binding) {
+          await this.candidateCopies.remove(sessionId, binding.root_path);
+          await git(binding.root_path, ['worktree', 'remove', '--force', row.worktree_path]).catch(
+            () => rm(row.worktree_path, { recursive: true, force: true }),
+          );
+          await git(binding.root_path, ['worktree', 'prune']).catch(() => undefined);
+        }
+        // A partly deleted copy is not recorded as removed; the person sees it as missing.
+        if (existsSync(row.worktree_path))
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'the working copy folder could not be fully deleted',
+          );
+        this.db
+          .prepare('UPDATE session_worktrees SET removed_at = ? WHERE session_id = ?')
+          .run(this.clock.nowIso(), sessionId);
+      });
+    } finally {
+      this.removingWorktrees.delete(sessionId);
+    }
+  }
+
+  private documentTarget(sessionId: string, expected?: WorkspaceTarget, write = false) {
+    const row = this.worktree(sessionId);
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    if (!row || !session)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the working copy is unavailable');
+    const binding = this.binding(session.project_id);
+    if (!binding || binding.id !== row.binding_id)
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy binding changed');
+    const target: WorkspaceTarget = {
+      hostId: this.hostId,
+      projectId: session.project_id,
+      bindingId: row.binding_id,
+      sessionId,
+      copyGeneration: row.copy_generation,
+    };
+    if (expected && canonicalJson(expected) !== canonicalJson(target))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the document target changed');
+    if (write) {
+      if (this.disposing || this.removingWorktrees.has(sessionId))
+        throw new ToolRefusal('TARGET_TERMINAL', 'the working copy is closing or being removed');
+      if (!binding.trusted)
+        throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before changing files');
+    }
+    return { row, binding, target };
+  }
+
+  languageState(sessionId: string) {
+    return this.language.state(sessionId);
+  }
+  debugState(sessionId: string) {
+    return this.debugger.state(sessionId);
+  }
+  stopDebugPreview(leaseId: string) {
+    return this.debugger.previewStopped(leaseId);
+  }
+  inspectDebug(sessionId: string, input: DebugInspect) {
+    return this.debugger.inspect(sessionId, input);
+  }
+  startDebug(sessionId: string, input: DebugStart) {
+    return this.debugger.start(sessionId, input);
+  }
+  setDebugBreakpoints(sessionId: string, input: DebugBreakpoints) {
+    return this.debugger.breakpoints(sessionId, input);
+  }
+  queryDebug(sessionId: string, input: DebugQuery, cancellation?: ToolCancellation) {
+    return this.debugger.query(sessionId, input, cancellation);
+  }
+  commandDebug(sessionId: string, input: DebugCommand) {
+    return this.debugger.command(sessionId, input);
+  }
+  debugCommand(sessionId: string, generation: string, commandId: string) {
+    return this.debugger.commandReceipt(sessionId, generation, commandId);
+  }
+  inspectDeployment(sessionId: string, input: DeploymentInspect) {
+    return this.deploymentTasks.inspect(sessionId, input);
+  }
+  startDeployment(sessionId: string, input: DeploymentStart) {
+    return this.deploymentTasks.start(sessionId, input);
+  }
+  deployments(sessionId: string) {
+    return this.deploymentTasks.list(sessionId, this.documentTarget(sessionId).target.projectId);
+  }
+  deployment(sessionId: string, operationId: string) {
+    return this.deploymentTasks.get(sessionId, operationId);
+  }
+  checkDeployment(sessionId: string, operationId: string, input: DeploymentAction) {
+    return this.deploymentTasks.check(sessionId, operationId, input);
+  }
+  stopDeployment(sessionId: string, operationId: string, input: DeploymentAction) {
+    return this.deploymentTasks.stop(sessionId, operationId, input);
+  }
+  inspectLanguage(sessionId: string, input: LanguageInspect) {
+    return this.language.inspect(sessionId, input);
+  }
+  startLanguage(sessionId: string, input: LanguageStart) {
+    return this.language.start(sessionId, input);
+  }
+  syncLanguage(sessionId: string, input: LanguageDocumentChange) {
+    return this.language.sync(sessionId, input);
+  }
+  queryLanguage(sessionId: string, input: LanguageQuery, cancellation?: ToolCancellation) {
+    return this.language.query(sessionId, input, cancellation);
+  }
+  stopLanguage(sessionId: string, input: LanguageScope) {
+    return this.language.stop(sessionId, input);
+  }
+
+  developmentState(sessionId: string): DevelopmentState {
+    const { row, binding, target } = this.documentTarget(sessionId);
+    return {
+      target,
+      available: this.allowSharedDevelopment && Boolean(binding.trusted) && !this.disposing,
+      operation: this.workbenchOperations.development(row.worktree_path) ?? null,
+    };
+  }
+
+  async startDevelopment(sessionId: string, raw: DevelopmentStart): Promise<DevelopmentState> {
+    const input = DevelopmentStart.parse(raw);
+    if (!this.allowSharedDevelopment)
+      throw new WorkspaceError(
+        'CAPABILITY_DENIED',
+        'shared development is not enabled on this host',
+      );
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, input.target, true);
+      await this.userGitRoot({ kind: 'session', id: sessionId });
+      this.workbenchOperations.admit(
+        {
+          ...input,
+          kind: 'development',
+          requestHash: sha256(Buffer.from(canonicalJson(input))),
+        },
+        row.worktree_path,
+      );
+      return this.developmentState(sessionId);
+    });
+  }
+
+  async finishDevelopment(
+    sessionId: string,
+    operationId: string,
+    target: WorkspaceTarget,
+  ): Promise<DevelopmentState> {
+    const { row } = this.documentTarget(sessionId, target);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, target);
+      this.workbenchOperations.finishDevelopment(operationId, target, row.worktree_path);
+      return this.developmentState(sessionId);
+    });
+  }
+
+  private async prepareTerminal(input: TerminalCreate): Promise<string> {
+    const { row } = this.documentTarget(input.target.sessionId, input.target, true);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(input.target.sessionId, input.target, true);
+      const directory = await realpath(row.worktree_path);
+      if (directory !== resolve(row.worktree_path))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      const tree = await this.snapshotTree(directory);
+      await this.pin(
+        directory,
+        `refs/corral/${input.target.sessionId}/terminals/${input.operationId}/start`,
+        tree,
+      );
+      this.workspaceAccess.pin({ kind: 'user', id: input.operationId }, tree);
+      return directory;
+    });
+  }
+
+  async readDocument(sessionId: string, input: string): Promise<FileDocument> {
+    const path = safeRelative(input);
+    const { row, target } = this.documentTarget(sessionId);
+    return this.lease(row.worktree_path, async () => {
+      const current = this.documentTarget(sessionId, target);
+      if ((await realpath(row.worktree_path)) !== resolve(row.worktree_path))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      const writable =
+        Boolean(current.binding.trusted) &&
+        !this.disposing &&
+        !this.removingWorktrees.has(sessionId) &&
+        (!this.hasUnsafeWorktreeOwner(sessionId) ||
+          this.workbenchOperations.canShare(target, row.worktree_path));
+      const kind = await assertPlainPath(row.worktree_path, path);
+      if (kind === 'missing')
+        return { target, path, content: { kind: 'absent' }, version: null, writable };
+      if (kind !== 'file')
+        throw new WorkspaceError('CAPABILITY_DENIED', 'documents must be plain files');
+      const { bytes, size } = await boundedFile(row.worktree_path, path);
+      if (!bytes)
+        return {
+          target,
+          path,
+          content: { kind: 'too_large', bytes: size },
+          version: null,
+          writable: false,
+        };
+      const text = decodeText(bytes, true);
+      if (text === null)
+        return {
+          target,
+          path,
+          content: { kind: 'binary', bytes: size },
+          version: null,
+          writable: false,
+        };
+      const endings = new Set(
+        (text.match(/\r\n|\r|\n/g) ?? []).map((ending) =>
+          ending === '\r\n'
+            ? ('crlf' as const)
+            : ending === '\r'
+              ? ('cr' as const)
+              : ('lf' as const),
+        ),
+      );
+      return {
+        target,
+        path,
+        content: { kind: 'text', text },
+        writable,
+        version: {
+          sha256: sha256(bytes),
+          bytes: size,
+          encoding: 'utf-8',
+          bom: text.startsWith('\ufeff'),
+          eol: endings.size > 1 ? 'mixed' : (endings.values().next().value ?? 'none'),
+        },
+      };
+    });
+  }
+
+  documentOperation(sessionId: string, operationId: string): DocumentOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (
+      !receipt ||
+      receipt.target.sessionId !== sessionId ||
+      !['document.save', 'document.rename', 'document.delete'].includes(receipt.kind)
+    )
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the document operation is unavailable');
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as DocumentOperation;
+  }
+
+  async changeDocument(sessionId: string, raw: DocumentCommand): Promise<DocumentOperation> {
+    const command = DocumentCommand.parse(raw);
+    command.path = safeRelative(command.path);
+    if (command.kind === 'rename') command.toPath = safeRelative(command.toPath);
+    const request =
+      command.kind === 'save'
+        ? { ...command, text: sha256(Buffer.from(command.text, 'utf8')) }
+        : command;
+    const requestHash = sha256(Buffer.from(canonicalJson(request)));
+    const kind = `document.${command.kind}` as DocumentOperation['kind'];
+    const checkpointId = `checkpoint_${sha256(Buffer.from(command.operationId)).slice(0, 32)}`;
+    const intent: DocumentMutationIntent = {
+      path: command.path,
+      baseHash: command.baseHash,
+      ...(command.kind === 'save'
+        ? {
+            submittedHash: sha256(Buffer.from(command.text, 'utf8')),
+            editVersion: command.editVersion,
+          }
+        : command.kind === 'rename'
+          ? { toPath: command.toPath }
+          : {
+              checkpointId: `checkpoint_${sha256(Buffer.from(command.operationId)).slice(0, 32)}`,
+            }),
+    };
+    const prior = this.workbenchOperations.get(command.operationId);
+    if (prior) {
+      if (prior.requestHash !== requestHash || prior.kind !== kind)
+        throw new WorkspaceError('REVISION_CONFLICT', 'operation request changed');
+      return this.documentOperation(sessionId, command.operationId);
+    }
+    const { row } = this.documentTarget(sessionId, command.target, true);
+    return this.lease(row.worktree_path, async () => {
+      if ((await realpath(row.worktree_path)) !== resolve(row.worktree_path))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      this.documentTarget(sessionId, command.target, true);
+      const admitted = this.workbenchOperations.admit(
+        {
+          operationId: command.operationId,
+          target: command.target,
+          kind,
+          requestHash,
+        },
+        row.worktree_path,
+        { kind: 'pending', intent },
+      );
+      if (!admitted.admitted) return this.documentOperation(sessionId, command.operationId);
+      const owner = { kind: 'user', id: command.operationId } as const;
+      let attempted = false;
+      try {
+        await expectFile(row.worktree_path, command.path, command.baseHash);
+        if (
+          command.baseHash !== null &&
+          decodeText(await textBytes(row.worktree_path, command.path), true) === null
+        )
+          throw new ToolRefusal('CAPABILITY_DENIED', 'documents must be UTF-8 text');
+        const tree = await this.snapshotTree(row.worktree_path);
+        this.workspaceAccess.pin(owner, tree);
+        const source = join(row.worktree_path, command.path);
+        let result: DocumentOperation['result'];
+        if (command.kind === 'save') {
+          const saved = await this.writeDocumentText(
+            row.worktree_path,
+            command.path,
+            command.baseHash,
+            command.text,
+            () => {
+              this.documentTarget(sessionId, command.target, true);
+              attempted = true;
+            },
+          );
+          result = {
+            kind: 'saved',
+            intent,
+            path: command.path,
+            sha256: sha256(saved),
+            bytes: saved.length,
+            editVersion: command.editVersion,
+          };
+        } else if (command.kind === 'rename') {
+          await expectFile(row.worktree_path, command.toPath, null);
+          const destination = join(row.worktree_path, command.toPath);
+          await mkdir(dirname(destination), { recursive: true });
+          await expectFile(row.worktree_path, command.path, command.baseHash);
+          await expectFile(row.worktree_path, command.toPath, null);
+          this.documentTarget(sessionId, command.target, true);
+          attempted = true;
+          // Hard-link creation refuses a destination that appeared after the preflight.
+          await this.io.link(source, destination);
+          await expectFile(row.worktree_path, command.path, command.baseHash);
+          await expectFile(row.worktree_path, command.toPath, command.baseHash);
+          this.documentTarget(sessionId, command.target, true);
+          await this.io.unlink(source);
+          await expectFile(row.worktree_path, command.path, null);
+          await expectFile(row.worktree_path, command.toPath, command.baseHash);
+          result = {
+            kind: 'renamed',
+            intent,
+            path: command.path,
+            toPath: command.toPath,
+            sha256: command.baseHash,
+          };
+        } else {
+          const checkpoint = await this.checkpointAt(row, {
+            checkpointId,
+            label: 'Before document deletion',
+            kind: 'manual',
+            tree,
+            pinned: true,
+          });
+          if (!checkpoint.tree)
+            throw new ToolRefusal('CAPABILITY_DENIED', 'the recovery checkpoint is incomplete');
+          await this.requireLspSnapshot(
+            row.worktree_path,
+            checkpoint.tree,
+            command.path,
+            command.baseHash,
+          ).catch(() => {
+            throw new ToolRefusal(
+              'CAPABILITY_DENIED',
+              'the recovery checkpoint does not retain the original document bytes',
+            );
+          });
+          await expectFile(row.worktree_path, command.path, command.baseHash);
+          this.documentTarget(sessionId, command.target, true);
+          attempted = true;
+          await this.io.unlink(source);
+          await expectFile(row.worktree_path, command.path, null);
+          result = {
+            kind: 'deleted',
+            intent,
+            path: command.path,
+            checkpointId: checkpoint.checkpointId,
+          };
+        }
+        this.workbenchOperations.finish(command.operationId, 'succeeded', result);
+        return this.documentOperation(sessionId, command.operationId);
+      } catch (error) {
+        let unchanged = !attempted;
+        if (attempted) {
+          try {
+            await expectFile(row.worktree_path, command.path, command.baseHash);
+            if (command.kind === 'rename')
+              await expectFile(row.worktree_path, command.toPath, null);
+            unchanged = true;
+          } catch {
+            /* A partial or unconfirmed effect retains its writer reservation. */
+          }
+        }
+        const state = unchanged ? 'failed' : 'uncertain';
+        const result = {
+          kind: 'error' as const,
+          intent,
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : ('STORAGE_UNAVAILABLE' as const),
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The document change could not be confirmed.',
+        };
+        try {
+          this.workbenchOperations.finish(command.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The document result could not be recorded; read the original operation again.',
+          );
+        }
+        return this.documentOperation(sessionId, command.operationId);
       }
     });
-    this.db
-      .prepare('UPDATE session_worktrees SET removed_at = ? WHERE session_id = ?')
-      .run(this.clock.nowIso(), sessionId);
+  }
+
+  private assertFileEditContent(files: FileEditProposalContent['files']) {
+    let bytes = 0;
+    if (!files.length || files.length > 32)
+      throw new ToolRefusal('LIMIT_REACHED', 'a proposal requires 1–32 files');
+    const paths = new Set<string>();
+    for (const file of files) {
+      const path = safeRelative(file.path);
+      const key = process.platform === 'win32' ? path.toLowerCase() : path;
+      if (paths.has(key)) throw new ToolRefusal('SCHEMA_INVALID', 'a proposal repeats a file');
+      paths.add(key);
+      for (const [text, hash] of [
+        [file.before, file.beforeHash],
+        [file.after, file.afterHash],
+      ]) {
+        const content = Buffer.from(text as string, 'utf8');
+        bytes += content.length;
+        if (content.length > MAX_TEXT || bytes > 8 * 1024 * 1024)
+          throw new ToolRefusal('LIMIT_REACHED', 'proposal text exceeds the supported limits');
+        if (decodeText(content, true) !== text || sha256(content) !== hash)
+          throw new ToolRefusal('SCHEMA_INVALID', 'proposal text or hash is invalid');
+      }
+    }
+  }
+
+  private async assertEditablePaths(root: string, paths: string[]) {
+    const listed = (
+      await git(root, [
+        'ls-files',
+        '-z',
+        '--cached',
+        '--others',
+        '--exclude-standard',
+        '--',
+        ...paths.map((path) => `:(literal)${safeRelative(path)}`),
+      ])
+    ).stdout
+      .toString('utf8')
+      .split('\0');
+    const allowed = new Set(listed);
+    if (paths.some((path) => !allowed.has(path)))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'ignored or unavailable files cannot be changed by this proposal',
+      );
+  }
+
+  async previewFileEdits(
+    sessionId: string,
+    raw: FileEditPreview,
+    cancellation?: ToolCancellation,
+  ): Promise<FileEditPreviewResult> {
+    const input = FileEditPreview.parse(raw);
+    const { row } = this.documentTarget(sessionId, input.target);
+    const cancelled = () => {
+      if (cancellation?.aborted)
+        throw new ToolRefusal('TARGET_TERMINAL', 'file edit preview cancelled');
+    };
+    cancelled();
+    const requestHash = sha256(Buffer.from(canonicalJson(input)));
+    const existing = this.fileEdits.forRequest(sessionId, input.requestId, requestHash);
+    if (existing.length) return { proposals: existing, unavailable: [] };
+    let source: FileEditProposalContent['source'];
+    let actions: { title: string; files: FileEditProposalContent['files'] }[];
+    let unavailable: FileEditPreviewResult['unavailable'] = [];
+    if (input.kind === 'replace') {
+      const replacement = Buffer.from(input.replacement, 'utf8');
+      if (decodeText(replacement, true) !== input.replacement || replacement.length > MAX_TEXT)
+        throw new ToolRefusal('SCHEMA_INVALID', 'replacement must be bounded UTF-8 text');
+      const aborted = new AbortController();
+      const off = cancellation?.onCancel(() => aborted.abort());
+      let result: ContentSearchResult;
+      try {
+        result = await this.searchContents(
+          sessionId,
+          {
+            target: input.target,
+            queryId: input.requestId,
+            query: input.query,
+            caseSensitive: input.caseSensitive,
+          },
+          aborted.signal,
+        );
+      } finally {
+        off?.();
+      }
+      if (result.truncated)
+        throw new ToolRefusal(
+          'LIMIT_REACHED',
+          'search results are incomplete; narrow the search before replacing all matches',
+        );
+      const paths = [
+        ...new Map(result.matches.map((match) => [match.path, match.sha256])).entries(),
+      ];
+      if (paths.length > 32)
+        throw new ToolRefusal('LIMIT_REACHED', 'a proposal changes at most 32 files');
+      const matcher = new RegExp(
+        input.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        input.caseSensitive ? 'gu' : 'giu',
+      );
+      const files: FileEditProposalContent['files'] = [];
+      for (const [path, beforeHash] of paths) {
+        cancelled();
+        const bytes = await textBytes(row.worktree_path, path);
+        const before = decodeText(bytes, true);
+        if (before === null || sha256(bytes) !== beforeHash)
+          throw new ToolRefusal('REVISION_CONFLICT', 'a search result changed before its preview');
+        const after = before.replaceAll(matcher, () => input.replacement);
+        if (after !== before)
+          files.push({ path, before, beforeHash, after, afterHash: sha256(Buffer.from(after)) });
+      }
+      source = {
+        kind: 'replace',
+        query: input.query,
+        caseSensitive: input.caseSensitive,
+        replacement: input.replacement,
+      };
+      actions = files.length ? [{ title: `Replace “${input.query}”`, files }] : [];
+    } else {
+      const { requestId: _requestId, ...query } = input;
+      const result = await this.language.propose(sessionId, query, cancellation);
+      source = { kind: 'language', operation: input.kind, language: result.source };
+      actions = result.actions;
+      unavailable = result.unavailable;
+    }
+    let bytes = 0;
+    for (const action of actions) {
+      this.assertFileEditContent(action.files);
+      bytes += action.files.reduce(
+        (sum, file) => sum + Buffer.byteLength(file.before) + Buffer.byteLength(file.after),
+        0,
+      );
+      if (bytes > 8 * 1024 * 1024)
+        throw new ToolRefusal('LIMIT_REACHED', 'proposal batch exceeds text limits');
+      await this.assertEditablePaths(
+        row.worktree_path,
+        action.files.map((file) => file.path),
+      );
+      for (const file of action.files)
+        await expectFile(row.worktree_path, file.path, file.beforeHash);
+    }
+    this.documentTarget(sessionId, input.target);
+    cancelled();
+    const proposals = this.db
+      .transaction(() => {
+        const concurrent = this.fileEdits.forRequest(sessionId, input.requestId, requestHash);
+        if (concurrent.length) return concurrent;
+        return actions.map((action, index) =>
+          this.fileEdits.put(
+            FileEditProposalContent.parse({
+              proposalId: `edit_${sha256(Buffer.from(canonicalJson({ target: input.target, requestId: input.requestId, index }))).slice(0, 32)}`,
+              target: input.target,
+              title: action.title.slice(0, 400),
+              source,
+              files: action.files,
+              createdAt: this.clock.nowIso(),
+            }),
+            input.requestId,
+            requestHash,
+          ),
+        );
+      })
+      .immediate();
+    return { proposals, unavailable };
+  }
+
+  fileEditProposals(sessionId: string): FileEditProposalSummary[] {
+    return this.fileEdits.list(sessionId);
+  }
+  fileEditProposal(sessionId: string, id: string): FileEditProposal {
+    return this.fileEdits.get(sessionId, id);
+  }
+
+  private fileEditDecision(sessionId: string, id: string, input: FileEditDecision) {
+    const decision = FileEditDecision.parse(input);
+    const proposal = this.fileEdits.get(sessionId, id);
+    if (
+      proposal.hash !== decision.proposalHash ||
+      canonicalJson(proposal.target) !== canonicalJson(decision.target)
+    )
+      throw new ToolRefusal('REVISION_CONFLICT', 'the proposal target or reviewed content changed');
+    this.documentTarget(sessionId, decision.target);
+    return proposal;
+  }
+  dismissFileEdits(sessionId: string, id: string, input: FileEditDecision): FileEditProposal {
+    this.fileEditDecision(sessionId, id, input);
+    return this.fileEdits.dismiss(sessionId, id);
+  }
+  fileEditOperation(sessionId: string, operationId: string): FileEditOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (receipt?.kind !== 'document.batch' || receipt.target.sessionId !== sessionId)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the file edit operation is unavailable');
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as FileEditOperation;
+  }
+
+  async applyFileEdits(
+    sessionId: string,
+    id: string,
+    raw: FileEditApply,
+  ): Promise<FileEditOperation> {
+    const input = FileEditApply.parse(raw);
+    const requestHash = sha256(Buffer.from(canonicalJson({ proposalId: id, ...input })));
+    const prior = this.workbenchOperations.get(input.operationId);
+    if (prior) {
+      if (prior.kind !== 'document.batch' || prior.requestHash !== requestHash)
+        throw new ToolRefusal('REVISION_CONFLICT', 'the file edit command changed');
+      return this.fileEditOperation(sessionId, input.operationId);
+    }
+    const proposal = this.fileEditDecision(sessionId, id, {
+      target: input.target,
+      proposalHash: input.proposalHash,
+    });
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, input.target, true);
+      if ((await realpath(row.worktree_path)) !== resolve(row.worktree_path))
+        throw new ToolRefusal('REVISION_CONFLICT', 'the working copy identity changed');
+      const result: FileEditOperation['result'] = {
+        proposalId: id,
+        proposalHash: proposal.hash,
+        outcomes: proposal.files.map((file) => ({ path: file.path, state: 'pending' })),
+        error: null,
+      };
+      const admitted = this.db
+        .transaction(() => {
+          this.fileEdits.claim(sessionId, id, input.operationId);
+          return this.workbenchOperations.admit(
+            {
+              operationId: input.operationId,
+              target: input.target,
+              kind: 'document.batch',
+              requestHash,
+            },
+            row.worktree_path,
+            result,
+          );
+        })
+        .immediate();
+      if (!admitted.admitted) return this.fileEditOperation(sessionId, input.operationId);
+      const owner = { kind: 'user' as const, id: input.operationId };
+      let completing = false;
+      try {
+        this.assertFileEditContent(proposal.files);
+        await this.assertEditablePaths(
+          row.worktree_path,
+          proposal.files.map((file) => file.path),
+        );
+        for (const file of proposal.files)
+          await expectFile(row.worktree_path, file.path, file.beforeHash);
+        const languageGuard =
+          proposal.source.kind === 'language'
+            ? await this.language.assertRefactorSource(
+                sessionId,
+                proposal.source.language,
+                input.target,
+                proposal.files.map((file) => file.path),
+              )
+            : () => {};
+        const tree = await this.snapshotTree(row.worktree_path);
+        this.workspaceAccess.pin(owner, tree);
+        languageGuard();
+        for (const [index, file] of proposal.files.entries()) {
+          let attempted = false;
+          result.outcomes[index] = { path: file.path, state: 'uncertain' };
+          if (!this.workbenchOperations.updateRunning(input.operationId, result))
+            throw new ToolRefusal('TARGET_TERMINAL', 'file edit ownership changed');
+          try {
+            await this.writeDocumentText(
+              row.worktree_path,
+              file.path,
+              file.beforeHash,
+              file.after,
+              () => {
+                this.documentTarget(sessionId, input.target, true);
+                languageGuard();
+                attempted = true;
+              },
+            );
+            result.outcomes[index] = { path: file.path, state: 'applied' };
+            if (!this.workbenchOperations.updateRunning(input.operationId, result))
+              throw new ToolRefusal(
+                'STORAGE_UNAVAILABLE',
+                'file edit progress could not be recorded',
+              );
+          } catch (error) {
+            let unchanged = !attempted;
+            if (attempted) {
+              try {
+                await expectFile(row.worktree_path, file.path, file.beforeHash);
+                unchanged = true;
+              } catch {}
+            }
+            result.outcomes[index] = {
+              path: file.path,
+              state: unchanged ? 'unchanged' : 'uncertain',
+            };
+            throw error;
+          }
+        }
+        completing = true;
+        this.workbenchOperations.finish(input.operationId, 'succeeded', result);
+      } catch (error) {
+        result.outcomes = result.outcomes.map((file) =>
+          file.state === 'pending' ? { ...file, state: 'unchanged' } : file,
+        );
+        result.error = {
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : 'STORAGE_UNAVAILABLE',
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The file changes could not all be confirmed. Review each file outcome.',
+        };
+        const state =
+          completing || result.outcomes.some((file) => file.state === 'uncertain')
+            ? 'uncertain'
+            : 'failed';
+        try {
+          this.workbenchOperations.finish(input.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The file edit receipt could not be saved; check the original operation.',
+          );
+        }
+      }
+      return this.fileEditOperation(sessionId, input.operationId);
+    });
+  }
+
+  async reconcileFileEdits(sessionId: string, raw: FileEditReconcile): Promise<FileEditOperation> {
+    const input = FileEditReconcile.parse(raw),
+      receipt = this.fileEditOperation(sessionId, input.operationId);
+    if (canonicalJson(input.target) !== canonicalJson(receipt.target))
+      throw new ToolRefusal('REVISION_CONFLICT', 'file edit target changed');
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    if (receipt.state !== 'uncertain') return receipt;
+    return this.lease(row.worktree_path, async () => {
+      this.documentTarget(sessionId, input.target, true);
+      const proposal = this.fileEdits.get(sessionId, receipt.result.proposalId);
+      const outcomes: FileEditOperation['result']['outcomes'] = [];
+      for (const file of proposal.files) {
+        let state: FileEditOperation['result']['outcomes'][number]['state'] = 'uncertain';
+        try {
+          const hash = sha256(await textBytes(row.worktree_path, file.path));
+          state =
+            hash === file.afterHash
+              ? 'applied'
+              : hash === file.beforeHash
+                ? 'unchanged'
+                : 'uncertain';
+        } catch {}
+        outcomes.push({ path: file.path, state });
+      }
+      this.documentTarget(sessionId, input.target, true);
+      if (outcomes.some((file) => file.state === 'uncertain'))
+        return this.fileEditOperation(sessionId, input.operationId);
+      const succeeded = outcomes.every((file) => file.state === 'applied');
+      this.workbenchOperations.reconcile(
+        input.operationId,
+        ['document.batch'],
+        succeeded ? 'succeeded' : 'failed',
+        { ...receipt.result, outcomes, error: succeeded ? null : receipt.result.error },
+      );
+      return this.fileEditOperation(sessionId, input.operationId);
+    });
+  }
+
+  async inverseFileEdits(
+    sessionId: string,
+    id: string,
+    raw: FileEditInverse,
+  ): Promise<FileEditProposal> {
+    const input = FileEditInverse.parse(raw);
+    const proposal = this.fileEditDecision(sessionId, id, {
+      target: input.target,
+      proposalHash: input.proposalHash,
+    });
+    const receipt = this.fileEditOperation(sessionId, input.operationId);
+    if (
+      receipt.result.proposalId !== id ||
+      receipt.result.proposalHash !== proposal.hash ||
+      receipt.state === 'running' ||
+      receipt.state === 'uncertain'
+    )
+      throw new ToolRefusal(
+        'REVISION_CONFLICT',
+        'confirm the original file edit outcome before preparing its inverse',
+      );
+    const requestHash = sha256(Buffer.from(canonicalJson({ inverseOf: id, ...input })));
+    const prior = this.fileEdits.forRequest(sessionId, input.requestId, requestHash)[0];
+    if (prior) return prior;
+    const { row } = this.documentTarget(sessionId, input.target);
+    const applied = new Set(
+      receipt.result.outcomes.filter((file) => file.state === 'applied').map((file) => file.path),
+    );
+    const files = proposal.files
+      .filter((file) => applied.has(file.path))
+      .map((file) => ({
+        path: file.path,
+        before: file.after,
+        beforeHash: file.afterHash,
+        after: file.before,
+        afterHash: file.beforeHash,
+      }));
+    if (!files.length)
+      throw new ToolRefusal('TARGET_TERMINAL', 'this operation has no confirmed changes to undo');
+    for (const file of files) await expectFile(row.worktree_path, file.path, file.beforeHash);
+    this.documentTarget(sessionId, input.target);
+    return this.db
+      .transaction(() => {
+        const concurrent = this.fileEdits.forRequest(sessionId, input.requestId, requestHash)[0];
+        if (concurrent) return concurrent;
+        return this.fileEdits.put(
+          {
+            proposalId: `edit_${sha256(Buffer.from(canonicalJson({ target: input.target, requestId: input.requestId }))).slice(0, 32)}`,
+            target: input.target,
+            title: `Undo: ${proposal.title}`.slice(0, 400),
+            source: { kind: 'inverse', proposalId: id, operationId: input.operationId },
+            files,
+            createdAt: this.clock.nowIso(),
+          },
+          input.requestId,
+          requestHash,
+        );
+      })
+      .immediate();
+  }
+
+  private async writeDocumentText(
+    root: string,
+    path: string,
+    baseHash: string | null,
+    text: string,
+    beforeReplace: () => void,
+  ): Promise<Buffer> {
+    const bytes = Buffer.from(text, 'utf8');
+    if (bytes.length > MAX_TEXT)
+      throw new ToolRefusal('LIMIT_REACHED', 'documents are at most 1 MiB');
+    if (decodeText(bytes, true) === null)
+      throw new ToolRefusal('CAPABILITY_DENIED', 'documents must be UTF-8 text');
+    const source = join(root, path);
+    const mode = baseHash === null ? 0o644 : (await stat(source)).mode & 0o777;
+    await mkdir(dirname(source), { recursive: true });
+    await assertPlainPath(root, path);
+    const temporary = join(dirname(source), `.${basename(source)}.corral-${randomUUID()}`);
+    try {
+      await this.io.writeFile(temporary, bytes, { mode, flag: 'wx', flush: true });
+      if (baseHash !== null) await chmod(temporary, mode);
+      await expectFile(root, path, baseHash);
+      beforeReplace();
+      if (baseHash === null) await this.io.link(temporary, source);
+      else await this.io.rename(temporary, source);
+      const saved = await textBytes(root, path);
+      if (sha256(saved) !== sha256(bytes))
+        throw new ToolRefusal('REVISION_CONFLICT', 'the document changed during save');
+      return saved;
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
   }
 
   /** A restore target is always a trusted session-owned copy or its linked original repository. */
@@ -1348,7 +2656,11 @@ export class WorkspaceService implements FileTools {
     });
   }
 
-  async restoreCheckpoint(sessionId: string, raw: unknown): Promise<CheckpointRestore> {
+  async restoreCheckpoint(
+    sessionId: string,
+    raw: unknown,
+    options?: { isolation: 'linux-bwrap'; beforeApply: () => Promise<void> },
+  ): Promise<CheckpointRestore> {
     const request = RestoreCheckpoint.parse(raw);
     const requestHash = sha256(Buffer.from(canonicalJson({ sessionId, ...request })));
     const selected = this.checkpoints(sessionId).find(
@@ -1389,7 +2701,7 @@ export class WorkspaceService implements FileTools {
         refTree !== manifest.tree
       )
         throw new WorkspaceError('REVISION_CONFLICT', 'checkpoint retention reference changed');
-      if ((await this.snapshotTree(row.worktree_path)) !== request.expectedTree)
+      if ((await this.snapshotTree(row.worktree_path, options?.isolation)) !== request.expectedTree)
         throw new WorkspaceError(
           'REVISION_CONFLICT',
           'working copy changed since the restore was prepared',
@@ -1445,7 +2757,10 @@ export class WorkspaceService implements FileTools {
         )
         .run(request.operationId, sessionId, requestHash, canonicalJson(result));
       const index = join(tmpdir(), `corral-restore-${randomUUID()}`);
-      const env = { GIT_INDEX_FILE: index };
+      const env = {
+        ...(options ? await checkGitEnvironment(row.worktree_path) : {}),
+        GIT_INDEX_FILE: index,
+      };
       try {
         await this.checkpointAt(row, {
           checkpointId: beforeId,
@@ -1455,11 +2770,14 @@ export class WorkspaceService implements FileTools {
           tree: request.expectedTree,
           pinned: true,
         });
-        if ((await this.snapshotTree(row.worktree_path)) !== request.expectedTree)
+        if (
+          (await this.snapshotTree(row.worktree_path, options?.isolation)) !== request.expectedTree
+        )
           throw new Error('changed before restore');
         const currentTarget = await this.checkpointTarget(sessionId, manifest.target);
         if (currentTarget.worktree_path !== row.worktree_path)
           throw new Error('restore target changed');
+        await options?.beforeApply();
         await git(row.worktree_path, ['read-tree', request.expectedTree], { env });
         await git(row.worktree_path, ['update-index', '--refresh'], { env });
         // Git refuses dirty paths and untracked collisions; never --reset or --force.
@@ -1471,9 +2789,13 @@ export class WorkspaceService implements FileTools {
         if (manifest.hunk)
           await expectFile(row.worktree_path, manifest.hunk.path, manifest.hunk.afterHash);
         result.state =
-          (await this.snapshotTree(row.worktree_path)) === manifest.tree ? 'applied' : 'partial';
+          (await this.snapshotTree(row.worktree_path, options?.isolation)) === manifest.tree
+            ? 'applied'
+            : 'partial';
       } catch {
-        const current = await this.snapshotTree(row.worktree_path).catch(() => null);
+        const current = await this.snapshotTree(row.worktree_path, options?.isolation).catch(
+          () => null,
+        );
         result.state =
           current === request.expectedTree ? 'refused' : current ? 'partial' : 'uncertain';
       } finally {
@@ -1529,7 +2851,10 @@ export class WorkspaceService implements FileTools {
       const tree =
         access?.writer === 0 && access.tree
           ? access.tree
-          : await this.snapshotTree(row.worktree_path);
+          : await this.snapshotTree(
+              row.worktree_path,
+              this.candidateCopies.enabled(runId) ? 'linux-bwrap' : undefined,
+            );
       await this.pin(row.worktree_path, `refs/corral/${sessionId}/runs/${runId}/${phase}`, tree);
       this.db
         .prepare(
@@ -1687,22 +3012,63 @@ export class WorkspaceService implements FileTools {
         additions: count?.add ?? null,
         deletions: count?.del ?? null,
         binary: count ? count.add === null : false,
-        provenance: managed.has(path) ? 'managed_agent' : 'external_observed',
+        provenance: 'external_observed',
         beforeBlob: blob(fields[2]),
         afterBlob: blob(fields[3]),
       });
     }
+    for (const file of files) {
+      if (!managed.has(file.path)) continue;
+      const expected = managed.get(file.path);
+      let actual: string | null = null;
+      if (file.afterBlob) {
+        // Corral writes at most 1 MiB, so a larger result cannot be its write.
+        const bytes = await git(row.worktree_path, ['cat-file', 'blob', file.afterBlob], {
+          maxBuffer: MAX_TEXT + 1,
+        }).then(
+          (result) => result.stdout,
+          () => null,
+        );
+        actual = bytes ? sha256(bytes) : 'unreadable';
+      }
+      file.provenance = actual === expected ? 'managed_agent' : 'mixed';
+    }
     return { scope, from, to, unavailable: null, files };
   }
 
-  private managedPaths(sessionId: string, runId: string | null): Set<string> {
+  /** Each path Corral changed, with the content hash its last applied operation left (null: none). */
+  private managedPaths(sessionId: string, runId: string | null): Map<string, string | null> {
     const rows = this.db
       .prepare(
-        `SELECT path, to_path FROM file_operations WHERE session_id = ? AND state = 'applied'
-           AND (? IS NULL OR run_id = ?)`,
+        `SELECT f.kind, f.path, f.to_path, f.after_hash FROM file_operations f
+           LEFT JOIN candidate_executions c ON c.run_id=f.run_id AND c.execution_id=f.execution_id
+           LEFT JOIN candidate_promotions p ON p.run_id=c.run_id
+           LEFT JOIN runs r ON r.id=c.run_id
+           WHERE f.session_id=? AND f.state='applied' AND (? IS NULL OR f.run_id=?)
+             AND (c.execution_id IS NULL OR (
+               json_extract(r.projection_json,'$.candidateComparison.status')='selected'
+               AND json_extract(r.projection_json,'$.candidateComparison.selectedCandidateId')=c.candidate_id
+               AND EXISTS (SELECT 1 FROM checkpoint_restores restore
+                 WHERE restore.session_id=f.session_id
+                   AND json_extract(restore.result_json,'$.checkpointId')=p.checkpoint_id
+                   AND json_extract(restore.result_json,'$.state')='applied')
+             ))
+           ORDER BY f.created_at, f.rowid`,
       )
-      .all(sessionId, runId, runId) as { path: string; to_path: string | null }[];
-    return new Set(rows.flatMap((r) => (r.to_path ? [r.path, r.to_path] : [r.path])));
+      .all(sessionId, runId, runId) as {
+      kind: 'write' | 'delete' | 'move';
+      path: string;
+      to_path: string | null;
+      after_hash: string | null;
+    }[];
+    const left = new Map<string, string | null>();
+    for (const row of rows) {
+      if (row.kind === 'move') {
+        left.set(row.path, null);
+        if (row.to_path) left.set(row.to_path, row.after_hash);
+      } else left.set(row.path, row.kind === 'delete' ? null : row.after_hash);
+    }
+    return left;
   }
 
   async fileVersions(
@@ -1854,9 +3220,919 @@ export class WorkspaceService implements FileTools {
     return { root, isGit: binding ? !!binding.is_git : true };
   }
 
+  private userGitTarget(scope: FileBrowseScope, expected?: UserGitTarget): UserGitTarget {
+    let target: UserGitTarget;
+    if (scope.kind === 'session') {
+      target = { kind: 'session', ...this.documentTarget(scope.id).target };
+    } else {
+      const binding = this.binding(scope.id);
+      if (!binding)
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'the linked folder is unavailable');
+      target = {
+        kind: 'project',
+        hostId: this.hostId,
+        projectId: scope.id,
+        bindingId: binding.id,
+      };
+    }
+    if (expected && canonicalJson(expected) !== canonicalJson(target))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the Git target changed');
+    return target;
+  }
+
+  private async userGitRoot(scope: FileBrowseScope) {
+    const { root, isGit } = await this.browseRoot(scope);
+    if (!isGit)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'the linked folder is not a Git repository');
+    const { stdout } = await git(root, ['rev-parse', '--show-prefix'], {
+      env: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_NO_LAZY_FETCH: '1' },
+    });
+    // A removed nested repository must not silently discover its parent's index.
+    if (!stdout.equals(Buffer.from('\n')))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the Git repository root changed');
+    return root;
+  }
+
+  async gitStatus(scope: FileBrowseScope): Promise<GitStatus> {
+    const target = this.userGitTarget(scope);
+    const root = await this.userGitRoot(scope);
+    return this.lease(root, async () => {
+      this.userGitTarget(scope, target);
+      const status = await readUserGitStatus(root);
+      this.userGitTarget(scope, target);
+      if ((await this.userGitRoot(scope)) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...status, target };
+    });
+  }
+
+  async gitDiff(scope: FileBrowseScope, input: GitDiffRequest): Promise<GitDiff> {
+    safeRelative(input.path);
+    const target = this.userGitTarget(scope, input.target);
+    const root = await this.userGitRoot(scope);
+    return this.lease(root, async () => {
+      this.userGitTarget(scope, target);
+      const diff = await readUserGitDiff(root, input, async (path) => {
+        const rel = safeRelative(path);
+        if ((await assertPlainPath(root, rel)) === 'missing') return { kind: 'absent' };
+        const { bytes, size } = await boundedFile(root, rel);
+        if (!bytes) return { kind: 'too_large', bytes: size };
+        const text = decodeText(bytes, true);
+        return text === null ? { kind: 'binary', bytes: size } : { kind: 'text', text };
+      });
+      if (diff.originalPath) safeRelative(diff.originalPath);
+      this.userGitTarget(scope, target);
+      if ((await this.userGitRoot(scope)) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...diff, target };
+    });
+  }
+
+  private async gitWorkingSide(root: string, input: string): Promise<GitFileSide> {
+    const path = safeRelative(input);
+    if ((await assertPlainPath(root, path)) === 'missing') return { kind: 'absent' };
+    const { bytes, size } = await boundedFile(root, path);
+    if (!bytes) return { kind: 'too_large', bytes: size };
+    const text = decodeText(bytes, true);
+    return text === null ? { kind: 'binary', bytes: size } : { kind: 'text', text };
+  }
+  async gitHunks(sessionId: string, raw: GitHunksRequest): Promise<GitHunks> {
+    const input = GitHunksRequest.parse(raw);
+    const { kind: _kind, ...target } = input.target;
+    this.documentTarget(sessionId, target);
+    const root = await this.userGitRoot({ kind: 'session', id: sessionId });
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, target);
+      const value = await readGitHunks(root, input, (path) => this.gitWorkingSide(root, path));
+      this.documentTarget(sessionId, target);
+      if ((await this.userGitRoot({ kind: 'session', id: sessionId })) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...value, target: input.target };
+    });
+  }
+  private sequenceOwner(
+    sessionId: string,
+    target: WorkspaceTarget,
+    sequence: GitSequence | null,
+    excludeOperationId = '',
+  ): string | null {
+    if (!sequence) return null;
+    const row = this.db
+      .prepare(
+        `SELECT operation_id FROM workbench_operations WHERE kind IN ('git.merge','git.rebase','git.continue','git.abort') AND json_extract(target_json,'$.sessionId')=? AND operation_id<>? AND json_type(result_json,'$.sequence') IS NOT NULL ORDER BY rowid DESC LIMIT 1`,
+      )
+      .get(sessionId, excludeOperationId) as { operation_id: string } | undefined;
+    const prior = row ? this.workbenchOperations.get(row.operation_id) : undefined;
+    const observed = (prior?.result as GitAdvancedPrivateResult | undefined)?.sequence;
+    return prior &&
+      canonicalJson(prior.target) === canonicalJson(target) &&
+      observed &&
+      observed.kind === sequence.kind &&
+      observed.originalHead === sequence.originalHead &&
+      observed.onto === sequence.onto &&
+      observed.headName === sequence.headName
+      ? prior.operationId
+      : null;
+  }
+  async gitSequence(sessionId: string): Promise<GitSequenceState> {
+    const { target } = this.documentTarget(sessionId);
+    const root = await this.userGitRoot({ kind: 'session', id: sessionId });
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, target);
+      const state = await readGitSequence(root);
+      this.documentTarget(sessionId, target);
+      if ((await this.userGitRoot({ kind: 'session', id: sessionId })) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return {
+        ...state,
+        target,
+        ownerOperationId: this.sequenceOwner(sessionId, target, state.sequence),
+      };
+    });
+  }
+  async gitConflict(sessionId: string, raw: GitConflictRequest): Promise<GitConflict> {
+    const input = GitConflictRequest.parse(raw);
+    safeRelative(input.path);
+    this.documentTarget(sessionId, input.target);
+    const root = await this.userGitRoot({ kind: 'session', id: sessionId });
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, input.target);
+      const value = await readGitConflict(root, input, (path) => this.gitWorkingSide(root, path));
+      this.documentTarget(sessionId, input.target);
+      if ((await this.userGitRoot({ kind: 'session', id: sessionId })) !== root)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the Git folder changed');
+      return { ...value, target: input.target };
+    });
+  }
+  gitAdvancedOperation(sessionId: string, operationId: string): GitAdvancedOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (
+      !receipt ||
+      receipt.target.sessionId !== sessionId ||
+      !ADVANCED_GIT_KINDS.includes(receipt.kind)
+    )
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the Git operation is unavailable');
+    const { processIdentity: _private, ...result } = receipt.result as GitAdvancedPrivateResult;
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      result,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as GitAdvancedOperation;
+  }
+  cancelGitAdvanced(sessionId: string, operationId: string): GitAdvancedOperation {
+    const receipt = this.gitAdvancedOperation(sessionId, operationId);
+    this.advancedCancels.get(operationId)?.abort();
+    this.liveGit.get(operationId)?.cancel();
+    return receipt;
+  }
+  changeGitHunks(sessionId: string, raw: GitHunkWrite) {
+    return this.changeAdvancedGit(sessionId, GitHunkWrite.parse(raw));
+  }
+  changeGitSequence(sessionId: string, raw: GitSequenceCommand) {
+    return this.changeAdvancedGit(sessionId, GitSequenceCommand.parse(raw));
+  }
+
+  private async changeAdvancedGit(
+    sessionId: string,
+    command: GitAdvancedCommand,
+  ): Promise<GitAdvancedOperation> {
+    const requestHash = sha256(Buffer.from(canonicalJson(command))),
+      kind = `git.${command.kind}` as GitAdvancedOperation['kind'];
+    const prior = this.workbenchOperations.get(command.operationId);
+    if (prior) {
+      if (prior.kind !== kind || prior.requestHash !== requestHash)
+        throw new ToolRefusal('REVISION_CONFLICT', 'the Git operation request changed');
+      return this.gitAdvancedOperation(sessionId, command.operationId);
+    }
+    const { row } = this.documentTarget(sessionId, command.target, true),
+      root = row.worktree_path;
+    if ('path' in command) safeRelative(command.path);
+    return this.lease(root, async () => {
+      this.documentTarget(sessionId, command.target, true);
+      if (
+        (await realpath(root)) !== resolve(root) ||
+        (await this.userGitRoot({ kind: 'session', id: sessionId })) !== root
+      )
+        throw new ToolRefusal('REVISION_CONFLICT', 'the Git repository root changed');
+      const result: GitAdvancedPrivateResult = {
+        kind: 'pending',
+        intent: { command },
+        cleanupConfirmed: true,
+      };
+      const admitted = this.workbenchOperations.admit(
+        { operationId: command.operationId, target: command.target, kind, requestHash },
+        root,
+        result,
+      );
+      if (!admitted.admitted) return this.gitAdvancedOperation(sessionId, command.operationId);
+      const owner = { kind: 'user' as const, id: command.operationId };
+      const cancelled = new AbortController();
+      this.advancedCancels.set(command.operationId, cancelled);
+      const guard = () => {
+        this.documentTarget(sessionId, command.target, true);
+        if (cancelled.signal.aborted)
+          throw new ToolRefusal('TARGET_TERMINAL', 'the Git operation was cancelled');
+      };
+      const record = () => {
+        if (!this.workbenchOperations.updateRunning(command.operationId, result))
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'Git operation progress could not be recorded',
+          );
+      };
+      let attempted = false,
+        completing = false,
+        readBack = false;
+      try {
+        if (command.kind === 'stage_hunks' || command.kind === 'unstage_hunks') {
+          const applied = await applyGitHunks(
+            root,
+            {
+              ...command.expect,
+              path: command.path,
+              side: command.kind === 'stage_hunks' ? 'unstaged' : 'staged',
+              identity: command.identity,
+              hunkIds: command.hunkIds,
+            },
+            (path) => this.gitWorkingSide(root, path),
+            (expectedIndexHash) => {
+              guard();
+              result.intent.expectedIndexHash = expectedIndexHash;
+              record();
+              attempted = true;
+            },
+            cancelled.signal,
+          );
+          Object.assign(result, {
+            kind: 'applied',
+            head: applied.head,
+            indexHash: applied.indexHash,
+            cleanupConfirmed: true,
+          });
+        } else {
+          const planned = await planGitSequence(
+            root,
+            command,
+            command.kind === 'abort' ? {} : await gitIdentity(root),
+          );
+          if (
+            (command.kind === 'continue' || command.kind === 'abort') &&
+            !this.sequenceOwner(
+              sessionId,
+              command.target,
+              planned.before.sequence,
+              command.operationId,
+            )
+          )
+            throw new ToolRefusal(
+              'CAPABILITY_DENIED',
+              'This Git sequence was not started by Corral; finish it in its original tool.',
+            );
+          result.intent.sequenceBefore = planned.before.sequence;
+          result.intent.branchCommit = planned.branchCommit;
+          // Record the preceding state so a failed hook does not lose an existing sequence owner.
+          result.sequence = planned.before.sequence;
+          record();
+          guard();
+          // Planning performs IO. Recheck the reviewed state immediately before spawning Git.
+          const current = await readGitSequence(root);
+          if (
+            current.head !== command.expect.head ||
+            current.indexHash !== command.expect.indexHash ||
+            current.workingTreeHash !== command.workingTreeHash ||
+            (current.sequence?.identity ?? null) !== command.sequenceIdentity
+          )
+            throw new ToolRefusal('REVISION_CONFLICT', 'Git changed while preparing the operation');
+          guard();
+          result.cleanupConfirmed = false;
+          record();
+          attempted = true;
+          const live = startGitSequence(root, planned.plan, this.timers, {
+            owner: command.operationId,
+            onSpawn: (pid) => {
+              if (process.platform === 'linux') {
+                try {
+                  result.processIdentity = capturePtySession(pid, command.operationId);
+                } catch {
+                  /* A very short-lived Git process can exit before its identity is captured. */
+                }
+              }
+              record();
+            },
+          });
+          this.liveGit.set(command.operationId, live);
+          const outcome = await live.done.finally(() => this.liveGit.delete(command.operationId));
+          result.cleanupConfirmed = outcome.cleaned;
+          record();
+          if (!outcome.cleaned)
+            throw new ToolRefusal('STORAGE_UNAVAILABLE', 'Git process termination is unconfirmed');
+          const state = await readGitSequence(root);
+          readBack = true;
+          Object.assign(result, {
+            head: state.head,
+            indexHash: state.indexHash,
+            sequence: state.sequence,
+            workingTreeHash: state.workingTreeHash,
+          });
+          const expectedKind =
+            command.kind === 'merge' || command.kind === 'rebase'
+              ? command.kind
+              : planned.before.sequence?.kind;
+          const expectedOriginal =
+            command.kind === 'merge' || command.kind === 'rebase'
+              ? command.expect.head
+              : planned.before.sequence?.originalHead;
+          const expectedOnto = planned.branchCommit ?? planned.before.sequence?.onto;
+          const paused =
+            state.sequence !== null &&
+            state.sequence.kind === expectedKind &&
+            state.sequence.originalHead === expectedOriginal &&
+            state.sequence.onto === expectedOnto;
+          const failure = gitWriteFailure(outcome, planned.plan);
+          if (failure && !(paused && state.conflicts.length && !outcome.cancelled)) throw failure;
+          if (state.sequence && !paused)
+            throw new ToolRefusal('REVISION_CONFLICT', 'Git left an unexpected sequence state');
+          if (
+            command.kind === 'abort' &&
+            (state.sequence || !(await this.confirmsGitAbort(root, planned.before.sequence)))
+          ) {
+            readBack = false;
+            throw new ToolRefusal('REVISION_CONFLICT', 'Git abort could not be confirmed');
+          }
+          result.kind = state.conflicts.length ? 'conflicted' : 'applied';
+          record();
+        }
+        completing = true;
+        this.workbenchOperations.finish(command.operationId, 'succeeded', result);
+      } catch (caught) {
+        const error = lockFailure(caught) ?? caught;
+        result.kind = 'error';
+        result.error = {
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : 'STORAGE_UNAVAILABLE',
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The Git operation could not be confirmed.',
+        };
+        let state: 'failed' | 'cancelled' | 'uncertain' = cancelled.signal.aborted
+          ? 'cancelled'
+          : 'failed';
+        if (attempted) {
+          if (command.kind === 'stage_hunks' || command.kind === 'unstage_hunks') {
+            const status = await readUserGitStatus(root).catch(() => null);
+            if (
+              !status ||
+              status.head.oid !== command.expect.head ||
+              status.indexHash !== command.expect.indexHash
+            )
+              state = 'uncertain';
+            result.cleanupConfirmed = true;
+          } else if (result.cleanupConfirmed !== true || !readBack) state = 'uncertain';
+        }
+        if (completing) state = 'uncertain';
+        try {
+          this.workbenchOperations.finish(command.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The Git receipt could not be recorded; inspect the original operation.',
+          );
+        }
+      } finally {
+        this.advancedCancels.delete(command.operationId);
+      }
+      return this.gitAdvancedOperation(sessionId, command.operationId);
+    });
+  }
+
+  private async confirmsGitAbort(
+    root: string,
+    before: GitSequence | null | undefined,
+  ): Promise<boolean> {
+    if (!before?.originalHead || !before.headName?.startsWith('refs/heads/')) return false;
+    const status = await readUserGitStatus(root);
+    return (
+      status.head.oid === before.originalHead &&
+      `refs/heads/${status.head.branch}` === before.headName &&
+      !status.truncated &&
+      status.entries.every((entry) => entry.kind === 'untracked')
+    );
+  }
+
+  async reconcileGitAdvanced(
+    sessionId: string,
+    raw: GitAdvancedReconcile,
+  ): Promise<GitAdvancedOperation> {
+    const input = GitAdvancedReconcile.parse(raw),
+      receipt = this.gitAdvancedOperation(sessionId, input.operationId);
+    if (canonicalJson(receipt.target) !== canonicalJson(input.target))
+      throw new ToolRefusal('REVISION_CONFLICT', 'Git operation target changed');
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    if (
+      receipt.state !== 'uncertain' ||
+      this.liveGit.has(input.operationId) ||
+      this.advancedCancels.has(input.operationId)
+    )
+      return receipt;
+    return this.lease(row.worktree_path, async () => {
+      const stored = this.workbenchOperations.get(input.operationId)
+        ?.result as GitAdvancedPrivateResult;
+      const command = stored.intent.command;
+      if (
+        command.kind !== 'stage_hunks' &&
+        command.kind !== 'unstage_hunks' &&
+        stored.cleanupConfirmed !== true
+      ) {
+        if (
+          !stored.processIdentity ||
+          !(await cleanupPtySession(stored.processIdentity, this.timers))
+        )
+          return this.gitAdvancedOperation(sessionId, input.operationId);
+        confirmOwnedProcessCleanup(stored.processIdentity.pid);
+        this.advancedReservations.get(input.operationId)?.releaseConfirmed();
+        this.advancedReservations.delete(input.operationId);
+        stored.cleanupConfirmed = true;
+        this.db
+          .prepare(
+            "UPDATE workbench_operations SET result_json=?,updated_at=? WHERE operation_id=? AND state='uncertain'",
+          )
+          .run(JSON.stringify(stored), this.clock.nowIso(), input.operationId);
+      }
+      if (await indexLocked(row.worktree_path))
+        return this.gitAdvancedOperation(sessionId, input.operationId);
+      this.documentTarget(sessionId, input.target, true);
+      const now = await readGitSequence(row.worktree_path);
+      let applied = false,
+        unchanged = false;
+      if (command.kind === 'stage_hunks' || command.kind === 'unstage_hunks') {
+        applied =
+          now.head === command.expect.head && now.indexHash === stored.intent.expectedIndexHash;
+        unchanged = now.head === command.expect.head && now.indexHash === command.expect.indexHash;
+      } else {
+        unchanged =
+          now.head === command.expect.head &&
+          now.indexHash === command.expect.indexHash &&
+          now.workingTreeHash === command.workingTreeHash &&
+          (now.sequence?.identity ?? null) === command.sequenceIdentity;
+        applied =
+          stored.head !== undefined &&
+          now.head === stored.head &&
+          now.indexHash === stored.indexHash &&
+          (now.sequence?.identity ?? null) === (stored.sequence?.identity ?? null);
+        if (
+          (command.kind === 'merge' || command.kind === 'rebase') &&
+          now.sequence?.kind === command.kind &&
+          now.sequence.originalHead === command.expect.head &&
+          now.sequence.onto === stored.intent.branchCommit
+        )
+          applied = true;
+        if (command.kind === 'abort')
+          applied =
+            !now.sequence &&
+            (await this.confirmsGitAbort(row.worktree_path, stored.intent.sequenceBefore));
+      }
+      if (!applied && !unchanged) return this.gitAdvancedOperation(sessionId, input.operationId);
+      this.documentTarget(sessionId, input.target, true);
+      const result: GitAdvancedPrivateResult = {
+        ...stored,
+        kind: applied ? (now.conflicts.length ? 'conflicted' : 'applied') : 'error',
+        head: now.head,
+        indexHash: now.indexHash,
+        sequence: now.sequence,
+        workingTreeHash: now.workingTreeHash,
+        cleanupConfirmed: true,
+        ...(applied ? { error: undefined } : {}),
+      };
+      this.workbenchOperations.reconcile(
+        input.operationId,
+        ADVANCED_GIT_KINDS,
+        applied ? 'succeeded' : 'failed',
+        result,
+      );
+      return this.gitAdvancedOperation(sessionId, input.operationId);
+    });
+  }
+
+  gitOperation(sessionId: string, operationId: string): GitOperation {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (!receipt || receipt.target.sessionId !== sessionId || !GIT_KINDS.includes(receipt.kind))
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the Git operation is unavailable');
+    const owner = this.workspaceAccess.get({ kind: 'user', id: operationId });
+    return {
+      ...receipt,
+      ...(owner?.state === 'uncertain' ? { state: 'uncertain' as const } : {}),
+    } as GitOperation;
+  }
+
+  /**
+   * Reads Git back for an unconfirmed receipt (a lost response, a failed receipt write or a
+   * restart) and settles it only when HEAD/index prove what happened (CR-046 P13).
+   */
+  async resolveGitOperation(sessionId: string, operationId: string): Promise<GitOperation> {
+    const receipt = this.gitOperation(sessionId, operationId);
+    if (
+      (receipt.state !== 'uncertain' && receipt.state !== 'running') ||
+      this.liveGit.has(operationId)
+    )
+      return receipt;
+    const intent = (receipt.result as GitWriteResult | null)?.intent;
+    const row = this.worktree(sessionId);
+    if (!intent || !row) return receipt;
+    return this.lease(row.worktree_path, async () => {
+      const outcome = await this.judgeGit(row.worktree_path, intent).catch(() => ({
+        kind: 'unknown' as const,
+      }));
+      if (outcome.kind === 'unknown') return this.gitOperation(sessionId, operationId);
+      this.workbenchOperations.reconcile(
+        operationId,
+        GIT_KINDS,
+        outcome.kind === 'applied' ? 'succeeded' : 'failed',
+        outcome.kind === 'applied'
+          ? outcome.result
+          : {
+              kind: 'error',
+              intent,
+              code: 'STORAGE_UNAVAILABLE',
+              message: 'The Git change did not happen; HEAD and the index are unchanged.',
+            },
+      );
+      return this.gitOperation(sessionId, operationId);
+    });
+  }
+
+  cancelGitOperation(sessionId: string, operationId: string): GitOperation {
+    const receipt = this.gitOperation(sessionId, operationId);
+    this.liveGit.get(operationId)?.cancel();
+    return receipt;
+  }
+
+  private async judgeGit(
+    root: string,
+    intent: GitWriteIntent,
+    ownProcessGone = false,
+  ): Promise<
+    { kind: 'applied'; result: GitWriteResult } | { kind: 'unchanged' } | { kind: 'unknown' }
+  > {
+    // After a restart a Git process may still hold the index; nothing is concluded yet. Once our
+    // own process group is confirmed gone, another holder's lock does not make our attempt open.
+    if (!ownProcessGone && (await indexLocked(root))) return { kind: 'unknown' };
+    const status = await readUserGitStatus(root);
+    const applied = (extra: Partial<Extract<GitWriteResult, { kind: 'applied' }>> = {}) => ({
+      kind: 'applied' as const,
+      result: {
+        kind: 'applied' as const,
+        intent,
+        head: status.head.oid,
+        indexHash: status.indexHash,
+        ...extra,
+      },
+    });
+    if (intent.kind === 'commit') {
+      if (status.head.oid === intent.expect.head) return { kind: 'unchanged' };
+      if (!status.head.oid) return { kind: 'unknown' };
+      const facts = await commitFacts(root, status.head.oid);
+      // A commit made from the confirmed HEAD; hooks may have changed the tree it recorded.
+      return facts.parent === intent.expect.head
+        ? applied({
+            commit: status.head.oid,
+            signed: facts.signed,
+            hooksRan: intent.hooks ?? false,
+          })
+        : { kind: 'unknown' };
+    }
+    // A fetch changes no user files; read back later it counts as done, and our own attempt that
+    // exited with an error counts as not done.
+    if (intent.kind === 'fetch') return ownProcessGone ? { kind: 'unchanged' } : applied();
+    if (intent.kind === 'branch' || intent.kind === 'switch') {
+      if (status.head.branch === intent.branch) return applied();
+      return status.head.oid === intent.expect.head &&
+        (intent.kind === 'branch' || status.head.branch === intent.fromBranch)
+        ? { kind: 'unchanged' }
+        : { kind: 'unknown' };
+    }
+    if (intent.kind === 'pull') {
+      if (status.head.oid === intent.expect.head) return { kind: 'unchanged' };
+      if (!status.head.oid || !intent.expect.head) return { kind: 'unknown' };
+      const ancestor = await git(root, [
+        'merge-base',
+        '--is-ancestor',
+        intent.expect.head,
+        status.head.oid,
+      ]).then(
+        () => true,
+        () => false,
+      );
+      return ancestor ? applied() : { kind: 'unknown' };
+    }
+    if (intent.kind === 'push') {
+      if (!intent.remote || !intent.branch) return { kind: 'unknown' };
+      const now = await remoteBranch(root, intent.remote, intent.branch);
+      if (now && now === status.head.oid) return applied();
+      return now === (intent.remoteBefore ?? null) ? { kind: 'unchanged' } : { kind: 'unknown' };
+    }
+    if (status.head.oid !== intent.expect.head) return { kind: 'unknown' };
+    if (status.indexHash === intent.expect.indexHash) return { kind: 'unchanged' };
+    const done = intent.paths.every((path) => {
+      const entries = status.entries.filter(
+        (entry) => entry.path === path || entry.path.startsWith(`${path}/`),
+      );
+      return intent.kind === 'stage'
+        ? entries.every((entry) => entry.kind !== 'untracked' && entry.worktreeStatus === '.')
+        : entries.every((entry) => entry.kind === 'untracked' || entry.indexStatus === '.');
+    });
+    return done ? applied() : { kind: 'unknown' };
+  }
+
+  /** Stage, unstage, commit (P13), branch, switch, fetch, pull or push (P14) in a managed copy. */
+  async changeGit(sessionId: string, raw: GitWriteCommand): Promise<GitOperation> {
+    const command = GitWriteCommand.parse(raw);
+    const paths = (
+      command.kind === 'commit'
+        ? command.staged
+        : command.kind === 'stage' || command.kind === 'unstage'
+          ? command.paths
+          : []
+    ).map(safeRelative);
+    const requestHash = sha256(Buffer.from(canonicalJson(command)));
+    const kind = `git.${command.kind}` as GitOperation['kind'];
+    const prior = this.workbenchOperations.get(command.operationId);
+    if (prior) {
+      if (prior.requestHash !== requestHash || prior.kind !== kind)
+        throw new WorkspaceError('REVISION_CONFLICT', 'operation request changed');
+      return this.resolveGitOperation(sessionId, command.operationId);
+    }
+    const { row } = this.documentTarget(sessionId, command.target, true);
+    const root = row.worktree_path;
+    const intent: GitWriteIntent = {
+      kind: command.kind,
+      expect: command.expect,
+      paths,
+      ...(command.kind === 'commit' || command.kind === 'push' ? { hooks: command.runHooks } : {}),
+      ...(command.kind === 'branch' ? { branch: command.name } : {}),
+      ...(command.kind === 'switch' || command.kind === 'pull' || command.kind === 'push'
+        ? { branch: command.branch }
+        : {}),
+      ...(command.kind === 'fetch' || command.kind === 'pull' || command.kind === 'push'
+        ? { remote: command.remote }
+        : {}),
+    };
+    return this.lease(root, async () => {
+      if ((await realpath(root)) !== resolve(root))
+        throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+      this.documentTarget(sessionId, command.target, true);
+      const admitted = this.workbenchOperations.admit(
+        { operationId: command.operationId, target: command.target, kind, requestHash },
+        root,
+        { kind: 'pending', intent },
+      );
+      if (!admitted.admitted) return this.gitOperation(sessionId, command.operationId);
+      const owner = { kind: 'user', id: command.operationId } as const;
+      let attempted = false;
+      let cleaned = true;
+      try {
+        const status = await readUserGitStatus(root);
+        if (
+          status.head.oid !== command.expect.head ||
+          status.indexHash !== command.expect.indexHash
+        )
+          throw new ToolRefusal(
+            'REVISION_CONFLICT',
+            'Git HEAD or index changed; refresh the Git view',
+          );
+        if (command.kind === 'commit') {
+          if (status.entries.some((entry) => entry.kind === 'unmerged'))
+            throw new ToolRefusal(
+              'CAPABILITY_DENIED',
+              'resolve the unmerged files before committing',
+            );
+          const staged = status.entries
+            .filter((entry) => entry.kind !== 'untracked' && entry.indexStatus !== '.')
+            .map((entry) => entry.path)
+            .sort();
+          if (canonicalJson(staged) !== canonicalJson([...paths].sort()))
+            throw new ToolRefusal(
+              'REVISION_CONFLICT',
+              'the staged files changed; review them again',
+            );
+          intent.tree = await gitText(root, ['write-tree']);
+          this.workbenchOperations.updateRunning(command.operationId, { kind: 'pending', intent });
+        }
+        if (command.kind === 'branch') {
+          try {
+            await git(root, ['check-ref-format', '--branch', command.name]);
+          } catch {
+            throw new ToolRefusal('SCHEMA_INVALID', 'that is not a valid branch name');
+          }
+          if (status.branches?.includes(command.name))
+            throw new ToolRefusal('REVISION_CONFLICT', 'a branch with that name already exists');
+        }
+        if (command.kind === 'switch') {
+          if (status.entries.some((entry) => entry.kind !== 'untracked'))
+            throw new GitWriteError(
+              'CAPABILITY_DENIED',
+              'commit or unstage the tracked changes before switching branch',
+              'dirty_tree',
+            );
+          if (!status.branches?.includes(command.branch))
+            throw new ToolRefusal('TARGET_NOT_FOUND', 'that branch does not exist here');
+          intent.fromBranch = status.head.branch;
+          this.workbenchOperations.updateRunning(command.operationId, { kind: 'pending', intent });
+        }
+        if (command.kind === 'push') {
+          if (status.head.branch !== command.branch)
+            throw new ToolRefusal('REVISION_CONFLICT', 'push the branch this copy is on');
+          intent.remoteBefore = await remoteBranch(root, command.remote, command.branch).catch(
+            (error: unknown) => {
+              throw new GitWriteError(
+                'CAPABILITY_DENIED',
+                error instanceof Error ? error.message : 'the remote is unavailable',
+                'remote_unavailable',
+              );
+            },
+          );
+          this.workbenchOperations.updateRunning(command.operationId, { kind: 'pending', intent });
+        }
+        const plan = planGitWrite(
+          command,
+          command.kind === 'commit' ? await gitIdentity(root) : {},
+          status.head.oid,
+        );
+        this.documentTarget(sessionId, command.target, true);
+        attempted = true;
+        const live = startGitWrite(root, command, plan, this.timers);
+        this.liveGit.set(command.operationId, live);
+        const outcome = await live.done.finally(() => this.liveGit.delete(command.operationId));
+        cleaned = outcome.cleaned;
+        const failure = gitWriteFailure(outcome, plan);
+        if (failure) throw failure;
+        const judged =
+          command.kind === 'fetch'
+            ? await this.judgeGit(root, intent, false)
+            : await this.judgeGit(root, intent, cleaned);
+        if (judged.kind !== 'applied')
+          throw new ToolRefusal('REVISION_CONFLICT', 'Git did not record the expected change');
+        this.workbenchOperations.finish(
+          command.operationId,
+          cleaned ? 'succeeded' : 'uncertain',
+          judged.result,
+        );
+        return this.gitOperation(sessionId, command.operationId);
+      } catch (caught) {
+        const error = lockFailure(caught) ?? caught;
+        let state: 'succeeded' | 'failed' | 'cancelled' | 'uncertain' = 'failed';
+        let result: GitWriteResult = {
+          kind: 'error',
+          intent,
+          code:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.code
+              : 'STORAGE_UNAVAILABLE',
+          message:
+            error instanceof ToolRefusal || error instanceof WorkspaceError
+              ? error.message
+              : 'The Git change could not be confirmed.',
+          ...(error instanceof GitWriteError && error.reason ? { reason: error.reason } : {}),
+        };
+        if (attempted) {
+          const judged = await this.judgeGit(root, intent, cleaned).catch(() => ({
+            kind: 'unknown' as const,
+          }));
+          if (judged.kind === 'applied' && cleaned) {
+            // The change happened; only its confirmation (e.g. the receipt write) failed.
+            state = 'succeeded';
+            result = judged.result;
+          } else
+            state =
+              judged.kind === 'unchanged' && cleaned
+                ? error instanceof ToolRefusal && error.code === 'TARGET_TERMINAL'
+                  ? 'cancelled'
+                  : 'failed'
+                : 'uncertain';
+        }
+        try {
+          this.workbenchOperations.finish(command.operationId, state, result);
+        } catch {
+          this.workspaceAccess.release(owner, false);
+          throw new ToolRefusal(
+            'STORAGE_UNAVAILABLE',
+            'The Git result could not be recorded; read the original operation again.',
+          );
+        }
+        return this.gitOperation(sessionId, command.operationId);
+      }
+    });
+  }
+
   async listFiles(scope: FileBrowseScope, path = '') {
     const { root, isGit } = await this.browseRoot(scope);
     return this.list(root, path, isGit);
+  }
+
+  /** Read-only disk search: it never borrows a document draft or grants an agent a read. */
+  async searchContents(
+    sessionId: string,
+    raw: ContentSearch,
+    signal?: AbortSignal,
+  ): Promise<ContentSearchResult> {
+    const input = ContentSearch.parse(raw);
+    const checkTarget = () => {
+      if (signal?.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'file search was cancelled');
+      if (this.disposing || this.removingWorktrees.has(sessionId))
+        throw new ToolRefusal('TARGET_TERMINAL', 'the working copy is closing');
+      return this.documentTarget(sessionId, input.target);
+    };
+    const { row, target } = checkTarget();
+    const root = row.worktree_path;
+    if ((await realpath(root)) !== resolve(root))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+    let listed: Awaited<ReturnType<WorkspaceService['list']>>;
+    try {
+      listed = await this.list(root, '', true, signal);
+    } catch (error) {
+      checkTarget();
+      throw error;
+    }
+    const result: ContentSearchResult = {
+      target,
+      queryId: input.queryId,
+      query: input.query,
+      caseSensitive: input.caseSensitive,
+      matches: [],
+      scannedFiles: 0,
+      skippedFiles: 0,
+      truncated: listed.truncated,
+    };
+    const matcher = new RegExp(
+      input.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      input.caseSensitive ? 'gu' : 'giu',
+    );
+    let remaining = 8 * 1024 * 1024;
+    files: for (const file of listed.files) {
+      checkTarget();
+      if (file.bytes > MAX_TEXT) {
+        result.skippedFiles++;
+        continue;
+      }
+      if (file.bytes > remaining) {
+        result.truncated = true;
+        break;
+      }
+      let read: Awaited<ReturnType<typeof boundedFile>>;
+      try {
+        read = await boundedFile(root, file.path, Math.min(MAX_TEXT, remaining));
+      } catch {
+        result.skippedFiles++;
+        continue;
+      }
+      checkTarget();
+      if (!read.bytes) {
+        result.skippedFiles++;
+        if (read.size <= MAX_TEXT) {
+          result.truncated = true;
+          break;
+        }
+        continue;
+      }
+      remaining -= read.bytes.length;
+      const text = decodeText(read.bytes, true);
+      if (text === null) {
+        result.skippedFiles++;
+        continue;
+      }
+      result.scannedFiles++;
+      const sha = sha256(read.bytes);
+      for (const [lineIndex, line] of text.split(/\r\n|\r|\n/).entries()) {
+        for (const match of line.matchAll(matcher)) {
+          if (result.matches.length === 200) {
+            result.truncated = true;
+            break files;
+          }
+          const start = match.index;
+          const previewStart = Math.max(0, start - 120);
+          result.matches.push({
+            path: file.path,
+            sha256: sha,
+            range: {
+              startLine: lineIndex + 1,
+              startColumn: start + 1,
+              endLine: lineIndex + 1,
+              endColumn: start + match[0].length + 1,
+            },
+            preview: line.slice(previewStart, previewStart + 400),
+          });
+        }
+      }
+    }
+    checkTarget();
+    if ((await realpath(root)) !== resolve(root))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+    checkTarget();
+    return result;
   }
 
   /**
@@ -1957,8 +4233,13 @@ export class WorkspaceService implements FileTools {
       started_at: string;
       ended_at: string | null;
     }[];
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id = ?')
+      .get(sessionId) as { project_id: string } | undefined;
+    const registered = session ? (this.projectTools.latest(session.project_id)?.checks ?? []) : [];
     return rows.map((r) => {
       const command = JSON.parse(r.command_json) as VerifyCommand;
+      const now = registered.find((check) => check.id === r.command_id);
       return {
         verificationId: r.id,
         commandId: r.command_id,
@@ -1974,6 +4255,8 @@ export class WorkspaceService implements FileTools {
         startedAt: r.started_at,
         endedAt: r.ended_at,
         stale: currentTree === null || currentTree !== r.tree,
+        // Another check's edit bumps the revision too; only this command's definition counts.
+        configChanged: !now || canonicalJson(now) !== canonicalJson(command),
         report: r.report_json ? VerificationReport.parse(JSON.parse(r.report_json)) : null,
       };
     });
@@ -1997,10 +4280,21 @@ export class WorkspaceService implements FileTools {
     const config = this.projectTools.latest(projectId);
     const command = config?.checks.find((c) => c.id === commandId);
     if (!config || !command) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such check');
-    const { tree, launch } = await this.lease(row.worktree_path, async () => ({
-      tree: await this.snapshotTree(row.worktree_path),
-      launch: await launchFingerprint(row.worktree_path, config.revision, command),
-    }));
+    const { tree, launch } = await this.lease(row.worktree_path, async () => {
+      if (this.writerBlocksCheck(sessionId))
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'finish the working copy writer before checking',
+        );
+      const tree = await this.snapshotTree(row.worktree_path);
+      const launch = await launchFingerprint(row.worktree_path, config.revision, command);
+      if (this.writerBlocksCheck(sessionId))
+        throw new WorkspaceError(
+          'REVISION_CONFLICT',
+          'working copy writer ownership changed while preparing the check',
+        );
+      return { tree, launch };
+    });
     return this.startCheck(
       sessionId,
       projectId,
@@ -2013,7 +4307,9 @@ export class WorkspaceService implements FileTools {
     );
   }
 
-  private projectToolContext(input: Pick<CheckExecution, 'runId' | 'selection'>) {
+  private projectToolContext(
+    input: Pick<CheckExecution, 'runId' | 'selection'> & { executionId?: string },
+  ) {
     const access = this.runAccess.get(input.runId);
     if (access && (access.state !== 'active' || !access.writer))
       throw new ToolRefusal(
@@ -2021,7 +4317,11 @@ export class WorkspaceService implements FileTools {
         'process tools require an active working copy writer',
       );
     const sessionId = this.sessionOfRun(input.runId);
-    const row = sessionId ? this.worktree(sessionId) : null;
+    const row = (
+      input.executionId
+        ? this.worktreeOfExecution(input.runId, input.executionId)
+        : this.worktreeOfRun(input.runId)
+    )?.row;
     const binding = this.binding(input.selection.projectId);
     if (!sessionId || !row || !binding || row.binding_id !== binding.id || !binding.trusted)
       throw new ToolRefusal('CAPABILITY_DENIED', 'trusted working copy unavailable');
@@ -2035,6 +4335,8 @@ export class WorkspaceService implements FileTools {
   }
 
   private checkContext(input: CheckExecution) {
+    if (this.candidateCopies.enabled(input.runId) && input.isolation !== 'linux-bwrap')
+      throw new ToolRefusal('CAPABILITY_DENIED', 'candidate checks require Linux isolation');
     const context = this.projectToolContext(input);
     if (!input.selection.checkIds.includes(input.commandId))
       throw new ToolRefusal('CAPABILITY_DENIED', 'check is not selected');
@@ -2044,6 +4346,11 @@ export class WorkspaceService implements FileTools {
   }
 
   private lspContext(input: LspExecution) {
+    if (this.candidateCopies.enabled(input.runId))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'candidate executions cannot launch language servers',
+      );
     const context = this.projectToolContext(input),
       query = LspQuery.parse(input.query);
     if (!input.selection.lspServerIds.includes(query.serverId))
@@ -2414,6 +4721,7 @@ export class WorkspaceService implements FileTools {
         return this.lspProposal(sessionId, id);
       };
       const active = () =>
+        this.hasUnsafeWorktreeOwner(sessionId) ||
         !!this.db
           .prepare(
             "SELECT 1 FROM runs WHERE session_id=? AND status NOT IN ('succeeded','failed','cancelled','interrupted') LIMIT 1",
@@ -2422,7 +4730,7 @@ export class WorkspaceService implements FileTools {
       if (active())
         throw new WorkspaceError(
           'REVISION_CONFLICT',
-          'finish or cancel the session Run before applying this proposal',
+          'finish or cancel the session Run or working copy writer before applying this proposal',
         );
       const trusted = () =>
         !!this.db
@@ -2470,7 +4778,7 @@ export class WorkspaceService implements FileTools {
       if (active())
         throw new WorkspaceError(
           'REVISION_CONFLICT',
-          'a Run started while the proposal was being checked',
+          'a Run or working copy writer acquired ownership while the proposal was being checked',
         );
       const cancellation: ToolCancellation = {
         get aborted() {
@@ -2609,7 +4917,10 @@ export class WorkspaceService implements FileTools {
     const report = await this.waitVerification(id);
     return {
       ...report,
-      stale: (await this.currentTree(sessionId, input.isolation)) !== report.tree,
+      stale:
+        (await this.lease(row.worktree_path, () =>
+          this.snapshotTree(row.worktree_path, input.isolation),
+        )) !== report.tree,
     };
   }
 
@@ -2738,7 +5049,18 @@ export class WorkspaceService implements FileTools {
 
   async dispose() {
     this.disposing = true;
+    for (const controller of this.advancedCancels.values()) controller.abort();
+    const pendingGit = [...this.liveGit.values()];
+    for (const operation of pendingGit) operation.cancel();
+    await Promise.allSettled(pendingGit.map((operation) => operation.done));
+    const languageClosing = this.language.dispose();
+    const debugClosing = this.debugger.dispose();
+    void debugClosing.catch(() => {});
+    void languageClosing.catch(() => {});
+    await this.terminals.close();
     await this.commandRuntime.close();
+    await this.taskRuntime.close();
+    await this.deploymentTasks.dispose();
     await Promise.allSettled([...this.pendingCommands.values()]);
     await Promise.allSettled(
       [...this.commandServices.values()].map((service) => service.completion),
@@ -2753,16 +5075,21 @@ export class WorkspaceService implements FileTools {
       ...this.preparingRuns.values(),
       ...this.leases.values(),
     ]);
+    await languageClosing;
+    await debugClosing;
   }
 
   /** Updating the desktop must wait for file checkpoints as well as owned processes. */
   hasPendingProcesses(): boolean {
     if (
+      this.language.hasPending() ||
+      this.debugger.hasPending() ||
       this.checks.size ||
       this.pendingCommands.size ||
       this.pendingSnapshots.size ||
       this.preparingRuns.size ||
-      this.leases.size
+      this.leases.size ||
+      this.workbenchOperations.hasPending()
     )
       return true;
     return Boolean(
@@ -2784,6 +5111,11 @@ export class WorkspaceService implements FileTools {
   // ── the file broker (FileTools) ─────────────────────────────────────────────
 
   private commandContext(input: CommandExecution) {
+    if (this.candidateCopies.enabled(input.runId))
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'candidate executions use registered isolated checks, not native commands',
+      );
     if (this.disposing) throw new ToolRefusal('TARGET_TERMINAL', 'workspace is shutting down');
     const found = this.worktreeOfRun(input.runId);
     const access = this.runAccess.get(input.runId);
@@ -3149,9 +5481,189 @@ export class WorkspaceService implements FileTools {
     const row = this.db
       .prepare("SELECT id FROM command_operations WHERE id=? AND session_id=? AND state='running'")
       .get(operationId, sessionId);
-    return row
-      ? this.commandRuntime.attestConnection(operationId, port, peerPort)
+    if (row) return this.commandRuntime.attestConnection(operationId, port, peerPort);
+    return this.userTaskRunning(sessionId, operationId)
+      ? this.taskRuntime.attestConnection(operationId, port, peerPort)
       : Promise.resolve(false);
+  }
+
+  /** A person's development task that is running now on this host (preview owner, P15). */
+  userTaskRunning(sessionId: string, operationId: string): boolean {
+    const receipt = this.workbenchOperations.get(operationId);
+    return (
+      receipt?.kind === 'task' &&
+      receipt.target.sessionId === sessionId &&
+      receipt.state === 'running' &&
+      this.taskRuntime.pid(operationId) !== undefined
+    );
+  }
+
+  /** Scripts a person may start; reading them runs nothing (CR-046 P15). */
+  async taskCandidates(sessionId: string): Promise<TaskCandidates> {
+    // Without a copy there is nothing to discover; panes poll this before a copy exists.
+    const row = this.worktree(sessionId);
+    if (!row) return { packageManager: null, scripts: [] };
+    const root = row.worktree_path;
+    if ((await assertPlainPath(root, 'package.json')) !== 'file')
+      return { packageManager: null, scripts: [] };
+    const { bytes } = await boundedFile(root, 'package.json');
+    let manifest: unknown;
+    try {
+      manifest = bytes ? JSON.parse(bytes.toString('utf8')) : null;
+    } catch {
+      manifest = null;
+    }
+    const scripts =
+      manifest && typeof manifest === 'object' && 'scripts' in manifest
+        ? (manifest as { scripts: unknown }).scripts
+        : null;
+    const lock = async (name: string) => (await assertPlainPath(root, name)) === 'file';
+    return {
+      packageManager: (await lock('pnpm-lock.yaml'))
+        ? 'pnpm'
+        : (await lock('yarn.lock'))
+          ? 'yarn'
+          : 'npm',
+      scripts:
+        scripts && typeof scripts === 'object'
+          ? Object.entries(scripts as Record<string, unknown>)
+              .filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === 'string' && entry[0].length > 0 && entry[0].length <= 200,
+              )
+              .slice(0, 100)
+              .map(([name, command]) => ({ name, command }))
+          : [],
+    };
+  }
+
+  private taskView(receipt: WorkbenchOperation): UserTaskView {
+    const result = (receipt.result ?? {}) as Partial<UserTaskView>;
+    const owner = this.workspaceAccess.get({ kind: 'user', id: receipt.operationId });
+    return {
+      operationId: receipt.operationId,
+      script: result.script ?? '',
+      command: result.command ?? '',
+      packageManager: result.packageManager ?? 'npm',
+      state: owner?.state === 'uncertain' ? 'uncertain' : receipt.state,
+      ...(result.pid ? { pid: result.pid } : {}),
+      ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {}),
+      ...(result.cleanupConfirmed !== undefined
+        ? { cleanupConfirmed: result.cleanupConfirmed }
+        : {}),
+      createdAt: receipt.createdAt,
+      updatedAt: receipt.updatedAt,
+    };
+  }
+
+  private taskReceipt(sessionId: string, operationId: string) {
+    const receipt = this.workbenchOperations.get(operationId);
+    if (!receipt || receipt.kind !== 'task' || receipt.target.sessionId !== sessionId)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the task is unavailable');
+    return receipt;
+  }
+
+  /** Starts one package script as the person's own task; it holds the copy's writer (strict). */
+  async startTask(sessionId: string, raw: TaskStart): Promise<UserTaskView> {
+    const input = TaskStart.parse(raw);
+    const requestHash = sha256(Buffer.from(canonicalJson(input)));
+    const prior = this.workbenchOperations.get(input.operationId);
+    if (prior) {
+      if (prior.kind !== 'task' || prior.requestHash !== requestHash)
+        throw new WorkspaceError('REVISION_CONFLICT', 'operation request changed');
+      return this.taskView(prior);
+    }
+    const { row } = this.documentTarget(sessionId, input.target, true);
+    const candidates = await this.taskCandidates(sessionId);
+    const script = candidates.scripts.find((item) => item.name === input.script);
+    if (!script || !candidates.packageManager)
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'that script is not in package.json');
+    const base = {
+      script: script.name,
+      command: script.command,
+      packageManager: candidates.packageManager,
+    };
+    this.workbenchOperations.admit(
+      { operationId: input.operationId, target: input.target, kind: 'task', requestHash },
+      row.worktree_path,
+      base,
+    );
+    let started: ReturnType<CommandRuntime<UserTaskOwner>['startService']>;
+    try {
+      started = this.taskRuntime.startService(
+        {
+          operationId: input.operationId,
+          owner: { kind: 'user', hostId: this.hostId, sessionId, operationId: input.operationId },
+          directory: row.worktree_path,
+          command: { executable: candidates.packageManager, args: ['run', script.name] },
+          // The runtime's longest bound; a dev server is restarted explicitly after it.
+          timeoutMs: 3_600_000,
+        },
+        { aborted: false, onCancel: () => () => {} },
+      );
+    } catch (error) {
+      this.workbenchOperations.finish(input.operationId, 'failed', {
+        ...base,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    let pid: number | undefined;
+    void started.completion.then((report) => {
+      this.workbenchOperations.finish(
+        input.operationId,
+        report.state === 'uncertain'
+          ? 'uncertain'
+          : report.state === 'completed'
+            ? 'succeeded'
+            : report.state,
+        { ...base, pid, exitCode: report.exitCode, cleanupConfirmed: report.cleanupConfirmed },
+      );
+    });
+    await started.started;
+    pid = this.taskRuntime.pid(input.operationId);
+    if (pid) this.workbenchOperations.updateRunning(input.operationId, { ...base, pid });
+    return this.taskView(this.taskReceipt(sessionId, input.operationId));
+  }
+
+  /**
+   * The session's tasks. A task left running or uncertain by an earlier host process is settled
+   * only once its process group is gone.
+   */
+  async tasks(sessionId: string): Promise<UserTaskView[]> {
+    for (const receipt of this.workbenchOperations.list('task', sessionId)) {
+      const pid = (receipt.result as { pid?: number } | null)?.pid;
+      const open = receipt.state === 'running' || receipt.state === 'uncertain';
+      if (!open || this.taskRuntime.pid(receipt.operationId) !== undefined || !pid) continue;
+      let alive = true;
+      try {
+        process.kill(-pid, 0);
+      } catch (error) {
+        alive = (error as NodeJS.ErrnoException).code !== 'ESRCH';
+      }
+      if (!alive)
+        this.workbenchOperations.reconcile(receipt.operationId, ['task'], 'cancelled', {
+          ...(receipt.result as object),
+          cleanupConfirmed: true,
+        });
+    }
+    return this.workbenchOperations
+      .list('task', sessionId)
+      .map((receipt) => this.taskView(receipt))
+      .reverse()
+      .slice(0, 20);
+  }
+
+  taskOutput(sessionId: string, operationId: string, offset = 0) {
+    this.taskReceipt(sessionId, operationId);
+    return this.taskRuntime.read(operationId, offset);
+  }
+
+  /** Stops the task's process group and waits for its cleanup to be confirmed. */
+  async stopTask(sessionId: string, operationId: string): Promise<UserTaskView> {
+    this.taskReceipt(sessionId, operationId);
+    await this.taskRuntime.stop(operationId);
+    return this.taskView(this.taskReceipt(sessionId, operationId));
   }
 
   private worktreeOfRun(runId: string): { row: WorktreeRow; sessionId: string } | null {
@@ -3161,13 +5673,221 @@ export class WorkspaceService implements FileTools {
     return row ? { row, sessionId } : null;
   }
 
+  private worktreeOfExecution(runId: string, executionId: string) {
+    const found = this.worktreeOfRun(runId);
+    if (!found) return null;
+    const candidate = this.candidateCopies.forExecution(runId, executionId);
+    return candidate
+      ? {
+          sessionId: found.sessionId,
+          row: {
+            ...found.row,
+            worktree_path: candidate.worktree_path,
+            base_tree: candidate.baseline_tree,
+          },
+        }
+      : found;
+  }
+
+  async prepareCandidates(runId: string, candidateIds: string[]) {
+    if (!this.isolatedChecksAvailable())
+      throw new ToolRefusal('CAPABILITY_DENIED', 'candidate comparison requires Linux isolation');
+    const access = this.runAccess.get(runId);
+    if (!access || access.writer !== 1 || access.state !== 'active')
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'candidate comparison requires an active working copy writer',
+      );
+    const tree = await this.startBaseline(runId);
+    if (!tree) throw new ToolRefusal('TARGET_NOT_FOUND', 'candidate baseline is unavailable');
+    return this.candidateCopies.prepare(runId, candidateIds, tree);
+  }
+
+  bindCandidateExecution(runId: string, candidateId: string, executionId: string) {
+    this.candidateCopies.bind(runId, candidateId, executionId);
+  }
+
+  currentCandidateTree(runId: string, candidateId: string): Promise<string | null> {
+    return this.candidateCopies.tree(runId, candidateId);
+  }
+
+  async candidateChanges(runId: string, candidateId: string, expectedTree: string) {
+    const copy = await this.candidateCopies.inspect(runId, candidateId, expectedTree);
+    return {
+      from: copy.baseline_tree,
+      to: expectedTree,
+      files: await this.changedPaths(copy.worktree_path, copy.baseline_tree, expectedTree),
+    };
+  }
+
+  async candidateFileVersions(
+    runId: string,
+    candidateId: string,
+    expectedTree: string,
+    path: string,
+  ) {
+    const copy = await this.candidateCopies.inspect(runId, candidateId, expectedTree);
+    return this.fileVersions(copy.session_id, copy.baseline_tree, expectedTree, path);
+  }
+
+  async promoteCandidate(input: {
+    runId: string;
+    candidateId: string;
+    expectedTree: string;
+    baselineTree: string;
+    commandId: string;
+  }): Promise<{ checkpointId: string }> {
+    const selection = this.candidateCopies.selection(input);
+    const sessionId = this.sessionOfRun(input.runId);
+    if (!sessionId) throw new ToolRefusal('TARGET_NOT_FOUND', 'candidate session is unavailable');
+    const operationId = `promote_${sha256(Buffer.from(`${input.runId}:${input.commandId}`)).slice(0, 32)}`;
+    if (selection.previous) {
+      const previous = this.checkpointRestores(sessionId).find(
+        (item) => item.operationId === operationId,
+      );
+      if (previous?.state === 'applied') return { checkpointId: selection.checkpointId };
+      throw new ToolRefusal(
+        'REVISION_CONFLICT',
+        'candidate promotion is incomplete; inspect recovery evidence before another action',
+      );
+    }
+    const access = this.runAccess.get(input.runId);
+    if (!access || access.writer !== 1 || access.state !== 'active')
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'candidate promotion requires its active working copy owner',
+      );
+    this.candidateCopies.assertSettled(input.runId);
+    const copy = await this.candidateCopies.inspect(
+      input.runId,
+      input.candidateId,
+      input.expectedTree,
+    );
+    await this.validateCandidateEvidence(input, copy.worktree_path);
+    if (copy.baseline_tree !== input.baselineTree)
+      throw new ToolRefusal('REVISION_CONFLICT', 'candidate baseline tree changed');
+    const target = await this.checkpointTarget(sessionId);
+    const checkpoint = await this.lease(target.worktree_path, async () => {
+      this.candidateCopies.assertSettled(input.runId);
+      if ((await this.snapshotTree(target.worktree_path, 'linux-bwrap')) !== input.baselineTree)
+        throw new ToolRefusal(
+          'REVISION_CONFLICT',
+          'working copy tree changed since candidate comparison began',
+        );
+      await this.candidateCopies.inspect(input.runId, input.candidateId, input.expectedTree);
+      this.candidateCopies.selection(input, true);
+      return this.checkpointAt(target, {
+        checkpointId: selection.checkpointId,
+        label: 'Selected Ultra candidate',
+        kind: 'manual',
+        runId: input.runId,
+        tree: input.expectedTree,
+        pinned: true,
+      });
+    });
+    const result = await this.restoreCheckpoint(
+      sessionId,
+      {
+        operationId,
+        checkpointId: checkpoint.checkpointId,
+        manifestHash: checkpoint.manifestHash,
+        expectedTree: input.baselineTree,
+      },
+      {
+        isolation: 'linux-bwrap',
+        beforeApply: async () => {
+          if (this.runAccess.get(input.runId)?.state !== 'active')
+            throw new ToolRefusal(
+              'TARGET_TERMINAL',
+              'candidate comparison no longer owns its target',
+            );
+          this.candidateCopies.assertSettled(input.runId);
+          await this.candidateCopies.inspect(input.runId, input.candidateId, input.expectedTree);
+          await this.validateCandidateEvidence(input, copy.worktree_path);
+        },
+      },
+    );
+    if (result.state !== 'applied')
+      throw new ToolRefusal(
+        'REVISION_CONFLICT',
+        'candidate promotion did not complete; inspect recovery evidence',
+      );
+    return { checkpointId: checkpoint.checkpointId };
+  }
+
+  private async validateCandidateEvidence(
+    input: { runId: string; candidateId: string; expectedTree: string },
+    path: string,
+  ) {
+    const row = this.db
+      .prepare('SELECT project_id,projection_json FROM runs WHERE id=?')
+      .get(input.runId) as { project_id: string; projection_json: string };
+    const projection = JSON.parse(row.projection_json) as RunProjection;
+    const candidate = projection.candidateComparison?.candidates.find(
+      (item) => item.candidateId === input.candidateId,
+    );
+    const config = this.projectTools.latest(row.project_id);
+    if (
+      !candidate ||
+      candidate.state !== 'acceptable' ||
+      candidate.tree !== input.expectedTree ||
+      !candidate.checks.length ||
+      !config
+    )
+      throw new ToolRefusal(
+        'REVISION_CONFLICT',
+        'candidate requires complete passing check evidence',
+      );
+    for (const check of candidate.checks) {
+      const owner = check.owner;
+      const command = config.checks.find((item) => item.id === check.commandId);
+      const saved = this.db
+        .prepare('SELECT report_json FROM verifications WHERE id=?')
+        .get(check.verificationId) as { report_json: string | null } | undefined;
+      const stored = saved?.report_json
+        ? VerificationReport.parse(JSON.parse(saved.report_json))
+        : null;
+      if (
+        owner.kind !== 'execution' ||
+        owner.runId !== input.runId ||
+        projection.executions[owner.executionId]?.candidateId !== input.candidateId ||
+        projection.executions[owner.executionId]?.attemptNo !== owner.attemptNo ||
+        check.tree !== input.expectedTree ||
+        check.state !== 'completed' ||
+        check.verdict !== 'pass' ||
+        !check.cleanupConfirmed ||
+        check.targetUnchanged !== true ||
+        check.isolation !== 'linux-bwrap' ||
+        check.configRevision !== config.revision ||
+        !command ||
+        !stored ||
+        canonicalJson({ ...stored, output: null }) !== canonicalJson({ ...check, output: null })
+      )
+        throw new ToolRefusal(
+          'REVISION_CONFLICT',
+          'candidate check evidence or configuration changed',
+        );
+      const launch = await checkLaunchFingerprint(path, config.revision, command, 'linux-bwrap');
+      if (launch.fingerprint !== check.fingerprint)
+        throw new ToolRefusal('REVISION_CONFLICT', 'candidate check launch fingerprint changed');
+    }
+    if (this.projectTools.latest(row.project_id)?.revision !== config.revision)
+      throw new ToolRefusal(
+        'REVISION_CONFLICT',
+        'candidate check configuration changed during promotion',
+      );
+  }
+
   available(runId: string): boolean {
     return this.worktreeOfRun(runId) !== null;
   }
 
   acquireRun(runId: string, sessionId: string | undefined, writer: boolean): void {
+    if (sessionId && this.removingWorktrees.has(sessionId))
+      throw new ToolRefusal('REVISION_CONFLICT', 'the working copy is being removed');
     const row = sessionId ? this.worktree(sessionId) : null;
-    if (row) this.runAccess.acquire(runId, row.session_id, row.worktree_path, writer);
+    if (row)
+      this.runAccess.acquire(runId, row.session_id, row.worktree_path, writer, row.copy_generation);
   }
 
   worktreeScope(sessionId: string): string | null {
@@ -3175,6 +5895,22 @@ export class WorkspaceService implements FileTools {
     if (!row) return null;
     const path = realpathSync.native(row.worktree_path);
     return process.platform === 'win32' ? path.toLowerCase() : path;
+  }
+
+  /**
+   * A check copies a snapshot of the tree. A long-lived development task or terminal may keep
+   * writing meanwhile (CR-046 P15); a Run or a short human change in progress may not.
+   */
+  private writerBlocksCheck(sessionId: string): boolean {
+    const key = this.worktreeScope(sessionId);
+    const writer = key === null ? undefined : this.workspaceAccess.writerAt(key);
+    if (!writer) return false;
+    if (writer.owner_kind !== 'user') return true;
+    const kind = this.workbenchOperations.get(writer.owner_id)?.kind;
+    return (
+      writer.state === 'uncertain' ||
+      (kind !== 'task' && kind !== 'terminal' && kind !== 'development')
+    );
   }
 
   hasUnsafeWorktreeOwner(sessionId: string): boolean {
@@ -3186,14 +5922,20 @@ export class WorkspaceService implements FileTools {
     const pending = this.preparingRuns.get(runId);
     if (pending) return pending;
     const access = this.runAccess.get(runId);
-    if (!access || access.tree) return Promise.resolve();
+    if (!access || (access.tree && this.runTree(runId, 'start'))) return Promise.resolve();
     const row = this.worktree(access.session_id);
     if (!row)
       return Promise.reject(new ToolRefusal('TARGET_NOT_FOUND', 'working copy is unavailable'));
     const work = this.lease(row.worktree_path, async () => {
       const writer = this.runAccess.writerAt(access.worktree_key);
       // A concurrent reader observes the writer's pinned input, never partially written files.
-      const tree = (!access.writer && writer?.tree) || (await this.snapshotTree(row.worktree_path));
+      const tree =
+        this.runAccess.get(runId)?.tree ||
+        (!access.writer && writer?.tree) ||
+        (await this.snapshotTree(
+          row.worktree_path,
+          this.candidateCopies.enabled(runId) ? 'linux-bwrap' : undefined,
+        ));
       await this.pin(
         row.worktree_path,
         `refs/corral/${access.session_id}/runs/${runId}/start`,
@@ -3265,14 +6007,14 @@ export class WorkspaceService implements FileTools {
   /** Call only after the adapter has positively recovered every prior worker/process group. */
   confirmWorkerRecovery(): void {
     this.db
-      .prepare(`UPDATE run_access SET state='released'
-      WHERE state='uncertain'
+      .prepare(`UPDATE workspace_access SET state='released'
+      WHERE owner_kind='run' AND state='uncertain'
         AND NOT EXISTS (SELECT 1 FROM command_operations c
-          WHERE c.run_id=run_access.run_id AND c.state IN ('running','uncertain'))
+          WHERE c.run_id=workspace_access.owner_id AND c.state IN ('running','uncertain'))
         AND NOT EXISTS (SELECT 1 FROM file_operations f
-          WHERE f.session_id=run_access.session_id AND f.state IN ('planned','uncertain'))
+          WHERE f.session_id=workspace_access.session_id AND f.state IN ('planned','uncertain'))
         AND NOT EXISTS (SELECT 1 FROM checkpoint_restores r
-          WHERE r.session_id=run_access.session_id
+          WHERE r.session_id=workspace_access.session_id
             AND json_extract(r.result_json,'$.state') IN ('applying','partial','uncertain'))`)
       .run();
   }
@@ -3290,7 +6032,10 @@ export class WorkspaceService implements FileTools {
     const access = this.runAccess.get(input.runId);
     if (cancellation.aborted || (access && access.state !== 'active'))
       throw new ToolRefusal('TARGET_TERMINAL', 'run file access is no longer active');
-    if (!access || access.writer) return null;
+    const comparison = this.candidateCopies.enabled(input.runId);
+    const candidate = this.candidateCopies.forExecution(input.runId, input.executionId);
+    if (candidate || (!comparison && (!access || access.writer))) return null;
+    if (!access) throw new ToolRefusal('TARGET_NOT_FOUND', 'run input snapshot unavailable');
     if (!['list_files', 'read_file', 'read_hashline'].includes(input.name))
       throw new ToolRefusal(
         'CAPABILITY_DENIED',
@@ -3637,6 +6382,18 @@ export class WorkspaceService implements FileTools {
     },
     cancellation: ToolCancellation,
   ): Promise<Record<string, unknown>> {
+    if (this.candidateCopies.enabled(input.runId)) {
+      this.candidateCopies.forExecution(input.runId, input.executionId);
+      const parent = cancellation;
+      const active = () =>
+        this.candidateCopies.executionActive(input.runId, input.executionId, input.attemptNo);
+      cancellation = {
+        get aborted() {
+          return parent.aborted || !active();
+        },
+        onCancel: (callback) => parent.onCancel(callback),
+      };
+    }
     const frozen = await this.readPinnedRun(input, cancellation);
     if (frozen) return frozen;
     if (input.name === 'write') {
@@ -3646,7 +6403,7 @@ export class WorkspaceService implements FileTools {
         cancellation,
       );
     }
-    const found = this.worktreeOfRun(input.runId);
+    const found = this.worktreeOfExecution(input.runId, input.executionId);
     if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
     const root = found.row.worktree_path;
     const reads = this.readsOf(input.runId, input.executionId);
@@ -3777,7 +6534,7 @@ export class WorkspaceService implements FileTools {
     }
   }
 
-  private async list(root: string, folder: string, isGit = true) {
+  private async list(root: string, folder: string, isGit = true, signal?: AbortSignal) {
     const rel = folder ? safeRelative(folder) : '';
     if (rel) {
       await assertPlainPath(root, rel);
@@ -3789,21 +6546,26 @@ export class WorkspaceService implements FileTools {
     const out =
       walk?.paths ??
       (
-        await git(root, [
-          'ls-files',
-          '-z',
-          '--cached',
-          '--others',
-          '--exclude-standard',
-          '--',
-          rel ? `:(literal)${rel}` : '.',
-        ])
+        await git(
+          root,
+          [
+            'ls-files',
+            '-z',
+            '--cached',
+            '--others',
+            '--exclude-standard',
+            '--',
+            rel ? `:(literal)${rel}` : '.',
+          ],
+          { signal },
+        )
       ).stdout
         .toString('utf8')
         .split('\0')
         .filter(Boolean);
     const files: { path: string; bytes: number }[] = [];
     for (const path of [...new Set(out)].slice(0, 500)) {
+      if (signal?.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'file search was cancelled');
       try {
         safeRelative(path);
         if ((await assertPlainPath(root, path)) !== 'file') continue;
@@ -3817,7 +6579,7 @@ export class WorkspaceService implements FileTools {
   }
 
   /** Non-Git folders have the same bounded picker and never follow directory symlinks. */
-  private async folderPaths(root: string, folder: string) {
+  private async folderPaths(root: string, folder: string, excludeDependencies = false) {
     const pending = [folder];
     const paths: string[] = [];
     let visited = 0;
@@ -3825,6 +6587,7 @@ export class WorkspaceService implements FileTools {
       const rel = pending.shift() as string;
       const dir = await opendir(join(root, rel));
       for await (const entry of dir) {
+        if (excludeDependencies && entry.name === 'node_modules') continue;
         if (++visited >= 2000) break;
         const path = rel ? `${rel}/${entry.name}` : entry.name;
         try {

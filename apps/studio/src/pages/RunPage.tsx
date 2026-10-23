@@ -27,6 +27,7 @@ import {
   useSteerTarget,
   WorkPlanPanel,
 } from '@corral/react';
+import { Button } from '@corral/react/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -35,25 +36,24 @@ import { useModelPrices } from '../prices.ts';
 import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
+import { panelKey } from '../workbench/panels/registry.ts';
+import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { markRunReviewed } from './GettingStarted.tsx';
 
-/** What a run's detail keeps in the address: the view, chosen execution, version and result. */
-export interface RunDetailSearch {
-  execution?: string | undefined;
-  artifact?: string | undefined;
-  view?: 'results' | 'run' | undefined;
-  result?: string | undefined;
-}
+export type { RunDetailSearch } from '../workbench/panels/routes.ts';
 
 /** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins (C-066). */
 export function RunPage() {
+  const services = useServices();
   const { runId } = runRoute.useParams();
   const search = runRoute.useSearch();
   const navigate = useNavigate({ from: '/runs/$runId' });
   return (
     <RunDetail
+      key={panelKey(services, { kind: 'run', runId })}
       runId={runId}
       search={search}
       setSearch={(patch) => void navigate({ search: (s) => ({ ...s, ...patch }) })}
@@ -72,7 +72,6 @@ export function RunDetail({
   embedded = false,
   compact = false,
   sessionId = null,
-  sessionStore,
 }: {
   sessionId?: string | null;
   runId: string;
@@ -80,18 +79,10 @@ export function RunDetail({
   setSearch: (patch: RunDetailSearch) => void;
   embedded?: boolean;
   compact?: boolean;
-  /** When set, this detail must not retarget the session's live run store. */
-  sessionStore?: RunSessionStore;
 }) {
   const t = useTranslations('RunPage');
-  const { runFor, retainRun, editorSessions, transport, repository } = useServices();
-  const session = useMemo(
-    () =>
-      sessionStore ??
-      [...editorSessions.values()].find((view) => view.getState().runId === runId) ??
-      runFor(runId),
-    [sessionStore, editorSessions, runFor, runId],
-  );
+  const { runFor, retainRun, transport, repository } = useServices();
+  const session = runFor(runId);
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
   const error = useStore(session, (s) => s.streamError ?? s.definitionError);
@@ -200,6 +191,7 @@ function CompactRunWorkspace({
   const n = useTranslations('Navigation');
   const navigate = useNavigate();
   const projection = useStore(session, (state) => state.projection);
+  const savedTeam = useSavedTeam(projection?.corralId);
   const target = useSteerTarget(session, search.execution ?? null);
   const controls = useRef<HTMLDivElement>(null);
   const response = useRef<HTMLDivElement>(null);
@@ -241,7 +233,7 @@ function CompactRunWorkspace({
           (item) => item.artifactVersionId === version,
         )
       : null;
-  const startFrom = projection.corralId
+  const startFrom = savedTeam
     ? (from: { runId: string; artifactVersionId: string }) =>
         void navigate({
           to: '/corrals/$corralId/edit',
@@ -345,6 +337,14 @@ function CompactRunWorkspace({
             </p>
           ) : null}
           <ReinsPanel session={session} target={target} />
+          {sessionId && search.execution && target ? (
+            <ExecutionEvidence
+              session={session}
+              sessionId={sessionId}
+              executionId={target.executionId}
+              onOpenArtifact={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
+            />
+          ) : null}
           {search.execution && target ? (
             <details className="mt-4">
               <summary className="cursor-pointer text-xs font-medium">{t('conversation')}</summary>
@@ -457,11 +457,12 @@ function RunWorkspace({
     chosenView ??
     (execution || artifact ? 'run' : openedEnded === null ? null : openedEnded ? 'results' : 'run');
   const chooseView = (next: RunPageView) => setSearch({ view: next });
-  const startFrom = projection?.corralId
+  const savedTeam = useSavedTeam(projection?.corralId);
+  const startFrom = savedTeam
     ? (from: { runId: string; artifactVersionId: string }) =>
         void navigate({
           to: '/corrals/$corralId/edit',
-          params: { corralId: projection.corralId ?? '' },
+          params: { corralId: projection?.corralId ?? '' },
           search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
         })
     : null;
@@ -474,6 +475,12 @@ function RunWorkspace({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // Below 768px one panel shows at a time (roadmap 19); wider screens show them all.
   const [panel, setPanel] = useState<NarrowPanel>('canvas');
+  const sideRef = useRef<HTMLElement>(null);
+  const waitingDecisions = useStore(
+    session,
+    (s) =>
+      Object.values(s.projection?.approvals ?? {}).filter((a) => a.status === 'pending').length,
+  );
   // UX-03: the run view follows its own width (a side panel is narrow on any screen).
   const shown = (name: NarrowPanel) => (panel === name ? '' : '@max-3xl:hidden');
 
@@ -527,6 +534,31 @@ function RunWorkspace({
     <div className="@container flex h-full min-h-0 flex-col">
       <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
       <NarrowViews panel={panel} onChoose={setPanel} />
+      {/* On a narrow run the answer lives in another view: point to it, never jump (#74). */}
+      {waitingDecisions && panel !== 'side' ? (
+        <div
+          data-testid="decision-waiting"
+          className="flex flex-wrap items-center gap-2 border-b border-line bg-warning/10 px-3 py-1.5 text-xs text-warning @3xl:hidden"
+        >
+          <span>{t('decisionWaiting', { count: waitingDecisions })}</span>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              setPanel('side');
+              requestAnimationFrame(() => {
+                const card = sideRef.current?.querySelector<HTMLElement>(
+                  '[data-testid^="approval-"]',
+                );
+                card?.scrollIntoView({ block: 'nearest' });
+                (card?.querySelector<HTMLElement>('button') ?? sideRef.current)?.focus();
+              });
+            }}
+          >
+            {t('openResponse')}
+          </Button>
+        </div>
+      ) : null}
       <Main className="run-layout min-h-0 flex-1">
         <aside
           aria-labelledby="run-executions-heading"
@@ -556,7 +588,9 @@ function RunWorkspace({
           ) : null}
         </div>
         <aside
-          className={`flex min-h-0 flex-col gap-4 overflow-auto border-l border-line p-3 [grid-area:side] ${shown('side')}`}
+          ref={sideRef}
+          tabIndex={-1}
+          className={`flex min-h-0 flex-col gap-4 overflow-auto border-l border-line p-3 outline-none [grid-area:side] ${shown('side')}`}
         >
           {unknownExecution ? (
             <p role="alert" className="rounded border border-warning p-2 text-xs text-warning">
@@ -611,6 +645,31 @@ function RunWorkspace({
   );
 }
 
+/**
+ * Whether the run's team is a saved team that can be edited: an automatically composed team
+ * records its inline id as corralId but has no saved record (#73). null while looking it up.
+ */
+function useSavedTeam(corralId: string | null | undefined) {
+  const { repository } = useServices();
+  const [saved, setSaved] = useState<{ id: string; exists: boolean } | null>(null);
+  useEffect(() => {
+    if (!corralId) return;
+    let live = true;
+    // The saved list, not a lookup by id: an unsaved id is an expected answer, not a failed
+    // request.
+    repository.list().then(
+      (corrals) =>
+        live && setSaved({ id: corralId, exists: corrals.some((c) => c.corralId === corralId) }),
+      () => live && setSaved({ id: corralId, exists: false }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [repository, corralId]);
+  if (!corralId) return false;
+  return saved?.id === corralId ? saved.exists : null;
+}
+
 /** The Corral's saved layout, once looked up; null while loading (avoids a layout jump). */
 function useSavedLayout(definition: CorralDefinition, corralId: string | null) {
   const { repository } = useServices();
@@ -653,6 +712,7 @@ function RunSummary({
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
   const projection = useStore(session, (s) => s.projection);
+  const savedTeam = useSavedTeam(projection?.corralId);
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -693,10 +753,12 @@ function RunSummary({
           <span aria-live="polite" data-testid="run-status">
             <StatusBadge status={projection.status} />
           </span>
-          {corralId && !compact ? (
+          {corralId && savedTeam && !compact ? (
             <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
               {t('openCorral')}
             </Link>
+          ) : corralId && savedTeam === false && !compact ? (
+            <span className="text-xs text-muted">{t('unsavedTeam')}</span>
           ) : null}
           {projection.startedFrom && !compact ? (
             <span className="text-xs text-muted">

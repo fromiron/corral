@@ -1,4 +1,4 @@
-import type { FileBrowseScope, FileListView } from '@corral/client';
+import type { FileBrowseScope, FileListView, WorktreeView } from '@corral/client';
 import { useEffect, useState } from 'react';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
 import { useServices } from '../services.tsx';
@@ -16,12 +16,14 @@ export function useWorkspaceFiles(
     scope: FileBrowseScope | null;
     list: FileListView;
     hasCopy: boolean;
+    copy: WorktreeView | null;
     loading: boolean;
     error: string | null;
   }>({
     scope: null,
     list: { files: [], truncated: false },
     hasCopy: false,
+    copy: null,
     loading: false,
     error: null,
   });
@@ -51,7 +53,7 @@ export function useWorkspaceFiles(
             ? { kind, id: projectId }
             : null;
       const list = scope ? await workspaces.listFiles(scope) : { files: [], truncated: false };
-      if (live) setState({ scope, list, hasCopy, loading: false, error: null });
+      if (live) setState({ scope, list, hasCopy, copy, loading: false, error: null });
     })().catch((error: unknown) => {
       if (live)
         setState((s) => ({

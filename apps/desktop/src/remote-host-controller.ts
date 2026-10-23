@@ -39,9 +39,11 @@ export class RemoteHostController {
   private disposed = false;
   private notice = '';
   private readonly parent: () => BrowserWindow | null;
+  private readonly korean: () => boolean;
 
-  constructor(parent: () => BrowserWindow | null) {
+  constructor(parent: () => BrowserWindow | null, korean: () => boolean = () => false) {
     this.parent = parent;
+    this.korean = korean;
     this.registry = new RemoteHostRegistry(join(app.getPath('userData'), 'remote-hosts.json'));
     const local = session.fromPartition('persist:corral-host-manager');
     local.protocol.handle('corral', (request) => {
@@ -161,6 +163,8 @@ export class RemoteHostController {
       webPreferences: {
         partition: 'persist:corral-host-manager',
         preload: join(import.meta.dirname, 'remote-host-preload.cjs'),
+        // The app's language for this window's text; the page reads nothing else from it.
+        additionalArguments: [`--corral-lang=${this.korean() ? 'ko' : 'en'}`],
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,

@@ -90,6 +90,10 @@ export function RunControls({
           {starting ? t('starting') : t('start')}
         </button>
       </div>
+      {/* What a test run creates, before it starts (#77 GA-03). */}
+      <p data-testid="run-scope" className="text-xs text-muted">
+        {t(beforeStart ? 'scopeSaved' : 'scopeDraft')}
+      </p>
       {startFrom ? (
         <div
           data-testid="start-from"

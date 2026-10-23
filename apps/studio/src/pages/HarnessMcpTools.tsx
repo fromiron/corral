@@ -2,7 +2,7 @@ import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { McpConnection } from './McpSettings.tsx';
+import { McpConnection } from './McpConnection.tsx';
 
 export function HarnessMcpTools({
   api,

@@ -1,10 +1,12 @@
 import Database from 'better-sqlite3';
+import { CANDIDATE_MIGRATION } from './candidate-migration.ts';
 import { COMMAND_MIGRATION } from './command-migration.ts';
 import { CORRAL_OPERATION_MIGRATION } from './corral-operation-migration.ts';
 import { MEDIA_ARTIFACT_MIGRATION } from './media-migration.ts';
 import { PACKAGE_MIGRATION } from './package-migration.ts';
 import { SqliteProjectToolStore } from './project-tool-store.ts';
 import { SCHEDULE_MIGRATION } from './schedule-migration.ts';
+import { WORKBENCH_MIGRATION } from './workbench-migration.ts';
 
 // One SQLite file per workspace (C-011, C-062). Durable settings follow the C-052 spike:
 // WAL, foreign keys, FULL sync. Schema changes are numbered migrations recorded in
@@ -536,6 +538,46 @@ BEGIN SELECT RAISE(ABORT, 'finished evaluations are immutable'); END;
     name: '0028_session_auto_title',
     sql: 'ALTER TABLE work_sessions ADD COLUMN auto_title INTEGER NOT NULL DEFAULT 0 CHECK(auto_title IN (0,1));',
   },
+  WORKBENCH_MIGRATION,
+  {
+    name: '0030_file_edit_proposals',
+    sql: `
+CREATE TABLE file_edit_proposals (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  content_json TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  dismissed INTEGER NOT NULL DEFAULT 0 CHECK(dismissed IN (0,1)),
+  operation_id TEXT,
+  created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX file_edit_proposals_by_session ON file_edit_proposals(session_id,created_at);
+CREATE INDEX file_edit_proposals_by_request ON file_edit_proposals(session_id,request_id);
+CREATE TRIGGER file_edit_proposals_content_immutable
+BEFORE UPDATE OF id,session_id,request_id,request_hash,content_json,content_hash,created_at
+ON file_edit_proposals
+BEGIN SELECT RAISE(ABORT, 'file edit proposal content is immutable'); END;
+`,
+  },
+  {
+    name: '0031_debug_trust',
+    sql: `
+CREATE TABLE project_tool_trust_next (
+ project_id TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN ('check','lsp','mcp','debug')),
+ tool_id TEXT NOT NULL,
+ fingerprint TEXT NOT NULL,
+ trusted_at TEXT,
+ PRIMARY KEY(project_id,kind,tool_id,fingerprint)
+) STRICT;
+INSERT INTO project_tool_trust_next SELECT * FROM project_tool_trust;
+DROP TABLE project_tool_trust;
+ALTER TABLE project_tool_trust_next RENAME TO project_tool_trust;
+`,
+  },
+  CANDIDATE_MIGRATION,
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

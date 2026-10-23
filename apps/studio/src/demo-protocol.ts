@@ -22,6 +22,7 @@ export const DEMO_WORKSPACE_METHODS = [
   'worktree',
   'createWorktree',
   'removeWorktree',
+  'removalPlan',
   'changes',
   'fileVersions',
   'folderChanges',

@@ -213,6 +213,17 @@ test('[TC-UX-007-H] list filtering is named separately from private text search'
   ).not.toBeChecked();
   await page.keyboard.press('Escape');
   await expect(filter).toHaveValue('no-match-for-this-filter');
+  // #92: one entry point. Full search starts from the same field: its trailing button sits
+  // inside the field, and Enter in the field opens it with what was typed.
+  const field = page.getByTestId('session-search-field');
+  await expect(
+    field.getByRole('button', { name: 'Search sessions and results', exact: true }),
+  ).toBeVisible();
+  await filter.press('Enter');
+  await expect(dialog.getByRole('textbox', { name: 'Search text' })).toHaveValue(
+    'no-match-for-this-filter',
+  );
+  await page.keyboard.press('Escape');
 });
 
 test('[TC-UX-007-N] import guidance is contextual and import cancellation or failure preserves the session draft', async ({

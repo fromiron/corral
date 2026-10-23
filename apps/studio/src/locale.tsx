@@ -38,6 +38,9 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => initialLocale(readStored()));
   useEffect(() => {
     document.documentElement.lang = locale;
+    // A chosen language also names the desktop menus and dialogs; without a choice they keep
+    // following the system, as the page does (#84).
+    if (readStored()) void window.corralDesktop?.locale?.(locale).catch(() => {});
   }, [locale]);
   const setLocale = (next: Locale) => {
     setLocaleState(next);

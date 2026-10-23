@@ -9,6 +9,7 @@ import {
   presentContext,
   selectPresentedPlan,
   toolRows,
+  viewedRun,
   visibleWidgets,
   widgetReadState,
   workPlanOpen,
@@ -639,5 +640,30 @@ describe('chat widget selectors', () => {
     });
     expect(vague.text).toBe('working');
     expect(vague.elapsedMs).toBeNull();
+  });
+});
+
+describe('viewed run label (#72)', () => {
+  const runIds = ['run_1', 'run_2', 'run_3'];
+  it('calls only the newest finished run the last run', () => {
+    expect(viewedRun({ runIds, presentationRunId: 'run_3', live: false })).toEqual({
+      latest: true,
+      number: 3,
+      total: 3,
+    });
+  });
+  it('keeps an older selection a selected run with its position', () => {
+    expect(viewedRun({ runIds, presentationRunId: 'run_1', live: false })).toEqual({
+      latest: false,
+      number: 1,
+      total: 3,
+    });
+  });
+  it('has nothing to label while the run is live or none is chosen', () => {
+    expect(viewedRun({ runIds, presentationRunId: 'run_2', live: true })).toBeNull();
+    expect(viewedRun({ runIds, presentationRunId: null, live: false })).toBeNull();
+  });
+  it('does not claim an order for a run the session does not list', () => {
+    expect(viewedRun({ runIds, presentationRunId: 'run_x', live: false })?.latest).toBe(false);
   });
 });

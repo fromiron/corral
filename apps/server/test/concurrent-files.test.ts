@@ -6,8 +6,9 @@ import { openDatabase } from '@corral/storage-sqlite';
 import { FakeClock } from '@corral/testkit';
 import { expect, it } from 'vitest';
 import { WorkspaceService } from '../src/files/service.ts';
+import { WorkspaceAccessStore } from '../src/files/workspace-access.ts';
 
-it('[TC-ABS-006-H] [TC-ABS-006-N] parallel reader pins writer input; same tree rejects second writer; other tree proceeds', async () => {
+async function setup() {
   const root = mkdtempSync(join(tmpdir(), 'corral-concurrent-'));
   const db = openDatabase(':memory:');
   const original = join(root, 'original');
@@ -24,15 +25,20 @@ it('[TC-ABS-006-H] [TC-ABS-006-N] parallel reader pins writer input; same tree r
     forbidden: [],
   });
   const cancel = { aborted: false, onCancel: () => () => {} };
+  await service.bind('default', original);
+  await service.configure('default', { trusted: true });
+  for (const id of ['s1', 's2']) {
+    db.prepare(
+      "INSERT INTO work_sessions(id,project_id,corral_id,title,objective,pinned,revision,created_at,updated_at,entries_json) VALUES(?,'default',NULL,'t','',0,1,'x','x','[]')",
+    ).run(id);
+    await service.createWorktree(id, 'default');
+  }
+  return { root, db, service, cancel };
+}
+
+it('[TC-ABS-006-H] [TC-ABS-006-N] parallel reader pins writer input; same tree rejects second writer; other tree proceeds', async () => {
+  const { root, db, service, cancel } = await setup();
   try {
-    await service.bind('default', original);
-    await service.configure('default', { trusted: true });
-    for (const id of ['s1', 's2']) {
-      db.prepare(
-        "INSERT INTO work_sessions(id,project_id,corral_id,title,objective,pinned,revision,created_at,updated_at,entries_json) VALUES(?,'default',NULL,'t','',0,1,'x','x','[]')",
-      ).run(id);
-      await service.createWorktree(id, 'default');
-    }
     for (const [id, sessionId] of [
       ['writer', 's1'],
       ['reader', 's1'],
@@ -95,6 +101,51 @@ it('[TC-ABS-006-H] [TC-ABS-006-N] parallel reader pins writer input; same tree r
     service.confirmWorkerRecovery();
     expect(service.hasUnsafeWorktreeOwner('s1')).toBe(false);
     expect(() => service.acquireRun('recovered', 's1', true)).not.toThrow();
+  } finally {
+    await service.dispose();
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('[TC-WBD-001-H] [TC-WBD-001-N] Run readers use a human writer input tree and worker recovery retains human ownership', async () => {
+  const { root, db, service, cancel } = await setup();
+  try {
+    const access = new WorkspaceAccessStore(db);
+    const owner = { kind: 'user', id: 'human_save' } as const;
+    const copy = service.copyOf('s1');
+    const view = service.worktreeView('s1');
+    const before = await service.currentTree('s1');
+    if (!copy || !view || !before) throw new Error('working copy baseline missing');
+    access.acquire(owner, 's1', copy.worktree, true, view.copyGeneration);
+    access.pin(owner, before);
+    expect(service.hasUnsafeWorktreeOwner('s1')).toBe(true);
+    expect(() => service.acquireRun('writer_conflict', 's1', true)).toThrow(/writer/);
+    writeFileSync(join(copy.worktree, 'a.txt'), 'human write in progress\n');
+    db.prepare(
+      "INSERT INTO runs(id,corral_id,definition_hash,snapshot_json,status,last_seq,projection_json,started_at,project_id,session_id) VALUES('human_reader','c','h','{}','running',0,'{}','x','default','s1')",
+    ).run();
+    service.acquireRun('human_reader', 's1', false);
+    await service.prepareRun('human_reader');
+    expect(
+      await service.execute(
+        {
+          name: 'read_file',
+          runId: 'human_reader',
+          executionId: 'e',
+          toolCallId: 't',
+          args: { path: 'a.txt' },
+        },
+        cancel,
+      ),
+    ).toMatchObject({ text: 'before\n' });
+    service.releaseRun('human_reader', false);
+    access.release(owner, false);
+    service.confirmWorkerRecovery();
+    expect(access.get({ kind: 'run', id: 'human_reader' })?.state).toBe('released');
+    expect(access.get(owner)?.state).toBe('uncertain');
+    expect(() => service.acquireRun('blocked_after_recovery', 's1', true)).toThrow(/writer/);
+    await expect(service.removeWorktree('s1')).rejects.toThrow(/owner|access/);
   } finally {
     await service.dispose();
     db.close();

@@ -12,11 +12,17 @@ import {
   type Clock,
   type CommandError,
   ContentHash,
+  ContentSearch,
   CorralDefinitionDraft,
   CreateRunRequest,
   canonicalJson,
   type DecisionProvider,
+  DevelopmentStart,
+  DocumentCommand,
   type ErrorCode,
+  GitDiffRequest,
+  GitOid,
+  GitWriteCommand,
   HarnessBindingRef,
   HunkPlanRequest,
   HunkRequest,
@@ -26,11 +32,17 @@ import {
   ImageAttachment,
   ImageAttachments,
   ImageInput,
+  LanguageDocumentChange,
+  LanguageInspect,
+  LanguageQuery,
+  LanguageScope,
+  LanguageStart,
   MessageBranchPoint,
   MessageBranchRequest,
   PermissionMode,
   QualityPreset,
   type Receipt,
+  ResourcePath,
   RestoreCheckpoint,
   ResumeRuntimeRequest,
   type RunEvent,
@@ -41,9 +53,11 @@ import {
   SchemaVersion,
   SessionSearchRequest,
   StartFrom,
+  TaskStart,
   TERMINAL_RUN_STATUSES,
   TextAttachments,
   UltraSelection,
+  WorkspaceTarget,
 } from '@corral/contracts';
 import {
   autoDefinition,
@@ -76,6 +90,10 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { registerDebugRoutes } from './files/debug-routes.ts';
+import { registerDeploymentRoutes } from './files/deployment-routes.ts';
+import { registerFileEditRoutes } from './files/edit-routes.ts';
+import { registerGitAdvancedRoutes } from './files/git-advanced-routes.ts';
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { McpCredentials } from './harness/mcp-credentials.ts';
@@ -101,9 +119,11 @@ import {
   registerEndpoints,
   userConfigDir,
 } from './models/index.ts';
+import { prepareDebugBrowser } from './preview/debug-browser.ts';
 import { registerPreviewRoutes } from './preview/routes.ts';
 import { PreviewService } from './preview/service.ts';
 import { PreviewToolsBroker } from './preview/tools.ts';
+import { PTY_INTERACTIVE_ROUTES, registerTerminalRoutes } from './processes/pty-routes.ts';
 import { registerProjectRoutes } from './projects/routes.ts';
 import { materialsVaultAdapters } from './projects/vault.ts';
 import { drainRejectedBody } from './rejected-body.ts';
@@ -117,6 +137,7 @@ import { scheduleVaultAdapter } from './schedules/vault.ts';
 import {
   assertLoopback,
   boundaryFor,
+  InteractiveRequestLimiter,
   newBootstrapToken,
   PREVIEW_HEADERS,
   RequestLimiter,
@@ -174,6 +195,8 @@ export interface ServerOptions {
   inputs?: InputOptions;
   /** Where sessions' git worktrees live (CR-012); outside every linked folder. */
   worktreeRoot?: string;
+  /** Opt-in only for a local launcher; remote and generic servers leave this off. */
+  allowSharedDevelopment?: boolean;
 }
 
 export interface LiveModels {
@@ -433,27 +456,57 @@ async function createCorralServer(
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // CR-012: linked folders, session worktrees and the file broker.
-  const files = new WorkspaceService({
+  const files: WorkspaceService = new WorkspaceService({
     db,
     clock,
+    hostId: workspace.id,
+    allowSharedDevelopment: options.allowSharedDevelopment,
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
+    debugPreview: async (sessionId, leaseId, target, open) => {
+      const current = () =>
+        canonicalJson(files.developmentState(sessionId).target) === canonicalJson(target);
+      const lease = previews.list(sessionId).find((item) => item.leaseId === leaseId);
+      if (!current() || !lease || lease.runId || lease.state !== 'ready')
+        throw new WorkspaceError('REVISION_CONFLICT', 'the managed preview target changed');
+      const privateTarget = await previews.desktopTarget(sessionId, leaseId);
+      if (!privateTarget || !current())
+        throw new WorkspaceError('TARGET_NOT_FOUND', 'the managed preview is unavailable');
+      return {
+        url: privateTarget.url,
+        ...(open
+          ? {
+              prepare: (endpoint: string) =>
+                prepareDebugBrowser(endpoint, privateTarget, async () => {
+                  if (!current()) return false;
+                  const live = await previews.desktopTarget(sessionId, leaseId);
+                  return (
+                    current() &&
+                    live?.url === privateTarget.url &&
+                    live.origin === privateTarget.origin
+                  );
+                }),
+            }
+          : {}),
+      };
+    },
   });
   // Startup has already confirmed termination of recovered SDK workers above. Only leases
   // without unresolved file, command, or checkpoint effects may now be released.
   files.confirmWorkerRecovery();
   resources.defer(() => files.dispose());
 
-  const previews = new PreviewService({
+  const previews: PreviewService = new PreviewService({
     readSnapshot: (_sessionId, runId, path) => files.readPreviewSnapshot(runId, path),
     attestConnection: (sessionId, operationId, port, peerPort) =>
       files.attestCommandConnection(sessionId, operationId, port, peerPort),
+    // A Run's command, or a person's development task (CR-046 P15), which has no Run.
     operationRun: async (sessionId, operationId) => {
       const operation = files.listCommands(sessionId).find((item) => item.id === operationId);
-      if (!operation || operation.state !== 'running')
-        throw new WorkspaceError('TARGET_NOT_FOUND', 'the preview process is not running');
-      return operation.run_id;
+      if (operation?.state === 'running') return operation.run_id;
+      if (files.userTaskRunning(sessionId, operationId)) return undefined;
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the preview process is not running');
     },
     resolveRoot: async (sessionId, runId) => {
       if (
@@ -465,6 +518,10 @@ async function createCorralServer(
     },
   });
   resources.defer(() => previews.dispose());
+  const removeDebugPreviewListener = previews.onStop((leaseId) => files.stopDebugPreview(leaseId));
+  resources.defer(() => {
+    removeDebugPreviewListener();
+  });
   const previewTools = new PreviewToolsBroker(previews, {
     sessionOfRun: (runId) => files.sessionOfRun(runId),
     directory: join(workspace.root, '.corral', 'previews'),
@@ -567,6 +624,7 @@ async function createCorralServer(
   const boundary = boundaryFor(() => port, options.extraOrigins);
   const streams = new Set<() => void>();
   const limiter = new RequestLimiter(() => clock.monotonicMs());
+  const terminalLimiter = new InteractiveRequestLimiter(() => clock.monotonicMs());
 
   const requestTimeoutMs = 30_000;
   const app = Fastify({
@@ -612,7 +670,8 @@ async function createCorralServer(
       if (queryKeys.some((key) => /token|key|secret|authorization|password/i.test(key))) {
         return fail(reply, 'SCHEMA_INVALID', 'credentials are not accepted in query strings');
       }
-      if (!limiter.allow(!safe)) {
+      const interactive = request.method === 'POST' && PTY_INTERACTIVE_ROUTES.includes(path);
+      if (!interactive && !limiter.allow(!safe)) {
         return reply
           .header('retry-after', '60')
           .code(429)
@@ -659,9 +718,9 @@ async function createCorralServer(
       }
     }
     if (error.statusCode === 413)
-      return reply
-        .code(413)
-        .send({ error: { code: 'SCHEMA_INVALID', message: 'request body exceeds 2 MiB' } });
+      return reply.code(413).send({
+        error: { code: 'SCHEMA_INVALID', message: 'request body exceeds its size limit' },
+      });
     if (error.statusCode && error.statusCode < 500) {
       return fail(reply, 'SCHEMA_INVALID', 'the request body could not be read');
     }
@@ -1488,6 +1547,13 @@ async function createCorralServer(
     if (!session) void fail(reply, 'TARGET_NOT_FOUND', 'no such session');
     return session;
   };
+  registerTerminalRoutes(app, {
+    terminals: files.terminals,
+    hasSession: async (sessionId) => Boolean(await corrals.getSession(sessionId)),
+    fail,
+    streams,
+    limiter: terminalLimiter,
+  });
   const runEnded = (runId: string) => {
     const status = coordinator.listRuns().find((r) => r.runId === runId)?.status;
     return status ? TERMINAL_RUN_STATUSES.has(status) : true;
@@ -1638,11 +1704,51 @@ async function createCorralServer(
     },
   );
 
+  const gitFail = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof WorkspaceError || error instanceof ToolRefusal)
+      return fail(reply, error.code, error.message);
+    return fail(reply, 'STORAGE_UNAVAILABLE', 'the Git request failed');
+  };
+  const GitDiffQuery = GitDiffRequest.omit({ target: true, head: true }).extend({
+    target: z.string().max(4096),
+    head: z.string().max(64),
+  });
+  registerGitAdvancedRoutes(app, files, gitFail);
   // DW-05: the browser chooses a registered scope, never an absolute filesystem root.
   for (const [kind, base] of [
     ['project', '/api/v1/projects/:id/workspace'],
     ['session', '/api/v1/sessions/:id/worktree'],
   ] as const) {
+    app.get<{ Params: { id: string } }>(`${base}/git/status`, async (request, reply) => {
+      if (!z.strictObject({}).safeParse(request.query).success)
+        return fail(reply, 'SCHEMA_INVALID', 'Git status takes no query parameters');
+      try {
+        return await files.gitStatus({ kind, id: request.params.id });
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    });
+    app.get<{ Params: { id: string } }>(`${base}/git/diff`, async (request, reply) => {
+      const query = GitDiffQuery.safeParse(request.query);
+      if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'invalid Git diff query');
+      let target: unknown;
+      try {
+        target = JSON.parse(query.data.target);
+      } catch {
+        return fail(reply, 'SCHEMA_INVALID', 'invalid Git target');
+      }
+      const input = GitDiffRequest.safeParse({
+        ...query.data,
+        target,
+        head: query.data.head === '' ? null : query.data.head,
+      });
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid Git diff query');
+      try {
+        return await files.gitDiff({ kind, id: request.params.id }, input.data);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    });
     app.get<{ Params: { id: string } }>(`${base}/files`, async (request, reply) => {
       const query = z
         .strictObject({ path: z.string().max(4096).default('') })
@@ -1779,15 +1885,326 @@ async function createCorralServer(
       return workspaceFail(reply, error);
     }
   });
-  app.delete<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/worktree/removal', async (request, reply) => {
     if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
     try {
-      await files.removeWorktree(request.params.sessionId);
+      return await files.removalPlan(request.params.sessionId);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.delete<SessionParams>('/api/v1/sessions/:sessionId/worktree', async (request, reply) => {
+    const query = z
+      .strictObject({ generation: z.coerce.number().int().min(1).optional() })
+      .safeParse(request.query);
+    if (!query.success)
+      return fail(reply, 'SCHEMA_INVALID', 'generation must be a copy generation');
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    try {
+      await files.removeWorktree(request.params.sessionId, query.data.generation);
       return reply.code(204).send();
     } catch (error) {
       return workspaceFail(reply, error);
     }
   });
+  const documentFail = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof WorkspaceError || error instanceof ToolRefusal)
+      return fail(reply, error.code, error.message);
+    return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
+  };
+  registerFileEditRoutes(app, files, documentFail);
+  registerDebugRoutes(app, files, documentFail);
+  registerDeploymentRoutes(app, files, documentFail);
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/search-contents',
+    async (request, reply) => {
+      const input = parse(ContentSearch, request, reply);
+      if (!input) return reply;
+      const dropped = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableEnded) dropped.abort();
+      };
+      reply.raw.once('close', onClose);
+      if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
+      try {
+        return await files.searchContents(request.params.sessionId, input, dropped.signal);
+      } catch (error) {
+        return documentFail(reply, error);
+      } finally {
+        reply.raw.off('close', onClose);
+      }
+    },
+  );
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language',
+    async (request, reply) => {
+      try {
+        return await files.languageState(request.params.sessionId);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/inspect',
+    async (request, reply) => {
+      const input = parse(LanguageInspect, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.inspectLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/start',
+    async (request, reply) => {
+      const input = parse(LanguageStart, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.startLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/document',
+    { bodyLimit: 7 * 1024 * 1024 },
+    async (request, reply) => {
+      const input = parse(LanguageDocumentChange, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.syncLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/query',
+    async (request, reply) => {
+      const input = parse(LanguageQuery, request, reply);
+      if (!input) return reply;
+      const dropped = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableEnded) dropped.abort();
+      };
+      reply.raw.once('close', onClose);
+      if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
+      try {
+        return await files.queryLanguage(request.params.sessionId, input, {
+          get aborted() {
+            return dropped.signal.aborted;
+          },
+          onCancel(listener) {
+            dropped.signal.addEventListener('abort', listener, { once: true });
+            return () => dropped.signal.removeEventListener('abort', listener);
+          },
+        });
+      } catch (error) {
+        return documentFail(reply, error);
+      } finally {
+        reply.raw.off('close', onClose);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/stop',
+    async (request, reply) => {
+      const input = parse(LanguageScope, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.stopLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/development',
+    async (request, reply) => {
+      try {
+        return files.developmentState(request.params.sessionId);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/development',
+    async (request, reply) => {
+      const input = DevelopmentStart.safeParse(request.body);
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development request');
+      try {
+        return await files.startDevelopment(request.params.sessionId, input.data);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/development/:operationId/finish',
+    async (request, reply) => {
+      const input = z.strictObject({ target: WorkspaceTarget }).safeParse(request.body);
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development target');
+      try {
+        return await files.finishDevelopment(
+          request.params.sessionId,
+          request.params.operationId,
+          input.data.target,
+        );
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/document',
+    async (request, reply) => {
+      const query = z.strictObject({ path: z.string().min(1).max(4096) }).safeParse(request.query);
+      if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'path is required');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.readDocument(request.params.sessionId, query.data.path);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/documents',
+    // One MiB of UTF-8 text may require six MiB after JSON escaping, plus the envelope.
+    { bodyLimit: 7 * 1024 * 1024 },
+    async (request, reply) => {
+      const command = DocumentCommand.safeParse(request.body);
+      if (!command.success) return fail(reply, 'SCHEMA_INVALID', 'invalid document command');
+      if (command.data.target.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'document target does not match the session');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.changeDocument(request.params.sessionId, command.data);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/document-operations/:operationId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.documentOperation(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  // CR-046 P15: development tasks a person starts from the copy's package scripts.
+  app.get<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        const sessionId = request.params.sessionId;
+        return {
+          candidates: await files.taskCandidates(sessionId),
+          tasks: await files.tasks(sessionId),
+        };
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks',
+    async (request, reply) => {
+      const input = TaskStart.safeParse(request.body);
+      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid task');
+      if (input.data.target.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'task target does not match the session');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.startTask(request.params.sessionId, input.data);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string }; Querystring: { offset?: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks/:operationId/output',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      const offset = Number(request.query.offset ?? 0);
+      if (!Number.isSafeInteger(offset) || offset < 0)
+        return fail(reply, 'SCHEMA_INVALID', 'invalid output offset');
+      try {
+        return (
+          files.taskOutput(request.params.sessionId, request.params.operationId, offset) ?? {
+            text: '',
+            nextOffset: offset,
+            bytes: 0,
+            truncated: false,
+          }
+        );
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/tasks/:operationId/stop',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.stopTask(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  // CR-046 P13: stage, unstage and commit in a session's managed copy, with a receipt.
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/git/operations',
+    async (request, reply) => {
+      const command = GitWriteCommand.safeParse(request.body);
+      if (!command.success) return fail(reply, 'SCHEMA_INVALID', 'invalid Git command');
+      if (command.data.target.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'Git target does not match the session');
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.changeGit(request.params.sessionId, command.data);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.get<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/git/operations/:operationId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.resolveGitOperation(
+          request.params.sessionId,
+          request.params.operationId,
+        );
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/git/operations/:operationId/cancel',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.cancelGitOperation(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
   const ScopeQuery = z.object({
     scope: z.enum(['session', 'review', 'run']).default('session'),
     runId: Identifier.optional(),
@@ -2208,6 +2625,50 @@ async function createCorralServer(
   });
 
   type RunParams = { Params: { runId: string } };
+  app.get<RunParams>('/api/v1/runs/:runId/candidates', async (request, reply) => {
+    if (!coordinator.getRunSnapshot(request.params.runId))
+      return fail(reply, 'TARGET_NOT_FOUND', 'no such run');
+    return reply
+      .header('cache-control', 'private, no-store')
+      .send(coordinator.candidateComparison(request.params.runId));
+  });
+  for (const kind of ['changes', 'files'] as const)
+    app.get<{ Params: { runId: string; candidateId: string } }>(
+      `/api/v1/runs/:runId/candidates/:candidateId/${kind}`,
+      async (request, reply) => {
+        const query = z
+          .strictObject({
+            tree: GitOid,
+            path: kind === 'files' ? ResourcePath : z.never().optional(),
+          })
+          .safeParse(request.query);
+        if (!query.success)
+          return fail(
+            reply,
+            'SCHEMA_INVALID',
+            'an exact candidate tree and relative file path are required',
+          );
+        const { runId, candidateId } = request.params;
+        const candidate = coordinator
+          .candidateComparison(runId)
+          ?.candidates.find((item) => item.candidateId === candidateId);
+        if (!candidate) return fail(reply, 'TARGET_NOT_FOUND', 'no such candidate in this run');
+        try {
+          const result =
+            kind === 'files'
+              ? await files.candidateFileVersions(
+                  runId,
+                  candidateId,
+                  query.data.tree,
+                  query.data.path!,
+                )
+              : await files.candidateChanges(runId, candidateId, query.data.tree);
+          return reply.header('cache-control', 'private, no-store').send(result);
+        } catch (error) {
+          return documentFail(reply, error);
+        }
+      },
+    );
   app.get<RunParams>('/api/v1/runs/:runId/runtime-checkpoints', async (request, reply) => {
     try {
       return await coordinator.runtimeCheckpoints(request.params.runId);

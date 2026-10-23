@@ -650,6 +650,36 @@
       ]
     },
     {
+      "name": "@xterm/addon-fit",
+      "version": "0.11.0",
+      "license": "MIT",
+      "integrity": "sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==",
+      "published": "2025-12-22T13:50:25.004Z",
+      "repository": "git+https://github.com/xtermjs/xterm.js.git#master",
+      "gitHead": "f447274f430fd22513f6adbf9862d19524471c04",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/studio"
+      ]
+    },
+    {
+      "name": "@xterm/xterm",
+      "version": "6.0.0",
+      "license": "MIT",
+      "integrity": "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==",
+      "published": "2025-12-22T13:50:12.430Z",
+      "repository": "git+https://github.com/xtermjs/xterm.js.git",
+      "gitHead": "f447274f430fd22513f6adbf9862d19524471c04",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/studio"
+      ]
+    },
+    {
       "name": "@xyflow/react",
       "version": "12.12.0",
       "license": "MIT",
@@ -750,6 +780,24 @@
       "scope": "runtime",
       "usedBy": [
         "@corral/react"
+      ]
+    },
+    {
+      "name": "dockview-react",
+      "version": "8.6.1",
+      "license": "MIT",
+      "integrity": "sha512-F67LqtPsgKjQ6bvzkTnI8soXmMTu3XEFGVtKEu1UHS0sqpkaRMyQbNAP/+DF/VOGhkn0h/PwHLdehJdrF5yJrg==",
+      "published": "2026-10-19T20:24:32.365Z",
+      "repository": "git+https://github.com/dockview/dockview.git",
+      "gitHead": "a9e3092fbd5c61aef69ca0922a86bf0be53cb891",
+      "engines": null,
+      "peerDependencies": {
+        "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
+        "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
+      },
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/studio"
       ]
     },
     {
@@ -871,6 +919,36 @@
       ]
     },
     {
+      "name": "monaco-editor",
+      "version": "0.57.0",
+      "license": "MIT",
+      "integrity": "sha512-5BkI9KGoqrNvBGUe15/QlZq3OooZ8WLg1AxTpaqHRCP3HNpzPPZKE2EDz8M7c+VRmCeUw1Brp4cx/PWm3kI/5A==",
+      "published": "2026-09-24T21:33:55.189Z",
+      "repository": "git+https://github.com/microsoft/monaco-editor.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/studio"
+      ]
+    },
+    {
+      "name": "node-pty",
+      "version": "1.1.0",
+      "license": "MIT",
+      "integrity": "sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==",
+      "published": "2025-12-22T13:51:43.876Z",
+      "repository": "git://github.com/microsoft/node-pty.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
+      ]
+    },
+    {
       "name": "onnxruntime-node",
       "version": "1.30.0",
       "license": "MIT",
@@ -916,6 +994,23 @@
       "usedBy": [
         "@corral/react",
         "@corral/spike-p0"
+      ]
+    },
+    {
+      "name": "playwright-core",
+      "version": "1.64.1",
+      "license": "Apache-2.0",
+      "integrity": "sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==",
+      "published": "2026-10-14T11:54:58.323Z",
+      "repository": "git+https://github.com/microsoft/playwright.git",
+      "gitHead": "cfe490d941f992655948eee8fd4fd94e1c4234bf",
+      "engines": {
+        "node": ">=20"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
       ]
     },
     {

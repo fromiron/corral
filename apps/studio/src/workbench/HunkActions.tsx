@@ -1,32 +1,45 @@
-import type { CheckpointRestore, CheckpointRestorePlan, HunkSet } from '@corral/contracts';
+import type {
+  CheckpointRestore,
+  CheckpointRestorePlan,
+  HunkSet,
+  TextAttachment,
+} from '@corral/contracts';
+import { createTextAttachment } from '@corral/core';
 import { Button } from '@corral/react/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
 
 export function HunkActions({
   sessionId,
+  projectId,
   from,
   to,
   path,
   active,
   onApplied,
+  onAttach,
 }: {
   sessionId: string;
+  projectId: string;
   from: string;
   to: string;
   path: string;
   active: boolean;
   onApplied(): void;
+  onAttach?(attachment: TextAttachment, capture: AttachmentCapture): void | Promise<void>;
 }) {
-  const { workspaces, mode } = useServices();
+  const { workspaces, mode, workspaceId } = useServices();
   const t = useTranslations('Hunks');
+  const tc = useTranslations('Context');
   const [hunks, setHunks] = useState<HunkSet | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [plan, setPlan] = useState<(CheckpointRestorePlan & { operationId: string }) | null>(null);
   const [result, setResult] = useState<CheckpointRestore | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [attached, setAttached] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -66,7 +79,6 @@ export function HunkActions({
   return (
     <section className="mt-4 space-y-2 border-t border-line pt-3 text-xs" aria-label={t('heading')}>
       <h3 className="font-medium">{t('heading')}</h3>
-      <p className="text-muted">{t('hint')}</p>
       {!hunks ? (
         <Button
           size="xs"
@@ -99,6 +111,7 @@ export function HunkActions({
                       );
                       setPlan(null);
                       setResult(null);
+                      setAttached(false);
                     }}
                   />
                   {t('part', { number: index + 1 })} · <code>{hunk.id.slice(0, 8)}</code>
@@ -111,6 +124,55 @@ export function HunkActions({
             ))}
           </ul>
           <div className="flex flex-wrap gap-2">
+            {onAttach && workspaceId ? (
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={busy || !selected.length}
+                onClick={() =>
+                  void act(async () => {
+                    setAttached(false);
+                    try {
+                      const capture = beginAttachmentCapture({
+                        hostId: workspaceId,
+                        projectId,
+                        sessionId,
+                      });
+                      const picked = hunks.hunks.filter((hunk) => selected.includes(hunk.id));
+                      if (
+                        !picked.length ||
+                        hunks.from !== from ||
+                        hunks.to !== to ||
+                        hunks.path !== path
+                      )
+                        throw new Error('Changed comparison');
+                      const attachment = createTextAttachment(
+                        'selected-changes.patch',
+                        'text/plain',
+                        picked.map((hunk) => hunk.patch).join('\n'),
+                        {
+                          kind: 'hunk',
+                          hostId: workspaceId,
+                          projectId,
+                          sessionId,
+                          from: hunks.from,
+                          to: hunks.to,
+                          path: hunks.path,
+                          patchHash: hunks.patchHash,
+                          hunkIds: picked.map((hunk) => hunk.id),
+                        },
+                      );
+                      await onAttach(attachment, capture);
+                      if (mounted.current) setAttached(true);
+                    } catch {
+                      throw new Error(tc('attachFailed'));
+                    }
+                  })
+                }
+              >
+                {t('attachSelected')}
+              </Button>
+            ) : null}
             <Button
               size="xs"
               variant="outline"
@@ -162,6 +224,7 @@ export function HunkActions({
         </div>
       ) : null}
       {result ? <p role="status">{t(`state.${result.state}`)}</p> : null}
+      {attached ? <p role="status">{tc('attached')}</p> : null}
       {error ? (
         <p role="alert" className="text-danger">
           {error}

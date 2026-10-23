@@ -1,3 +1,4 @@
+import { emptyProjection } from '@corral/core';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
@@ -260,3 +261,22 @@ it.each(['awaiting_user', 'paused', 'pausing'])(
     });
   },
 );
+
+it('[TC-WBD-015-N] an execution cancel confirmed after the view moved to another run is not sent there', () => {
+  const session = fakeSession();
+  const running = (runId: string) => ({
+    ...emptyProjection(runId),
+    status: 'running' as const,
+    executions: {
+      exec_0002: { executionId: 'exec_0002', status: 'running', taskId: 'task_1' },
+    } as never,
+  });
+  const sendCommand = vi.fn(async () => ({}) as never);
+  session.setState({ projection: running('run_0001'), sendCommand });
+  renderPanel(session);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel selected execution' }));
+  expect(screen.getByRole('button', { name: 'Confirm selected cancellation' })).toBeTruthy();
+  act(() => session.setState({ runId: 'run_0002', projection: running('run_0002') }));
+  expect(screen.queryByRole('button', { name: 'Confirm selected cancellation' })).toBeNull();
+  expect(sendCommand).not.toHaveBeenCalled();
+});

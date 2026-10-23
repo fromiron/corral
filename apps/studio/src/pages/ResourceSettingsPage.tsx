@@ -12,6 +12,7 @@ import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
 import { SkillQualityPanel } from '../workbench/harness/SkillQualityPanel.tsx';
 import { field, operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -44,6 +45,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
   const n = useTranslations('Navigation');
+  const p = useTranslations('Packages');
   const navigation = useSettingsNavigation();
   const confirmation = useManagementConfirmation();
   const [entries, setEntries] = useState<HarnessEntryView[]>([]),
@@ -116,7 +118,16 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           {t(kind === 'skill' ? 'skillsIntro' : 'hooksIntro')}
         </p>
       </div>
-      <section className="settings-row">
+      {/* Package management lives below the hook library; say so at the top (#82). */}
+      {kind === 'extension' ? (
+        <SectionIndex
+          sections={[
+            { id: 'resources-library', label: t('library') },
+            { id: 'resources-packages', label: p('title') },
+          ]}
+        />
+      ) : null}
+      <section id="resources-library" tabIndex={-1} className="settings-row outline-none">
         <div>
           <h3>{t('library')}</h3>
         </div>
@@ -137,12 +148,10 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           onChange={(e) => setSearch(e.target.value)}
         />
       </section>
-      <section className="settings-row">
-        <div>
-          <h3>{t('showArchived')}</h3>
-        </div>
+      <label className="settings-row">
+        <span className="text-sm font-medium">{t('showArchived')}</span>
         <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
-      </section>
+      </label>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
@@ -252,7 +261,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
             </section>
             <section className="settings-row">
               <div>
-                <h3>{n('addToWorkStyle')}</h3>
+                <h3>{t('usedBy')}</h3>
                 <p>
                   {selected.profiles.length
                     ? selected.profiles
@@ -261,14 +270,14 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                     : t('unused')}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
-                  {n('addToWorkStyle')}
-                </Button>
-                <Button variant="outline" render={<Link {...navigation.link('harness')} />}>
-                  {t('manageProfiles')}
-                </Button>
-              </div>
+              {/* One way there, named for what happens: nothing is added from here (#79). */}
+              <Button
+                variant="outline"
+                className="self-start sm:self-end"
+                render={<Link {...navigation.link('harness')} />}
+              >
+                {n('addToWorkStyle')}
+              </Button>
             </section>
             {kind === 'skill' && !selected.archivedAt ? (
               <SkillQualityPanel
@@ -323,7 +332,9 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
         />
       ) : null}
       {kind === 'extension' ? (
-        <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
+        <div id="resources-packages" tabIndex={-1} className="outline-none">
+          <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
+        </div>
       ) : null}
       {confirmation.dialog}
     </main>

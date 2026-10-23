@@ -20,6 +20,7 @@ import {
   Tray,
 } from 'electron';
 import { type DesktopRun, RunSleepBlocker, runRoute } from './lifecycle.ts';
+import { type DesktopLocale, nativeLocale, parseDesktopLocale } from './locale.ts';
 import { installStudioMicrophone } from './microphone.ts';
 import { DesktopPreviews } from './preview.ts';
 import { RemoteHostController } from './remote-host-controller.ts';
@@ -28,6 +29,7 @@ import {
   desktopAccelerators,
   externalUrl,
   localRoute,
+  notificationTarget,
   notificationText,
   recentWorkspaces,
   themeColors,
@@ -63,6 +65,8 @@ interface SavedState {
   closeToTray: boolean;
   keepAwake: boolean;
   keepAwakeWhileWaiting: boolean;
+  /** The language chosen in the app; native menus and dialogs follow it (#84). */
+  locale?: DesktopLocale;
 }
 const saved: SavedState = {
   workspace: join(app.getPath('userData'), 'workspaces', 'default'),
@@ -92,6 +96,8 @@ try {
   }
   saved.maximized = value.maximized === true;
   if (typeof value.dark === 'boolean') saved.dark = value.dark;
+  const locale = parseDesktopLocale(value.locale);
+  if (locale) saved.locale = locale;
   saved.recent = recentWorkspaces(value.recent, saved.workspace);
   for (const key of ['closeToTray', 'keepAwake', 'keepAwakeWhileWaiting'] as const)
     if (typeof value[key] === 'boolean') saved[key] = value[key];
@@ -135,7 +141,7 @@ function showWindow() {
 function refreshTray() {
   awake.update(desktopRuns, saved.keepAwake, saved.keepAwakeWhileWaiting);
   if (!tray) return;
-  const ko = app.getLocale().startsWith('ko');
+  const ko = korean();
   tray.setToolTip(`Corral · ${desktopRuns.length} ${ko ? '진행 중' : 'active'}`);
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -182,11 +188,9 @@ async function cancelTrayRun(run: DesktopRun) {
   if (!window || !child?.connected) return;
   const answer = await dialog.showMessageBox(window, {
     type: 'question',
-    message: app.getLocale().startsWith('ko') ? '이 실행을 취소할까요?' : 'Cancel this run?',
+    message: korean() ? '이 실행을 취소할까요?' : 'Cancel this run?',
     detail: run.title ?? '',
-    buttons: app.getLocale().startsWith('ko')
-      ? ['계속 실행', '실행 취소']
-      : ['Keep running', 'Cancel run'],
+    buttons: korean() ? ['계속 실행', '실행 취소'] : ['Keep running', 'Cancel run'],
     defaultId: 0,
     cancelId: 0,
   });
@@ -245,6 +249,9 @@ async function pollActivity() {
     pollingActivity = false;
   }
 }
+function korean() {
+  return nativeLocale(saved.locale, app.getLocale()) === 'ko';
+}
 const persist = () => {
   try {
     if (window && !window.isDestroyed()) {
@@ -285,7 +292,7 @@ async function activeRuns(): Promise<number | null> {
 async function confirmStop(nextWorkspace?: string): Promise<boolean> {
   const active = await activeRuns();
   if (!window || (active === 0 && !nextWorkspace)) return true;
-  const ko = app.getLocale().startsWith('ko');
+  const ko = korean();
   const result = await dialog.showMessageBox(window, {
     type: 'question',
     message: nextWorkspace
@@ -394,15 +401,24 @@ async function startServer() {
   origin = null;
   const own = ++generation;
   const fail = () => {
-    if (own !== generation || closing) return;
+    if (own !== generation || closing || status === 'failed') return;
     status = 'failed';
     origin = null;
-    if (window && !window.isDestroyed())
-      void window.loadURL(STARTUP).catch(() => {
-        dialog.showErrorBox(
-          'Corral could not start',
-          'The recovery screen is unavailable. Reinstall Corral; workspace files have been kept.',
-        );
+    const recovering = window;
+    if (recovering && !recovering.isDestroyed())
+      void recovering.loadURL(STARTUP).catch(() => {
+        // A retry or workspace switch can supersede this recovery navigation.
+        if (
+          own === generation &&
+          !closing &&
+          status === 'failed' &&
+          window === recovering &&
+          !recovering.isDestroyed()
+        )
+          dialog.showErrorBox(
+            'Corral could not start',
+            'The recovery screen is unavailable. Reinstall Corral; workspace files have been kept.',
+          );
       });
   };
   try {
@@ -502,12 +518,10 @@ async function quit() {
       (
         await dialog.showMessageBox(window, {
           type: 'question',
-          message: app.getLocale().startsWith('ko')
+          message: korean()
             ? '저장하지 않은 편집 내용을 버리고 종료할까요?'
             : 'Discard unsaved edits and quit?',
-          buttons: app.getLocale().startsWith('ko')
-            ? ['계속 편집', '버리고 종료']
-            : ['Keep editing', 'Discard and quit'],
+          buttons: korean() ? ['계속 편집', '버리고 종료'] : ['Keep editing', 'Discard and quit'],
           defaultId: 0,
           cancelId: 0,
         })
@@ -571,7 +585,7 @@ async function openWorkspaceAt(path: string) {
     if (await hasUnsavedEdits()) {
       await dialog.showMessageBox(window, {
         type: 'info',
-        message: app.getLocale().startsWith('ko')
+        message: korean()
           ? '편집 내용을 저장한 뒤 작업 공간을 전환하세요.'
           : 'Save your edits before switching workspaces.',
       });
@@ -598,7 +612,7 @@ const command = (id: DesktopCommand) => () => {
 };
 
 function buildMenu() {
-  const ko = app.getLocale().startsWith('ko');
+  const ko = korean();
   const say = (en: string, kr: string) => (ko ? kr : en);
   const recent: MenuItemConstructorOptions[] = saved.recent
     .filter((path) => path !== saved.workspace)
@@ -865,7 +879,7 @@ else {
     });
     // Text fields get cut, copy, paste and spelling; links get "copy link" (CR-017).
     contents.on('context-menu', (_event, params) => {
-      const ko = app.getLocale().startsWith('ko');
+      const ko = korean();
       const items: MenuItemConstructorOptions[] = [
         ...params.dictionarySuggestions.slice(0, 5).map(
           (word): MenuItemConstructorOptions => ({
@@ -978,13 +992,39 @@ else {
       if (process.platform !== 'darwin')
         window.setTitleBarOverlay({ color: next.overlay, symbolColor: next.symbol });
     });
+    handle('locale', (value) => {
+      const locale = parseDesktopLocale(value);
+      if (!locale) throw new Error('Unknown locale');
+      if (saved.locale === locale) return;
+      saved.locale = locale;
+      persist();
+      buildMenu();
+      refreshTray();
+    });
     handle('notify', (value) => {
       const text = notificationText(value);
-      if (!text || !window || window.isFocused() || !Notification.isSupported()) return false;
+      const rawTarget = (value as { target?: unknown } | null)?.target;
+      const target = rawTarget === undefined ? undefined : notificationTarget(rawTarget);
+      if (!text || target === null || !window || window.isFocused() || !Notification.isSupported())
+        return false;
+      const source = { window, origin, workspace: saved.workspace, generation };
       const note = new Notification({ ...text, silent: false });
       note.on('click', () => {
-        window?.show();
-        window?.focus();
+        showWindow();
+        // A native notification may outlive a workspace switch or sidecar restart.
+        if (
+          target &&
+          window === source.window &&
+          origin &&
+          origin === source.origin &&
+          saved.workspace === source.workspace &&
+          generation === source.generation &&
+          status === 'ready' &&
+          !closing &&
+          !switching &&
+          new URL(window.webContents.getURL()).origin === origin
+        )
+          window.webContents.send('desktop:notification', target);
       });
       note.show();
       return true;
@@ -1010,6 +1050,16 @@ else {
       if (typeof sessionId !== 'string' || typeof leaseId !== 'string')
         throw new Error('Invalid preview identity');
       return previews.open(sessionId, leaseId);
+    });
+    handle('capture-preview', (sessionId, leaseId, options) => {
+      if (typeof sessionId !== 'string' || typeof leaseId !== 'string')
+        throw new Error('Invalid preview identity');
+      return previews.capture(sessionId, leaseId, options);
+    });
+    handle('cancel-preview-capture', (sessionId, leaseId) => {
+      if (typeof sessionId !== 'string' || typeof leaseId !== 'string')
+        throw new Error('Invalid preview identity');
+      previews.cancelCapture(sessionId, leaseId);
     });
     handle('reveal-workspace', () => {
       if (existsSync(saved.workspace)) shell.showItemInFolder(saved.workspace);
@@ -1041,7 +1091,7 @@ else {
       // Some desktop sessions have no notification area; closing continues to quit.
     }
     try {
-      remoteHosts = new RemoteHostController(() => window);
+      remoteHosts = new RemoteHostController(() => window, korean);
     } catch {
       dialog.showErrorBox(
         'Corral · Remote hosts',
@@ -1092,7 +1142,7 @@ else {
         closing = false;
         allowQuit = false;
         for (const item of BrowserWindow.getAllWindows()) item.setEnabled(true);
-        if (!remoteHosts) remoteHosts = new RemoteHostController(() => window);
+        if (!remoteHosts) remoteHosts = new RemoteHostController(() => window, korean);
         await startServer();
         buildMenu();
       },

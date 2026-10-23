@@ -11,13 +11,16 @@ import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
+import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
+import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
 // Work folders and working copies in Studio (CR-012), on the local server or the demo's
 // in-memory example folder.
 
-/** Fired when a session's working copy is made or removed. */
-export const WORKSPACE_CHANGED = 'corral:workspace-changed';
+export { WORKSPACE_CHANGED };
 
 /** "Name = command args" per line; quotes keep spaces inside one argument. */
 export function parseChecks(text: string): VerifyCommand[] {
@@ -56,6 +59,10 @@ export function useBinding(projectId: string | null) {
   }, [workspaces, projectId]);
   useEffect(() => {
     void reload();
+    // Linking, unlinking or trusting elsewhere (settings overlay) changes what this shows.
+    const changed = () => void reload();
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
   }, [reload]);
   return { binding, reload };
 }
@@ -254,9 +261,11 @@ export function WorkingCopyPanel({
   const t = useTranslations('Files');
   const { workspaces } = useServices();
   const { binding } = useBinding(projectId);
+  const navigation = useSettingsNavigation();
   const [worktree, setWorktree] = useState<WorktreeView | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const reload = useCallback(async () => {
     if (!workspaces) return setWorktree(null);
     setWorktree(await workspaces.worktree(sessionId).catch(() => null));
@@ -294,6 +303,7 @@ export function WorkingCopyPanel({
           {t('copyMissing')}
         </p>
       ) : null}
+      {worktree && !worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
       {worktree ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted">
@@ -309,19 +319,45 @@ export function WorkingCopyPanel({
           <button
             type="button"
             disabled={busy}
-            onClick={() => {
-              if (window.confirm(t('removeConfirm')))
-                void act(() => workspaces.removeWorktree(sessionId));
-            }}
+            onClick={() => setRemoving(true)}
             className="rounded fill-control px-2 py-1 text-xs"
           >
             {t('remove')}
           </button>
+          <CopyRemovalDialog
+            open={removing}
+            sessionId={sessionId}
+            projectId={projectId}
+            onClose={() => setRemoving(false)}
+            onRemoved={() => {
+              setRemoving(false);
+              void act(async () => {});
+            }}
+          />
         </div>
       ) : !binding ? (
-        <p className="text-xs text-muted">{t('noFolder')}</p>
+        <div className="flex flex-col items-start gap-1.5">
+          <p className="text-xs text-muted">{t('noFolder')}</p>
+          <Button
+            variant="outline"
+            size="xs"
+            render={<Link {...navigation.link('workspace', projectId)} />}
+          >
+            {t('openFolderSettings')}
+          </Button>
+        </div>
       ) : !binding.trusted ? (
-        <p className="text-xs text-warning">{t('notTrusted')}</p>
+        // The next step is an action, not a note: trust lives with the project's folder settings.
+        <div className="flex flex-col items-start gap-1.5">
+          <p className="text-xs text-warning">{t('notTrusted')}</p>
+          <Button
+            variant="outline"
+            size="xs"
+            render={<Link {...navigation.link('workspace', projectId)} />}
+          >
+            {t('openTrust')}
+          </Button>
+        </div>
       ) : (
         <div className="flex flex-col gap-1">
           <p className="text-xs text-muted">{t('copyIntro')}</p>

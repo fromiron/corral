@@ -19,10 +19,12 @@ import { Button } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { MessageBranch } from './MessageBranch.tsx';
+import { type ChatDensity, preferences } from './preferences.ts';
 import { useCorralRun } from './useCorralChat.ts';
 import { toolRows } from './widgets/selectors.ts';
 
@@ -41,7 +43,17 @@ export function RunMessage({
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
   const tw = useTranslations('Widgets');
-  const [expanded, setExpanded] = useState(false);
+  const chatDensity = useStore(preferences, (state) => state.chatDensity);
+  const [disclosure, setDisclosure] = useState<{
+    runId: string;
+    density: ChatDensity;
+    open: boolean;
+  } | null>(null);
+  const expanded =
+    disclosure?.runId === runId && disclosure.density === chatDensity
+      ? disclosure.open
+      : chatDensity === 'detailed';
+  const [openExecutions, setOpenExecutions] = useState<Record<string, boolean>>({});
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
   const { store, state } = useCorralRun(runId, live, expanded);
@@ -98,7 +110,7 @@ export function RunMessage({
   // Current session activity lives by the composer and in the agent widget.
   // Historical failures stay visible here, while standalone consumers keep their activity row.
   const busy =
-    working && !sessionId
+    working && !sessionId && chatDensity !== 'results'
       ? executions.filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
       : [];
   const summary = agentSummary(busy.map((execution) => execution.status));
@@ -231,7 +243,7 @@ export function RunMessage({
           ) : null}
         </section>
       ) : null}
-      {writing ? (
+      {writing && chatDensity !== 'results' ? (
         <div data-testid="live-text" aria-live="off" className="min-w-0">
           <p className="mb-1 text-2xs text-muted">
             {t('writing', { name: writer ? name(writer) : '' })}
@@ -265,11 +277,14 @@ export function RunMessage({
           first={index === 0}
         />
       ))}
-      {!working || !sessionId ? (
+      {!working || !sessionId || chatDensity === 'detailed' ? (
         <details
           id={`work-log-${runId}`}
           className="work-log group/log"
-          onToggle={(e) => setExpanded(e.currentTarget.open)}
+          open={expanded}
+          onToggle={(e) =>
+            setDisclosure({ runId, density: chatDensity, open: e.currentTarget.open })
+          }
         >
           <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded py-0.5 text-xs text-muted hover:text-text">
             <Activity size={13} />
@@ -284,7 +299,15 @@ export function RunMessage({
                 const execution = projection.executions[id];
                 if (!execution) return null;
                 return (
-                  <details key={id} className="text-xs">
+                  <details
+                    key={id}
+                    className="text-xs"
+                    open={Boolean(openExecutions[`${runId}:${id}`])}
+                    onToggle={(event) => {
+                      const open = event.currentTarget.open;
+                      setOpenExecutions((current) => ({ ...current, [`${runId}:${id}`]: open }));
+                    }}
+                  >
                     <summary className="flex cursor-pointer items-center gap-2 py-1.5">
                       <span className="font-medium">{name(id)}</span>
                       <StatusBadge status={execution.status} />
@@ -294,7 +317,9 @@ export function RunMessage({
                         />
                       ) : null}
                     </summary>
-                    <ExecutionTranscript session={store} executionId={id} compact />
+                    {openExecutions[`${runId}:${id}`] ? (
+                      <ExecutionTranscript session={store} executionId={id} compact />
+                    ) : null}
                   </details>
                 );
               })}

@@ -31,14 +31,17 @@ import { setCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import {
+  blocksLeaving,
   discardEditorCopy,
   type EditorWorkingCopy,
   editorWorkingCopy,
+  ownsSaveShortcut,
 } from '../workbench/editorDraft.ts';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
 import { settingsInteractionBlocked, settingsOnlyTransition } from '../workbench/navigation.ts';
+import { panelKey } from '../workbench/panels/registry.ts';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { TabRow } from '../workbench/TabRow.tsx';
@@ -47,14 +50,15 @@ import { useRunMode } from '../workbench/useRunMode.ts';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
-  const { repository } = useServices();
+  const services = useServices();
+  const { repository } = services;
   const { fromRun, fromVersion, fromSession } = editorRoute.useSearch();
   // CR-010: the header shows the Corral's project, and `/` returns to it.
   useEffect(() => setCurrentProject(record.projectId), [record.projectId]);
   const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
-      key={`${record.projectId}:${record.corralId}:${record.definitionRevision}:${record.layoutRevision}`}
+      key={`${panelKey(services, { kind: 'graph', projectId: record.projectId, corralId: record.corralId })}:${record.definitionRevision}:${record.layoutRevision}`}
       record={record}
       workingCopy={copy}
       startFrom={
@@ -68,12 +72,16 @@ export function EditorPage() {
 }
 
 /**
- * The session's team in its workbench (02-UX-Spec §3 팀 설계). It edits the saved team: the next
- * run of the session uses the saved revision; runs already started keep theirs.
+ * A saved team as a dock tab (02-UX-Spec §3 팀 설계, CR-046 P18): the same editor and working copy
+ * as its route, so a draft and its undo history are one whichever way it was opened. It edits the
+ * saved team; the next run of the session uses the saved revision, and runs already started keep
+ * theirs. Test runs stay on the route; session runs are controlled from the dock's run controls.
  */
 export function TeamDesign({ corralId }: { corralId: string }) {
-  const t = useTranslations('Workbench');
-  const { repository } = useServices();
+  const t = useTranslations('Docking');
+  const te = useTranslations('Editor');
+  const services = useServices();
+  const { repository } = services;
   const [record, setRecord] = useState<CorralRecord | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
@@ -90,25 +98,39 @@ export function TeamDesign({ corralId }: { corralId: string }) {
     [repository, record],
   );
   if (record === undefined) return <p className="p-4 text-sm text-muted">…</p>;
-  if (!record || !copy) return <p className="p-4 text-sm text-muted">{t('noTeam')}</p>;
+  if (!record || !copy)
+    return (
+      <p role="status" className="p-4 text-sm text-muted">
+        {t('unknownPanel')}
+      </p>
+    );
   return (
     <Editor
-      key={record.corralId}
+      key={panelKey(services, {
+        kind: 'graph',
+        projectId: record.projectId,
+        corralId: record.corralId,
+      })}
       record={record}
       workingCopy={copy}
       inSession
-      toolbar={<span className="text-xs text-muted">{t('teamNote')}</span>}
+      toolbar={<span className="text-xs text-muted">{te('appliesNextRun')}</span>}
     />
   );
 }
 
 export function DemoPage() {
   const { record, template } = demoRoute.useLoaderData();
-  const { repository } = useServices();
+  const services = useServices();
+  const { repository } = services;
   const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
-      key={record.corralId}
+      key={panelKey(services, {
+        kind: 'graph',
+        projectId: record.projectId,
+        corralId: record.corralId,
+      })}
       record={record}
       workingCopy={copy}
       toolbar={<TemplatePicker current={template} />}
@@ -215,11 +237,12 @@ function Editor({
   const dirty = saving || draft !== saved.draft;
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  const shell = useRef<HTMLDivElement>(null);
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
       if (
-        !dirtyRef.current ||
+        !blocksLeaving(dirtyRef.current, inSession) ||
         next.pathname.startsWith('/settings') ||
         settingsOnlyTransition(current, next)
       )
@@ -283,17 +306,31 @@ function Editor({
         }
       : undefined;
 
+  // The canvas is not focusable, so the last place pressed stands in when nothing has focus.
+  const pressed = useRef<Element | null>(null);
   useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      pressed.current = event.target instanceof Element ? event.target : null;
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (settingsInteractionBlocked()) return;
       if (event.isComposing || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's')
         return;
+      const focused =
+        document.activeElement && document.activeElement !== document.body
+          ? document.activeElement
+          : pressed.current;
+      if (!ownsSaveShortcut(inSession, shell.current, focused)) return;
       event.preventDefault();
       void save();
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [save]);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [save, inSession]);
 
   const exportFiles = () => {
     const files = exportDocuments(editor.getState().draft, saved.record.layoutRevision);
@@ -304,7 +341,7 @@ function Editor({
   return (
     <StudioStoresProvider editor={editor} session={session}>
       <ReactFlowProvider>
-        <div className="editor-shell h-full">
+        <div ref={shell} className="editor-shell h-full">
           <div
             className={`editor-frame grid h-full ${fromSession ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}
           >

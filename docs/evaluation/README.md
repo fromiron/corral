@@ -5,8 +5,29 @@
 | 범위 | 증거 |
 |---|---|
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
+| 알림 대상 이동 | [C-171 정확한 Run·승인, 늦은 클릭·재시작·SPA 보존](Desktop-Notification-Targets-2026-10-23.md) |
+| Ultra 후보 비교 | [P19 같은 Run·후보 사본·검사·취소·명시 단일 반영](Development-Workbench-Candidates-2026-10-23.md) |
 | 문맥형 설정·Composer | [CR-044 구현·Linux 검증](Contextual-Settings-UI-2026-10-21.md) |
 | Workbench 식별·테두리 일관성 | [CR-045 구현·Linux 검증](Workbench-Identification-2026-10-21.md) |
+| Workbench 코어 잔여 검증 | [preview·PTY 재접속·파일/Git/설정 왕복](Development-Workbench-Core-2026-10-23.md) |
+| 프로젝트 언어 지원 | [P23 dirty 진단·completion·정의/참조 이동](Development-Workbench-Language-2026-10-23.md) |
+| 파일 내용 검색 | [P24-A 결과 이동·dirty/stale 보존](Development-Workbench-Content-Search-2026-10-23.md) |
+| 다중 파일 교체와 refactor | [P24-B 불변 제안·파일별 적용·복구 경계](Development-Workbench-File-Edits-2026-10-23.md) |
+| 일상 개발 인수 | [P28 JS/TS 코어 연결·실제 편집 여정](Development-Workbench-Daily-Driver-2026-10-23.md) |
+| Linux 설치판·복구 인수 | [P29 실제 unpacked·복구 경합·native/worker·키보드/390px](Development-Workbench-Qualification-2026-10-23.md) |
+| Node·Chromium 디버깅 | [P26 소유 DAP·원본 중단점·step·변수·명시 평가](Development-Workbench-Debugging-2026-10-23.md) |
+| 배포 작업과 결과 확인 | [P27 source 고정·명시 실행·별도 readback](Development-Workbench-Deployment-2026-10-23.md) |
+| 고급 Git와 충돌 해결 | [P25 실제 index hunk·충돌 편집·merge/rebase·receipt 복구](Development-Workbench-Advanced-Git-2026-10-23.md) |
+| 미리보기 요소 피드백 | [P20 실제 Desktop 선택·검토·첨부·같은 화면 갱신](Development-Workbench-Preview-Feedback-2026-10-23.md) |
+| 공유 개발·live edit | [CR-046 P22 구현·Linux 실제 Vite 검증](Development-Workbench-Shared-Development-2026-10-23.md) |
+| 실제 Git 상태·읽기 정책 | [CR-046 P12 구현·Linux 인앱 검증](Development-Workbench-Git-Observation-2026-10-21.md) |
+| 캡처한 컨텍스트·대화 표시 밀도 | [CR-046 P11 구현·Linux 인앱 검증](Development-Workbench-Context-2026-10-21.md) |
+| 도킹 배치·문서 수명·키보드·복구 | [CR-046 P10 구현·Linux 인앱 검증](Development-Workbench-Docking-2026-10-21.md) |
+| 패널 대상·경로·Run view 수명 | [CR-046 P09 구현·인앱 검증](Development-Workbench-Panels-2026-10-21.md) |
+| 사용자 PTY·터미널 | [CR-046 P07–08 구현·Linux 인앱/native runtime 검증](Development-Workbench-Terminal-2026-10-21.md) |
+| 파일 편집·초안 복구 | [CR-046 P05–06 구현·Linux 인앱 검증](Development-Workbench-Editor-2026-10-21.md) |
+| 관리 사본 문서 변경 | [CR-046 P04 API·파일/HTTP 검증](Development-Workbench-Documents-2026-10-21.md) |
+| 개발 Workbench 기반 | [CR-046 공통 예약·migration과 엔진 qualification](Development-Workbench-Foundation-2026-10-21.md) |
 | 기본 대화·Workbench | [기본 대화](Chat-First-UX-Review.md), [초기 Desktop](Desktop-Workbench.md), [UX 대조](UX-Spec-Conformance.md) |
 | 하네스·추론·리소스 | [H2–H8](Personal-Harness-Validation-2026-10-18.md), [추론](Reasoning-Controls-2026-10-18.md), [리소스](Resource-Management-2026-10-18.md) |
 | 통합 개선 | [M0](Integrated-Improvement-M0-2026-10-19.md), [M1](Integrated-Improvement-M1-2026-10-19.md), [M2](Integrated-Improvement-M2-2026-10-19.md), [M3](Integrated-Improvement-M3-2026-10-19.md), [M4](Integrated-Improvement-M4-2026-10-19.md) |

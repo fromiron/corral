@@ -37,9 +37,7 @@ export function Tooltip({
             )}
           >
             {content}
-            {shortcut ? (
-              <Kbd className="border-background/30 text-background/80">{shortcut}</Kbd>
-            ) : null}
+            {shortcut ? <Kbd tone="inverse">{shortcut}</Kbd> : null}
           </TooltipPrimitive.Popup>
         </TooltipPrimitive.Positioner>
       </TooltipPrimitive.Portal>
@@ -48,11 +46,27 @@ export function Tooltip({
 }
 
 /** A keyboard key or chord, e.g. `⌘K` or `Ctrl+K`. */
-export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
+export function Kbd({
+  children,
+  className,
+  tone = 'default',
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /**
+   * `inverse` sits on the tooltip's inverted surface: no light key fill under light text, so
+   * the shortcut stays readable in both themes (#75 IA-16).
+   */
+  tone?: 'default' | 'inverse';
+}) {
   return (
     <kbd
+      data-tone={tone}
       className={cn(
-        'inline-flex h-5 min-w-5 items-center justify-center rounded fill-control px-1 font-sans text-2xs text-muted-foreground',
+        'inline-flex h-5 min-w-5 items-center justify-center rounded px-1 font-sans text-2xs',
+        tone === 'inverse'
+          ? 'border border-background/40 bg-transparent text-background'
+          : 'fill-control text-muted-foreground',
         className,
       )}
     >

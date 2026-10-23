@@ -9,14 +9,18 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import type { AppCommand } from '../commandRegistry.ts';
 import {
   type MentionItem,
   type MentionKind,
+  type MenuPlacement,
   mentionToken,
+  menuPlacement,
   replaceTrigger,
   type Trigger,
   triggerAt,
@@ -106,6 +110,33 @@ export function ComposerInput({
         : [];
   const open = kind !== null && (kind === 'slash' || mentions !== null);
   const selected = Math.min(index, Math.max(0, rows.length - 1));
+  const anchor = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const box = anchor.current?.getBoundingClientRect();
+      if (box) setPlacement(menuPlacement(box, window.innerHeight));
+    };
+    place();
+    // Any scroller between the input and the window moves the anchor.
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    if (anchor.current) observer?.observe(anchor.current);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+      observer?.disconnect();
+    };
+  }, [open]);
+
+  // The selected row stays in view while the keyboard moves through a long list.
+  useEffect(() => {
+    if (!open) return;
+    document.getElementById(`${listId}-${selected}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, selected, listId]);
 
   useLayoutEffect(() => {
     const box = inputRef.current;
@@ -151,68 +182,74 @@ export function ComposerInput({
   let position = -1;
 
   return (
-    <div className="relative">
-      {open ? (
-        <div
-          id={listId}
-          role="listbox"
-          aria-label={kind === 'slash' ? t('commands') : t('references')}
-          className="dropdown-glass absolute bottom-full left-0 z-30 mb-2 max-h-72 w-full overflow-auto rounded-xl p-1 shadow-popup"
-        >
-          {rows.length === 0 ? (
-            <p className="px-2 py-1.5 text-xs text-muted">
-              {kind === 'slash' ? t('noCommand') : t('noReference')}
-            </p>
-          ) : null}
-          {groups.map((group) => (
-            // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
-            <div key={group.title} role="group" aria-label={group.title}>
-              <p className="px-2 pt-1.5 pb-0.5 text-2xs font-medium text-muted">{group.title}</p>
-              {group.rows.map((row) => {
-                position += 1;
-                const at = position;
-                const Icon = row.kind === 'command' ? Slash : ICON[row.item.kind];
-                const name = row.kind === 'command' ? `/${row.command.slash}` : row.item.label;
-                const detail =
-                  row.kind === 'command'
-                    ? row.command.disabled
-                      ? row.command.hint
-                      : row.command.title
-                    : row.item.detail;
-                return (
-                  <div
-                    key={row.id}
-                    id={`${listId}-${at}`}
-                    role="option"
-                    tabIndex={-1}
-                    aria-selected={selected === at}
-                    aria-disabled={
-                      row.kind === 'command' && row.command.disabled ? true : undefined
-                    }
-                    onMouseMove={() => setIndex(at)}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      choose(row);
-                    }}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${selected === at ? 'bg-subtle' : ''} ${row.kind === 'command' && row.command.disabled ? 'opacity-50' : ''}`}
-                  >
-                    <Icon className="size-4 shrink-0 text-muted" aria-hidden="true" />
-                    <span
-                      className={`max-w-[45%] shrink-0 truncate font-medium ${row.kind === 'mention' && (row.item.kind === 'file' || row.item.kind === 'folder') ? 'font-mono' : ''}`}
-                    >
-                      {name}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-muted">{detail}</span>
-                    {row.kind === 'command' && row.command.shortcut ? (
-                      <Kbd>{row.command.shortcut}</Kbd>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      ) : null}
+    <div ref={anchor} className="relative">
+      {open && placement
+        ? createPortal(
+            <div
+              id={listId}
+              role="listbox"
+              aria-label={kind === 'slash' ? t('commands') : t('references')}
+              style={placement}
+              className="dropdown-glass z-[130] overflow-auto rounded-xl p-1 shadow-popup"
+            >
+              {rows.length === 0 ? (
+                <p className="px-2 py-1.5 text-xs text-muted">
+                  {kind === 'slash' ? t('noCommand') : t('noReference')}
+                </p>
+              ) : null}
+              {groups.map((group) => (
+                // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
+                <div key={group.title} role="group" aria-label={group.title}>
+                  <p className="px-2 pt-1.5 pb-0.5 text-2xs font-medium text-muted">
+                    {group.title}
+                  </p>
+                  {group.rows.map((row) => {
+                    position += 1;
+                    const at = position;
+                    const Icon = row.kind === 'command' ? Slash : ICON[row.item.kind];
+                    const name = row.kind === 'command' ? `/${row.command.slash}` : row.item.label;
+                    const detail =
+                      row.kind === 'command'
+                        ? row.command.disabled
+                          ? row.command.hint
+                          : row.command.title
+                        : row.item.detail;
+                    return (
+                      <div
+                        key={row.id}
+                        id={`${listId}-${at}`}
+                        role="option"
+                        tabIndex={-1}
+                        aria-selected={selected === at}
+                        aria-disabled={
+                          row.kind === 'command' && row.command.disabled ? true : undefined
+                        }
+                        onMouseMove={() => setIndex(at)}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          choose(row);
+                        }}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${selected === at ? 'bg-subtle' : ''} ${row.kind === 'command' && row.command.disabled ? 'opacity-50' : ''}`}
+                      >
+                        <Icon className="size-4 shrink-0 text-muted" aria-hidden="true" />
+                        <span
+                          className={`max-w-[45%] shrink-0 truncate font-medium ${row.kind === 'mention' && (row.item.kind === 'file' || row.item.kind === 'folder') ? 'font-mono' : ''}`}
+                        >
+                          {name}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-muted">{detail}</span>
+                        {row.kind === 'command' && row.command.shortcut ? (
+                          <Kbd>{row.command.shortcut}</Kbd>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
       <textarea
         ref={inputRef}
         aria-label={label}

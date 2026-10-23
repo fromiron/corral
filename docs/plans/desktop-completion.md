@@ -24,10 +24,12 @@ change_requests: [CR-042, CR-033]
 
 ## CR-033-B / M4-5의 중첩 범위
 
-[CR-033](../change-requests/CR-033-desktop-quality.md)의 density·알림 deep link/중복 억제·tray/dock·editor 열기·온보딩은 CR-042 기존 구현과 먼저 대조한다. 충족한 항목은 중복 구현하지 않고 남은 세부 수용 기준만 다음 태스크로 좁힌다. 전체 M4-5를 완료했다고 간주하지 않는다.
+[CR-033](../change-requests/CR-033-desktop-quality.md)의 알림 대상 이동·중복 억제는 C-171로 구현했다. 현재 계약은 [Desktop](../current/desktop-contract.md), Linux Electron의 정확한 Run·승인 이동과 늦은 클릭·재시작 경계는 [실행 기록](../evaluation/Desktop-Notification-Targets-2026-10-23.md)을 따른다. density·tray/dock·editor 열기·온보딩은 CR-042 기존 구현과 먼저 대조하고 충족한 항목을 중복 구현하지 않는다. 전체 M4-5나 모든 OS 알림 전달을 완료했다고 간주하지 않는다.
 
 OTel 외부 export와 CLI browser 비교는 원래의 opt-in 후속 범위다. 기본 tracing·기존 browser 도구를 대체하거나 새 의존성을 설치할 근거가 아니다.
 
 완료 판정은 OS·빌드 identity·mock/live·실행한 흐름·실패/skip을 구분한다. Windows 성공, Linux 단위 회귀, macOS 미지원은 서로 대체할 수 없다.
 
 2026-10-21 Linux unpacked recovery와 AppImage native 흐름은 [현재 실행 기록](../evaluation/Quality-Completion-2026-10-21.md)으로 검증했다. 해당 candidate 이후 변경과 Windows/macOS 실기는 구분한다. 사용자는 현재 환경에서 불가능한 Windows/macOS 검증을 별도 후속 작업으로 지정했다.
+
+2026-10-23 P29의 현재 Linux unpacked native/Monaco worker·시작 재시도·작업 공간 전환·sidecar/renderer 복구 코어를 [실행 기록](../evaluation/Development-Workbench-Qualification-2026-10-23.md)에서 확인했다. 이전 세대의 복구 페이지 로드가 늦게 실패하며 잘못된 재설치 안내를 띄우던 경합을 수정했다. 이 결과는 위 Windows/macOS·서명/업데이트·장치·외부 host 조건을 완료하지 않는다.

@@ -56,6 +56,8 @@ const bindingOf = (profile: HarnessProfileRevision) => ({
   revision: profile.revision,
 });
 
+type SelectionKey = 'checkIds' | 'lspServerIds' | 'mcpServerIds';
+
 export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
   const t = useTranslations('Harness');
   return (
@@ -158,6 +160,13 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     `harness-publish:${selected?.profileId ?? 'new'}`,
   );
   const [profile, setProfile] = useState<HarnessProfile>(emptyProfile);
+  // An empty list the person is about to fill reads as "choose", not as "use none".
+  const [choosing, setChoosing] = useState<Partial<Record<SelectionKey, boolean>>>({});
+  const selectionMode = (key: SelectionKey): 'inherit' | 'none' | 'choose' => {
+    const value = profile[key];
+    if (value === undefined) return 'inherit';
+    return value.length || choosing[key] ? 'choose' : 'none';
+  };
   const [toolNames, setToolNames] = useState(emptyProfile().allowedTools.join(', '));
   const [commands, setCommands] = useState('');
   const [previewState, setPreviewState] = useState<{
@@ -215,6 +224,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     if (!saved && !(await confirmLeave())) return;
     setSelected(next);
     setProfile(next ?? emptyProfile());
+    setChoosing({});
     setToolNames((next ?? emptyProfile()).allowedTools.join(', '));
     setCommands(next?.startupCommands.join('\n') ?? '');
     setPreview(null);
@@ -386,6 +396,9 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
             ) : null}
             <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
               <legend className="sr-only">{t('heading')}</legend>
+              <p data-testid="shared-scope" className="rounded-md bg-subtle px-3 py-2 text-xs">
+                {t('sharedScope')}
+              </p>
               <div className="settings-list flex flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <input
@@ -749,18 +762,20 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 ] as const
               ).map((group) => (
                 <div key={group.key} className="flex flex-col gap-3">
-                  <label className="settings-row">
+                  {/* Three states, said as such (#80 SET-S03): absent inherits, an empty list
+                      uses none, a list chooses. */}
+                  <div className="settings-row">
                     <span>
                       <span className="text-sm font-medium">{t(group.select)}</span>
                       <span className="mt-1 block text-xs text-muted">{t(group.hint)}</span>
                     </span>
-                    <input
-                      type="checkbox"
-                      aria-label={t(group.select)}
-                      checked={profile[group.key] !== undefined}
-                      onChange={(event) => {
-                        const checked = event.target.checked;
-                        if (checked && group.tool)
+                    <Select
+                      label={t(group.select)}
+                      className="shrink-0"
+                      value={selectionMode(group.key)}
+                      onValueChange={(mode) => {
+                        setChoosing((current) => ({ ...current, [group.key]: mode === 'choose' }));
+                        if (mode !== 'inherit' && group.tool)
                           setToolNames((current) =>
                             [
                               ...new Set([...current.split(/[\s,]+/).filter(Boolean), group.tool]),
@@ -768,14 +783,20 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                           );
                         setProfile((current) => {
                           const next = { ...current };
-                          if (checked) next[group.key] = [];
-                          else delete next[group.key];
+                          if (mode === 'inherit') delete next[group.key];
+                          else if (mode === 'none') next[group.key] = [];
+                          else next[group.key] = current[group.key] ?? [];
                           return next;
                         });
                       }}
+                      options={[
+                        { value: 'inherit', label: t('selectionInherit') },
+                        { value: 'none', label: t('selectionNone') },
+                        { value: 'choose', label: t('selectionChoose') },
+                      ]}
                     />
-                  </label>
-                  {profile[group.key] !== undefined ? (
+                  </div>
+                  {selectionMode(group.key) === 'choose' ? (
                     <div className="flex flex-col gap-3">
                       {group.items.map((item) => (
                         <label key={item.id} className="settings-row">

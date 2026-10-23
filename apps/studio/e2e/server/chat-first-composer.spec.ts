@@ -66,7 +66,10 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   ).toBeHidden();
   await expect(page.getByRole('button', { name: 'Templates', exact: true })).toBeHidden();
   await expect(
-    page.getByRole('combobox', { name: 'Attach project document to this request', exact: true }),
+    page.getByRole('combobox', {
+      name: 'Attach project instructions or memory to this request',
+      exact: true,
+    }),
   ).toBeHidden();
 
   await expect(requestBox(page)).toBeInViewport();
@@ -264,8 +267,14 @@ test('[TC-UX-005-N] a queue blocked by request scope explains why outside the cl
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+  // #89: Send says what it will do in this state, and every "new request only" item shares one
+  // notice with one wording.
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveAttribute(
+    'aria-description',
+    'Send · Queue as next task',
+  );
   const warning = page.getByRole('status').filter({
-    hasText: 'These scope choices apply to a new request. Choose Next or reset the scope.',
+    hasText: 'Applies to a new request only: review scope',
   });
   await expect(warning).toBeVisible();
   await warning.getByRole('button', { name: 'Change scope', exact: true }).click();

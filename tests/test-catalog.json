@@ -3258,5 +3258,907 @@
     "status": "planned",
     "adapter": "existing repository contract and isolated server/browser fixtures; no paid providers",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-001-H",
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "기존 DB/예약 이관, 같은 사본 인간·Run writer 충돌 및 다른 사본 병행, 고정 reader tree와 receipt 재조회",
+    "status": "planned",
+    "adapter": "temporary SQLite/Git and deterministic clock; engine browser/native qualification recorded separately",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-001-N",
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 payload·stale generation 거절, active reader 사본 제거 금지, Run recovery의 인간 owner 보존",
+    "status": "planned",
+    "adapter": "temporary SQLite/Git and deterministic clock; engine browser/native qualification recorded separately",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-001-F",
+    "requirements": [
+      "CRL-WBD-001"
+    ],
+    "suite": "unit+integration",
+    "scenario": "접수/완료 transaction 실패 원자성, 재시작과 늦은 완료의 uncertain 예약 보존",
+    "status": "planned",
+    "adapter": "temporary SQLite/Git and deterministic clock; engine browser/native qualification recorded separately",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-002-H",
+    "requirements": [
+      "CRL-WBD-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "관리 문서 read/save/create/rename/delete와 형식·mode·checkpoint·동일 ID receipt 보존",
+    "status": "planned",
+    "adapter": "temporary Git/SQLite, injected file IO, real HTTP client; no paid providers or new E2E",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-002-N",
+    "requirements": [
+      "CRL-WBD-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "stale target/hash/generation·Run writer·symlink/경로·기존 rename 목적지·편집불가 형식 거절",
+    "status": "planned",
+    "adapter": "temporary Git/SQLite, injected file IO, real HTTP client; no paid providers or new E2E",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-002-F",
+    "requirements": [
+      "CRL-WBD-002"
+    ],
+    "suite": "unit+integration",
+    "scenario": "IO와 receipt 실패·응답 유실·중복/늦은 완료에서 실제 내용과 uncertain 예약 보존",
+    "status": "planned",
+    "adapter": "temporary Git/SQLite, injected file IO, real HTTP client; no paid providers or new E2E",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-003-H",
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "suite": "unit+integration",
+    "scenario": "공유 모델/undo·명시 저장·형식 보존·설정 왕복·마지막 view 닫기와 실제 FilePanel 저장→Diff",
+    "status": "planned",
+    "adapter": "injected Monaco public model and recovery storage; real in-app browser before adding any E2E; no paid providers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-003-N",
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "suite": "unit+integration",
+    "scenario": "서로 다른 사본 격리·stale disk 충돌·mixed/CR 명시 변환·읽기 전용 및 저장되지 않은 reference 보호",
+    "status": "planned",
+    "adapter": "injected Monaco public model and recovery storage; real in-app browser before adding any E2E; no paid providers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-003-F",
+    "requirements": [
+      "CRL-WBD-003"
+    ],
+    "suite": "unit+integration",
+    "scenario": "저장 중 새 입력·응답 유실 receipt·quota 실패·stale 복구·worker 실패에서 초안과 원문 보존",
+    "status": "planned",
+    "adapter": "injected Monaco public model and recovery storage; real in-app browser before adding any E2E; no paid providers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-004-H",
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "suite": "unit+integration",
+    "scenario": "사용자 PTY create/attach/input/resize/stop·실제 파일 읽기와 공유 writer/capacity·인앱 terminal/Diff 연결",
+    "status": "planned",
+    "adapter": "real temporary Git/SQLite/Linux PTY with injected gates and bounded replay; in-app browser before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-004-N",
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 target/controller·PID 재사용·duplicate input·replay overflow·Origin/CSRF 거절과 Run 격리",
+    "status": "planned",
+    "adapter": "real temporary Git/SQLite/Linux PTY with injected gates and bounded replay; in-app browser before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-004-F",
+    "requirements": [
+      "CRL-WBD-004"
+    ],
+    "suite": "unit+integration",
+    "scenario": "spawn 전 취소·입력 ack 유실·split ANSI/resize 재생·shell보다 늦은 job 종료·restart uncertain과 소유권 보존",
+    "status": "planned",
+    "adapter": "real temporary Git/SQLite/Linux PTY with injected gates and bounded replay; in-app browser before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-005-H",
+    "requirements": [
+      "CRL-WBD-005"
+    ],
+    "suite": "unit+integration",
+    "scenario": "typed panel 대상과 기존 URL 왕복·root Run store 공유·실제 설정/패널 복귀",
+    "status": "planned",
+    "adapter": "existing root services and pure route fixtures; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-005-N",
+    "requirements": [
+      "CRL-WBD-005"
+    ],
+    "suite": "unit+integration",
+    "scenario": "명시 Run/execution에 기억한 다른 대상이 섞이지 않고 host/session/graph key가 구분됨",
+    "status": "planned",
+    "adapter": "existing root services and pure route fixtures; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-005-F",
+    "requirements": [
+      "CRL-WBD-005"
+    ],
+    "suite": "unit+integration",
+    "scenario": "늦은 상태/설정 완료·panel 재마운트·back/forward에도 현재 Run/dirty 초안과 구독 소유가 보존됨",
+    "status": "planned",
+    "adapter": "existing root services and pure route fixtures; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-006-H",
+    "requirements": [
+      "CRL-WBD-006"
+    ],
+    "suite": "unit+integration",
+    "scenario": "문서 이동·preset·reload 뒤 모든 문서 ID/모델과 URL 문맥 대상 보존, 명시 닫기·키보드 조작·390px 승인/중지 접근",
+    "status": "planned",
+    "adapter": "Dockview public APIs and existing root stores with versioned layout fixtures; real in-app keyboard/390px observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-006-N",
+    "requirements": [
+      "CRL-WBD-006"
+    ],
+    "suite": "unit+integration",
+    "scenario": "workspace/project/사본 identity 분리, 잘못된 descriptor placeholder, 20문서 상한과 기존 graph/review 경로 보존",
+    "status": "planned",
+    "adapter": "Dockview public APIs and existing root stores with versioned layout fixtures; real in-app keyboard/390px observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-006-F",
+    "requirements": [
+      "CRL-WBD-006"
+    ],
+    "suite": "unit+integration",
+    "scenario": "손상된 grid/layout 저장 복구에서 유효 문서 참조 보존, 저장 중 이동·늦은 receipt·PTY 숨김에서 초안/프로세스 수명 유지",
+    "status": "planned",
+    "adapter": "Dockview public APIs and existing root stores with versioned layout fixtures; real in-app keyboard/390px observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-007-H",
+    "requirements": [
+      "CRL-WBD-007"
+    ],
+    "suite": "unit+integration",
+    "scenario": "코드·터미널·hunk·검사 선택 snapshot→칩→next/queued next prompt 전달, 원본 이동/교체/삭제와 세 가지 표시 밀도",
+    "status": "planned",
+    "adapter": "existing attachment/repository/Coordinator and composer draft fixtures with public Monaco/xterm selection APIs; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-007-N",
+    "requirements": [
+      "CRL-WBD-007"
+    ],
+    "suite": "unit+integration",
+    "scenario": "동일 본문/다른 출처 분리, saved/dirty·UTF-16/terminal 범위·고정 snapshot 식별, hash/상한과 조용한 첨부 누락 거절",
+    "status": "planned",
+    "adapter": "existing attachment/repository/Coordinator and composer draft fixtures with public Monaco/xterm selection APIs; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-007-F",
+    "requirements": [
+      "CRL-WBD-007"
+    ],
+    "suite": "unit+integration",
+    "scenario": "늦은 캡처/확인/전송·원래 ID retry·원본 소실·queue 자동 시작에서 고정 첨부/새 초안/대상 보존과 IME 회귀",
+    "status": "planned",
+    "adapter": "existing attachment/repository/Coordinator and composer draft fixtures with public Monaco/xterm selection APIs; real in-app observation before any new E2E; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-008-H",
+    "requirements": [
+      "CRL-WBD-008"
+    ],
+    "suite": "unit+integration",
+    "scenario": "원본과 두 관리 사본의 실제 HEAD/branch/upstream·staged/unstaged/untracked·rename/binary diff를 구분하고 status discovery→선택 diff→명시 새로고침에서 정확한 대상과 읽기 전용 의미 보존",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; bounded process failure doubles where needed; real in-app observation before new E2E; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-008-N",
+    "requirements": [
+      "CRL-WBD-008"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 host/binding/session/generation 및 stale HEAD/index 거절, 공백/한글/개행 raw 경로 보존, detached/unborn/shallow·symlink/gitlink/unmerged 비지원과 configured filters의 변환 전 원문 표시",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; bounded process failure doubles where needed; real in-app observation before new E2E; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-008-F",
+    "requirements": [
+      "CRL-WBD-008"
+    ],
+    "suite": "unit+integration",
+    "scenario": "조회 중 외부 index/HEAD·binding/사본 변경과 늦은 응답, Git 실패/출력 상한/비지원 경로에서 clean 오표시·자동 retarget 방지, hook/filter/textconv/extdiff/fsmonitor/lazy fetch 미실행 및 index·원본·내부 snapshot refs 불변",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; bounded process failure doubles where needed; real in-app observation before new E2E; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-009-H",
+    "requirements": [
+      "CRL-WBD-009"
+    ],
+    "suite": "unit+integration",
+    "scenario": "관리 사본에서 파일 stage→unstage→stage→commit, 같은 operationId 재요청의 원래 receipt, runHooks에 따른 hook 실행과 미실행, 설정된 SSH 서명 commit과 결과 HEAD·index readback",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; temporary SSH signing key; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-009-N",
+    "requirements": [
+      "CRL-WBD-009"
+    ],
+    "suite": "unit+integration",
+    "scenario": "실행 직전 외부 stage·HEAD 변경, 같은 ID의 다른 payload, 원본 target, 비신뢰 프로젝트, 서명 요구와 signer 부재를 각각 원래 상태 보존과 명시 사유로 거절",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with existing SQLite/authenticated client fixtures; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-009-F",
+    "requirements": [
+      "CRL-WBD-009"
+    ],
+    "suite": "unit+integration",
+    "scenario": "hook 실패·실행 중 취소·index.lock 충돌에서 HEAD 불변과 프로세스 정리, commit 후 receipt 기록 실패·응답 유실·재시작 뒤 재조회에서 중복 commit 없이 결과 판정, 기존 hunk 작업이 관리 사본 index를 바꾸지 않음",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with injected failure points; no paid models or remote writes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-010-H",
+    "requirements": [
+      "CRL-WBD-010"
+    ],
+    "suite": "unit+integration",
+    "scenario": "detached 관리 사본에 branch 생성·연결과 기존 branch 전환, 로컬 bare remote에서 fetch·fast-forward pull·push와 결과 ref readback",
+    "status": "planned",
+    "adapter": "temporary real Git repositories, managed worktrees and a local bare remote with existing SQLite fixtures; no network, paid models or external pushes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-010-N",
+    "requirements": [
+      "CRL-WBD-010"
+    ],
+    "suite": "unit+integration",
+    "scenario": "remote 이동 뒤 non-fast-forward pull·push 거절, 잘못된 branch 이름, 원본에서 checkout 중인 branch 전환, 없는 remote와 거절하는 remote, 추적 변경이 있는 전환 거절",
+    "status": "planned",
+    "adapter": "temporary real Git repositories, managed worktrees and a local bare remote; no network or external pushes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-010-F",
+    "requirements": [
+      "CRL-WBD-010"
+    ],
+    "suite": "unit+integration",
+    "scenario": "push 후 receipt 기록 실패·재시작 뒤 ls-remote readback으로 중복 push 없이 판정, 활성 사용자 writer가 있으면 전환 거절, 미저장 문서가 있으면 Git 창이 전환을 보내지 않음",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and a local bare remote with injected receipt failure; jsdom Git pane with a document store double",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-011-H",
+    "requirements": [
+      "CRL-WBD-011"
+    ],
+    "suite": "unit+integration",
+    "scenario": "package.json scripts 후보에서 실제 node http server task를 명시 시작해 출력과 사용자 task preview 프록시 응답을 확인하고 중지·정리 확인, 검사 출력의 Problems가 문서 위치로 이동",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees, real node child processes and loopback ports with existing SQLite/preview fixtures; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-011-N",
+    "requirements": [
+      "CRL-WBD-011"
+    ],
+    "suite": "unit+integration",
+    "scenario": "후보 조회는 아무것도 실행하지 않음, 없는 script 거절, 다른 프로세스가 연 포트의 preview 거절, task 실행 중 같은 사본 저장 거절과 중지 뒤 저장, 사본 밖 경로는 Problems에 넣지 않음",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with real loopback listeners; jsdom panes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-011-F",
+    "requirements": [
+      "CRL-WBD-011"
+    ],
+    "suite": "unit+integration",
+    "scenario": "재시작 뒤 uncertain task의 process group이 사라졌음을 확인해 receipt 정리, 소스가 바뀐 뒤 검사 결과의 Problems stale 표시, task writer 중에도 고정 snapshot 검사 실행",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with real child processes; restart by a new service over the same SQLite database",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-012-H",
+    "requirements": [
+      "CRL-WBD-012"
+    ],
+    "suite": "e2e",
+    "scenario": "모델 미연결 수동 흐름과 결정적 agent 요청 결과를 실제 앱에서 편집·task·preview·검사·stage·commit·로컬 bare remote push까지 진행",
+    "status": "planned",
+    "adapter": "server build with Playwright Chromium, temporary real Git repository and local bare remote, real node task process, scripted agent adapter; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-012-N",
+    "requirements": [
+      "CRL-WBD-012"
+    ],
+    "suite": "e2e",
+    "scenario": "설정 대화상자 왕복 뒤 commit 초안 유지, 디스크 충돌 표시와 초안 보존, 잘못된 branch 이름 거절, 실패한 검사의 Problems 위치와 편집 뒤 이전 상태 표시",
+    "status": "planned",
+    "adapter": "server build with Playwright Chromium and a temporary real Git repository",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-012-F",
+    "requirements": [
+      "CRL-WBD-012"
+    ],
+    "suite": "e2e",
+    "scenario": "Git 쓰기 응답을 잃은 뒤 renderer reload에서 같은 operation ID로 receipt를 읽어 한 번만 반영되고 새 요청을 보내지 않음",
+    "status": "planned",
+    "adapter": "server build with Playwright Chromium; the response is dropped by a browser route after the host handled the request",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-013-H",
+    "requirements": [
+      "CRL-WBD-013"
+    ],
+    "suite": "unit+integration",
+    "scenario": "Corral 쓰기만 남은 파일의 managed_agent, A→B 변경 검토 유지와 내용 읽음 기록, 정확한 비교의 승인과 반영 계획, 출처와 현재 적용성의 분리 표시",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with the existing file broker; jsdom panes with stubbed workspace clients; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-013-N",
+    "requirements": [
+      "CRL-WBD-013"
+    ],
+    "suite": "unit+integration",
+    "scenario": "사람이 고친 Corral 파일의 mixed, 같은 최종 내용의 C→B에서 검토 미표시, 다른 비교 승인의 이전 표시와 반영 차단, 자기 명령만 바뀐 검사의 configChanged, 세션·host가 다른 표시 미적용, task 출력 위치의 버전 모름",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with real check processes; jsdom panes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-013-F",
+    "requirements": [
+      "CRL-WBD-013"
+    ],
+    "suite": "unit",
+    "scenario": "이후 파일이 바뀐 hunk 첨부는 출처 확인을 유지하며 files_changed, 현재 사본 조회 실패는 unknown, 이전 tree·설정 검사의 적용성 구분",
+    "status": "planned",
+    "adapter": "stubbed workspace client responses",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-014-H",
+    "requirements": [
+      "CRL-WBD-014"
+    ],
+    "suite": "unit",
+    "scenario": "저장 팀을 도킹 탭으로 한 번만 열고 문서와 같은 가운데 영역에 두며, 저장·복원 뒤 같은 descriptor, 초안 변경에 따른 탭 제목",
+    "status": "planned",
+    "adapter": "jsdom Dockview and in-memory corral repository",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-014-N",
+    "requirements": [
+      "CRL-WBD-014"
+    ],
+    "suite": "unit",
+    "scenario": "중복·빈 ID·다른 프로젝트 그래프와 문서로 위장한 그래프 거절, 세션 안 편집기의 앱 내 이동 확인 생략과 Ctrl+S 포커스 범위, 그래프 닫기에서 문서 닫기 결정을 부르지 않음",
+    "status": "planned",
+    "adapter": "jsdom Dockview and pure helpers",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-014-F",
+    "requirements": [
+      "CRL-WBD-014"
+    ],
+    "suite": "unit",
+    "scenario": "저장 layout의 잘못된 그래프 pane만 안내로 바꾸고 나머지 pane·문서 참조를 보존",
+    "status": "planned",
+    "adapter": "layout parser fixtures",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-015-H",
+    "requirements": [
+      "CRL-WBD-015"
+    ],
+    "suite": "unit",
+    "scenario": "execution 제어에서 그 run·execution의 파일 쓰기(Run 비교 파일 링크)·결과·검사만 보이고, 결과를 모르는 쓰기를 표시",
+    "status": "planned",
+    "adapter": "jsdom with stubbed workspace client and run session store",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-015-N",
+    "requirements": [
+      "CRL-WBD-015"
+    ],
+    "suite": "unit",
+    "scenario": "Run 전체 취소와 execution 취소 확인을 연 뒤 같은 view가 다른 Run을 따라가면 확인이 사라지고 명령을 보내지 않으며, 원래 Run으로 돌아와도 되살아나지 않음",
+    "status": "planned",
+    "adapter": "jsdom RunActions and ReinsPanel with run session stores",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-015-F",
+    "requirements": [
+      "CRL-WBD-015"
+    ],
+    "suite": "unit",
+    "scenario": "세션을 바꾼 뒤 도착한 이전 세션의 파일 기록 응답을 execution 근거에 표시하지 않음",
+    "status": "planned",
+    "adapter": "jsdom with delayed workspace responses",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-016-H",
+    "requirements": [
+      "CRL-WBD-016"
+    ],
+    "suite": "unit+integration",
+    "scenario": "Git 변경·미제출 의견·열린 Run이 있는 사본의 삭제 전 요약, 보관 뒤 사본 유지, 대화상자의 미저장 문서·복구 초안 표시와 보인 generation으로 삭제",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees over HTTP; jsdom dialog with stubbed client",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-016-N",
+    "requirements": [
+      "CRL-WBD-016"
+    ],
+    "suite": "unit+integration",
+    "scenario": "owner가 잡은 사본의 삭제 거절과 종류 표시, 이전 copy generation 삭제 요청 거절과 새 사본 보존, 늦은 거절 이유 표시",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees; jsdom dialog",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-016-F",
+    "requirements": [
+      "CRL-WBD-016"
+    ],
+    "suite": "unit+integration",
+    "scenario": "일부만 지워진 사본을 삭제됨으로 기록하지 않음, 읽지 못한 Git 상태를 모름으로 표시",
+    "status": "planned",
+    "adapter": "permission-locked folder in a real worktree (non-root POSIX); jsdom dialog",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-017-H",
+    "requirements": [
+      "CRL-WBD-017"
+    ],
+    "suite": "unit+integration",
+    "scenario": "공유 owner 진입·실제 task 실행 중 저장/Git/검사·명시 종료와 live preview 갱신",
+    "status": "planned",
+    "adapter": "temporary real Git/SQLite/tasks; jsdom and isolated in-app preview",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-017-N",
+    "requirements": [
+      "CRL-WBD-017"
+    ],
+    "suite": "unit+integration",
+    "scenario": "원격·원본·stale target 거절, agent writer/PTY/branch/switch/pull 차단과 외부 쓰기 CAS 보존",
+    "status": "planned",
+    "adapter": "temporary real Git/SQLite/tasks; jsdom and isolated in-app preview",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-017-F",
+    "requirements": [
+      "CRL-WBD-017"
+    ],
+    "suite": "unit+integration",
+    "scenario": "중복 요청 receipt와 재시작 uncertain·하위 사람 owner 정리 전 종료 거절·늦은 UI 응답 무시",
+    "status": "planned",
+    "adapter": "temporary real Git/SQLite/tasks; jsdom and isolated in-app preview",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-018-H",
+    "requirements": [
+      "CRL-WBD-018"
+    ],
+    "suite": "unit+integration",
+    "scenario": "상시 세션에서 dirty 진단·completion·정의/참조·명시 종료",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-018-N",
+    "requirements": [
+      "CRL-WBD-018"
+    ],
+    "suite": "unit+integration",
+    "scenario": "미신뢰/다른 사본·세대·문서 버전·외부 URI 거절",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-018-F",
+    "requirements": [
+      "CRL-WBD-018"
+    ],
+    "suite": "unit+integration",
+    "scenario": "늦은 진단/쿼리·crash·중복 동기화와 초안 복구",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-019-H",
+    "requirements": [
+      "CRL-WBD-019"
+    ],
+    "suite": "unit+integration",
+    "scenario": "여러 파일 내용 검색과 기존 문서/줄 이동",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-019-N",
+    "requirements": [
+      "CRL-WBD-019"
+    ],
+    "suite": "unit+integration",
+    "scenario": "ignore·binary·크기/결과 한도·보호 경로 유지",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-019-F",
+    "requirements": [
+      "CRL-WBD-019"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·늦은 응답·파일 변경·dirty 초안 보존",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-020-H",
+    "requirements": [
+      "CRL-WBD-020"
+    ],
+    "suite": "unit+integration",
+    "scenario": "실제 preview 렌더·조작·재열기와 선택 관측 검토·명시 첨부",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-020-N",
+    "requirements": [
+      "CRL-WBD-020"
+    ],
+    "suite": "unit+integration",
+    "scenario": "타 origin·폐기 lease·page/host 변경 거절과 preview의 API/credential 격리",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-020-F",
+    "requirements": [
+      "CRL-WBD-020"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·늦은 캡처·대화 전송 후 첨부 거절과 원래 초안 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-021-H",
+    "requirements": [
+      "CRL-WBD-021"
+    ],
+    "suite": "unit+integration",
+    "scenario": "literal 다중 교체·symbol rename·edit-only code action의 preview와 명시 적용",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-021-N",
+    "requirements": [
+      "CRL-WBD-021"
+    ],
+    "suite": "unit+integration",
+    "scenario": "dirty·stale target/version/hash·보호 경로·서버 command 거절",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-021-F",
+    "requirements": [
+      "CRL-WBD-021"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·중복·응답 유실·부분 쓰기 실패 후 결과 판별과 복구",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-022-H",
+    "requirements": [
+      "CRL-WBD-022"
+    ],
+    "suite": "unit+integration",
+    "scenario": "index hunk stage/unstage·3-way 충돌 해결·merge/rebase 계속/중단",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-022-N",
+    "requirements": [
+      "CRL-WBD-022"
+    ],
+    "suite": "unit+integration",
+    "scenario": "외부 index/HEAD 변경·dirty·binary/rename·실행 위험 sequencer 거절",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-022-F",
+    "requirements": [
+      "CRL-WBD-022"
+    ],
+    "suite": "unit+integration",
+    "scenario": "중복·응답 유실·재시작·실패한 continue/abort에서 상태와 작업 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite and desktop or in-app fixture; focused core regressions; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-023-H",
+    "requirements": [
+      "CRL-WBD-023"
+    ],
+    "suite": "unit+integration",
+    "scenario": "실제 Node/TypeScript와 Chromium adapter의 launch/소유 대상 attach·중단점·step·stack/variables·명시 evaluate와 편집기 이동",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-023-N",
+    "requirements": [
+      "CRL-WBD-023"
+    ],
+    "suite": "unit+integration",
+    "scenario": "다른 target/generation/정지 세대·미저장/stale source·신뢰/설정 변경·외부 디버그 주소·미지원 reverse request 거절",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-023-F",
+    "requirements": [
+      "CRL-WBD-023"
+    ],
+    "suite": "unit+integration",
+    "scenario": "중복/늦은 응답·adapter crash·host 재시작·disconnect/terminate 이후 소유 프로세스와 초안 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-024-H",
+    "requirements": [
+      "CRL-WBD-024"
+    ],
+    "suite": "unit+integration",
+    "scenario": "검토한 환경·source·credential 참조의 배포 task 시작과 별도 결과 확인·안전한 URL 표시",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-024-N",
+    "requirements": [
+      "CRL-WBD-024"
+    ],
+    "suite": "unit+integration",
+    "scenario": "오래된 source/config/대상·누락 credential·확인 없는 시작·잘못된 결과/URL 거절과 기존 task 보존",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-024-F",
+    "requirements": [
+      "CRL-WBD-024"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·중복·응답 유실·host 재시작·확인 실패에서 같은 receipt를 조회하고 불확실 결과를 자동 재배포하지 않음",
+    "status": "planned",
+    "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-025-H",
+    "requirements": [
+      "CRL-WBD-025"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "같은 JS/TS 관리 사본의 검색/다중 교체·검사·commit/local push·배포 결과 확인과 실제 편집 흐름",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-025-N",
+    "requirements": [
+      "CRL-WBD-025"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "미저장 초안·오래된 검토·다른 소스/환경의 결과를 현재 완료로 처리하지 않음",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-025-F",
+    "requirements": [
+      "CRL-WBD-025"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "응답 유실·중복 배포의 동일 operation 조회와 원본/기존 remote 보존",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-026-H",
+    "requirements": [
+      "CRL-WBD-026"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "Linux 실제 번들 runtime·공통 12개 process 상한·키보드/좁은 화면 핵심 동작",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-026-N",
+    "requirements": [
+      "CRL-WBD-026"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "입력 응답 유실의 자동 재전송 금지, 정상 화면으로 전환하며 취소된 복구 로드를 설치 실패로 오판하지 않음",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-026-F",
+    "requirements": [
+      "CRL-WBD-026"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "dirty 문서 닫기/복원과 renderer/sidecar 실패 후 명시 복구, 이전 세대 이벤트의 현재 화면 보존",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-002-F",
+    "requirements": [
+      "CRL-ULTRA-002"
+    ],
+    "suite": "unit+integration+browser",
+    "scenario": "후보별 취소와 Run 취소·전원 실패·늦은 결과·unknown 비용·응답 유실/재시작에서 원래 owner/receipt를 보존하고 자동 승격·중복 효과를 막는다.",
+    "status": "planned",
+    "adapter": "isolated deterministic Coordinator/Git/worker and UI fixtures; no paid provider calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-DESK-010-H",
+    "requirements": [
+      "CRL-ABS-007"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "현재 시스템 알림의 session/run/승인 대상으로 이동하며 기존 미저장 편집과 title/body 호출을 유지",
+    "status": "planned",
+    "adapter": "isolated desktop notification click fixture and core regressions; no external messages",
+    "evidence": null
+  },
+  {
+    "id": "TC-DESK-010-N",
+    "requirements": [
+      "CRL-ABS-007"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "임의 URL·잘못된 target·다른 host/workspace·사라진 대상·본문 노출과 중복 알림을 거절",
+    "status": "planned",
+    "adapter": "isolated desktop notification click fixture and core regressions; no external messages",
+    "evidence": null
+  },
+  {
+    "id": "TC-DESK-010-F",
+    "requirements": [
+      "CRL-ABS-007"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "늦은 클릭·세대 교체·reload/재연결에서 현재 대상 검증 후에만 이동하고 오래된 알림이 현재 작업을 덮지 않음",
+    "status": "planned",
+    "adapter": "isolated desktop notification click fixture and core regressions; no external messages",
+    "evidence": null
   }
 ]

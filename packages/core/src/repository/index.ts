@@ -367,11 +367,14 @@ export function planSessionEntry(
       error: 'invalid',
       message: 'images require valid immutable references and next intent',
     };
-  if (entry.attachments && (!validTextAttachments(entry.attachments) || entry.intent !== 'next'))
+  if (
+    entry.attachments &&
+    (!validTextAttachments(entry.attachments) || !['next', 'queue'].includes(entry.intent))
+  )
     return {
       ok: false,
       error: 'invalid',
-      message: 'text attachments require valid immutable content and next intent',
+      message: 'text attachments require valid immutable content and next or queue intent',
     };
   if (
     !RunInput.pick({ taskScope: true, verificationScope: true }).safeParse({
