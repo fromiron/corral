@@ -1702,7 +1702,8 @@ export interface FileChangeView {
   additions: number | null;
   deletions: number | null;
   binary: boolean;
-  provenance: 'managed_agent' | 'external_observed';
+  /** `mixed`: Corral changed the file and something else changed it afterwards (CR-046 P17). */
+  provenance: 'managed_agent' | 'mixed' | 'external_observed';
   beforeBlob: string | null;
   afterBlob: string | null;
 }
@@ -1746,6 +1747,8 @@ export interface VerificationResultView {
   startedAt: string;
   endedAt: string | null;
   stale: boolean;
+  /** This check's registered command changed since it ran; absent from older servers. */
+  configChanged?: boolean;
   report?: VerificationReport | null;
 }
 

@@ -94,3 +94,50 @@ it('[TC-WBD-011-H] [TC-WBD-011-F] gathers check and task locations, marks stale 
     { startLine: 3, startColumn: 2, endLine: 3, endColumn: 2 },
   );
 });
+
+it('[TC-WBD-013-N] a task log is of unknown version and a check run under other settings is not current', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.workspaces = {
+    worktree: vi.fn(async () => ({ bindingId: 'binding', copyGeneration: 2, missing: false })),
+    verifications: vi.fn(async () => [
+      {
+        verificationId: 'v1',
+        name: 'Typecheck',
+        state: 'failed',
+        stale: false,
+        configChanged: true,
+        tree: 'a'.repeat(40),
+        output: 'src/a.ts(3,2): error TS1005: semicolon expected.',
+      },
+    ]),
+    tasks: vi.fn(async () => ({
+      candidates: { packageManager: 'npm', scripts: [] },
+      tasks: [{ operationId: 'task_1', script: 'dev', state: 'running' }],
+    })),
+    taskOutput: vi.fn(async () => ({
+      text: 'src/b.ts(2,1): error TS2304: Cannot find name.',
+      nextOffset: 0,
+      bytes: 0,
+      truncated: false,
+    })),
+  };
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ProblemsPanel sessionId="session" />
+      </IntlProvider>,
+    ),
+  );
+  const heading = (name: string) =>
+    [...container.querySelectorAll('h3')].find((item) => item.textContent?.includes(name));
+  expect(heading('Typecheck')?.textContent).toContain(messages.Problems.configChanged);
+  expect(heading('Typecheck')?.textContent).not.toContain(messages.Problems.stale);
+  expect(heading('dev')?.textContent).toContain(messages.Problems.versionUnknown);
+});

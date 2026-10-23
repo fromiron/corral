@@ -898,5 +898,11 @@
     "requirement": "CR-046 P16 Alpha: 모델 미연결 수동 흐름(세션 사본 → 문서 탭 편집·저장 → 개발 task·preview → 검사 → 변경 확인 → 선택 stage → commit → 로컬 원격 push)과 같은 사본에서 결정적 agent 요청 1회의 결과를 사람이 commit·push하는 흐름이 실제 앱에서 끝까지 이어진다. 설정 대화상자 왕복, 디스크 충돌, 잘못된 branch 이름, 실패한 검사, Git 응답 유실과 renderer reload에서 초안·receipt·원본 폴더가 보존되고 같은 ID로만 다시 읽는다.",
     "owner": "studio",
     "phase": "M3"
+  },
+  {
+    "id": "CRL-WBD-013",
+    "requirement": "CR-046 P17: 변경 검토에서 파일 읽음(내용), 변경 검토(host·경로·이전/이후 blob 쌍), 판단(정확한 from/to), 원본 반영·stage·commit을 구분한다. Corral의 마지막 적용 쓰기 내용과 다른 결과는 mixed로 표시해 agent 단독 성과로 보이지 않고, 검사 결과는 tree와 자기 명령 정의가 바뀌면 현재 유효성을 잃으며, 고정 첨부 출처의 무결성과 현재 사본 적용성을 따로 보인다. 세션 전환 뒤 늦은 응답·표시를 새 세션에 쓰지 않는다.",
+    "owner": "studio",
+    "phase": "M4"
   }
 ]

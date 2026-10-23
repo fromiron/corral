@@ -176,3 +176,20 @@ H는 fixture의 실제 node http server를 후보에서 시작해 출력·previe
 - 모든 흐름에서 원본 폴더의 HEAD·작업 트리·index는 바뀌지 않는다.
 
 통과는 Linux·Chromium·server build의 결과다. 설치판·다른 OS·외부 원격·서명 commit의 qualification이 아니다.
+
+## P17: 변경 검토와 근거 연결
+
+추적: CRL-WBD-013 / C-157 / TC-WBD-013-H,N,F. 2026-10-23 재검토(계획의 “P17 이후 재검토 반영”)에 따라 새 검토 도구 없이 기존 댓글·Diff·hunk 첨부·읽음·판단·검사 결과의 의미를 나누고 근거를 연결한다. 새 증거 DB·Coordinator 원장·별도 Review Center는 만들지 않는다.
+
+재사용: 비교 범위는 기존 `ChangeScope`(세션·읽음 기록 이후·Run)와 `from/to` tree, 의견은 `from/to/path/side/range/quote`의 ReviewService, 선택 hunk는 `from/to/path/patchHash/hunkIds`, 검사는 `verificationId/tree/fingerprint/configRevision`과 실행 당시 명령(`command_json`), Git의 HEAD→index·index→worktree는 Git 창의 P12 모델을 그대로 쓴다.
+
+- **읽음·검토·판단·반영을 나눈다.** 파일 읽음은 기존처럼 내용(`path@afterBlob`)에 귀속하는 브라우저 표시다. 변경 검토는 `[host, path, beforeBlob, afterBlob]`에 귀속한다. 같은 blob 쌍은 같은 변경이므로 사본 generation은 넣지 않는다. 같은 최종 내용이라도 다른 기준의 Diff는 검토하지 않은 것으로 보인다. 검토를 표시하면 읽음도 함께 남고, 해제해도 읽음은 남는다. 파일 목록은 검토(✓)와 “다른 비교에서 읽음”을 구분한다. 헤더의 “지금까지 모두 읽음”은 사본 전체를 읽음 기록으로 남기는 기존 `/reviewed`이며 파일 검토·승인이 아니다. 판단은 ReviewService의 정확한 from/to에만 해당하며 다른 비교의 판단은 “이전 버전 기준”으로 보이고 반영 계획을 열지 않는다. 원본 반영·Git stage·commit은 각자의 별도 행동이다.
+- **출처 귀속.** `FileChange.provenance`에 `mixed`를 더한다. Corral이 마지막으로 적용한 write/delete/move가 남긴 내용 hash와 비교 끝 tree의 내용이 같으면 `managed_agent`, Corral이 바꿨지만 그 뒤 다른 쓰기가 섞였으면 `mixed`, Corral이 바꾸지 않았으면 `external_observed`다. 시간으로 작성자를 추정하지 않는다(CR-012 유지).
+- **검사의 현재 유효성.** `VerificationView.configChanged`는 결과의 명령 정의가 프로젝트의 현재 등록 명령과 다르거나 삭제됐을 때 true다. 다른 검사를 바꿔 revision만 오른 경우는 해당하지 않는다. 기록·`tree`·`stale` 의미는 바꾸지 않는다. Problems는 이전 tree(“이전 상태”), 이전 설정(“이전 설정”), 버전이 없는 task 출력(“버전 모름”)을 나눈다. task 출력은 최신으로 표시하지 않는다.
+- **출처 무결성과 현재 적용성.** 첨부 확인의 `state`(current·stale·unavailable)는 고정 출처를 캡처대로 다시 읽을 수 있는지다. 새 `applies`는 지금 사본에 그대로 해당하는지다. hunk는 현재 세션 tree와 `to`에서 그 파일이 같으면 `yes`, 다르면 `files_changed`다. 검사는 `stale`이면 `files_changed`, `configChanged`이면 `config_changed`다. 확인할 수 없으면 `unknown`이다. 예: “캡처와 원본이 일치함 · 현재 파일은 이후 변경됨”. 오래된 자료도 사람이 첨부할 수 있지만 현재 코드의 검증·수정 근거로 자동 승격하지 않는다.
+- **늦은 응답.** 검토 화면은 Run 목록·의견을 읽은 세션과 함께 보관해 세션 전환 뒤 이전 세션의 답이나 초안·진행 Run이 새 세션에 쓰이지 않는다. 검토 표시는 세션별 저장 키에서 다시 읽어 다른 세션의 표시를 쓰지 않는다. 첨부는 기존처럼 캡처 대상 host·project·session이 현재와 같을 때만 요청 초안에 들어간다.
+- 화면 정리: 비교 선택의 시각 라벨은 옵션이 스스로 설명하므로 숨기고 접근 가능한 이름은 유지한다. 변경 조각 영역의 반복 설명을 빼고 제목을 “변경 조각”으로 바꾼다. 같은 영역의 미리보기·승인 단계가 대상과 충돌 조건을 보여 준다. 언어 서버 제안은 비어 있으면 빈 상태 한 줄만 보이고, 설명은 제안이 있을 때만 보인다. 새로고침은 접근 이름이 있는 아이콘 버튼이다.
+
+H는 Corral 쓰기만 남은 파일, A→B 검토의 유지, 정확한 비교의 승인과 반영 계획이다. N은 사람이 바꾼 Corral 파일의 `mixed`, C→B에서 검토 미표시와 다른 비교 승인의 이전 표시, 자기 명령이 바뀐 검사, 세션·host가 다른 표시, 버전 없는 task 위치다. F는 이후 바뀐 파일의 hunk 출처 확인과 적용성 분리, 현재 사본을 확인하지 못할 때 `unknown`이다.
+
+통과는 Linux의 단위·통합 결과와 인앱 확인 범위다. 다른 OS·설치판·스크린리더 qualification이 아니다.

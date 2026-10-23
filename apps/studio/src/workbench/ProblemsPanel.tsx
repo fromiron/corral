@@ -14,14 +14,18 @@ type Source = {
   key: string;
   kind: 'check' | 'task';
   name: string;
-  /** The check ran on a tree that is no longer the copy's current one. */
-  stale: boolean;
+  /**
+   * `stale`: the check ran on an older tree; `configChanged`: under another definition of the
+   * check; `unknown`: a task log names no source version, so it is never shown as current.
+   */
+  freshness: 'current' | 'stale' | 'configChanged' | 'unknown';
   problems: Problem[];
 };
 
 /**
  * Locations reported by checks and tasks, inside the session copy only (CR-046 P15). A check
- * result keeps the tree it ran on, so a result from an older tree is marked as such.
+ * result keeps the tree and command it ran with, so a result from either one earlier is marked;
+ * a task's output has no version (CR-046 P17).
  */
 export function ProblemsPanel({ sessionId }: { sessionId: string }) {
   const t = useTranslations('Problems');
@@ -61,14 +65,18 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
             key: `check:${check.verificationId}`,
             kind: 'check' as const,
             name: check.name,
-            stale: check.stale,
+            freshness: check.stale
+              ? ('stale' as const)
+              : check.configChanged
+                ? ('configChanged' as const)
+                : ('current' as const),
             problems: parseProblems(check.output),
           })),
           ...outputs.map(({ task, text }) => ({
             key: `task:${task.operationId}`,
             kind: 'task' as const,
             name: task.script,
-            stale: false,
+            freshness: 'unknown' as const,
             problems: parseProblems(text),
           })),
         ].filter((source) => source.problems.length);
@@ -140,7 +148,11 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
               <h3 className="flex items-baseline gap-2 px-1 text-xs font-medium">
                 <span className="truncate">{source.name}</span>
                 <span className="text-muted">{t(source.kind)}</span>
-                {source.stale ? <span className="text-warning">{t('stale')}</span> : null}
+                {source.freshness === 'stale' || source.freshness === 'configChanged' ? (
+                  <span className="text-warning">{t(source.freshness)}</span>
+                ) : source.freshness === 'unknown' ? (
+                  <span className="text-muted">{t('versionUnknown')}</span>
+                ) : null}
               </h3>
               <ul className="mt-1 space-y-0.5">
                 {source.problems.map((problem) => {

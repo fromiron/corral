@@ -79,7 +79,6 @@ export function HunkActions({
   return (
     <section className="mt-4 space-y-2 border-t border-line pt-3 text-xs" aria-label={t('heading')}>
       <h3 className="font-medium">{t('heading')}</h3>
-      <p className="text-muted">{t('hint')}</p>
       {!hunks ? (
         <Button
           size="xs"

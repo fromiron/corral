@@ -9,8 +9,14 @@ import { Button } from '@corral/react/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
+/**
+ * `state` says whether the frozen source can still be read as captured. `applies` says, apart
+ * from that, whether it still holds for the working copy now (CR-046 P17): an intact hunk of an
+ * earlier tree can be read while its file has changed since. Absent when it cannot be judged.
+ */
 export interface ContextSourceStatus {
   state: 'current' | 'stale' | 'unavailable';
+  applies?: 'yes' | 'files_changed' | 'config_changed' | 'unknown';
   reason?: string;
 }
 export interface ContextAttachmentsProps {
@@ -162,6 +168,11 @@ function CaptureRow({
       if (alive.current) setBusy(false);
     }
   };
+  const applies = 'applies' in status ? status.applies : undefined;
+  const label =
+    applies && applies !== 'yes'
+      ? `${t(status.state)} · ${t(`applies.${applies}`)}`
+      : t(status.state);
   return (
     <li className="flex min-w-0 flex-col gap-0.5 rounded fill-group px-2 py-1">
       <div className="flex min-w-0 items-start gap-1">
@@ -183,10 +194,10 @@ function CaptureRow({
               {item.provenance ? (
                 <span
                   role="status"
-                  title={t(status.state)}
-                  className={`truncate leading-4 ${status.state === 'current' ? 'text-muted' : 'text-warning'}`}
+                  title={label}
+                  className={`truncate leading-4 ${status.state === 'current' && (!applies || applies === 'yes') ? 'text-muted' : 'text-warning'}`}
                 >
-                  {t(status.state)}
+                  {label}
                 </span>
               ) : null}
             </span>

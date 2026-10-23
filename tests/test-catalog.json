@@ -3654,5 +3654,38 @@
     "status": "planned",
     "adapter": "server build with Playwright Chromium; the response is dropped by a browser route after the host handled the request",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-013-H",
+    "requirements": [
+      "CRL-WBD-013"
+    ],
+    "suite": "unit+integration",
+    "scenario": "Corral 쓰기만 남은 파일의 managed_agent, A→B 변경 검토 유지와 내용 읽음 기록, 정확한 비교의 승인과 반영 계획, 출처와 현재 적용성의 분리 표시",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with the existing file broker; jsdom panes with stubbed workspace clients; no paid models",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-013-N",
+    "requirements": [
+      "CRL-WBD-013"
+    ],
+    "suite": "unit+integration",
+    "scenario": "사람이 고친 Corral 파일의 mixed, 같은 최종 내용의 C→B에서 검토 미표시, 다른 비교 승인의 이전 표시와 반영 차단, 자기 명령만 바뀐 검사의 configChanged, 세션·host가 다른 표시 미적용, task 출력 위치의 버전 모름",
+    "status": "planned",
+    "adapter": "temporary real Git repositories and managed worktrees with real check processes; jsdom panes",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-013-F",
+    "requirements": [
+      "CRL-WBD-013"
+    ],
+    "suite": "unit",
+    "scenario": "이후 파일이 바뀐 hunk 첨부는 출처 확인을 유지하며 files_changed, 현재 사본 조회 실패는 unknown, 이전 tree·설정 검사의 적용성 구분",
+    "status": "planned",
+    "adapter": "stubbed workspace client responses",
+    "evidence": null
   }
 ]

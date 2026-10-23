@@ -1,3 +1,4 @@
+import type { FileSideView } from '@corral/client';
 import {
   canonicalJson,
   type TextAttachment,
@@ -16,6 +17,25 @@ export interface SourceRead extends ContextSourceStatus {
   current?: TextAttachment;
 }
 const unavailable = (): SourceRead => ({ state: 'unavailable' });
+type Applies = NonNullable<ContextSourceStatus['applies']>;
+const sameSide = (left: FileSideView, right: FileSideView) =>
+  canonicalJson(left) === canonicalJson(right);
+
+/** Whether the file a frozen hunk changed is still as its `to` tree has it in the copy now. */
+async function hunkApplies(
+  client: NonNullable<StudioServices['workspaces']>,
+  source: Extract<TextAttachmentProvenance, { kind: 'hunk' }>,
+): Promise<Applies> {
+  try {
+    const now = await client.changes(source.sessionId, { kind: 'session' });
+    if (!now.to) return 'unknown';
+    if (now.to === source.to) return 'yes';
+    const sides = await client.fileVersions(source.sessionId, source.to, now.to, source.path);
+    return sameSide(sides.before, sides.after) ? 'yes' : 'files_changed';
+  } catch {
+    return 'unknown';
+  }
+}
 const sameTarget = (left: WorkspaceTarget, right: WorkspaceTarget) =>
   canonicalJson(left) === canonicalJson(right);
 const ownsSource = (services: StudioServices, source: TextAttachmentProvenance) =>
@@ -97,6 +117,7 @@ export async function readAttachmentSource(
           current.sha256 === item.sha256 && hunks.patchHash === source.patchHash
             ? 'current'
             : 'stale',
+        applies: await hunkApplies(client, source),
         current,
       };
     }
@@ -142,7 +163,11 @@ export async function readAttachmentSource(
     const changed = (
       ['fingerprint', 'configRevision', 'outputHash', 'outputTruncated'] as const
     ).some((key) => source[key] !== undefined && source[key] !== provenance[key]);
-    return { state: !changed && current.sha256 === item.sha256 ? 'current' : 'stale', current };
+    return {
+      state: !changed && current.sha256 === item.sha256 ? 'current' : 'stale',
+      applies: result.stale ? 'files_changed' : result.configChanged ? 'config_changed' : 'yes',
+      current,
+    };
   } catch {
     return unavailable();
   }

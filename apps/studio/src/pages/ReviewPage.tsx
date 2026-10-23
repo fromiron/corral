@@ -13,6 +13,7 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import { createTextAttachment, type RunSummary, type WorkSession } from '@corral/core';
+import { Check, Eye } from '@corral/react/icons';
 import { Button } from '@corral/react/ui';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -28,6 +29,7 @@ import {
 } from '../workbench/context/bridge.ts';
 import { HunkActions } from '../workbench/HunkActions.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
+import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
 import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
 import { WorkbenchLayout } from './Workbench.tsx';
@@ -95,22 +97,43 @@ export function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   // UX-05: a session without a working copy has nothing to compare; that is not a failure.
   const [noCopy, setNoCopy] = useState(false);
-  const [runs, setRuns] = useState<RunSummary[]>([]);
+  // Runs and comments are held with the session they were read for: a late answer for the
+  // session just left never lands here, and its drafts or active run never drive this one.
+  const [loadedRuns, setRuns] = useState<{ sessionId: string; runs: RunSummary[] }>({
+    sessionId: session.sessionId,
+    runs: [],
+  });
+  const runs = loadedRuns.sessionId === session.sessionId ? loadedRuns.runs : [];
   const [version, setVersion] = useState(0);
   const { binding } = useBinding(session.projectId);
-  const [comments, setComments] = useState<ReviewCommentView[]>([]);
-  const reviewed = useReviewedFiles(session.sessionId);
+  const [loadedComments, setComments] = useState<{
+    sessionId: string;
+    comments: ReviewCommentView[];
+  }>({ sessionId: session.sessionId, comments: [] });
+  const comments = loadedComments.sessionId === session.sessionId ? loadedComments.comments : [];
+  const reviewed = useReviewMarks(services.workspaceId ?? mode, session.sessionId);
   const reloadComments = useCallback(async () => {
-    if (workspaces) setComments(await workspaces.comments(session.sessionId).catch(() => []));
+    if (!workspaces) return;
+    const sessionId = session.sessionId;
+    const value = await workspaces.comments(sessionId).catch(() => []);
+    if (current.current.services.workspaces === workspaces)
+      setComments((shown) =>
+        current.current.session.sessionId === sessionId ? { sessionId, comments: value } : shown,
+      );
   }, [workspaces, session.sessionId]);
   useEffect(() => {
     void reloadComments();
   }, [reloadComments]);
 
   useEffect(() => {
-    void transport
-      .listRuns()
-      .then((all) => setRuns(all.filter((r) => r.sessionId === session.sessionId)));
+    let live = true;
+    const sessionId = session.sessionId;
+    void transport.listRuns().then((all) => {
+      if (live) setRuns({ sessionId, runs: all.filter((r) => r.sessionId === sessionId) });
+    });
+    return () => {
+      live = false;
+    };
   }, [transport, session.sessionId]);
   useEffect(() => {
     void version;
@@ -135,7 +158,7 @@ export function ReviewPage() {
     return () => {
       live = false;
     };
-  }, [workspaces, session.sessionId, session.projectId, scopeKey, version]);
+  }, [workspaces, session.sessionId, scopeKey, version]);
 
   const selected = search.file ?? null;
   const choose = (file: string) => void navigate({ search: (s) => ({ ...s, file }) });
@@ -169,8 +192,9 @@ export function ReviewPage() {
               ← {session.title}
             </Link>
             <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
+            {/* The options name what they compare; the label stays for assistive technology. */}
             <label className="flex items-center gap-1 text-xs">
-              {t('scope')}
+              <span className="sr-only">{t('scope')}</span>
               <select
                 value={scopeKey}
                 onChange={(e) => setScope(e.target.value)}
@@ -282,7 +306,7 @@ export function ReviewPage() {
               {selected && changes?.from && changes.to ? (
                 <FileDiff
                   path={selected}
-                  loadKey={`${scopeKey}:${changes.from}:${changes.to}:${selected}`}
+                  loadKey={`${session.sessionId}:${scopeKey}:${changes.from}:${changes.to}:${selected}`}
                   load={() =>
                     (workspaces as NonNullable<typeof workspaces>).fileVersions(
                       session.sessionId,
@@ -291,11 +315,10 @@ export function ReviewPage() {
                       selected,
                     )
                   }
-                  reviewedKey={fileKey(
+                  mark={changeMark(
+                    reviewed,
                     changes.files.find((f) => f.path === selected),
-                    selected,
                   )}
-                  reviewed={reviewed}
                   comments={comments.filter(
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
                   )}
@@ -342,8 +365,10 @@ export function ReviewPage() {
                         before: { kind: 'text', text: file.before },
                         after: { kind: 'text', text: file.after },
                       })}
-                      reviewedKey={`proposal:${proposal.hash}:${file.path}`}
-                      reviewed={reviewed}
+                      mark={{
+                        pressed: reviewed.has(`proposal:${proposal.hash}:${file.path}`),
+                        toggle: () => reviewed.toggle(`proposal:${proposal.hash}:${file.path}`),
+                      }}
                       comments={[]}
                     />
                   )}
@@ -389,12 +414,19 @@ const sideText = (side: FileSideView) =>
 
 type NewComment = Pick<ReviewCommentView, 'side' | 'startLine' | 'endLine' | 'quote' | 'body'>;
 
+/** A change review toggle; absent where there is nothing to review (the Git pane). */
+interface ChangeMark {
+  pressed: boolean;
+  toggle(): void;
+}
+const changeMark = (marks: ReviewMarks, file: FileChangeView | undefined): ChangeMark | undefined =>
+  file && { pressed: marks.changeReviewed(file), toggle: () => marks.toggleChange(file) };
+
 export function FileDiff({
   path,
   loadKey,
   load,
-  reviewedKey,
-  reviewed,
+  mark,
   comments = [],
   onComment,
 }: {
@@ -402,8 +434,7 @@ export function FileDiff({
   /** Changes whenever what to load changes. */
   loadKey: string;
   load: () => Promise<{ before: FileSideView; after: FileSideView }>;
-  reviewedKey?: string;
-  reviewed?: ReviewedFiles;
+  mark?: ChangeMark | undefined;
   comments?: ReviewCommentView[];
   /** Absent where comments do not apply (the linked folder's Git state). */
   onComment?: (comment: NewComment) => Promise<void>;
@@ -468,7 +499,6 @@ export function FileDiff({
   const before = sideText(sides.before);
   const after = sideText(sides.after);
   const source = sides.after.kind === 'text' ? sides.after.text : (before ?? '');
-  const isReviewed = reviewedKey !== undefined && Boolean(reviewed?.has(reviewedKey));
   const download = () => {
     const url = URL.createObjectURL(new Blob([source], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
@@ -481,15 +511,15 @@ export function FileDiff({
     <div className="flex flex-col gap-2" data-testid="file-diff">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="break-all font-mono text-sm">{path}</h3>
-        {reviewed && reviewedKey !== undefined ? (
+        {mark ? (
           <button
             type="button"
-            aria-pressed={isReviewed}
-            onClick={() => reviewed.toggle(reviewedKey)}
-            title={t('reviewedNote')}
-            className={`rounded px-2 py-0.5 text-xs ${isReviewed ? 'bg-success/20' : 'fill-control'}`}
+            aria-pressed={mark.pressed}
+            onClick={mark.toggle}
+            title={t('changeReviewNote')}
+            className={`rounded px-2 py-0.5 text-xs ${mark.pressed ? 'bg-success/20' : 'fill-control'}`}
           >
-            {isReviewed ? `✓ ${t('reviewedFile')}` : t('markFileReviewed')}
+            {mark.pressed ? `✓ ${t('reviewedFile')}` : t('markFileReviewed')}
           </button>
         ) : null}
         <fieldset className="ml-auto flex gap-1 text-xs">
@@ -727,6 +757,9 @@ export function Checks({
               ) : null}
               {r.timedOut ? <span className="text-danger">{t('timedOut')}</span> : null}
               {r.stale ? <span className="text-warning">{t('stale')}</span> : null}
+              {r.configChanged && !r.stale ? (
+                <span className="text-warning">{t('configChanged')}</span>
+              ) : null}
               {onAttach && workspaceId && projectId ? (
                 <Button
                   size="xs"
@@ -987,8 +1020,11 @@ function CommentsPanel({
   );
 }
 
-/** Approve or ask for changes to exactly these two trees; applying follows an approval. */
-function DecisionPanel({
+/**
+ * Approve or ask for changes to exactly these two trees; applying follows an approval. A decision
+ * made on another comparison, even one ending in the same tree, is shown as earlier (CR-046 P17).
+ */
+export function DecisionPanel({
   sessionId,
   from,
   to,
@@ -1032,7 +1068,9 @@ function DecisionPanel({
     void reload();
   }, [reload, changed, to]);
   const latest = decisions[0] ?? null;
-  const approved = latest && latest.decision === 'approved' ? latest : null;
+  const earlier = latest !== null && (latest.stale || latest.from !== from || latest.to !== to);
+  // Applying writes the approved tree; an approval from another starting point is not applied.
+  const approved = latest && latest.decision === 'approved' && latest.from === from ? latest : null;
   const decide = async (decision: 'approved' | 'changes_requested') => {
     await workspaces?.decide(sessionId, { from, to, decision, note: '' });
     setPlan(null);
@@ -1054,7 +1092,7 @@ function DecisionPanel({
       {latest ? (
         <p className="text-xs" data-testid="decision">
           {t(`decisionState.${latest.decision}`)}
-          {latest.stale ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
+          {earlier ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-1 text-xs">
@@ -1156,41 +1194,6 @@ function DecisionPanel({
 
 // ── file list helpers (02-UX-Spec §4) ───────────────────────────────────────
 
-/** "Reviewed" is reading, per file content: it holds while the file's after-blob is the same. */
-const fileKey = (file: FileChangeView | undefined, path: string) =>
-  `${path}@${file?.afterBlob ?? file?.beforeBlob ?? 'gone'}`;
-
-interface ReviewedFiles {
-  has(key: string): boolean;
-  toggle(key: string): void;
-}
-
-/** Kept in this browser (a view state, 02-UX-Spec §9), per session. */
-function useReviewedFiles(sessionId: string): ReviewedFiles {
-  const storageKey = `corral:reviewed:${sessionId}`;
-  const [keys, setKeys] = useState<Set<string>>(() => {
-    try {
-      return new Set(JSON.parse(window.localStorage.getItem(storageKey) ?? '[]') as string[]);
-    } catch {
-      return new Set();
-    }
-  });
-  return {
-    has: (key) => keys.has(key),
-    toggle: (key) => {
-      const next = new Set(keys);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      setKeys(next);
-      try {
-        window.localStorage.setItem(storageKey, JSON.stringify([...next].slice(-2000)));
-      } catch {
-        // Remembered for this page only.
-      }
-    },
-  };
-}
-
 /** Lock files and build output: folded by default, but deletions stay in view. */
 const GENERATED =
   /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Cargo\.lock|poetry\.lock|go\.sum|composer\.lock|Gemfile\.lock)$|(^|\/)(dist|build|generated|__generated__)\/|\.min\.(js|css)$/;
@@ -1207,7 +1210,7 @@ function FileList({
   sessionId: string;
   changes: ChangeSetView | null;
   selected: string | null;
-  reviewed: ReviewedFiles;
+  reviewed: ReviewMarks;
   onChoose: (path: string) => void;
 }) {
   const t = useTranslations('Files');
@@ -1228,7 +1231,7 @@ function FileList({
     (f) =>
       (!needle || f.path.toLowerCase().includes(needle)) &&
       (kind === 'all' || f.status === kind) &&
-      (!unreviewedOnly || !reviewed.has(fileKey(f, f.path))),
+      (!unreviewedOnly || !reviewed.changeReviewed(f)),
   );
   const folded = matches.filter((f) => GENERATED.test(f.path) && f.status !== 'deleted');
   const main = matches.filter((f) => !folded.includes(f));
@@ -1242,8 +1245,18 @@ function FileList({
           selected === file.path ? 'border-accent bg-raised' : 'border-transparent fill-group'
         }`}
       >
-        <span className="break-all font-mono">
-          {reviewed.has(fileKey(file, file.path)) ? '✓ ' : ''}
+        <span className="flex items-start gap-1 break-all font-mono">
+          {reviewed.changeReviewed(file) ? (
+            <>
+              <Check aria-hidden className="mt-0.5 size-3 shrink-0 text-success" />
+              <span className="sr-only">{t('reviewedFile')}</span>
+            </>
+          ) : reviewed.contentRead(file) ? (
+            <span title={t('readElsewhere')} className="contents">
+              <Eye aria-hidden className="mt-0.5 size-3 shrink-0 text-muted" />
+              <span className="sr-only">{t('readElsewhere')}</span>
+            </span>
+          ) : null}
           {file.path}
         </span>
         <span className="text-muted">

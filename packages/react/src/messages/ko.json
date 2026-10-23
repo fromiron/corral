@@ -1465,7 +1465,7 @@
     "scope": "비교 범위",
     "scopes": {
       "session": "세션 전체",
-      "review": "마지막 검토 이후",
+      "review": "읽음 기록 이후",
       "run": "실행 {runId}"
     },
     "noBaseline": "이 실행의 시작·종료 시점 변경을 비교할 수 없습니다.",
@@ -1479,7 +1479,8 @@
     },
     "provenance": {
       "managed_agent": "Corral",
-      "external_observed": "사용자 또는 외부 변경"
+      "external_observed": "사용자 또는 외부 변경",
+      "mixed": "Corral 변경 뒤 외부 변경"
     },
     "binary": "바이너리 파일: 글자 비교 없음.",
     "tooLarge": "1 MiB보다 커서 보이지 않습니다.",
@@ -1488,8 +1489,8 @@
     "split": "나란히",
     "before": "이전",
     "after": "이후",
-    "markReviewed": "지금까지의 세션 변경을 검토함으로 설정",
-    "reviewedNote": "세션 작업 사본 전체의 현재 상태를 읽음으로 기록해 이후 변경만 새 변경으로 보여 줍니다. 승인이 아닙니다.",
+    "markReviewed": "지금까지 모두 읽음",
+    "reviewedNote": "지금의 작업 사본 전체를 읽음으로 기록해 이후 변경만 ‘읽음 기록 이후’에 보입니다. 파일 검토나 승인이 아닙니다.",
     "runCheck": "{name} 실행",
     "checkState": {
       "running": "실행 중…",
@@ -1512,7 +1513,6 @@
     "kindAll": "모든 종류",
     "reviewedFile": "검토함",
     "markFileReviewed": "검토함 표시",
-    "unmarkFileReviewed": "검토 취소",
     "generatedGroup": "생성·잠금 파일 {count, plural, other {#개}}(접힘)",
     "raw": "원문",
     "downloadFile": "내려받기",
@@ -1560,7 +1560,10 @@
     },
     "checkTargetChanged": "검사가 후보 파일을 변경했으므로 통과 근거로 사용할 수 없습니다.",
     "attachCheckOutput": "검사 출력 첨부",
-    "readOnlyPreview": "읽기 전용 미리보기"
+    "readOnlyPreview": "읽기 전용 미리보기",
+    "changeReviewNote": "이 비교에서 이 파일의 변경을 검토했다고 이 브라우저에 표시합니다. 같은 파일이라도 다른 비교는 따로 검토합니다. 승인이 아닙니다.",
+    "readElsewhere": "다른 비교에서 읽음",
+    "configChanged": "이전 검사 설정 기준"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -2652,8 +2655,7 @@
     }
   },
   "Hunks": {
-    "heading": "선택한 변경 반영",
-    "hint": "검토 승인·원본 반영·작업 사본 되돌리기는 별개입니다. 파일은 고정 비교 시점과 같아야 합니다. 적용 전에 복구용 체크포인트를 저장합니다.",
+    "heading": "변경 조각",
     "load": "변경 조각 선택",
     "part": "변경 조각 {number}",
     "showPatch": "이 변경 내용 보기",
@@ -3317,7 +3319,13 @@
     "confirmReplacement": "캡처 교체",
     "cancel": "취소",
     "close": "닫기",
-    "readonlySnapshot": "읽기 전용 스냅샷입니다. 열어도 파일을 변경하거나 요청을 보내지 않습니다."
+    "readonlySnapshot": "읽기 전용 스냅샷입니다. 열어도 파일을 변경하거나 요청을 보내지 않습니다.",
+    "applies": {
+      "yes": "현재 사본에 그대로 적용됨",
+      "files_changed": "현재 파일은 이후 변경됨",
+      "config_changed": "검사 설정이 이후 바뀜",
+      "unknown": "현재 사본과 대조하지 못함"
+    }
   },
   "Git": {
     "title": "Git",
@@ -3434,6 +3442,8 @@
       "error": "오류",
       "warning": "경고"
     },
-    "openFailed": "{path}을(를) 열 수 없습니다."
+    "openFailed": "{path}을(를) 열 수 없습니다.",
+    "configChanged": "이전 설정",
+    "versionUnknown": "버전 모름"
   }
 }

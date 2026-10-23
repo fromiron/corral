@@ -163,7 +163,12 @@ export interface FileChange {
   additions: number | null;
   deletions: number | null;
   binary: boolean;
-  provenance: 'managed_agent' | 'external_observed';
+  /**
+   * Who the observed result can be credited to (CR-046 P17): `managed_agent` when the file is as
+   * Corral's last applied write or delete left it, `mixed` when Corral changed it and something
+   * else changed it afterwards, `external_observed` when Corral never changed it.
+   */
+  provenance: 'managed_agent' | 'mixed' | 'external_observed';
   /** Git blob ids of the two sides (null when absent): a file's identity for "reviewed". */
   beforeBlob: string | null;
   afterBlob: string | null;
@@ -205,6 +210,8 @@ export interface VerificationView {
   endedAt: string | null;
   /** The worktree has changed since it ran. */
   stale: boolean;
+  /** The project's registered command with this id is no longer the one that ran (CR-046 P17). */
+  configChanged: boolean;
   report: VerificationReport | null;
 }
 
@@ -2097,22 +2104,52 @@ export class WorkspaceService implements FileTools {
         additions: count?.add ?? null,
         deletions: count?.del ?? null,
         binary: count ? count.add === null : false,
-        provenance: managed.has(path) ? 'managed_agent' : 'external_observed',
+        provenance: 'external_observed',
         beforeBlob: blob(fields[2]),
         afterBlob: blob(fields[3]),
       });
     }
+    for (const file of files) {
+      if (!managed.has(file.path)) continue;
+      const expected = managed.get(file.path);
+      let actual: string | null = null;
+      if (file.afterBlob) {
+        // Corral writes at most 1 MiB, so a larger result cannot be its write.
+        const bytes = await git(row.worktree_path, ['cat-file', 'blob', file.afterBlob], {
+          maxBuffer: MAX_TEXT + 1,
+        }).then(
+          (result) => result.stdout,
+          () => null,
+        );
+        actual = bytes ? sha256(bytes) : 'unreadable';
+      }
+      file.provenance = actual === expected ? 'managed_agent' : 'mixed';
+    }
     return { scope, from, to, unavailable: null, files };
   }
 
-  private managedPaths(sessionId: string, runId: string | null): Set<string> {
+  /** Each path Corral changed, with the content hash its last applied operation left (null: none). */
+  private managedPaths(sessionId: string, runId: string | null): Map<string, string | null> {
     const rows = this.db
       .prepare(
-        `SELECT path, to_path FROM file_operations WHERE session_id = ? AND state = 'applied'
-           AND (? IS NULL OR run_id = ?)`,
+        `SELECT kind, path, to_path, after_hash FROM file_operations
+           WHERE session_id = ? AND state = 'applied' AND (? IS NULL OR run_id = ?)
+           ORDER BY created_at, rowid`,
       )
-      .all(sessionId, runId, runId) as { path: string; to_path: string | null }[];
-    return new Set(rows.flatMap((r) => (r.to_path ? [r.path, r.to_path] : [r.path])));
+      .all(sessionId, runId, runId) as {
+      kind: 'write' | 'delete' | 'move';
+      path: string;
+      to_path: string | null;
+      after_hash: string | null;
+    }[];
+    const left = new Map<string, string | null>();
+    for (const row of rows) {
+      if (row.kind === 'move') {
+        left.set(row.path, null);
+        if (row.to_path) left.set(row.to_path, row.after_hash);
+      } else left.set(row.path, row.kind === 'delete' ? null : row.after_hash);
+    }
+    return left;
   }
 
   async fileVersions(
@@ -2745,8 +2782,13 @@ export class WorkspaceService implements FileTools {
       started_at: string;
       ended_at: string | null;
     }[];
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id = ?')
+      .get(sessionId) as { project_id: string } | undefined;
+    const registered = session ? (this.projectTools.latest(session.project_id)?.checks ?? []) : [];
     return rows.map((r) => {
       const command = JSON.parse(r.command_json) as VerifyCommand;
+      const now = registered.find((check) => check.id === r.command_id);
       return {
         verificationId: r.id,
         commandId: r.command_id,
@@ -2762,6 +2804,8 @@ export class WorkspaceService implements FileTools {
         startedAt: r.started_at,
         endedAt: r.ended_at,
         stale: currentTree === null || currentTree !== r.tree,
+        // Another check's edit bumps the revision too; only this command's definition counts.
+        configChanged: !now || canonicalJson(now) !== canonicalJson(command),
         report: r.report_json ? VerificationReport.parse(JSON.parse(r.report_json)) : null,
       };
     });

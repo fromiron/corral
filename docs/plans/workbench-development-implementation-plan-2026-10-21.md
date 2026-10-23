@@ -10,7 +10,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, [C-145·146/P05–06 편집·복구](../evaluation/Development-Workbench-Editor-2026-10-21.md)는 구현하고 Linux 인앱 흐름을 확인했다. [C-147·148/P07–08 PTY](../evaluation/Development-Workbench-Terminal-2026-10-21.md)는 구현하고 Linux 인앱의 파일→PTY→Diff 흐름을 확인했다. [C-149/P09 패널 대상·경로 연결](../evaluation/Development-Workbench-Panels-2026-10-21.md)을 구현하고 Linux 인앱에서 과거 결과·설정·초안 왕복을 확인했다. [C-150/P10 도킹·배치·복구](../evaluation/Development-Workbench-Docking-2026-10-21.md)를 구현하고 Linux 인앱에서 문서/PTY 수명·키보드·390px 승인/중지 접근을 확인했다. [C-151/P11 컨텍스트 참조·대화 밀도](../evaluation/Development-Workbench-Context-2026-10-21.md)를 구현하고 Linux 인앱에서 코드/검사/hunk→queue→scripted Run 및 실제 PTY 선택, 미저장 확인·원본/교체/삭제·표시 밀도·390px를 확인했다. [C-152/P12 읽기 전용 Git 관찰](../evaluation/Development-Workbench-Git-Observation-2026-10-21.md)을 구현하고 Linux 인앱에서 실제 index·작업 파일 구분, 원본/사본 전환, stale 새로고침과 unborn 원본을 확인했다. 이어서 [C-153/P13 stage·commit](../evaluation/Development-Workbench-Git-Write-2026-10-22.md), [C-154/P14 branch·원격](../evaluation/Development-Workbench-Git-Remote-2026-10-22.md), [C-155/P15 task·preview·Problems](../evaluation/Development-Workbench-Tasks-2026-10-22.md)를 구현했다. [C-156/P16 Alpha 인수](../evaluation/Development-Workbench-Alpha-2026-10-22.md)는 Linux 인앱에서 수동·결정적 agent 흐름을 로컬 bare remote push까지 확인했다. 실제 OS IME·스크린리더·외부 원격·지원 플랫폼/설치판 GUI qualification은 남아 있다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
+현재 진행: C-143/P03의 공통 예약·receipt·사본 generation은 구현하고 관련 회귀를 확인했다. C-142의 A/B 비교와 대상/owner 계약을 완료하고 ADR-040에 따라 기존 셸+A 엔진 연결을 선택했다. C-144/P04 문서 API는 [구현·관련 회귀](../evaluation/Development-Workbench-Documents-2026-10-21.md)를 완료했으며, [C-145·146/P05–06 편집·복구](../evaluation/Development-Workbench-Editor-2026-10-21.md)는 구현하고 Linux 인앱 흐름을 확인했다. [C-147·148/P07–08 PTY](../evaluation/Development-Workbench-Terminal-2026-10-21.md)는 구현하고 Linux 인앱의 파일→PTY→Diff 흐름을 확인했다. [C-149/P09 패널 대상·경로 연결](../evaluation/Development-Workbench-Panels-2026-10-21.md)을 구현하고 Linux 인앱에서 과거 결과·설정·초안 왕복을 확인했다. [C-150/P10 도킹·배치·복구](../evaluation/Development-Workbench-Docking-2026-10-21.md)를 구현하고 Linux 인앱에서 문서/PTY 수명·키보드·390px 승인/중지 접근을 확인했다. [C-151/P11 컨텍스트 참조·대화 밀도](../evaluation/Development-Workbench-Context-2026-10-21.md)를 구현하고 Linux 인앱에서 코드/검사/hunk→queue→scripted Run 및 실제 PTY 선택, 미저장 확인·원본/교체/삭제·표시 밀도·390px를 확인했다. [C-152/P12 읽기 전용 Git 관찰](../evaluation/Development-Workbench-Git-Observation-2026-10-21.md)을 구현하고 Linux 인앱에서 실제 index·작업 파일 구분, 원본/사본 전환, stale 새로고침과 unborn 원본을 확인했다. 이어서 [C-153/P13 stage·commit](../evaluation/Development-Workbench-Git-Write-2026-10-22.md), [C-154/P14 branch·원격](../evaluation/Development-Workbench-Git-Remote-2026-10-22.md), [C-155/P15 task·preview·Problems](../evaluation/Development-Workbench-Tasks-2026-10-22.md)를 구현했다. [C-156/P16 Alpha 인수](../evaluation/Development-Workbench-Alpha-2026-10-22.md)는 Linux 인앱에서 수동·결정적 agent 흐름을 로컬 bare remote push까지 확인했다. 실제 OS IME·스크린리더·외부 원격·지원 플랫폼/설치판 GUI qualification은 남아 있다. 2026-10-23 재검토를 반영해 [C-157/P17 변경 검토와 근거 연결](../evaluation/Development-Workbench-Review-Evidence-2026-10-23.md)을 구현했다. [실행 기록](../evaluation/Development-Workbench-Foundation-2026-10-21.md)을 참조한다.
 
 ## P16 완료 시점의 재개 메모
 
@@ -21,8 +21,29 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
   - 사용자 task는 별도 테이블 없이 인간 operation 원장을 쓴다.
   - Git 조작은 Git 창 한 곳에 있다.
   - 도구 창 이름은 "Tasks & preview"다.
-- **다음 사용자 재개 요청은 P17 변경 검토와 근거 연결부터 처리한다.** P18 D&D·Reins 연결을 사용자 승인 없이 미루거나 제거하지 않는다.
+- 2026-10-23 사용자 요청으로 아래 재검토를 반영해 P17을 구현했다. **다음 단계는 P18 D&D·Reins 연결이다.** 사용자 승인 없이 미루거나 제거하지 않는다.
 - 직전 실행·환경 한계는 [P16 기록](../evaluation/Development-Workbench-Alpha-2026-10-22.md)에 있다. 상태 원장은 `contracts/backlog.json`의 C-153–156이다. 이 기록을 전체 release gate 통과로 해석하지 않는다.
+
+## 2026-10-23 P17 이후 재검토 반영
+
+검토 HEAD `faae41a2824598752230a6c20183a17df9bf6637`(PR base `0712768`, P12 기준 `613096b`)의 P17–P30 재검토 제안(사용자 첨부 `Corral-PR69-P17-Onward-Review-2026-10-23.md`)을 사용자가 “플랜을 기반으로 구현”하도록 요청했다. 제안 문서는 검토 산출물이며 정본은 이 계획·CR-046·backlog·증거다. 이 요청을 P22 공유 쓰기·P30 외부 하네스·외부 배포/push·PR 갱신의 승인으로 해석하지 않는다.
+
+**채택:** P00–P16은 재설계하지 않는다. P17–P30의 범위·식별자는 유지하고 아래 하위 작업·화면 소유권·순서만 개정한다.
+
+| 기능 | 대표 화면 | 다시 만들지 않는 것 |
+|---|---|---|
+| 저장소·index 변경 | Git 창 | 검토 화면 안의 stage/commit |
+| Run·세션 snapshot 검토 | 기존 변경 검토 화면 | 별도 Review Center·두 번째 댓글 시스템 |
+| 검사 실행·결과 / 오류 위치 | Checks / Problems | pane별 검사 owner, LSP 전용 두 번째 Problems |
+| 사용자 shell / 개발 task | Terminal / Tasks & preview | 명령 기록을 shell로 표시, task 관리창 중복 |
+| 실행 제어 / 역할 개입 | DockRunControls / 기존 Reins | pane별 pause·cancel 묶음, 별도 조율 엔진 |
+| 팀 설계 / 설정 | 기존 그래프 surface의 도킹 문서 / 단일 설정 모달 | 두 번째 그래프 store, 독립 설정 페이지 |
+
+여러 문맥의 링크가 같은 기능·대상·상태로 도착하면 중복이 아니다.
+
+**순서:** R0 P16 잔여 검증과 P29 조기 적용 → R1 P17 → R2 P18 → R3 P21-A와 P22 결정 자료 → R4 승인된 P22·P23·P24-A → R5 P20·P24-B·P25 → R6 P26·P27 → R7 P28·설치판 P29. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다. P24-A와 P20의 작은 연결은 조건이 맞으면 앞당긴다. P22 결정 대기 중에도 다른 독립 작업은 진행한다.
+
+**R0 잔여 검증(미수행):** PR 제목·본문을 P16 기준으로 갱신하는 일, #85 감사 ID별 해결/보류 대조, 최신 댓글의 기존 실패 분류는 외부 게시 동작이므로 사용자 확인 뒤 한다. 실제 desktop preview 프레임 조작, 살아 있는 host에서 PTY transport 끊김·재연결(자동 stdin replay 없음), 파일·Git·과거 Run·설정 왕복, 390px Composer·승인·취소는 P16 기록에서 빠진 통합 여정으로 남는다. 새 E2E는 실제 관찰로 필요가 확인된 경우만 추가한다.
 
 ## 1. 구현 순서와 제품 경계
 
@@ -289,14 +310,19 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 
 ### M4 검토와 Corral 실행 흐름 연결
 
-**WB-P17 변경 검토와 근거 연결 — M, W2-08**
+**WB-P17 변경 검토와 근거 연결 — M, W2-08 — 구현(C-157)**
 
-- 작업: RunDiff/GitDiff/checkpoint를 별도 기준으로 표시하고 file/hunk 메모·reviewed hash·검사 tree·stale를 연결한다. 결과를 읽었는지는 Run 완료 상태와 분리한다.
-- 완료: 외부/인간 변경이 섞이면 `external_observed`/출처 불확실 상태를 유지하고 agent 단독 성과로 표시하지 않음. 선택 hunk 피드백이 원래 revision을 참조. P11·12 이후.
+- 새 검토 도구가 아니라 기존 댓글·Diff·hunk 첨부·읽음·검사 결과의 근거 연결과 의미 분리다. 기존 `WorkspaceTarget`·`from/to`·`path/side/range`·`patchHash`·`verificationId/fingerprint/configRevision`을 재사용하고 새 증거 DB나 Coordinator 원장을 만들지 않는다.
+- P17-A 비교 기준: Run·세션·읽음 기록 이후 비교는 같은 Diff renderer를 쓰되 기준 tree 쌍으로 구분한다. Git의 HEAD→index와 index→worktree는 Git 창이 계속 소유한다.
+- P17-B 의미 분리: 파일 **읽음**(내용 blob)은 유지하고, **변경 검토**는 host·경로·이전/이후 blob 쌍에 귀속한다. 판단(승인·수정 요청)은 ReviewService가 정확한 from/to에만 귀속한다. 원본 반영·Git stage·commit은 별도 행동이다. 검사는 tree가 같아도 자기 명령 정의가 바뀌면 현재 유효성을 잃는다.
+- P17-C 피드백 왕복: 선택 hunk·검사 출력 첨부는 출처 무결성과 현재 사본 적용성을 따로 보인다. 오래된 의견을 현재 줄에 자동 재부착하지 않으며, 의견 상태는 사람이 바꾼다.
+- 완료: A→B 검토 뒤 C→B에서 검토 완료가 보이지 않음, hunk 출처는 읽을 수 있으나 파일이 이후 변경됨, 같은 tree의 검사 설정 변경, 세션 전환 뒤 늦은 응답·표시가 새 세션에 붙지 않음, Corral이 쓴 뒤 다른 쓰기가 섞인 파일은 `mixed`. Git 창과 검토 화면의 stage/commit 책임은 나뉜 그대로다.
 
 **WB-P18 D&D와 Reins의 작업 연결 — M, W2-09**
 
 - 작업: 기존 그래프 편집기를 독립 탭으로 이관하고 execution→활동/파일/결과 링크를 연결한다. Reins 대상은 host/run/execution/attempt/revision으로 고정한다.
+- P18-A: `kind: graph` 도킹 descriptor를 추가해 기존 route·embedded 진입점이 같은 편집 surface(working copy·undo/redo·협업·definition/layout revision)를 연다. 그래프를 파일 문서로 가장하지 않는다. definition 초안과 보기 배치를 구분하고, 저장 팀이 없는 자동 팀에 편집 링크를 만들지 않는다. 구 layout은 알 수 없는 pane만 복구 안내하며 코드 문서·그래프 dirty·PTY를 함께 버리지 않는다.
+- P18-B: 현재 Run 제어는 DockRunControls/RunActions 경로를 유지하고 과거 Run 조회 중 실제 제어 대상을 명시한다. 그래프 편집기의 시험 실행과 세션 Run 제어, 자동 팀 snapshot과 저장 팀 draft를 섞지 않는다.
 - 완료: 탭/host/선택 Run을 바꾼 뒤 늦은 pause/cancel/patch가 새 대상에 적용되지 않음. D&D·undo·협업·Loop·budget 회귀. P09부터 적용해 G2까지 기존 기능을 항상 유지하고 이 작업에서 탐색 연결을 완성한다.
 
 **WB-P19 Ultra 후보 비교 연결 — L, W2-09**
@@ -304,17 +330,20 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 - 작업: C-114의 후보 workspace·예산 예약·검사·비교·명시한 하나의 승격을 기존 원장에 구현/연결한다. C-118 복수 모델 협업을 새로 만드는 항목이 아니다.
 - 완료: 선택 tree 재검증, 후보 취소·전원 실패·unknown 비용·늦은 결과·명시 단일 승격 반례. provider/OS 격리가 없는 경로는 시작 차단. 자동 승격/자동 merge 없음.
 - 선행 P03·17와 [CR-031](../change-requests/CR-031-ultra-quality.md). Alpha의 독립 선행 조건으로 묶지 않지만 이미 승인된 잔여 기능을 폐기하지 않는다.
+- 2026-10-23: P17의 검토 identity와 P18의 대상 탐색을 재사용하고 기존 검토 surface의 비교 보기로 시작한다. 별도 멀티에이전트 대시보드·실행 원장을 추가하지 않으며 검증되지 않은 퍼센트·품질 점수를 만들지 않는다. 첫 일상 개발 루프의 선행 조건이 아니며, 격리 실패가 남은 플랫폼에서는 후보 실행을 차단한다.
 
 **WB-P20 preview 요소 피드백 — M, W2-10**
 
 - 작업: 기존 preview 도구의 선택/screenshot 관측을 사용자 확인 가능한 context로 연결. URL·lease·source revision·선택 DOM/스타일/콘솔 범위를 표시한다.
 - 완료: 악성 페이지의 host API/credential 접근 차단, cross-origin/포트 변경·폐기 lease 거절, 사용자 선택 밖 내용을 자동 전송하지 않음. 이미 지원하는 관측 도구는 재사용. 선행 P11·15.
+- 2026-10-23 분할: P20-A는 P16에서 빠진 실제 desktop preview 프레임의 렌더링·조작·종료·재연결 확인이 먼저다. P20-B는 선택 관측→기존 첨부→수정 요청→같은 preview 확인이며, 가변 dev server 화면이 특정 tree와 원자적으로 일치한다고 주장하지 않는다(불명은 불명으로 표시). 새 범용 브라우저·사이트 편집기를 만들지 않는다.
 
 **WB-P21 작업 공간 수명과 원격 복귀 — L, W2-10**
 
 - 작업: 명시 setup/run/cleanup, archive와 실제 사본 삭제 분리, dirty buffer·Git·process·pending approval 요약, restore와 remote reconnect 상태 연결.
 - 완료: archive가 파일/PTY를 몰래 지우지 않음. 복구 전 같은 경로 재생성은 다른 generation. SSH 복구에서 local fallback/credential 혼선 없음. `.env`/키 자동 복사·setup 자동 실행 없음.
 - 선행 P05·07·14. 원격 성공 실증은 C-135에 합쳐 승인된 실제 host에서 검증하며 fixture 성공으로 대체하지 않음.
+- 2026-10-23 분할: P21-A 로컬 수명(삭제 전 dirty·미제출 의견·Git·task/PTY·승인 대기·복구 초안 요약, 기존 원장 조회, 불확실 cleanup은 완료 아님)과 P21-B 원격(C-135, renderer detach·transport reconnect·host restart 구분)을 나눈다. 외부 계정 대기로 P21-A를 막지 않는다.
 
 ### M5 일상 개발 기능
 
@@ -323,40 +352,47 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 - 결정: D2 승인 후 구현한다. 권고 비교안은 인간 편집+명시 dev task를 하나의 개발 owner 아래 허용하되 같은 사본의 agent writer/branch 구조 변경은 handoff 전 차단하는 모델이다. 기존 strict 보장과 다른 모드임을 표시한다.
 - 작업: owner 전환, 변동 generation, 외부 수정 관측, dirty 충돌, 검증 snapshot 고정, 종료 후 strict 복귀. read-only Run은 계속 고정 snapshot을 사용한다.
 - 완료: dev server가 소스도 수정하는 반례, save와 임의 외부 write의 경합, 관측 누락·불확실 attribution을 검증. 경로/명령 allowlist만으로 OS 격리를 주장하지 않음. G4의 일반적인 live-edit 흐름에는 이 결정 또는 실제 격리 대안이 필요하다.
+- 2026-10-23: **결정 자료는 P17/P18 진행 중 준비하고, P20 live feedback과 P23 이후 일상 개발 완료 선언 전에 결정한다.** 먼저 정할 의미는 mode·owner 저장과 복구, agent writer 시작 시 공유 task 종료/인계, 파일 CAS·감시 누락·외부 쓰기의 불확실성 표시, branch/index/검토/검사의 snapshot 경계, source version 변경과 copyGeneration 변경의 구분(저장마다 generation을 올리지 않음), host 재시작 때 미확인 프로세스를 자동 재실행하거나 grant를 조용히 복원하지 않는 정책이다. 첫 범위에 무제한 사용자 셸+여러 agent 동시 쓰기를 넣지 않는다. 미승인 동안 strict stop→cleanup→save→restart를 유지하고 이 제한을 일상 개발 UX에 명시한다.
 
 **WB-P23 프로젝트 언어 세션 — L, W2-11**
 
 - 위치: 기존 LSP runner 옆 상시 세션 adapter, registry/fingerprint·owner·capacity, editor provider 연결. 기존 agent query 도구는 유지한다.
 - 작업: JS/TS/React 프로젝트의 실제 tsconfig·import·dependency graph, didOpen/change/close, diagnostic version, completion/definition/references. 선택 server의 지원 capability만 표시한다.
 - 완료: dirty 문서 진단, 다른 사본 격리, UTF-16 범위/CJK·code point 차이, late diagnostic, crash/restart 후 버퍼 보존. syntax highlight만으로 완료하지 않음. 선행 P05·06·07. [LSP 명세](https://microsoft.github.io/language-server-protocol/)
+- 2026-10-23: 서버 수명은 host·관리 사본·설정 fingerprint에 귀속하고 탭·분할 view마다 실행하지 않는다. 구조화된 LSP 진단을 기존 Problems·에디터에 server generation·document version과 함께 연결하며 문자열 정규식에 통과시키지 않는다. 진단 도착이 포커스나 Problems 배치를 바꾸지 않는다. P17에서 task 출력 위치는 "버전 모름", 다른 검사 정의의 결과는 "이전 설정"으로 구분했다. 현재 파서의 공백·한글·Windows·tsc pretty 위치 한계는 fixture로 보완하되 임의 절대 경로는 열지 않는다.
 
 **WB-P24 검색·교체·refactor — L, W2-11**
 
 - 작업: 기존 파일 열거/가상화와 native 검색 도구 후보를 사용한다. ripgrep 등 새 binary를 채택하면 버전·배포·license를 심사하고 없는 환경에서 몰래 설치하지 않는다. ignore·범위·취소·결과 상한을 둔다.
 - 연결: dirty buffer를 검색에 포함할지 표시하고, 디스크 결과와 중복하지 않음. replace-all/rename/code action은 diff preview와 버전별 적용으로 연결하며 LSP가 요청한 명령을 자동 실행하지 않는다.
 - 완료: stale range, partial multi-file apply, 외부 변경, case-only rename, binary/대용량/ignored file, 취소 후 늦은 결과. 선행 P04·23의 proposal 경로.
+- 2026-10-23 분할: **P24-A 읽기 전용 파일 검색은 P23 완료를 기다리지 않는다.** 기존 파일 service·열거·가상화를 쓰고 결과는 기존 문서 열기 경로로 보낸다. 파일 내용 검색과 세션/대화 검색은 진입점이 이어져도 결과 종류를 구분한다. P24-B 다중 파일 교체·refactor는 P17 비교 근거·writer 정책·P23 edit proposal을 연결하고 적용 전 preview와 파일별 precondition을 확인한다.
 
 **WB-P25 고급 Git와 충돌 해결 — L, W2-12**
 
 - 작업: index 기반 hunk stage/unstage, 3-way base/ours/theirs, merge/rebase 진행·continue/abort, 충돌 파일 편집 연결. checkpoint hunk와 다른 UI/계약으로 표현한다.
 - 완료: rename/delete·binary conflict, 외부 index 변경, 중단/재시작 중 Git sequencer 상태, ref 변경 뒤 stale hunk. 손실 없는 중단/복구와 로컬 remote 통합 시험. 선행 P13·14·17.
+- 2026-10-23: Git 창에 추가한다. index 기준 hunk는 checkpoint의 HunkActions를 이름만 바꿔 재사용하지 않고 index fingerprint·HEAD·경로·hunk 변화에 재검토를 요구한다. 자동 merge·destructive reset/clean·force push 기본 노출을 추가하지 않고 D5 hook·signer·credential 정책을 바꾸지 않는다.
 
 **WB-P26 DAP 디버깅 — L, W2-12**
 
 - 작업: 먼저 Node/TypeScript, 이어 Chromium/browser의 검증된 debug adapter를 연결한다. launch/attach 설정·env 참조·cwd·source map·breakpoint·step·stack·variables·terminate를 지원한다.
 - 권한: launch configuration, debug console evaluate, adapter가 시작하는 terminal도 실행 효과다. privileged 기본값이나 임의 외부 debug port 접속을 만들지 않는다. browser adapter는 extension host 없이 배포/실행 가능한지 P01에서 확인한다.
 - 완료: unmapped breakpoint, source map 변경, child/debuggee 잔존, adapter crash, disconnect와 terminate 구분. process owner/host cap 사용. 선행 P07·23. [DAP 개요](https://microsoft.github.io/debug-adapter-protocol/overview)
+- 2026-10-23: 첫 묶음은 Node/TypeScript, 다음 묶음이 browser/Chromium과 실제 preview 대상이다. Node만 검증한 상태를 browser까지 완료로 기록하지 않으며, P28에서 browser를 빼려면 별도 제품 범위 결정이 필요하다. debugging pane 닫기가 debuggee를 조용히 끝내거나 orphan을 남기지 않는다.
 
 **WB-P27 배포 task와 결과 readback — M, W2-13**
 
 - 작업: provider별 거대 설정 UI 대신 기존 task에 환경·source commit/tree·credential 참조·명시 확인·결과 URL을 연결한다. dirty source 배포 여부를 숨기지 않는다.
 - 완료: mock 성공은 로컬 통합 증거, 실제 승인된 테스트 배포는 provider readback 증거로 분리. timeout/응답 유실에서 자동 재배포하지 않고 불확실 상태 확인. 출력 URL은 신뢰·프로토콜 정책 확인 후 링크로 표시한다.
 - 선행 P14·15·17. 실제 외부 계정·비용·대상은 이 계획 승인만으로 허용되지 않는다.
+- 2026-10-23: 별도 배포 catalog·credential 저장소를 먼저 만들지 않고 기존 인간 operation 원장과 task 경로에 환경·commit/tree·dirty·승인·credential 참조·readback을 연결한다. exit code와 배포 성공 확인을 구분하고, 확인이 안 되면 uncertain이다.
 
 **WB-P28 Daily Driver 인수 — M, W2-11–13**
 
 - 시나리오: JS/TS fixture에서 잘못된 import/타입 진단→다중 파일 rename→테스트 실패 위치 이동→Node/browser breakpoint 조사→Git conflict 해결→commit/push→승인된 배포 task 결과 확인.
 - 완료: 외부 IDE로 넘기는 버튼만으로 수용하지 않음. 지원 fixture·언어/adapter·OS를 명시한 G4 기록. P22의 개발 loop 결정, P23–27 필요. 미지원 언어는 텍스트 보기와 구분한다.
+- 2026-10-23: 기능 목록이 아니라 프로젝트 열기→진단/검색→직접 수정→dev loop→AI 피드백 왕복→snapshot 검사→변경 검토→부분 stage/충돌→Node/browser 디버깅→commit/push→승인한 테스트 배포 readback의 여정으로 인수한다. AI 미연결 수동 흐름을 유지하고 지원 수준을 설계/구현/로컬 검증/설치판 검증/외부 통합으로 나눈다.
 
 ### M6 전 단계 검증과 선택적 확장
 
@@ -365,6 +401,7 @@ PTY는 host에 위치한다. renderer에는 xterm view만 둔다. `CommandRuntim
 - M1부터 수행한다. 각 OS/arch에서 PTY/후손 종료, file watcher/rename, editor worker/CSP, native ABI, IME/화면 배율, 키보드/스크린리더, updater/rollback을 해당 산출물 hash로 확인한다.
 - 부하 fixture: 문서 20개·PTY 3개·다른 사본의 Run 2개·1만 파일·큰 Diff·장문 대화. 기존 admission 상한을 몰래 높여 fixture를 통과시키지 않는다.
 - 완료: 기준 장비와 cold/warm 구분, 입력/전환 p95·long task·terminal backlog·idle CPU·model/process 회수를 기록. 성능 수치는 baseline 후 예산을 승인하고 CI용 결정적 한도와 실기 관측을 분리한다. G5에서 합산한다.
+- 2026-10-23: 끝의 대청소가 아니라 각 단계의 공통 증거 기준이다. 대상·host·generation·Run attempt 고정, 단일 설정 모달·폼 초안·Escape·포커스 복귀, 문서/그래프 dirty·undo와 PTY·task 수명, 응답 유실·중복·늦은 결과, 좁은 화면의 Composer·승인·중지를 변경 영역마다 확인한다. 기존 12 process-group 상한을 유지하고 LSP/DAP마다 별도 카운터를 만들지 않으며, Dockview의 상시 mount pane 수만큼 LSP·poll·구독이 늘지 않게 한다.
 
 **WB-P30 선택 외부 하네스 — L, W2-15**
 

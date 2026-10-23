@@ -72,14 +72,14 @@
 | POST /sessions/:id/terminals/:terminalId/resize | `TerminalResize` | controller의 공통 순서로 cols 2–500, rows 1–500. 성공한 resize도 output sequence에 포함 |
 | POST /sessions/:id/terminals/:terminalId/stop | `TerminalIdentity` | target/generation 확인 후 OS 세션 종료 증거에 따라 상태/예약 정리. 불명확하면 uncertain 유지 |
 | GET /sessions/:id/terminals/:terminalId/events | generation, after 또는 Last-Event-ID | 인증된 SSE. sequenced output/resize와 unsequenced 현재 status. 화면 detach는 구독 해제만 하며 PTY를 종료하지 않음 |
-| GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처) |
+| GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처·이전/이후 blob). 출처는 `managed_agent`(Corral의 마지막 적용 쓰기 그대로)·`mixed`(Corral이 바꾼 뒤 다른 쓰기가 섞임)·`external_observed`(Corral이 바꾸지 않음) |
 | GET /sessions/:id/changes/file?from&to&path | — | 두 tree의 파일 내용(text·binary·too_large·absent) |
-| POST /sessions/:id/reviewed | — | 지금 상태를 "마지막 검토"로 기록(승인 아님) |
-| GET·POST /sessions/:id/verifications | POST `{commandId}` | 검증 명령 실행(202)과 결과 목록(지난 버전 표시) |
+| POST /sessions/:id/reviewed | — | 지금 사본 전체를 읽음 기록으로 남김("읽음 기록 이후" 범위의 기준). 파일 검토·승인 아님 |
+| GET·POST /sessions/:id/verifications | POST `{commandId}` | 검증 명령 실행(202)과 결과 목록. `stale`은 실행 tree가 현재 사본과 다름, `configChanged`는 그 검사의 등록 명령 정의가 지금과 다르거나 삭제됨(다른 검사 변경은 제외) |
 | GET /sessions/:id/file-operations | — | broker가 한 파일 쓰기 기록(planned·applied·failed·uncertain) |
 | GET·POST /sessions/:id/comments, PATCH …/comments/:commentId | `{from, to, path, side, startLine, endLine, quote, body}` / `{state}` | 두 tree에 묶인 검토 의견(CR-013). 초안만 지울 수 있음 |
 | POST /sessions/:id/feedback/text, POST /sessions/:id/feedback | `{commentIds}` / 보낸 결과 | 의견 묶음의 본문과, 지시·새 Run으로 보낸 기록 |
-| GET·POST /sessions/:id/decisions | `{from, to, decision, note}` | 승인·수정 요청. 작업 복사본이 바뀌면 `stale` |
+| GET·POST /sessions/:id/decisions | `{from, to, decision, note}` | 승인·수정 요청. 작업 복사본이 바뀌면 `stale`. Studio는 정확한 from/to가 같은 판단만 현재 비교의 판단으로 표시 |
 | GET /sessions/:id/integration-plan?decisionId= | — | 파일별 apply·skip·conflict |
 | GET·POST /sessions/:id/integrations, POST …/:integrationId/revert | `{decisionId}` | 원본 폴더 반영·되돌리기, 파일별 결과 |
 | GET /projects/:id/inbox | — | 사람이 처리할 항목(결정 대기·대기열·결과 모르는 쓰기·반영 문제·검증 실패·검토 뒤 쓰기) |

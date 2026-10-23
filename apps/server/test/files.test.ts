@@ -1616,6 +1616,61 @@ describe('review, applying and reverting (CR-013)', () => {
   });
 });
 
+describe('change review evidence (CR-046 P17)', () => {
+  it('[TC-WBD-013-H] [TC-WBD-013-N] credits Corral only for files still as its last write left them', async () => {
+    const { service, call } = await setup();
+    try {
+      await call('read_file', { path: 'a.txt' });
+      await call('write_file', { path: 'a.txt', text: 'agent\n' });
+      await call('write_file', { path: 'b.txt', text: 'agent bee\n' });
+      await call('write_file', { path: 'c.txt', text: 'agent sea\n' });
+      await call('read_file', { path: 'c.txt' });
+      await call('delete_file', { path: 'c.txt' });
+      const root = service.copyOf('session_1')?.worktree as string;
+      // A person (or a task) edits one of the agent's files and adds one of their own.
+      writeFileSync(join(root, 'b.txt'), 'agent bee\nand a person\n');
+      writeFileSync(join(root, 'd.txt'), 'person\n');
+      const changes = await service.changes('session_1', { kind: 'session' }, () => false);
+      const provenance = Object.fromEntries(changes.files.map((f) => [f.path, f.provenance]));
+      expect(provenance).toEqual({
+        'a.txt': 'managed_agent',
+        'b.txt': 'mixed',
+        'd.txt': 'external_observed',
+      });
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it('[TC-WBD-013-N] a check result is outdated by a change to its own command, not to another check', async () => {
+    const { service } = await setup();
+    try {
+      const check = {
+        id: 'quick',
+        name: 'Quick',
+        argv: [process.execPath, '-e', 'console.log(1)'],
+        timeoutMs: 10000,
+      };
+      const other = { ...check, id: 'other', name: 'Other' };
+      await service.configure('default', { verifyCommands: [check] });
+      await service.waitVerification(await service.verify('session_1', 'default', 'quick'));
+      const read = async () =>
+        service.verifications('session_1', await service.currentTree('session_1'))[0];
+      expect(await read()).toMatchObject({ stale: false, configChanged: false });
+      await service.configure('default', { verifyCommands: [check, other] });
+      expect(await read()).toMatchObject({ stale: false, configChanged: false });
+      await service.configure('default', {
+        verifyCommands: [{ ...check, argv: [process.execPath, '-e', 'console.log(2)'] }, other],
+      });
+      expect(await read()).toMatchObject({ stale: false, configChanged: true });
+      await service.configure('default', { verifyCommands: [other] });
+      expect(await read()).toMatchObject({ stale: false, configChanged: true });
+    } finally {
+      await service.dispose();
+    }
+  });
+});
+
 describe('missing folders (02-UX-Spec §8)', () => {
   it('says when the linked folder or the working copy is gone, instead of failing', async () => {
     const { service, original } = await setup();

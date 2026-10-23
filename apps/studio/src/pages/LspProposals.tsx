@@ -1,5 +1,6 @@
 import type { WorkspacesApi } from '@corral/client';
 import type { LspProposal, LspProposalSummary } from '@corral/contracts';
+import { RefreshCw } from '@corral/react/icons';
 import { Button, Dialog, DialogDescription, DialogPopup, DialogTitle } from '@corral/react/ui';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -85,12 +86,20 @@ export function LspProposals({
   const file = detail?.files.find((file) => file.path === path);
   return (
     <section className="flex flex-col gap-2 border-t border-line pt-3" aria-label={t('heading')}>
-      <h3 className="text-sm font-semibold">{t('heading')}</h3>
-      <p className="text-xs text-muted">{t('hint')}</p>
-      {!items.length ? <p className="text-xs text-muted">{t('empty')}</p> : null}
-      <Button variant="ghost" size="sm" onClick={() => setRefresh((current) => current + 1)}>
-        {t('refresh')}
-      </Button>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{t('heading')}</h3>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t('refresh')}
+          title={t('refresh')}
+          onClick={() => setRefresh((current) => current + 1)}
+        >
+          <RefreshCw />
+        </Button>
+      </div>
+      {/* What a proposal is matters once there is one; an empty list says so on its own. */}
+      <p className="text-xs text-muted">{items.length ? t('hint') : t('empty')}</p>
       {items.map((item) => (
         <div key={item.proposalId} className="flex flex-col gap-1 border-b border-line pb-2">
           <Button variant="outline" size="sm" onClick={() => setSelected(item.proposalId)}>

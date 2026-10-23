@@ -147,3 +147,18 @@ it('[TC-WBD-007-N] replacement preserves current order and unrelated additions a
   expect(f.value()).toEqual([other, replacement, added]);
   expect(f.row(replacement.name)?.textContent).toContain('replacementFailed');
 });
+
+it('[TC-WBD-013-H] shows that a source is intact apart from whether it still applies', async () => {
+  const item = capture('check.txt', 'output');
+  const f = await fixture([item], async () => null);
+  const status = () => f.row(item.name)?.querySelector('[role="status"]');
+  f.inspect.mockResolvedValue({ state: 'current', applies: 'yes' });
+  await f.expand(item.name);
+  await act(async () => f.button(item.name, 'openSource')?.click());
+  expect(status()?.textContent).toBe('current');
+  expect(status()?.className).toContain('text-muted');
+  f.inspect.mockResolvedValue({ state: 'current', applies: 'config_changed' });
+  await act(async () => f.button(item.name, 'openSource')?.click());
+  expect(status()?.textContent).toBe('current · applies.config_changed');
+  expect(status()?.className).toContain('text-warning');
+});

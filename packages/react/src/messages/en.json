@@ -1465,7 +1465,7 @@
     "scope": "Compare",
     "scopes": {
       "session": "Whole session",
-      "review": "Since last review",
+      "review": "Since marked read",
       "run": "Run {runId}"
     },
     "noBaseline": "A fixed start/end comparison is not available for this run.",
@@ -1479,7 +1479,8 @@
     },
     "provenance": {
       "managed_agent": "Corral",
-      "external_observed": "User or external change"
+      "external_observed": "User or external change",
+      "mixed": "Corral, then changed elsewhere"
     },
     "binary": "Binary file: no text diff.",
     "tooLarge": "Larger than 1 MiB: not shown.",
@@ -1488,8 +1489,8 @@
     "split": "Side by side",
     "before": "Before",
     "after": "After",
-    "markReviewed": "Set the session as reviewed up to now",
-    "reviewedNote": "Records the session's whole current working copy as read, so later changes show as new. It is not an approval.",
+    "markReviewed": "Mark all read up to now",
+    "reviewedNote": "Records the whole working copy as read now, so later changes show under “Since marked read”. It does not review or approve a file.",
     "runCheck": "Run {name}",
     "checkState": {
       "running": "Running…",
@@ -1511,8 +1512,7 @@
     "unreviewedOnly": "Not reviewed only",
     "kindAll": "All kinds",
     "reviewedFile": "Reviewed",
-    "markFileReviewed": "Mark as reviewed",
-    "unmarkFileReviewed": "Not reviewed",
+    "markFileReviewed": "Mark reviewed",
     "generatedGroup": "{count, plural, one {# generated or lock file} other {# generated or lock files}} (folded)",
     "raw": "Source",
     "downloadFile": "Download",
@@ -1560,7 +1560,10 @@
     },
     "checkTargetChanged": "The check changed its own target; it cannot prove a pass.",
     "attachCheckOutput": "Attach check output",
-    "readOnlyPreview": "Read-only preview"
+    "readOnlyPreview": "Read-only preview",
+    "changeReviewNote": "Marks this file's change in this comparison as reviewed, in this browser. Another comparison of the same file is reviewed on its own. It is not an approval.",
+    "readElsewhere": "Read in another comparison",
+    "configChanged": "for earlier check settings"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -2652,8 +2655,7 @@
     }
   },
   "Hunks": {
-    "heading": "Apply selected changes",
-    "hint": "Review approval, original-folder changes and working-copy reversal are separate actions. Files must still match the fixed comparison. A recovery checkpoint is saved before applying.",
+    "heading": "Selected changes",
     "load": "Select changed parts",
     "part": "Part {number}",
     "showPatch": "Show this patch",
@@ -3317,7 +3319,13 @@
     "confirmReplacement": "Replace capture",
     "cancel": "Cancel",
     "close": "Close",
-    "readonlySnapshot": "This snapshot is read-only. Opening it does not change files or send a request."
+    "readonlySnapshot": "This snapshot is read-only. Opening it does not change files or send a request.",
+    "applies": {
+      "yes": "Applies to the working copy",
+      "files_changed": "the file has changed since",
+      "config_changed": "the check's settings have changed since",
+      "unknown": "not confirmed against the working copy"
+    }
   },
   "Git": {
     "title": "Git",
@@ -3434,6 +3442,8 @@
       "error": "Error",
       "warning": "Warning"
     },
-    "openFailed": "{path} could not be opened."
+    "openFailed": "{path} could not be opened.",
+    "configChanged": "Earlier settings",
+    "versionUnknown": "Version unknown"
   }
 }

@@ -156,3 +156,96 @@ it('[TC-WBD-007-H] immutable hunk and check reads retain exact source identity a
     ).state,
   ).toBe('unavailable');
 });
+
+it('[TC-WBD-013-F] a frozen hunk or check can still be read while it no longer applies to the copy', async () => {
+  const from = 'a'.repeat(40),
+    to = 'b'.repeat(40),
+    later = 'c'.repeat(40),
+    patchHash = 'c'.repeat(64),
+    hunkId = 'd'.repeat(64);
+  const hunk = createTextAttachment('changes.patch', 'text/plain', 'selected patch', {
+    kind: 'hunk',
+    hostId: 'host',
+    projectId: 'project',
+    sessionId: 'session',
+    from,
+    to,
+    path: 'file.ts',
+    patchHash,
+    hunkIds: [hunkId],
+  });
+  const check = createTextAttachment('check.txt', 'text/plain', 'output', {
+    kind: 'check',
+    hostId: 'host',
+    projectId: 'project',
+    sessionId: 'session',
+    verificationId: 'verification',
+    commandId: 'test',
+    tree: to,
+  });
+  const now = { to, after: 'same' };
+  const result = { stale: false, configChanged: false };
+  const workspaces = {
+    hunks: vi.fn(async () => ({
+      from,
+      to,
+      path: 'file.ts',
+      patchHash,
+      hunks: [{ id: hunkId, patch: 'selected patch' }],
+    })),
+    changes: vi.fn(async () => ({ from, to: now.to, unavailable: null, files: [] })),
+    fileVersions: vi.fn(async () => ({
+      path: 'file.ts',
+      before: { kind: 'text', text: 'same' },
+      after: { kind: 'text', text: now.after },
+    })),
+    verifications: vi.fn(async () => [
+      {
+        verificationId: 'verification',
+        commandId: 'test',
+        tree: to,
+        state: 'passed',
+        output: 'output',
+        report: null,
+        ...result,
+      },
+    ]),
+  };
+  const services = { workspaceId: 'host', mode: 'server', workspaces } as never;
+  expect(await readAttachmentSource(services, hunk)).toMatchObject({
+    state: 'current',
+    applies: 'yes',
+  });
+  // The copy moved on, but not in this file.
+  now.to = later;
+  expect(await readAttachmentSource(services, hunk)).toMatchObject({
+    state: 'current',
+    applies: 'yes',
+  });
+  expect(workspaces.fileVersions).toHaveBeenLastCalledWith('session', to, later, 'file.ts');
+  now.after = 'edited since';
+  expect(await readAttachmentSource(services, hunk)).toMatchObject({
+    state: 'current',
+    applies: 'files_changed',
+  });
+  workspaces.changes.mockRejectedValueOnce(new Error('offline'));
+  expect(await readAttachmentSource(services, hunk)).toMatchObject({
+    state: 'current',
+    applies: 'unknown',
+  });
+  expect(await readAttachmentSource(services, check)).toMatchObject({
+    state: 'current',
+    applies: 'yes',
+  });
+  result.stale = true;
+  expect(await readAttachmentSource(services, check)).toMatchObject({
+    state: 'current',
+    applies: 'files_changed',
+  });
+  result.stale = false;
+  result.configChanged = true;
+  expect(await readAttachmentSource(services, check)).toMatchObject({
+    state: 'current',
+    applies: 'config_changed',
+  });
+});
