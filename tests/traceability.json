@@ -1583,5 +1583,16 @@
       "TC-WBD-014-N",
       "TC-WBD-014-F"
     ]
+  },
+  {
+    "requirementId": "CRL-WBD-015",
+    "tasks": [
+      "C-159"
+    ],
+    "tests": [
+      "TC-WBD-015-H",
+      "TC-WBD-015-N",
+      "TC-WBD-015-F"
+    ]
   }
 ]

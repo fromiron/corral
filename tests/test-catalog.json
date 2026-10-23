@@ -3720,5 +3720,38 @@
     "status": "planned",
     "adapter": "layout parser fixtures",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-015-H",
+    "requirements": [
+      "CRL-WBD-015"
+    ],
+    "suite": "unit",
+    "scenario": "execution 제어에서 그 run·execution의 파일 쓰기(Run 비교 파일 링크)·결과·검사만 보이고, 결과를 모르는 쓰기를 표시",
+    "status": "planned",
+    "adapter": "jsdom with stubbed workspace client and run session store",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-015-N",
+    "requirements": [
+      "CRL-WBD-015"
+    ],
+    "suite": "unit",
+    "scenario": "Run 전체 취소와 execution 취소 확인을 연 뒤 같은 view가 다른 Run을 따라가면 확인이 사라지고 명령을 보내지 않으며, 원래 Run으로 돌아와도 되살아나지 않음",
+    "status": "planned",
+    "adapter": "jsdom RunActions and ReinsPanel with run session stores",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-015-F",
+    "requirements": [
+      "CRL-WBD-015"
+    ],
+    "suite": "unit",
+    "scenario": "세션을 바꾼 뒤 도착한 이전 세션의 파일 기록 응답을 execution 근거에 표시하지 않음",
+    "status": "planned",
+    "adapter": "jsdom with delayed workspace responses",
+    "evidence": null
   }
 ]

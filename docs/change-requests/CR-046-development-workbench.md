@@ -203,6 +203,13 @@ H는 Corral 쓰기만 남은 파일, A→B 검토의 유지, 정확한 비교의
 - 세션 안 편집기는 앱 안의 이동(패널·주소 변경)에서 초안 버리기를 묻지 않는다. working copy가 남아 있기 때문이다. 페이지를 닫을 때의 경고는 그대로다. Ctrl+S는 포커스가 그래프 안에 있을 때만 팀을 저장한다. 다른 탭도 계속 mount되어 있어 코드 문서의 저장 단축키가 팀 저장이 되지 않게 하기 위해서다.
 - 세션 메뉴의 “팀 설계 열기”는 저장 팀이 있을 때만 보이며 도킹 탭을 연다. 도킹을 열 수 없으면 기존 route로 간다. 세션 안에서는 시험 실행 조작을 보이지 않는다. 세션 Run 제어는 도킹 상단 `DockRunControls` 한 곳이다. 자동 팀에는 편집 링크를 만들지 않는다.
 
-P18-B 중 과거 Run을 보는 동안의 제어 대상 표시는 기존 `DockRunControls`(`viewingOther`)를 유지한다. execution→활동·파일·결과·검사·검토 이동과, host·attempt가 바뀐 뒤 늦은 Reins 명령의 반례는 이번 변경의 검증 범위가 아니다.
+P18-B는 이어서 구현했다(CRL-WBD-015 / C-159 / TC-WBD-015-H,N,F). 새 명령 경로나 조율 엔진은 만들지 않는다.
+
+- **확인 뒤 보내는 명령의 대상 고정.** Run 전체 취소와 execution 취소 확인창은 열 때의 run(과 execution)을 기억한다. 같은 view·store가 다른 Run을 따라가면 확인창이 사라진다. 원래 Run으로 돌아와도 되살아나지 않는다. 누르는 순간 store의 현재 Run이 다르면 보내지 않는다. Reins 지시도 초안의 run이 store의 현재 Run과 다르면 보내지 않는다. 기존 `sendCommand(command)` 형태와 restart의 `expectedControlRevision`은 그대로다. pause·resume은 누른 순간의 Run에 바로 간다. 과거 Run을 보는 동안의 제어 대상 표시는 기존 `DockRunControls`(`viewingOther`)다.
+- **execution에서 근거로 이동.** 세션 도킹의 실행 제어 영역에 그 execution이 남긴 것을 보인다. 이 run·execution으로 기록된 broker 파일 쓰기는 검토 화면의 Run 비교 해당 파일로, 그 execution이 쓴 결과는 결과 보기로, 그 execution이 소유한 검사는 Checks로 간다. 결과를 모르는 쓰기는 “결과 모름”으로 표시한다. 다른 Run·execution 기록은 섞지 않고, 다른 세션을 위해 읽은 늦은 응답은 표시하지 않는다. 남긴 것이 없으면 영역을 그리지 않는다. 파일 기록 응답에는 이미 서버가 보내던 `execution_id`를 client 타입에 optional로 더한다.
+
+P18-A 보완: 다른 탭 뒤에 숨은 팀 그래프 탭은 렌더링에서 뺀다(`hidden`). Dockview의 `visibility: hidden`을 canvas 노드의 인라인 `visibility: visible`이 덮어 대화 위에 노드가 그려졌기 때문이다(TC-WBD-014-N).
+
+H는 execution의 파일·결과·검사만 각 화면으로 연결되는 것, N은 다른 Run을 따라간 뒤 Run·execution 취소 확인이 보내지지 않는 것, F는 세션을 바꾼 뒤 이전 세션의 늦은 기록이 표시되지 않는 것이다. host 전환은 services마다 다른 Run store를 쓰는 기존 구조를 따르며 이번에 따로 시험하지 않았다.
 
 H는 같은 팀 탭을 한 번만 열고 문서와 같은 영역에 두며 다시 열어도 그대로 복원하는 것, 초안 변경에 따른 탭 제목이다. N은 중복·빈 ID·다른 프로젝트 팀 거절, 문서 descriptor로의 위장 거절, 세션 안에서 이동 확인과 Ctrl+S 범위다. F는 잘못된 그래프 pane만 안내로 바꾸고 나머지 layout을 보존하는 것이다.

@@ -35,7 +35,11 @@ export function ReinsPanel({
     text: string;
     commandId?: string;
   } | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  // Pinned to the run and execution it was opened for (CR-046 P18).
+  const [cancelTarget, setCancelTarget] = useState<{
+    runId: string | null;
+    executionId: string;
+  } | null>(null);
   const [restartInstructions, setRestartInstructions] = useState<Record<string, string>>({});
   const runId = useStore(session, (s) => s.runId);
   const steer = useStore(session, (s) => s.steer);
@@ -71,6 +75,8 @@ export function ReinsPanel({
   const send = async () => {
     const instruction = text.trim();
     if (!instruction || pending || !draftMatches || target.finished) return;
+    // The view may have moved to another run since this render.
+    if (draft && session.getState().runId !== draft.runId) return;
     try {
       const receipt = await steer(target.executionId, instruction);
       if (receipt.status !== 'rejected')
@@ -209,13 +215,15 @@ export function ReinsPanel({
         <button
           type="button"
           disabled={pending || execution?.status === 'cancelling'}
-          onClick={() => setCancelTarget(target.executionId)}
+          onClick={() => setCancelTarget({ runId, executionId: target.executionId })}
           className="self-start rounded border border-danger px-2 py-1 text-xs text-danger disabled:opacity-50"
         >
           {t('cancelExecution')}
         </button>
       ) : null}
-      {cancelTarget === target.executionId && !target.finished ? (
+      {cancelTarget?.runId === runId &&
+      cancelTarget.executionId === target.executionId &&
+      !target.finished ? (
         <div className="flex flex-col gap-2 rounded border border-danger p-2 text-xs">
           <p>{t('cancelExecutionExplain', { executionId: target.executionId })}</p>
           <button
@@ -223,6 +231,7 @@ export function ReinsPanel({
             disabled={pending}
             onClick={() => {
               setCancelTarget(null);
+              if (session.getState().runId !== cancelTarget?.runId) return;
               sendCommand({
                 type: 'cancel',
                 payload: {

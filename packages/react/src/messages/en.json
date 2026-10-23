@@ -527,7 +527,13 @@
       "label": "Run page view",
       "results": "Results",
       "run": "Execution"
-    }
+    },
+    "evidence": "What this execution left",
+    "evidenceFiles": "Files",
+    "evidenceResults": "Results",
+    "evidenceChecks": "Checks",
+    "uncertainWrite": "outcome unknown",
+    "evidenceCheckEarlier": "earlier version"
   },
   "Timeline": {
     "heading": "Timeline",

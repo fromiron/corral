@@ -265,3 +265,22 @@ it('[TC-WBD-014-H] [TC-WBD-014-N] opens a saved team once as a tab of its own an
   expect(f.closeView).not.toHaveBeenCalled();
   expect(document.querySelector('[data-testid="graph"]')).toBeNull();
 });
+
+it('[TC-WBD-014-N] a team tab behind another tab is not drawn: its canvas nodes override visibility', async () => {
+  const f = await fixture({
+    renderGraph: (descriptor) => <span data-testid="graph">{descriptor.corralId}</span>,
+    graphTitle: () => 'Team',
+  });
+  await act(async () => {
+    f.ref.current?.openGraph('corral_a');
+  });
+  const holder = () =>
+    document.querySelector('[data-testid="graph"]')?.closest<HTMLElement>('[data-graph-view]');
+  expect(holder()?.hidden).toBe(false);
+  await act(async () => f.ref.current?.openContext('chat'));
+  expect(holder()?.hidden).toBe(true);
+  await act(async () => {
+    f.ref.current?.openGraph('corral_a');
+  });
+  expect(holder()?.hidden).toBe(false);
+});

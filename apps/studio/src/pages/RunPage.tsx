@@ -36,6 +36,7 @@ import { useModelPrices } from '../prices.ts';
 import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
+import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
 import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
@@ -336,6 +337,14 @@ function CompactRunWorkspace({
             </p>
           ) : null}
           <ReinsPanel session={session} target={target} />
+          {sessionId && search.execution && target ? (
+            <ExecutionEvidence
+              session={session}
+              sessionId={sessionId}
+              executionId={target.executionId}
+              onOpenArtifact={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
+            />
+          ) : null}
           {search.execution && target ? (
             <details className="mt-4">
               <summary className="cursor-pointer text-xs font-medium">{t('conversation')}</summary>

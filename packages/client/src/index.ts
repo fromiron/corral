@@ -1755,6 +1755,8 @@ export interface VerificationResultView {
 export interface FileOperationView {
   id: string;
   run_id: string;
+  /** The execution whose broker call wrote it; absent from older servers. */
+  execution_id?: string;
   kind: string;
   path: string;
   to_path: string | null;

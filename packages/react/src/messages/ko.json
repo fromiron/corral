@@ -527,7 +527,13 @@
       "label": "실행 화면 보기",
       "results": "결과",
       "run": "실행"
-    }
+    },
+    "evidence": "이 실행이 남긴 것",
+    "evidenceFiles": "파일",
+    "evidenceResults": "결과",
+    "evidenceChecks": "검사",
+    "uncertainWrite": "결과 모름",
+    "evidenceCheckEarlier": "이전 기준"
   },
   "Timeline": {
     "heading": "타임라인",

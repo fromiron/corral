@@ -123,12 +123,29 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
       ) : descriptor.kind === 'context' ? (
         renderer?.renderContext(descriptor.view)
       ) : descriptor.kind === 'graph' && renderer?.renderGraph ? (
-        renderer.renderGraph(descriptor, api.id)
+        <GraphView api={api}>{renderer.renderGraph(descriptor, api.id)}</GraphView>
       ) : (
         <p role="status" className="p-4 text-sm text-muted">
           {t('unknownPanel')} {descriptor.kind === 'unknown' ? descriptor.label : ''}
         </p>
       )}
+    </div>
+  );
+}
+/**
+ * Dockview hides a tab behind another with `visibility: hidden`, which canvas nodes override with
+ * their own inline `visibility: visible`; a hidden team tab is taken out of rendering instead.
+ */
+function GraphView({ api, children }: { api: IDockviewPanelProps['api']; children: ReactNode }) {
+  const [visible, setVisible] = useState(api.isVisible);
+  useEffect(() => {
+    setVisible(api.isVisible);
+    const listener = api.onDidVisibilityChange((event) => setVisible(event.isVisible));
+    return () => listener.dispose();
+  }, [api]);
+  return (
+    <div data-graph-view hidden={!visible} className="h-full">
+      {children}
     </div>
   );
 }
