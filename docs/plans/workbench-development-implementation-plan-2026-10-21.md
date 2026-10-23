@@ -12,9 +12,9 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 현재 구현: P00–P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27(C-142–168). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P21-B·P28 이후는 이 완료 범위에 포함하지 않는다.
 
-## 현재 상태: P26·P27 구현 완료, 후속 여정·환경 인수
+## 현재 상태: P28·P29 로컬 코어 인수 완료, 환경별 qualification 잔여
 
-`d658830`의 P23·P24-A, `8f44489`의 P20, `1b84186`의 P24-B, `83c7897`의 P25 이후 사용자가 P26·P27 구현을 승인하고 독립 영역의 병렬 진행을 요청했다. P26 디버깅(C-167)과 P27 배포 작업(C-168)을 구현했으며 기존 동작 보존·핵심 회귀·실제 화면을 확인했다. 범위와 환경 한계는 [디버깅](../evaluation/Development-Workbench-Debugging-2026-10-23.md)·[배포 결과 확인](../evaluation/Development-Workbench-Deployment-2026-10-23.md) 기록을 따른다. P28 통합 여정, P29 설치판·플랫폼 검증과 실제 외부 provider 배포는 이번 기능 구현 완료와 구분한다.
+`a3711bc`까지 P26·P27을 구현한 뒤 사용자가 P28·P29의 핵심 검증·실제 화면·커밋과 병렬 진행을 요청했다. P28은 같은 사본의 편집·검사·Git·로컬 배포 결과 연결을, P29는 현재 Linux unpacked runtime·복구·편집기 worker·좁은 화면을 확인했다. 검증 중 제보된 잘못된 재설치 안내는 `1553d37`에서 수정했다. 범위와 증거는 [P28 코어 여정](../evaluation/Development-Workbench-Daily-Driver-2026-10-23.md)·[P29 Linux 코어](../evaluation/Development-Workbench-Qualification-2026-10-23.md)에 있다. 전체 OS·장치·실제 외부 배포/업데이트·부하 qualification은 이번 코어 인수 완료와 구분한다.
 
 기존 task·Git·문서·공통 owner를 재사용한다. P24-B의 불변 제안은 전용 저장 기록으로 보존하고 적용 상태는 공통 operation receipt를 따른다. 상태 원장은 `contracts/backlog.json`이며 전체 release gate 통과를 뜻하지 않는다.
 
@@ -35,7 +35,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 여러 문맥의 링크가 같은 기능·대상·상태로 도착하면 중복이 아니다.
 
-**현재 상태:** R6 P26·P27 구현과 코어 검증 완료. **후속 계획:** R7 P28·설치판 P29. P17·P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27은 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다.
+**현재 상태:** R6 P26·P27 구현, R7 P28 로컬 코어 여정과 P29 Linux 코어 인수 완료. **후속 계획:** P29 환경별 qualification. P17·P18·P20·P21-A·P22·P23·P24-A·P24-B·P25·P26·P27은 구현됐고 R0 코어 검증은 아래 기록으로 회수했다. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다.
 
 **R0 코어 검증 완료:** [코어 실행 기록](../evaluation/Development-Workbench-Core-2026-10-23.md)에서 preview HTTP/HMR 소유권·종료, 실제 PTY viewer 재접속 후 셸 상태·입력 제어, dirty 문서→Git→설정 왕복·저장을 확인했다. Desktop 프레임의 후속 코어 확인은 [P20 기록](../evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md)에 있다. 사용자 요청에 따라 다음 기능마다 전체 여정을 반복하지 않고 변경한 코어 회귀와 실제 화면만 확인한다. 전체 설치판·좁은 화면 인수는 P29, 원격 host는 P21-B에 남긴다. PR #69/#85의 설명·감사 목록 갱신은 별도 외부 게시 작업이다.
 
@@ -151,15 +151,13 @@ P26 DAP 디버깅(C-167/CRL-WBD-023/TC-WBD-023-H,N,F)은 구현됐다. 현재 �
 
 P27 배포 task와 결과 확인(C-168/CRL-WBD-024/TC-WBD-024-H,N,F)은 구현됐다. 현재 계약은 [배포 작업](../current/workbench.md#배포-작업과-결과-확인), 로컬 명시 배포·분리된 결과 확인과 한계는 [실행 기록](../evaluation/Development-Workbench-Deployment-2026-10-23.md)을 따른다. 실제 provider 계정·비용·대상 승인은 별도이며 로컬 fixture는 외부 배포 증거가 아니다.
 
-**WB-P28 Daily Driver 인수 — M, W2-11–13**
-
-- 시나리오: JS/TS fixture에서 잘못된 import/타입 진단→다중 파일 rename→테스트 실패 위치 이동→Node/browser breakpoint 조사→Git conflict 해결→commit/push→승인된 배포 task 결과 확인.
-- 완료: 외부 IDE로 넘기는 버튼만으로 수용하지 않음. 지원 fixture·언어/adapter·OS를 명시한 G4 기록. P22의 개발 loop 결정, P23–27 필요. 미지원 언어는 텍스트 보기와 구분한다.
-- 2026-10-23: 기능 목록이 아니라 프로젝트 열기→진단/검색→직접 수정→dev loop→AI 피드백 왕복→snapshot 검사→변경 검토→부분 stage/충돌→Node/browser 디버깅→commit/push→승인한 테스트 배포 readback의 여정으로 인수한다. AI 미연결 수동 흐름을 유지하고 지원 수준을 설계/구현/로컬 검증/설치판 검증/외부 통합으로 나눈다.
+P28(C-169/CRL-WBD-025/TC-WBD-025-H,N,F)의 Linux 로컬 코어 인수는 완료했다. 실제 JS/TS 편집·검색/교체·검사와 같은 source의 commit/local bare push/배포 readback 연결, 초안·오래된 검토·중복 효과 보존은 [실행 기록](../evaluation/Development-Workbench-Daily-Driver-2026-10-23.md)을 따른다. P20/P22/P25/P26/P27의 직전 실제 코어 증거를 명시적으로 연결하며 과도하게 반복하지 않았다. 실제 AI/provider·외부 Git 배포와 전체 설치판 여정은 해당 환경의 인수 조건으로 남긴다.
 
 ### M6 전 단계 검증과 선택적 확장
 
-**WB-P29 설치판·성능·접근성·복구 — L, W2-14**
+**WB-P29 설치판·성능·접근성·복구 — Linux 코어 완료, 환경 qualification 잔여**
+
+C-170/CRL-WBD-026/TC-WBD-026-H,N,F로 현재 Linux unpacked native/worker·실제 복구와 390px/키보드 코어를 확인했다. 실제 시작 경합 수정과 산출물 hash·검증하지 않은 조건은 [실행 기록](../evaluation/Development-Workbench-Qualification-2026-10-23.md)에 있다. 아래 전체 플랫폼/성능 조건의 통과를 뜻하지 않는다.
 
 - M1부터 수행한다. 각 OS/arch에서 PTY/후손 종료, file watcher/rename, editor worker/CSP, native ABI, IME/화면 배율, 키보드/스크린리더, updater/rollback을 해당 산출물 hash로 확인한다.
 - 부하 fixture: 문서 20개·PTY 3개·다른 사본의 Run 2개·1만 파일·큰 Diff·장문 대화. 기존 admission 상한을 몰래 높여 fixture를 통과시키지 않는다.
@@ -176,8 +174,8 @@ P27 배포 task와 결과 확인(C-168/CRL-WBD-024/TC-WBD-024-H,N,F)은 구현�
 
 ```mermaid
 flowchart TD
-  DONE[구현됨 P00-P18 P20 P21-A P22 P23 P24-A/B P25-P27] --> G4[일상 개발 인수 P28]
-  G4 --> G5[설치판과 운영 검증 P29]
+  DONE[구현됨 P00-P18 P20 P21-A P22 P23 P24-A/B P25-P27] --> CORE[P28 로컬 코어 및 P29 Linux 코어 완료]
+  CORE --> G5[P29 환경별 qualification 잔여]
 ```
 
 P29는 마지막에 새로 시작하는 단계가 아니라 각 경계에 반복 적용한다. P19/C-114와 P30은 별도 범위를 가진다. 도식의 묶음은 한 PR이나 한 번의 자동 실행을 뜻하지 않는다.

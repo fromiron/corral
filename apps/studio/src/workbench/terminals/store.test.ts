@@ -168,7 +168,7 @@ it('[TC-WBD-004-H] advances replay only after xterm applies output and preserves
   f.store.dispose();
 });
 
-it('[TC-WBD-004-N] serializes input and coalesced resize, then drops queued input after a lost acknowledgement', async () => {
+it('[TC-WBD-004-N] [TC-WBD-026-N] serializes input and coalesced resize, then drops queued input after a lost acknowledgement', async () => {
   const f = setup();
   const gate = new Gate();
   f.client.input.mockImplementationOnce(async () => {

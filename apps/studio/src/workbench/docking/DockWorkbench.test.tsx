@@ -76,7 +76,7 @@ async function fixture(
   return { ref, container, owner, closeView, key };
 }
 
-it('[TC-WBD-006-F] leaves a dirty document open until its close decision succeeds', async () => {
+it('[TC-WBD-006-F] [TC-WBD-026-F] leaves a dirty document open until its close decision succeeds', async () => {
   const f = await fixture();
   await act(async () => {
     expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(true);

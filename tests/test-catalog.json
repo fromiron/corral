@@ -4050,5 +4050,71 @@
     "status": "planned",
     "adapter": "isolated real Git/SQLite/process and in-app fixture; core regressions only; no paid calls or external deployment",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-025-H",
+    "requirements": [
+      "CRL-WBD-025"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "같은 JS/TS 관리 사본의 검색/다중 교체·검사·commit/local push·배포 결과 확인과 실제 편집 흐름",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-025-N",
+    "requirements": [
+      "CRL-WBD-025"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "미저장 초안·오래된 검토·다른 소스/환경의 결과를 현재 완료로 처리하지 않음",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-025-F",
+    "requirements": [
+      "CRL-WBD-025"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "응답 유실·중복 배포의 동일 operation 조회와 원본/기존 remote 보존",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-026-H",
+    "requirements": [
+      "CRL-WBD-026"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "Linux 실제 번들 runtime·공통 12개 process 상한·키보드/좁은 화면 핵심 동작",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-026-N",
+    "requirements": [
+      "CRL-WBD-026"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "입력 응답 유실의 자동 재전송 금지, 정상 화면으로 전환하며 취소된 복구 로드를 설치 실패로 오판하지 않음",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-026-F",
+    "requirements": [
+      "CRL-WBD-026"
+    ],
+    "suite": "unit+integration+browser+os",
+    "scenario": "dirty 문서 닫기/복원과 renderer/sidecar 실패 후 명시 복구, 이전 세대 이벤트의 현재 화면 보존",
+    "status": "planned",
+    "adapter": "isolated Linux Git/SQLite/runtime and actual app UI; focused acceptance; no paid calls or external deployment",
+    "evidence": null
   }
 ]

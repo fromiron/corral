@@ -11,6 +11,8 @@
 | 프로젝트 언어 지원 | [P23 dirty 진단·completion·정의/참조 이동](Development-Workbench-Language-2026-10-23.md) |
 | 파일 내용 검색 | [P24-A 결과 이동·dirty/stale 보존](Development-Workbench-Content-Search-2026-10-23.md) |
 | 다중 파일 교체와 refactor | [P24-B 불변 제안·파일별 적용·복구 경계](Development-Workbench-File-Edits-2026-10-23.md) |
+| 일상 개발 인수 | [P28 JS/TS 코어 연결·실제 편집 여정](Development-Workbench-Daily-Driver-2026-10-23.md) |
+| Linux 설치판·복구 인수 | [P29 실제 unpacked·복구 경합·native/worker·키보드/390px](Development-Workbench-Qualification-2026-10-23.md) |
 | Node·Chromium 디버깅 | [P26 소유 DAP·원본 중단점·step·변수·명시 평가](Development-Workbench-Debugging-2026-10-23.md) |
 | 배포 작업과 결과 확인 | [P27 source 고정·명시 실행·별도 readback](Development-Workbench-Deployment-2026-10-23.md) |
 | 고급 Git와 충돌 해결 | [P25 실제 index hunk·충돌 편집·merge/rebase·receipt 복구](Development-Workbench-Advanced-Git-2026-10-23.md) |

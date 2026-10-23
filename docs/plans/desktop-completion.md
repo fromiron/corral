@@ -31,3 +31,5 @@ OTel 외부 export와 CLI browser 비교는 원래의 opt-in 후속 범위다. �
 완료 판정은 OS·빌드 identity·mock/live·실행한 흐름·실패/skip을 구분한다. Windows 성공, Linux 단위 회귀, macOS 미지원은 서로 대체할 수 없다.
 
 2026-10-21 Linux unpacked recovery와 AppImage native 흐름은 [현재 실행 기록](../evaluation/Quality-Completion-2026-10-21.md)으로 검증했다. 해당 candidate 이후 변경과 Windows/macOS 실기는 구분한다. 사용자는 현재 환경에서 불가능한 Windows/macOS 검증을 별도 후속 작업으로 지정했다.
+
+2026-10-23 P29의 현재 Linux unpacked native/Monaco worker·시작 재시도·작업 공간 전환·sidecar/renderer 복구 코어를 [실행 기록](../evaluation/Development-Workbench-Qualification-2026-10-23.md)에서 확인했다. 이전 세대의 복구 페이지 로드가 늦게 실패하며 잘못된 재설치 안내를 띄우던 경합을 수정했다. 이 결과는 위 Windows/macOS·서명/업데이트·장치·외부 host 조건을 완료하지 않는다.

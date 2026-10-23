@@ -3316,5 +3316,47 @@
     "done": "기존 사람 task와 operation 원장에 환경·source commit/tree·dirty·credential 참조·명시 확인·결과 URL과 배포 결과 재확인을 연결하고 응답 유실/중복 시 재배포하지 않으며 프로세스 종료와 배포 완료를 구분한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Deployment-2026-10-23.md"
+  },
+  {
+    "id": "C-169",
+    "phase": "M5",
+    "title": "CR-046 P28 JS/TS 일상 개발 코어 인수",
+    "dependsOn": [
+      "C-167",
+      "C-168"
+    ],
+    "requirements": [
+      "CRL-WBD-025"
+    ],
+    "files": [
+      "apps/server/test/workbench-journey.test.ts",
+      "apps/studio/src/",
+      "docs/evaluation/"
+    ],
+    "done": "지원된 JS/TS 사본에서 편집·다중 교체·검사·Git commit/local push·배포 readback의 핵심 연결과 실제 화면을 확인하고 원본·초안·검토 identity 보존 및 외부 통합 경계를 기록한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Daily-Driver-2026-10-23.md"
+  },
+  {
+    "id": "C-170",
+    "phase": "M6",
+    "title": "CR-046 P29 Linux 설치판·복구 코어 인수",
+    "dependsOn": [
+      "C-167",
+      "C-168"
+    ],
+    "requirements": [
+      "CRL-WBD-026"
+    ],
+    "files": [
+      "apps/desktop/",
+      "apps/server/test/host-process-capacity.test.ts",
+      "apps/studio/src/workbench/terminals/store.test.ts",
+      "apps/studio/src/workbench/docking/DockWorkbench.test.tsx",
+      "docs/evaluation/"
+    ],
+    "done": "현재 Linux 번들 runtime·실제 앱 복구·프로세스 상한과 초안/키보드/좁은 화면 코어를 확인하고 시작/복구 오류를 수정하며 미검증 OS·장치·부하·외부 환경을 별도 조건으로 보존한다.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Qualification-2026-10-23.md"
   }
 ]

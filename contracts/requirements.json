@@ -970,5 +970,17 @@
     "requirement": "CR-046 기존 사람 task와 operation 원장에 환경·source commit/tree·dirty·credential 참조·명시 확인·결과 URL과 배포 결과 재확인을 연결하고 응답 유실/중복 시 재배포하지 않으며 프로세스 종료와 배포 완료를 구분한다.",
     "owner": "server",
     "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-025",
+    "requirement": "CR-046 P28의 지원된 JS/TS 개발 여정에서 저장된 소스·검사·Git commit/push·배포 결과 identity를 유지하고 미저장 초안·오래된 검토·중복 효과를 보존 경계에 따라 처리한다.",
+    "owner": "studio",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-026",
+    "requirement": "CR-046 P29의 현재 Linux 설치판과 핵심 복구·접근성 경로를 확인하고 정상 화면 전환을 시작 실패로 오판하지 않으며 공통 프로세스 상한·초안·실행 상태를 보존한다. 다른 OS·장치·전체 부하·외부 통합의 미검증 조건을 구분한다.",
+    "owner": "desktop",
+    "phase": "M6"
   }
 ]
