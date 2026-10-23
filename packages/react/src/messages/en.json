@@ -755,7 +755,12 @@
     "costSubscription": "Included in your subscription",
     "costUnknown": "{count, plural, one {# call} other {# calls}} without a known price",
     "costSimulated": "Simulated: no cost",
-    "costNone": "No model calls yet"
+    "costNone": "No model calls yet",
+    "noLimits": "This run has no usage limits. It continues until you cancel it.",
+    "callsMade": "Model calls",
+    "callsInFlight": "Calls in progress",
+    "callsUnknown": "Calls with unknown usage",
+    "noLimitsNote": "Provider-side limits and charges still apply. Calls with unknown usage are not counted as zero."
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -1933,11 +1938,11 @@
     "qualityUltra": "Ultra · plan, work and review",
     "qualityUltraHint": "Up to two revisions with required cross-model review.",
     "ultraModels": "Ultra models",
-    "ultraPrimary": "plan, execute, synthesize",
-    "ultraVerifier": "Required verifier",
+    "ultraPrimary": "plans",
+    "ultraVerifier": "Review and judging model",
     "ultraNeedsModels": "Select at least two distinct connected models and a different verifier.",
     "ultraModelScope": "Selected connections may receive this request, attachments, authorized project inputs and derived results. Other models can assist as read-only specialists.",
-    "ultraMaximum": "Uses each model’s highest verified reasoning level within the existing budget. Your normal effort setting is preserved. Up to two revisions.",
+    "ultraMaximum": "Uses each model’s highest verified reasoning level. Your normal effort setting is preserved.",
     "ultraMaximumShort": "Maximum supported reasoning",
     "attachmentActions": "Attachments",
     "templateActions": "Templates",
@@ -1978,10 +1983,12 @@
       "attachments": "text attachments",
       "scope": "review scope"
     },
-    "ultraCompareCandidates": "Compare isolated candidates",
-    "ultraComparisonScope": "Each candidate works in its own copy with the same request and budget. Review their changes and checks, then explicitly apply one candidate to this session. Requires a supported host and registered checks.",
     "ultraCandidateCount": "Number of candidates",
-    "ultraCandidateModel": "Candidate {number} model"
+    "ultraCandidateModel": "Candidate {number} model",
+    "ultraTournamentScope": "With a working copy and Linux isolation, each candidate works in its own copy. Among candidates that pass the registered checks, the judging model picks a winner without knowing which model wrote it; the winner goes through refinement rounds and is applied to this session. Otherwise Ultra runs as a collaboration; the actual mode is shown right after the start.",
+    "ultraRefinementRounds": "Refinement rounds",
+    "ultraAutoApply": "Apply the winner to this session without asking",
+    "ultraNoLimits": "Ultra has no usage limits. It keeps running until you cancel it, and costs accrue accordingly."
   },
   "Commands": {
     "newSession": "New session",
@@ -3948,7 +3955,11 @@
       "promoting": "Applying the selected candidate",
       "selected": "One candidate has been applied",
       "no_acceptable_candidate": "No candidate passed all required checks",
-      "interrupted": "Comparison interrupted"
+      "interrupted": "Comparison interrupted",
+      "judging": "The judging model is comparing candidates",
+      "refining": "Refining the winner",
+      "judgment_failed": "The judgment was not valid; choose a candidate yourself",
+      "auto_apply_held": "Automatic apply held; you can choose a candidate"
     },
     "state": {
       "pending": "Waiting",
@@ -3977,6 +3988,27 @@
       "cancelled": "Command cancelled."
     },
     "executionFailed": "The candidate could not complete its work or required checks.",
-    "budgetReserved": "This candidate was not started because the remaining budget is reserved for completion."
+    "budgetReserved": "This candidate was not started because the remaining budget is reserved for completion.",
+    "winner": "Winner",
+    "tournament": "Judgment and refinement",
+    "judgmentSkipped": "Only one candidate passed the checks, so it won without a judgment.",
+    "judgmentInvalid": "The judgment was not accepted: {reason}",
+    "held": "Held because: {reason}",
+    "round": "Round {round}: {state}",
+    "roundState": {
+      "running": "running",
+      "accepted": "accepted",
+      "discarded": "discarded",
+      "cancelled": "cancelled"
+    },
+    "roundReason": {
+      "checks_failed": "required checks failed",
+      "judged_worse": "worse than before",
+      "judged_equal": "no improvement",
+      "judgment_invalid": "judgment invalid",
+      "round_failed": "round failed",
+      "user_cancelled": "cancelled by you"
+    },
+    "cancelRefinement": "Stop refining"
   }
 }

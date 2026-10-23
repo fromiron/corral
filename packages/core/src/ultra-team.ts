@@ -3,6 +3,7 @@ import {
   type CorralDefinition,
   ReasoningLevel,
   type RunLimits,
+  type UltraFallbackReason,
   UltraSelection,
   type UltraTeamSnapshot,
 } from '@corral/contracts';
@@ -40,11 +41,25 @@ export type UltraResolution =
   | { ok: true; snapshot: UltraTeamSnapshot }
   | { ok: false; error: CommandError };
 
+/** The request a snapshot was resolved from, for re-resolving it at Run start. */
+export function ultraSelectionOf(snapshot: UltraTeamSnapshot): UltraSelection {
+  if (snapshot.version === 1) {
+    const { reasoning: _reasoning, ...selection } = snapshot;
+    return selection;
+  }
+  const { modelProfiles, verifierProfile, candidates, refinementRounds, autoApply } = snapshot;
+  return { version: 2, modelProfiles, verifierProfile, candidates, refinementRounds, autoApply };
+}
+
+/**
+ * @param blocked why a version 2 tournament cannot run here (CR-048 §1); null when it can.
+ */
 export function resolveUltraSelection(
   input: UltraSelection,
   primary: string,
   mode: 'mock' | 'live',
   models: ModelResolver,
+  blocked: UltraFallbackReason | null = null,
 ): UltraResolution {
   const refuse = (message: string): UltraResolution => ({
     ok: false,
@@ -80,7 +95,23 @@ export function resolveUltraSelection(
       return refuse(`${profile}: maximum supported reasoning has not been verified for this model`);
     reasoning[profile] = level;
   }
-  return { ok: true, snapshot: { ...selection, reasoning } };
+  if (selection.version === 1) return { ok: true, snapshot: { ...selection, reasoning } };
+  const candidates = selection.candidates ?? selection.modelProfiles;
+  return {
+    ok: true,
+    snapshot: {
+      version: 2,
+      modelProfiles: selection.modelProfiles,
+      verifierProfile: selection.verifierProfile,
+      reasoning,
+      candidates,
+      refinementRounds: selection.refinementRounds ?? 2,
+      autoApply: selection.autoApply ?? true,
+      ...(blocked
+        ? { mode: 'collaboration' as const, fallbackReason: blocked }
+        : { mode: 'competition' as const, comparison: { modelProfiles: candidates } }),
+    },
+  };
 }
 
 /** Extend the unchanged legacy recipe using ordinary roles, graph edges and callable nodes. */

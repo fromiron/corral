@@ -2753,7 +2753,11 @@
               "type": "string",
               "enum": [
                 "running",
+                "judging",
+                "refining",
                 "awaiting_selection",
+                "judgment_failed",
+                "auto_apply_held",
                 "promoting",
                 "selected",
                 "no_acceptable_candidate",
@@ -3089,6 +3093,155 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "tournament": {
+              "type": "object",
+              "properties": {
+                "judgeProfile": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "autoApply": {
+                  "type": "boolean"
+                },
+                "refinementRounds": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 3
+                },
+                "winnerCandidateId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "ranking": {
+                  "maxItems": 5,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                },
+                "judgment": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "skipped",
+                        "valid",
+                        "invalid"
+                      ]
+                    },
+                    "artifactVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "artifactVersionId",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                },
+                "rounds": {
+                  "maxItems": 3,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "round": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 3
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "running",
+                          "accepted",
+                          "discarded",
+                          "cancelled"
+                        ]
+                      },
+                      "tree": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "artifactVersionId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "round",
+                      "state",
+                      "tree",
+                      "artifactVersionId",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "held": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "judgeProfile",
+                "autoApply",
+                "refinementRounds",
+                "winnerCandidateId",
+                "ranking",
+                "judgment",
+                "rounds",
+                "held"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -4269,28 +4422,14 @@
                   ]
                 },
                 "ultra": {
-                  "type": "object",
-                  "properties": {
-                    "version": {
-                      "type": "number",
-                      "const": 1
-                    },
-                    "modelProfiles": {
-                      "minItems": 2,
-                      "maxItems": 5,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-                      }
-                    },
-                    "verifierProfile": {
-                      "type": "string",
-                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-                    },
-                    "comparison": {
+                  "oneOf": [
+                    {
                       "type": "object",
                       "properties": {
+                        "version": {
+                          "type": "number",
+                          "const": 1
+                        },
                         "modelProfiles": {
                           "minItems": 2,
                           "maxItems": 5,
@@ -4299,40 +4438,159 @@
                             "type": "string",
                             "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
                           }
+                        },
+                        "verifierProfile": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "comparison": {
+                          "type": "object",
+                          "properties": {
+                            "modelProfiles": {
+                              "minItems": 2,
+                              "maxItems": 5,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                              }
+                            }
+                          },
+                          "required": [
+                            "modelProfiles"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "reasoning": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                          },
+                          "additionalProperties": {
+                            "type": "string",
+                            "enum": [
+                              "off",
+                              "minimal",
+                              "low",
+                              "medium",
+                              "high",
+                              "xhigh",
+                              "max"
+                            ]
+                          }
                         }
                       },
                       "required": [
-                        "modelProfiles"
+                        "version",
+                        "modelProfiles",
+                        "verifierProfile",
+                        "reasoning"
                       ],
                       "additionalProperties": false
                     },
-                    "reasoning": {
+                    {
                       "type": "object",
-                      "propertyNames": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      "properties": {
+                        "version": {
+                          "type": "number",
+                          "const": 2
+                        },
+                        "modelProfiles": {
+                          "minItems": 2,
+                          "maxItems": 5,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                          }
+                        },
+                        "verifierProfile": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "reasoning": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                          },
+                          "additionalProperties": {
+                            "type": "string",
+                            "enum": [
+                              "off",
+                              "minimal",
+                              "low",
+                              "medium",
+                              "high",
+                              "xhigh",
+                              "max"
+                            ]
+                          }
+                        },
+                        "candidates": {
+                          "minItems": 2,
+                          "maxItems": 5,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                          }
+                        },
+                        "refinementRounds": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 3
+                        },
+                        "autoApply": {
+                          "type": "boolean"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "competition",
+                            "collaboration"
+                          ]
+                        },
+                        "comparison": {
+                          "type": "object",
+                          "properties": {
+                            "modelProfiles": {
+                              "minItems": 2,
+                              "maxItems": 5,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                              }
+                            }
+                          },
+                          "required": [
+                            "modelProfiles"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "fallbackReason": {
+                          "type": "string",
+                          "enum": [
+                            "no_working_copy",
+                            "no_isolation"
+                          ]
+                        }
                       },
-                      "additionalProperties": {
-                        "type": "string",
-                        "enum": [
-                          "off",
-                          "minimal",
-                          "low",
-                          "medium",
-                          "high",
-                          "xhigh",
-                          "max"
-                        ]
-                      }
+                      "required": [
+                        "version",
+                        "modelProfiles",
+                        "verifierProfile",
+                        "reasoning",
+                        "candidates",
+                        "refinementRounds",
+                        "autoApply",
+                        "mode"
+                      ],
+                      "additionalProperties": false
                     }
-                  },
-                  "required": [
-                    "version",
-                    "modelProfiles",
-                    "verifierProfile",
-                    "reasoning"
-                  ],
-                  "additionalProperties": false
+                  ]
                 },
                 "template": {
                   "type": "string",

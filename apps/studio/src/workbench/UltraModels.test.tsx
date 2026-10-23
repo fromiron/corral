@@ -30,7 +30,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('[TC-ULTRA-002-H] comparison is opt-in, keeps the model pool, and assigns three explicit candidates', async () => {
+it('[TC-ULTRA-004-H] new Ultra requests are tournaments with candidates, refinement, auto-apply and the no-limits notice', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
   document.body.append(container);
@@ -39,11 +39,14 @@ it('[TC-ULTRA-002-H] comparison is opt-in, keeps the model pool, and assigns thr
     await act(async () => root.unmount());
     container.remove();
   });
-  let value: UltraSelection = {
+  // A draft saved with the earlier opt-in comparison keeps its pool and candidates.
+  let value = {
     version: 1,
     modelProfiles: ['primary', 'reviewer'],
     verifierProfile: 'reviewer',
-  };
+    comparison: { modelProfiles: ['primary', 'reviewer', 'primary'] },
+  } as UltraSelection;
+  const tournament = () => value as Extract<UltraSelection, { version: 2 }>;
   const render = () =>
     root.render(
       <UltraModels
@@ -58,26 +61,27 @@ it('[TC-ULTRA-002-H] comparison is opt-in, keeps the model pool, and assigns thr
       />,
     );
   await act(async () => render());
-  expect(value.comparison).toBeUndefined();
-  const toggle = () =>
-    container.querySelector<HTMLInputElement>('input[aria-label="ultraCompareCandidates"]');
-  expect(toggle()).not.toBeNull();
-  await act(async () => toggle()?.click());
-  expect(value.comparison?.modelProfiles).toEqual(['primary', 'reviewer', 'primary']);
-  expect(value.modelProfiles).toEqual(['primary', 'reviewer']);
-  const count = container.querySelector<HTMLSelectElement>(
-    'select[aria-label="ultraCandidateCount"]',
-  );
-  expect(count).not.toBeNull();
-  await act(async () => {
-    if (count) {
-      count.value = '5';
-      count.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  });
-  expect(value.comparison?.modelProfiles).toHaveLength(5);
-  expect([...(count?.options ?? [])].map((option) => option.value)).toEqual(['2', '3', '4', '5']);
-  await act(async () => toggle()?.click());
-  expect(value.comparison).toBeUndefined();
+  const select = (label: string) =>
+    container.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!;
+  const choose = async (label: string, option: string) =>
+    act(async () => {
+      select(label).value = option;
+      select(label).dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  expect(container.querySelector('input[aria-label="ultraCompareCandidates"]')).toBeNull();
+  expect(container.textContent).toContain('ultraNoLimits');
+  expect(select('ultraCandidateCount').value).toBe('3');
+  await choose('ultraCandidateCount', '5');
+  expect(value).toMatchObject({ version: 2, modelProfiles: ['primary', 'reviewer'] });
+  expect(tournament().candidates).toHaveLength(5);
+  expect(select('ultraRefinementRounds').value).toBe('2');
+  await choose('ultraRefinementRounds', '0');
+  expect(tournament().refinementRounds).toBe(0);
+  const autoApply = container.querySelector<HTMLInputElement>(
+    'input[aria-label="ultraAutoApply"]',
+  )!;
+  expect(autoApply.checked).toBe(true);
+  await act(async () => autoApply.click());
+  expect(tournament().autoApply).toBe(false);
   expect(value.verifierProfile).toBe('reviewer');
 });

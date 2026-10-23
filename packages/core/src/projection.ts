@@ -242,6 +242,8 @@ export interface RunProjection {
   patches: Record<string, PatchView>;
   currentCriteriaVersionId: string | null;
   limits: RunLimits | null;
+  /** CR-048: version 2 Ultra, where `limits` are not applied. */
+  usageLimits?: 'none';
   budget: BudgetState;
   progress: ProgressState;
   /** The final approval behind the output, when the Output required one. */
@@ -343,6 +345,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         startedAt: event.recordedAt,
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
+        ...(event.payload.autoRoute?.ultra?.version === 2 ? { usageLimits: 'none' as const } : {}),
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
         decisionSettings: event.payload.decisions ?? null,
       };

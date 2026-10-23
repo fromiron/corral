@@ -43,7 +43,12 @@ import { extensionUi } from './extension-ui.ts';
 import { lockResources } from './locked-resources.ts';
 import { mcpExtension } from './mcp.ts';
 import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
-import { assertReasoningCapabilities, reasoningRequest, verifyReasoningWire } from './reasoning.ts';
+import {
+  assertReasoningCapabilities,
+  reasoningRequest,
+  requestOutputCap,
+  verifyReasoningWire,
+} from './reasoning.ts';
 import { requestReasoningInput } from './reasoning-input.ts';
 import { providerRequestFence } from './request-fence.ts';
 import {
@@ -484,7 +489,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 maxRetries: 0,
                 ...(fence ? { fetch: fence.fetch, transport: 'sse' as const } : {}),
                 apiKey: start.model.endpoint?.keyless ? undefined : (permit.apiKey ?? undefined),
-                maxTokens: permit.maxOutputTokens,
+                maxTokens: requestOutputCap(chosen.model, permit.maxOutputTokens),
                 onPayload: async (payload, payloadModel) => {
                   const updated = await options?.onPayload?.(payload, payloadModel);
                   const actual = cleanJson(updated ?? payload);

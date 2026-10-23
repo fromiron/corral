@@ -57,6 +57,33 @@ export function BudgetInspector({
     if (parts.length === 0) parts.push(estimate.simulated ? t('costSimulated') : t('costNone'));
     return parts.join(' · ');
   };
+  if (projection.usageLimits === 'none') {
+    // CR-048: no allowance applies, so show what was used and what is still unknown.
+    const rows = Object.values(budget.reservations);
+    return (
+      <section
+        aria-labelledby={headingId}
+        className="flex flex-col gap-2 rounded fill-group p-2 text-xs"
+      >
+        <h3 id={headingId} className="font-semibold">
+          {t('heading')}
+        </h3>
+        <p role="note">{t('noLimits')}</p>
+        <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
+          <dt>{t('confirmed')}</dt>
+          <dd>{t('tokens', { count: budget.spent })}</dd>
+          <dt>{t('callsMade')}</dt>
+          <dd>{budget.modelCalls}</dd>
+          <dt>{t('callsInFlight')}</dt>
+          <dd>{rows.filter((row) => row.status === 'reserved').length}</dd>
+          <dt>{t('callsUnknown')}</dt>
+          <dd>{rows.filter((row) => row.status === 'unknown').length}</dd>
+        </dl>
+        {prices ? <CostLine text={costText()} /> : null}
+        <p className="text-muted">{t('noLimitsNote')}</p>
+      </section>
+    );
+  }
   return (
     <section
       aria-labelledby={headingId}

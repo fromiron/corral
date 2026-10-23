@@ -1276,8 +1276,8 @@ async function createCorralServer(
         request.ultra?.modelProfiles ?? [request.choice.modelProfile],
         request.mode,
       ),
-    resolveUltra: (selection, primary, mode, models) =>
-      coordinator.resolveUltra(selection, primary, mode, models),
+    resolveUltra: (selection, primary, mode, models, context) =>
+      coordinator.resolveUltra(selection, primary, mode, models, context),
     startRun: async (request, signal, models) => {
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
       const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;

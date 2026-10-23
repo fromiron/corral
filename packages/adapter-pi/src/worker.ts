@@ -11,7 +11,12 @@ import {
   LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION,
   type StartFrame,
 } from './protocol.ts';
-import { assertReasoningCapabilities, reasoningRequest, verifyReasoningWire } from './reasoning.ts';
+import {
+  assertReasoningCapabilities,
+  reasoningRequest,
+  requestOutputCap,
+  verifyReasoningWire,
+} from './reasoning.ts';
 import { requestReasoningInput } from './reasoning-input.ts';
 import { providerRequestFence } from './request-fence.ts';
 import {
@@ -201,7 +206,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           maxRetries: 0,
           ...(fence ? { fetch: fence.fetch, transport: 'sse' as const } : {}),
           ...(keyOf(permit?.apiKey) ? { apiKey: keyOf(permit?.apiKey) } : {}),
-          ...(permit ? { maxTokens: permit.maxOutputTokens } : {}),
+          ...(permit ? { maxTokens: requestOutputCap(chosen.model, permit.maxOutputTokens) } : {}),
           onPayload: async (payload, payloadModel) => {
             const actual = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
             assertProtectedPayload(actual, protectedSections);

@@ -1,12 +1,14 @@
-import type { UltraSelection } from '@corral/contracts';
+import { UltraSelection, UltraTeamSnapshot } from '@corral/contracts';
 import { Select } from '@corral/react/ui';
 import { useTranslations } from 'use-intl';
 import type { ProfileInfo } from './useModels.ts';
 
+type TournamentSelection = Extract<UltraSelection, { version: 2 }>;
+
 export function defaultUltraSelection(
   primary: string,
   profiles: ProfileInfo[] | null,
-): UltraSelection {
+): TournamentSelection {
   const main = profiles?.find((profile) => profile.profileId === primary);
   const candidates =
     profiles?.filter(
@@ -18,27 +20,58 @@ export function defaultUltraSelection(
     ) ?? [];
   const other = candidates.find((profile) => profile.provider !== main?.provider) ?? candidates[0];
   return {
-    version: 1,
+    version: 2,
     modelProfiles: [primary, ...(other ? [other.profileId] : [])],
     verifierProfile: other?.profileId ?? primary,
   };
 }
 
+/**
+ * New Ultra requests use the CR-048 tournament. A draft saved with the earlier selection keeps
+ * its pool and verifier; its opt-in comparison models become the tournament's candidates.
+ */
+export function currentUltraSelection(value: UltraSelection): TournamentSelection {
+  if (value.version === 2) return value;
+  return {
+    version: 2,
+    modelProfiles: value.modelProfiles,
+    verifierProfile: value.verifierProfile,
+    ...(value.comparison ? { candidates: value.comparison.modelProfiles } : {}),
+  };
+}
+
+/** A selection recalled from a draft, request entry or Run snapshot; null when it has none. */
+export function recalledUltraSelection(value: unknown): UltraSelection | null {
+  const selection = UltraSelection.safeParse(value);
+  if (selection.success) return selection.data;
+  const snapshot = UltraTeamSnapshot.safeParse(value);
+  if (!snapshot.success) return null;
+  if (snapshot.data.version === 1) {
+    const { reasoning: _reasoning, ...legacy } = snapshot.data;
+    return legacy;
+  }
+  const { modelProfiles, verifierProfile, candidates, refinementRounds, autoApply } = snapshot.data;
+  return { version: 2, modelProfiles, verifierProfile, candidates, refinementRounds, autoApply };
+}
+
 export function UltraModels({
   primary,
   profiles,
-  value,
+  value: selection,
   onChange,
   disabled,
 }: {
   primary: string;
   profiles: ProfileInfo[] | null;
   value: UltraSelection;
-  onChange: (value: UltraSelection) => void;
+  onChange: (value: TournamentSelection) => void;
   disabled: boolean;
 }) {
   const t = useTranslations('Composer');
-  const comparisonModels = value.comparison?.modelProfiles;
+  const value = currentUltraSelection(selection);
+  const candidates = value.candidates ?? value.modelProfiles;
+  const labelOf = (id: string) =>
+    profiles?.find((profile) => profile.profileId === id)?.label ?? id;
   const changePool = (id: string, checked: boolean) => {
     const pool = checked
       ? [...value.modelProfiles, id]
@@ -46,14 +79,8 @@ export function UltraModels({
     onChange({
       ...value,
       modelProfiles: pool,
-      ...(value.comparison
-        ? {
-            comparison: {
-              modelProfiles: value.comparison.modelProfiles.map((id) =>
-                pool.includes(id) ? id : primary,
-              ),
-            },
-          }
+      ...(value.candidates
+        ? { candidates: value.candidates.map((id) => (pool.includes(id) ? id : primary)) }
         : {}),
       verifierProfile:
         pool.includes(value.verifierProfile) && value.verifierProfile !== primary
@@ -113,91 +140,70 @@ export function UltraModels({
             : []),
           ...value.modelProfiles
             .filter((profile) => profile !== primary)
-            .map((id) => ({
-              value: id,
-              label: profiles?.find((profile) => profile.profileId === id)?.label ?? id,
-            })),
+            .map((id) => ({ value: id, label: labelOf(id) })),
         ]}
       />
       <p className="text-muted">{t('ultraMaximum')}</p>
+      <p className="text-muted">{t('ultraTournamentScope')}</p>
+      <span>{t('ultraCandidateCount')}</span>
+      <Select
+        label={t('ultraCandidateCount')}
+        value={String(candidates.length)}
+        disabled={disabled}
+        options={[2, 3, 4, 5].map((count) => ({ value: String(count), label: String(count) }))}
+        onValueChange={(count) =>
+          onChange({
+            ...value,
+            candidates: Array.from(
+              { length: Number(count) },
+              (_, index) =>
+                candidates[index] ??
+                value.modelProfiles[index % value.modelProfiles.length] ??
+                primary,
+            ),
+          })
+        }
+      />
+      <div className="flex flex-wrap gap-2">
+        {candidates.map((profileId, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: Candidate slots retain their position when their assigned model changes.
+          <div key={index} className="flex min-w-0 flex-col gap-1">
+            <span>{t('ultraCandidateModel', { number: index + 1 })}</span>
+            <Select
+              label={t('ultraCandidateModel', { number: index + 1 })}
+              value={profileId}
+              disabled={disabled}
+              options={value.modelProfiles.map((id) => ({ value: id, label: labelOf(id) }))}
+              onValueChange={(chosen) =>
+                onChange({
+                  ...value,
+                  candidates: candidates.map((id, position) => (position === index ? chosen : id)),
+                })
+              }
+            />
+          </div>
+        ))}
+      </div>
+      <span>{t('ultraRefinementRounds')}</span>
+      <Select
+        label={t('ultraRefinementRounds')}
+        value={String(value.refinementRounds ?? 2)}
+        disabled={disabled}
+        options={[0, 1, 2, 3].map((rounds) => ({ value: String(rounds), label: String(rounds) }))}
+        onValueChange={(rounds) => onChange({ ...value, refinementRounds: Number(rounds) })}
+      />
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
-          aria-label={t('ultraCompareCandidates')}
-          checked={Boolean(value.comparison)}
-          onChange={(event) => {
-            const { comparison: _comparison, ...selection } = value;
-            onChange(
-              event.target.checked
-                ? {
-                    ...selection,
-                    comparison: {
-                      modelProfiles: Array.from(
-                        { length: 3 },
-                        (_, index) =>
-                          value.modelProfiles[index % value.modelProfiles.length] ?? primary,
-                      ),
-                    },
-                  }
-                : selection,
-            );
-          }}
+          aria-label={t('ultraAutoApply')}
+          checked={value.autoApply ?? true}
+          onChange={(event) => onChange({ ...value, autoApply: event.target.checked })}
         />
-        {t('ultraCompareCandidates')}
+        {t('ultraAutoApply')}
       </label>
-      {value.comparison ? (
-        <div className="flex min-w-0 flex-col gap-2">
-          <p className="text-muted">{t('ultraComparisonScope')}</p>
-          <span>{t('ultraCandidateCount')}</span>
-          <Select
-            label={t('ultraCandidateCount')}
-            value={String(value.comparison.modelProfiles.length)}
-            disabled={disabled}
-            options={[2, 3, 4, 5].map((count) => ({ value: String(count), label: String(count) }))}
-            onValueChange={(count) =>
-              onChange({
-                ...value,
-                comparison: {
-                  modelProfiles: Array.from(
-                    { length: Number(count) },
-                    (_, index) =>
-                      value.comparison?.modelProfiles[index] ??
-                      value.modelProfiles[index % value.modelProfiles.length] ??
-                      primary,
-                  ),
-                },
-              })
-            }
-          />
-          <div className="flex flex-wrap gap-2">
-            {value.comparison.modelProfiles.map((profileId, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: Candidate slots retain their position when their assigned model changes.
-              <div key={index} className="flex min-w-0 flex-col gap-1">
-                <span>{t('ultraCandidateModel', { number: index + 1 })}</span>
-                <Select
-                  label={t('ultraCandidateModel', { number: index + 1 })}
-                  value={profileId}
-                  disabled={disabled}
-                  options={value.modelProfiles.map((id) => ({
-                    value: id,
-                    label: profiles?.find((profile) => profile.profileId === id)?.label ?? id,
-                  }))}
-                  onValueChange={(chosen) =>
-                    onChange({
-                      ...value,
-                      comparison: {
-                        modelProfiles: (comparisonModels ?? []).map((id, position) =>
-                          position === index ? chosen : id,
-                        ),
-                      },
-                    })
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <p role="note" className="text-warning">
+        {t('ultraNoLimits')}
+      </p>
     </fieldset>
   );
 }

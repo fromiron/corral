@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
-import { mkdir, realpath } from 'node:fs/promises';
+import { mkdir, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
   type Clock,
@@ -248,6 +249,72 @@ export class CandidateWorkspaces {
     if ((await this.tree(runId, candidateId)) !== expectedTree)
       throw new ToolRefusal('REVISION_CONFLICT', 'candidate tree changed');
     return copy;
+  }
+
+  /** CR-048: what a candidate changed from its baseline, for the judge and refinement. */
+  async diff(
+    runId: string,
+    candidateId: string,
+    tree: string,
+    paths?: string[],
+  ): Promise<{ files: string[]; diff: string }> {
+    const copy = this.copy(runId, candidateId);
+    const env = await checkGitEnvironment(copy.worktree_path);
+    const names = await git(
+      copy.worktree_path,
+      ['diff-tree', '-r', '-z', '--no-renames', '--name-only', copy.baseline_tree, tree],
+      { env },
+    );
+    const files = names.stdout.toString('utf8').split('\0').filter(Boolean);
+    const diff = await git(
+      copy.worktree_path,
+      [
+        'diff',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--no-renames',
+        copy.baseline_tree,
+        tree,
+        '--',
+        ...(paths ?? []),
+      ],
+      { env, maxBuffer: 1024 * 1024 * 1024 },
+    );
+    return { files, diff: diff.stdout.toString('utf8') };
+  }
+
+  /**
+   * CR-048: return a settled candidate copy to an earlier accepted tree after a discarded
+   * refinement round. Ignored files stay; everything the snapshot tracks matches `tree` after.
+   */
+  async restore(runId: string, candidateId: string, tree: string): Promise<void> {
+    const copy = this.copy(runId, candidateId);
+    const run = this.options.db.prepare('SELECT projection_json FROM runs WHERE id=?').get(runId) as
+      | { projection_json: string }
+      | undefined;
+    const projection = run ? (JSON.parse(run.projection_json) as RunProjection) : null;
+    if (
+      Object.values(projection?.executions ?? {}).some(
+        (execution) =>
+          execution.candidateId === candidateId &&
+          !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+      )
+    )
+      throw new ToolRefusal('REVISION_CONFLICT', 'candidate work must settle before a restore');
+    await this.options.lease(copy.worktree_path, async () => {
+      const current = await this.options.snapshot(copy.worktree_path);
+      if (current === tree) return;
+      const index = join(tmpdir(), `corral-restore-${randomUUID()}`);
+      const env = { ...(await checkGitEnvironment(copy.worktree_path)), GIT_INDEX_FILE: index };
+      try {
+        await git(copy.worktree_path, ['read-tree', current], { env });
+        await git(copy.worktree_path, ['read-tree', '--reset', '-u', tree], { env });
+      } finally {
+        await rm(index, { force: true });
+      }
+      if ((await this.options.snapshot(copy.worktree_path)) !== tree)
+        throw new ToolRefusal('REVISION_CONFLICT', 'candidate copy did not return to its tree');
+    });
   }
 
   assertSettled(runId: string): void {

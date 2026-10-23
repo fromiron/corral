@@ -166,7 +166,12 @@ import {
 import { TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
-import { defaultUltraSelection, UltraModels } from '../workbench/UltraModels.tsx';
+import {
+  currentUltraSelection,
+  defaultUltraSelection,
+  recalledUltraSelection,
+  UltraModels,
+} from '../workbench/UltraModels.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
   type ProfileInfo,
@@ -1706,8 +1711,11 @@ export function Composer({
         : profiles,
     [runMode, profiles, autoChoice.modelProfile, t],
   );
-  const ultra = useMemo(
-    () => ultraDraft ?? defaultUltraSelection(autoChoice.modelProfile, ultraProfiles),
+  const ultra = useMemo<UltraSelection>(
+    () =>
+      ultraDraft
+        ? currentUltraSelection(ultraDraft)
+        : defaultUltraSelection(autoChoice.modelProfile, ultraProfiles),
     [ultraDraft, autoChoice.modelProfile, ultraProfiles],
   );
   const requestChoice =
@@ -2535,11 +2543,7 @@ export function Composer({
       setQualityPreset(
         typeof value === 'object' && value.qualityPreset === 'ultra' ? 'ultra' : 'default',
       );
-      setUltraDraft(
-        typeof value === 'object'
-          ? (UltraSelection.strip().safeParse(value.ultra).data ?? null)
-          : null,
-      );
+      setUltraDraft(typeof value === 'object' ? recalledUltraSelection(value.ultra) : null);
       setReviewOnly(typeof value === 'object' && value.taskScope === 'review_only');
       setVerificationScope(
         typeof value === 'object' && value.verificationScope === 'release' ? 'release' : 'targeted',
@@ -2701,10 +2705,7 @@ export function Composer({
       setPermissionMode(recalledEntry?.permissionMode);
       setAutoHarness(recalledEntry?.harness);
       setImages(recalledEntry?.images ?? []);
-      setUltraDraft(
-        UltraSelection.strip().safeParse(recalledEntry?.ultra ?? recalledEntry?.auto?.ultra).data ??
-          null,
-      );
+      setUltraDraft(recalledUltraSelection(recalledEntry?.ultra ?? recalledEntry?.auto?.ultra));
       setQualityPreset(
         (recalledEntry?.qualityPreset ?? recalledEntry?.auto?.qualityPreset) === 'ultra'
           ? 'ultra'

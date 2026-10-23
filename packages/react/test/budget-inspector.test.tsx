@@ -41,4 +41,44 @@ describe('BudgetInspector (C-061)', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('$0')).not.toBeInTheDocument();
   });
+
+  it('[TC-ULTRA-004-N] a version 2 Ultra run shows usage without an allowance and never counts unknown usage as zero', () => {
+    const session = createRunSession({} as never);
+    const p = emptyProjection('run_unlimited');
+    p.usageLimits = 'none';
+    p.budget = {
+      spent: 42,
+      reserved: 1_000_000,
+      unknownOutstanding: 1_000_000,
+      modelCalls: 3,
+      reservations: {
+        call_live: {
+          modelCallId: 'call_live',
+          scope: 'e',
+          reserved: 1_000_000,
+          actual: null,
+          status: 'reserved',
+        },
+        call_unknown: {
+          modelCallId: 'call_unknown',
+          scope: 'e',
+          reserved: 1_000_000,
+          actual: null,
+          status: 'unknown',
+        },
+      },
+    };
+    session.setState({ projection: p, definition: linearCorral(['writer']) });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <BudgetInspector session={session} />
+      </IntlProvider>,
+    );
+    expect(screen.getByRole('note')).toHaveTextContent('no usage limits');
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+    expect(screen.queryByText(/1,000,000/)).not.toBeInTheDocument();
+    expect(screen.getByText('Confirmed output tokens').nextSibling).toHaveTextContent('42');
+    expect(screen.getByText('Calls in progress').nextSibling).toHaveTextContent('1');
+    expect(screen.getByText('Calls with unknown usage').nextSibling).toHaveTextContent('1');
+  });
 });

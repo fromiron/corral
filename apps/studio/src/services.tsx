@@ -195,8 +195,15 @@ export async function createStudioServices(): Promise<StudioServices> {
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
-    resolveUltra: (selection, primary, mode) =>
-      resolveUltraSelection(selection, primary, mode, SIMULATED_MODELS),
+    // The demo has no candidate copies, so a version 2 tournament runs as collaboration (CR-048).
+    resolveUltra: (selection, primary, mode, _models, context) =>
+      resolveUltraSelection(
+        selection,
+        primary,
+        mode,
+        SIMULATED_MODELS,
+        selection.version === 2 ? (context?.fileTools ? 'no_isolation' : 'no_working_copy') : null,
+      ),
   });
   const repository = createKeyValueCorralRepository(store, {
     clock: systemClock,

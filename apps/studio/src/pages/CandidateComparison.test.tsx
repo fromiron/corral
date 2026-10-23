@@ -68,9 +68,9 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.unstubAllGlobals();
 });
-async function mount() {
+async function mount(override: Partial<CandidateComparisonView> = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  let view = structuredClone(base);
+  let view: CandidateComparisonView = { ...structuredClone(base), ...override };
   const api = {
     candidateComparison: vi.fn(async () => view),
     candidateChanges: vi.fn(async () => ({
@@ -162,4 +162,58 @@ it('[TC-ULTRA-002-F] recovers a lost selection receipt without sending another p
   await act(async () => f.button('recover')?.click());
   expect(f.transport.getReceipt).toHaveBeenCalledExactlyOnceWith('run', command?.commandId);
   expect(f.transport.sendCommand).toHaveBeenCalledTimes(1);
+});
+
+const tournament = {
+  judgeProfile: 'model_2',
+  autoApply: true,
+  refinementRounds: 2,
+  winnerCandidateId: 'candidate_1',
+  ranking: ['candidate_1'],
+  judgment: { state: 'skipped' as const, artifactVersionId: null, reason: null },
+  rounds: [
+    {
+      round: 1,
+      state: 'discarded' as const,
+      tree: null,
+      artifactVersionId: null,
+      reason: 'checks_failed',
+    },
+  ],
+  held: 'working copy tree changed since candidate comparison began',
+};
+it('[TC-ULTRA-004-N] a held automatic apply shows why and still lets a person apply the winner', async () => {
+  const f = await mount({ status: 'auto_apply_held', tournament });
+  await act(async () => f.button('open')?.click());
+  for (const text of [
+    'status.auto_apply_held',
+    'winner',
+    'judgmentSkipped',
+    'roundReason.checks_failed',
+    'held',
+  ])
+    expect(f.container.textContent).toContain(text);
+  await act(async () =>
+    f.container.querySelector<HTMLInputElement>('input[value="candidate_1"]')?.click(),
+  );
+  expect(f.button('apply')?.disabled).toBe(false);
+  await act(async () => f.button('apply')?.click());
+  expect(f.transport.sendCommand).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      type: 'select_candidate',
+      payload: { candidateId: 'candidate_1', tree },
+    }),
+  );
+});
+it('[TC-ULTRA-004-F] while refining, only the winner can be stopped and nothing can be applied', async () => {
+  const f = await mount({ status: 'refining', tournament: { ...tournament, held: null } });
+  await act(async () => f.button('open')?.click());
+  await act(async () =>
+    f.container.querySelector<HTMLInputElement>('input[value="candidate_1"]')?.click(),
+  );
+  expect(f.button('apply')?.disabled).toBe(true);
+  await act(async () => f.button('cancelRefinement')?.click());
+  expect(f.transport.sendCommand).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ type: 'cancel_candidate', payload: { candidateId: 'candidate_1' } }),
+  );
 });

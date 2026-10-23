@@ -46,6 +46,7 @@ import {
   ImageInput,
   type InputBinding,
   LspQuery,
+  MANUAL_SELECTION_STATUSES,
   MessageBranchPoint,
   type MessageBranchPreview,
   MessageBranchRequest,
@@ -61,6 +62,8 @@ import {
   type ReasoningResolution,
   type Receipt,
   type RecipeStopReason,
+  RefinementJudgment,
+  type RefinementRoundView,
   type RequestPermit,
   type ResolveApprovalCommand,
   type ResolvedInput,
@@ -81,6 +84,7 @@ import {
   type RuntimeFiles,
   type Scheduler,
   type SelectCandidateCommand,
+  SelectionJudgment,
   StartRunRequest,
   type SteerCommand,
   type StreamFrame,
@@ -91,6 +95,8 @@ import {
   type ToolOutcome,
   type ToolPermissionPlan,
   type ToolProposal,
+  type TournamentView,
+  type UltraFallbackReason,
   type UltraSelection,
   UserInputRequest,
   VerificationReport,
@@ -114,7 +120,12 @@ import {
 } from './admission/index.ts';
 import { validTextAttachments } from './attachments.ts';
 import { AUTO_ROUTE_MAX_OUTPUT_TOKENS, type AutoStart, autoDefinition } from './auto-team.ts';
-import { admitImageRequest, admitModelRequest, settlementFor } from './budget.ts';
+import {
+  admitImageRequest,
+  admitModelRequest,
+  settlementFor,
+  UNLIMITED_OUTPUT_TOKENS_PER_CALL,
+} from './budget.ts';
 import { candidateAllowance } from './candidate-budget.ts';
 import { candidateNumber } from './candidate-team.ts';
 import { canonicalJson } from './canonical-json.ts';
@@ -151,7 +162,12 @@ import {
   type StoredCommand,
 } from './store/run-store.ts';
 import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
-import { resolveUltraSelection, ULTRA_STAGES, ultraBudgetAllowance } from './ultra-team.ts';
+import {
+  resolveUltraSelection,
+  ULTRA_STAGES,
+  ultraBudgetAllowance,
+  ultraSelectionOf,
+} from './ultra-team.ts';
 
 // The single place domain state is decided (ADR-003, C-012/C-013). A command is validated and
 // turned into events; the events, the projection they produce, the command record and artifact
@@ -234,6 +250,15 @@ export interface FileTools {
     baselineTree: string;
     commandId: string;
   }): Promise<{ checkpointId: string }>;
+  /** CR-048: a candidate's changed paths and diff from its baseline, optionally only `paths`. */
+  candidateDiff?(
+    runId: string,
+    candidateId: string,
+    tree: string,
+    paths?: string[],
+  ): Promise<{ files: string[]; diff: string }>;
+  /** CR-048: put a candidate copy back to its accepted tree after a discarded refinement. */
+  restoreCandidate?(runId: string, candidateId: string, tree: string): Promise<void>;
 
   acquireRun?(runId: string, sessionId: string | undefined, writer: boolean): void;
   prepareRun?(runId: string): Promise<void>;
@@ -429,6 +454,12 @@ interface RecipeRun {
 }
 interface LiveRun {
   candidatePromotion?: Promise<void>;
+  /** CR-048: version 2 Ultra has no Corral usage limits; only a person's cancel stops it. */
+  usageLimits?: 'none';
+  /** Host-made inputs for one activation, keyed `nodeId@iterationId` (CR-048 judge, refinement). */
+  extraInputs: Map<string, ResolvedInput[]>;
+  /** CR-048: the refinement in progress on the winner's Loop. */
+  tournament?: { loopId: string; refining: boolean; problem: string | null; cancelled: boolean };
   recipes: Map<string, RecipeRun>;
   runId: string;
   snapshot: RunSnapshot;
@@ -502,6 +533,113 @@ interface LiveRun {
   cancelListeners: Map<string, Set<() => void>>;
   toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
   capStop: 'declined' | 'hard_cap' | null;
+}
+
+/** A checked candidate tree as the tournament compares and applies it (CR-048). */
+interface TournamentEvidence {
+  tree: string;
+  artifactVersionId: string;
+  checks: VerificationReport[];
+}
+const TOURNAMENT_LABELS = ['A', 'B', 'C', 'D', 'E'] as const;
+
+/** What the judge is asked, with the exact JSON it must write. Names no model or author. */
+function tournamentTask(
+  task: { kind: 'selection'; candidates: string[] } | { kind: 'refinement'; round: number },
+): ResolvedInput {
+  const respondWith =
+    task.kind === 'selection'
+      ? {
+          version: 1,
+          kind: 'selection',
+          winner: 'the label of the best candidate',
+          ranking: ['labels from best to worst, starting with the winner'],
+          reasons: [{ candidate: 'label', criterion: 'criterion', evidence: 'diff or check' }],
+          improvements: ['what the winner should still improve'],
+          borrow: [
+            {
+              from: 'another label',
+              what: 'what the winner should take from it',
+              paths: ['changed files of that candidate'],
+            },
+          ],
+        }
+      : {
+          version: 1,
+          kind: 'refinement',
+          verdict: 'improved | equal | worse: the proposed version against the previous one',
+          done: 'true when another round is not worth it',
+          reasons: ['why'],
+          improvements: ['what the next round should change'],
+        };
+  return {
+    name: 'tournament',
+    kind: 'explicit_version',
+    artifactVersionId: null,
+    text: canonicalJson({ ...task, respondWith }),
+  };
+}
+
+function parseJudgment<T>(
+  schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
+  text: string | null,
+): { ok: true; value: T } | { ok: false; reason: string } {
+  if (text === null) return { ok: false, reason: 'the judge submitted nothing' };
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { ok: false, reason: 'the judgment is not JSON' };
+  }
+  const parsed = schema.safeParse(value);
+  return parsed.success
+    ? { ok: true, value: parsed.data }
+    : { ok: false, reason: 'the judgment does not match its schema' };
+}
+
+/** The judgment may name only passing candidates and files those candidates changed. */
+function selectionProblem(
+  judgment: SelectionJudgment,
+  labels: ReadonlyMap<string, { files: string[] }>,
+): string | null {
+  if (!labels.has(judgment.winner))
+    return `the winner ${judgment.winner} is not a passing candidate`;
+  if (
+    judgment.ranking[0] !== judgment.winner ||
+    new Set(judgment.ranking).size !== judgment.ranking.length ||
+    judgment.ranking.some((label) => !labels.has(label))
+  )
+    return 'the ranking must start with the winner and name passing candidates once';
+  if (judgment.reasons.some((reason) => !labels.has(reason.candidate)))
+    return 'a reason names a candidate that is not passing';
+  for (const item of judgment.borrow) {
+    const source = labels.get(item.from);
+    if (!source || item.from === judgment.winner)
+      return `borrowing must come from another passing candidate, not ${item.from}`;
+    const missing = item.paths.find((path) => !source.files.includes(path));
+    if (missing) return `${item.from} did not change ${missing}`;
+  }
+  return null;
+}
+
+function roundsWith(
+  rounds: RefinementRoundView[],
+  round: number,
+  state: RefinementRoundView['state'],
+  proposed: TournamentEvidence | null,
+  reason: string | null,
+): RefinementRoundView[] {
+  return rounds.map((item) =>
+    item.round === round
+      ? {
+          round,
+          state,
+          tree: proposed?.tree ?? null,
+          artifactVersionId: proposed?.artifactVersionId ?? null,
+          reason,
+        }
+      : item,
+  );
 }
 
 interface OpenQuestion {
@@ -1431,12 +1569,17 @@ export class Coordinator {
           code: 'CAPABILITY_DENIED',
           message: 'Multi-model Ultra requires its maximum supported reasoning policy',
         });
-      const { reasoning: _reasoning, ...selection } = autoRoute.ultra;
       const chosen = this.resolveUltra(
-        selection,
+        ultraSelectionOf(autoRoute.ultra),
         autoRoute.modelProfile,
         request.mode,
         preparedModels,
+        {
+          fileTools:
+            CorralDefinition.safeParse(resolved.definition).data?.roles.some((role) =>
+              role.allowedWorkTools.includes('read_file'),
+            ) ?? false,
+        },
       );
       if (!chosen.ok) return refuse(chosen.error);
       if (hashOf(chosen.snapshot) !== hashOf(autoRoute.ultra))
@@ -1894,6 +2037,8 @@ export class Coordinator {
       handles: new Map(),
       rounds: new Map(),
       recipes: new Map(),
+      ...(snapshot.autoRoute?.ultra?.version === 2 ? { usageLimits: 'none' as const } : {}),
+      extraInputs: new Map(),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
       ultraDraining: false,
       taskOutcomes: new Map(),
@@ -2042,27 +2187,28 @@ export class Coordinator {
     }
     this.live.set(runId, run);
     this.publish(run, projection);
-    run.cancelDeadline = this.timers.after(run.limits.runDeadlineMs, () => {
-      if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-      this.commit(run, [
-        {
-          type: 'limit.reached',
-          payload: {
-            limitKind: 'deadline',
-            used: run.limits.runDeadlineMs,
-            reserved: 0,
-            max: run.limits.runDeadlineMs,
+    if (!run.usageLimits)
+      run.cancelDeadline = this.timers.after(run.limits.runDeadlineMs, () => {
+        if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+        this.commit(run, [
+          {
+            type: 'limit.reached',
+            payload: {
+              limitKind: 'deadline',
+              used: run.limits.runDeadlineMs,
+              reserved: 0,
+              max: run.limits.runDeadlineMs,
+            },
           },
-        },
-      ]);
-      this.submit({
-        schemaVersion: '0.1',
-        runId,
-        commandId: `deadline_${runId}`,
-        type: 'cancel',
-        payload: { scope: { kind: 'run' }, reason: 'run_deadline' },
+        ]);
+        this.submit({
+          schemaVersion: '0.1',
+          runId,
+          commandId: `deadline_${runId}`,
+          type: 'cancel',
+          payload: { scope: { kind: 'run' }, reason: 'run_deadline' },
+        });
       });
-    });
     this.schedule(run, async () => {
       await this.files?.prepareRun?.(runId);
       if (!TERMINAL_RUN_STATUSES.has(run.projection.status)) await this.drive(run);
@@ -3343,6 +3489,7 @@ export class Coordinator {
     primary: string,
     mode: 'mock' | 'live',
     preparedModels?: Record<string, ModelProfileSnapshot>,
+    context: { fileTools: boolean } = { fileTools: false },
   ) {
     return resolveUltraSelection(
       selection,
@@ -3356,7 +3503,23 @@ export class Coordinator {
                 : { ok: false, code: 'CAPABILITY_DENIED', reason: 'profile was not prepared' },
           }
         : this.models,
+      selection.version === 2 ? this.tournamentBlocked(context.fileTools) : null,
     );
+  }
+
+  /** Why version 2 Ultra must run as collaboration here; null when a tournament can run. */
+  private tournamentBlocked(fileTools: boolean): UltraFallbackReason | null {
+    if (!fileTools) return 'no_working_copy';
+    const files = this.files;
+    return files?.prepareCandidates &&
+      files.bindCandidateExecution &&
+      files.currentCandidateTree &&
+      files.promoteCandidate &&
+      files.restoreCandidate &&
+      files.candidateDiff &&
+      files.isolatedChecksAvailable?.()
+      ? null
+      : 'no_isolation';
   }
 
   /** The reasoning levels a profile supports; null when unknown or simulated (CR-024 §7). */
@@ -3940,7 +4103,7 @@ export class Coordinator {
           const candidateId = `candidate_${index}`;
           if (run.projection.candidateComparison?.candidates[index - 1]?.state !== 'pending')
             continue;
-          if (!candidateAllowance(run.projection.budget, run.limits, 'start')) {
+          if (!run.usageLimits && !candidateAllowance(run.projection.budget, run.limits, 'start')) {
             this.updateCandidate(run, candidateId, {
               state: 'failed',
               reason: 'completion_budget_reserved',
@@ -4008,6 +4171,8 @@ export class Coordinator {
     if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
     const view = this.candidateComparison(run.runId)!;
     const acceptable = view.candidates.some((candidate) => candidate.state === 'acceptable');
+    if (acceptable && run.snapshot.autoRoute?.ultra?.version === 2)
+      return this.driveTournament(run);
     this.commit(run, [
       {
         type: 'candidate.comparison_changed',
@@ -4045,6 +4210,30 @@ export class Coordinator {
     if (!candidate) return refuse('TARGET_NOT_FOUND', 'candidate does not exist');
     if (view.status === 'promoting' || view.status === 'selected')
       return refuse('TARGET_TERMINAL', 'a candidate was already selected');
+    if (
+      command.type === 'cancel_candidate' &&
+      view.status === 'refining' &&
+      view.tournament?.winnerCandidateId === candidate.candidateId &&
+      run.tournament
+    ) {
+      // CR-048 §6: stop refining the winner; its accepted tree stays for a person to choose.
+      run.tournament.cancelled = true;
+      const receipt = this.controlReceipt(
+        run,
+        command,
+        payloadHash,
+        [{ type: 'candidate.comparison_changed', payload: view }],
+        'applied',
+        'immediate',
+      );
+      for (const execution of Object.values(run.projection.executions))
+        if (
+          execution.candidateId === candidate.candidateId &&
+          !TERMINAL_EXECUTION_STATUSES.has(execution.status)
+        )
+          this.requestCancel(run, execution.executionId, 'candidate cancelled');
+      return receipt;
+    }
     if (command.type === 'cancel_candidate') {
       if (!['pending', 'running'].includes(candidate.state))
         return refuse('TARGET_TERMINAL', 'candidate has ended');
@@ -4077,22 +4266,13 @@ export class Coordinator {
       return receipt;
     }
     if (
-      view.status !== 'awaiting_selection' ||
+      !MANUAL_SELECTION_STATUSES.has(view.status) ||
       candidate.state !== 'acceptable' ||
       candidate.tree !== command.payload.tree ||
       !candidate.artifactVersionId
     )
       return refuse('REVISION_CONFLICT', 'select an exact acceptable checked candidate');
-    if (
-      Object.values(run.projection.executions).some(
-        (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
-      ) ||
-      run.projection.budget.reserved ||
-      run.projection.budget.unknownOutstanding ||
-      Object.values(run.projection.effects).some(
-        (effect) => effect.status === 'admitted' || effect.outcome === 'unknown',
-      )
-    )
+    if (!this.candidatesSettled(run))
       return refuse('CAPABILITY_DENIED', 'candidate workers or effects are not settled');
     const receipt = this.controlReceipt(
       run,
@@ -4102,20 +4282,48 @@ export class Coordinator {
       'accepted',
       'safe_boundary',
     );
+    void this.promote(run, candidate, view.baselineTree, command.commandId, false);
+    return receipt;
+  }
+
+  private candidatesSettled(run: LiveRun) {
+    return !(
+      Object.values(run.projection.executions).some(
+        (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+      ) ||
+      run.projection.budget.reserved ||
+      run.projection.budget.unknownOutstanding ||
+      Object.values(run.projection.effects).some(
+        (effect) => effect.status === 'admitted' || effect.outcome === 'unknown',
+      )
+    );
+  }
+
+  /**
+   * Applies one checked candidate tree to the session copy. A person's selection fails the Run
+   * when it cannot complete; CR-048's automatic apply holds the winner for a person instead.
+   */
+  private promote(
+    run: LiveRun,
+    candidate: CandidateView,
+    baselineTree: string,
+    commandId: string,
+    automatic: boolean,
+  ): Promise<void> {
     const promotion = Promise.resolve().then(async () => {
       try {
         await this.files!.promoteCandidate!({
           runId: run.runId,
           candidateId: candidate.candidateId,
-          expectedTree: command.payload.tree,
-          baselineTree: view.baselineTree,
-          commandId: command.commandId,
+          expectedTree: candidate.tree!,
+          baselineTree,
+          commandId,
         });
         if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
         this.commit(run, [
           {
             type: 'candidate.comparison_changed',
-            commandId: command.commandId,
+            ...(automatic ? {} : { commandId }),
             payload: {
               ...this.candidateComparison(run.runId)!,
               status: 'selected',
@@ -4130,18 +4338,363 @@ export class Coordinator {
               approvalId: null,
             },
           },
-          runState(run.projection.status, 'succeeded', 'candidate_selected'),
+          runState(
+            run.projection.status,
+            'succeeded',
+            automatic ? 'candidate_auto_applied' : 'candidate_selected',
+          ),
         ]);
-      } catch {
+      } catch (error) {
         delete run.candidatePromotion;
-        this.failRun(run, 'candidate_promotion_failed');
+        if (!automatic) return this.failRun(run, 'candidate_promotion_failed');
+        if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+        this.holdAutoApply(run, error instanceof Error ? error.message : String(error));
       }
     });
     run.candidatePromotion = promotion;
     void promotion.finally(() => {
       if (run.candidatePromotion === promotion) delete run.candidatePromotion;
     });
-    return receipt;
+    return promotion;
+  }
+
+  // ── CR-048 candidate tournament ───────────────────────────────────────────
+
+  /** Keeps the winner for a person when the automatic apply cannot happen (CR-048 §4). */
+  private holdAutoApply(run: LiveRun, reason: string) {
+    const view = this.candidateComparison(run.runId)!;
+    this.commit(run, [
+      {
+        type: 'candidate.comparison_changed',
+        payload: {
+          ...view,
+          status: 'auto_apply_held',
+          ...(view.tournament ? { tournament: { ...view.tournament, held: reason } } : {}),
+        },
+      },
+      runState(run.projection.status, 'awaiting_user', 'candidate_selection_required'),
+    ]);
+  }
+
+  /** Runs the judge once with host-made inputs and returns what it submitted. */
+  private async judge(run: LiveRun, given: ResolvedInput[]) {
+    run.extraInputs.set('judge@-', given);
+    let ok = false;
+    try {
+      ok = (await this.runAgent(run, 'judge', null)).ok;
+    } catch {
+      ok = false;
+    } finally {
+      run.extraInputs.delete('judge@-');
+    }
+    const executionId = run.projection.nodeExecutions.judge?.at(-1);
+    const execution = executionId ? run.projection.executions[executionId] : undefined;
+    const artifactVersionId =
+      (ok && execution
+        ? run.projection.tasks[execution.taskId]?.submittedArtifactVersionIds?.[0]
+        : null) ?? null;
+    return {
+      artifactVersionId,
+      text: artifactVersionId ? this.store.getArtifactText(run.runId, artifactVersionId) : null,
+    };
+  }
+
+  /** One anonymous candidate as the judge sees it: report, changed files, diff and checks. */
+  private async tournamentPacket(
+    run: LiveRun,
+    candidateId: string,
+    evidence: TournamentEvidence,
+    name: string,
+    label: string,
+  ) {
+    const diff = await this.files!.candidateDiff!(run.runId, candidateId, evidence.tree);
+    return {
+      files: diff.files,
+      input: {
+        name,
+        kind: 'explicit_version' as const,
+        artifactVersionId: null,
+        text: canonicalJson({
+          label,
+          report: this.store.getArtifactText(run.runId, evidence.artifactVersionId) ?? '',
+          files: diff.files,
+          diff: diff.diff,
+          checks: evidence.checks.map((check) => ({
+            commandId: check.commandId,
+            state: check.state,
+            verdict: check.verdict,
+            exitCode: check.exitCode,
+            output: check.output.text,
+          })),
+        }),
+      },
+    };
+  }
+
+  /**
+   * CR-048: judge the passing candidates, refine the winner's copy, then apply it unless the
+   * request turned the automatic apply off. Every stop leaves a person a checked tree to choose.
+   */
+  private async driveTournament(run: LiveRun) {
+    const ultra = run.snapshot.autoRoute?.ultra;
+    if (ultra?.version !== 2) return;
+    const stopped = () => run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status);
+    const start = this.candidateComparison(run.runId)!;
+    const eligible = start.candidates.filter((candidate) => candidate.state === 'acceptable');
+    let tournament: TournamentView = {
+      judgeProfile: ultra.verifierProfile,
+      autoApply: ultra.autoApply,
+      refinementRounds: ultra.refinementRounds,
+      winnerCandidateId: null,
+      ranking: [],
+      judgment: {
+        state: eligible.length > 1 ? 'pending' : 'skipped',
+        artifactVersionId: null,
+        reason: null,
+      },
+      rounds: [],
+      held: null,
+    };
+    let winner = eligible[0]!;
+    const publish = (
+      status: CandidateComparisonView['status'],
+      change: Partial<TournamentView> = {},
+      evidence?: TournamentEvidence,
+      extra: EventDraft[] = [],
+    ) => {
+      tournament = { ...tournament, ...change };
+      const view = this.candidateComparison(run.runId)!;
+      this.commit(run, [
+        {
+          type: 'candidate.comparison_changed',
+          payload: {
+            ...view,
+            status,
+            tournament,
+            candidates: view.candidates.map((candidate) =>
+              evidence && candidate.candidateId === winner.candidateId
+                ? { ...candidate, ...evidence }
+                : candidate,
+            ),
+          },
+        },
+        ...extra,
+      ]);
+    };
+    const awaitPerson = (status: 'awaiting_selection' | 'judgment_failed', change = {}) =>
+      publish(status, change, undefined, [
+        runState(run.projection.status, 'awaiting_user', 'candidate_selection_required'),
+      ]);
+
+    let improvements: string[] = [];
+    let borrow: { what: string; paths: string[]; diff: string }[] = [];
+    if (eligible.length > 1) {
+      publish('judging');
+      const entries = [];
+      for (const [index, candidate] of eligible.entries()) {
+        const label = TOURNAMENT_LABELS[index]!;
+        const packet = await this.tournamentPacket(
+          run,
+          candidate.candidateId,
+          {
+            tree: candidate.tree!,
+            artifactVersionId: candidate.artifactVersionId!,
+            checks: candidate.checks,
+          },
+          `candidate_${label}`,
+          label,
+        );
+        entries.push({ label, candidate, ...packet });
+      }
+      if (stopped()) return;
+      const byLabel = new Map(entries.map((entry) => [entry.label, entry]));
+      const task = tournamentTask({ kind: 'selection', candidates: [...byLabel.keys()] });
+      let chosen: SelectionJudgment | null = null;
+      let reason: string | null = null;
+      let artifactVersionId: string | null = null;
+      for (let attempt = 1; attempt <= 2 && !chosen; attempt++) {
+        const result = await this.judge(run, [task, ...entries.map((entry) => entry.input)]);
+        if (stopped()) return;
+        artifactVersionId = result.artifactVersionId;
+        const parsed = parseJudgment(SelectionJudgment, result.text);
+        reason = parsed.ok ? selectionProblem(parsed.value, byLabel) : parsed.reason;
+        if (parsed.ok && !reason) chosen = parsed.value;
+      }
+      if (!chosen)
+        return awaitPerson('judgment_failed', {
+          judgment: { state: 'invalid', artifactVersionId, reason },
+        });
+      winner = byLabel.get(chosen.winner)!.candidate;
+      improvements = chosen.improvements;
+      for (const item of chosen.borrow) {
+        const source = byLabel.get(item.from)!.candidate;
+        const diff = await this.files!.candidateDiff!(
+          run.runId,
+          source.candidateId,
+          source.tree!,
+          item.paths,
+        );
+        borrow.push({ what: item.what, paths: item.paths, diff: diff.diff });
+      }
+      if (stopped()) return;
+      publish('judging', {
+        judgment: { state: 'valid', artifactVersionId, reason: null },
+        winnerCandidateId: winner.candidateId,
+        ranking: chosen.ranking.map((label) => byLabel.get(label)!.candidate.candidateId),
+      });
+    } else
+      publish('judging', { winnerCandidateId: winner.candidateId, ranking: [winner.candidateId] });
+
+    const number = Number(winner.candidateId.slice('candidate_'.length));
+    const loopId = `review_loop_${number}`;
+    let accepted: TournamentEvidence = {
+      tree: winner.tree!,
+      artifactVersionId: winner.artifactVersionId!,
+      checks: winner.checks,
+    };
+    const state = { loopId, refining: false, problem: null as string | null, cancelled: false };
+    run.tournament = state;
+    const callbacks = this.callbacksFor(run);
+    for (let round = 1; round <= ultra.refinementRounds; round++) {
+      publish('refining', {
+        rounds: [
+          ...tournament.rounds,
+          { round, state: 'running', tree: null, artifactVersionId: null, reason: null },
+        ],
+      });
+      let outcome: RefinementRoundView['state'] = 'discarded';
+      let reason: string | null = null;
+      let proposed: TournamentEvidence | null = null;
+      let verdict: RefinementJudgment | null = null;
+      state.refining = true;
+      state.problem = null;
+      try {
+        if (state.cancelled) throw new Error('candidate cancelled');
+        const no =
+          Object.values(run.projection.iterations).filter((item) => item.loopNodeId === loopId)
+            .length + 1;
+        await callbacks.loopEntered(loopId, no);
+        const iterationId = run.rounds.get(loopId)!.iterationId;
+        run.extraInputs.set(`write_${number}@${iterationId}`, [
+          {
+            name: 'refinement',
+            kind: 'explicit_version',
+            artifactVersionId: null,
+            text: canonicalJson({ round, improvements, borrow }),
+          },
+        ]);
+        for (const stage of ['write', 'synthesize']) {
+          if (state.cancelled) throw new Error('candidate cancelled');
+          const result = await this.activate(run, `${stage}_${number}`, { loopId, no });
+          if (!result.ok) throw new Error(result.reason);
+        }
+        const executionId = run.projection.nodeExecutions[`synthesize_${number}`]?.at(-1);
+        const evidence =
+          executionId && run.projection.executions[executionId]?.iterationId === iterationId
+            ? run.recipes.get(loopId)?.candidates.get(executionId)
+            : undefined;
+        if (
+          !evidence?.tree ||
+          !evidence.checks.length ||
+          evidence.checks.some((check) => check.verdict !== 'pass')
+        )
+          reason = 'checks_failed';
+        else {
+          proposed = {
+            tree: evidence.tree,
+            artifactVersionId: evidence.artifactVersionId,
+            checks: evidence.checks,
+          };
+          const previous = await this.tournamentPacket(
+            run,
+            winner.candidateId,
+            accepted,
+            'previous',
+            'previous',
+          );
+          const next = await this.tournamentPacket(
+            run,
+            winner.candidateId,
+            proposed,
+            'proposed',
+            'proposed',
+          );
+          const result = await this.judge(run, [
+            tournamentTask({ kind: 'refinement', round }),
+            previous.input,
+            next.input,
+          ]);
+          const parsed = parseJudgment(RefinementJudgment, result.text);
+          if (!parsed.ok) reason = 'judgment_invalid';
+          else {
+            verdict = parsed.value;
+            if (verdict.verdict === 'improved') outcome = 'accepted';
+            else reason = verdict.verdict === 'worse' ? 'judged_worse' : 'judged_equal';
+          }
+        }
+      } catch {
+        reason = state.problem ?? 'round_failed';
+      } finally {
+        state.refining = false;
+        const open = run.rounds.get(loopId);
+        if (open && !stopped())
+          this.commit(run, [
+            this.roundFinished(
+              run,
+              loopId,
+              open.iterationId,
+              outcome === 'accepted' ? 'pass' : 'revise',
+            ),
+          ]);
+        run.rounds.delete(loopId);
+      }
+      if (stopped()) return;
+      if (state.cancelled) {
+        outcome = 'cancelled';
+        reason = 'user_cancelled';
+      }
+      if (outcome !== 'accepted') {
+        let restored = false;
+        try {
+          await this.files!.restoreCandidate!(run.runId, winner.candidateId, accepted.tree);
+          restored =
+            (await this.files!.currentCandidateTree!(run.runId, winner.candidateId)) ===
+            accepted.tree;
+        } catch {
+          restored = false;
+        }
+        if (stopped()) return;
+        if (!restored) {
+          publish('refining', {
+            rounds: roundsWith(tournament.rounds, round, outcome, proposed, reason),
+          });
+          return this.holdAutoApply(
+            run,
+            'the winner copy could not be restored to its accepted tree',
+          );
+        }
+      } else {
+        accepted = proposed!;
+        improvements = verdict!.improvements;
+        borrow = [];
+      }
+      publish(
+        'refining',
+        { rounds: roundsWith(tournament.rounds, round, outcome, proposed, reason) },
+        outcome === 'accepted' ? accepted : undefined,
+      );
+      if (outcome === 'cancelled') return awaitPerson('awaiting_selection');
+      if (verdict?.done) break;
+    }
+    delete run.tournament;
+    if (!ultra.autoApply) return awaitPerson('awaiting_selection');
+    if (!this.candidatesSettled(run))
+      return this.holdAutoApply(run, 'candidate workers or effects are not settled');
+    publish('promoting');
+    const final = this.candidateComparison(run.runId)!.candidates.find(
+      (candidate) => candidate.candidateId === winner.candidateId,
+    )!;
+    await this.promote(run, final, start.baselineTree, `auto_apply_${run.runId}`, true);
   }
 
   private async drive(run: LiveRun): Promise<void> {
@@ -4209,9 +4762,9 @@ export class Coordinator {
           run.recipes.set(loopId, {
             recipe,
             candidates: new Map(),
-            cancelDeadline: this.timers.after(recipe.maxWallMs, () =>
-              this.stopRecipe(run, loopId, 'deadline'),
-            ),
+            cancelDeadline: run.usageLimits
+              ? () => {}
+              : this.timers.after(recipe.maxWallMs, () => this.stopRecipe(run, loopId, 'deadline')),
           });
           if (recipe.criteriaFiles.length) {
             try {
@@ -4286,6 +4839,18 @@ export class Coordinator {
   ) {
     const state = run.recipes.get(loopId);
     if (!state || TERMINAL_RUN_STATUSES.has(run.projection.status) || run.stop.aborted) return;
+    if (run.tournament?.refining && run.tournament.loopId === loopId) {
+      // CR-048 §3: a refinement round that stops is discarded; the winner keeps its accepted tree.
+      run.tournament.problem ??= reason;
+      const number = candidateNumber(loopId);
+      for (const execution of Object.values(run.projection.executions))
+        if (
+          execution.candidateId === `candidate_${number}` &&
+          !TERMINAL_EXECUTION_STATUSES.has(execution.status)
+        )
+          this.requestCancel(run, execution.executionId, reason);
+      return;
+    }
     this.commit(run, [
       {
         type: 'recipe.stopped',
@@ -4340,7 +4905,7 @@ export class Coordinator {
 
   private recipeAllowance(run: LiveRun, executionId: string): number {
     const context = this.recipeForExecution(run, executionId);
-    if (!context) return Number.POSITIVE_INFINITY;
+    if (!context || run.usageLimits) return Number.POSITIVE_INFINITY;
     const { loopId, state } = context;
     const { calls, tokens: used } = this.recipeUsage(run, loopId);
     const reason =
@@ -4401,8 +4966,8 @@ export class Coordinator {
     candidate: RecipeCandidate,
   ): Promise<RecipeStopReason | null> {
     const usage = this.recipeUsage(run, loopId);
-    if (usage.tokens > state.recipe.maxOutputTokens) return 'token_limit';
-    if (usage.calls > state.recipe.maxModelCalls) return 'call_limit';
+    if (!run.usageLimits && usage.tokens > state.recipe.maxOutputTokens) return 'token_limit';
+    if (!run.usageLimits && usage.calls > state.recipe.maxModelCalls) return 'call_limit';
     if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
     if (candidate.checks.length !== state.recipe.checkIds.length) return 'check_error';
     const tree = candidate.checks[0]?.tree;
@@ -4571,7 +5136,7 @@ export class Coordinator {
       parentExecutionId: null,
       depth: 0,
       assignment: { kind: 'scheduled' },
-      given: [],
+      given: run.extraInputs.get(`${nodeId}@${iterationId ?? '-'}`) ?? [],
     });
     this.commit(run, prepared.drafts);
     return this.launch(run, prepared);
@@ -4735,6 +5300,7 @@ export class Coordinator {
         ['write_file', 'delete_file', 'move_file', 'run_command'].includes(tool),
       ),
       limits: { ...run.limits },
+      ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
       sourceRefs: input.inputs.map((source) => ({
         name: source.name,
         artifactVersionId: source.artifactVersionId,
@@ -4815,7 +5381,13 @@ export class Coordinator {
         this.hostResidents++;
         resident = true;
         if (input.candidateId) {
+          // CR-048: the accepted winner works again only inside its own refinement round.
+          const refining =
+            run.tournament?.refining &&
+            !run.tournament.cancelled &&
+            run.tournament.loopId === `review_loop_${input.candidateId.slice('candidate_'.length)}`;
           if (
+            !refining &&
             run.projection.candidateComparison?.candidates.find(
               (candidate) => candidate.candidateId === input.candidateId,
             )?.state !== 'running'
@@ -5146,7 +5718,7 @@ export class Coordinator {
   }
 
   private ultraAllowance(run: LiveRun, input: AgentStartInput, optional = input.depth > 0) {
-    if (!run.snapshot.autoRoute?.ultra) return null;
+    if (!run.snapshot.autoRoute?.ultra || run.usageLimits) return null;
     let nodeId = input.nodeId;
     let parent = run.projection.executions[input.executionId]?.parentExecutionId;
     while (parent) {
@@ -5192,7 +5764,7 @@ export class Coordinator {
         ? 'Ultra specialists cannot delegate further'
         : count + active > 2
           ? 'Ultra allows at most two active specialists'
-          : !allowance?.maxOutputTokens
+          : !run.usageLimits && !allowance?.maxOutputTokens
             ? 'Ultra is preserving its remaining budget for required synthesis and verification'
             : null;
     return message ? { kind: 'refuse', code: 'LIMIT_REACHED', message } : null;
@@ -5304,6 +5876,7 @@ export class Coordinator {
       if (
         verdict === 'revise' &&
         run.snapshot.autoRoute?.ultra?.comparison &&
+        !run.usageLimits &&
         !candidateAllowance(run.projection.budget, run.limits, 'revise')
       ) {
         this.stopRecipe(run, node.loopId, 'token_limit', candidate.artifactVersionId);
@@ -7564,7 +8137,12 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (run.projection.status !== 'running');
           requireActive();
-          const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
+          const view: ModelGateView = {
+            projection: run.projection,
+            limits: run.limits,
+            input,
+            ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
+          };
           this.recipeAllowance(run, executionId);
           const request = runGates(this.gates['model.request'], view);
           if (request.kind === 'refuse') this.refuseModelRequest(run, request);
@@ -7723,6 +8301,7 @@ export class Coordinator {
             projection: run.projection,
             limits,
             input,
+            ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
           });
           if (admit.kind !== 'allow') {
             this.releaseSlot(run);
@@ -7739,7 +8318,9 @@ export class Coordinator {
           }
           // The reservation itself is the Coordinator's: even without a budget gate, a request the
           // budget cannot cover is not admitted.
-          const admitted = admitModelRequest(run.projection.budget, limits);
+          const admitted = run.usageLimits
+            ? { ok: true as const, maxOutputTokens: UNLIMITED_OUTPUT_TOKENS_PER_CALL }
+            : admitModelRequest(run.projection.budget, limits);
           if (!admitted.ok) {
             this.releaseSlot(run);
             this.commit(run, [
@@ -7836,26 +8417,27 @@ export class Coordinator {
             },
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
-          run.requestDeadlines.set(
-            modelCallId,
-            this.timers.after(run.limits.modelTimeoutMs, () => {
-              if (
-                run.projection.effects[effectId]?.status !== 'admitted' ||
-                TERMINAL_RUN_STATUSES.has(run.projection.status)
-              )
-                return;
-              this.submit({
-                schemaVersion: '0.1',
-                runId: run.runId,
-                commandId: `timeout_${modelCallId}`,
-                type: 'cancel',
-                payload: {
-                  scope: { kind: 'execution', executionId },
-                  reason: 'model_request_timeout',
-                },
-              });
-            }),
-          );
+          if (!run.usageLimits)
+            run.requestDeadlines.set(
+              modelCallId,
+              this.timers.after(run.limits.modelTimeoutMs, () => {
+                if (
+                  run.projection.effects[effectId]?.status !== 'admitted' ||
+                  TERMINAL_RUN_STATUSES.has(run.projection.status)
+                )
+                  return;
+                this.submit({
+                  schemaVersion: '0.1',
+                  runId: run.runId,
+                  commandId: `timeout_${modelCallId}`,
+                  type: 'cancel',
+                  payload: {
+                    scope: { kind: 'execution', executionId },
+                    reason: 'model_request_timeout',
+                  },
+                });
+              }),
+            );
           return {
             modelCallId,
             contextSnapshotId,

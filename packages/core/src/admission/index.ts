@@ -66,6 +66,8 @@ export interface ModelGateView {
   projection: RunProjection;
   limits: RunLimits;
   input: AgentStartInput;
+  /** CR-048: version 2 Ultra, where the default usage and no-progress gates do not apply. */
+  usageLimits?: 'none';
 }
 
 export interface ToolGateView extends ModelGateView {
@@ -259,8 +261,8 @@ export function notifyObservers(
 const noProgress: Gate<ModelGateView> = {
   id: 'no_progress',
   version: 1,
-  check: ({ projection }) =>
-    noProgressReached(projection.progress)
+  check: ({ projection, usageLimits }) =>
+    !usageLimits && noProgressReached(projection.progress)
       ? {
           kind: 'require_approval',
           approval: 'user_action',
@@ -272,7 +274,8 @@ const noProgress: Gate<ModelGateView> = {
 const budget: Gate<ModelGateView> = {
   id: 'budget',
   version: 1,
-  check: ({ projection, limits }) => {
+  check: ({ projection, limits, usageLimits }) => {
+    if (usageLimits) return { kind: 'allow' };
     const admitted = admitModelRequest(projection.budget, limits);
     return admitted.ok
       ? { kind: 'allow' }
