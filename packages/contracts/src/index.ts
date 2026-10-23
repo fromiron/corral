@@ -5,6 +5,7 @@ export * from './checkpoints.ts';
 export * from './coding.ts';
 export * from './command-execution.ts';
 export * from './commands.ts';
+export * from './content-search.ts';
 export * from './decisions.ts';
 export * from './definition.ts';
 export * from './errors.ts';

@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
 });
 
-it('[TC-WBD-018-N] language HTTP endpoints validate scope and keep existing authentication', async () => {
+it('[TC-WBD-018-N] [TC-WBD-019-H] language and content search HTTP endpoints preserve the managed-copy boundary', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-language-http-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);
@@ -83,4 +83,17 @@ it('[TC-WBD-018-N] language HTTP endpoints validate scope and keep existing auth
   expect((await fetch(`${server.url}/api/v1/sessions/${sessionId}/worktree/language`)).status).toBe(
     401,
   );
+  const searched = await call(
+    `${server.url}/api/v1/sessions/${sessionId}/worktree/search-contents`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ target: state.target, queryId: 'search_http', query: 'one' }),
+    },
+  );
+  expect(searched.status).toBe(200);
+  expect(await searched.json()).toMatchObject({
+    queryId: 'search_http',
+    matches: [{ path: 'a.txt', range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 } }],
+  });
 });

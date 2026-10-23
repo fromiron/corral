@@ -3211,6 +3211,7 @@
       "apps/studio/src/workbench/"
     ],
     "done": "관리 사본의 ignore·안전한 읽기를 유지한 bounded 내용 검색과 기존 문서 이동을 제공하고 취소·stale 결과·dirty 초안을 보존한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Content-Search-2026-10-23.md"
   }
 ]

@@ -12,6 +12,7 @@ import {
   type Clock,
   type CommandError,
   ContentHash,
+  ContentSearch,
   CorralDefinitionDraft,
   CreateRunRequest,
   canonicalJson,
@@ -1872,6 +1873,26 @@ async function createCorralServer(
       return fail(reply, error.code, error.message);
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
   };
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/search-contents',
+    async (request, reply) => {
+      const input = parse(ContentSearch, request, reply);
+      if (!input) return reply;
+      const dropped = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableEnded) dropped.abort();
+      };
+      reply.raw.once('close', onClose);
+      if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
+      try {
+        return await files.searchContents(request.params.sessionId, input, dropped.signal);
+      } catch (error) {
+        return documentFail(reply, error);
+      } finally {
+        reply.raw.off('close', onClose);
+      }
+    },
+  );
   app.get<SessionParams>(
     '/api/v1/sessions/:sessionId/worktree/language',
     async (request, reply) => {

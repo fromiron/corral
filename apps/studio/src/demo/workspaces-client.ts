@@ -92,6 +92,7 @@ export function createDemoWorkspaces(
     dismissLspProposal: noLsp,
     listFiles: (scope, path) => as(call('listFiles', scope, path)),
     searchFiles: (scope, query, limit) => as(call('searchFiles', scope, query, limit)),
+    searchContents: noDocuments,
     readFile: (scope, path) => as(call('readFile', scope, path)),
     gitStatus: noGit,
     gitDiff: noGit,

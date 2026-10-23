@@ -3508,5 +3508,26 @@
     "definition": "Definitions",
     "references": "References",
     "diagnostics": "Diagnostics"
+  },
+  "ContentSearch": {
+    "mode": "Search mode",
+    "names": "Name",
+    "contents": "Contents",
+    "placeholder": "Find text in files",
+    "search": "Search",
+    "cancel": "Cancel search",
+    "caseSensitive": "Match case",
+    "diskOnly": "Searches saved files in this working copy. Unsaved drafts are excluded.",
+    "needsCopy": "Select a working copy to search file contents.",
+    "searching": "Searching…",
+    "cancelled": "Search cancelled.",
+    "empty": "No matches.",
+    "summary": "{matches} matches in {scanned} files; {skipped} files skipped.",
+    "truncated": "Search limit reached. Narrow your search.",
+    "stale": "This file or working copy changed. Search again before jumping to a result.",
+    "draft": "This file has an unsaved draft. Save or discard it before jumping to a saved-file result.",
+    "unavailable": "Search could not be completed.",
+    "openFailed": "This result could not be opened.",
+    "open": "Open {path}:{line}"
   }
 }

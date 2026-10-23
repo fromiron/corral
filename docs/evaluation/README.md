@@ -9,6 +9,7 @@
 | Workbench 식별·테두리 일관성 | [CR-045 구현·Linux 검증](Workbench-Identification-2026-10-21.md) |
 | Workbench 코어 잔여 검증 | [preview·PTY 재접속·파일/Git/설정 왕복](Development-Workbench-Core-2026-10-23.md) |
 | 프로젝트 언어 지원 | [P23 dirty 진단·completion·정의/참조 이동](Development-Workbench-Language-2026-10-23.md) |
+| 파일 내용 검색 | [P24-A 결과 이동·dirty/stale 보존](Development-Workbench-Content-Search-2026-10-23.md) |
 | 공유 개발·live edit | [CR-046 P22 구현·Linux 실제 Vite 검증](Development-Workbench-Shared-Development-2026-10-23.md) |
 | 실제 Git 상태·읽기 정책 | [CR-046 P12 구현·Linux 인앱 검증](Development-Workbench-Git-Observation-2026-10-21.md) |
 | 캡처한 컨텍스트·대화 표시 밀도 | [CR-046 P11 구현·Linux 인앱 검증](Development-Workbench-Context-2026-10-21.md) |

@@ -31,6 +31,8 @@ import {
   type CommandExecution,
   CommandPlan,
   CommandReport,
+  ContentSearch,
+  type ContentSearchResult,
   canonicalJson,
   DevelopmentStart,
   type DevelopmentState,
@@ -317,6 +319,7 @@ function decodeText(bytes: Buffer, preserveBom = false): string | null {
 async function boundedFile(
   root: string,
   rel: string,
+  maxBytes = MAX_TEXT,
 ): Promise<{ bytes: Buffer | null; size: number }> {
   if ((await assertPlainPath(root, rel)) !== 'file')
     throw new ToolRefusal('TARGET_NOT_FOUND', `${rel} is not a file`);
@@ -331,8 +334,8 @@ async function boundedFile(
     const current = await lstat(join(root, rel));
     if (current.ino !== info.ino || current.dev !== info.dev)
       throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed while opening`);
-    if (info.size > MAX_TEXT) return { bytes: null, size: info.size };
-    const buffer = Buffer.alloc(MAX_TEXT + 1);
+    if (info.size > maxBytes) return { bytes: null, size: info.size };
+    const buffer = Buffer.alloc(maxBytes + 1);
     let size = 0;
     while (size < buffer.length) {
       const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
@@ -346,7 +349,7 @@ async function boundedFile(
       after.ctimeMs !== info.ctimeMs
     )
       throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed while reading`);
-    return { bytes: size > MAX_TEXT ? null : buffer.subarray(0, size), size };
+    return { bytes: size > maxBytes ? null : buffer.subarray(0, size), size };
   } finally {
     await handle.close();
   }
@@ -2890,6 +2893,108 @@ export class WorkspaceService implements FileTools {
     return this.list(root, path, isGit);
   }
 
+  /** Read-only disk search: it never borrows a document draft or grants an agent a read. */
+  async searchContents(
+    sessionId: string,
+    raw: ContentSearch,
+    signal?: AbortSignal,
+  ): Promise<ContentSearchResult> {
+    const input = ContentSearch.parse(raw);
+    const checkTarget = () => {
+      if (signal?.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'file search was cancelled');
+      if (this.disposing || this.removingWorktrees.has(sessionId))
+        throw new ToolRefusal('TARGET_TERMINAL', 'the working copy is closing');
+      return this.documentTarget(sessionId, input.target);
+    };
+    const { row, target } = checkTarget();
+    const root = row.worktree_path;
+    if ((await realpath(root)) !== resolve(root))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+    let listed: Awaited<ReturnType<WorkspaceService['list']>>;
+    try {
+      listed = await this.list(root, '', true, signal);
+    } catch (error) {
+      checkTarget();
+      throw error;
+    }
+    const result: ContentSearchResult = {
+      target,
+      queryId: input.queryId,
+      query: input.query,
+      caseSensitive: input.caseSensitive,
+      matches: [],
+      scannedFiles: 0,
+      skippedFiles: 0,
+      truncated: listed.truncated,
+    };
+    const matcher = new RegExp(
+      input.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      input.caseSensitive ? 'gu' : 'giu',
+    );
+    let remaining = 8 * 1024 * 1024;
+    files: for (const file of listed.files) {
+      checkTarget();
+      if (file.bytes > MAX_TEXT) {
+        result.skippedFiles++;
+        continue;
+      }
+      if (file.bytes > remaining) {
+        result.truncated = true;
+        break;
+      }
+      let read: Awaited<ReturnType<typeof boundedFile>>;
+      try {
+        read = await boundedFile(root, file.path, Math.min(MAX_TEXT, remaining));
+      } catch {
+        result.skippedFiles++;
+        continue;
+      }
+      checkTarget();
+      if (!read.bytes) {
+        result.skippedFiles++;
+        if (read.size <= MAX_TEXT) {
+          result.truncated = true;
+          break;
+        }
+        continue;
+      }
+      remaining -= read.bytes.length;
+      const text = decodeText(read.bytes, true);
+      if (text === null) {
+        result.skippedFiles++;
+        continue;
+      }
+      result.scannedFiles++;
+      const sha = sha256(read.bytes);
+      for (const [lineIndex, line] of text.split(/\r\n|\r|\n/).entries()) {
+        for (const match of line.matchAll(matcher)) {
+          if (result.matches.length === 200) {
+            result.truncated = true;
+            break files;
+          }
+          const start = match.index;
+          const previewStart = Math.max(0, start - 120);
+          result.matches.push({
+            path: file.path,
+            sha256: sha,
+            range: {
+              startLine: lineIndex + 1,
+              startColumn: start + 1,
+              endLine: lineIndex + 1,
+              endColumn: start + match[0].length + 1,
+            },
+            preview: line.slice(previewStart, previewStart + 400),
+          });
+        }
+      }
+    }
+    checkTarget();
+    if ((await realpath(root)) !== resolve(root))
+      throw new WorkspaceError('REVISION_CONFLICT', 'the working copy identity changed');
+    checkTarget();
+    return result;
+  }
+
   /**
    * CR-016: files and folders for an `@` reference, ranked by a fuzzy match of their path. Only
    * names are read; Git's ignore rules apply, and nothing behind a symbolic link is returned.
@@ -5036,7 +5141,7 @@ export class WorkspaceService implements FileTools {
     }
   }
 
-  private async list(root: string, folder: string, isGit = true) {
+  private async list(root: string, folder: string, isGit = true, signal?: AbortSignal) {
     const rel = folder ? safeRelative(folder) : '';
     if (rel) {
       await assertPlainPath(root, rel);
@@ -5048,21 +5153,26 @@ export class WorkspaceService implements FileTools {
     const out =
       walk?.paths ??
       (
-        await git(root, [
-          'ls-files',
-          '-z',
-          '--cached',
-          '--others',
-          '--exclude-standard',
-          '--',
-          rel ? `:(literal)${rel}` : '.',
-        ])
+        await git(
+          root,
+          [
+            'ls-files',
+            '-z',
+            '--cached',
+            '--others',
+            '--exclude-standard',
+            '--',
+            rel ? `:(literal)${rel}` : '.',
+          ],
+          { signal },
+        )
       ).stdout
         .toString('utf8')
         .split('\0')
         .filter(Boolean);
     const files: { path: string; bytes: number }[] = [];
     for (const path of [...new Set(out)].slice(0, 500)) {
+      if (signal?.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'file search was cancelled');
       try {
         safeRelative(path);
         if ((await assertPlainPath(root, path)) !== 'file') continue;

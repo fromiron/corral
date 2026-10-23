@@ -1,6 +1,8 @@
 import type {
   CheckpointRestore,
   CheckpointRestorePlan,
+  ContentSearch,
+  ContentSearchResult,
   DevelopmentStart,
   DevelopmentState,
   DocumentCommand,
@@ -52,6 +54,9 @@ import type { CommandRecovery, StartRecovery } from './recovery.ts';
 import { VaultClient } from './vault-api.ts';
 
 export type {
+  ContentSearch,
+  ContentSearchMatch,
+  ContentSearchResult,
   DevelopmentStart,
   DevelopmentState,
   DocumentCommand,
@@ -1924,6 +1929,17 @@ export class WorkspacesApi {
     return this.send(
       `${this.browsePath(scope)}/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
     );
+  }
+  searchContents(
+    sessionId: string,
+    input: ContentSearch,
+    signal?: AbortSignal,
+  ): Promise<ContentSearchResult> {
+    return this.http.json(`/sessions/${encodeURIComponent(sessionId)}/worktree/search-contents`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal,
+    });
   }
   readFile(scope: FileBrowseScope, path: string): Promise<{ path: string; content: FileSideView }> {
     return this.send(`${this.browsePath(scope)}/file?${new URLSearchParams({ path })}`);

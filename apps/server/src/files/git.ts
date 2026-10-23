@@ -36,7 +36,12 @@ export interface GitResult {
 export function git(
   cwd: string,
   args: string[],
-  options: { env?: Record<string, string>; maxBuffer?: number; input?: Buffer } = {},
+  options: {
+    env?: Record<string, string>;
+    maxBuffer?: number;
+    input?: Buffer;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     const child = execFile(
@@ -57,6 +62,7 @@ export function git(
           ...options.env,
         },
         timeout: 60_000,
+        signal: options.signal,
       },
       (error, stdout, stderr) => {
         if (error) {

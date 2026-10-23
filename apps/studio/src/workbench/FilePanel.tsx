@@ -1,5 +1,5 @@
 import type { FileSideView } from '@corral/client';
-import type { TextAttachment, WorkspaceTarget } from '@corral/contracts';
+import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
 import { Button, Input, Select, Textarea } from '@corral/react/ui';
 import { Link } from '@tanstack/react-router';
@@ -16,6 +16,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
+import { ContentSearch } from './ContentSearch.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { DocumentCloseDialog } from './documents/DocumentCloseDialog.tsx';
@@ -61,12 +62,13 @@ export function FilePanel({
   sessionId: string;
   onReference: (reference: FileReference) => void;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
-  onOpenDocument?: (document: OpenDocumentRequest) => boolean;
+  onOpenDocument?: (document: OpenDocumentRequest, range?: TextRange) => boolean;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
   const te = useTranslations('Documents');
   const td = useTranslations('Docking');
+  const ts = useTranslations('ContentSearch');
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces, mode, workspaceId } = services;
@@ -92,6 +94,7 @@ export function FilePanel({
   );
   const active = typeof saved === 'string' ? saved : null;
   const [query, setQuery] = useState('');
+  const [searchMode, setSearchMode] = useState<'names' | 'contents'>('names');
   const [content, setContent] = useState<FileSideView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [documentKey, setDocumentKey] = useState<string | null>(null);
@@ -427,6 +430,28 @@ export function FilePanel({
         documents[documentKey].pendingSave ||
         documents[documentKey].recoveries.length),
   );
+  const searchModeControl = (
+    <Select
+      label={ts('mode')}
+      size="sm"
+      value={searchMode}
+      onValueChange={setSearchMode}
+      options={[
+        { value: 'names' as const, label: ts('names') },
+        { value: 'contents' as const, label: ts('contents') },
+      ]}
+    />
+  );
+  const searchTarget: WorkspaceTarget | null =
+    scopeKind === 'session' && copy && workspaceId && !copy.missing && !copy.removedAt
+      ? {
+          hostId: workspaceId,
+          projectId,
+          sessionId,
+          bindingId: copy.bindingId,
+          copyGeneration: copy.copyGeneration,
+        }
+      : null;
   return (
     <div ref={panel} className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
       {retainedDrafts}
@@ -453,47 +478,83 @@ export function FilePanel({
           <RefreshCw />
         </Button>
       </div>
-      <Input
-        aria-label={t('filterFiles')}
-        placeholder={t('filterFiles')}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <div ref={scroll} className="h-44 overflow-auto">
-        <div style={{ height: rows.getTotalSize(), position: 'relative' }}>
-          {rows.getVirtualItems().map((row) => {
-            const file = files[row.index];
-            if (!file) return null;
-            return (
-              <button
-                key={file.path}
-                type="button"
-                aria-label={t('openFile', { path: file.path })}
-                title={file.path}
-                onClick={() => open(file.path)}
-                style={{
-                  position: 'absolute',
-                  top: row.start,
-                  left: 0,
-                  width: '100%',
-                  height: row.size,
-                }}
-                className={`flex items-center gap-2 rounded px-2 text-left text-xs hover:bg-raised ${active === file.path ? 'bg-sidebar-selected' : ''}`}
-              >
-                <FileText size={14} className="shrink-0 text-muted" />
-                <span className="truncate">{file.path}</span>
-              </button>
-            );
-          })}
+      {searchMode === 'contents' ? (
+        searchTarget && workspaces && owner && onOpenDocument ? (
+          <ContentSearch
+            key={JSON.stringify(searchTarget)}
+            api={workspaces}
+            owner={owner}
+            target={searchTarget}
+            onOpenDocument={onOpenDocument}
+            modeControl={searchModeControl}
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              {searchModeControl}
+              <Input
+                size="sm"
+                disabled
+                placeholder={ts('placeholder')}
+                aria-label={ts('placeholder')}
+                className="min-w-0 flex-1"
+              />
+            </div>
+            <p className="text-xs text-muted">{ts('needsCopy')}</p>
+          </div>
+        )
+      ) : (
+        <div className="flex min-w-0 items-center gap-2">
+          {searchModeControl}
+          <Input
+            size="sm"
+            aria-label={t('filterFiles')}
+            placeholder={t('filterFiles')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="min-w-0 flex-1"
+          />
         </div>
-        {!loading && !files.length ? (
-          <p className="p-2 text-xs text-muted">{t('noFiles')}</p>
-        ) : null}
-      </div>
-      {list.truncated ? (
-        <p role="note" className="text-xs text-muted">
-          {t('filesTruncated')}
-        </p>
+      )}
+      {searchMode === 'names' ? (
+        <>
+          <div ref={scroll} className="h-44 overflow-auto">
+            <div style={{ height: rows.getTotalSize(), position: 'relative' }}>
+              {rows.getVirtualItems().map((row) => {
+                const file = files[row.index];
+                if (!file) return null;
+                return (
+                  <button
+                    key={file.path}
+                    type="button"
+                    aria-label={t('openFile', { path: file.path })}
+                    title={file.path}
+                    onClick={() => open(file.path)}
+                    style={{
+                      position: 'absolute',
+                      top: row.start,
+                      left: 0,
+                      width: '100%',
+                      height: row.size,
+                    }}
+                    className={`flex items-center gap-2 rounded px-2 text-left text-xs hover:bg-raised ${active === file.path ? 'bg-sidebar-selected' : ''}`}
+                  >
+                    <FileText size={14} className="shrink-0 text-muted" />
+                    <span className="truncate">{file.path}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {!loading && !files.length ? (
+              <p className="p-2 text-xs text-muted">{t('noFiles')}</p>
+            ) : null}
+          </div>
+          {list.truncated ? (
+            <p role="note" className="text-xs text-muted">
+              {t('filesTruncated')}
+            </p>
+          ) : null}
+        </>
       ) : null}
       {tabMessage ? (
         <p role="status" className="text-xs text-muted">

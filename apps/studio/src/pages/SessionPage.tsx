@@ -337,7 +337,7 @@ export function SessionPage() {
         sessionId={session.sessionId}
         onReference={handleReference}
         onAttach={handleAttachment}
-        onOpenDocument={(document) => dock.current?.openDocument(document) ?? false}
+        onOpenDocument={(document, range) => dock.current?.openDocument(document, range) ?? false}
       />
     ),
     changes: () => <ChangesPanel session={session} files={changes} />,
