@@ -8,6 +8,7 @@
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
 | 알림 대상 이동 | [C-171 정확한 Run·승인, 늦은 클릭·재시작·SPA 보존](Desktop-Notification-Targets-2026-10-23.md) |
 | Ultra 후보 비교 | [P19 같은 Run·후보 사본·검사·취소·명시 단일 반영](Development-Workbench-Candidates-2026-10-23.md) |
+| Ultra 후보 경쟁(version 2) | [CR-048 익명 판정·고도화·자동 반영·사용량 한도 없음](Ultra-Tournament-2026-10-23.md) |
 | 문맥형 설정·Composer | [CR-044 구현·Linux 검증](Contextual-Settings-UI-2026-10-21.md) |
 | Workbench 식별·테두리 일관성 | [CR-045 구현·Linux 검증](Workbench-Identification-2026-10-21.md) |
 | Workbench 코어 잔여 검증 | [preview·PTY 재접속·파일/Git/설정 왕복](Development-Workbench-Core-2026-10-23.md) |

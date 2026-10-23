@@ -3424,6 +3424,7 @@
       "packages/cli/src/"
     ],
     "done": "selection version 2의 기본 후보 경쟁, 검사 통과 후보의 익명 판정과 host 검증, 우승 사본의 고도화 라운드 수용/폐기, 재검증·체크포인트 뒤 확인 없는 단일 자동 반영과 보류 사유, 사용량 한도 없는 실행과 이를 멈추는 사용자 취소·늦은 결과·재시작 경계를 확인한다.",
-    "status": "planned"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Ultra-Tournament-2026-10-23.md"
   }
 ]

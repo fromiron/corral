@@ -21,7 +21,7 @@ C-138/139(M4-3/4)는 기존 Skill 관리 화면에 고정 fixture 비교·명시
 
 | 추적 | 남은 변경 | 완료 조건 |
 |---|---|---|
-| C-173 | [CR-048](../change-requests/CR-048-ultra-candidate-tournament.md) 작성 승인, 미착수. 새 Ultra 기본 후보 경쟁·검사 통과 후보 익명 판정·우승 사본 고도화 라운드·확인 없는 자동 반영 | TC-ULTRA-004-H/N/F의 반례를 먼저 실패시킨 뒤 구현. version 2 Ultra는 사용량·폭주 방지 한도 없이 사용자 취소만 정지 수단. 일반 모드·version 1 예산과 격리/검사 보존 |
+| C-173 | [CR-048](../change-requests/CR-048-ultra-candidate-tournament.md) 구현([기록](../evaluation/Ultra-Tournament-2026-10-23.md)). 남은 일: 실제 서버·관리 사본·Linux 격리로 후보 경쟁 전체를 한 번에 실행하는 통합 검증, 시작 전 실행 방식 예측 표시 | 실제 공급자 품질·비용 비교는 별도 opt-in. 미검증을 통과로 표시하지 않음 |
 | C-118 | 미지원 API 계열 확대와 별도 계정/OS 검증. Linux 격리·Anthropic adaptive 결정적 conformance·현재 GPT live 완료 | Gemini Pi 1.3.0 custom fetch 제약은 해소 전 미지원. Anthropic 실제 호출은 별도. 미지원·실패·stale를 성공으로 표시하지 않으며 과거 recipe/hash 및 일반 추론 설정 보존 |
 
 C-114(P19)는 같은 Run의 격리 후보 실행·검사·예산·취소와 기존 검토 화면의 비교·명시 단일 반영까지 구현했다. 현재 동작은 [모델 안내](../Models.md#선택적-후보-비교), Linux 로컬 핵심 회귀·화면의 근거와 외부 모델/환경 미검증 범위는 [P19 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)을 따른다. 존재하지 않는 C-115–117을 완료 태스크로 취급하지 않는다.
