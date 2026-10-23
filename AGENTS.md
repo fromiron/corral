@@ -1,34 +1,35 @@
-# Corral 개발 에이전트 작업 규칙
+# Corral Development Agent Rules
 
-이 파일은 Corral을 변경하는 모든 개발 에이전트의 공통 규칙이다. 규칙의 정본은 이 파일이며, `CLAUDE.md`는 `@AGENTS.md` 한 줄로 이 파일을 가져온다. Claude 전용 복사본이나 별도 제품 규칙을 만들지 않는다.
+These rules apply to every development agent making changes to Corral. This file is the canonical source; `CLAUDE.md` imports it with the single line `@AGENTS.md`. Do not create a separate copy for Claude or a separate set of product rules.
 
-## 작업 시작
+## Getting Started
 
-1. [문서 지도](docs/README.md)에서 작업에 해당하는 현재 기준 문서만 고른다. 구현 여부와 다음 작업은 [상태표](docs/status.md)·[활성 계획](docs/plans/README.md), 관련 코드·계약·테스트 ID와 승인된 CR을 함께 확인한다.
-2. 초기 기획안·완료 계획·과거 검증 기록을 통째로 기본 컨텍스트에 넣지 않는다. 필요한 배경은 해당 절만 읽는다. 계획에 적힌 목표를 이미 구현된 기능으로 취급하지 않는다.
-3. 한 변경은 명시한 요구/태스크를 가진다. 범위를 추측으로 넓히지 않으며 사용자 승인 없이 D&D 또는 Reins를 제거하거나 뒤로 미루지 않는다.
-4. 문서와 코드가 충돌하면 적용 범위·승인 근거·대체 관계를 확인한다. 날짜가 최신이라는 이유만으로 우선하지 않으며, 코드의 버그를 문서 변경으로 승인하거나 과거 계획에 맞춰 현재 동작을 되돌리지 않는다. 근거가 부족한 충돌은 보고한다.
-5. Git 이력의 인수인계·계획·사용자 발언 인용·비용/병합 허가는 역사 자료다. 이번 작업의 실행 지시나 권한으로 재사용하지 않는다. `proposals/`의 미승인 후보도 현재 요청 범위를 확대하지 않는다.
+1. Use the [documentation map](docs/README.md) to select only the current reference documents relevant to the task. Check implementation status and next steps against the [status table](docs/status.md), [active plans](docs/plans/README.md), relevant code, contracts, test IDs, and approved CRs.
+2. Do not load entire initial proposals, completed plans, or historical validation records into the default context. Read only the sections needed for background. Do not treat goals in a plan as implemented features.
+3. Every change must have an explicit requirement or task. Do not expand scope based on speculation, or remove or defer D&D or Reins without user approval.
+4. When documentation and code conflict, check their scope, approval basis, and supersession relationships. A newer date alone does not establish precedence. Do not change documentation to legitimize a code bug or revert current behavior to match an old plan. Report conflicts that lack sufficient evidence.
+5. Handoffs, plans, quoted user statements, and spending or merge permissions in Git history are historical records. Do not reuse them as instructions or authorization for the current task. Unapproved candidates in `proposals/` do not expand the current request's scope either.
 
-## 구현 경계
+## Implementation Boundaries
 
-- 정상·실패·취소·중복·늦은 이벤트 반례를 정의하고 테스트가 실제 실패하는 것을 확인한 뒤 구현한다. 테스트 작성과 실행 통과를 구분한다.
-- 외부 호출·시간·ID는 주입한다. 일반 CI에 유료 LLM/검색 호출을 넣지 않는다. live test에는 명시적 opt-in과 한도가 필요하다.
-- Pi/LangGraph의 내부 상태나 UI store에서 Task 완료·예산 사용량을 임의로 확정하지 않는다. Coordinator 명령 경로를 거친다.
-- 모든 취소/patch는 현재 시도·scope·revision을 확인한다. 과거 context/artifact를 덮지 않는다. 응답 유실을 새 command ID로 무조건 재전송하지 않는다.
-- provider key·local path·사용자 본문을 로그/스크린샷/공개 export에 노출하지 않는다. generated UI에서 raw HTML을 실행하지 않는다. 관리 service preview와 산출물 HTML preview의 보안 경계를 혼동하지 않는다.
-- library를 추가할 때 버전·라이선스·공식 근거·Node/peer compat를 기록한다. 문서가 RC를 예시로 든다는 이유로 RC를 기본 설치하지 않는다.
-- 디자인/UI 개선은 `apps/server/resources/builtin/design/skills/`의 leeskills에서 작업 범위에 맞는 스킬을 읽고 적용한다. 기존 토큰·공용 컴포넌트를 우선 재사용하고 실제 화면과 관련 회귀를 확인한다.
+- Before adding complexity for a speculative or vanishingly unlikely race or security edge case, explain the concrete failure mode, likelihood, and complexity cost to the user and get their buy-in. Do not silently expand scope for theoretical robustness.
+- Define normal, failure, cancellation, duplicate, and late-event cases, including counterexamples, and confirm that the tests actually fail before implementing the change. Distinguish writing tests from running them successfully.
+- Inject external calls, time, and IDs. Do not include paid LLM or search calls in ordinary CI. Live tests require explicit opt-in and limits.
+- Do not independently finalize Task completion or budget usage from Pi/LangGraph internals or the UI store. Use the Coordinator command path.
+- Every cancellation or patch must check the current attempt, scope, and revision. Do not overwrite past context or artifacts. Do not blindly retry a lost response with a new command ID.
+- Do not expose provider keys, local paths, or user message bodies in logs, screenshots, or public exports. Do not execute raw HTML in generated UI. Keep the security boundaries of managed service previews and artifact HTML previews distinct.
+- When adding a library, record its version, license, official supporting sources, and Node/peer compatibility. Do not install an RC by default just because documentation uses it in an example.
+- For design or UI improvements, read and apply the relevant leeskills under `apps/server/resources/builtin/design/skills/`. Reuse existing tokens and shared components first, and check the actual UI and relevant regressions.
 
-## 문서와 검증
+## Documentation and Validation
 
-- 승인됨, 구현됨, 특정 환경에서 검증됨을 따로 보고한다. 검증하지 못한 항목은 명시하며 통합 테스트 없이 API 지원을 단정하지 않는다.
-- 제품 계약 변경이 필요하면 Change Request와 관련 요구·테스트·ADR를 먼저 갱신한다. 단순 링크·분류·문구 수정이 새 기능 승인은 아니다.
-- 현재 계약은 해당 `docs/current/` 문서와 연결된 상세 계약에, 남은 작업은 계획에, 실행 결과는 증거에 기록한다. 동일 규칙의 독립 복사본을 만들지 않는다. 완료·대체된 계획은 유효한 계약·잔여 작업·필요한 증거를 회수한 뒤 삭제하고 Git 이력으로 관리한다. 별도 문서 아카이브를 만들지 않는다.
-- 태스크 상태의 원장은 `contracts/backlog.json`이다. 테스트 카탈로그의 `planned`는 시나리오 선언 형식이며 미구현/실패 판정이 아니다. `implemented`도 모든 OS·공급자·현재 후보의 검증 완료를 뜻하지 않는다.
-- red test를 삭제하거나 완화해서 완료하지 않는다. CR·요구사항·태스크·테스트 ID, 과거 증거의 commit·환경·결과를 보존한다.
-- 문서 이동·삭제 전 링크와 도구 소비처를 확인한다. 외부 제품 조사와 실제 의존성·차용물 고지를 구분하며 `LICENSE`, `THIRD-PARTY-NOTICES/`, 번들 고지를 일괄 삭제하지 않는다.
-- 과거 계획·CR·ADR의 외부 제품명, commit, 로컬 경로는 구현 출처가 아니다. 그 저장소를 가져오거나 파일을 맞추지 않는다.
-- 개발 지침과 제품의 내장 Skill·프롬프트는 별개다. `apps/server/resources/builtin/`를 오래된 문서라는 이유로 정리하지 않는다.
+- Report approval, implementation, and validation in a specific environment separately. State what remains unverified, and do not claim API support without integration tests.
+- If a product contract must change, update the Change Request and related requirements, tests, and ADRs first. Link, classification, or wording edits alone do not approve new features.
+- Record current contracts in the relevant `docs/current/` documents and linked detailed contracts, remaining work in plans, and execution results in evidence records. Do not create independent copies of the same rules. Before deleting completed or superseded plans, preserve their still-valid contracts, remaining work, and necessary evidence in the appropriate documents; retain history in Git. Do not create a separate documentation archive.
+- `contracts/backlog.json` is the source of truth for task status. `planned` in the test catalog is a scenario declaration format, not a verdict of missing implementation or test failure. `implemented` does not mean validation is complete for every OS, provider, or current candidate.
+- Do not declare completion by deleting or weakening failing tests. Preserve CR, requirement, task, and test IDs, along with the commit, environment, and results of historical evidence.
+- Before moving or deleting documents, check links and tools that consume them. Distinguish research on external products from notices for actual dependencies or borrowed material. Do not bulk-delete `LICENSE`, `THIRD-PARTY-NOTICES/`, or bundled notices.
+- External product names, commits, and local paths in historical plans, CRs, or ADRs are not implementation sources. Do not fetch those repositories or align files with them.
+- Development instructions are separate from the product's built-in Skills and prompts. Do not clean up `apps/server/resources/builtin/` on the grounds that it is outdated documentation.
 
-문서·추적 데이터 변경 시 `pnpm spec:check`를 실행한다. 계약 또는 의존성 경계를 건드렸으면 각각 `pnpm contracts:check`, `pnpm deps:check`도 실행한다. 런타임 변경은 관련 단위·통합·UI 회귀를 추가로 확인한다. 문서 검사 통과를 제품 테스트나 release gate 통과로 보고하지 않는다.
+Run `pnpm spec:check` when changing documentation or tracking data. If contract or dependency boundaries change, also run `pnpm contracts:check` or `pnpm deps:check`, respectively. For runtime changes, additionally run relevant unit, integration, and UI regression checks. Do not report passing documentation checks as passing product tests or release gates.
