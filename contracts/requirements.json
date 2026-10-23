@@ -928,5 +928,17 @@
     "requirement": "신뢰한 로컬 관리 사본의 명시적 공유 개발 owner 아래 사람 저장·task·허용 Git을 병행하고 agent/구조 변경 차단·CAS·snapshot·uncertain 복구를 보존한다.",
     "owner": "server",
     "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-018",
+    "requirement": "CR-046 한 관리 사본의 명시 언어 서버에서 dirty 문서 버전 동기화·진단·completion·definition·references를 제공하고 대상/세대·신뢰·종료·기존 편집을 보존한다.",
+    "owner": "server",
+    "phase": "M5"
+  },
+  {
+    "id": "CRL-WBD-019",
+    "requirement": "CR-046 관리 사본의 ignore·안전한 읽기를 유지한 bounded 내용 검색과 기존 문서 이동을 제공하고 취소·stale 결과·dirty 초안을 보존한다.",
+    "owner": "server",
+    "phase": "M5"
   }
 ]

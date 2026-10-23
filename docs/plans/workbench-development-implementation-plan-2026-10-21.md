@@ -12,9 +12,9 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 현재 구현: P00–P18·P21-A·P22(C-142–161). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P20·P21-B는 이 완료 범위에 포함하지 않는다.
 
-## 현재 재개 지점: P23 또는 P24-A
+## 현재 재개 지점: P23 → P24-A
 
-2026-10-23 승인된 P22 B안을 구현했다. 로컬에서 공유 개발 owner를 명시적으로 켜면 개발 task 실행 중 저장할 수 있다. 구현·실제 Vite 갱신·충돌 보존과 검증 한계는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다. 다음 독립 작업은 P23 언어 세션 또는 P24-A 읽기 전용 파일 검색이다. 이번 요청은 P22까지이며 후속 기능·외부 게시·배포를 자동으로 진행하지 않는다.
+2026-10-23 승인된 P22 B안을 구현했다. 로컬에서 공유 개발 owner를 명시적으로 켜면 개발 task 실행 중 저장할 수 있다. 구현·실제 Vite 갱신·충돌 보존과 검증 한계는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다. 2026-10-23 후속 요청으로 코어 잔여 검증 → P23 언어 세션 → P24-A 읽기 전용 파일 검색 순서의 구현·관련 회귀·실제 화면·로컬 커밋이 승인됐다. 과도한 전체 검증은 반복하지 않으며 외부 게시·배포는 포함하지 않는다.
 
 기존 task·Git·문서·공통 owner를 재사용했다. 별도 task 테이블·모드 열·관리창은 추가하지 않았다. 상태 원장은 `contracts/backlog.json`이며 전체 release gate 통과를 뜻하지 않는다.
 
@@ -37,7 +37,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 **순서:** R0 P16 잔여 검증과 P29 조기 적용 → R1 P17 → R2 P18 → R3 P21-A와 P22 결정 자료 → R4 승인된 P22·P23·P24-A → R5 P20·P24-B·P25 → R6 P26·P27 → R7 P28·설치판 P29. P19/C-114, P21-B/C-135, P30은 독립 조건을 유지한다. P24-A와 P20의 작은 연결은 조건이 맞으면 앞당긴다. P22 구현 이후 P23·P24-A를 별도 후속으로 진행한다.
 
-**R0 잔여 검증(미수행):** PR 제목·본문을 P16 기준으로 갱신하는 일, #85 감사 ID별 해결/보류 대조, 최신 댓글의 기존 실패 분류는 외부 게시 동작이므로 사용자 확인 뒤 한다. 실제 desktop preview 프레임 조작, 살아 있는 host에서 PTY transport 끊김·재연결(자동 stdin replay 없음), 파일·Git·과거 Run·설정 왕복, 390px Composer·승인·취소는 P16 기록에서 빠진 통합 여정으로 남는다. 새 E2E는 실제 관찰로 필요가 확인된 경우만 추가한다.
+**R0 코어 검증 완료:** [코어 실행 기록](../evaluation/Development-Workbench-Core-2026-10-23.md)에서 preview HTTP/HMR 소유권·종료, 실제 PTY viewer 재접속 후 셸 상태·입력 제어, dirty 문서→Git→설정 왕복·저장을 확인했다. 사용자 요청에 따라 다음 기능마다 전체 여정을 반복하지 않고 변경한 코어 회귀와 실제 화면만 확인한다. Desktop 전용 프레임/설치판·전체 좁은 화면 인수는 P29, 원격 host는 P21-B에 남긴다. PR #69/#85의 설명·감사 목록 갱신은 별도 외부 게시 작업이다.
 
 ## 1. 구현 순서와 제품 경계
 

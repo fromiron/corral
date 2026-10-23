@@ -249,3 +249,22 @@ H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보
 - 원장과 API: `GET .../worktree/development`는 현재 target·지원 여부·development receipt를 읽는다. `POST`는 `{operationId,target}`로 명시 진입하며 같은 ID/본문은 새로 접수하지 않고 현재 모드 상태를 돌려준다. 원래 receipt는 원장에 보존하며 종료된 ID로 다시 켜지 않는다. `POST .../development/:operationId/finish`는 `{target}`으로 그 owner만 끝낸다. 재시작으로 uncertain인 owner도 하위 사람 owner가 모두 정리돼야 명시 종료할 수 있다. 종료/진입 응답이 유실되면 기존 ID·상태를 다시 읽고 자동으로 모드를 켜지 않는다.
 - host opt-in은 `allowSharedDevelopment`이며 기본 false다. 로컬 desktop sidecar와 `corral dev`만 true로 시작한다. 일반 server/원격 진입은 꺼져 있으며 브라우저 입력으로 바꿀 수 없다.
 - H: 실제 task 실행 중 저장·Git stage/commit·검사 snapshot과 strict 복귀. N: agent writer·터미널·branch/switch/pull·다른 generation·원격/원본 거절, task 외부 수정의 CAS 충돌. F: 중복/늦은 요청·host 재시작 uncertain, 하위 task/불확실 효과 정리 전 종료 거절. UI는 기존 사본/작업 머리에 같은 모드 컨트롤을 사용하고 새 관리창은 만들지 않는다.
+
+## P23: 프로젝트 언어 세션
+
+- 승인: 2026-10-23 사용자가 기존 기능의 코어 잔여 검증 뒤 P23, P24-A 순서로 구현·관련 회귀·실제 화면 확인·단위별 로컬 커밋을 요청했다. 전체 플랫폼/부하/출시 게이트를 반복하지 않는다.
+- 추적: CRL-WBD-018 / C-162 / TC-WBD-018-H,N,F. 기존 agent `lsp_query`와 그 snapshot·승인 계약은 유지한다.
+- 신뢰한 관리 사본의 등록 언어 서버를 사람이 실행 구성을 검토하고 명시적으로 시작한다. 현재 copy의 launch fingerprint·config revision을 검증하며 필요한 신뢰는 해당 fingerprint에만 기록한다. 파일 열기만으로 프로세스를 실행하거나 패키지를 설치하지 않는다.
+- 한 host/copy generation의 언어 세션은 하나의 process와 server generation을 가진다. 한 client가 dirty 문서 동기화를 소유하며 다른 client는 이를 덮지 않는다. 분할 view는 기존 DocumentStore/model을 공유한다. 실제 copy를 cwd/rootUri로 사용해 tsconfig·import·설치된 의존성을 읽는다.
+- 기존 host process capacity와 종료 확인을 사용한다. 이 세션은 공통 원장의 passive nonwriter receipt이며 저장·P22 공유 모드 종료를 막지 않는다. 신원·종료 확인을 보존하고 uncertain 상태는 정리 전 새 시작·사본 삭제·공유 모드 종료를 차단한다. 사본 삭제·프로젝트 신뢰 해제·등록 설정 변경·host 종료 때 먼저 종료하고, 정리를 확인하지 못하면 사본 삭제/새 세션 시작을 거절한다. host 재시작 시 자동 실행하지 않는다. trusted LSP는 OS 파일 쓰기 격리가 아니며 `workspace/applyEdit`와 서버 명령 실행은 허용하지 않는다.
+- 문서 didOpen/change/close는 전체 target·server generation·clientId·단조 증가 document version에 고정한다. 동일 버전/동일 본문은 중복 효과 없이 처리하고 다른 본문·역행·다른 세대는 거절한다. 재시작 시 현재 dirty 초안을 다시 보내며 disk save/undo를 대신하지 않는다.
+- completion/definition/references는 서버가 지원한 capability만 연결한다. completion은 plain text와 해당 문서 textEdit만 허용하고 command·추가 파일 수정은 실행하지 않는다. 위치는 UTF-16, 결과는 관리 사본의 안전한 상대 경로로 제한한다. 쿼리 중 문서가 바뀌면 늦은 응답을 폐기한다.
+- 진단은 server generation·document version을 함께 가진다. 버전 없는 push를 현재 dirty 버전의 결과로 임의 확정하지 않는다. 현재 진단만 Monaco marker와 기존 Problems에 합치며 다른 check/task 결과와 그 freshness는 보존한다. 진단 수신이 탭·포커스를 바꾸지 않는다.
+- 핵심 확인: 실제 JS/TS/TSX fixture에서 dirty 진단·completion·정의/참조 이동, 다른 사본/늦은 버전 차단, crash 후 초안 보존·명시 재시작. 기존 단발 LSP·저장·P22의 관련 코어 회귀만 실행한다.
+
+## P24-A: 읽기 전용 파일 내용 검색
+
+- 같은 2026-10-23 요청으로 P23 이후 구현한다. 추적: CRL-WBD-019 / C-163 / TC-WBD-019-H,N,F. P24-B 교체/refactor는 포함하지 않는다.
+- 기존 관리 사본의 파일 열거·ignore·안전한 파일 읽기를 재사용한다. 검색 범위·결과/bytes 상한·취소를 명시하고 binary·대용량·보호 경로는 읽지 않는다. 실행 파일·새 검색 엔진 의존성은 필요가 입증되기 전 추가하지 않는다.
+- 결과는 디스크 기준임을 표시한다. 미저장 초안을 검색에 몰래 섞거나 덮지 않으며, 결과는 기존 문서 열기/줄 이동으로 연결한다. 대상·generation·파일 hash가 바뀐 결과는 현재 위치로 단정하지 않고 새 검색을 요구한다. 늦은 쿼리가 새 검색 결과를 덮지 않는다.
+- 핵심 확인: 여러 파일의 내용 검색·결과 이동, ignore/binary/한도, 취소·이전 응답·변경된 파일과 dirty 초안 보존. 새 전체 E2E 묶음은 만들지 않는다.

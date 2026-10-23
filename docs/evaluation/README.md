@@ -7,6 +7,7 @@
 | Desktop 기능·플랫폼 한계 | [전체 진행](Desktop-Capabilities-Implementation-Progress.md), [배포](Desktop-Delivery-Verification.md), [preview](Desktop-Preview-Verification.md), [동시 실행](Desktop-Concurrency-Verification.md), 나머지 Desktop 기능별 보고서 |
 | 문맥형 설정·Composer | [CR-044 구현·Linux 검증](Contextual-Settings-UI-2026-10-21.md) |
 | Workbench 식별·테두리 일관성 | [CR-045 구현·Linux 검증](Workbench-Identification-2026-10-21.md) |
+| Workbench 코어 잔여 검증 | [preview·PTY 재접속·파일/Git/설정 왕복](Development-Workbench-Core-2026-10-23.md) |
 | 공유 개발·live edit | [CR-046 P22 구현·Linux 실제 Vite 검증](Development-Workbench-Shared-Development-2026-10-23.md) |
 | 실제 Git 상태·읽기 정책 | [CR-046 P12 구현·Linux 인앱 검증](Development-Workbench-Git-Observation-2026-10-21.md) |
 | 캡처한 컨텍스트·대화 표시 밀도 | [CR-046 P11 구현·Linux 인앱 검증](Development-Workbench-Context-2026-10-21.md) |

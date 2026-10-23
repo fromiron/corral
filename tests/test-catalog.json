@@ -3819,5 +3819,71 @@
     "status": "planned",
     "adapter": "temporary real Git/SQLite/tasks; jsdom and isolated in-app preview",
     "evidence": null
+  },
+  {
+    "id": "TC-WBD-018-H",
+    "requirements": [
+      "CRL-WBD-018"
+    ],
+    "suite": "unit+integration",
+    "scenario": "상시 세션에서 dirty 진단·completion·정의/참조·명시 종료",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-018-N",
+    "requirements": [
+      "CRL-WBD-018"
+    ],
+    "suite": "unit+integration",
+    "scenario": "미신뢰/다른 사본·세대·문서 버전·외부 URI 거절",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-018-F",
+    "requirements": [
+      "CRL-WBD-018"
+    ],
+    "suite": "unit+integration",
+    "scenario": "늦은 진단/쿼리·crash·중복 동기화와 초안 복구",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-019-H",
+    "requirements": [
+      "CRL-WBD-019"
+    ],
+    "suite": "unit+integration",
+    "scenario": "여러 파일 내용 검색과 기존 문서/줄 이동",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-019-N",
+    "requirements": [
+      "CRL-WBD-019"
+    ],
+    "suite": "unit+integration",
+    "scenario": "ignore·binary·크기/결과 한도·보호 경로 유지",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
+  },
+  {
+    "id": "TC-WBD-019-F",
+    "requirements": [
+      "CRL-WBD-019"
+    ],
+    "suite": "unit+integration",
+    "scenario": "취소·늦은 응답·파일 변경·dirty 초안 보존",
+    "status": "planned",
+    "adapter": "temporary managed Git copy; protocol fixture and jsdom; focused real UI",
+    "evidence": null
   }
 ]

@@ -3173,5 +3173,43 @@
     "done": "실제 개발 task 실행 중 저장과 미리보기 갱신, 외부 파일 변경 CAS·초안 보존, 허용 Git·snapshot 검사, agent writer/PTY/구조 변경 거절, 정확 target·중복 receipt·host 재시작 uncertain·하위 owner 정리 뒤 strict 복귀를 검증한다.",
     "status": "implemented",
     "evidence": "docs/evaluation/Development-Workbench-Shared-Development-2026-10-23.md"
+  },
+  {
+    "id": "C-162",
+    "phase": "M5",
+    "title": "CR-046 P23 프로젝트 언어 세션",
+    "dependsOn": [
+      "C-161"
+    ],
+    "requirements": [
+      "CRL-WBD-018"
+    ],
+    "files": [
+      "apps/server/src/files/",
+      "packages/contracts/src/",
+      "packages/client/src/",
+      "apps/studio/src/workbench/"
+    ],
+    "done": "한 관리 사본의 명시 언어 서버에서 dirty 문서 버전 동기화·진단·completion·definition·references를 제공하고 대상/세대·신뢰·종료·기존 편집을 보존한다.",
+    "status": "in_progress"
+  },
+  {
+    "id": "C-163",
+    "phase": "M5",
+    "title": "CR-046 P24-A 읽기 전용 파일 내용 검색",
+    "dependsOn": [
+      "C-162"
+    ],
+    "requirements": [
+      "CRL-WBD-019"
+    ],
+    "files": [
+      "apps/server/src/files/",
+      "packages/contracts/src/",
+      "packages/client/src/",
+      "apps/studio/src/workbench/"
+    ],
+    "done": "관리 사본의 ignore·안전한 읽기를 유지한 bounded 내용 검색과 기존 문서 이동을 제공하고 취소·stale 결과·dirty 초안을 보존한다.",
+    "status": "planned"
   }
 ]
