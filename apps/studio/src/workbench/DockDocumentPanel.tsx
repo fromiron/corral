@@ -11,6 +11,7 @@ import type { RecoveryDraft } from './documents/recovery.ts';
 import { type DocumentStore, documentKey } from './documents/store.ts';
 import type { FileReference } from './FilePanel.tsx';
 import { canPreviewFile, FilePreview } from './FilePreview.tsx';
+import { languageStore } from './language/store.ts';
 import { panelKey } from './panels/registry.ts';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
@@ -147,6 +148,11 @@ export function DockDocumentPanel({
       {showEditor ? (
         <DocumentPanel
           owner={owner}
+          language={
+            services.mode === 'server' && services.workspaces?.languageState
+              ? languageStore(services.workspaces, owner)
+              : undefined
+          }
           documentKey={key}
           viewId={viewId}
           onReference={onReference}

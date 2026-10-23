@@ -12,6 +12,15 @@ import type {
   GitOperation,
   GitStatus,
   GitWriteCommand,
+  LanguageDocumentChange,
+  LanguageInspect,
+  LanguageInspection,
+  LanguageQuery,
+  LanguageQueryResult,
+  LanguageScope,
+  LanguageSession,
+  LanguageStart,
+  LanguageState,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ProfileContextResolution,
@@ -57,6 +66,15 @@ export type {
   GitStatus,
   GitStatusEntry,
   GitWriteCommand,
+  LanguageDocumentChange,
+  LanguageInspect,
+  LanguageInspection,
+  LanguageQuery,
+  LanguageQueryResult,
+  LanguageScope,
+  LanguageSession,
+  LanguageStart,
+  LanguageState,
   TaskCandidates,
   TaskStart,
   TerminalAck,
@@ -1913,6 +1931,44 @@ export class WorkspacesApi {
   readDocument(sessionId: string, path: string): Promise<FileDocument> {
     return this.send(
       `/sessions/${encodeURIComponent(sessionId)}/worktree/document?${new URLSearchParams({ path })}`,
+    );
+  }
+  languageState(sessionId: string): Promise<LanguageState> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/language`);
+  }
+  inspectLanguage(sessionId: string, input: LanguageInspect): Promise<LanguageInspection> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/inspect`,
+      'POST',
+      input,
+    );
+  }
+  startLanguage(sessionId: string, input: LanguageStart): Promise<LanguageSession> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/start`,
+      'POST',
+      input,
+    );
+  }
+  syncLanguage(sessionId: string, input: LanguageDocumentChange): Promise<LanguageSession> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/document`,
+      'POST',
+      input,
+    );
+  }
+  queryLanguage(sessionId: string, input: LanguageQuery): Promise<LanguageQueryResult> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/query`,
+      'POST',
+      input,
+    );
+  }
+  stopLanguage(sessionId: string, input: LanguageScope): Promise<{ stopped: true }> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/language/stop`,
+      'POST',
+      input,
     );
   }
   developmentState(sessionId: string): Promise<DevelopmentState> {

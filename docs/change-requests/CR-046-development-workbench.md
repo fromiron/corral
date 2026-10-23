@@ -259,7 +259,7 @@ H는 Git 변경·미제출 의견·열린 Run이 있는 사본의 요약과, 보
 - 기존 host process capacity와 종료 확인을 사용한다. 이 세션은 공통 원장의 passive nonwriter receipt이며 저장·P22 공유 모드 종료를 막지 않는다. 신원·종료 확인을 보존하고 uncertain 상태는 정리 전 새 시작·사본 삭제·공유 모드 종료를 차단한다. 사본 삭제·프로젝트 신뢰 해제·등록 설정 변경·host 종료 때 먼저 종료하고, 정리를 확인하지 못하면 사본 삭제/새 세션 시작을 거절한다. host 재시작 시 자동 실행하지 않는다. trusted LSP는 OS 파일 쓰기 격리가 아니며 `workspace/applyEdit`와 서버 명령 실행은 허용하지 않는다.
 - 문서 didOpen/change/close는 전체 target·server generation·clientId·단조 증가 document version에 고정한다. 동일 버전/동일 본문은 중복 효과 없이 처리하고 다른 본문·역행·다른 세대는 거절한다. 재시작 시 현재 dirty 초안을 다시 보내며 disk save/undo를 대신하지 않는다.
 - completion/definition/references는 서버가 지원한 capability만 연결한다. completion은 plain text와 해당 문서 textEdit만 허용하고 command·추가 파일 수정은 실행하지 않는다. 위치는 UTF-16, 결과는 관리 사본의 안전한 상대 경로로 제한한다. 쿼리 중 문서가 바뀌면 늦은 응답을 폐기한다.
-- 진단은 server generation·document version을 함께 가진다. 버전 없는 push를 현재 dirty 버전의 결과로 임의 확정하지 않는다. 현재 진단만 Monaco marker와 기존 Problems에 합치며 다른 check/task 결과와 그 freshness는 보존한다. 진단 수신이 탭·포커스를 바꾸지 않는다.
+- 진단은 server generation·document version을 함께 가진다. 버전 없는 push를 현재 dirty 버전의 결과로 임의 확정하지 않는다. 버전이 확정된 현재 진단만 Monaco marker로 표시한다. 버전을 반환하지 않는 서버의 진단은 기존 Problems에 “버전 미확인”으로 표시하며 다른 check/task 결과와 그 freshness는 보존한다. 진단 수신이 탭·포커스를 바꾸지 않는다.
 - 핵심 확인: 실제 JS/TS/TSX fixture에서 dirty 진단·completion·정의/참조 이동, 다른 사본/늦은 버전 차단, crash 후 초안 보존·명시 재시작. 기존 단발 LSP·저장·P22의 관련 코어 회귀만 실행한다.
 
 ## P24-A: 읽기 전용 파일 내용 검색

@@ -5,6 +5,8 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { SourceNavigationContext } from './context/SourceAttachments.tsx';
 import { documentStore } from './documents/store.ts';
+import { type LanguageProblem, useLanguageProblems } from './language/problems.ts';
+import { languageCopyKey, languageStore } from './language/store.ts';
 import { type Problem, parseProblems } from './problems.ts';
 
 /** Recent task outputs to read; older tasks stay in the tools pane. */
@@ -12,7 +14,7 @@ const TASKS_READ = 5;
 
 type Source = {
   key: string;
-  kind: 'check' | 'task';
+  kind: 'check' | 'task' | 'language';
   name: string;
   /**
    * `stale`: the check ran on an older tree; `configChanged`: under another definition of the
@@ -31,7 +33,9 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
   const t = useTranslations('Problems');
   const { workspaces, mode } = useServices();
   const navigation = useContext(SourceNavigationContext);
-  const [sources, setSources] = useState<Source[]>([]);
+  const [logSources, setSources] = useState<Source[]>([]);
+  const languageSources = useLanguageProblems(workspaces, sessionId);
+  const sources = [...languageSources, ...logSources];
   const [failed, setFailed] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
   const [revision, refresh] = useState(0);
@@ -96,20 +100,34 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
   }, [workspaces, sessionId, mode, revision]);
   if (mode !== 'server' || !workspaces) return null;
   // The dock shows a document the store holds, so the file is opened there first (as Files does).
-  const reveal = async (problem: Problem) => {
+  const reveal = async (problem: Problem | LanguageProblem) => {
     setOpenError(null);
     try {
       const owner = documentStore(workspaces);
-      const key = await owner.open(sessionId, problem.path);
+      const key = await owner.open(
+        'target' in problem ? problem.target.sessionId : sessionId,
+        problem.path,
+      );
       const entry = owner.getState().documents[key];
       if (
         !entry ||
-        !navigation?.openDocument(entry.target, entry.path, {
-          startLine: problem.line,
-          startColumn: problem.column,
-          endLine: problem.line,
-          endColumn: problem.column,
-        })
+        ('target' in problem &&
+          (languageCopyKey(entry.target) !== languageCopyKey(problem.target) ||
+            (problem.documentVersion !== null &&
+              languageStore(workspaces, owner).documentVersion(entry.key) !==
+                problem.documentVersion))) ||
+        !navigation?.openDocument(
+          entry.target,
+          entry.path,
+          'range' in problem
+            ? problem.range
+            : {
+                startLine: problem.line,
+                startColumn: problem.column,
+                endLine: problem.line,
+                endColumn: problem.column,
+              },
+        )
       )
         setOpenError(t('openFailed', { path: problem.path }));
     } catch (reason) {
@@ -166,7 +184,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                       >
                         <span
                           aria-hidden
-                          className={`size-1.5 shrink-0 self-center rounded-full ${problem.severity === 'warning' ? 'bg-warning' : 'bg-danger'}`}
+                          className={`size-1.5 shrink-0 self-center rounded-full ${problem.severity === 'warning' ? 'bg-warning' : problem.severity === 'error' ? 'bg-danger' : 'bg-muted'}`}
                         />
                         <span className="sr-only">{t(`severity.${problem.severity}`)}</span>
                         <span className="shrink-0 font-mono">{location}</span>

@@ -10,9 +10,9 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 입력은 `Corral-Workbench-Ecosystem-Plan-v2-2026-10-21.md`이며 SHA-256은 `11087e6b6b940bdbca89792e5a8efd84764b326ec42664ff1d289c4d65ae4451`이다. 원문을 수정하거나 전체 제품 조사를 복제하지 않는다. 기준 코드는 PR #68을 포함하는 위 commit이며, 계획 작성 시 소스·계약·manifest를 대조했다. 이후 실행 결과는 별도 검증 기록에 남긴다.
 
-현재 구현: P00–P18·P21-A·P22(C-142–161). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P20·P21-B는 이 완료 범위에 포함하지 않는다.
+현재 구현: P00–P18·P21-A·P22·P23(C-142–162). 완료 항목의 계약은 [현재 Workbench](../current/workbench.md)·[CR-046](../change-requests/CR-046-development-workbench.md), 각 환경의 실행 증거는 [상태표](../status.md)와 [증거 지도](../evaluation/README.md)에 연결한다. P19·P20·P21-B는 이 완료 범위에 포함하지 않는다.
 
-## 현재 재개 지점: P23 → P24-A
+## 현재 재개 지점: P24-A
 
 2026-10-23 승인된 P22 B안을 구현했다. 로컬에서 공유 개발 owner를 명시적으로 켜면 개발 task 실행 중 저장할 수 있다. 구현·실제 Vite 갱신·충돌 보존과 검증 한계는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다. 2026-10-23 후속 요청으로 코어 잔여 검증 → P23 언어 세션 → P24-A 읽기 전용 파일 검색 순서의 구현·관련 회귀·실제 화면·로컬 커밋이 승인됐다. 과도한 전체 검증은 반복하지 않으며 외부 게시·배포는 포함하지 않는다.
 
@@ -142,12 +142,7 @@ P00–P18(C-142–159)은 구현됐다. 초기 구현 지시와 비교 실험 �
 
 P22 공유 개발 owner는 C-161로 구현했다. 로컬 Vite live edit, CAS 충돌·초안 보존, writer 거절·재시작 복구·snapshot 회귀는 [실행 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)에 있다. Desktop preview 프레임과 원격/지원 OS qualification은 이 결과에 포함하지 않는다.
 
-**WB-P23 프로젝트 언어 세션 — L, W2-11**
-
-- 위치: 기존 LSP runner 옆 상시 세션 adapter, registry/fingerprint·owner·capacity, editor provider 연결. 기존 agent query 도구는 유지한다.
-- 작업: JS/TS/React 프로젝트의 실제 tsconfig·import·dependency graph, didOpen/change/close, diagnostic version, completion/definition/references. 선택 server의 지원 capability만 표시한다.
-- 완료: dirty 문서 진단, 다른 사본 격리, UTF-16 범위/CJK·code point 차이, late diagnostic, crash/restart 후 버퍼 보존. syntax highlight만으로 완료하지 않음. 선행 P05·06·07. [LSP 명세](https://microsoft.github.io/language-server-protocol/)
-- 2026-10-23: 서버 수명은 host·관리 사본·설정 fingerprint에 귀속하고 탭·분할 view마다 실행하지 않는다. 구조화된 LSP 진단을 기존 Problems·에디터에 server generation·document version과 함께 연결하며 문자열 정규식에 통과시키지 않는다. 진단 도착이 포커스나 Problems 배치를 바꾸지 않는다. P17에서 task 출력 위치는 "버전 모름", 다른 검사 정의의 결과는 "이전 설정"으로 구분했다. 현재 파서의 공백·한글·Windows·tsc pretty 위치 한계는 fixture로 보완하되 임의 절대 경로는 열지 않는다.
+P23 상시 언어 세션은 C-162로 구현했다. 명시 launch 검토·dirty 진단·completion·정의/참조 이동·세대/신원 복구의 핵심 근거는 [실행 기록](../evaluation/Development-Workbench-Language-2026-10-23.md)에 있다. Linux 실행만 검증됐고 버전 없는 TypeScript 진단은 “버전 모름”으로 표시한다. 후속 언어/OS/수정 제안 확장은 별도다.
 
 **WB-P24 검색·교체·refactor — L, W2-11**
 

@@ -21,6 +21,7 @@ import { DocumentPanel } from './DocumentPanel.tsx';
 import { DocumentCloseDialog } from './documents/DocumentCloseDialog.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
+import { languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
@@ -534,6 +535,11 @@ export function FilePanel({
               key={documentKey}
               owner={owner}
               documentKey={documentKey}
+              language={
+                services.mode === 'server' && services.workspaces?.languageState
+                  ? languageStore(services.workspaces, owner)
+                  : undefined
+              }
               viewId={fileViewId(sessionId, documents[documentKey].path)}
               onReference={onReference}
               onAttach={onAttach}

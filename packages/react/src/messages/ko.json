@@ -3459,12 +3459,15 @@
     "refresh": "문제 새로고침",
     "check": "검사",
     "task": "작업",
+    "language": "언어 서버",
     "stale": "이전 상태",
     "empty": "문제 없음",
     "unavailable": "문제를 읽을 수 없습니다.",
     "severity": {
       "error": "오류",
-      "warning": "경고"
+      "warning": "경고",
+      "info": "정보",
+      "hint": "힌트"
     },
     "openFailed": "{path}을(를) 열 수 없습니다.",
     "configChanged": "이전 설정",
@@ -3480,5 +3483,30 @@
     "finish": "개발 모드 끝내기",
     "sharedNote": "외부 변경이 있을 수 있습니다. 사람의 저장과 개발 작업이 사본을 공유하며, 에이전트 쓰기와 터미널은 차단됩니다.",
     "recoveryNote": "호스트가 재시작됐습니다. 남은 작업의 종료를 확인한 뒤 이 모드를 끝내세요. 현재 공유 쓰기는 꺼져 있습니다."
+  },
+  "Language": {
+    "otherWindow": "다른 창에서 실행 중인 언어 세션입니다. 이 창에서 사용하려면 중지한 뒤 다시 시작하세요.",
+    "label": "언어 지원",
+    "server": "언어 서버",
+    "loading": "언어 지원을 불러오는 중…",
+    "noServer": "이 파일에 맞는 언어 서버가 없습니다.",
+    "unsupportedPlatform": "현재 언어 지원은 Linux 호스트에서만 사용할 수 있습니다.",
+    "untrustedCopy": "프로젝트 설정에서 작업 사본을 신뢰한 뒤 언어 지원을 시작하세요.",
+    "settings": "프로젝트 도구 설정",
+    "review": "실행 명령 검토",
+    "start": "시작",
+    "trustStart": "신뢰하고 시작",
+    "stop": "중지",
+    "starting": "시작 중",
+    "running": "실행 중",
+    "failed": "실패",
+    "uncertain": "복구 필요",
+    "fingerprint": "명령 지문",
+    "trustNote": "이 명령은 프로젝트 호스트에서 실행되며 작업 사본에 접근할 수 있습니다. 신뢰하는 명령만 시작하세요.",
+    "recoveryNote": "초안은 보존됩니다. 이 세션을 중지하고 명령을 검토한 뒤 다시 시작하세요.",
+    "completion": "자동완성",
+    "definition": "정의 이동",
+    "references": "참조 찾기",
+    "diagnostics": "진단"
   }
 }

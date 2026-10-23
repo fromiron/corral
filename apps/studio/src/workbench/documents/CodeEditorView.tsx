@@ -15,6 +15,7 @@ export interface CodeEditorViewProps {
   revealRange?: { startLine: number; endLine: number };
   revealSelection?: TextRange;
   onError?: () => void;
+  onOpenResource?: (resource: string, range: TextRange) => Promise<boolean>;
   className?: string;
 }
 
@@ -129,6 +130,27 @@ export function CodeEditorView(props: CodeEditorViewProps) {
             if (!instance.inComposition) await callbacks.current.onSave();
           },
         });
+        const opener = monaco.editor.registerEditorOpener({
+          openCodeEditor(source, resource, selection) {
+            if (source !== instance || !selection || !callbacks.current.onOpenResource)
+              return false;
+            const range =
+              'startLineNumber' in selection
+                ? {
+                    startLine: selection.startLineNumber,
+                    startColumn: selection.startColumn,
+                    endLine: selection.endLineNumber,
+                    endColumn: selection.endColumn,
+                  }
+                : {
+                    startLine: selection.lineNumber,
+                    startColumn: selection.column,
+                    endLine: selection.lineNumber,
+                    endColumn: selection.column,
+                  };
+            return callbacks.current.onOpenResource(resource.toString(), range);
+          },
+        });
         const stopWorkerErrors = onMonacoWorkerError(() => callbacks.current.onError?.());
         const theme = new MutationObserver(() => applyEditorTheme(monaco));
         theme.observe(document.documentElement, {
@@ -142,6 +164,7 @@ export function CodeEditorView(props: CodeEditorViewProps) {
             states.set(viewId, state);
             viewStates.set(model, states);
           }
+          opener.dispose();
           selected.dispose();
           save.dispose();
           stopWorkerErrors();

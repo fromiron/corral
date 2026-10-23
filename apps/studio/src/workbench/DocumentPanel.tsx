@@ -9,14 +9,17 @@ import {
   Select,
   Textarea,
 } from '@corral/react/ui';
-import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
+import { lazy, Suspense, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
 import { captureDocumentAttachment } from './context/documents.ts';
+import { SourceNavigationContext } from './context/SourceAttachments.tsx';
 import type { DocumentStore } from './documents/store.ts';
 import { WriterHeld } from './documents/WriterHeld.tsx';
 import type { FileReference } from './FilePanel.tsx';
+import { LanguageSupport } from './LanguageSupport.tsx';
+import type { LanguageStore } from './language/store.ts';
 
 const CodeEditorView = lazy(() =>
   import('./documents/CodeEditorView.tsx').then((module) => ({ default: module.CodeEditorView })),
@@ -33,8 +36,10 @@ export function DocumentPanel({
   referencePending = false,
   onAttach,
   revealSelection,
+  language,
 }: {
   owner: DocumentStore;
+  language?: LanguageStore;
   documentKey: string;
   viewId: string;
   onReference?: (reference: FileReference) => void;
@@ -46,6 +51,7 @@ export function DocumentPanel({
   revealSelection?: TextRange;
 }) {
   const entry = useStore(owner, (state) => state.documents[documentKey]);
+  const navigation = useContext(SourceNavigationContext);
   const t = useTranslations('Documents');
   const td = useTranslations('Desktop');
   const rangeId = useId();
@@ -228,6 +234,9 @@ export function DocumentPanel({
           {t(entry.saving ? 'saving' : pending ? 'pending' : entry.dirty ? 'dirty' : 'saved')}
         </span>
       </div>
+      {language && !readOnlyTarget ? (
+        <LanguageSupport owner={owner} documentKey={documentKey} />
+      ) : null}
       {readOnlyTarget || !entry.file.writable ? (
         <p className="text-xs text-muted">{t('readOnly')}</p>
       ) : null}
@@ -405,6 +414,12 @@ export function DocumentPanel({
           <div className={fill ? 'h-full min-h-56' : 'h-[min(45vh,28rem)] min-h-56'}>
             <Suspense fallback={<p className="p-3 text-xs text-muted">{t('loading')}</p>}>
               <CodeEditorView
+                onOpenResource={
+                  language && navigation
+                    ? (resource, range) =>
+                        language.openLocation(documentKey, resource, range, navigation.openDocument)
+                    : undefined
+                }
                 model={entry.model}
                 viewId={viewId}
                 readOnly={readOnlyTarget || !entry.file.writable}

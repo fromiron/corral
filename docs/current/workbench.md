@@ -116,3 +116,12 @@ P11의 구현과 Linux 인앱·관련 회귀 범위는 [C-151 검증 기록](../
 [CR-046 P22](../change-requests/CR-046-development-workbench.md#p22-공유-개발-owner-d2-승인)의 B안은 로컬 관리 사본에서 사람이 명시적으로 켜는 선택 모드다. 하나의 `development` operation이 writer를 보유하고 문서 변경·명시 task·stage/unstage/commit/fetch/push는 그 아래의 비-writer access로 접수한다. 개발 서버를 켠 채 저장할 수 있지만 외부 쓰기를 격리하지는 않는다. 기존 hash 충돌·초안 보존, P17 귀속·검사/검토 유효성 기준을 유지한다.
 
 사본과 작업 창에서 모드를 표시·전환한다. agent writer·터미널·branch 생성/전환·pull은 공유 모드를 끝내기 전 거절한다. 다른 사람 owner의 종료·미확인 효과가 정리돼야 단독 쓰기로 돌아간다. 읽기 전용 Run과 검사는 각자 고정 snapshot을 사용한다. host 재시작은 uncertain이고 공유를 자동 복원하지 않는다. 일반 서버는 기본 비활성이고 로컬 Desktop sidecar·`corral dev`만 opt-in한다. 구현·환경 검증·미검증 범위는 [C-161 기록](../evaluation/Development-Workbench-Shared-Development-2026-10-23.md)을 따른다.
+
+
+## 프로젝트 언어 지원
+
+[CR-046 P23](../change-requests/CR-046-development-workbench.md#p23-프로젝트-언어-세션)은 등록된 언어 서버를 문서 툴바에서 검토·명시 시작한다. 설치나 자동 실행은 하지 않는다. 현재 실행·종료 신원 검증은 Linux에 한정하며 미지원 host에는 시작을 노출하지 않는다.
+
+같은 관리 사본의 문서들은 하나의 서버와 기존 DocumentStore를 공유한다. 저장하지 않은 내용도 동기화하고, 지원하는 자동완성·정의·참조 이동을 기존 편집기에 연결한다. 언어 세션이 파일을 저장하거나 서버가 요청한 command/workspace edit를 실행하지 않는다. 다른 창의 초안이 같은 세션을 덮지 못하며 서버가 바뀌거나 문서 버전이 바뀐 늦은 결과는 무시한다. 서버 실패 뒤에는 초안을 보존하고 명시적으로 종료·재시작한다.
+
+진단은 기존 Problems에 합친다. 버전이 확정된 현재 진단만 편집기 marker로 표시하고, TypeScript Language Server처럼 버전 없는 push만 제공하는 서버는 “버전 미확인”으로 표시한다. 기존 검사/task 결과의 freshness와 위치 이동은 유지한다. 원본 폴더 편집·다중 파일 refactor는 이 범위가 아니다.

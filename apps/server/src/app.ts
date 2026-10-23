@@ -30,6 +30,11 @@ import {
   ImageAttachment,
   ImageAttachments,
   ImageInput,
+  LanguageDocumentChange,
+  LanguageInspect,
+  LanguageQuery,
+  LanguageScope,
+  LanguageStart,
   MessageBranchPoint,
   MessageBranchRequest,
   PermissionMode,
@@ -1867,6 +1872,93 @@ async function createCorralServer(
       return fail(reply, error.code, error.message);
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
   };
+  app.get<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language',
+    async (request, reply) => {
+      try {
+        return await files.languageState(request.params.sessionId);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/inspect',
+    async (request, reply) => {
+      const input = parse(LanguageInspect, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.inspectLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/start',
+    async (request, reply) => {
+      const input = parse(LanguageStart, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.startLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/document',
+    { bodyLimit: 7 * 1024 * 1024 },
+    async (request, reply) => {
+      const input = parse(LanguageDocumentChange, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.syncLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/query',
+    async (request, reply) => {
+      const input = parse(LanguageQuery, request, reply);
+      if (!input) return reply;
+      const dropped = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableEnded) dropped.abort();
+      };
+      reply.raw.once('close', onClose);
+      if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
+      try {
+        return await files.queryLanguage(request.params.sessionId, input, {
+          get aborted() {
+            return dropped.signal.aborted;
+          },
+          onCancel(listener) {
+            dropped.signal.addEventListener('abort', listener, { once: true });
+            return () => dropped.signal.removeEventListener('abort', listener);
+          },
+        });
+      } catch (error) {
+        return documentFail(reply, error);
+      } finally {
+        reply.raw.off('close', onClose);
+      }
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/worktree/language/stop',
+    async (request, reply) => {
+      const input = parse(LanguageScope, request, reply);
+      if (!input) return reply;
+      try {
+        return await files.stopLanguage(request.params.sessionId, input);
+      } catch (error) {
+        return documentFail(reply, error);
+      }
+    },
+  );
   app.get<SessionParams>(
     '/api/v1/sessions/:sessionId/worktree/development',
     async (request, reply) => {

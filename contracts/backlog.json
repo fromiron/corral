@@ -3191,7 +3191,8 @@
       "apps/studio/src/workbench/"
     ],
     "done": "한 관리 사본의 명시 언어 서버에서 dirty 문서 버전 동기화·진단·completion·definition·references를 제공하고 대상/세대·신뢰·종료·기존 편집을 보존한다.",
-    "status": "in_progress"
+    "status": "implemented",
+    "evidence": "docs/evaluation/Development-Workbench-Language-2026-10-23.md"
   },
   {
     "id": "C-163",

@@ -3,7 +3,7 @@ export interface Problem {
   path: string;
   line: number;
   column: number;
-  severity: 'error' | 'warning';
+  severity: 'error' | 'warning' | 'info' | 'hint';
   message: string;
 }
 

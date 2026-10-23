@@ -101,7 +101,12 @@ export class WorkbenchOperations {
         if (
           this.access
             .ownersAt(pathKey(path))
-            .some((owner) => owner.owner_kind === 'user' && owner.owner_id !== operationId)
+            .some(
+              (owner) =>
+                owner.owner_kind === 'user' &&
+                owner.owner_id !== operationId &&
+                (owner.state === 'uncertain' || this.get(owner.owner_id)?.kind !== 'language'),
+            )
         )
           throw new ToolRefusal(
             'RUN_ALREADY_ACTIVE',
@@ -210,7 +215,7 @@ export class WorkbenchOperations {
           { kind: 'user', id: request.operationId },
           request.target.sessionId,
           path,
-          !shared,
+          !shared && request.kind !== 'language',
           request.target.copyGeneration,
         );
         const now = this.clock.nowIso();

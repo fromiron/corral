@@ -52,6 +52,11 @@ import {
   HunkPlanRequest,
   HunkRequest,
   type HunkSet,
+  type LanguageDocumentChange,
+  type LanguageInspect,
+  type LanguageQuery,
+  type LanguageScope,
+  type LanguageStart,
   type LspExecution,
   LspProposal,
   LspProposalContent,
@@ -101,6 +106,7 @@ import {
   mergeHashlineEvidence,
   readHashline,
 } from './hashline.ts';
+import { LanguageSessions, type LanguageTransport } from './language-sessions.ts';
 import { checkLaunchFingerprint, launchFingerprint } from './launch-fingerprint.ts';
 import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
@@ -411,6 +417,7 @@ export class WorkspaceService implements FileTools {
   private readonly preparingRuns = new Map<string, Promise<void>>();
   private readonly criteria = new Map<string, ReviewRecipeRevision['criteriaFiles']>();
   private readonly lsp: Pick<LspRunner, 'query'>;
+  private readonly language: LanguageSessions;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
   private readonly verificationRunner: VerificationRunner;
@@ -454,6 +461,7 @@ export class WorkspaceService implements FileTools {
     io?: Partial<MutationIo>;
     pty?: Pick<PtyRuntimeOptions, 'spawn' | 'capture' | 'cleanup' | 'shells' | 'newGeneration'>;
     lsp?: Pick<LspRunner, 'query'>;
+    language?: LanguageTransport;
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
   }) {
     this.db = options.db;
@@ -477,6 +485,30 @@ export class WorkspaceService implements FileTools {
     this.lsp =
       options.lsp ??
       new LspRunner({ clock: options.clock, timers: options.timers ?? systemTimers });
+    this.language = new LanguageSessions({
+      clock: this.clock,
+      timers: this.timers,
+      tools: this.projectTools,
+      operations: this.workbenchOperations,
+      transport: options.language,
+      context: (sessionId, expected) => {
+        const current = this.documentTarget(sessionId, expected);
+        return {
+          target: current.target,
+          path: current.row.worktree_path,
+          trusted: Boolean(current.binding.trusted),
+          closing: this.disposing || this.removingWorktrees.has(sessionId),
+        };
+      },
+      safePath: safeRelative,
+      plainPath: assertPlainPath,
+      read: async (root, path) => {
+        const text = decodeText(await textBytes(root, path), true);
+        if (text === null)
+          throw new ToolRefusal('CAPABILITY_DENIED', 'language documents require UTF-8 text');
+        return text;
+      },
+    });
     this.verificationRunner = new VerificationRunner({
       clock: options.clock,
       timers: options.timers ?? systemTimers,
@@ -670,6 +702,7 @@ export class WorkspaceService implements FileTools {
           row.id,
         );
     })();
+    if (!trusted || change.verifyCommands) this.language.invalidate(projectId);
     return (await this.view(projectId)) as BindingView;
   }
 
@@ -730,7 +763,7 @@ export class WorkspaceService implements FileTools {
   }
 
   configureProjectTools(projectId: string, expectedRevision: number, raw: ProjectToolConfig) {
-    return this.db.transaction(() => {
+    const saved = this.db.transaction(() => {
       const config = this.validateProjectTools(projectId, expectedRevision, raw);
       const binding = this.binding(projectId);
       if (!binding) throw new WorkspaceError('TARGET_NOT_FOUND', 'workspace binding missing');
@@ -740,6 +773,8 @@ export class WorkspaceService implements FileTools {
         .run(JSON.stringify(saved.checks), this.clock.nowIso(), binding.id);
       return saved;
     })();
+    this.language.invalidate(projectId);
+    return saved;
   }
 
   mcpUsages(projectId: string, serverId: string) {
@@ -934,6 +969,7 @@ export class WorkspaceService implements FileTools {
     }
     const target = { projectId, kind, id: commandId, fingerprint };
     this.projectTools.setTrust(target, trusted);
+    if (kind === 'lsp' && !trusted) this.language.invalidate(projectId, commandId, fingerprint);
     return { fingerprint, trustedAt: this.projectTools.trust(target) };
   }
 
@@ -1105,6 +1141,7 @@ export class WorkspaceService implements FileTools {
       .get(row.binding_id) as BindingRow | undefined;
     this.removingWorktrees.add(sessionId);
     try {
+      await this.language.stopCopy(sessionId);
       await this.lease(row.worktree_path, async () => {
         const path = existsSync(row.worktree_path)
           ? realpathSync.native(row.worktree_path)
@@ -1162,6 +1199,25 @@ export class WorkspaceService implements FileTools {
         throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before changing files');
     }
     return { row, binding, target };
+  }
+
+  languageState(sessionId: string) {
+    return this.language.state(sessionId);
+  }
+  inspectLanguage(sessionId: string, input: LanguageInspect) {
+    return this.language.inspect(sessionId, input);
+  }
+  startLanguage(sessionId: string, input: LanguageStart) {
+    return this.language.start(sessionId, input);
+  }
+  syncLanguage(sessionId: string, input: LanguageDocumentChange) {
+    return this.language.sync(sessionId, input);
+  }
+  queryLanguage(sessionId: string, input: LanguageQuery, cancellation?: ToolCancellation) {
+    return this.language.query(sessionId, input, cancellation);
+  }
+  stopLanguage(sessionId: string, input: LanguageScope) {
+    return this.language.stop(sessionId, input);
   }
 
   developmentState(sessionId: string): DevelopmentState {
@@ -3732,6 +3788,8 @@ export class WorkspaceService implements FileTools {
 
   async dispose() {
     this.disposing = true;
+    const languageClosing = this.language.dispose();
+    void languageClosing.catch(() => {});
     await this.terminals.close();
     await this.commandRuntime.close();
     await this.taskRuntime.close();
@@ -3749,11 +3807,13 @@ export class WorkspaceService implements FileTools {
       ...this.preparingRuns.values(),
       ...this.leases.values(),
     ]);
+    await languageClosing;
   }
 
   /** Updating the desktop must wait for file checkpoints as well as owned processes. */
   hasPendingProcesses(): boolean {
     if (
+      this.language.hasPending() ||
       this.checks.size ||
       this.pendingCommands.size ||
       this.pendingSnapshots.size ||

@@ -101,3 +101,19 @@ it('[TC-WBD-001-F] admission and completion failures leave reservation and recei
   expect(s.access.get({ kind: 'user', id: 'save-1' })?.state).toBe('uncertain');
   expect(s.operations.hasPending()).toBe(true);
 });
+
+it('[TC-WBD-018-H] passive language ownership preserves saves and shared-mode exit but retains uncertain cleanup', () => {
+  const s = setup();
+  s.operations.admit({ ...s.request, operationId: 'language-1', kind: 'language' }, s.path);
+  expect(s.access.get({ kind: 'user', id: 'language-1' })?.writer).toBe(0);
+  s.operations.admit(s.request, s.path);
+  s.operations.finish(s.request.operationId, 'succeeded', null);
+  s.operations.admit({ ...s.request, operationId: 'development-1', kind: 'development' }, s.path);
+  s.operations.finishDevelopment('development-1', s.request.target, s.path);
+  expect(s.operations.get('development-1')?.state).toBe('succeeded');
+  s.operations.admit({ ...s.request, operationId: 'development-2', kind: 'development' }, s.path);
+  s.access.release({ kind: 'user', id: 'language-1' }, false);
+  expect(() => s.operations.finishDevelopment('development-2', s.request.target, s.path)).toThrow(
+    /pending effects/,
+  );
+});

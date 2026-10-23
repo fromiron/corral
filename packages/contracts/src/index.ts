@@ -14,6 +14,7 @@ export * from './harness.ts';
 export * from './harness-management.ts';
 export * from './ids.ts';
 export * from './json-schema.ts';
+export * from './language-session.ts';
 export * from './layout.ts';
 export * from './lsp.ts';
 export * from './media-artifact.ts';

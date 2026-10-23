@@ -3459,12 +3459,15 @@
     "refresh": "Refresh problems",
     "check": "Check",
     "task": "Task",
+    "language": "Language server",
     "stale": "Outdated",
     "empty": "No problems",
     "unavailable": "Problems could not be read.",
     "severity": {
       "error": "Error",
-      "warning": "Warning"
+      "warning": "Warning",
+      "info": "Information",
+      "hint": "Hint"
     },
     "openFailed": "{path} could not be opened.",
     "configChanged": "Earlier settings",
@@ -3480,5 +3483,30 @@
     "finish": "End development mode",
     "sharedNote": "External changes are possible. Your saves and development tasks share this copy; agent writes and terminals are blocked.",
     "recoveryNote": "The host restarted. Stop and reconcile remaining tasks before ending this mode. Sharing is not active."
+  },
+  "Language": {
+    "otherWindow": "This language session belongs to another window. Stop it before starting language support here.",
+    "label": "Language support",
+    "server": "Language server",
+    "loading": "Loading language support…",
+    "noServer": "No language server for this file.",
+    "unsupportedPlatform": "Language support is currently available on Linux hosts only.",
+    "untrustedCopy": "Trust this working copy in project settings before starting language support.",
+    "settings": "Project tools",
+    "review": "Review command",
+    "start": "Start",
+    "trustStart": "Trust and start",
+    "stop": "Stop",
+    "starting": "Starting",
+    "running": "Running",
+    "failed": "Failed",
+    "uncertain": "Needs recovery",
+    "fingerprint": "Command fingerprint",
+    "trustNote": "This command will run on the project host and can access the working copy. Start only if you trust it.",
+    "recoveryNote": "Your draft is preserved. Stop this session, review the command, and start again when ready.",
+    "completion": "Completion",
+    "definition": "Definitions",
+    "references": "References",
+    "diagnostics": "Diagnostics"
   }
 }
