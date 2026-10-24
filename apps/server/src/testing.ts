@@ -98,7 +98,7 @@ export function fakeOpenAI(
         id: 'gpt-test-a',
         name: 'Test A',
         reasoning: true,
-        contextWindow: 1000,
+        contextWindow: 128000,
         maxTokens: 500,
       },
       { id: 'gpt-test-b', name: 'Test B' },

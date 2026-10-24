@@ -77,8 +77,8 @@ it('[TC-SBX-002-H] [TC-SBX-002-N] the host keeps credentials and permit limits, 
       await held;
     },
   });
-  expect((await second.result()).stopReason).toBe('error');
-  expect(aborted).toBe(true);
+  expect((await second.result()).stopReason).toBe('aborted');
+  await expect.poll(() => aborted).toBe(true);
   release();
   await Promise.resolve();
   await Promise.resolve();

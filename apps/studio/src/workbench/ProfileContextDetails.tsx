@@ -23,14 +23,21 @@ export function ProfileContextDetails({
           </div>
         ))}
       </dl>
-      <p>{t('threshold', { value: policy.contextWindow - policy.reserveTokens })}</p>
+      <p>
+        {t('threshold', {
+          value:
+            policy.version === 2
+              ? Math.max(1, Math.floor((policy.contextWindow - policy.reserveTokens) * 0.9))
+              : policy.contextWindow - policy.reserveTokens,
+        })}
+      </p>
       <p className="text-muted-foreground">
         {t(
-          runtime === 'pi-core'
+          runtime === 'pi-core' && policy.version === 1
             ? 'legacy'
             : runtime === 'mock'
               ? 'mock'
-              : runtime === 'pi-sdk'
+              : runtime === 'pi-sdk' || runtime === 'pi-core'
                 ? 'sdk'
                 : 'hint',
         )}

@@ -322,7 +322,9 @@ describe('bounded review recipes (H6)', () => {
     ).toBe(true);
   });
   it('[TC-HAR-014-N] an over-reported last model response cannot bypass the recipe token cap', async () => {
-    const s = runtime(fixture({ maxOutputTokens: 100 }), {
+    const definition = fixture({ maxOutputTokens: 100 });
+    definition.executionPolicy = { version: 2, budget: { maxOutputTokens: 10000 } };
+    const s = runtime(definition, {
       review: () => 'pass',
       reply: (_turn, input) => (input.nodeId === 'review' ? 'x'.repeat(150) : 'small'),
     });
@@ -464,7 +466,9 @@ describe('bounded review recipes (H6)', () => {
     ).toBe(true);
   });
   it('[TC-HAR-014-N] recipe call allowance and deadline are enforced before another model request', async () => {
-    const s = runtime(fixture({ maxModelCalls: 1 }));
+    const limited = fixture({ maxModelCalls: 1 });
+    limited.executionPolicy = { version: 2, budget: { maxModelCalls: 20 } };
+    const s = runtime(limited);
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
     expect(final.status).toBe('failed');
     expect(final.budget.modelCalls).toBe(2);
@@ -475,7 +479,9 @@ describe('bounded review recipes (H6)', () => {
     ).toBe(true);
     const entered = new Gate(),
       release = new Gate();
-    const timed = runtime(fixture({ maxWallMs: 1000 }), {
+    const timedDefinition = fixture({ maxWallMs: 1000 });
+    timedDefinition.executionPolicy = { version: 2, budget: { runDeadlineMs: 10000 } };
+    const timed = runtime(timedDefinition, {
       beforeReply: async (_turn, input) => {
         if (input.nodeId !== 'write') return;
         entered.open();

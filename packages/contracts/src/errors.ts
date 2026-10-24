@@ -27,6 +27,7 @@ export const ErrorCode = z.enum([
   'POLICY_ERROR',
   /** A model request outside a Run failed, or its answer did not fit the contract (CR-006). */
   'MODEL_UNAVAILABLE',
+  'REQUEST_OUTCOME_UNKNOWN',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 

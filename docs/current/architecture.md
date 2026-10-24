@@ -15,6 +15,7 @@ baseline: 373764467a52a7c6978de1272ac8253c73a27077
 | 서버·클라이언트 | `apps/server`, `packages/client` | 설정·프로젝트 서비스, HTTP·SSE와 클라이언트 계약 |
 | 도메인 | `packages/core`, `packages/contracts` | Coordinator, 명령·이벤트·상태·예산, 검증 가능한 타입 |
 | 실행 어댑터 | `packages/adapter-pi`, `packages/runner-langgraph` | 모델·도구 실행과 정적 제어 흐름을 기존 Coordinator 경로에 연결 |
+| 관리형 모델 요청 | `apps/server/src/models/request-runtime.ts`, `packages/pi-runtime-port` | host 전송·attempt 정산·공유 context/stream 정책 ([CR-052](../change-requests/CR-052-llm-runtime-modernization.md)) |
 | 저장 | `packages/storage-sqlite` | 영속 기록·투영·재열람 |
 | 도구 | `packages/cli`, `packages/testkit`, `tools/release` | CLI, 결정적 시험 대역, 출시 검사 |
 

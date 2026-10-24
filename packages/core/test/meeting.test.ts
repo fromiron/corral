@@ -1,10 +1,13 @@
 import {
   type AgentStartInput,
+  canonicalJson,
   type MeetingConfig,
   type MeetingRound,
   SECRETARY_ID,
 } from '@corral/contracts';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   Coordinator,
@@ -60,6 +63,7 @@ async function fixture(
     reply?: (input: AgentStartInput) => string;
     config?: MeetingConfig;
     random?: () => number;
+    persistent?: boolean;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -71,6 +75,22 @@ async function fixture(
     reply: (_turn, input) => options.reply?.(input) ?? `${input.role.name} answers`,
   });
   const coordinator = new Coordinator({
+    ...(options.persistent
+      ? {
+          runtimeRecovery: { confirm: async () => {} },
+          models: {
+            resolve: (profile: string) => ({
+              ok: true as const,
+              snapshot: {
+                profile,
+                provider: 'fixture',
+                modelId: 'fixture',
+                auth: 'api_key' as const,
+              },
+            }),
+          },
+        }
+      : {}),
     store: new InMemoryRunStore(),
     clock,
     timers: clock,
@@ -79,7 +99,38 @@ async function fixture(
       start: async (input, host) => {
         seen.push(input);
         await options.onStart?.(input);
-        return scripted.start(input, host);
+        return scripted.start(
+          input,
+          options.persistent
+            ? {
+                ...host,
+                observe: async (observation) => {
+                  await host.observe(observation);
+                  if (observation.kind === 'model_completed') {
+                    const context = {
+                      messages: [
+                        ...(input.resumeContext?.context.context.messages ?? []),
+                        { role: 'user', content: input.inputs[0]!.text, timestamp: 1 },
+                        {
+                          role: 'assistant',
+                          content: [{ type: 'text', text: observation.text }],
+                          stopReason: 'stop',
+                          timestamp: 2,
+                        },
+                      ],
+                    };
+                    await host.checkpointContext!({
+                      version: 1,
+                      piVersion: '1.3.0',
+                      runtime: 'pi-core',
+                      context,
+                      contextHash: bytesToHex(sha256(utf8ToBytes(canonicalJson(context)))),
+                    });
+                  }
+                },
+              }
+            : host,
+        );
       },
     },
   });
@@ -99,6 +150,22 @@ async function fixture(
       clock,
       newRoundId: () => `round_${++rounds}`,
       random: options.random ?? (() => 0.999),
+      ...(options.persistent
+        ? {
+            continuation: (
+              runId: string,
+              sessionId: string,
+              participantId: string,
+              definition: import('@corral/contracts').CorralDefinition,
+            ) =>
+              coordinator.meetingContinuation(
+                runId,
+                sessionId,
+                participantId,
+                definition.roles[0]!,
+              ),
+          }
+        : {}),
     });
   const meetings = service();
   const created = await meetings.create({
@@ -112,7 +179,7 @@ async function fixture(
     meetings.send(sessionId, {
       kind: 'message',
       commandId,
-      mode: 'mock',
+      mode: options.persistent ? 'live' : 'mock',
       text,
       ...(mentions ? { mentions } : {}),
     });
@@ -141,6 +208,34 @@ const brief = (input: AgentStartInput) =>
   input.inputs.find((item) => item.name === 'brief')?.text ?? '';
 
 describe('CR-049 meeting messages', () => {
+  it('[TC-LLM-005-H] each participant reuses its own completed context and receives only newly posted messages', async () => {
+    const f = await fixture({ persistent: true });
+    await f.send('first_context', 'ORIGINAL_MEETING_INPUT');
+    await expect
+      .poll(async () =>
+        (await f.meetings.view(f.sessionId))?.rounds[0]?.answers.every(
+          (a) => a.status === 'answered',
+        ),
+      )
+      .toBe(true);
+    await f.send('second_context', 'FOLLOW_UP_ONLY');
+    await expect
+      .poll(async () =>
+        (await f.meetings.view(f.sessionId))?.rounds[1]?.answers.every(
+          (a) => a.status === 'answered',
+        ),
+      )
+      .toBe(true);
+    const second = f.seen.slice(3);
+    expect(second).toHaveLength(3);
+    for (const input of second) {
+      expect(JSON.stringify(input.resumeContext)).toContain('ORIGINAL_MEETING_INPUT');
+      expect(brief(input)).toContain('FOLLOW_UP_ONLY');
+      expect(brief(input)).not.toContain('ORIGINAL_MEETING_INPUT');
+      expect(JSON.stringify(input.resumeContext)).toContain(`${input.role.name} answers`);
+      expect(brief(input)).not.toContain(`${input.role.name} answers`);
+    }
+  });
   it('[TC-MEET-001-H] neutral participants carry dinner suggestions into ordinary follow-up questions', async () => {
     const f = await fixture({
       config: {
@@ -165,35 +260,36 @@ describe('CR-049 meeting messages', () => {
     expect((await f.meetings.view(f.sessionId))!.minutes).toEqual([]);
   });
 
-  it('[TC-MEET-001-H] one participant speaks at a time and each next speaker reads the actual preceding messages', async () => {
+  it('[TC-MEET-001-H] independent replies share a snapshot and command replay does not duplicate their starts', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
     const f = await fixture({
       onStart: async (input) => {
-        if (input.role.name === 'Architect') await held;
+        await held;
       },
     });
     try {
       expect(await f.send('c1', '니들 배고프냐')).toMatchObject({ ok: true });
-      expect(f.seen.map((input) => input.role.name)).toEqual(['Architect']);
+      expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder', 'Tester']);
       const waiting = (await f.meetings.view(f.sessionId))!.rounds[0]!;
       expect(waiting.active).toBe(true);
-      expect(waiting.answers.map((item) => item.status)).toEqual(['running', 'waiting', 'waiting']);
-      expect(waiting.answers.slice(1).every((item) => item.runId === null)).toBe(true);
+      expect(waiting.answers.map((item) => item.status)).toEqual(['running', 'running', 'running']);
+      expect(waiting.answers.slice(1).every((item) => item.runId !== null)).toBe(true);
       expect(await f.send('c1', '니들 배고프냐')).toMatchObject({ ok: true });
-      expect(f.seen).toHaveLength(1);
+      expect(f.seen).toHaveLength(3);
     } finally {
       release();
     }
     await f.meetings.idle(f.sessionId);
     expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder', 'Tester']);
     expect(brief(f.seen[0]!)).not.toContain('Builder answers');
-    expect(brief(f.seen[1]!)).toContain('Architect answers');
+    expect(brief(f.seen[1]!)).not.toContain('Architect answers');
     expect(brief(f.seen[1]!)).not.toContain('Tester answers');
-    expect(brief(f.seen[2]!)).toContain('Architect answers');
-    expect(brief(f.seen[2]!)).toContain('Builder answers');
+    expect(brief(f.seen[2]!)).not.toContain('Architect answers');
+    expect(brief(f.seen[2]!)).not.toContain('Builder answers');
+    expect(new Set(f.seen.map(brief)).size).toBe(1);
     for (const input of f.seen) {
       expect(input.role.allowedWorkTools).toEqual(['write_artifact']);
       expect(input.role.allowedCollaborationTools).toEqual(['submit_result']);
@@ -243,7 +339,7 @@ describe('CR-049 meeting messages', () => {
     }
   });
 
-  it('[TC-MEET-001-F] stopping the current speaker prevents every waiting participant from starting', async () => {
+  it('[TC-MEET-001-F] stopping the independent batch cancels every started reply', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -254,7 +350,7 @@ describe('CR-049 meeting messages', () => {
     await f.meetings.stop(f.sessionId, id);
     release();
     await f.meetings.idle(f.sessionId);
-    expect(f.seen).toHaveLength(1);
+    expect(f.seen).toHaveLength(3);
     const after = (await f.meetings.view(f.sessionId))!.rounds[0]!;
     expect(after.answers.map((item) => item.status)).toEqual(['stopped', 'stopped', 'stopped']);
     expect(after.active).toBe(false);
@@ -379,15 +475,21 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(3);
   });
 
-  it('[TC-MEET-001-N] a mention moves a waiting participant next without duplicating its scheduled reply', async () => {
+  it('[TC-MEET-001-N] a posted mention follows the independent batch as a separate sequential response', async () => {
     const f = await fixture({
       reply: (input) =>
         input.role.name === 'Architect' ? '@Tester please weigh in.' : 'My opinion.',
     });
     await f.send('c1', 'Dinner?');
     await f.meetings.idle(f.sessionId);
-    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Tester', 'Builder']);
-    expect(brief(f.seen[2]!)).toContain('My opinion.');
+    expect(f.seen.map((input) => input.role.name)).toEqual([
+      'Architect',
+      'Builder',
+      'Tester',
+      'Tester',
+    ]);
+    expect(brief(f.seen[3]!)).toContain('@Tester please weigh in.');
+    expect(brief(f.seen[3]!)).toContain('My opinion.');
   });
 
   it('[TC-MEET-001-H] a formatted mention still addresses the named participant', async () => {
@@ -426,15 +528,20 @@ describe('CR-049 meeting messages', () => {
         'third question',
       ]);
       expect(pending.queued).toBeNull();
-      expect(f.seen).toHaveLength(1);
+      expect(f.seen).toHaveLength(3);
     } finally {
       release();
     }
     await f.meetings.idle(f.sessionId);
-    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder']);
-    expect(brief(f.seen[1]!)).toContain('second question');
-    expect(brief(f.seen[1]!)).toContain('third question');
-    expect(brief(f.seen[1]!)).toContain('I heard you.');
+    expect(f.seen.map((input) => input.role.name)).toEqual([
+      'Architect',
+      'Builder',
+      'Tester',
+      'Builder',
+    ]);
+    expect(brief(f.seen[3]!)).toContain('second question');
+    expect(brief(f.seen[3]!)).toContain('third question');
+    expect(brief(f.seen[3]!)).toContain('I heard you.');
   });
 
   it('[TC-MEET-001-F] a new human message supersedes late agent mentions and stop cancels pending replies too', async () => {
@@ -689,7 +796,7 @@ describe('CR-049 meeting messages', () => {
           mentions: [],
         }),
       ).toMatchObject({ ok: false, error: 'conflict' });
-      expect(f.seen).toHaveLength(1);
+      expect(f.seen).toHaveLength(3);
     } finally {
       release();
     }
@@ -746,7 +853,7 @@ describe('CR-049 meeting messages', () => {
     try {
       expect(await f.send('c2', 'second question')).toMatchObject({ ok: true, outcome: 'started' });
       expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(2);
-      expect(f.seen).toHaveLength(1);
+      expect(f.seen).toHaveLength(3);
     } finally {
       snapshot.mockRestore();
       release();
@@ -833,4 +940,44 @@ describe('CR-049 meeting messages', () => {
     expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(1001);
     expect(f.seen).toHaveLength(3);
   });
+});
+
+it('[TC-LLM-005-H] independent participants start together with the same posted-message snapshot', async () => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = await fixture({ onStart: () => held });
+  try {
+    await f.send('parallel_message', 'Give your independent view.');
+    await vi.waitFor(() => expect(f.seen).toHaveLength(3), { timeout: 250 });
+    const briefs = f.seen.map((input) => input.inputs.map((source) => source.text).join('\n'));
+    expect(new Set(briefs).size).toBe(1);
+    expect(briefs[0]).not.toContain('Architect answers');
+  } finally {
+    release();
+    await f.meetings.idle(f.sessionId);
+  }
+});
+
+it('[TC-LLM-005-F] a parallel answer completing before the first participant still schedules its mention once', async () => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let builderReplies = 0;
+  const f = await fixture({
+    onStart: (input) => (input.role.name === 'Architect' ? held : undefined),
+    reply: (input) =>
+      input.role.name === 'Builder' && builderReplies++ === 0
+        ? '@Tester Please examine this.'
+        : `${input.role.name} done`,
+  });
+  await f.send('mentions_parallel', 'Compare your views.');
+  release();
+  await f.meetings.idle(f.sessionId);
+  expect(f.seen.filter((input) => input.role.name === 'Tester')).toHaveLength(2);
+  const total = f.seen.length;
+  await f.meetings.view(f.sessionId);
+  expect(f.seen).toHaveLength(total);
 });

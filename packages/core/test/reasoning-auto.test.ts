@@ -6,7 +6,7 @@ import type {
 } from '@corral/contracts';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
-import { Coordinator } from '../src/index.ts';
+import { Coordinator, SPEC_HARD_CAPS } from '../src/index.ts';
 
 const input: ReasoningInput = {
   kind: 'turn',
@@ -26,6 +26,7 @@ const answer = {
 async function setup(
   decide: (input: ReasoningInput, cancellation: DecisionCancellation) => Promise<unknown>,
   observe = false,
+  maxModelConcurrency = 6,
 ) {
   const clock = new FakeClock();
   const started = new Gate(),
@@ -46,6 +47,7 @@ async function setup(
     clock,
     timers: clock,
     ids: new SequentialIdFactory(),
+    policy: { ...SPEC_HARD_CAPS, maxModelConcurrency },
     agents: {
       start: async (i, h) => {
         host = h;
@@ -114,6 +116,37 @@ async function setup(
 }
 
 describe('automatic reasoning admission', () => {
+  it('[TC-LLM-002-N] local reasoning leaves the provider slot available', async () => {
+    const judging = new Gate(),
+      finish = new Gate();
+    const s = await setup(
+      async () => {
+        judging.open();
+        await finish.wait();
+        return answer;
+      },
+      false,
+      1,
+    );
+    const pending = s.host.prepareModelRequest(undefined, input);
+    await judging.wait();
+    let acquired = false;
+    const auxiliary = s.coordinator
+      .acquireAuxiliaryModelSlot({ aborted: false, onCancel: () => () => {} })
+      .then((release) => {
+        acquired = true;
+        return release;
+      });
+    for (let n = 0; n < 20; n++) await Promise.resolve();
+    try {
+      expect(acquired).toBe(true);
+    } finally {
+      finish.open();
+      s.command('cancel');
+      await pending.catch(() => {});
+      (await auxiliary)();
+    }
+  });
   it('[TC-RSN-002-H] applies real probabilities before reserving a model request', async () => {
     let received: ReasoningInput | undefined;
     const s = await setup(async (i) => {

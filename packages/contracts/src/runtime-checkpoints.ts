@@ -7,7 +7,7 @@ export const RuntimeContext = z.strictObject({
   version: z.literal(1),
   piVersion: z.literal('1.3.0'),
   runtime: z.enum(['pi-core', 'pi-sdk']),
-  context: z.strictObject({ messages: z.array(z.record(z.string(), z.unknown())).max(10_000) }),
+  context: z.strictObject({ messages: z.array(z.record(z.string(), z.unknown())) }),
   contextHash: ContentHash,
 });
 export type RuntimeContext = z.infer<typeof RuntimeContext>;
@@ -18,7 +18,7 @@ export const RuntimeFiles = z.strictObject({
 });
 export type RuntimeFiles = z.infer<typeof RuntimeFiles>;
 export const RuntimeCheckpointManifest = z.strictObject({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   piVersion: z.literal('1.3.0'),
   checkpointId: Identifier,
   runId: Identifier,
@@ -48,6 +48,15 @@ export const RuntimeCheckpointState = z.strictObject({
   role: AgentRole,
   criteria: z.string(),
   protectedContext: ProtectedContext,
+  sources: z
+    .array(
+      z.strictObject({
+        sourceRef: Identifier,
+        toolCallId: Identifier.optional(),
+        text: z.string(),
+      }),
+    )
+    .optional(),
 });
 export type RuntimeCheckpointState = z.infer<typeof RuntimeCheckpointState>;
 export const RuntimeCheckpointRecord = z.strictObject({
@@ -83,6 +92,7 @@ export const ResumeRuntimeRequest = z.strictObject({
 });
 export type ResumeRuntimeRequest = z.infer<typeof ResumeRuntimeRequest>;
 export interface RuntimeCheckpointView extends RuntimeCheckpointRecord {
+  usageLimits?: 'none';
   sourceSeq: number;
   createdAt: string;
   runtime: 'pi-core' | 'pi-sdk';
@@ -90,3 +100,22 @@ export interface RuntimeCheckpointView extends RuntimeCheckpointRecord {
   blockers: string[];
   limits: z.infer<typeof RunLimits> | null;
 }
+
+const ContextChunkRef = z.strictObject({
+  artifactVersionId: Identifier,
+  hash: ContentHash,
+  bytes: z.int().nonnegative(),
+});
+/** Private storage representation; workers receive a verified, hydrated RuntimeCheckpointState. */
+export const ContextCheckpointV2 = z.strictObject({
+  version: z.literal(2),
+  piVersion: z.literal('1.3.0'),
+  runtime: z.enum(['pi-core', 'pi-sdk']),
+  contextHash: ContentHash,
+  messages: z.array(ContextChunkRef),
+  role: ContextChunkRef,
+  criteria: ContextChunkRef,
+  protectedContext: ContextChunkRef,
+  sources: z.array(ContextChunkRef).optional(),
+});
+export type ContextCheckpointV2 = z.infer<typeof ContextCheckpointV2>;

@@ -87,6 +87,26 @@ async function setup(
 }
 
 describe('file broker (CR-012)', () => {
+  it('[TC-LLM-004-N] paged file reads do not authorize replacing unread content', async () => {
+    const s = await setup();
+    try {
+      const root = s.service.copyOf('session_1')!.worktree;
+      const text = '한글🙂'.repeat(5000);
+      writeFileSync(join(root, 'large.txt'), text);
+      const first = await s.call('read_file', { path: 'large.txt' });
+      expect(Array.from(String(first.text)).length).toBeLessThanOrEqual(8192);
+      expect(first).toMatchObject({ complete: false, nextOffset: 8192 });
+      await expect(
+        s.call('write_file', { path: 'large.txt', text: 'unread overwrite' }),
+      ).rejects.toThrow(/read/);
+      const second = await s.call('read_file', { path: 'large.txt', offset: first.nextOffset });
+      expect(String(first.text) + String(second.text)).toBe(text);
+      await s.call('write_file', { path: 'large.txt', text: 'reviewed replacement' });
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
   it('[TC-WBD-001-H] identifies the binding and advances the copy generation after recreation', async () => {
     const s = await setup();
     try {

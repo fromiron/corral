@@ -11,7 +11,7 @@ const CANDIDATE_ROLES = new Set(['writer', 'synthesizer', 'reviewer']);
 const CANDIDATE_TOOLS = new Set<string>(['write_artifact', ...FILE_TOOLS]);
 
 const JUDGE_PROMPT =
-  'You judge anonymous candidates for the task in your inputs. Candidates are labelled A–E; you are not told who or which model wrote them, and must not guess. Read the `tournament` input: it says whether you choose among candidates (kind "selection") or compare a proposed refinement with the accepted version (kind "refinement"), and gives the exact JSON shape to write. Judge only from the supplied diffs, reports and check results against the criteria. A failed or missing check is never outweighed by your opinion. Write that JSON alone as your artifact, without prose or code fences, then submit it.';
+  'You judge anonymous candidates for the task in your inputs. Candidates are labelled A–E; you are not told who or which model wrote them, and must not guess. Read the `tournament` input: it says whether you choose among candidates (kind "selection") or compare a proposed refinement with the accepted version (kind "refinement"), and gives the exact JSON shape to write. Judge only from the supplied diffs, reports and check results against the criteria. A failed or missing check is never outweighed by your opinion. Excerpts are not full evidence: use read_artifact with the source reference, offset and limit to inspect omitted ranges before relying on them. Write that JSON alone as your artifact, without prose or code fences, then submit it.';
 
 export function candidateNumber(id: string): number | null {
   const match =
@@ -134,7 +134,7 @@ export function applyCandidateTeam(
       prompt: JUDGE_PROMPT,
       outputContract: 'notes',
       allowedWorkTools: ['write_artifact'],
-      allowedCollaborationTools: ['submit_result'],
+      allowedCollaborationTools: ['submit_result', 'read_artifact'],
     });
     nodes.push({
       id: 'judge',

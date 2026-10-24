@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -92,6 +92,7 @@ import {
   openDatabase,
   SqliteCorralRepository,
   SqliteHarnessStore,
+  SqliteModelAttemptStore,
   SqliteRunStore,
 } from '@corral/storage-sqlite';
 import type { CredentialStore, MutableModels } from '@earendil-works/pi-ai';
@@ -284,6 +285,7 @@ const STATUS: Record<ErrorCode, number> = {
   ORIGIN_REJECTED: 403,
   POLICY_ERROR: 500,
   MODEL_UNAVAILABLE: 502,
+  REQUEST_OUTCOME_UNKNOWN: 409,
 };
 
 const HEARTBEAT_MS = 15_000;
@@ -430,6 +432,7 @@ async function createCorralServer(
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
+  await corrals.migrateExecutionPolicies();
   let registry: ModelRegistry | null = null;
   if (options.live) {
     assertOutsideWorkspace(options.live.configDir, workspace.root);
@@ -565,11 +568,15 @@ async function createCorralServer(
     providers: decisionProviders,
     settings: judgmentSettings(workspace.config),
   };
+  const modelAttempts = new SqliteModelAttemptStore(db);
+  modelAttempts.recoverInterrupted(clock.nowIso());
   const imageProfiles = new ImageProfileStore(db, () => registry);
   const imageGeneration = new ImageGenerationService(
     db,
     async (id) => imageProfiles.resolve(id),
     () => clock.nowIso(),
+    fetch,
+    modelAttempts,
   );
   imageGeneration.cleanupOrphans();
   const coordinator = new Coordinator({
@@ -618,7 +625,7 @@ async function createCorralServer(
         ? options.live.agents(registry, harnesses, workerLeaseDirectory)
         : null,
     ),
-    ...(registry ? { models: registry } : {}),
+    ...(registry ? { models: registry, modelAttempts } : {}),
     store,
     tools: inputs,
     files,
@@ -629,8 +636,17 @@ async function createCorralServer(
     sessionId: backendSessionId,
     judgments: judgmentConfig,
   });
+  registry?.configureRequests({
+    store: modelAttempts,
+    onUsage: (intent) => coordinator.settleAutoRouteUsage(intent),
+    acquire: (signal) => coordinator.acquireAuxiliaryModelSlot(signal),
+    adopt: (intent) => coordinator.adoptModelSlot(intent),
+    now: () => new Date(clock.nowIso()),
+  });
   // CR-049: meeting rounds start each answer as its own Run through the same Coordinator.
   const meetings = new MeetingService({
+    continuation: (runId, sessionId, participantId, definition, mode) =>
+      coordinator.meetingContinuation(runId, sessionId, participantId, definition.roles[0]!, mode),
     random: Math.random,
     repository: corrals,
     transport: new InProcessTransport(coordinator),
@@ -1165,6 +1181,7 @@ async function createCorralServer(
   const projectServices = registerProjectRoutes(app, { root: workspace.root, repository: corrals });
   registerVoiceRoutes(app, {
     registry,
+    usageStore: modelAttempts,
     hasSession: async (id) => Boolean(await corrals.getSession(id)),
     hasRun: async (sessionId, runId) => files.sessionOfRun(runId) === sessionId,
   });
@@ -1206,15 +1223,67 @@ async function createCorralServer(
 
   // ── team drafts (CR-006) ───────────────────────────────────────────────────
   // One model request for a goal; only a plan that passes the contract comes back.
+  const draftOperations = new Map<
+    string,
+    Promise<Awaited<ReturnType<ModelRegistry['draftTeam']>>>
+  >();
   app.post('/api/v1/team-drafts', async (request, reply) => {
     if (!registry) return noLive(reply);
     const body = parse(
-      z.strictObject({ goal: z.string().trim().min(1).max(2000) }),
+      z.strictObject({
+        goal: z.string().trim().min(1).max(2000),
+        operationId: z.string().min(1).max(200).optional(),
+      }),
       request,
       reply,
     );
     if (!body) return reply;
-    const result = await registry.draftTeam(body.goal);
+    const id = body.operationId ?? randomUUID();
+    const fingerprint = createHash('sha256').update(body.goal).digest('hex');
+    const previous = db
+      .prepare('SELECT fingerprint, result_json FROM model_operations WHERE operation_id=?')
+      .get(id) as { fingerprint: string; result_json: string | null } | undefined;
+    if (previous && previous.fingerprint !== fingerprint)
+      return fail(reply, 'REVISION_CONFLICT', 'This draft operation belongs to another request.');
+    if (previous && !previous.result_json && !draftOperations.has(id))
+      return fail(
+        reply,
+        'REQUEST_OUTCOME_UNKNOWN',
+        'The earlier draft outcome is unconfirmed. It has not been resent.',
+      );
+    const controller = new AbortController();
+    const closed = () => {
+      if (!reply.raw.writableFinished) controller.abort();
+    };
+    reply.raw.once('close', closed);
+    let result: Awaited<ReturnType<ModelRegistry['draftTeam']>>;
+    try {
+      if (previous?.result_json) result = JSON.parse(previous.result_json);
+      else {
+        let work = draftOperations.get(id);
+        if (!work) {
+          db.prepare('INSERT INTO model_operations(operation_id, fingerprint) VALUES (?, ?)').run(
+            id,
+            fingerprint,
+          );
+          work = registry
+            .draftTeam(body.goal, { id, signal: controller.signal })
+            .then((value) => {
+              db.prepare('UPDATE model_operations SET result_json=? WHERE operation_id=?').run(
+                JSON.stringify(value),
+                id,
+              );
+              return value;
+            })
+            .finally(() => draftOperations.delete(id));
+          draftOperations.set(id, work);
+        }
+        result = await work;
+      }
+    } finally {
+      reply.raw.off('close', closed);
+    }
+
     return result.ok
       ? { plan: result.plan, model: result.model }
       : fail(reply, result.code, result.message);
@@ -1222,6 +1291,20 @@ async function createCorralServer(
 
   // ── runs ───────────────────────────────────────────────────────────────────
   app.get('/api/v1/runs', async () => coordinator.listRuns());
+  app.get('/api/v1/model-attempts', async (request, reply) => {
+    const query = z
+      .strictObject({
+        ownerId: z.string().min(1).max(256).optional(),
+        runId: Identifier.optional(),
+        sessionId: Identifier.optional(),
+        before: z.coerce.number().int().positive().optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional(),
+      })
+      .safeParse(request.query);
+    return query.success
+      ? modelAttempts.page(query.data)
+      : fail(reply, 'SCHEMA_INVALID', 'invalid request history query');
+  });
   app.get<{ Params: { commandId: string } }>(
     '/api/v1/start-commands/:commandId',
     async (request, reply) => {
@@ -1401,9 +1484,12 @@ async function createCorralServer(
       return error ? { runId: null, receipt: refusedStart(request, error) } : null;
     },
     levels: (choice, mode) => coordinator.reasoningLevels(choice.modelProfile, mode),
-    route: ({ brief, choice, mode, signal, levels, models }) =>
+    route: ({ brief, choice, mode, signal, levels, models, commandId, sessionId }) =>
       mode === 'live' && registry
-        ? registry.routeAuto(brief, choice, signal, levels, models?.[choice.modelProfile])
+        ? registry.routeAuto(brief, choice, signal, levels, models?.[choice.modelProfile], {
+            requestId: commandId,
+            ...(sessionId ? { sessionId } : {}),
+          })
         : null,
   });
   type AutoResult = Awaited<ReturnType<typeof autoStarter.start>>;

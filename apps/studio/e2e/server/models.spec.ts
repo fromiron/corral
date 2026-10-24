@@ -246,13 +246,36 @@ test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it 
   const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
   await dialog.getByLabel('What should the team do?').fill('Announce the new API');
   await expect(dialog).toContainText('Uses one model request');
+  const draftRequest = page.waitForRequest(
+    (request) => request.url().endsWith('/api/v1/team-drafts') && request.method() === 'POST',
+  );
   await dialog.getByRole('button', { name: 'Ask the model' }).click();
+  const draftBody = (await draftRequest).postDataJSON();
   await expect(dialog.getByLabel('Team name')).toHaveValue('Launch note');
   await expect(dialog.getByLabel('Name of role 2')).toHaveValue('Copywriter');
   await dialog.getByRole('button', { name: 'Open in editor' }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
   await expect(page.locator('.react-flow__node', { hasText: 'Copywriter' })).toHaveCount(1);
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
+  await openModels(page);
+  const usage = page.getByRole('region', { name: 'Model request history' });
+  await usage.getByRole('button', { name: 'Load history', exact: true }).click();
+  await expect(usage.getByRole('table')).toContainText('Subscription');
+  await expect(usage.getByRole('table')).toContainText('Draft');
+  const replay = await page.evaluate(async (body) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    return (
+      await fetch('/api/v1/team-drafts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify(body),
+      })
+    ).status;
+  }, draftBody);
+  expect(replay).toBe(200);
+  expect(corral.fake?.seen.hostRequests).toHaveLength(1);
+  await usage.getByRole('table').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/llm-model-history.png', fullPage: true });
   expect(corral.errors).toEqual([]);
 });
 

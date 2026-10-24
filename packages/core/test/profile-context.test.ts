@@ -101,22 +101,20 @@ it('[TC-CONTEXT-001-H] freezes policies before the chooser and preserves them fo
   );
 });
 
-it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] preserves legacy defaults and validates explicit policies after resolving their source', () => {
+it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] uses adaptive defaults and validates explicit policies after resolving their source', () => {
   const base = { contextWindow: 32000, source: 'fallback' as const };
   const legacy = resolveProfileContext({}, base, 'rev-a', 4096);
   expect(legacy.errors).toEqual([]);
   expect(legacy.policy).toMatchObject({
     contextWindow: 32000,
-    reserveTokens: 16384,
-    keepRecentTokens: 20000,
+    reserveTokens: 16000,
+    keepRecentTokens: 7999,
     explicit: false,
-    warnings: ['legacy_inconsistent'],
+    warnings: [],
   });
-  expect(resolveProfileContext({ contextWindow: 32000 }, base, 'rev-a', 4096).errors).not.toEqual(
-    [],
-  );
+  expect(resolveProfileContext({ contextWindow: 32000 }, base, 'rev-a', 4096).errors).toEqual([]);
   const valid = resolveProfileContext(
-    { compaction: { keepRecentTokens: 15615 } },
+    { compaction: { keepRecentTokens: 15999 } },
     base,
     'rev-b',
     4096,
@@ -124,11 +122,11 @@ it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] preserves legacy defaults and validate
   expect(valid.errors).toEqual([]);
   expect(valid.policy?.sources).toEqual({
     contextWindow: 'fallback',
-    reserveTokens: 'pi_default',
+    reserveTokens: 'adaptive',
     keepRecentTokens: 'profile',
   });
   expect(
-    resolveProfileContext({ compaction: { keepRecentTokens: 15616 } }, base, 'rev-b', 4096).errors,
+    resolveProfileContext({ compaction: { keepRecentTokens: 16000 } }, base, 'rev-b', 4096).errors,
   ).not.toEqual([]);
   expect(
     resolveProfileContext({ compaction: { reserveTokens: 32000 } }, base, 'rev-b', 4096).errors,

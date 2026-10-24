@@ -4,6 +4,7 @@
 
 | 범위 | 증거 |
 |---|---|
+| LLM 인프라 현대화 | [CR-052 구현·호출 원장·포팅·실제 비교·Linux 배포 검증](llm-modernization/report.md) |
 | 세션 작업 화면 단순화 | [CR-051 도킹 영역 메뉴·창 배치·대화 정리·남은 킷 전환 검증](Session-Workspace-Simplification-2026-10-24.md) |
 | 디자인 킷 도입·토큰 정형화 | [CR-050 복사 출처·의존성·화면 및 회귀 검증 범위](Design-Kit-Adoption-2026-10-23.md) |
 | 회의실·결정·일반 세션 인계 | [CR-049 그룹 채팅·선택 역할·요청 시 플랜](Meeting-Chat-2026-10-23.md), [이전 회의록·채택·인계·복구](Meeting-Room-2026-10-23.md) |

@@ -1,4 +1,4 @@
-import type { AgentHost, AgentStartInput } from '@corral/contracts';
+import type { AgentHost, AgentStartInput, ModelAttempt } from '@corral/contracts';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -26,11 +26,13 @@ const answer: RouteAnswer = {
   text: '{"template":"single","reason":"Direct."}',
   usage: { inputTokens: 100, outputTokens: 50 },
 };
+const ROUTER_ALLOWANCE = 1024;
 async function drain() {
   for (let i = 0; i < 100; i++) await Promise.resolve();
 }
 function setup() {
   const store = new InMemoryRunStore();
+  const attempts = new Map<string, ModelAttempt>();
   let host: AgentHost | undefined;
   const clock = new FakeClock();
   const coordinator = new Coordinator({
@@ -38,6 +40,14 @@ function setup() {
     timers: clock,
     ids: new SequentialIdFactory(),
     store,
+    modelAttempts: {
+      put: (attempt) => {
+        attempts.set(attempt.attemptId, attempt);
+      },
+      get: (id) => attempts.get(id) ?? null,
+      list: (ownerId) =>
+        [...attempts.values()].filter((attempt) => attempt.intent.owner.id === ownerId),
+    },
     agents: {
       async start(_input, nextHost) {
         host = nextHost;
@@ -67,9 +77,49 @@ function setup() {
             }
           : null;
       },
-      route: () => {
+      route: async ({ commandId, sessionId }) => {
         calls++;
-        return route();
+        const result = await route();
+        const attemptId = `chooser_${calls}`;
+        attempts.set(attemptId, {
+          version: 2,
+          attemptId,
+          intent: {
+            requestId: commandId,
+            owner: { kind: 'chooser', id: commandId, ...(sessionId ? { sessionId } : {}) },
+            purpose: 'chooser',
+            revision: 0,
+          },
+          provider: 'fixture',
+          modelId: 'router',
+          startedAt: clock.nowIso(),
+          endedAt: clock.nowIso(),
+          status: result.ok ? 'completed' : 'failed',
+          payloadHash: 'fixture',
+          payloadBytes: 1,
+          firstEventAt: null,
+          failure: null,
+          prepared: {
+            inputRevision: 0,
+            inputHash: 'fixture',
+            estimatedInputTokens: 100,
+            measurement: 'dsh-density-v2',
+            outputAllowance: ROUTER_ALLOWANCE,
+            cacheNamespace: null,
+          },
+          usage: {
+            version: 2,
+            inputTokens: result.usage?.inputTokens ?? null,
+            outputTokens: result.usage?.outputTokens ?? null,
+            reasoningTokens: null,
+            cacheReadTokens: null,
+            cacheWriteTokens: null,
+            source: result.usage ? 'reported' : 'unknown',
+            costStatus: 'unknown',
+            costUsd: null,
+          },
+        });
+        return result;
       },
     });
   return {
@@ -136,7 +186,7 @@ describe('auto run regressions (CR-024)', () => {
         modelCalls: 1,
         spent: 0,
         reserved: 0,
-        unknownOutstanding: 256,
+        unknownOutstanding: ROUTER_ALLOWANCE,
       });
     }
   });

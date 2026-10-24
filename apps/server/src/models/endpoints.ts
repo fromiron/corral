@@ -32,6 +32,8 @@ export function endpointsFrom(configs: readonly ModelProviderConfig[] = []): Map
         name: config.name,
         baseUrl: config.baseUrl,
         keyless: config.access === 'none',
+        ...(config.cacheRetention ? { cacheRetention: config.cacheRetention } : {}),
+        ...(config.sessionAffinity ? { sessionAffinity: config.sessionAffinity } : {}),
         models: config.models.map((m) => {
           const defaults = endpointModelDefaults(config.baseUrl, m.id);
           const imageInput = m.imageInput ?? defaults.imageInput;

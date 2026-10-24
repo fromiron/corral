@@ -22,6 +22,7 @@ import {
   CommandReport,
   type CompactContextCommand,
   CompactionReport,
+  type ContextCheckpointV2,
   CorralDefinition,
   CreateRunRequest,
   type DecisionCancellation,
@@ -50,7 +51,9 @@ import {
   MessageBranchPoint,
   type MessageBranchPreview,
   MessageBranchRequest,
+  type ModelAttemptStore,
   type ModelProfileSnapshot,
+  type ModelRequestIntent,
   ModelRequestRecord,
   type ParentQuestionMessage,
   type PreviewToolName,
@@ -96,6 +99,7 @@ import {
   type ToolPermissionPlan,
   type ToolProposal,
   type TournamentView,
+  taskBriefForModel,
   type UltraFallbackReason,
   type UltraSelection,
   UserInputRequest,
@@ -119,7 +123,7 @@ import {
   type ToolGateView,
 } from './admission/index.ts';
 import { validTextAttachments } from './attachments.ts';
-import { AUTO_ROUTE_MAX_OUTPUT_TOKENS, type AutoStart, autoDefinition } from './auto-team.ts';
+import { type AutoStart, autoDefinition } from './auto-team.ts';
 import {
   admitImageRequest,
   admitModelRequest,
@@ -132,6 +136,11 @@ import { canonicalJson } from './canonical-json.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
 import {
+  checkpointReferences,
+  decodeContextCheckpoint,
+  encodeContextCheckpoint,
+} from './context-checkpoint.ts';
+import {
   createDecisionHub,
   type JudgmentConfig,
   requestTiming,
@@ -140,7 +149,8 @@ import {
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
-import { LogicalDeadline } from './limits.ts';
+import { projectJudgeInputs } from './judge-context.ts';
+import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
 import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
@@ -367,6 +377,7 @@ export interface CoordinatorDeps {
   agents: AgentAdapter;
   /** Where facts are committed. Defaults to memory (browser runtime, tests). */
   store?: RunStore;
+  modelAttempts?: ModelAttemptStore;
   runner?: GraphRunner;
   decisions?: DecisionPolicy;
   /** Names this backend process in `run.interrupted` when it recovers older runs. */
@@ -415,6 +426,7 @@ export type ModelResolution =
 /** Turns a role's model profile into the model a run will use, or says why it cannot. */
 export interface ModelResolver {
   resolve(profile: string, mode: 'mock' | 'live'): ModelResolution;
+  retryAfterMs?(model: ModelProfileSnapshot): number;
 }
 
 /** The browser runtime and tests: every profile runs simulated; nothing runs live. */
@@ -716,6 +728,7 @@ interface ToolFrame {
     resultRef: string | null,
     error?: string | null,
     outcome?: EventPayload<'effect.settled'>['outcome'],
+    progressHash?: string,
   ): EventDraft[];
 }
 
@@ -739,6 +752,7 @@ export class Coordinator {
   private readonly ids: IdFactory;
   private readonly agents: AgentAdapter;
   private readonly store: RunStore;
+  private readonly modelAttempts: ModelAttemptStore | undefined;
   private readonly runner: GraphRunner;
   private readonly decisions: DecisionPolicy | undefined;
   private readonly gates: AdmissionGates;
@@ -767,7 +781,11 @@ export class Coordinator {
   private readonly drainingRuns = new Set<LiveRun>();
   private hostModels = 0;
   private hostResidents = 0;
-  private readonly modelWaiters: { run: LiveRun; grant: () => void }[] = [];
+  private readonly modelWaiters: { run?: LiveRun; grant: () => void }[] = [];
+  private readonly modelTransports = new Map<
+    string,
+    { run: LiveRun; input: AgentStartInput; observe: AgentHost['observe']; queueWaitMs: number }
+  >();
   private readonly serviceRuns = new Set<LiveRun>();
   private readonly previewRuns = new Set<LiveRun>();
   private readonly stoppingServices = new Map<LiveRun, Promise<void>>();
@@ -777,6 +795,7 @@ export class Coordinator {
     this.ids = deps.ids;
     this.agents = deps.agents;
     this.store = deps.store ?? new InMemoryRunStore();
+    this.modelAttempts = deps.modelAttempts;
     this.runner = deps.runner ?? new SequentialPlanRunner();
     this.decisions = deps.decisions;
     this.corrals = deps.corrals;
@@ -894,10 +913,13 @@ export class Coordinator {
     if (!manifestText || !stateText)
       throw new ToolRefusal('STORAGE_UNAVAILABLE', 'runtime checkpoint is incomplete');
     const manifest = RuntimeCheckpointManifest.parse(JSON.parse(manifestText));
-    const state = RuntimeCheckpointState.parse(JSON.parse(stateText));
+    const storedState = JSON.parse(stateText);
+    const state = decodeContextCheckpoint(storedState, (id) =>
+      this.store.getArtifactText(runId, id),
+    );
     if (
       hashOf(manifest) !== record.manifestHash ||
-      hashOf(state) !== manifest.contextHash ||
+      hashOf(storedState) !== manifest.contextHash ||
       utf8ToBytes(stateText).length !== manifest.contextBytes ||
       manifest.runId !== runId ||
       manifest.checkpointId !== checkpointId ||
@@ -906,12 +928,170 @@ export class Coordinator {
       manifest.contextRef !== record.contextRef ||
       manifest.sessionId !== (source.sessionId ?? null) ||
       manifest.definitionHash !== source.snapshot.definitionHash ||
-      hashOf(state.context.context) !== state.context.contextHash ||
       hashOf(state.criteria) !== manifest.criteriaHash ||
       hashOf(state.protectedContext.text) !== state.protectedContext.hash
     )
       throw new ToolRefusal('REVISION_CONFLICT', 'runtime checkpoint integrity changed');
     return { source, record, manifest, state };
+  }
+
+  private async runtimeCheckpointView({
+    source,
+    record,
+    manifest,
+    state,
+  }: ReturnType<Coordinator['loadRuntimeCheckpoint']>): Promise<RuntimeCheckpointView> {
+    const runId = source.runId;
+    const blockers: string[] = [];
+    if (!this.runtimeRecovery) blockers.push('termination_unverified');
+    if (
+      this.store
+        .listRuns()
+        .some((item) => this.store.getRun(item.runId)?.snapshot.resumedFrom?.runId === runId)
+    )
+      blockers.push('already_resumed');
+    const sourceExecution = source.projection.executions[manifest.executionId];
+    if (
+      !sourceExecution ||
+      source.projection.executionOrder.some(
+        (id) =>
+          source.projection.executions[id]?.nodeId === sourceExecution.nodeId &&
+          source.projection.executions[id]!.attemptNo > manifest.attemptNo,
+      )
+    )
+      blockers.push('unsupported_state');
+    if (!['interrupted', 'failed', 'cancelled'].includes(source.projection.status))
+      blockers.push('source_not_stopped');
+    if (!this.admitting || this.live.get(runId)?.handles.size) blockers.push('worker_not_stopped');
+    if (
+      !this.runtimeSupported(source.snapshot.definition, source.snapshot.harnesses?.[state.role.id])
+    )
+      blockers.push('unsupported_state');
+    if (source.projection.currentCriteriaVersionId !== manifest.criteriaVersionId)
+      blockers.push('criteria_changed');
+    if (
+      source.projection.budget.reserved ||
+      source.projection.budget.unknownOutstanding ||
+      Object.values(source.projection.effects).some(
+        (effect) =>
+          effect.kind !== 'spawn' && (effect.status === 'admitted' || effect.outcome === 'unknown'),
+      )
+    )
+      blockers.push('unsettled_effects');
+    const events = this.store.readEvents(runId, 0);
+    const unanswered = new Set<string>();
+    for (const event of events) {
+      if (event.type === 'user_input.requested' || event.type === 'extension.ui_requested')
+        unanswered.add(event.payload.requestId);
+      if (
+        event.type === 'user_input.answered' ||
+        event.type === 'user_input.closed' ||
+        event.type === 'extension.ui_answered' ||
+        event.type === 'extension.ui_expired'
+      )
+        unanswered.delete(event.payload.requestId);
+    }
+    if (
+      unanswered.size ||
+      Object.values(source.projection.approvals).some(
+        (approval) => approval.status === 'pending',
+      ) ||
+      Object.values(source.projection.questions).some((question) => question.status === 'open')
+    )
+      blockers.push('pending_interaction');
+    if (
+      events.some(
+        (event) => event.runSeq > manifest.eventSeq && event.type === 'runtime.checkpoint_skipped',
+      )
+    )
+      blockers.push('checkpoint_capacity');
+    if (
+      Object.values(source.projection.directives).some(
+        (directive) => directive.acceptedSeq > manifest.eventSeq,
+      ) ||
+      events.some(
+        (event) =>
+          event.runSeq > manifest.eventSeq &&
+          [
+            'user_input.answered',
+            'work_plan.updated',
+            'extension.ui_answered',
+            'patch.committed',
+          ].includes(event.type),
+      )
+    )
+      blockers.push('newer_instruction');
+    if (
+      events.some(
+        (event) =>
+          event.runSeq > manifest.eventSeq &&
+          event.type === 'tool.started' &&
+          ![
+            'read_file',
+            'list_files',
+            'search_files',
+            'read_artifact',
+            'write_artifact',
+            'submit_result',
+            'update_plan',
+            'ask_user',
+            'read_document',
+            'search',
+            'verify_output',
+          ].includes(source.projection.toolCalls[event.payload.toolCallId]?.name ?? ''),
+      )
+    )
+      blockers.push('newer_external_effect');
+    const model = this.resumeModel(
+      state.role.modelProfile,
+      'live',
+      source.snapshot.models[state.role.modelProfile],
+    );
+    if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash) blockers.push('model_changed');
+    try {
+      if (state.role.harness) {
+        const resolved = this.harnesses?.resolve(
+          state.role.harness,
+          source.snapshot.definition,
+          state.role.id,
+          source.sessionId ? { sessionId: source.sessionId } : undefined,
+        );
+        if (!resolved || resolved.snapshotHash !== manifest.harnessHash)
+          blockers.push('resources_changed');
+      } else if (manifest.harnessHash !== null) blockers.push('resources_changed');
+    } catch {
+      blockers.push('resources_changed');
+    }
+    if (manifest.files) {
+      if (
+        !this.files?.verifyRuntimeFiles ||
+        !(await this.files.verifyRuntimeFiles(runId, manifest.files))
+      )
+        blockers.push('files_changed_or_uncertain');
+    } else if (this.files?.available(runId)) blockers.push('files_changed_or_uncertain');
+    const limits = { ...(source.projection.limits ?? source.snapshot.definition.limits) };
+    if (!source.projection.usageLimits) {
+      limits.maxModelCalls -= source.projection.budget.modelCalls;
+      limits.maxOutputTokens -=
+        source.projection.budget.spent +
+        source.projection.budget.reserved +
+        source.projection.budget.unknownOutstanding;
+      limits.maxOutputTokensPerCall = Math.min(
+        limits.maxOutputTokensPerCall,
+        Math.max(1, limits.maxOutputTokens),
+      );
+      if (limits.maxModelCalls < 1 || limits.maxOutputTokens < 1) blockers.push('budget_exhausted');
+    }
+    return {
+      ...record,
+      sourceSeq: source.projection.lastSeq,
+      createdAt: manifest.createdAt,
+      runtime: manifest.runtime,
+      ...(source.projection.usageLimits ? { usageLimits: source.projection.usageLimits } : {}),
+      ready: !blockers.length,
+      blockers: [...new Set(blockers)],
+      limits: limits.maxModelCalls > 0 && limits.maxOutputTokens > 0 ? limits : null,
+    };
   }
 
   async runtimeCheckpoints(runId: string): Promise<RuntimeCheckpointView[]> {
@@ -920,162 +1100,9 @@ export class Coordinator {
     const views: RuntimeCheckpointView[] = [];
     for (const record of Object.values(source.projection.runtimeCheckpoints ?? {}).reverse()) {
       try {
-        const { manifest, state } = this.loadRuntimeCheckpoint(runId, record.checkpointId);
-        const blockers: string[] = [];
-        if (!this.runtimeRecovery) blockers.push('termination_unverified');
-        if (
-          this.store
-            .listRuns()
-            .some((item) => this.store.getRun(item.runId)?.snapshot.resumedFrom?.runId === runId)
-        )
-          blockers.push('already_resumed');
-        const sourceExecution = source.projection.executions[manifest.executionId];
-        if (
-          !sourceExecution ||
-          source.projection.executionOrder.some(
-            (id) =>
-              source.projection.executions[id]?.nodeId === sourceExecution.nodeId &&
-              source.projection.executions[id]!.attemptNo > manifest.attemptNo,
-          )
-        )
-          blockers.push('unsupported_state');
-        if (!['interrupted', 'failed', 'cancelled'].includes(source.projection.status))
-          blockers.push('source_not_stopped');
-        if (!this.admitting || this.live.get(runId)?.handles.size)
-          blockers.push('worker_not_stopped');
-        if (
-          !this.runtimeSupported(
-            source.snapshot.definition,
-            source.snapshot.harnesses?.[state.role.id],
-          )
-        )
-          blockers.push('unsupported_state');
-        if (source.projection.currentCriteriaVersionId !== manifest.criteriaVersionId)
-          blockers.push('criteria_changed');
-        if (
-          source.projection.budget.reserved ||
-          source.projection.budget.unknownOutstanding ||
-          Object.values(source.projection.effects).some(
-            (effect) =>
-              effect.kind !== 'spawn' &&
-              (effect.status === 'admitted' || effect.outcome === 'unknown'),
-          )
-        )
-          blockers.push('unsettled_effects');
-        const events = this.store.readEvents(runId, 0);
-        const unanswered = new Set<string>();
-        for (const event of events) {
-          if (event.type === 'user_input.requested' || event.type === 'extension.ui_requested')
-            unanswered.add(event.payload.requestId);
-          if (
-            event.type === 'user_input.answered' ||
-            event.type === 'user_input.closed' ||
-            event.type === 'extension.ui_answered' ||
-            event.type === 'extension.ui_expired'
-          )
-            unanswered.delete(event.payload.requestId);
-        }
-        if (
-          unanswered.size ||
-          Object.values(source.projection.approvals).some(
-            (approval) => approval.status === 'pending',
-          ) ||
-          Object.values(source.projection.questions).some((question) => question.status === 'open')
-        )
-          blockers.push('pending_interaction');
-        if (
-          events.some(
-            (event) =>
-              event.runSeq > manifest.eventSeq && event.type === 'runtime.checkpoint_skipped',
-          )
-        )
-          blockers.push('checkpoint_capacity');
-        if (
-          Object.values(source.projection.directives).some(
-            (directive) => directive.acceptedSeq > manifest.eventSeq,
-          ) ||
-          events.some(
-            (event) =>
-              event.runSeq > manifest.eventSeq &&
-              [
-                'user_input.answered',
-                'work_plan.updated',
-                'extension.ui_answered',
-                'patch.committed',
-              ].includes(event.type),
-          )
-        )
-          blockers.push('newer_instruction');
-        if (
-          events.some(
-            (event) =>
-              event.runSeq > manifest.eventSeq &&
-              event.type === 'tool.started' &&
-              ![
-                'read_file',
-                'list_files',
-                'search_files',
-                'read_artifact',
-                'write_artifact',
-                'submit_result',
-                'update_plan',
-                'ask_user',
-                'read_document',
-                'search',
-                'verify_output',
-              ].includes(source.projection.toolCalls[event.payload.toolCallId]?.name ?? ''),
-          )
-        )
-          blockers.push('newer_external_effect');
-        const model = this.resumeModel(
-          state.role.modelProfile,
-          'live',
-          source.snapshot.models[state.role.modelProfile],
+        views.push(
+          await this.runtimeCheckpointView(this.loadRuntimeCheckpoint(runId, record.checkpointId)),
         );
-        if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash)
-          blockers.push('model_changed');
-        try {
-          if (state.role.harness) {
-            const resolved = this.harnesses?.resolve(
-              state.role.harness,
-              source.snapshot.definition,
-              state.role.id,
-              source.sessionId ? { sessionId: source.sessionId } : undefined,
-            );
-            if (!resolved || resolved.snapshotHash !== manifest.harnessHash)
-              blockers.push('resources_changed');
-          } else if (manifest.harnessHash !== null) blockers.push('resources_changed');
-        } catch {
-          blockers.push('resources_changed');
-        }
-        if (manifest.files) {
-          if (
-            !this.files?.verifyRuntimeFiles ||
-            !(await this.files.verifyRuntimeFiles(runId, manifest.files))
-          )
-            blockers.push('files_changed_or_uncertain');
-        } else if (this.files?.available(runId)) blockers.push('files_changed_or_uncertain');
-        const limits = { ...(source.projection.limits ?? source.snapshot.definition.limits) };
-        limits.maxModelCalls -= source.projection.budget.modelCalls;
-        limits.maxOutputTokens -=
-          source.projection.budget.spent +
-          source.projection.budget.reserved +
-          source.projection.budget.unknownOutstanding;
-        limits.maxOutputTokensPerCall = Math.min(
-          limits.maxOutputTokensPerCall,
-          Math.max(1, limits.maxOutputTokens),
-        );
-        if (limits.maxModelCalls < 1 || limits.maxOutputTokens < 1)
-          blockers.push('budget_exhausted');
-        views.push({
-          ...record,
-          sourceSeq: source.projection.lastSeq,
-          createdAt: manifest.createdAt,
-          runtime: manifest.runtime,
-          ready: !blockers.length,
-          blockers: [...new Set(blockers)],
-          limits: limits.maxModelCalls > 0 && limits.maxOutputTokens > 0 ? limits : null,
-        });
       } catch {
         views.push({
           ...record,
@@ -1113,9 +1140,7 @@ export class Coordinator {
           recovery.source.projection.lastSeq !== request.expectedSourceSeq
         )
           return refuse('REVISION_CONFLICT', 'checkpoint or source sequence changed');
-        const preview = (await this.runtimeCheckpoints(request.sourceRunId)).find(
-          (item) => item.checkpointId === request.checkpointId,
-        );
+        const preview = await this.runtimeCheckpointView(recovery);
         if (!preview?.ready || !preview.limits)
           return refuse(
             'CAPABILITY_DENIED',
@@ -1133,6 +1158,23 @@ export class Coordinator {
         definition.roles = [recovery.state.role];
         definition.input.criteria = [recovery.state.criteria];
         definition.limits = preview.limits;
+        definition.executionPolicy =
+          preview.usageLimits === 'none'
+            ? { version: 2 }
+            : {
+                version: 2,
+                budget: {
+                  maxModelCalls: preview.limits.maxModelCalls,
+                  maxOutputTokens: preview.limits.maxOutputTokens,
+                  maxOutputTokensPerCall: preview.limits.maxOutputTokensPerCall,
+                  ...(definition.executionPolicy?.budget?.modelTimeoutMs !== undefined
+                    ? { modelTimeoutMs: definition.executionPolicy.budget.modelTimeoutMs }
+                    : {}),
+                  ...(definition.executionPolicy?.budget?.runDeadlineMs !== undefined
+                    ? { runDeadlineMs: definition.executionPolicy.budget.runDeadlineMs }
+                    : {}),
+                },
+              };
         return this.startRunWithRecovery(
           {
             schemaVersion: '0.1',
@@ -1180,6 +1222,7 @@ export class Coordinator {
         checkpointId: files?.checkpointId ?? null,
         tree: files?.tree ?? null,
         modelProfile: [...new Set(definition.roles.map((role) => role.modelProfile))].join(', '),
+        ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
         limits: definition.limits,
       };
       return {
@@ -1369,6 +1412,7 @@ export class Coordinator {
       checkpointId: recovery?.manifest.checkpointId ?? null,
       tree: files?.tree ?? null,
       modelProfile: role.modelProfile,
+      ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
       limits: definition.limits,
     };
     return {
@@ -1505,6 +1549,48 @@ export class Coordinator {
     return this.startRunWithRecovery(raw, undefined, undefined, preparedModels);
   }
 
+  /** Reuse only a completed, matching participant context. Otherwise the meeting sends its full posted history. */
+  meetingContinuation(
+    runId: string,
+    sessionId: string,
+    participantId: string,
+    role: import('@corral/contracts').AgentRole,
+    mode?: 'mock' | 'live',
+  ) {
+    const source = this.store.getRun(runId);
+    if (
+      !source ||
+      source.projection.status !== 'succeeded' ||
+      source.snapshot.meeting?.sessionId !== sessionId ||
+      source.snapshot.meeting.participantId !== participantId ||
+      (mode && source.snapshot.mode !== mode)
+    )
+      return null;
+    const record = Object.values(source.projection.runtimeCheckpoints ?? {}).at(-1);
+    if (!record) return null;
+    const model = this.models.resolve(role.modelProfile, source.snapshot.mode);
+    if (!model.ok || hashOf(model.snapshot) !== hashOf(source.snapshot.models[role.modelProfile]))
+      return null;
+    try {
+      const { state } = this.loadRuntimeCheckpoint(runId, record.checkpointId);
+      const last = state.context.context.messages.at(-1);
+      if (
+        hashOf(state.role) !== hashOf(role) ||
+        last?.role !== 'assistant' ||
+        last.stopReason !== 'stop'
+      )
+        return null;
+      return {
+        runId,
+        checkpointId: record.checkpointId,
+        manifestHash: record.manifestHash,
+        contextHash: hashOf(state),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private startRunWithRecovery(
     raw: StartRunRequest | CreateRunRequest,
     recovery?: ReturnType<Coordinator['loadRuntimeCheckpoint']> & { requestHash: string },
@@ -1563,6 +1649,7 @@ export class Coordinator {
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
     const meeting = 'meeting' in request ? request.meeting : undefined;
+    let meetingContext: RuntimeCheckpointState | undefined;
     if (meeting) {
       // CR-049: only a read-only, single-answer Run in its own meeting is exempt from limits.
       const parsed = CorralDefinition.safeParse(resolved.definition);
@@ -1583,6 +1670,21 @@ export class Coordinator {
           code: 'CAPABILITY_DENIED',
           message: 'A meeting answer is one read-only role in its own meeting session',
         });
+      if (meeting.contextSource) {
+        const source = this.meetingContinuation(
+          meeting.contextSource.runId,
+          meeting.sessionId,
+          meeting.participantId,
+          parsed.data.roles[0]!,
+          request.mode,
+        );
+        if (!source || canonicalJson(source) !== canonicalJson(meeting.contextSource))
+          return refuse({
+            code: 'REVISION_CONFLICT',
+            message: 'The participant context changed; prepare the conversation again.',
+          });
+        meetingContext = this.loadRuntimeCheckpoint(source.runId, source.checkpointId).state;
+      }
     }
     const autoRoute = 'autoRoute' in request ? request.autoRoute : undefined;
     if (autoRoute?.ultra) {
@@ -1716,7 +1818,12 @@ export class Coordinator {
       0,
       ...Object.values(planned.plan.loops).map((l) => l.maxIterations),
     );
-    const overCaps = limitViolations(planned.definition.limits, loopRounds, this.policy);
+    const overCaps = limitViolations(
+      planned.definition.limits,
+      loopRounds,
+      this.policy,
+      !planned.definition.executionPolicy?.budget,
+    );
     if (overCaps.length > 0) return refuse({ code: 'GRAPH_INVALID', message: overCaps.join('; ') });
     // Every profile resolves now, so the run never meets an unusable model halfway.
     const models: Record<string, ModelProfileSnapshot> = {};
@@ -2060,9 +2167,7 @@ export class Coordinator {
       handles: new Map(),
       rounds: new Map(),
       recipes: new Map(),
-      ...(snapshot.autoRoute?.ultra?.version === 2 || snapshot.meeting
-        ? { usageLimits: 'none' as const }
-        : {}),
+      ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
       extraInputs: new Map(),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
       ultraDraining: false,
@@ -2089,7 +2194,21 @@ export class Coordinator {
         this.judgments?.settings.reasoning_effort.maxCalls ?? definition.limits.maxModelCalls,
       ),
       capStop: null,
-      limits: { ...definition.limits },
+      limits: definition.executionPolicy?.budget
+        ? {
+            ...definition.limits,
+            maxModelCalls:
+              definition.executionPolicy.budget.maxModelCalls ?? Number.MAX_SAFE_INTEGER,
+            maxOutputTokens:
+              definition.executionPolicy.budget.maxOutputTokens ?? Number.MAX_SAFE_INTEGER,
+            maxOutputTokensPerCall:
+              definition.executionPolicy.budget.maxOutputTokensPerCall ?? Number.MAX_SAFE_INTEGER,
+            runDeadlineMs:
+              definition.executionPolicy.budget.runDeadlineMs ?? Number.MAX_SAFE_INTEGER,
+            modelTimeoutMs:
+              definition.executionPolicy.budget.modelTimeoutMs ?? Number.MAX_SAFE_INTEGER,
+          }
+        : { ...definition.limits },
       criteriaVersionId: snapshot.criteriaVersionId,
       pendingCriteriaVersionId: null,
       cancelDeadline: () => {},
@@ -2115,7 +2234,8 @@ export class Coordinator {
           mode: request.mode,
           ...(snapshot.permissionMode ? { permissionMode: snapshot.permissionMode } : {}),
           modelProfiles: Object.values(models),
-          limits: definition.limits,
+          limits: run.limits,
+          ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
           criteriaVersionId: snapshot.criteriaVersionId,
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
           ...(snapshot.imageProfiles ? { imageProfiles: snapshot.imageProfiles } : {}),
@@ -2135,27 +2255,10 @@ export class Coordinator {
             : {}),
         },
       },
-      ...(snapshot.autoRoute && snapshot.autoRoute.source !== 'local'
-        ? [
-            {
-              type: 'budget.reserved',
-              payload: {
-                reservationId: 'auto_route',
-                modelCallId: null,
-                scope: runId,
-                amount: { outputTokens: AUTO_ROUTE_MAX_OUTPUT_TOKENS, modelCalls: 1 },
-              },
-            } satisfies EventDraft,
-            {
-              type: 'budget.settled',
-              payload: {
-                reservationId: 'auto_route',
-                actual: { outputTokens: snapshot.autoRoute.usage?.outputTokens ?? null },
-                unknownOutstanding: snapshot.autoRoute.usage ? 0 : AUTO_ROUTE_MAX_OUTPUT_TOKENS,
-              },
-            } satisfies EventDraft,
-          ]
-        : []),
+      ...this.chooserBudget(
+        { runId, snapshot, projection: run.projection, sessionId: request.sessionId },
+        request.commandId,
+      ),
       runState('created', 'validating', 'run_requested'),
       runState('validating', 'running', 'validation_passed'),
     ]);
@@ -2178,6 +2281,10 @@ export class Coordinator {
           sessionId: request.sessionId ?? null,
         });
         this.write(runId, events, projection);
+        for (const source of (meetingContext ?? recovery?.state ?? branch?.state)?.sources ?? [])
+          this.store.putArtifactText(runId, source.sourceRef, source.text);
+        if (meetingContext)
+          this.store.putArtifactText(runId, 'meeting_context', canonicalJson(meetingContext));
         if (recovery && snapshot.resumedFrom)
           this.store.putArtifactText(
             runId,
@@ -2213,7 +2320,7 @@ export class Coordinator {
     }
     this.live.set(runId, run);
     this.publish(run, projection);
-    if (!run.usageLimits)
+    if (definition.executionPolicy?.budget?.runDeadlineMs !== undefined)
       run.cancelDeadline = this.timers.after(run.limits.runDeadlineMs, () => {
         if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
         this.commit(run, [
@@ -2535,12 +2642,8 @@ export class Coordinator {
     )
       return refuse('TARGET_TERMINAL', 'execution attempt is no longer current');
     const handle = run.handles.get(execution.executionId);
-    if (
-      run.snapshot.mode !== 'live' ||
-      !run.snapshot.harnesses?.[run.projection.tasks[execution.taskId]?.roleId ?? ''] ||
-      !handle?.requestCompaction
-    )
-      return refuse('CAPABILITY_DENIED', 'manual compaction requires the SDK runtime');
+    if (run.snapshot.mode !== 'live' || !handle?.requestCompaction)
+      return refuse('CAPABILITY_DENIED', 'manual compaction requires a live managed runtime');
     if (
       Object.values(run.projection.compactions ?? {}).some(
         (item) =>
@@ -2936,12 +3039,22 @@ export class Coordinator {
       after = { maxIterations: change.maxIterations };
     } else if (change.kind === 'run_limits') {
       for (const [key, value] of Object.entries(change.changes))
-        if (value > this.policy[key as keyof InstallationPolicy])
+        if (key === 'maxSpawns' && value > this.policy.maxSpawns)
           return refuse('LIMIT_REACHED', `${key} exceeds installation policy`);
       before = Object.fromEntries(
         Object.keys(change.changes).map((k) => [k, run.limits[k as keyof typeof run.limits]]),
       );
-      after = { ...change.changes };
+      after = {
+        ...(run.usageLimits &&
+        (change.changes.maxModelCalls !== undefined || change.changes.maxOutputTokens !== undefined)
+          ? {
+              maxModelCalls: Number.MAX_SAFE_INTEGER,
+              maxOutputTokens: Number.MAX_SAFE_INTEGER,
+              maxOutputTokensPerCall: Number.MAX_SAFE_INTEGER,
+            }
+          : {}),
+        ...change.changes,
+      };
     } else {
       if (run.snapshot.definition.nodes.some((node) => node.type === 'loop' && node.reviewRecipe))
         return refuse(
@@ -3014,8 +3127,14 @@ export class Coordinator {
       if (step?.kind === 'loop') step.maxIterations = change.maxIterations;
       const loop = run.plan.loops[change.nodeId];
       if (loop) loop.maxIterations = change.maxIterations;
-    } else if (change.kind === 'run_limits') run.limits = { ...run.limits, ...change.changes };
-    else {
+    } else if (change.kind === 'run_limits') {
+      run.limits = { ...run.limits, ...after };
+      if (
+        change.changes.maxModelCalls !== undefined ||
+        change.changes.maxOutputTokens !== undefined
+      )
+        delete run.usageLimits;
+    } else {
       run.pendingCriteriaVersionId = String(after.criteriaVersionId);
       for (const [oldId, resolve] of [...run.approvals]) {
         const old = run.projection.approvals[oldId];
@@ -5209,8 +5328,11 @@ export class Coordinator {
       spec.item ??
       (spec.parentExecutionId ? run.startInputs.get(spec.parentExecutionId)?.item : undefined);
     const contextRef =
-      run.snapshot.resumedFrom?.contextRef ?? run.snapshot.branchedFrom?.contextRef;
+      run.snapshot.resumedFrom?.contextRef ??
+      run.snapshot.branchedFrom?.contextRef ??
+      (run.snapshot.meeting?.contextSource ? 'meeting_context' : undefined);
     const input: AgentStartInput = {
+      sessionId: this.store.getRun(run.runId)?.sessionId ?? undefined,
       ...(run.snapshot.meeting ? { meeting: run.snapshot.meeting } : {}),
       ...(contextRef
         ? {
@@ -5303,6 +5425,17 @@ export class Coordinator {
           }),
         });
     }
+    if (role.allowedCollaborationTools.includes('read_artifact')) {
+      input.inputs = input.inputs.map((source) => {
+        if (source.artifactVersionId || source.sourceRef || !source.text) return source;
+        const sourceRef = `source_${hashOf(source.text)}`;
+        if (this.store.getArtifactText(run.runId, sourceRef) === null)
+          this.store.putArtifactText(run.runId, sourceRef, source.text);
+        return { ...source, sourceRef };
+      });
+    }
+    if (spec.nodeId === 'judge' && run.snapshot.autoRoute?.ultra?.version === 2)
+      input.inputs = projectJudgeInputs(input.inputs, model);
     run.inputsByExecution.set(executionId, input.inputs);
     const resolvedImages = generatedImageInputs(
       run.runId,
@@ -5330,7 +5463,7 @@ export class Coordinator {
       ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
       sourceRefs: input.inputs.map((source) => ({
         name: source.name,
-        artifactVersionId: source.artifactVersionId,
+        artifactVersionId: source.artifactVersionId ?? source.sourceRef ?? null,
       })),
       resources: input.harness?.resources ?? [],
     };
@@ -5684,6 +5817,167 @@ export class Coordinator {
 
   // ── model slots ───────────────────────────────────────────────────────────
 
+  private chooserBudget(
+    run: {
+      runId: string;
+      snapshot: RunSnapshot;
+      projection: RunProjection;
+      sessionId?: string | null;
+    },
+    commandId: string,
+  ): EventDraft[] {
+    const route = run.snapshot.autoRoute;
+    if (!route || route.source === 'local') return [];
+    const requests = this.modelAttempts
+      ? this.modelAttempts
+          .list(commandId)
+          .filter(
+            (attempt) =>
+              attempt.intent.owner.kind === 'chooser' &&
+              attempt.intent.owner.id === commandId &&
+              attempt.intent.requestId === commandId &&
+              attempt.intent.revision === 0 &&
+              (attempt.intent.owner.sessionId ?? null) === (run.sessionId ?? null) &&
+              attempt.prepared,
+          )
+          .map((attempt) => ({
+            id: `auto_route:${attempt.attemptId}`,
+            allowance: attempt.prepared!.outputAllowance,
+            actual: attempt.usage.outputTokens,
+          }))
+      : route.usage
+        ? [
+            {
+              id: 'auto_route',
+              allowance: route.usage.outputTokens,
+              actual: route.usage.outputTokens,
+            },
+          ]
+        : [];
+    const drafts: EventDraft[] = [];
+    for (const request of requests) {
+      const previous = run.projection.budget.reservations[request.id];
+      if (
+        previous?.status === 'settled' ||
+        (previous?.status === 'unknown' && request.actual === null)
+      )
+        continue;
+      if (!previous)
+        drafts.push({
+          type: 'budget.reserved',
+          payload: {
+            reservationId: request.id,
+            modelCallId: null,
+            scope: run.runId,
+            amount: { outputTokens: request.allowance, modelCalls: 1 },
+          },
+        });
+      drafts.push({
+        type: 'budget.settled',
+        payload: {
+          reservationId: request.id,
+          actual: { outputTokens: request.actual },
+          unknownOutstanding: request.actual === null ? request.allowance : 0,
+        },
+      });
+    }
+    return drafts;
+  }
+
+  /** Host usage can settle the original choice after its Run has finished, without resuming it. */
+  settleAutoRouteUsage(intent: ModelRequestIntent) {
+    if (
+      intent.owner.kind !== 'chooser' ||
+      intent.owner.id !== intent.requestId ||
+      intent.revision !== 0
+    )
+      return;
+    const command = this.store.getCommand(START_SCOPE, intent.requestId);
+    const stored = command?.runId ? this.store.getRun(command.runId) : null;
+    if (!stored || (stored.sessionId ?? null) !== (intent.owner.sessionId ?? null)) return;
+    const live = this.live.get(stored.runId);
+    const run = { ...stored, projection: live?.projection ?? stored.projection };
+    const drafts = this.chooserBudget(run, intent.requestId);
+    if (!drafts.length) return;
+    if (live) this.commit(live, drafts);
+    else {
+      const { events, projection } = this.prepare(run, drafts);
+      this.persist(() => this.write(run.runId, events, projection));
+      for (const subscriber of this.subscribers)
+        if (subscriber.runId === run.runId)
+          void Promise.resolve().then(() => this.pump(subscriber));
+    }
+  }
+
+  /** Transfer the prepared slot to its physical transport, including after worker cancellation. */
+  adoptModelSlot(intent: ModelRequestIntent) {
+    const { runId, executionId, modelCallId } = intent.owner;
+    const entry = modelCallId ? this.modelTransports.get(modelCallId) : undefined;
+    if (
+      !entry ||
+      entry.run.runId !== runId ||
+      entry.input.executionId !== executionId ||
+      entry.input.attemptNo !== intent.revision ||
+      entry.run.slots.held.get(modelCallId!) !== executionId ||
+      entry.run.cancelRequested.has(executionId!) ||
+      entry.run.projection.modelCalls[modelCallId!]?.finished ||
+      TERMINAL_RUN_STATUSES.has(entry.run.projection.status)
+    )
+      throw new Error('model transport has no current prepared slot');
+    this.modelTransports.delete(modelCallId!);
+    entry.run.slots.held.delete(modelCallId!);
+    let held = true;
+    return {
+      queueWaitMs: entry.queueWaitMs,
+      release: () => {
+        if (held) {
+          held = false;
+          this.releaseSlot(entry.run);
+        }
+      },
+      lateUsage: (usage: AgentObservation['usage'], rawUsage: Record<string, unknown>) =>
+        entry.observe({
+          kind: 'model_completed',
+          modelCallId: modelCallId!,
+          text: '',
+          usage,
+          rawUsage,
+        }),
+    };
+  }
+
+  /** Pre-Run requests share the host queue without inventing domain executions. */
+  async acquireAuxiliaryModelSlot(signal: DecisionCancellation): Promise<() => void> {
+    if (signal.aborted) throw new Error('request cancelled');
+    await new Promise<void>((resolve, reject) => {
+      let off = () => {};
+      const waiter = {
+        grant: () => {
+          off();
+          this.hostModels++;
+          resolve();
+        },
+      };
+      const cancel = () => {
+        const index = this.modelWaiters.indexOf(waiter);
+        if (index >= 0) this.modelWaiters.splice(index, 1);
+        off();
+        reject(new Error('request cancelled'));
+        this.drainModelWaiters();
+      };
+      off = signal.onCancel(cancel);
+      this.modelWaiters.push(waiter);
+      this.drainModelWaiters();
+    });
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      this.hostModels--;
+      this.drainModelWaiters();
+    };
+  }
+
   private async acquireSlot(run: LiveRun, executionId: string): Promise<void> {
     if (
       run.slots.free > 0 &&
@@ -5723,6 +6017,38 @@ export class Coordinator {
     }
   }
 
+  private async acquireModelSlot(run: LiveRun, input: AgentStartInput): Promise<void> {
+    const executionId = input.executionId;
+    for (;;) {
+      const wait = this.models.retryAfterMs?.(input.model) ?? 0;
+      if (wait > 0) {
+        const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+        run.cancelListeners.set(executionId, listeners);
+        run.boundaries.add(executionId);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const cancel = () => {
+              stop();
+              listeners.delete(cancel);
+              reject(new Error('scope cancelled'));
+            };
+            const stop = this.timers.after(wait, () => {
+              listeners.delete(cancel);
+              resolve();
+            });
+            listeners.add(cancel);
+            if (run.cancelRequested.has(executionId)) cancel();
+          });
+        } finally {
+          run.boundaries.delete(executionId);
+        }
+      }
+      await this.acquireSlot(run, executionId);
+      if (!(this.models.retryAfterMs?.(input.model) ?? 0)) return;
+      this.releaseSlot(run);
+    }
+  }
+
   private releaseSlot(run: LiveRun) {
     run.slots.free++;
     this.hostModels--;
@@ -5731,7 +6057,9 @@ export class Coordinator {
 
   private drainModelWaiters() {
     while (this.hostModels < this.policy.maxModelConcurrency) {
-      const index = this.modelWaiters.findIndex((waiter) => waiter.run.slots.free > 0);
+      const index = this.modelWaiters.findIndex(
+        (waiter) => !waiter.run || waiter.run.slots.free > 0,
+      );
       if (index < 0) return;
       this.modelWaiters.splice(index, 1)[0]!.grant();
     }
@@ -5741,6 +6069,7 @@ export class Coordinator {
     for (const [modelCallId, owner] of run.slots.held) {
       if (owner !== executionId) continue;
       run.slots.held.delete(modelCallId);
+      this.modelTransports.delete(modelCallId);
       if (confirmed) this.releaseSlot(run);
       else run.slots.free++;
     }
@@ -7101,6 +7430,8 @@ export class Coordinator {
       return null;
     };
     let protectedContextIssued = false;
+    let protectedEventSeq = 0;
+    const interactions: unknown[] = [];
     const protectedContext = () => {
       requireOwned();
       const read = (ref: string) => {
@@ -7108,36 +7439,42 @@ export class Coordinator {
         if (body === null) throw new Error('protected context body is unavailable');
         return body;
       };
-      const interactions = this.store.readEvents(run.runId, 0).flatMap((event) => {
-        if (
-          ![
-            'user_input.requested',
-            'user_input.answered',
-            'user_input.closed',
-            'extension.ui_requested',
-            'extension.ui_answered',
-            'extension.ui_expired',
-          ].includes(event.type)
-        )
-          return [];
-        if (
-          !('executionId' in event.payload) ||
-          event.payload.executionId !== executionId ||
-          !('attemptNo' in event.payload) ||
-          event.payload.attemptNo !== input.attemptNo
-        )
-          return [];
-        return [
-          {
-            type: event.type,
-            ...event.payload,
-            ...('bodyRef' in event.payload ? { body: read(event.payload.bodyRef as string) } : {}),
-            ...('answerRef' in event.payload
-              ? { answer: read(event.payload.answerRef as string) }
-              : {}),
-          },
-        ];
-      });
+      if (run.projection.lastSeq > protectedEventSeq) {
+        const additional = this.store.readEvents(run.runId, protectedEventSeq).flatMap((event) => {
+          if (
+            ![
+              'user_input.requested',
+              'user_input.answered',
+              'user_input.closed',
+              'extension.ui_requested',
+              'extension.ui_answered',
+              'extension.ui_expired',
+            ].includes(event.type)
+          )
+            return [];
+          if (
+            !('executionId' in event.payload) ||
+            event.payload.executionId !== executionId ||
+            !('attemptNo' in event.payload) ||
+            event.payload.attemptNo !== input.attemptNo
+          )
+            return [];
+          return [
+            {
+              type: event.type,
+              ...event.payload,
+              ...('bodyRef' in event.payload
+                ? { body: read(event.payload.bodyRef as string) }
+                : {}),
+              ...('answerRef' in event.payload
+                ? { answer: read(event.payload.answerRef as string) }
+                : {}),
+            },
+          ];
+        });
+        interactions.push(...additional);
+        protectedEventSeq = run.projection.lastSeq;
+      }
       const plans = Object.values(run.projection.workPlans ?? {})
         .filter((plan) => plan.executionId === executionId || plan.scope === 'team')
         .map((plan) => ({ ...plan, body: WorkPlan.parse(JSON.parse(read(plan.bodyRef))) }));
@@ -7164,11 +7501,20 @@ export class Coordinator {
             : [];
         }),
         artifactReads: run.projection.artifactReads[executionId] ?? [],
-        taskBrief: input.taskBrief ?? null,
+        taskBrief: taskBriefForModel(input.taskBrief) ?? null,
+        item: input.item ?? null,
+        targetArtifactVersionId:
+          input.role.outputContract === 'review'
+            ? ((
+                input.inputs.find((item) => item.name === 'draft' && item.artifactVersionId) ??
+                input.inputs.find((item) => item.artifactVersionId)
+              )?.artifactVersionId ?? null)
+            : null,
         references: input.inputs.map((item) => ({
           name: item.name,
           kind: item.kind,
           artifactVersionId: item.artifactVersionId,
+          ...(item.sourceRef ? { sourceRef: item.sourceRef } : {}),
         })),
         resources: input.harness?.resources ?? [],
       });
@@ -7177,6 +7523,11 @@ export class Coordinator {
       return ProtectedContext.parse({ version: 1, text, hash: hashOf(text) });
     };
     const recordedPayloads = new Set<string>();
+    let committedCheckpointChunks = new Set<string>();
+    const committedCheckpointSources = new Map<
+      string,
+      NonNullable<ContextCheckpointV2['sources']>[number]
+    >();
     let preparing = false;
     const toolView = (proposal: ToolProposal): ToolGateView => ({
       ...this.toolView(run, input, proposal),
@@ -7527,6 +7878,7 @@ export class Coordinator {
         resultRef: string | null,
         error: string | null = null,
         outcome: EventPayload<'effect.settled'>['outcome'] = error ? 'failed' : 'succeeded',
+        progressHash?: string,
       ): EventDraft[] =>
         run.projection.effects[effectId] && run.projection.effects[effectId]?.status !== 'admitted'
           ? []
@@ -7534,7 +7886,13 @@ export class Coordinator {
               {
                 type: 'tool.finished',
                 executionId,
-                payload: { executionId, toolCallId, resultRef, error },
+                payload: {
+                  executionId,
+                  toolCallId,
+                  resultRef,
+                  error,
+                  ...(progressHash ? { progressHash } : {}),
+                },
               },
               {
                 type: 'effect.settled',
@@ -7686,7 +8044,7 @@ export class Coordinator {
       );
       return outcome;
     };
-    return {
+    const host: AgentHost & { submitMeetingAnswer(settlement: AgentSettlement): Promise<void> } = {
       ...(harness
         ? {
             requestExtensionUi: (
@@ -7987,15 +8345,40 @@ export class Coordinator {
           )
         )
           throw new Error('runtime context is invalid');
+        const sources = new Map<string, NonNullable<RuntimeCheckpointState['sources']>[number]>();
+        for (const source of input.resumeContext?.sources ?? [])
+          if (!committedCheckpointSources.has(source.toolCallId ?? source.sourceRef))
+            sources.set(source.toolCallId ?? source.sourceRef, source);
+        for (const source of input.inputs)
+          if (
+            source.sourceRef &&
+            !committedCheckpointSources.has(source.sourceRef) &&
+            !sources.has(source.sourceRef)
+          ) {
+            const text = this.store.getArtifactText(run.runId, source.sourceRef);
+            if (text === null) throw new Error('checkpoint input source is missing');
+            sources.set(source.sourceRef, { sourceRef: source.sourceRef, text });
+          }
+        for (const [id, call] of Object.entries(run.projection.toolCalls)) {
+          if (call.executionId !== executionId || committedCheckpointSources.has(id)) continue;
+          const sourceRef = this.toolResultSource(run, input, id);
+          if (!sourceRef) continue;
+          const text = this.store.getArtifactText(run.runId, sourceRef);
+          if (text === null) throw new Error('checkpoint tool source is missing');
+          sources.set(id, { sourceRef, toolCallId: id, text });
+        }
         const state = RuntimeCheckpointState.parse({
           version: 1,
           context,
           role: input.role,
           criteria: this.store.getArtifactText(run.runId, input.criteriaVersionId),
           protectedContext: protectedContext(),
+          ...(sources.size ? { sources: [...sources.values()] } : {}),
         });
-        const text = canonicalJson(state),
-          contextHash = hashOf(state),
+        const priorSources = [...committedCheckpointSources.values()];
+        const encoded = encodeContextCheckpoint(state, priorSources);
+        const text = encoded.text,
+          contextHash = bytesToHex(sha256(utf8ToBytes(text))),
           contextBytes = utf8ToBytes(text).length;
         const prior = Object.values(run.projection.runtimeCheckpoints ?? {});
         if (
@@ -8004,10 +8387,7 @@ export class Coordinator {
           return prior.find(
             (item) => item.executionId === executionId && item.contextHash === contextHash,
           )!;
-        if (
-          contextBytes > 4 * 1024 * 1024 ||
-          prior.reduce((sum, item) => sum + item.contextBytes, 0) + contextBytes > 64 * 1024 * 1024
-        ) {
+        if (contextBytes > 4 * 1024 * 1024) {
           if (
             !this.store
               .readEvents(run.runId, 0)
@@ -8044,7 +8424,7 @@ export class Coordinator {
         )
           return null;
         const manifest = RuntimeCheckpointManifest.parse({
-          version: 1,
+          version: 2,
           piVersion: '1.3.0',
           checkpointId,
           runId: run.runId,
@@ -8079,10 +8459,25 @@ export class Coordinator {
           run,
           [{ type: 'runtime.checkpoint_created', executionId, payload: record }],
           () => {
+            for (const [ref, body] of encoded.chunks) {
+              if (
+                !committedCheckpointChunks.has(ref) &&
+                this.store.getArtifactText(run.runId, ref) === null
+              )
+                this.store.putArtifactText(run.runId, ref, body);
+            }
             this.store.putArtifactText(run.runId, contextRef, text);
             this.store.putArtifactText(run.runId, manifestRef, canonicalJson(manifest));
           },
         );
+        // Only committed references can bypass a later body lookup.
+        committedCheckpointChunks = new Set(checkpointReferences(encoded.stored));
+        [...sources.keys()].forEach((key, index) => {
+          committedCheckpointSources.set(
+            key,
+            encoded.stored.sources![priorSources.length + index]!,
+          );
+        });
         return record;
       },
       reportCompaction: async (raw) => {
@@ -8265,11 +8660,7 @@ export class Coordinator {
             const exhausted = run.reasoningCalls >= run.reasoningMaxCalls;
             if (!exhausted) run.reasoningCalls++;
             run.boundaries.add(executionId);
-            let reasoningSlot = false;
             try {
-              await this.acquireSlot(run, executionId);
-              reasoningSlot = true;
-              run.boundaries.add(executionId);
               reasoning = await automaticReasoning(
                 privateInput,
                 {
@@ -8288,7 +8679,6 @@ export class Coordinator {
                 exhausted,
               );
             } finally {
-              if (reasoningSlot) this.releaseSlot(run);
               run.boundaries.delete(executionId);
             }
             const paused = run.projection.status !== 'running';
@@ -8299,7 +8689,9 @@ export class Coordinator {
             if (paused || fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
           }
           // Wait for a model slot; a waiting execution is not in a request and holds none.
-          await this.acquireSlot(run, executionId);
+          const queuedAt = this.clock.monotonicMs();
+          await this.acquireModelSlot(run, input);
+          const queueWaitMs = Math.max(0, this.clock.monotonicMs() - queuedAt);
           try {
             do {
               await this.boundary(run, executionId);
@@ -8351,8 +8743,20 @@ export class Coordinator {
           // The reservation itself is the Coordinator's: even without a budget gate, a request the
           // budget cannot cover is not admitted.
           const admitted = run.usageLimits
-            ? { ok: true as const, maxOutputTokens: UNLIMITED_OUTPUT_TOKENS_PER_CALL }
-            : admitModelRequest(run.projection.budget, limits);
+            ? {
+                ok: true as const,
+                maxOutputTokens:
+                  input.model.maxOutputTokens ??
+                  run.snapshot.definition.limits.maxOutputTokensPerCall,
+              }
+            : admitModelRequest(run.projection.budget, {
+                ...limits,
+                maxOutputTokensPerCall: Math.min(
+                  limits.maxOutputTokensPerCall,
+                  input.model.maxOutputTokens ??
+                    run.snapshot.definition.limits.maxOutputTokensPerCall,
+                ),
+              });
           if (!admitted.ok) {
             this.releaseSlot(run);
             this.commit(run, [
@@ -8429,7 +8833,9 @@ export class Coordinator {
                 inputArtifactVersionIds: [
                   ...new Set([
                     ...(run.inputsByExecution.get(executionId) ?? input.inputs).flatMap((i) =>
-                      i.artifactVersionId ? [i.artifactVersionId] : [],
+                      [i.artifactVersionId, i.sourceRef].filter(
+                        (id): id is string => typeof id === 'string',
+                      ),
                     ),
                     ...(run.projection.artifactReads[executionId] ?? []),
                   ]),
@@ -8449,7 +8855,8 @@ export class Coordinator {
             },
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
-          if (!run.usageLimits)
+          this.modelTransports.set(modelCallId, { run, input, observe: host.observe, queueWaitMs });
+          if (run.snapshot.definition.executionPolicy?.budget?.modelTimeoutMs !== undefined)
             run.requestDeadlines.set(
               modelCallId,
               this.timers.after(run.limits.modelTimeoutMs, () => {
@@ -8529,6 +8936,7 @@ export class Coordinator {
       },
 
       observe: async (observation: AgentObservation) => {
+        this.modelTransports.delete(observation.modelCallId);
         const call = run.projection.modelCalls[observation.modelCallId];
         if (!call || call.executionId !== executionId) throw new Error('unknown model call');
         run.requestDeadlines.get(observation.modelCallId)?.();
@@ -8607,8 +9015,28 @@ export class Coordinator {
             executionId,
             payload: { effectId, outcome: late ? 'unknown' : 'succeeded' },
           });
+        const warningRef =
+          !late && run.usageLimits && run.projection.progress.turns === NO_PROGRESS_TURNS - 1
+            ? `notice_${observation.modelCallId}`
+            : null;
+        const warning =
+          'No new file evidence, artifact or review progress in the last six model replies. This run continues; you can pause or stop it.';
+        if (warningRef)
+          drafts.push({
+            type: 'extension.ui_notified',
+            executionId,
+            payload: {
+              executionId,
+              kind: 'notify',
+              key: 'no_progress',
+              level: 'warning',
+              bodyRef: warningRef,
+              bodyHash: hashOf(warning),
+            },
+          });
         this.commit(run, drafts, () => {
           if (responseRef) this.store.putArtifactText(run.runId, responseRef, observation.text);
+          if (warningRef) this.store.putArtifactText(run.runId, warningRef, warning);
         });
         this.maybePaused(run);
       },
@@ -8662,6 +9090,7 @@ export class Coordinator {
         this.publishFrame({ runId: run.runId, ...delta });
       },
     };
+    return host;
   }
 
   /** What tool gates see: the run as committed, this execution and the proposed call. */
@@ -8710,6 +9139,7 @@ export class Coordinator {
       },
       parentQuestionTarget: (nodeId) => this.parentQuestionTarget(run, input, nodeId)?.executionId,
       readable: () => this.readable(run, input),
+      toolResultSource: (id) => this.toolResultSource(run, input, id),
     };
   }
 
@@ -8732,16 +9162,32 @@ export class Coordinator {
     throw new Error(`${refusal.code}: ${refusal.message}`);
   }
 
+  private toolResultSource(run: LiveRun, input: AgentStartInput, id: string): string | null {
+    const call = run.projection.toolCalls[id];
+    if (call)
+      return call.executionId === input.executionId && call.phase === 'finished'
+        ? (call.resultRef ?? null)
+        : null;
+    return (
+      input.resumeContext?.sources?.find((source) => source.toolCallId === id)?.sourceRef ?? null
+    );
+  }
+
   /**
    * What an execution may read: its own versions, its inputs, what its children submitted,
    * the versions a question to it refers to, and the evidence of answers it received.
    */
   private readable(run: LiveRun, input: AgentStartInput): Set<string> {
     const p = run.projection;
-    const ids = new Set<string>();
+    const ids = new Set<string>(
+      (input.resumeContext?.sources ?? []).map((source) => source.sourceRef),
+    );
     for (const a of Object.values(p.artifacts))
       if (a.authorExecutionId === input.executionId) ids.add(a.artifactVersionId);
-    for (const i of input.inputs) if (i.artifactVersionId) ids.add(i.artifactVersionId);
+    for (const i of input.inputs) {
+      if (i.artifactVersionId) ids.add(i.artifactVersionId);
+      if (i.sourceRef) ids.add(i.sourceRef);
+    }
     for (const child of Object.values(p.executions)) {
       if (child.parentExecutionId !== input.executionId) continue;
       for (const id of p.tasks[child.taskId]?.submittedArtifactVersionIds ?? []) ids.add(id);
@@ -9459,17 +9905,34 @@ export class Coordinator {
     proposal: ToolProposal,
     tool: ToolFrame,
   ): Promise<ToolOutcome> {
-    const id = proposal.args.artifactVersionId as string;
-    const text = this.store.getArtifactText(run.runId, id) ?? '';
+    const originalTool = typeof proposal.args.toolCallId === 'string';
+    const id = originalTool
+      ? this.toolResultSource(run, input, proposal.args.toolCallId as string)
+      : (proposal.args.artifactVersionId as string);
+    const text = id ? this.store.getArtifactText(run.runId, id) : null;
+    if (!id || text === null) {
+      this.commit(run, [...tool.opening, ...tool.closing(null, 'original source unavailable')]);
+      return {
+        ok: false,
+        toolCallId: tool.toolCallId,
+        error: { code: 'TARGET_NOT_FOUND', message: 'original source unavailable' },
+      };
+    }
+    const points = Array.from(text),
+      offset = Number(proposal.args.offset ?? 0),
+      limit = Number(proposal.args.limit ?? 8192);
+    const end = Math.min(points.length, offset + limit);
     let images: ImageInput[] = [];
     try {
-      images = generatedImageInputs(
-        run.runId,
-        [{ artifactVersionId: id }],
-        run.projection.artifacts,
-        input.model,
-        this.imageGeneration?.read,
-      );
+      images = originalTool
+        ? []
+        : generatedImageInputs(
+            run.runId,
+            [{ artifactVersionId: id }],
+            run.projection.artifacts,
+            input.model,
+            this.imageGeneration?.read,
+          );
     } catch {
       this.commit(run, [
         ...tool.opening,
@@ -9486,23 +9949,31 @@ export class Coordinator {
     }
     this.commit(run, [
       ...tool.opening,
-      {
-        type: 'artifact.read',
-        executionId: input.executionId,
-        payload: {
-          requestedRef: id,
-          resolvedVersionId: id,
-          consumerExecutionId: input.executionId,
-        },
-      },
+      ...(!originalTool
+        ? [
+            {
+              type: 'artifact.read',
+              executionId: input.executionId,
+              payload: {
+                requestedRef: id,
+                resolvedVersionId: id,
+                consumerExecutionId: input.executionId,
+              },
+            } satisfies EventDraft,
+          ]
+        : []),
       ...tool.closing(id),
     ]);
     return {
       ok: true,
       toolCallId: tool.toolCallId,
       result: {
-        artifactVersionId: id,
-        text,
+        ...(originalTool ? { toolCallId: proposal.args.toolCallId } : { artifactVersionId: id }),
+        text: points.slice(offset, end).join(''),
+        offset,
+        totalCharacters: points.length,
+        complete: offset === 0 && end === points.length,
+        nextOffset: end < points.length ? end : null,
         ...(images.length ? { images } : {}),
         ...(run.projection.artifacts[id]?.media
           ? { media: run.projection.artifacts[id]?.media }
@@ -10049,7 +10520,37 @@ export class Coordinator {
       this.commit(
         run,
         [
-          ...tool.closing(resultRef),
+          ...tool.closing(
+            resultRef,
+            null,
+            'succeeded',
+            hashOf({
+              tool: proposal.name,
+              args: proposal.args,
+              evidence: Object.fromEntries(
+                [
+                  'path',
+                  'sha256',
+                  'tag',
+                  'text',
+                  'content',
+                  'lines',
+                  'entries',
+                  'tree',
+                  'verdict',
+                  'state',
+                  'exitCode',
+                  'files',
+                ]
+                  .filter((key) => result[key] !== undefined)
+                  .map((key) => [key, result[key]]),
+              ),
+              output:
+                typeof result.output === 'object' && result.output !== null
+                  ? (result.output as { text?: unknown }).text
+                  : (result.output ?? null),
+            }),
+          ),
           ...(skill && typeof result.sha256 === 'string'
             ? [
                 {
@@ -10074,7 +10575,16 @@ export class Coordinator {
         ...inputs,
         { name: proposal.name, kind: 'explicit_version', artifactVersionId: resultRef, text },
       ]);
-      return { ok: true, toolCallId: tool.toolCallId, result };
+      return {
+        ok: true,
+        toolCallId: tool.toolCallId,
+        result: {
+          ...result,
+          ...(text.length > 8192 && input.role.allowedCollaborationTools.includes('read_artifact')
+            ? { contextSource: { toolCallId: tool.toolCallId } }
+            : {}),
+        },
+      };
     } catch (error) {
       // A file backend's refusal (conflict, path policy) is told to the agent as it is.
       const refusal = error instanceof ToolRefusal ? error : null;

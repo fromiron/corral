@@ -176,22 +176,22 @@ export type CapabilityLink = z.infer<typeof CapabilityLink>;
 
 export const RunLimits = z.strictObject({
   maxDelegationDepth: z.literal(2),
-  maxModelConcurrency: z.int().min(1).max(3),
+  maxModelConcurrency: z.int().min(1),
   maxSpawns: z.int().min(1).max(32),
-  maxModelCalls: z.int().min(1).max(100),
-  maxOutputTokens: z.int().min(1).max(256000),
-  maxOutputTokensPerCall: z.int().min(1).max(4096),
+  maxModelCalls: z.int().min(1),
+  maxOutputTokens: z.int().min(1),
+  maxOutputTokensPerCall: z.int().min(1),
   maxQuestions: z.int().min(0).max(6),
   questionTimeoutMs: z.int().min(1000).max(300000),
-  modelTimeoutMs: z.int().min(1000).max(300000),
-  runDeadlineMs: z.int().min(1000).max(3600000),
+  modelTimeoutMs: z.int().min(1000),
+  runDeadlineMs: z.int().min(1000),
 });
 export type RunLimits = z.infer<typeof RunLimits>;
 
 /** Starting limits from Spec §9; hard caps are enforced by the installation policy. */
 export const DEFAULT_LIMITS: RunLimits = {
   maxDelegationDepth: 2,
-  maxModelConcurrency: 3,
+  maxModelConcurrency: 6,
   maxSpawns: 12,
   maxModelCalls: 40,
   maxOutputTokens: 64000,
@@ -232,7 +232,52 @@ export const TaskBrief = z.strictObject({
 });
 export type TaskBrief = z.infer<typeof TaskBrief>;
 
+/** Model-visible metadata excludes inactive legacy caps and internal unlimited sentinels. */
+export function taskBriefForModel(brief: TaskBrief | undefined) {
+  if (!brief) return undefined;
+  const {
+    maxModelCalls,
+    maxOutputTokens,
+    maxOutputTokensPerCall,
+    modelTimeoutMs,
+    runDeadlineMs,
+    ...resources
+  } = brief.limits;
+  const budget = {
+    maxModelCalls,
+    maxOutputTokens,
+    maxOutputTokensPerCall,
+    modelTimeoutMs,
+    runDeadlineMs,
+  };
+  return {
+    ...brief,
+    limits: resources,
+    usageBudget:
+      brief.usageLimits === 'none'
+        ? null
+        : Object.fromEntries(
+            Object.entries(budget).filter(([, value]) => value < Number.MAX_SAFE_INTEGER),
+          ),
+  };
+}
+
+export const ExecutionPolicy = z.strictObject({
+  version: z.literal(2),
+  budget: z
+    .strictObject({
+      maxModelCalls: z.int().positive().optional(),
+      maxOutputTokens: z.int().positive().optional(),
+      maxOutputTokensPerCall: z.int().positive().optional(),
+      runDeadlineMs: z.int().min(1000).optional(),
+      modelTimeoutMs: z.int().min(1000).optional(),
+    })
+    .optional(),
+});
+export type ExecutionPolicy = z.infer<typeof ExecutionPolicy>;
+
 export const CorralDefinition = z.strictObject({
+  executionPolicy: ExecutionPolicy.optional(),
   planOwnerRoleId: Identifier.optional(),
   schemaVersion: SchemaVersion,
   id: Identifier,

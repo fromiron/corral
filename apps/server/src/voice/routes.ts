@@ -1,3 +1,4 @@
+import type { ModelAttemptStore } from '@corral/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { ModelRegistry } from '../models/registry.ts';
@@ -23,9 +24,11 @@ export function registerVoiceRoutes(
     hasSession: (id: string) => Promise<boolean>;
     hasRun: (sessionId: string, runId: string) => Promise<boolean>;
     service?: VoiceService;
+    usageStore?: ModelAttemptStore;
   },
 ) {
-  const voice = options.service ?? new VoiceService(options.registry);
+  const voice =
+    options.service ?? new VoiceService(options.registry, { usageStore: options.usageStore });
   app.addHook('onClose', () => voice.close());
   app.get('/api/v1/voice', () => voice.configuration());
   app.post('/api/v1/voice/calls', { bodyLimit: 160_000 }, async (request, reply) => {

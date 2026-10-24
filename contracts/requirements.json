@@ -1024,5 +1024,41 @@
     "requirement": "CR-051: Keep the session workspace understandable. Dock controls sit in each area's header and open every pane in its own area without covering the conversation; a new layout starts with the conversation and the panes it links to; display density lives in the page menu; a finished run shows one status with one link to its record; remaining visible native controls use the design kit. Preserve keyboard arrangement, the narrow pane switcher, documents, drafts, Run control and saved layouts.",
     "owner": "studio",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-LLM-001",
+    "requirement": "CR-052: request inventory and precedence; preserve ownership, cancellation, historical snapshots and evidence boundaries.",
+    "owner": "core",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-002",
+    "requirement": "CR-052: shared request admission and usage accounting; preserve ownership, cancellation, historical snapshots and evidence boundaries.",
+    "owner": "server",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-003",
+    "requirement": "CR-052: host transport and incremental IPC; preserve ownership, cancellation, historical snapshots and evidence boundaries.",
+    "owner": "adapter",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-004",
+    "requirement": "CR-052: ported context cache and checkpoint policy; preserve ownership, cancellation, historical snapshots and evidence boundaries.",
+    "owner": "adapter",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-005",
+    "requirement": "CR-052: unlimited migration and orchestration; preserve ownership, cancellation, historical snapshots and evidence boundaries.",
+    "owner": "core",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-006",
+    "requirement": "CR-052: live comparison and distribution verification; preserve ownership, cancellation, historical snapshots and evidence boundaries.",
+    "owner": "server",
+    "phase": "M8"
   }
 ]

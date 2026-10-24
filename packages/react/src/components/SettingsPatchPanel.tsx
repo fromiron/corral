@@ -86,7 +86,11 @@ export function SettingsPatchPanel({
   const limits = projection.limits ?? definition.limits;
   const current =
     kind === 'run_limits'
-      ? String(limits[field as 'maxOutputTokens' | 'maxModelCalls' | 'maxSpawns'])
+      ? field !== 'maxSpawns' &&
+        (projection.usageLimits === 'none' ||
+          limits[field as 'maxOutputTokens' | 'maxModelCalls'] === Number.MAX_SAFE_INTEGER)
+        ? t('unlimited')
+        : String(limits[field as 'maxOutputTokens' | 'maxModelCalls' | 'maxSpawns'])
       : kind === 'criteria'
         ? criteriaId
           ? (criteriaText ?? t('loadingCriteria'))

@@ -1,10 +1,31 @@
 import { prerelease, valid } from 'semver';
 
+export const SOURCE_PORTS = [
+  {
+    name: '@corral/pi-runtime-port',
+    version: '0.0.0',
+    license: 'LGPL-3.0-only',
+    path: 'packages/pi-runtime-port',
+    repository: 'vastsa/pi-desktop',
+    commit: '1a812ed7b84e0bd1b117080eb4e51c76eba35d48',
+  },
+  {
+    name: 'deepseek-harness-port',
+    version: '0.0.0',
+    license: 'MIT',
+    path: 'packages/adapter-pi/src/ported/dsh',
+    repository: 'deepseek-ai/deepseek-harness',
+    commit: '22ddee3792402c3e70ec5f86a63c3e3e895a2f60',
+  },
+] as const;
+
 // Exact expressions reviewed for this pinned tree; an unfamiliar expression blocks release.
 const REVIEWED = new Set([
   'MIT',
   'Apache-2.0',
   'MPL-2.0',
+  // DOMPurify 3.4.15 offers either already-reviewed license; its Apache-2.0 terms apply.
+  '(MPL-2.0 OR Apache-2.0)',
   'MIT OR Apache-2.0',
   'MIT-0',
   'BSD-3-Clause',
@@ -88,7 +109,18 @@ export function createInventory(
     .flatMap(([license, packages]) => {
       // Pierre 1.5.2 publishes the SPDX Apache identifier in lowercase.
       const normalized = license === 'apache-2.0' ? 'Apache-2.0' : license;
-      if (!REVIEWED.has(normalized)) throw new Error(`Unreviewed license: ${license}`);
+      if (
+        !REVIEWED.has(normalized) &&
+        !packages.every((pkg) =>
+          pkg.versions.every((version) =>
+            SOURCE_PORTS.some(
+              (port) =>
+                port.name === pkg.name && port.version === version && port.license === normalized,
+            ),
+          ),
+        )
+      )
+        throw new Error(`Unreviewed license: ${license}`);
       return packages.flatMap((pkg) =>
         pkg.versions.map((version) => {
           assertReviewedVersion(pkg.name, version, license, reviewedPrereleases);
@@ -98,23 +130,32 @@ export function createInventory(
     })
     .sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`));
   if (!entries.length) throw new Error('Empty license inventory');
-  const packages = entries.map((entry, index) => ({
-    SPDXID: `SPDXRef-Package-${index + 1}`,
-    name: entry.name,
-    versionInfo: entry.version,
-    downloadLocation: `https://registry.npmjs.org/${entry.name}/-/${entry.name.split('/').at(-1)}-${entry.version}.tgz`,
-    filesAnalyzed: false,
-    licenseConcluded: 'NOASSERTION',
-    licenseDeclared: entry.license,
-    copyrightText: 'NOASSERTION',
-    externalRefs: [
-      {
-        referenceCategory: 'PACKAGE-MANAGER',
-        referenceType: 'purl',
-        referenceLocator: `pkg:npm/${entry.name.replace('@', '%40')}@${entry.version}`,
-      },
-    ],
-  }));
+  const packages = entries.map((entry, index) => {
+    const port = SOURCE_PORTS.find(
+      (port) => port.name === entry.name && port.version === entry.version,
+    );
+    return {
+      SPDXID: `SPDXRef-Package-${index + 1}`,
+      name: entry.name,
+      versionInfo: entry.version,
+      downloadLocation: port
+        ? `https://github.com/${port.repository}/tree/${port.commit}`
+        : `https://registry.npmjs.org/${entry.name}/-/${entry.name.split('/').at(-1)}-${entry.version}.tgz`,
+      filesAnalyzed: false,
+      licenseConcluded: 'NOASSERTION',
+      licenseDeclared: entry.license,
+      copyrightText: 'NOASSERTION',
+      externalRefs: [
+        {
+          referenceCategory: 'PACKAGE-MANAGER',
+          referenceType: 'purl',
+          referenceLocator: port
+            ? `pkg:github/${port.repository}@${port.commit}`
+            : `pkg:npm/${entry.name.replace('@', '%40')}@${entry.version}`,
+        },
+      ],
+    };
+  });
   return {
     spdxVersion: 'SPDX-2.3',
     dataLicense: 'CC0-1.0',

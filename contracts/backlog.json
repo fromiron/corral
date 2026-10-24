@@ -3530,5 +3530,117 @@
     "done": "Move dock controls into area headers with one placement rule, start new layouts with the conversation's linked panes, move display density to the page menu, show one status for a finished run, and replace the remaining visible native controls with kit components while preserving keyboard arrangement, narrow switching, documents, drafts and Run control.",
     "status": "implemented",
     "evidence": "docs/evaluation/Session-Workspace-Simplification-2026-10-24.md"
+  },
+  {
+    "id": "C-179",
+    "phase": "M8",
+    "title": "CR-052 request inventory and precedence",
+    "dependsOn": [],
+    "requirements": [
+      "CRL-LLM-001"
+    ],
+    "files": [
+      "packages/",
+      "apps/server/",
+      "docs/"
+    ],
+    "done": "Implement and verify request inventory and precedence against CR-052 acceptance criteria.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/llm-modernization/report.md"
+  },
+  {
+    "id": "C-180",
+    "phase": "M8",
+    "title": "CR-052 shared request admission and usage accounting",
+    "dependsOn": [
+      "C-179"
+    ],
+    "requirements": [
+      "CRL-LLM-002"
+    ],
+    "files": [
+      "packages/",
+      "apps/server/",
+      "docs/"
+    ],
+    "done": "Implement and verify shared request admission and usage accounting against CR-052 acceptance criteria.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/llm-modernization/report.md"
+  },
+  {
+    "id": "C-181",
+    "phase": "M8",
+    "title": "CR-052 host transport and incremental IPC",
+    "dependsOn": [
+      "C-180"
+    ],
+    "requirements": [
+      "CRL-LLM-003"
+    ],
+    "files": [
+      "packages/",
+      "apps/server/",
+      "docs/"
+    ],
+    "done": "Implement and verify host transport and incremental IPC against CR-052 acceptance criteria.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/llm-modernization/report.md"
+  },
+  {
+    "id": "C-182",
+    "phase": "M8",
+    "title": "CR-052 ported context cache and checkpoint policy",
+    "dependsOn": [
+      "C-181"
+    ],
+    "requirements": [
+      "CRL-LLM-004"
+    ],
+    "files": [
+      "packages/",
+      "apps/server/",
+      "docs/"
+    ],
+    "done": "Implement and verify ported context cache and checkpoint policy against CR-052 acceptance criteria.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/llm-modernization/report.md"
+  },
+  {
+    "id": "C-183",
+    "phase": "M8",
+    "title": "CR-052 unlimited migration and orchestration",
+    "dependsOn": [
+      "C-182"
+    ],
+    "requirements": [
+      "CRL-LLM-005"
+    ],
+    "files": [
+      "packages/",
+      "apps/server/",
+      "docs/"
+    ],
+    "done": "Implement and verify unlimited migration and orchestration against CR-052 acceptance criteria.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/llm-modernization/report.md"
+  },
+  {
+    "id": "C-184",
+    "phase": "M8",
+    "title": "CR-052 live comparison and distribution verification",
+    "dependsOn": [
+      "C-183"
+    ],
+    "requirements": [
+      "CRL-LLM-006"
+    ],
+    "files": [
+      "packages/",
+      "apps/server/",
+      "docs/"
+    ],
+    "done": "Implement and verify live comparison and distribution verification against CR-052 acceptance criteria.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/llm-modernization/report.md"
   }
 ]

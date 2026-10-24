@@ -17,6 +17,7 @@ import { recordWorkerLease, recoverSdkWorkers } from './worker-leases.ts';
 
 export interface Channel {
   send(frame: unknown): void;
+  sendAsync?(frame: unknown): Promise<void>;
   onFrame(handler: (frame: unknown) => void): void;
   /** Called once when the worker is gone; `code` is null when it was killed by a signal. */
   onExit(handler: (code: number | null, cleanupConfirmed?: boolean) => void): void;
@@ -173,6 +174,14 @@ export function processChannel(
     send: (frame) => {
       if (!exited && child.connected) child.send(frame as never, () => {});
     },
+    sendAsync: (frame) =>
+      new Promise<void>((resolve, reject) => {
+        if (exited || !child.connected) {
+          resolve();
+          return;
+        }
+        child.send(frame as never, (error) => (error ? reject(error) : resolve()));
+      }),
     onFrame: (handler) =>
       void child.on('message', (frame: unknown) => {
         if (!isProcessCapacityFrame(frame)) handler(frame);
@@ -190,7 +199,7 @@ export function processChannel(
 /** Compatibility isolation for trusted native extensions; this is not an OS sandbox. */
 export function sdkProcessChannel(
   entry: string,
-  options: { leaseDirectory?: string } = {},
+  options: { leaseDirectory?: string; env?: Record<string, string> } = {},
 ): Channel {
   const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-'));
   const childLeaseDirectory = join(options.leaseDirectory ?? directory, `children-${randomUUID()}`);
@@ -199,6 +208,7 @@ export function sdkProcessChannel(
       ...options,
       childLeaseDirectory,
       env: {
+        ...options.env,
         CORRAL_WORKER_DIR: directory,
         CORRAL_WORKER_LEASE_DIR: childLeaseDirectory,
         HOME: directory,

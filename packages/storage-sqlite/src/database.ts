@@ -596,6 +596,16 @@ CREATE TABLE meeting_handoffs (
 CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
 `,
   },
+  {
+    name: '0035_model_attempts',
+    sql: `
+CREATE TABLE model_attempts (attempt_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, record_json TEXT NOT NULL) STRICT;
+CREATE INDEX model_attempts_owner ON model_attempts(owner_id);
+CREATE TABLE model_operations (operation_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, result_json TEXT) STRICT;
+CREATE TABLE model_attempt_events (seq INTEGER PRIMARY KEY, attempt_id TEXT NOT NULL REFERENCES model_attempts(attempt_id), record_json TEXT NOT NULL) STRICT;
+${IMMUTABLE('model_attempt_events')}
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

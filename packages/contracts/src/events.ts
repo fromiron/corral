@@ -75,6 +75,13 @@ export const ModelProfileSnapshot = z.strictObject({
   auth: z.enum(['oauth', 'api_key', 'mock']),
   contextWindow: z.int().min(1).max(10_000_000).optional(),
   contextPolicy: ProfileContextPolicy.optional(),
+  cachePolicy: z
+    .strictObject({
+      retention: z.enum(['none', 'short', 'long']),
+      source: z.enum(['profile', 'endpoint', 'environment', 'product']),
+    })
+    .optional(),
+  maxOutputTokens: z.int().positive().optional(),
   imageInput: z.boolean().optional(),
   endpointHash: ContentHash.optional(),
   workerIsolation: z.literal('linux-bwrap').optional(),
@@ -105,6 +112,7 @@ export const RunStarted = event(
     resumedFrom: ResumedFrom.optional(),
     branchedFrom: BranchedFrom.optional(),
     limits: RunLimits,
+    usageLimits: z.literal('none').optional(),
     criteriaVersionId: Identifier.optional(),
     /** Judgment settings fixed for the run (CR-003). Absent when the runtime has none. */
     decisions: RunDecisionSettings.optional(),
@@ -515,6 +523,7 @@ export const ToolFinished = event(
     toolCallId: Identifier,
     resultRef: Identifier.nullable(),
     error: z.string().min(1).nullable(),
+    progressHash: ContentHash.optional(),
   }),
 );
 export const ModelRequestPrepared = event(

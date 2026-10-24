@@ -1,0 +1,118 @@
+{
+  "candidate": "01107b574e2033d3472607f3f017043848f998c19b153ffec3da7369fd03d643",
+  "startedAt": "2026-10-24T07:49:20.903Z",
+  "rounds": [
+    {
+      "index": 0,
+      "answers": [
+        {
+          "participantId": "alpha",
+          "status": "answered",
+          "markerMatches": true,
+          "newInstructionMatches": true,
+          "continued": false,
+          "briefBytes": 448
+        },
+        {
+          "participantId": "beta",
+          "status": "answered",
+          "markerMatches": true,
+          "newInstructionMatches": true,
+          "continued": false,
+          "briefBytes": 448
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "answers": [
+        {
+          "participantId": "beta",
+          "status": "answered",
+          "markerMatches": true,
+          "newInstructionMatches": true,
+          "continued": true,
+          "briefBytes": 546
+        },
+        {
+          "participantId": "alpha",
+          "status": "answered",
+          "markerMatches": true,
+          "newInstructionMatches": true,
+          "continued": true,
+          "briefBytes": 578
+        }
+      ]
+    }
+  ],
+  "maxConcurrent": 2,
+  "usageRows": [
+    {
+      "status": "completed",
+      "owner": "execution",
+      "purpose": "turn",
+      "usage": {
+        "version": 2,
+        "inputTokens": 1927,
+        "outputTokens": 13,
+        "reasoningTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "source": "reported",
+        "costStatus": "subscription",
+        "costUsd": null
+      }
+    },
+    {
+      "status": "completed",
+      "owner": "execution",
+      "purpose": "turn",
+      "usage": {
+        "version": 2,
+        "inputTokens": 2269,
+        "outputTokens": 7,
+        "reasoningTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "source": "reported",
+        "costStatus": "unknown",
+        "costUsd": null
+      }
+    },
+    {
+      "status": "completed",
+      "owner": "execution",
+      "purpose": "turn",
+      "usage": {
+        "version": 2,
+        "inputTokens": 1838,
+        "outputTokens": 24,
+        "reasoningTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "source": "reported",
+        "costStatus": "unknown",
+        "costUsd": null
+      }
+    },
+    {
+      "status": "completed",
+      "owner": "execution",
+      "purpose": "turn",
+      "usage": {
+        "version": 2,
+        "inputTokens": 1537,
+        "outputTokens": 17,
+        "reasoningTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "source": "reported",
+        "costStatus": "subscription",
+        "costUsd": null
+      }
+    }
+  ],
+  "calls": 4,
+  "reopenCalls": 0,
+  "endedAt": "2026-10-24T07:49:28.122Z"
+}

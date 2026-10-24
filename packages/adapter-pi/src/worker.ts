@@ -1,11 +1,35 @@
 import { createHash } from 'node:crypto';
 import type { DeliveredDirective } from '@corral/contracts';
 import { canonicalJson, type ReasoningResolution } from '@corral/contracts';
-import { Agent, type AgentTool, type StreamFn } from '@earendil-works/pi-agent-core';
-import type { AssistantMessage, Model } from '@earendil-works/pi-ai';
+import { accountModelStream } from '@corral/pi-runtime-port';
+import {
+  automaticCompactionThresholdFor,
+  contextBudgetLimitsFor,
+} from '@corral/pi-runtime-port/budget';
+import {
+  Agent,
+  type AgentContext,
+  type AgentTool,
+  type StreamFn,
+} from '@earendil-works/pi-agent-core';
+import {
+  type AssistantMessage,
+  type Context,
+  type Message,
+  type Model,
+  normalizeContext,
+  type SimpleStreamOptions,
+} from '@earendil-works/pi-ai';
 import type { Channel } from './channel.ts';
 import { inspectContext, reconcileContextUsage } from './context-usage.ts';
 import type { EndpointSpec } from './endpoint.ts';
+import {
+  ContextMeter,
+  measureContext,
+  pruneToolResults,
+  selectCompactableRange,
+  summarizeRegion,
+} from './ported/dsh/context.ts';
 import {
   HostFrame,
   LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION,
@@ -23,10 +47,13 @@ import {
   assertImagePayload,
   assertProtectedPayload,
   checkpointContext,
+  missingParentQuestions,
   requestRecord,
   resumedMessages,
   withProtectedContext,
+  withRequiredImages,
 } from './request-record.ts';
+import { managedRetryStream } from './request-retry.ts';
 import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
 import {
@@ -59,13 +86,15 @@ export interface WorkerDeps {
   ): Model<string> | undefined;
 }
 
-type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' | 'directive' }>;
+type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' | 'directive' | 'compact' }>;
 
 export function runWorker(port: Channel, deps: WorkerDeps): void {
   let executionId: string | null = null;
   let agent: Agent | null = null;
   let cancelled = false;
+  const cancellation = new AbortController();
   let nextRequest = 0;
+  let pendingCompaction: string | null = null;
   const directives = new Map<string, DeliveredDirective>();
   const waiting = new Map<string, (reply: Reply) => void>();
 
@@ -81,8 +110,13 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       return;
     }
     if (frame.executionId !== executionId) return;
+    if (frame.type === 'compact') {
+      pendingCompaction = frame.commandId;
+      return;
+    }
     if (frame.type === 'cancel') {
       cancelled = true;
+      cancellation.abort();
       for (const [requestId, resolve] of waiting)
         resolve({
           type: 'refused',
@@ -157,12 +191,15 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       return;
     }
 
-    let permit: {
+    type ModelPermit = {
       modelCallId: string;
       apiKey: string | null;
       maxOutputTokens: number;
       reasoning?: ReasoningResolution;
-    } | null = null;
+      sessionId?: string;
+      cacheRetention?: 'none' | 'short' | 'long';
+    };
+    let permit: ModelPermit | null = null;
     let protectedSections: ReturnType<typeof promptSections>;
     try {
       protectedSections = promptSections(start);
@@ -173,9 +210,13 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     let completionAccepted = false;
     let attemptedTools = false;
     let finalTextModelCallId: string | undefined;
+    const meter = new ContextMeter();
+    let lastPrepared: Context | undefined;
     let measuredContext: ReturnType<typeof inspectContext> | null = null;
     let chunk = 0;
     const authorized = new Map<string, string>();
+    let logicalRequests = 0;
+    let logicalRequestId = '';
 
     const tools: AgentTool[] = start.tools.map((name) => ({
       name,
@@ -201,137 +242,25 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       },
     }));
 
-    agent = new Agent({
-      initialState: {
-        model,
-        systemPrompt: systemPrompt(start),
-        tools,
-        messages: resumedMessages(start.resumeContext),
-      },
-      // Each request carries the token and output cap from its own permit.
-      streamFn: (m, context, options) => {
-        const active = permit;
-        const fence = providerRequestFence(m, undefined, options?.signal);
-        const chosen = reasoningRequest(m, options, active?.reasoning);
-        const stream = deps.streamFn(chosen.model, context, {
-          ...chosen.options,
-          maxRetries: 0,
-          ...(fence ? { fetch: fence.fetch, transport: 'sse' as const } : {}),
-          ...(keyOf(permit?.apiKey) ? { apiKey: keyOf(permit?.apiKey) } : {}),
-          ...(permit ? { maxTokens: requestOutputCap(chosen.model, permit.maxOutputTokens) } : {}),
-          onPayload: async (payload, payloadModel) => {
-            const actual = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
-            assertProtectedPayload(actual, protectedSections);
-            assertImagePayload(actual, start.images);
-            const wire = verifyReasoningWire(
-              m,
-              actual,
-              active?.reasoning,
-              active?.maxOutputTokens,
-              start.model.auth,
-            );
-            if (active) {
-              const serialized = canonicalJson(JSON.parse(JSON.stringify(actual)));
-              const contextUsage = measuredContext
-                ? reconcileContextUsage(measuredContext.usage, measuredContext.probes, serialized)
-                : undefined;
-              const reply = await call({
-                type: 'request_record',
-                modelCallId: active.modelCallId,
-                payloadHash: createHash('sha256').update(serialized).digest('hex'),
-                payloadBytes: Buffer.byteLength(serialized),
-                skills: [],
-                ...(contextUsage ? { contextUsage } : {}),
-                ...(wire ? { reasoning: wire } : {}),
-              });
-              if (reply.type !== 'ack' || cancelled) throw new Error('provider payload refused');
-            }
-            fence?.approve(actual);
-            return actual;
-          },
-        });
-        if (permit)
-          port.send({ type: 'request_dispatched', ...head, modelCallId: permit.modelCallId });
-        return stream;
-      },
-      getApiKey: () => keyOf(permit?.apiKey),
-      toolExecution: 'sequential',
-      finishTurn: () => (completionAccepted ? { action: 'end' } : undefined),
-      prepareRequest: async ({ context }) => {
-        let preparedContext = context;
-        const prepare = async () => {
-          const state = await call({ type: 'get_protected_context' });
-          if (state.type !== 'protected_context') throw new Error('protected context refused');
-          if (state.value) {
-            const protectedState = withProtectedContext(preparedContext, state.value);
-            preparedContext = protectedState.context;
-            protectedSections = [
-              ...protectedSections.filter((section) => section.name !== 'corral_state'),
-              protectedState.section,
-            ];
-          }
-          const present = JSON.stringify(preparedContext.messages);
-          const missing = [...directives.values()].filter(
-            (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
-          );
-          if (missing.length)
-            preparedContext = {
-              ...preparedContext,
-              messages: [
-                ...preparedContext.messages,
-                { role: 'user', content: directiveText(missing), timestamp: Date.now() },
-              ],
-            };
-          const assignment =
-            start.assignment.kind === 'delegated'
-              ? start.assignment.brief
-              : start.assignment.kind === 'question'
-                ? start.assignment.body
-                : '';
-          const saved = await call({
-            type: 'checkpoint_context',
-            value: checkpointContext(preparedContext, 'pi-core'),
-          });
-          if (saved.type !== 'runtime_checkpoint') throw new Error('runtime checkpoint refused');
-          measuredContext = inspectContext(preparedContext);
-          return call({
-            type: 'prepare_request',
-            record: requestRecord(
-              preparedContext,
-              'turn',
-              'pi-core',
-              [...directives.values()].map((d) => ({
-                directiveId: d.directiveId,
-                text: directiveText([d]),
-              })),
-              protectedSections,
-              { usage: measuredContext.usage },
-            ),
-            reasoningInput: requestReasoningInput(preparedContext, 'turn', assignment, [
-              ...directives.keys(),
-            ]),
-          });
-        };
-        let reply = await prepare();
-        for (let retries = 0; reply.type === 'reprepare' && retries < 2; retries++) {
-          for (const directive of reply.directives)
-            directives.set(directive.directiveId, directive);
-          reply = await prepare();
+    let forceCompaction = false;
+    const prepareRequest = async (context: AgentContext, retryIndex = 0) => {
+      if (!retryIndex) logicalRequestId = `request_${++logicalRequests}`;
+      let preparedContext = context;
+      const prepare = async () => {
+        const state = await call({ type: 'get_protected_context' });
+        if (state.type !== 'protected_context') throw new Error('protected context refused');
+        if (state.value) {
+          const protectedState = withProtectedContext(preparedContext, state.value);
+          preparedContext = protectedState.context;
+          protectedSections = [
+            ...protectedSections.filter((section) => section.name !== 'corral_state'),
+            protectedState.section,
+          ];
         }
-        if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
-        permit = {
-          modelCallId: reply.modelCallId,
-          apiKey: reply.apiKey,
-          maxOutputTokens: reply.maxOutputTokens,
-          ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
-        };
-        chunk = 0;
-        // Older hosts may deliver a directive only with the permit (compatibility path).
         const present = JSON.stringify(preparedContext.messages);
-        const missing = reply.directives.filter(
+        const missing = [...directives.values()].filter(
           (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
         );
-        for (const directive of reply.directives) directives.set(directive.directiveId, directive);
         if (missing.length)
           preparedContext = {
             ...preparedContext,
@@ -340,20 +269,324 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
               { role: 'user', content: directiveText(missing), timestamp: Date.now() },
             ],
           };
-        if (reply.parentQuestions?.length)
-          preparedContext = {
-            ...preparedContext,
-            messages: [
-              ...preparedContext.messages,
-              {
-                role: 'user',
-                content: parentQuestionsText(reply.parentQuestions),
-                timestamp: Date.now(),
+        const assignment =
+          start.assignment.kind === 'delegated'
+            ? start.assignment.brief
+            : start.assignment.kind === 'question'
+              ? start.assignment.body
+              : '';
+        const saved = await call({
+          type: 'checkpoint_context',
+          value: checkpointContext(preparedContext, 'pi-core'),
+        });
+        if (saved.type !== 'runtime_checkpoint') throw new Error('runtime checkpoint refused');
+        preparedContext = pruneToolResults(preparedContext);
+        const budget = contextBudgetLimitsFor(model);
+        const hardLimit =
+          model.contextWindow - (start.compaction?.reserveTokens ?? budget.requestHeadroom);
+        const commandId = pendingCompaction;
+        pendingCompaction = null;
+        const beforeHash = createHash('sha256')
+          .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
+          .digest('hex');
+        const summaryCalls: string[] = [];
+        if (commandId)
+          await call({
+            type: 'compaction_report',
+            report: { commandId, phase: 'started', beforeHash, modelCallIds: [] },
+          });
+        try {
+          if (
+            commandId ||
+            forceCompaction ||
+            meter.measure(preparedContext, model).tokens >
+              automaticCompactionThresholdFor({ hardLimit })
+          ) {
+            const region = selectCompactableRange(
+              preparedContext.messages,
+              forceCompaction ? 0 : (start.compaction?.keepRecentTokens ?? budget.keepRecentTokens),
+            );
+            forceCompaction = false;
+            if (!region) throw new Error('context cannot fit without dropping required input');
+            const summaryRequestId = `request_${++logicalRequests}`;
+            const compacted = await summarizeRegion(
+              normalizeContext({ messages: preparedContext.messages as Message[] }),
+              region,
+              (summary) =>
+                managedRetryStream({
+                  model,
+                  signal: cancellation.signal,
+                  open: async (retryIndex) => {
+                    const record = requestRecord(
+                      summary,
+                      'compaction',
+                      'pi-core',
+                      [],
+                      protectedSections,
+                    );
+                    const grant = await call({
+                      type: 'prepare_request',
+                      logicalRequestId: summaryRequestId,
+                      retryIndex,
+                      record,
+                      reasoningInput: requestReasoningInput(summary, 'compaction', '', []),
+                    });
+                    if (grant.type !== 'permit' || cancelled) throw new Error('compaction refused');
+                    summaryCalls.push(grant.modelCallId);
+                    try {
+                      return accountModelStream(
+                        await sendRequest(
+                          grant,
+                          model,
+                          summary,
+                          { signal: cancellation.signal },
+                          false,
+                        ),
+                        (response) => {
+                          port.send({
+                            type: 'observe',
+                            ...head,
+                            modelCallId: grant.modelCallId,
+                            text: textOf(response),
+                            ...normalizeUsage(response),
+                          });
+                        },
+                      );
+                    } catch (error) {
+                      port.send({
+                        type: 'observe',
+                        ...head,
+                        modelCallId: grant.modelCallId,
+                        text: '',
+                        usage: {
+                          inputTokens: null,
+                          outputTokens: null,
+                          cachedInputTokens: null,
+                          reasoningTokens: null,
+                        },
+                        rawUsage: null,
+                      });
+                      throw error;
+                    }
+                  },
+                }).result(),
+              Date.now,
+            );
+            const currentState = await call({ type: 'get_protected_context' });
+            if (currentState.type !== 'protected_context')
+              throw new Error('protected context refused');
+            if (currentState.value?.hash !== state.value?.hash) {
+              if (commandId)
+                await call({
+                  type: 'compaction_report',
+                  report: {
+                    commandId,
+                    phase: 'failed',
+                    beforeHash,
+                    afterHash: beforeHash,
+                    modelCallIds: summaryCalls,
+                  },
+                });
+              return { type: 'reprepare' as const, directives: [] };
+            }
+            let restored = withRequiredImages(compacted.context, start.images);
+            if (state.value) restored = withProtectedContext(restored, state.value).context;
+            if (meter.measure(restored, model).tokens >= hardLimit)
+              throw new Error('compacted context still exceeds model capacity');
+            preparedContext = { ...preparedContext, messages: restored.messages };
+            if (commandId)
+              await call({
+                type: 'compaction_report',
+                report: {
+                  commandId,
+                  phase: 'completed',
+                  beforeHash,
+                  afterHash: createHash('sha256')
+                    .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
+                    .digest('hex'),
+                  modelCallIds: summaryCalls,
+                },
+              });
+          }
+        } catch (error) {
+          if (!commandId) throw error;
+          if (!cancelled)
+            await call({
+              type: 'compaction_report',
+              report: {
+                commandId,
+                phase: 'failed',
+                beforeHash,
+                afterHash: beforeHash,
+                modelCallIds: summaryCalls,
               },
-            ],
-          };
-        return preparedContext === context ? undefined : { context: preparedContext };
+            });
+        }
+        lastPrepared = normalizeContext({ messages: preparedContext.messages as Message[] });
+        measuredContext = inspectContext(preparedContext);
+        return call({
+          type: 'prepare_request',
+          logicalRequestId,
+          retryIndex,
+          record: requestRecord(
+            preparedContext,
+            retryIndex ? 'retry' : 'turn',
+            'pi-core',
+            [...directives.values()].map((d) => ({
+              directiveId: d.directiveId,
+              text: directiveText([d]),
+            })),
+            protectedSections,
+            { usage: measuredContext.usage },
+          ),
+          reasoningInput: requestReasoningInput(preparedContext, 'turn', assignment, [
+            ...directives.keys(),
+          ]),
+        });
+      };
+      let reply = await prepare();
+      for (let retries = 0; reply.type === 'reprepare' && retries < 2; retries++) {
+        for (const directive of reply.directives) directives.set(directive.directiveId, directive);
+        reply = await prepare();
+      }
+      if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
+      permit = {
+        modelCallId: reply.modelCallId,
+        apiKey: reply.apiKey,
+        maxOutputTokens: reply.maxOutputTokens,
+        sessionId: reply.sessionId,
+        cacheRetention: reply.cacheRetention,
+        ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
+      };
+      chunk = 0;
+      // Older hosts may deliver a directive only with the permit (compatibility path).
+      const present = JSON.stringify(preparedContext.messages);
+      const missing = reply.directives.filter(
+        (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
+      );
+      for (const directive of reply.directives) directives.set(directive.directiveId, directive);
+      if (missing.length)
+        preparedContext = {
+          ...preparedContext,
+          messages: [
+            ...preparedContext.messages,
+            { role: 'user', content: directiveText(missing), timestamp: Date.now() },
+          ],
+        };
+      const parentQuestions = missingParentQuestions(
+        reply.parentQuestions ?? [],
+        protectedSections,
+      );
+      if (parentQuestions.length)
+        preparedContext = {
+          ...preparedContext,
+          messages: [
+            ...preparedContext.messages,
+            {
+              role: 'user',
+              content: parentQuestionsText(parentQuestions),
+              timestamp: Date.now(),
+            },
+          ],
+        };
+      return preparedContext === context ? undefined : { context: preparedContext };
+    };
+
+    function sendRequest(
+      active: ModelPermit,
+      m: Model<string>,
+      context: Context,
+      options?: SimpleStreamOptions,
+      requireImages = true,
+    ): ReturnType<StreamFn> {
+      const measured = inspectContext(context);
+      if (requireImages) lastPrepared = context;
+      const fence = providerRequestFence(m, undefined, options?.signal);
+      const chosen = reasoningRequest(m, options, active?.reasoning);
+      const outputCap = active ? requestOutputCap(chosen.model, active.maxOutputTokens) : undefined;
+      const stream = deps.streamFn(chosen.model, normalizeContext(context), {
+        ...chosen.options,
+        maxRetries: 0,
+        sessionId: active?.sessionId ?? options?.sessionId,
+        cacheRetention: active?.cacheRetention ?? options?.cacheRetention,
+        ...(fence ? { fetch: fence.fetch, transport: 'sse' as const } : {}),
+        ...(keyOf(active.apiKey) ? { apiKey: keyOf(active.apiKey) } : {}),
+        ...(outputCap ? { maxTokens: outputCap } : {}),
+        onPayload: async (payload, payloadModel) => {
+          const actual = (await options?.onPayload?.(payload, payloadModel)) ?? payload;
+          const serialized = canonicalJson(JSON.parse(JSON.stringify(actual)));
+          assertProtectedPayload(actual, protectedSections, serialized);
+          if (requireImages) assertImagePayload(actual, start.images);
+          const wire = verifyReasoningWire(
+            m,
+            actual,
+            active?.reasoning,
+            outputCap,
+            start.model.auth,
+          );
+          if (active) {
+            const contextUsage = reconcileContextUsage(measured.usage, measured.probes, serialized);
+            const reply = await call({
+              type: 'request_record',
+              modelCallId: active.modelCallId,
+              payloadHash: createHash('sha256').update(serialized).digest('hex'),
+              payloadBytes: Buffer.byteLength(serialized),
+              skills: [],
+              ...(contextUsage ? { contextUsage } : {}),
+              ...(wire ? { reasoning: wire } : {}),
+            });
+            if (reply.type !== 'ack' || cancelled) throw new Error('provider payload refused');
+          }
+          fence?.approve(actual);
+          return actual;
+        },
+      });
+      port.send({ type: 'request_dispatched', ...head, modelCallId: active.modelCallId });
+      return stream;
+    }
+
+    agent = new Agent({
+      initialState: {
+        model,
+        systemPrompt: systemPrompt(start),
+        tools,
+        messages: resumedMessages(start.resumeContext, Boolean(start.meeting)),
       },
+      // Each request carries the token and output cap from its own permit.
+      streamFn: (m, context, options) => {
+        let current = context;
+        return managedRetryStream({
+          model: m,
+          signal: options?.signal ?? cancellation.signal,
+          onContextOverflow: () => {
+            forceCompaction = true;
+            return true;
+          },
+          beforeRetry: (message) => {
+            if (permit)
+              port.send({
+                type: 'observe',
+                ...head,
+                modelCallId: permit.modelCallId,
+                text: textOf(message),
+                ...normalizeUsage(message),
+              });
+          },
+          open: async (attempt) => {
+            if (attempt) {
+              const next = await prepareRequest({ messages: current.messages, tools }, attempt);
+              if (next)
+                current = normalizeContext({ messages: next.context.messages as Message[] });
+            }
+            if (!permit) throw new Error('request has no permit');
+            return await sendRequest(permit, m, current, options);
+          },
+        });
+      },
+      getApiKey: () => keyOf(permit?.apiKey),
+      toolExecution: 'sequential',
+      finishTurn: () => (completionAccepted ? { action: 'end' } : undefined),
+      prepareRequest: ({ context }) => prepareRequest(context),
       beforeToolCall: async ({ toolCall }) => {
         const args = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
         // Only the omitted legacy ID defaults to the assigned question. Explicit
@@ -390,6 +623,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       }
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         const message = event.message as AssistantMessage;
+        if (lastPrepared) meter.observe(lastPrepared, model, message);
         attemptedTools ||= message.content.some((part) => part.type === 'toolCall');
         finalTextModelCallId =
           message.stopReason === 'stop' && textOf(message).trim() && !attemptedTools
@@ -419,6 +653,16 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     const last = [...agent.state.messages]
       .reverse()
       .find((m): m is AssistantMessage => m.role === 'assistant');
+    if (!cancelled && !completionAccepted && last?.stopReason === 'stop' && lastPrepared)
+      await call({
+        type: 'checkpoint_context',
+        value: checkpointContext({ messages: [...lastPrepared.messages, last] }, 'pi-core'),
+      });
+    if (pendingCompaction && !cancelled)
+      await call({
+        type: 'compaction_report',
+        report: { commandId: pendingCompaction, phase: 'skipped', modelCallIds: [] },
+      });
     if (cancelled || last?.stopReason === 'aborted') settle('cancelled');
     else if (last?.stopReason === 'error') settle('failed', last.errorMessage ?? 'model error');
     else settle('succeeded', undefined, finalTextModelCallId);

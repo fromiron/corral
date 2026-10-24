@@ -12,6 +12,7 @@ import {
 async function setup(
   termination: 'normal' | 'error',
   response: 'success' | 'error' | 'unconfirmed' = 'success',
+  text = 'late file body',
 ) {
   const clock = new FakeClock(),
     entered = new Gate(),
@@ -20,6 +21,7 @@ async function setup(
   const store = new InMemoryRunStore();
   let cancelled = false;
   let pending!: Promise<ToolOutcome>;
+  let agentHost!: AgentHost;
   const coordinator = new Coordinator({
     clock,
     timers: clock,
@@ -36,11 +38,12 @@ async function setup(
         off();
         if (response === 'error') throw new Error('late backend failure');
         if (response === 'unconfirmed') throw new ToolTerminationUnconfirmed();
-        return { text: 'late file body' };
+        return { text };
       },
     },
     agents: {
       start: async (_input, host) => {
+        agentHost = host;
         pending = host.invokeTool({ name: 'read_file', args: { path: 'file.txt' } });
         return {
           cancel: async () => finish.open(),
@@ -57,6 +60,7 @@ async function setup(
   const role = definition.roles[0];
   if (!role) throw new Error('missing role');
   role.allowedWorkTools = ['read_file'];
+  role.allowedCollaborationTools = ['read_artifact'];
   const { runId } = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start',
@@ -74,6 +78,7 @@ async function setup(
     finish,
     release,
     pending: () => pending,
+    host: agentHost,
     cancelled: () => cancelled,
     transport: new InProcessTransport(coordinator),
   };
@@ -81,6 +86,38 @@ async function setup(
 const drain = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
+
+it('[TC-LLM-004-H] large tool results keep a scoped immutable source that can be read in ranges', async () => {
+  const s = await setup('normal', 'success', '가🙂'.repeat(6000));
+  try {
+    s.release.open();
+    const result = await s.pending();
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.result.contextSource).toEqual({ toolCallId: result.toolCallId });
+    const first = await s.host.invokeTool({
+      name: 'read_artifact',
+      args: { toolCallId: result.toolCallId, limit: 128 },
+    });
+    expect(first).toMatchObject({ ok: true, result: { complete: false, nextOffset: 128 } });
+    if (first.ok) expect(Array.from(String(first.result.text))).toHaveLength(128);
+    const denied = await s.host.invokeTool({
+      name: 'read_artifact',
+      args: { toolCallId: 'tool_unowned' },
+    });
+    expect(denied.ok).toBe(false);
+    expect(
+      (
+        await s.host.invokeTool({
+          name: 'read_artifact',
+          args: { toolCallId: result.toolCallId, limit: 9000 },
+        })
+      ).ok,
+    ).toBe(false);
+  } finally {
+    s.finish.open();
+    await waitForProjection(s.transport, s.runId, (p) => p.status === 'failed');
+  }
+});
 
 it('[TC-CKPT-001-N] file recovery reserves the idle Coordinator and cannot race an active or uncertain worker', async () => {
   const s = await setup('normal', 'unconfirmed');

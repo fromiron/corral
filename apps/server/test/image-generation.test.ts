@@ -7,7 +7,7 @@ import type {
   ImageGenerationProfile,
 } from '@corral/contracts';
 import { Coordinator, exportRunArchive, openRunArchive } from '@corral/core';
-import { openDatabase, SqliteRunStore } from '@corral/storage-sqlite';
+import { openDatabase, SqliteModelAttemptStore, SqliteRunStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { PNG } from 'pngjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -64,6 +64,103 @@ async function endpoint(
 }
 
 describe('configured image generation and immutable bytes (ABS-10)', () => {
+  it.each(['started', 'completed'] as const)(
+    '[TC-LLM-005-F] a ledger failure at %s cannot leave a confirmed generation or leak cleanup',
+    async (stage) => {
+      const db = database(),
+        attempts = new SqliteModelAttemptStore(db);
+      let active = 0;
+      const original = attempts.put.bind(attempts);
+      vi.spyOn(attempts, 'put').mockImplementation((value) => {
+        if (value.status === stage) throw new Error('storage unavailable');
+        original(value);
+      });
+      const fetcher = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [{ b64_json: png().toString('base64') }],
+              usage: { input_tokens: 1, output_tokens: 2 },
+            }),
+          ),
+      );
+      const service = new ImageGenerationService(
+        db,
+        async () => ({ profile, baseUrl: 'http://127.0.0.1/v1', apiKey: async () => 'fixture' }),
+        now,
+        fetcher,
+        attempts,
+      );
+      try {
+        await expect(
+          service.generate(
+            owner,
+            args,
+            {
+              aborted: false,
+              onCancel: () => {
+                active++;
+                return () => {
+                  active--;
+                };
+              },
+            },
+            0.2,
+          ),
+        ).rejects.toMatchObject({ outcome: stage === 'started' ? 'not_started' : 'unknown' });
+        expect(active).toBe(0);
+        expect(fetcher).toHaveBeenCalledTimes(stage === 'started' ? 0 : 1);
+        const operation = db
+          .prepare('SELECT state FROM image_generation_operations WHERE run_id=? AND effect_id=?')
+          .get(owner.runId, owner.effectId);
+        expect(operation).toEqual(stage === 'started' ? undefined : { state: 'unknown' });
+      } finally {
+        db.close();
+      }
+    },
+  );
+  it('[TC-LLM-005-F] received image usage survives cancellation before artifact adoption', async () => {
+    const db = database(),
+      attempts = new SqliteModelAttemptStore(db);
+    let received = false;
+    try {
+      const service = new ImageGenerationService(
+        db,
+        async () => ({ profile, baseUrl: 'http://127.0.0.1/v1', apiKey: async () => 'fixture' }),
+        now,
+        async () => {
+          received = true;
+          return new Response(
+            JSON.stringify({
+              data: [{ b64_json: png().toString('base64') }],
+              usage: { input_tokens: 12, output_tokens: 34 },
+            }),
+          );
+        },
+        attempts,
+      );
+      await expect(
+        service.generate(
+          owner,
+          args,
+          {
+            get aborted() {
+              return received;
+            },
+            onCancel: () => () => {},
+          },
+          0.2,
+        ),
+      ).rejects.toMatchObject({ outcome: 'unknown' });
+      expect(service.read(owner.runId, owner.artifactVersionId)).toBeNull();
+      expect(attempts.list()[0]).toMatchObject({
+        status: 'unknown',
+        usage: { source: 'reported', inputTokens: 12, outputTokens: 34 },
+      });
+    } finally {
+      db.close();
+    }
+  });
   it('[TC-ABS-010-H] Coordinator capability, effect, published artifact and private export include verified original bytes', async () => {
     const db = database(),
       bytes = png(),
@@ -239,10 +336,13 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       );
     });
     try {
+      const attempts = new SqliteModelAttemptStore(db);
       const service = new ImageGenerationService(
         db,
         async () => ({ profile, baseUrl: http.baseUrl, apiKey: async () => 'fixture-image-key' }),
         now,
+        fetch,
+        attempts,
       );
       const generated = await service.generate(owner, args, idle, 0.2);
       expect(received).toEqual({
@@ -260,6 +360,11 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       expect(service.read(owner.runId, owner.artifactVersionId)?.bytes).toEqual(bytes);
       expect(await service.generate(owner, args, idle, 0.2)).toEqual(generated);
       expect(calls).toBe(1);
+      expect(attempts.list()).toHaveLength(1);
+      expect(attempts.list()[0]).toMatchObject({
+        status: 'completed',
+        usage: { inputTokens: 12, outputTokens: 34, source: 'reported', costUsd: null },
+      });
       await expect(
         service.generate(owner, { ...args, prompt: 'changed' }, idle, 0.2),
       ).rejects.toThrow('identity changed');

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
@@ -12,7 +13,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { promisify } from 'node:util';
 import { _electron, expect } from '@playwright/test';
 import { selectSessionTeam, startSession, teamFromTemplate } from '../../studio/e2e/workbench.ts';
 
@@ -168,11 +168,13 @@ try {
       application?.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isMaximized()),
     )
     .toBe(true);
-  await promisify(execFile)(
+  const secondLaunch = spawn(
     binary ? resolve(binary) : application.process().spawnfile,
     [...(binary ? [] : [desktop]), `--data-dir=${data}`, '--mock-only'],
-    { env, timeout: 10000 },
+    { env, timeout: 10000, stdio: 'ignore' },
   );
+  const [secondExit] = await once(secondLaunch, 'exit');
+  assert.equal(secondExit, 0, 'second launch forwards to the existing window');
   assert.equal(
     await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.isMaximized(),
@@ -223,7 +225,8 @@ try {
     page.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }),
   ).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('radio', { name: 'Dark', exact: true }).check();
+  await page.getByRole('combobox', { name: 'Appearance', exact: true }).click();
+  await page.getByRole('option', { name: 'Dark', exact: true }).click();
   // CR-017: the window follows the page's theme.
   await expect
     .poll(() =>

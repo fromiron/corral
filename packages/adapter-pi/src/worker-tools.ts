@@ -6,6 +6,7 @@ import {
   PreviewAppArgs,
   PreviewFileArgs,
   RunCommandArgs,
+  taskBriefForModel,
   UserInputRequest,
   WorkPlanUpdate,
 } from '@corral/contracts';
@@ -43,7 +44,7 @@ export const TOOL_TEXT: Record<WorkerTool, string> = {
   list_files:
     'List files of the working copy under a relative folder (default: the root). Returns paths and sizes.',
   read_file:
-    'Read a UTF-8 text file of the working copy by relative path. Read a file before changing it.',
+    'Read a UTF-8 working-copy file in ranges of at most 8192 Unicode characters. offset is zero-based, and nextOffset locates the next range. Read all ranges of the current file before replacing it; use read_hashline for line-based edits.',
   write_file:
     'Create or replace a UTF-8 text file by relative path. An existing file must be read first; if it changed since, the write is refused.',
   delete_file: 'Delete a file you have read, by relative path.',
@@ -57,7 +58,7 @@ export const TOOL_TEXT: Record<WorkerTool, string> = {
   reply:
     'Answer a pending question with its questionId. Replying to a child lets you continue your current task. When your assignment is itself a question, omitting questionId answers that assigned question and completes your task; an explicit child questionId does not complete it.',
   read_artifact:
-    'Read an artifact version you are allowed to see. Generated image artifacts are delivered as original image content when your model supports vision and the image fits the input limits. Unsupported or oversized images are refused rather than silently resized or replaced with metadata.',
+    'Read an allowed artifactVersionId or an original tool result using its contextSource.toolCallId. Text is paged in at most 8192 Unicode characters; offset is zero-based and nextOffset locates the next range. Generated image artifacts include original pixels when the model supports them. A partial range is not a complete read.',
 };
 
 /** Question IDs come from the assigned question or the host's pending child questions. */
@@ -110,6 +111,17 @@ export function parametersOf(
     case 'list_files':
       return Type.Object({ path: Type.Optional(Type.String({ maxLength: 500 })) });
     case 'read_file':
+      return Type.Object({
+        path: Type.String({ minLength: 1, maxLength: 500 }),
+        offset: Type.Optional(
+          Type.Integer({
+            minimum: 0,
+            description:
+              'Zero-based Unicode character offset; use nextOffset from the prior result.',
+          }),
+        ),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8192 })),
+      });
     case 'delete_file':
       return Type.Object({ path: Type.String({ minLength: 1, maxLength: 500 }) });
     case 'write_file':
@@ -154,7 +166,12 @@ export function parametersOf(
         evidenceRefs: Type.Optional(Type.Array(Type.String())),
       });
     case 'read_artifact':
-      return Type.Object({ artifactVersionId: Type.String() });
+      return Type.Object({
+        artifactVersionId: Type.Optional(Type.String()),
+        toolCallId: Type.Optional(Type.String()),
+        offset: Type.Optional(Type.Integer({ minimum: 0 })),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 8192 })),
+      });
   }
 }
 
@@ -193,14 +210,10 @@ export function promptSections(start: PromptStart): PromptSection[] {
     );
   const assignment: string[] = [];
   const output: string[] = [];
-  if (start.taskBrief)
-    assignment.push(
-      `TaskBrief (owned metadata, caps are not remaining budget): ${JSON.stringify(start.taskBrief)}`,
-    );
   if (!start.meeting && start.tools.includes('update_plan'))
     operating.push(
       'When the work has several distinct implementation, investigation, or verification steps, call update_plan before the first substantial step and again when the current step changes. Do not create a plan for a greeting or a short single-step question.',
-      `Current completion criteria version: ${start.criteriaVersionId}.`,
+      'Use the current criteriaVersionId from the Corral assignment metadata or current state.',
       start.teamPlanOwner
         ? 'You are the designated owner of the team work plan.'
         : 'Use execution scope for your own work plan.',
@@ -208,10 +221,6 @@ export function promptSections(start: PromptStart): PromptSection[] {
   if (start.assignment.kind === 'delegated') {
     assignment.push('Another agent delegated a task to you; it is given as "task" below.');
   }
-  if (start.item)
-    assignment.push(
-      `This is isolated item ${start.item.index} of ${start.item.total}. Other items' inputs and outputs are not available. Worktree changes accumulate in order.`,
-    );
   if (start.meeting) {
     output.push(
       'Return your answer directly as the final response. Follow any explicit output format in your role instructions. Corral records this response; do not call write_artifact or submit_result just to publish a chat message.',
@@ -227,15 +236,12 @@ export function promptSections(start: PromptStart): PromptSection[] {
   }
   if (start.role.outputContract === 'review') {
     // Corral checks this exact shape; anything else counts as inconclusive, never as a pass.
-    const target =
-      start.inputs.find((i) => i.name === 'draft' && i.artifactVersionId) ??
-      start.inputs.find((i) => i.artifactVersionId);
     output.push(
       'Your output text must be a JSON review object and nothing else: ' +
-        `{"targetArtifactVersionId": "${target?.artifactVersionId ?? '<the draft version>'}", ` +
-        `"criteriaVersionId": "${start.criteriaVersionId}", "verdict": "pass" | "revise" | "inconclusive", ` +
+        '{"targetArtifactVersionId": "<current draft version>", ' +
+        '"criteriaVersionId": "<current criteria version>", "verdict": "pass" | "revise" | "inconclusive", ' +
         '"issues": [{"criterionId": "...", "reason": "...", "severity": "required" | "advisory", "evidenceRefs": []}], ' +
-        '"evidenceRefs": []}. A revise verdict needs at least one issue.',
+        '"evidenceRefs": []}. Use the version IDs in the current Corral assignment metadata. A revise verdict needs at least one issue.',
       // Ids the schema accepts, tied to the criteria text in the "criteria" input (#20).
       'For criterionId use c1 for the first criterion in the criteria input, c2 for the second, and so on; use "general" for an issue no criterion covers.',
       'For both evidenceRefs arrays, use only evidence identifiers actually supplied in the inputs or tool results (artifactVersionId, sourceId, or documentId), matching ^[A-Za-z][A-Za-z0-9_.:-]{0,119}$. Do not invent IDs or use headings, quoted prose, or URLs; use [] for brief or criteria without a supplied evidence identifier.',
@@ -304,9 +310,22 @@ export function systemPrompt(start: PromptStart): string {
 
 export function userPrompt(start: PromptStart): string {
   const round = start.round ? `This is round ${start.round} of a review loop.\n\n` : '';
+  const target =
+    start.inputs.find((i) => i.name === 'draft' && i.artifactVersionId) ??
+    start.inputs.find((i) => i.artifactVersionId);
+  const metadata = JSON.stringify({
+    criteriaVersionId: start.criteriaVersionId,
+    targetArtifactVersionId:
+      start.role.outputContract === 'review' ? target?.artifactVersionId : undefined,
+    taskBrief: taskBriefForModel(start.taskBrief),
+  });
   return (
-    (start.resumeContext
+    (start.resumeContext && !start.meeting
       ? 'Continue this request in a new Run. Earlier messages are historical context only: old permissions, tool calls, criteria and artifact IDs are not current. Re-read files before changing them and produce a new artifact for this Run. Do not replay earlier tool calls.\n\n'
+      : '') +
+    `[Corral assignment metadata]\n${metadata}\n\n` +
+    (start.item
+      ? `This is isolated item ${start.item.index} of ${start.item.total}. Other items' inputs and outputs are not available. Worktree changes accumulate in order.\n\n`
       : '') +
     round +
     start.inputs

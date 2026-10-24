@@ -15,6 +15,7 @@
 | POST /corrals/validate | 현재 draft definition | diagnostics + executable IR summary; side effect 없음 |
 | POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,references? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED` (CR-007). `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED` (CR-016) |
 | GET /runs/:id/snapshot | — | read model + snapshotSeq |
+| GET /model-attempts | `ownerId?`, `runId?`, `sessionId?`, `before?`, `limit?` (1–100; 기본 50) | `{items,nextCursor}`. 물리 시도·nullable usage·subscription/unknown 가격 상태. private/no-store. 본문·자격 증명 제외 |
 | GET /runs/:id/candidates | — | C-114 `CandidateComparisonView`, 일반 Run은 `null`, 없는 Run은 404. 후보별 상태·정확한 tree·검사·사용량; private/no-store |
 | GET /runs/:id/candidates/:candidateId/changes | `tree` | 해당 Run 후보의 현재 고정 tree와 기준 사이 파일 목록. 다른 후보·오래된 tree 거절 |
 | GET /runs/:id/candidates/:candidateId/files | `tree,path` | 같은 후보의 상대 경로에 대한 기존 `FileVersions`. 임의 ref·경로 이탈 거절 |
@@ -216,6 +217,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | ORIGIN_REJECTED | 403 | 허용하지 않는 Origin/Host/CSRF |
 | POLICY_ERROR | 500 | admission gate가 예외로 실패해 요청·도구 호출을 거절함(fail closed). 통과로 처리하지 않음 (CR-003, ADR-024, C-067) |
 | MODEL_UNAVAILABLE | 502 | Run 밖의 모델 요청(팀 초안)이 실패했거나 응답이 계약에 맞지 않음. 응답 원문은 보내지 않음 (CR-006) |
+| REQUEST_OUTCOME_UNKNOWN | 409 | 전송 결과가 확인되지 않은 관리형 요청. 같은 operation ID는 저장된 결과만 조회하며 새 유료 호출을 만들지 않음 (CR-052) |
 
 provider/network error는 사용자 키 원문·응답 헤더를 포함하지 않는다. trace용 errorId와 마스킹된 이유를 제공한다. 도구 실행 중 실패는 HTTP success/error와 별개로 ToolOutcome에 structured error를 넣는다.
 

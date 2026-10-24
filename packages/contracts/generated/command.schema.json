@@ -896,12 +896,12 @@
                     "maxModelCalls": {
                       "type": "integer",
                       "minimum": 1,
-                      "maximum": 100
+                      "maximum": 9007199254740991
                     },
                     "maxOutputTokens": {
                       "type": "integer",
                       "minimum": 1,
-                      "maximum": 256000
+                      "maximum": 9007199254740991
                     }
                   },
                   "additionalProperties": false,

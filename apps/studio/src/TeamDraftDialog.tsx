@@ -1,3 +1,4 @@
+import { ApiError } from '@corral/client';
 import { TEAM_SLOTS, TeamPlan } from '@corral/contracts';
 import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/react';
 import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
@@ -28,6 +29,9 @@ export function TeamDraftDialog({
   const [plan, setPlan] = useState<TeamPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pendingRequest = useRef<AbortController | null>(null);
+  const draftIntent = useRef<{ goal: string; id: string } | null>(null);
+  useEffect(() => () => pendingRequest.current?.abort(), []);
   const goalId = useId();
   const goalRef = useRef<HTMLTextAreaElement>(null);
 
@@ -50,10 +54,25 @@ export function TeamDraftDialog({
     if (!models) return;
     setBusy(true);
     setError(null);
+    const controller = new AbortController();
+    pendingRequest.current?.abort();
+    pendingRequest.current = controller;
+    if (draftIntent.current?.goal !== goal.trim())
+      draftIntent.current = { goal: goal.trim(), id: globalThis.crypto.randomUUID() };
     try {
-      setPlan((await models.draftTeam(goal.trim())).plan);
+      const result = await models.draftTeam(goal.trim(), {
+        operationId: draftIntent.current.id,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) setPlan(result.plan);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      if (
+        failure instanceof ApiError &&
+        ['MODEL_UNAVAILABLE', 'CAPABILITY_DENIED'].includes(failure.code)
+      )
+        draftIntent.current = null;
+      if (!controller.signal.aborted)
+        setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       setBusy(false);
     }
@@ -94,7 +113,11 @@ export function TeamDraftDialog({
               value={goal}
               maxLength={2000}
               rows={4}
-              onChange={(e) => setGoal(e.target.value)}
+              onChange={(e) => {
+                pendingRequest.current?.abort();
+                draftIntent.current = null;
+                setGoal(e.target.value);
+              }}
               placeholder={t('goalPlaceholder')}
             />
             <div className="flex flex-wrap items-start gap-3">
@@ -139,7 +162,14 @@ export function TeamDraftDialog({
         {checked && !checked.success ? <p className="text-xs text-danger">{t('invalid')}</p> : null}
         <div className="flex justify-end gap-2 border-t border-line pt-3">
           {plan ? (
-            <Button type="button" onClick={() => setPlan(null)} variant="tertiary">
+            <Button
+              type="button"
+              onClick={() => {
+                draftIntent.current = null;
+                setPlan(null);
+              }}
+              variant="tertiary"
+            >
               {t('back')}
             </Button>
           ) : null}

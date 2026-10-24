@@ -1,0 +1,5748 @@
+{
+  "startedAt": "2026-10-24T06:29:40.660Z",
+  "experiment": "chooser-warm-prefix",
+  "limit": 120,
+  "reasoning": "off",
+  "order": "alternating paired conditions",
+  "samples": [
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 0,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:41.749Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2645.552851,
+      "usage": {
+        "input": 3990,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3365.409849,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 0,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:45.116Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1400.7373080000007,
+      "usage": {
+        "input": 3990,
+        "output": 19,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1875.6380720000006,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "08421ad2-46a0-4220-b4e6-5d9bbc6a699b",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 1,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:46.992Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1232.128294,
+      "usage": {
+        "input": 150,
+        "output": 29,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1981.7160779999995,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "1ec897d0-60e4-424c-b5fb-89debc3683ba",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 29,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 1,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:48.974Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1597.7250540000005,
+      "usage": {
+        "input": 3990,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2352.0343350000003,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 2,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:51.327Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1859.3389320000006,
+      "usage": {
+        "input": 150,
+        "output": 23,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4013
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2545.7729369999997,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 2,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:53.873Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1796.4312369999989,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2342.422085,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "5364c98f-6871-44c0-a90a-439007fa4ab4",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 3,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:56.216Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2443.663563000002,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3523.5455110000003,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "40f8ca89-25f5-4ca6-9ccf-64b162d5a1dc",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 3,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:29:59.740Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2377.5246890000017,
+      "usage": {
+        "input": 3990,
+        "output": 29,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3124.446222999999,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 4,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:02.864Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1615.7660069999984,
+      "usage": {
+        "input": 3990,
+        "output": 29,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2360.6554149999974,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 4,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:05.225Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2321.7092239999984,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2994.782077,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "1df9d371-6613-47c2-ad85-db29a887508a",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 5,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:08.221Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1613.9982870000022,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2251.543966000001,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "d733fea1-e18b-40c1-a25e-6b107d294c77",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 5,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:10.473Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1758.941232000001,
+      "usage": {
+        "input": 150,
+        "output": 31,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4021
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2528.726899999998,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 6,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:13.002Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1819.4335090000022,
+      "usage": {
+        "input": 3990,
+        "output": 23,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4013
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2414.6807530000005,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 6,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:15.417Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1590.3452890000044,
+      "usage": {
+        "input": 3990,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2405.9469030000037,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "5866e822-0fb4-4723-815e-140dce5b0547",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 7,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:17.823Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1429.8659539999935,
+      "usage": {
+        "input": 150,
+        "output": 25,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2090.279113999997,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "e2771083-20b7-4dd6-845e-3c8925fa874a",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 25,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 7,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:19.914Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1563.3964160000032,
+      "usage": {
+        "input": 150,
+        "output": 31,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4021
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2641.717448000003,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 8,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:22.556Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1591.7886389999985,
+      "usage": {
+        "input": 3990,
+        "output": 29,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2319.358966,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 8,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:24.875Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2388.6767370000016,
+      "usage": {
+        "input": 150,
+        "output": 21,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4011,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3376.295358999996,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "640455ee-9961-4189-b9c9-253f73ac021b",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 21,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 9,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:28.252Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1571.6387420000028,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2050.6972689999966,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "bea8cc2a-cb14-4774-be65-66511761b59d",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 9,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:30.303Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1872.1074350000054,
+      "usage": {
+        "input": 3990,
+        "output": 19,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2412.85585,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 10,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:32.717Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3763.3249460000006,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 4542.971170000004,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 10,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:37.260Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1532.9525649999996,
+      "usage": {
+        "input": 150,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4017,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2237.5264219999954,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "1d03d2ba-45f7-4f0e-b855-2033d3fed871",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 27,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 11,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:39.498Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2515.020663000003,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3035.231431,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "f2f725f8-9b64-4e9d-b151-542e93bd1f69",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 11,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:42.533Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1608.316743000003,
+      "usage": {
+        "input": 3990,
+        "output": 22,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4012
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2167.8724120000043,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 12,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:44.702Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1682.2002050000083,
+      "usage": {
+        "input": 3990,
+        "output": 29,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2271.699188999999,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 12,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:46.974Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1457.4316810000018,
+      "usage": {
+        "input": 150,
+        "output": 20,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4010,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2422.6433470000047,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "094e4606-1cf9-4fec-a4b2-70bae5686961",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 20,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 13,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:49.397Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1682.1308199999912,
+      "usage": {
+        "input": 150,
+        "output": 32,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4022,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2436.0620819999895,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "23d4a906-dc17-4984-9a8b-c4197335f8ea",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 32,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 13,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:51.833Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1737.188043000002,
+      "usage": {
+        "input": 150,
+        "output": 29,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2501.820630999995,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 14,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:54.335Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2588.8452430000034,
+      "usage": {
+        "input": 3990,
+        "output": 21,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4011
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3239.1678930000053,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 14,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:57.575Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1457.2435899999982,
+      "usage": {
+        "input": 150,
+        "output": 20,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4010,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1999.8431719999935,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "d558b1aa-763e-4078-9283-7cfcd3021499",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 20,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 15,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:30:59.575Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1918.0703539999959,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2374.5084320000024,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "56735083-d407-4839-873d-59ec4a460e33",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 15,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:01.950Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1834.5570279999956,
+      "usage": {
+        "input": 3990,
+        "output": 19,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2401.6052340000024,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 16,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:04.352Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1992.8947339999868,
+      "usage": {
+        "input": 3990,
+        "output": 24,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4014
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2621.793221999993,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 16,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:06.975Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1588.0502899999992,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2094.643397000007,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "1095c952-512f-42bc-9b7f-595ee5510866",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 19,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 17,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:09.070Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1304.1991889999917,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2049.047194999992,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "3b503274-6db1-47b9-9574-48f711053409",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 17,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:11.119Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1444.9683670000086,
+      "usage": {
+        "input": 3990,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2142.493585999997,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 18,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:13.262Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2696.0177369999874,
+      "usage": {
+        "input": 3990,
+        "output": 19,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3215.4138139999995,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 18,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:16.478Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2378.796267999991,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3319.938991999996,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "0053e041-7a49-4a2d-9b36-57daf1a8b90c",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 19,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:19.798Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1316.7868559999915,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2085.22880099999,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "30125935-7826-4311-8d2e-a0415d09b7c6",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 19,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:21.884Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2373.124763999993,
+      "usage": {
+        "input": 3990,
+        "output": 19,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3811.678914999997,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 20,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:25.696Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2674.59569300001,
+      "usage": {
+        "input": 3990,
+        "output": 20,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4010
+      },
+      "stopReason": "stop",
+      "elapsedMs": 4348.797737000001,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 20,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:30.045Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2411.4804270000022,
+      "usage": {
+        "input": 150,
+        "output": 22,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4012,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3004.0397670000093,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "50249749-fd40-4d0f-aa5e-c01e31314bf1",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 22,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 21,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:33.050Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3303.148709000001,
+      "usage": {
+        "input": 150,
+        "output": 20,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4010,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3807.36146,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "8025112c-bd2a-4735-a6ec-28c02bed19ff",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 20,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 21,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:36.858Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2518.1257190000033,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3149.104535000006,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 22,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:40.007Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3181.619902000006,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3693.027335000006,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 22,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:43.701Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1584.6016480000108,
+      "usage": {
+        "input": 150,
+        "output": 20,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4010,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2100.7484860000113,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "6ed91b1f-5df1-4760-8017-4de76e328e40",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 20,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 23,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:45.802Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2846.604806000003,
+      "usage": {
+        "input": 150,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4017,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3577.1281619999936,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "c96ca8bc-5c63-4e26-83e6-870277093efa",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 27,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 23,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:49.380Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1868.5661839999957,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2630.2522970000136,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 24,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:52.011Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1358.1746850000054,
+      "usage": {
+        "input": 150,
+        "output": 19,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1872.6126919999951,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 24,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:53.884Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2705.229938000004,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3600.006235000008,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "0d696f3b-cd78-4633-972b-41fa4950a1ec",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 25,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:57.485Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1696.5290089999908,
+      "usage": {
+        "input": 150,
+        "output": 31,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4021,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2431.3459100000036,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "5eb40fd0-0ff8-4624-929f-e884ed5144c1",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 31,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 25,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:31:59.917Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2435.691501000023,
+      "usage": {
+        "input": 3990,
+        "output": 19,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2825.3820190000115,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 26,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:02.743Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1422.4694180000224,
+      "usage": {
+        "input": 3990,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2142.8172440000053,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 26,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:04.886Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1813.4794300000067,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2765.185205000016,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "fef7e4e4-9c33-4bce-af05-9ec1a0bdc846",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 27,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:07.652Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2620.8431820000114,
+      "usage": {
+        "input": 150,
+        "output": 25,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3272.8664250000147,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "12b1bcd6-cc57-4b7f-b156-54c5dd2330eb",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 25,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 27,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:10.926Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2377.320556999999,
+      "usage": {
+        "input": 150,
+        "output": 32,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4022
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3129.527801999997,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 28,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:14.056Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1885.270164000016,
+      "usage": {
+        "input": 3990,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2647.050489999994,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 28,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:16.704Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1305.266948000004,
+      "usage": {
+        "input": 150,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2015.010826999991,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "c7babfb0-9d2a-4d77-b333-8329e62b913b",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "modernized",
+      "index": 29,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:18.719Z",
+      "invocations": 1,
+      "payloadBytes": 18914,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3774.3679620000185,
+      "usage": {
+        "input": 150,
+        "output": 25,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 4426.655250000011,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "c7f0ac31-3c4b-4d10-8792-12e8dd8d7a09",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3990,
+            "outputTokens": 25,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "subscription",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "openai",
+            "modelId": "gpt-6-luna",
+            "api": "openai-responses",
+            "contextWindow": 272000,
+            "maxOutputTokens": 128000,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "model-a",
+            "auth": "oauth",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "06e2bf4fedba758655334b4f9276852f7d9bc0ff427a96f1dc1eed663aad8917",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 128000,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "model-a",
+      "variant": "baseline",
+      "index": 29,
+      "model": "gpt-6-luna",
+      "startedAt": "2026-10-24T06:32:23.146Z",
+      "invocations": 1,
+      "payloadBytes": 18828,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1561.5469289999746,
+      "usage": {
+        "input": 3990,
+        "output": 19,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4009
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2056.3629449999717,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 0,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:25.204Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3582.5675150000025,
+      "usage": {
+        "input": 3988,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3584.796644999995,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 0,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:28.789Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1248.3506800000032,
+      "usage": {
+        "input": 148,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1418.5550499999954,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "b0db86ca-e91b-4f17-8b04-aa74fa63824e",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 27,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 1,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:30.208Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1581.1043739999877,
+      "usage": {
+        "input": 3988,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1602.2724199999939,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "d14068e0-8752-4c94-bca8-54770e21b214",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 1,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:31.811Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1141.5348519999825,
+      "usage": {
+        "input": 148,
+        "output": 29,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4017
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1249.0898699999962,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 2,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:33.061Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 756.6325110000034,
+      "usage": {
+        "input": 3988,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 785.8279169999878,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 2,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:33.847Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1397.5462760000082,
+      "usage": {
+        "input": 3988,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1402.175779000012,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "d3277b5c-c69b-43be-b555-504123a470f0",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 3,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:35.250Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3310.0842280000215,
+      "usage": {
+        "input": 148,
+        "output": 26,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4014,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3343.654307000019,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "c9174503-02bc-4b84-b80e-2dd59af52931",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 26,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 3,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:38.594Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2341.178132000001,
+      "usage": {
+        "input": 3988,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2363.3466330000083,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 4,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:40.958Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 727.6895450000011,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 823.0458729999955,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 4,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:41.782Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1303.2261199999775,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1335.685982999974,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "b25bc13c-0a51-4ef9-8bb1-30d900c69ea6",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 5,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:43.118Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 662.1777889999794,
+      "usage": {
+        "input": 148,
+        "output": 31,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 748.463631999999,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "d2dc5ed9-05a9-4702-8098-712759af6b18",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 31,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 5,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:43.867Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 5027.511163999996,
+      "usage": {
+        "input": 148,
+        "output": 22,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4010
+      },
+      "stopReason": "stop",
+      "elapsedMs": 5051.7586059999885,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 6,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:48.920Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1236.4276090000058,
+      "usage": {
+        "input": 3988,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1322.7013630000001,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 6,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:50.243Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1599.7356270000164,
+      "usage": {
+        "input": 3988,
+        "output": 30,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1657.020915000001,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "bc274d1f-231d-4db7-8f8d-8ee1a44f6787",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 7,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:51.901Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3296.2036539999826,
+      "usage": {
+        "input": 148,
+        "output": 25,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4013,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3296.7921360000037,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "3e081c3b-f58a-4c5c-8ffe-76be275cbb97",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 25,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 7,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:55.198Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2157.5669070000004,
+      "usage": {
+        "input": 148,
+        "output": 32,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2477.054666000011,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 8,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:32:57.676Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 4373.008310000005,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 4440.5912309999985,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 8,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:02.117Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 4050.7862330000207,
+      "usage": {
+        "input": 148,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 4088.054830000008,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "b843b88c-40ab-497f-9aab-fdf076daa43a",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 27,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 9,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:06.206Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1955.5304630000028,
+      "usage": {
+        "input": 148,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1957.6321039999893,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "1ad2b94e-d38f-4ae3-855d-029b3002f3c7",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 27,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 9,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:08.164Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1016.1297030000133,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1116.1645580000186,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 10,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:09.281Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3242.546039000008,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3255.032542000001,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 10,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:12.537Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1239.196007999999,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1335.1692729999777,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "b8b15dda-d3a9-4cd1-a9bf-e9be9f77d4f6",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 11,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:13.872Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1917.056819999998,
+      "usage": {
+        "input": 148,
+        "output": 31,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1974.7380819999962,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "8cf73983-2b9c-4146-8b4b-ecf999602507",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 31,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 11,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:15.848Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2612.8552200000267,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2704.5262650000222,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 12,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:18.553Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1148.4309580000117,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1361.5221180000226,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 12,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:19.915Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2769.2108489999955,
+      "usage": {
+        "input": 148,
+        "output": 31,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2879.146035999991,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "81e44202-26ea-4b6c-8768-fd7bbc6ac2ae",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 31,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 13,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:22.795Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2236.338134999998,
+      "usage": {
+        "input": 148,
+        "output": 31,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4019,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3585.580722999992,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "a80b04e8-f8db-420a-b612-d8dfb63efe7a",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 31,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 13,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:26.381Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2320.982017000002,
+      "usage": {
+        "input": 148,
+        "output": 26,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4014
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2422.419762000005,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 14,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:28.805Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1930.7390410000226,
+      "usage": {
+        "input": 148,
+        "output": 26,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4014
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2042.484419000015,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 14,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:30.848Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 828.2226399999927,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 926.9617619999917,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "76329618-3386-4445-aa40-5c62cb0b4cf1",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 15,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:31.775Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1629.4570269999967,
+      "usage": {
+        "input": 148,
+        "output": 26,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4014,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1656.2551530000055,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "ea581da1-df4c-494a-b327-af2095285953",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 26,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 15,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:33.432Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1106.946591999993,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1125.3875760000083,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 16,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:34.559Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2345.2576969999936,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2359.8465020000003,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 16,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:36.919Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3637.013638000004,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3714.525003000017,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "4986a832-648a-425d-b1dd-c17b8e14c357",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 17,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:40.635Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 592.5183599999873,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 683.1237820000097,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "b810b048-d204-4d02-9888-673e6c087c8b",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 17,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:41.318Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 803.8525179999997,
+      "usage": {
+        "input": 148,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015
+      },
+      "stopReason": "stop",
+      "elapsedMs": 923.4833579999977,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 18,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:42.243Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2464.273030000011,
+      "usage": {
+        "input": 148,
+        "output": 25,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4013
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2563.420726000011,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 18,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:44.807Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2368.5453500000003,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2558.1526280000107,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "6979eda2-1641-4156-9f5e-179498b84e52",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 19,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:47.366Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 4073.0722590000078,
+      "usage": {
+        "input": 148,
+        "output": 25,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4013,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 4090.012315,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "91d351a2-0c6b-429f-8145-95a37f70aa7a",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 25,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 19,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:51.457Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 667.3335709999956,
+      "usage": {
+        "input": 148,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015
+      },
+      "stopReason": "stop",
+      "elapsedMs": 797.7537769999763,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 20,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:52.256Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1387.9319280000054,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1515.8821319999988,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 20,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:53.772Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 761.3602240000037,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 863.9350290000148,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "96174829-3027-4fc3-ad3e-2cb673eb0916",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 21,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:54.637Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2139.2931880000106,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2291.194245999999,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "968a306c-4aa3-4e09-9c1f-f682e58042f5",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 21,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:56.929Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1721.2516929999983,
+      "usage": {
+        "input": 148,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1835.2418469999975,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 22,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:33:58.765Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1784.124439999985,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1873.835309999995,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 22,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:00.640Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 733.724749999994,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 816.6949160000077,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "8e02257d-a57e-40c9-bbd4-d7049da6e094",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 23,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:01.458Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 959.3197670000081,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 980.8160069999867,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "fbd8bb45-2be3-42fc-ba6c-2c3d2f3925af",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 23,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:02.439Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1012.2135299999791,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1036.9797969999781,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 24,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:03.477Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 671.750315000012,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 789.6902300000074,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 24,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:04.268Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2256.958989000006,
+      "usage": {
+        "input": 148,
+        "output": 24,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4012,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2277.0436120000086,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "320492b6-1fe8-46a4-8270-ffa108f12f7e",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 24,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 25,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:06.546Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1101.7172250000294,
+      "usage": {
+        "input": 148,
+        "output": 27,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4015,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1115.211834000016,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "5f44f3c9-a5df-4c5d-a238-e15f2f1e4c8b",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 27,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 25,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:07.662Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 605.3830680000247,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 693.3596399999806,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 26,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:08.356Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2999.907139000017,
+      "usage": {
+        "input": 148,
+        "output": 26,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4014
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3082.1679920000024,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 26,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:11.439Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1182.4324559999513,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1229.2271970000002,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "a75611b3-cb24-4172-a871-9d491ef68960",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 30,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 27,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:12.669Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 2200.594005000021,
+      "usage": {
+        "input": 148,
+        "output": 26,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4014,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 2248.8691830000025,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "4eed3074-cff0-4dfd-a893-c18a8530a1e3",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 26,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 27,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:14.919Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 881.6566549999989,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1942.3903220000211,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 28,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:16.863Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 994.3062679999857,
+      "usage": {
+        "input": 148,
+        "output": 32,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1051.6379430000088,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 28,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:17.915Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 3435.4332989999675,
+      "usage": {
+        "input": 148,
+        "output": 32,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4020,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 3435.9391919999616,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "a266c408-e8bb-4cd8-9a69-afdbbc126b73",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 32,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "modernized",
+      "index": 29,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:21.352Z",
+      "invocations": 1,
+      "payloadBytes": 18834,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 1751.0130629999912,
+      "usage": {
+        "input": 148,
+        "output": 28,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4016,
+        "corralReported": true
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1808.8943909999798,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": [
+        {
+          "attemptId": "09289c41-15ad-46e7-81f6-73b50e975687",
+          "status": "completed",
+          "failure": null,
+          "usage": {
+            "version": 2,
+            "inputTokens": 3988,
+            "outputTokens": 28,
+            "reasoningTokens": 0,
+            "cacheReadTokens": 3840,
+            "cacheWriteTokens": 0,
+            "source": "reported",
+            "costStatus": "unknown",
+            "costUsd": null
+          },
+          "policy": {
+            "version": 2,
+            "provider": "hive",
+            "modelId": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "api": "openai-completions",
+            "contextWindow": 1000000,
+            "maxOutputTokens": 4096,
+            "cacheRetention": "short",
+            "maxRetries": 2,
+            "providerRetries": 0,
+            "profileId": "deepseek-hive",
+            "auth": "api_key",
+            "endpointHash": "ac8b43cbefa775ceea06552afda3f59a198069523e1964812569ab570703f8d3",
+            "configRevision": "none",
+            "cacheSource": "product"
+          },
+          "prepared": {
+            "inputRevision": 0,
+            "inputHash": "553afb9ce1761cd84f4b6c5c4009e192d88c2175223e06caa3b29b0d9187da49",
+            "estimatedInputTokens": 4622,
+            "measurement": "dsh-density-v2",
+            "outputAllowance": 4096,
+            "cacheNamespace": "33a786eb279cd9b3a3c10ab2198f0b039879837be9e275b021525570168da2f6"
+          }
+        }
+      ]
+    },
+    {
+      "profile": "deepseek-hive",
+      "variant": "baseline",
+      "index": 29,
+      "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+      "startedAt": "2026-10-24T06:34:23.162Z",
+      "invocations": 1,
+      "payloadBytes": 18833,
+      "httpStatuses": [
+        200
+      ],
+      "firstEventMs": 919.7217100000125,
+      "usage": {
+        "input": 148,
+        "output": 30,
+        "cacheRead": 3840,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 4018
+      },
+      "stopReason": "stop",
+      "elapsedMs": 1227.8347990000038,
+      "ok": true,
+      "reason": null,
+      "success": true,
+      "attempts": []
+    }
+  ],
+  "stopped": [],
+  "limitations": [
+    "One auxiliary chooser path; not a task-quality or compaction benchmark.",
+    "Shared provider cache may warm across conditions.",
+    "Prices and savings are not inferred from token counts."
+  ],
+  "fixtureHash": "d804c82aab46cd17dd673405f35c7a8b05dc8651b1c0780668e980bae038bf5d",
+  "fixtureBytes": 17659,
+  "finishedAt": "2026-10-24T06:34:24.391Z"
+}

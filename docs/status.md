@@ -8,6 +8,7 @@
 
 | 범위 | 승인·현재 계약 | 구현·기존 증거 | 남은 경계 |
 |---|---|---|---|
+| LLM 요청·컨텍스트·정산 | CR-052, [현재 runtime](current/llm-runtime.md) | C-179–184 구현·검증 범위는 [이번 기록](evaluation/llm-modernization/report.md)과 backlog 참조 | Linux/ChatGPT/Hive와 mock·loopback 범위. 기존 전체 회귀 실패, 다른 OS·실제 음성/이미지·일반 과제 품질 동등성은 별도 |
 | 세션 작업 화면 단순화(도킹·대화·남은 킷 전환) | CR-051, [Workbench](current/workbench.md), [Design System](../DESIGN.md) | C-178 구현, [Linux 화면·레이아웃·핵심 회귀](evaluation/Session-Workspace-Simplification-2026-10-24.md) | 전체 서버 E2E·다른 OS·실제 IME·스크린리더 검증은 별도 |
 | 디자인 킷·공용 컴포넌트·토큰 정형화 | CR-050, [Design System](../DESIGN.md) | C-177 구현, [Linux light/dark·390px·키보드·설정·핵심 회귀](evaluation/Design-Kit-Adoption-2026-10-23.md) | 전체 출시·다른 OS·실제 IME·스크린리더·모든 도메인 여정 검증은 별도 |
 | 검토·실행·후보 비교 배치 | CR-047, [Workbench](current/workbench.md) | C-172 구현, [현재 화면·핵심 회귀](evaluation/Review-Comparison-Layout-2026-10-23.md) | 사본 없는 초기 development/deployments 조회 404로 files E2E 최종 콘솔 검사 실패. 새 레이아웃·초안/반영 단계와 분리해 기록 |

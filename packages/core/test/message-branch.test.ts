@@ -51,10 +51,12 @@ it('[TC-CONTINUITY-001-H] [TC-CONTINUITY-001-N] a message branch uses only its p
       },
     },
   });
+  const definition = linearCorral(['writer']);
+  definition.roles[0]!.allowedCollaborationTools.push('read_artifact');
   const source = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'source_branch',
-    definition: linearCorral(['writer']),
+    definition,
     mode: 'live',
   });
   await started.wait();
@@ -113,6 +115,11 @@ it('[TC-CONTINUITY-001-H] [TC-CONTINUITY-001-N] a message branch uses only its p
   expect(JSON.stringify(branchInput)).toContain('Selected result.');
   expect(JSON.stringify(branchInput)).toContain('Before the selected message.');
   expect(JSON.stringify(branchInput)).not.toContain('FUTURE');
+  const inherited = branchInput.resumeContext?.sources?.find(
+    (source) => source.text === definition.input.brief,
+  );
+  expect(inherited).toBeDefined();
+  expect(store.getArtifactText(result.runId!, inherited!.sourceRef)).toBe(definition.input.brief);
   expect(coordinator.getRunSnapshot(result.runId!)?.branchedFrom).toMatchObject({
     runId: source.runId,
     artifactVersionId: point.artifactVersionId,

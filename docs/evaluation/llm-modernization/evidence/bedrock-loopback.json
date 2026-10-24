@@ -1,0 +1,7 @@
+{
+  "onlyLoopback": true,
+  "requestedMaxRetries": 0,
+  "payloadHooks": 1,
+  "httpRequests": 1,
+  "stopReason": "error"
+}

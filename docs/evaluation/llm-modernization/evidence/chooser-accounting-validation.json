@@ -1,0 +1,75 @@
+{
+  "checkedAt": "2026-10-24T11:26:32.753Z",
+  "sourceCandidate": "ace9120f1bc033d89172294fa4dbe7240f008dc3e933d61850cee8cf66bedff5",
+  "baseline": "401bdf463efab4784cb25c686867ed18f2c5379c",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "related": {
+    "files": 8,
+    "passed": 86,
+    "failed": 0,
+    "command": "pnpm exec vitest run apps/server/test/auto-route.test.ts packages/core/test/auto-team.test.ts packages/core/test/auto-team-regressions.test.ts apps/server/test/auto-baseline.test.ts apps/server/test/request-policy.test.ts apps/server/test/request-runtime.test.ts apps/server/test/auto-cancel.test.ts packages/core/test/budget-coordinator.test.ts --maxWorkers=2"
+  },
+  "typecheck": "passed @corral/core and @corral/server",
+  "contracts": "passed, generated JSON Schema unchanged",
+  "redToGreen": [
+    "physical retries reserve their individual prepared output allowances",
+    "terminal missing usage stays unknown; provider-reported zero is known",
+    "late usage settles once without changing completed artifacts or the immutable choice snapshot",
+    "admission timeout without a payload creates no model reservation"
+  ],
+  "responseFinding": {
+    "status": "reproduced, not changed",
+    "condition": "all host slots occupied until the 30-second chooser timeout",
+    "observed": {
+      "providerCalls": 0,
+      "fallback": "timeout",
+      "template": "single"
+    },
+    "cause": "chooser timer starts before common admission; baseline used direct transport",
+    "scope": "routing is skipped under contention; actual answer quality and live latency were not measured"
+  },
+  "history": "prior snapshots, source candidates and package/live evidence retain their original identities",
+  "notRun": [
+    "full test suite",
+    "packaging or installation",
+    "paid LLM calls",
+    "live answer quality or latency A/B"
+  ],
+  "logs": {
+    "red": {
+      "sha256": "762175e6da21efed14eac8e919073699ff8764088deb2a17b638fa1611cafbe4",
+      "file": "red.log"
+    },
+    "legacy-regression": {
+      "sha256": "cf8f8ffba229bde1e87c923e8e3e4d87d5043f8b1ff1e10fd3647f7d6ce62bf9",
+      "file": "legacy-regression.log"
+    },
+    "related": {
+      "sha256": "7fa6075cd38df0adcb1f769f364595bdf2fe446c07b02312b3e2e62dc351f9f8",
+      "file": "related.log"
+    },
+    "typecheck": {
+      "sha256": "7ae12a13a73c3a2ac6aa0fd0132ab2b19d1bbb6c9f564f9505628466f47785fa",
+      "file": "typecheck.log"
+    },
+    "contracts": {
+      "sha256": "46233193eeebe866ed0b0d57abc0cf6103862559a299db8fe502f7dfd4a3e4fe",
+      "file": "contracts.log"
+    },
+    "spec": {
+      "sha256": "59bd998112e0b85291d9f3cfadd4012762bbba4bfe63e509b49f97cbfe0c0e70",
+      "file": "spec.log"
+    }
+  },
+  "spec": {
+    "status": "passed",
+    "checks": 2934,
+    "taggedScenarios": 415,
+    "declaredScenarios": 419
+  },
+  "logPublication": "Local log paths omitted; original log names and SHA-256 values retained. Raw logs remain in the private validation workspace."
+}

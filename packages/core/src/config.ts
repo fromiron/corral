@@ -31,7 +31,7 @@ export interface InstallationPolicy {
  * maxima stand in for them.
  */
 export const SPEC_HARD_CAPS: InstallationPolicy = {
-  maxModelConcurrency: 3,
+  maxModelConcurrency: 6,
   maxSpawns: 32,
   maxModelCalls: 100,
   maxOutputTokens: 256_000,
@@ -83,6 +83,8 @@ export const ModelProviderConfig = z.strictObject({
   baseUrl: EndpointUrl,
   /** `api_key`: a key entered under Settings → Models; `none`: a local server without keys. */
   access: z.enum(['api_key', 'none']),
+  cacheRetention: z.enum(['none', 'short', 'long']).optional(),
+  sessionAffinity: z.enum(['headers', 'headers-and-body']).optional(),
   models: z
     .array(
       z.strictObject({
@@ -104,7 +106,10 @@ export const WorkspaceConfig = z.strictObject({
   hardCaps: z
     .strictObject(
       Object.fromEntries(
-        Object.entries(SPEC_HARD_CAPS).map(([field, max]) => [field, cap(max)]),
+        Object.entries(SPEC_HARD_CAPS).map(([field, max]) => [
+          field,
+          field === 'maxModelConcurrency' ? z.int().positive().optional() : cap(max),
+        ]),
       ) as Record<keyof InstallationPolicy, ReturnType<typeof cap>>,
     )
     .optional(),
@@ -223,11 +228,16 @@ export function limitViolations(
   limits: RunLimits,
   loopRounds: number,
   policy: InstallationPolicy,
+  unlimited = false,
 ): string[] {
   const above = (label: string, value: number, max: number) =>
     value > max ? [`${label} ${value} is above this installation’s cap of ${max}`] : [];
   return [
-    ...LIMIT_FIELDS.flatMap((field) => above(field, limits[field], policy[field])),
+    ...LIMIT_FIELDS.filter(
+      (field) =>
+        field !== 'maxModelConcurrency' &&
+        (!unlimited || ['maxSpawns', 'maxQuestions', 'questionTimeoutMs'].includes(field)),
+    ).flatMap((field) => above(field, limits[field], policy[field])),
     ...above('Loop rounds', loopRounds, policy.maxLoopIterations),
   ];
 }

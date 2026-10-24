@@ -20,6 +20,8 @@ export const EndpointSpec = z.strictObject({
   baseUrl: z.string().url().max(500),
   /** A local server without keys; only a fixed placeholder is sent as the key. */
   keyless: z.boolean(),
+  cacheRetention: z.enum(['none', 'short', 'long']).optional(),
+  sessionAffinity: z.enum(['headers', 'headers-and-body']).optional(),
   models: z.array(EndpointModel).min(1).max(50),
 });
 export type EndpointSpec = z.infer<typeof EndpointSpec>;

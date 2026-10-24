@@ -12,10 +12,20 @@ const settled = (p: RunProjection) => ['succeeded', 'failed', 'cancelled'].inclu
 
 /** Reads the artifact version id Corral returned for the last write_artifact call. */
 function lastArtifactVersion(context: { messages: unknown[] }): string {
-  const text = JSON.stringify(context.messages);
-  const match = [...text.matchAll(/artv_\d{4}/g)].at(-1);
-  if (!match) throw new Error('no artifact version in the transcript');
-  return match[0];
+  for (const message of [...context.messages].reverse()) {
+    const result = message as {
+      role?: string;
+      toolName?: string;
+      content?: { type: string; text?: string }[];
+    };
+    if (result.role !== 'toolResult' || result.toolName !== 'write_artifact') continue;
+    for (const part of result.content ?? [])
+      if (part.type === 'text' && part.text) {
+        const value = JSON.parse(part.text) as { artifactVersionId?: string };
+        if (value.artifactVersionId) return value.artifactVersionId;
+      }
+  }
+  throw new Error('no write_artifact result in the transcript');
 }
 
 const writeThenSubmit = (text: string) => [
@@ -64,7 +74,7 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     expect(JSON.stringify(events)).not.toContain(ACCESS_TOKEN);
     expect(events.find((event) => event.type === 'model.request_recorded')?.payload).toMatchObject({
       runtime: 'pi-core',
-      contextEstimate: { tokens: expect.any(Number), method: 'pi-1.3.0-messages' },
+      contextEstimate: { tokens: expect.any(Number), method: 'dsh-density-v2' },
       sections: expect.arrayContaining([
         expect.objectContaining({ name: 'corral_safety', source: 'corral', version: 1 }),
       ]),
@@ -671,5 +681,32 @@ it('[TC-INPUT-001-H] the core worker waits for the person and sends the answer i
       })
     ).status,
   ).toBe('applied');
-  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+  const final = await waitForProjection(transport, runId, settled);
+  expect(final.status, JSON.stringify(final.executions)).toBe('succeeded');
+});
+
+it('[TC-LLM-004-F] Core recovers a provider overflow once through managed compaction', async () => {
+  const { transport } = liveRuntime([
+    {
+      ...fauxAssistantMessage(''),
+      stopReason: 'error',
+      errorMessage: JSON.stringify({
+        code: 'CONTEXT_OVERFLOW',
+        status: 400,
+        retryAfterMs: null,
+        requestId: null,
+      }),
+    },
+    fauxAssistantMessage('Keep the marker requirement and submit the final artifact.'),
+    ...writeThenSubmit('overflow recovered'),
+  ]);
+  const { runId, events } = await liveRun(transport, (d) => {
+    d.input.brief = 'Reference context. '.repeat(1000) + ' Save overflow recovered.';
+  });
+  const final = await waitForProjection(transport, runId, settled);
+  expect(final.status).toBe('succeeded');
+  expect(
+    events.filter((e) => e.type === 'model.request_recorded').map((e) => e.payload.purpose),
+  ).toEqual(['turn', 'compaction', 'retry', 'turn']);
+  expect(final.budget.modelCalls).toBe(4);
 });

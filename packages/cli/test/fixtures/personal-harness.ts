@@ -322,8 +322,18 @@ export async function runHarnessComparison() {
           if (!results.length) {
             let output = 'Fixture plan: add both operands.';
             if (isReviewer) {
-              const target = /"targetArtifactVersionId": "([^"]+)"/.exec(text)?.[1],
-                criteriaVersion = /"criteriaVersionId": "([^"]+)"/.exec(text)?.[1];
+              const stateMessage = context.messages.findLast(
+                (message) =>
+                  message.role === 'user' &&
+                  typeof message.content === 'string' &&
+                  message.content.startsWith('[Corral current state]\n'),
+              );
+              const state =
+                stateMessage && typeof stateMessage.content === 'string'
+                  ? JSON.parse(stateMessage.content.slice('[Corral current state]\n'.length))
+                  : null;
+              const target = state?.targetArtifactVersionId,
+                criteriaVersion = state?.criteriaVersionId;
               assert(target && criteriaVersion);
               output = JSON.stringify({
                 targetArtifactVersionId: target,

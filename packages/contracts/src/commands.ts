@@ -94,8 +94,8 @@ export const PatchPayload = z.union([
     changes: z
       .strictObject({
         maxSpawns: z.int().min(1).max(32).optional(),
-        maxModelCalls: z.int().min(1).max(100).optional(),
-        maxOutputTokens: z.int().min(1).max(256000).optional(),
+        maxModelCalls: z.int().min(1).optional(),
+        maxOutputTokens: z.int().min(1).optional(),
       })
       .refine((changes) => Object.keys(changes).length > 0, 'at least one limit must change')
       .meta({ minProperties: 1 }),

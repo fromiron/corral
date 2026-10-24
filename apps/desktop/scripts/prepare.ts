@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -10,8 +11,9 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { candidateFiles, candidateHash } from '../../../tools/release/candidate.ts';
 import {
   assertRelocatableRuntime,
   NODE_VERSION,
@@ -38,6 +40,7 @@ assert(
 const pnpmCommand = packageManagerCommand(pnpmEntry, process.execPath);
 const desktop = resolve(import.meta.dirname, '..');
 const root = resolve(desktop, '../..');
+const candidate = candidateHash(root);
 const sourceManifests = [
   join(root, 'apps/server/package.json'),
   ...readdirSync(join(root, 'packages')).map((name) =>
@@ -185,6 +188,31 @@ cpSync(join(root, 'THIRD-PARTY-NOTICES'), join(staging, 'THIRD-PARTY-NOTICES'), 
   recursive: true,
 });
 cpSync(nodeLicense, join(staging, 'THIRD-PARTY-NOTICES/Node-LICENSE'));
+// The browser includes LGPL budget code; ship the corresponding application and library sources for rebuilding it.
+const sourceDirectory = join(staging, 'corresponding-source', 'corral');
+const sourceHashes: Record<string, string> = {};
+for (const path of candidateFiles(root)) {
+  const source = join(root, path);
+  if (!existsSync(source)) continue;
+  const target = join(sourceDirectory, path);
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(source, target);
+  sourceHashes[path] = createHash('sha256').update(readFileSync(target)).digest('hex');
+}
+writeFileSync(
+  join(staging, 'corresponding-source', 'manifest.json'),
+  JSON.stringify({ candidate, files: sourceHashes }, null, 2),
+);
+execFileSync(pnpmCommand.executable, [...pnpmCommand.args, 'release:inventory'], {
+  cwd: root,
+  stdio: 'inherit',
+  windowsHide: true,
+});
+cpSync(join(root, 'test-results/release/sbom.spdx.json'), join(staging, 'sbom.spdx.json'));
+cpSync(
+  join(root, 'test-results/release/THIRD-PARTY-NOTICES.txt'),
+  join(staging, 'THIRD-PARTY-NOTICES/installed-packages.txt'),
+);
 // Catch missing native modules, unresolved exports, and forgotten TS worker URLs before packaging.
 const checkEnv = { ...process.env };
 for (const name of ['NODE_PATH', 'NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE']) delete checkEnv[name];
@@ -195,6 +223,7 @@ execFileSync(bundledNode, [join(desktop, 'scripts/check-runtime.mjs'), join(stag
   env: checkEnv,
 });
 const inventory = assertRelocatableRuntime(staging);
+assert.equal(candidateHash(root), candidate, 'build inputs changed while preparing the runtime');
 writeFileSync(
   join(staging, 'runtime.json'),
   JSON.stringify(
@@ -203,6 +232,7 @@ writeFileSync(
       arch: target.arch,
       version: NODE_VERSION,
       dependencyLayout: 'physical-hoisted',
+      sourceCandidate: candidate,
     },
     null,
     2,

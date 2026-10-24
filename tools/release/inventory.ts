@@ -1,19 +1,28 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { packageManagerCommand } from '../../apps/desktop/scripts/packaging.ts';
 import type { DependencyEvidence } from '../deps/check.ts';
 import { candidateHash, ROOT } from './candidate.ts';
-import { createInventory, type LicensedPackage } from './policy.ts';
+import { createInventory, type LicensedPackage, SOURCE_PORTS } from './policy.ts';
 
 const output = join(ROOT, 'test-results/release');
 mkdirSync(output, { recursive: true });
+if (!process.env.npm_execpath) throw new Error('Run inventory with pnpm release:inventory');
+const pnpm = packageManagerCommand(process.env.npm_execpath, process.execPath);
 const licenses = JSON.parse(
-  execFileSync('pnpm', ['licenses', 'list', '--json'], {
+  execFileSync(pnpm.executable, [...pnpm.args, 'licenses', 'list', '--json'], {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
   }),
 ) as Record<string, LicensedPackage[]>;
+for (const port of SOURCE_PORTS) {
+  const packages = licenses[port.license] ?? [];
+  licenses[port.license] = packages;
+  if (!packages.some((pkg) => pkg.name === port.name))
+    packages.push({ name: port.name, versions: [port.version], paths: [join(ROOT, port.path)] });
+}
 const evidence = JSON.parse(
   readFileSync(join(ROOT, 'docs/dependency-lock.json'), 'utf8'),
 ) as DependencyEvidence;

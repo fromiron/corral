@@ -147,7 +147,7 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
         modelName: 'Test A',
         available: true,
         reasoning: true,
-        contextWindow: 1000,
+        contextWindow: 128000,
         maxOutputTokens: 500,
         method: 'oauth',
         keyConfigured: true,
@@ -207,23 +207,25 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
         provider: 'openai',
         modelId: 'gpt-test-a',
         auth: 'oauth',
+        maxOutputTokens: 500,
+        cachePolicy: { retention: 'short', source: 'product' },
         imageInput: false,
-        contextWindow: 1000,
+        contextWindow: 128000,
         contextPolicy: {
-          version: 1,
-          contextWindow: 1000,
+          version: 2,
+          contextWindow: 128000,
           reserveTokens: 16384,
-          keepRecentTokens: 20000,
+          keepRecentTokens: 22323,
           explicit: false,
           configRevision: expect.any(String),
-          baseContextWindow: 1000,
+          baseContextWindow: 128000,
           baseSource: 'catalog',
           sources: {
             contextWindow: 'catalog',
-            reserveTokens: 'pi_default',
-            keepRecentTokens: 'pi_default',
+            reserveTokens: 'adaptive',
+            keepRecentTokens: 'adaptive',
           },
-          warnings: ['legacy_inconsistent'],
+          warnings: [],
         },
         reasoning: { levels: [], providerDefault: false },
       },
@@ -516,7 +518,7 @@ describe('team drafts from a goal (CR-006)', () => {
       model: { provider: 'openai', modelId: 'gpt-test-a' },
     });
     expect(fake.seen.hostRequests).toHaveLength(1);
-    expect(fake.seen.hostRequests[0]?.maxTokens).toBe(1500);
+    expect(fake.seen.hostRequests[0]?.maxTokens).toBe(500);
     expect(fake.seen.hostRequests[0]?.text).toContain('Compare three help desk vendors.');
     expect(context.responses.join('\n')).not.toContain('secret');
   });
@@ -583,7 +585,9 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
           modelProviders: [],
         }),
       });
-    expect((await update({ contextWindow: 32000 })).status).toBe(400);
+    expect(
+      (await update({ contextWindow: 32000, compaction: { reserveTokens: 32000 } })).status,
+    ).toBe(400);
     expect(readFileSync(path, 'utf8')).toBe(before);
     const saved = await update({
       contextWindow: 64000,
@@ -646,14 +650,14 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     const effective = preview.body.effectiveProfiles;
     expect(effective.first.policy).toMatchObject({
       contextWindow: 64000,
-      baseContextWindow: 1000,
+      baseContextWindow: 128000,
       baseSource: 'catalog',
     });
     expect(effective.second.policy.contextWindow).toBe(96000);
     expect(effective.fallback.policy).toMatchObject({
       contextWindow: 32000,
       baseSource: 'fallback',
-      warnings: ['legacy_inconsistent'],
+      warnings: [],
     });
     expect(effective.explicit.policy).toMatchObject({
       contextWindow: 128000,
@@ -838,7 +842,7 @@ describe('auto sessions (CR-024)', () => {
       modelProfile: 'model-b',
     });
     expect(fake.seen.hostRequests).toHaveLength(1);
-    expect(fake.seen.hostRequests[0]?.maxTokens).toBe(256);
+    expect(fake.seen.hostRequests[0]?.maxTokens).toBe(16384);
     expect(fake.seen.hostRequests[0]?.text).toContain('What does CR-024 change?');
     const transport = new HttpSseTransport({ baseUrl: context.server.url, fetch: context.call });
     const done = await waitForProjection(

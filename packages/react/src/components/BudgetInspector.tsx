@@ -29,6 +29,8 @@ export function BudgetInspector({
   const definition = useStore(session, (s) => s.definition);
   if (!projection || !definition) return null;
   const { budget } = projection;
+  const unlimited = (value: number) =>
+    projection.usageLimits === 'none' || value === Number.MAX_SAFE_INTEGER;
   const limits = projection.limits ?? definition.limits;
   const remaining = Math.max(
     0,
@@ -67,34 +69,6 @@ export function BudgetInspector({
     if (parts.length === 0) parts.push(estimate.simulated ? t('costSimulated') : t('costNone'));
     return parts.join(' · ');
   };
-  if (projection.usageLimits === 'none') {
-    // CR-048: no allowance applies, so show what was used and what is still unknown.
-    const rows = Object.values(budget.reservations);
-    return (
-      <KitCard role="region" aria-labelledby={headingId}>
-        <KitCardHeader>
-          <h3 id={headingId}>
-            <KitCardTitle>{t('heading')}</KitCardTitle>
-          </h3>
-        </KitCardHeader>
-        <KitCardContent className="flex flex-col gap-3">
-          <p role="note">{t('noLimits')}</p>
-          <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
-            <dt>{t('confirmed')}</dt>
-            <dd>{t('tokens', { count: budget.spent })}</dd>
-            <dt>{t('callsMade')}</dt>
-            <dd>{budget.modelCalls}</dd>
-            <dt>{t('callsInFlight')}</dt>
-            <dd>{rows.filter((row) => row.status === 'reserved').length}</dd>
-            <dt>{t('callsUnknown')}</dt>
-            <dd>{rows.filter((row) => row.status === 'unknown').length}</dd>
-          </dl>
-          {prices ? <CostLine text={costText()} /> : null}
-          <p className="text-muted-foreground">{t('noLimitsNote')}</p>
-        </KitCardContent>
-      </KitCard>
-    );
-  }
   return (
     <KitCard role="region" aria-labelledby={headingId}>
       <KitCardHeader>
@@ -103,24 +77,49 @@ export function BudgetInspector({
         </h3>
       </KitCardHeader>
       <KitCardContent className="flex flex-col gap-3">
-        <Meter
-          label={t('meterTokens')}
-          value={budget.spent + budget.reserved + budget.unknownOutstanding}
-          max={limits.maxOutputTokens}
-          text={t('meterTokensText', {
-            used: budget.spent,
-            held: budget.reserved + budget.unknownOutstanding,
-            max: limits.maxOutputTokens,
-          })}
-          now={budget.spent}
-        />
-        <Meter
-          label={t('meterCalls')}
-          value={budget.modelCalls}
-          max={limits.maxModelCalls}
-          text={t('meterCallsText', { used: budget.modelCalls, max: limits.maxModelCalls })}
-          now={budget.modelCalls}
-        />
+        {projection.usageLimits === 'none' ? <p role="note">{t('noLimits')}</p> : null}
+        {projection.usageLimits === 'none' ? (
+          <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-1">
+            <dt>{t('callsInFlight')}</dt>
+            <dd>
+              {Object.values(budget.reservations).filter((row) => row.status === 'reserved').length}
+            </dd>
+            <dt>{t('callsUnknown')}</dt>
+            <dd>
+              {Object.values(budget.reservations).filter((row) => row.status === 'unknown').length}
+            </dd>
+          </dl>
+        ) : null}
+        {!unlimited(limits.maxOutputTokens) ? (
+          <Meter
+            label={t('meterTokens')}
+            value={budget.spent + budget.reserved + budget.unknownOutstanding}
+            max={limits.maxOutputTokens}
+            text={t('meterTokensText', {
+              used: budget.spent,
+              held: budget.reserved + budget.unknownOutstanding,
+              max: limits.maxOutputTokens,
+            })}
+            now={budget.spent}
+          />
+        ) : (
+          <p>
+            {t('confirmed')}: {t('tokens', { count: budget.spent })}
+          </p>
+        )}
+        {!unlimited(limits.maxModelCalls) ? (
+          <Meter
+            label={t('meterCalls')}
+            value={budget.modelCalls}
+            max={limits.maxModelCalls}
+            text={t('meterCallsText', { used: budget.modelCalls, max: limits.maxModelCalls })}
+            now={budget.modelCalls}
+          />
+        ) : (
+          <p>
+            {t('callsMade')}: {budget.modelCalls}
+          </p>
+        )}
         {prices ? <CostLine text={costText()} /> : null}
         {imageFigures.some(([, value]) => value !== undefined) ? (
           <>
@@ -149,17 +148,26 @@ export function BudgetInspector({
               <dl className="mt-1 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-1">
                 <dt>{t('confirmed')}</dt>
                 <dd>{t('tokens', { count: budget.spent })}</dd>
-                <dt>{t('reserved')}</dt>
-                <dd>{t('tokens', { count: budget.reserved })}</dd>
-                <dt>{t('unknownHeld')}</dt>
-                <dd>{t('tokens', { count: budget.unknownOutstanding })}</dd>
-                <dt>{t('remaining')}</dt>
-                <dd>{t('tokens', { count: remaining })}</dd>
-                <dt>{t('limit')}</dt>
-                <dd>{t('tokens', { count: limits.maxOutputTokens })}</dd>
+                {!unlimited(limits.maxOutputTokens) ? (
+                  <>
+                    <dt>{t('reserved')}</dt>
+                    <dd>{t('tokens', { count: budget.reserved })}</dd>
+                    <dt>{t('unknownHeld')}</dt>
+                    <dd>{t('tokens', { count: budget.unknownOutstanding })}</dd>
+                    <dt>{t('remaining')}</dt>
+                    <dd>
+                      {unlimited(limits.maxOutputTokens)
+                        ? t('unlimited')
+                        : t('tokens', { count: remaining })}
+                    </dd>
+                    <dt>{t('limit')}</dt>
+                    <dd>{t('tokens', { count: limits.maxOutputTokens })}</dd>
+                  </>
+                ) : null}
                 <dt>{t('modelCalls')}</dt>
                 <dd>
-                  {budget.modelCalls} / {limits.maxModelCalls}
+                  {budget.modelCalls} /{' '}
+                  {unlimited(limits.maxModelCalls) ? t('unlimited') : limits.maxModelCalls}
                 </dd>
                 <dt>{t('spawns')}</dt>
                 <dd>
@@ -174,7 +182,9 @@ export function BudgetInspector({
                 <dd className="break-words">{prices ? costText() : t('costUnavailable')}</dd>
               </dl>
               <p className="text-muted-foreground">{t('unknownNote')}</p>
-              <p className="text-muted-foreground">{t('capNote')}</p>
+              <p className="text-muted-foreground">
+                {t(projection.usageLimits === 'none' ? 'noLimitsNote' : 'capNote')}
+              </p>
             </KitAccordionContent>
           </KitAccordionItem>
           {Object.keys(budget.reservations).length > 0 ? (
@@ -203,7 +213,7 @@ export function BudgetInspector({
                           {row.actual === null
                             ? t('usageUnknown')
                             : t('tokens', { count: row.actual })}
-                          {row.status !== 'settled' ? (
+                          {row.status !== 'settled' && projection.usageLimits !== 'none' ? (
                             <span> · {t('held', { count: row.reserved })}</span>
                           ) : null}
                         </>

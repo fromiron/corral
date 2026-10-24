@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { providerFailure } from '@corral/adapter-pi/request-policy';
 import {
   canonicalJson,
   GENERATED_IMAGE_MAX_BYTES,
@@ -7,6 +8,8 @@ import {
   ImageGenerationProfile,
   type ImageGenerationResult,
   ImageInput,
+  type ModelAttempt,
+  type ModelAttemptStore,
 } from '@corral/contracts';
 import type { ToolCancellation } from '@corral/core';
 import type { Db } from '@corral/storage-sqlite';
@@ -53,13 +56,18 @@ export class ImageGenerationService {
   private readonly db: Db;
   private readonly resolve: (profileId: string) => Promise<ResolvedImageProfile | null>;
   private readonly fetcher: typeof fetch;
+  private readonly attempts?: ModelAttemptStore;
+  private readonly now: () => string;
   constructor(
     db: Db,
     resolve: (profileId: string) => Promise<ResolvedImageProfile | null>,
     now: () => string,
     fetcher: typeof fetch = fetch,
+    attempts?: ModelAttemptStore,
   ) {
     this.db = db;
+    this.attempts = attempts;
+    this.now = now;
     this.resolve = resolve;
     this.fetcher = fetcher;
     this.media = new GeneratedMediaStore(db, now);
@@ -166,21 +174,67 @@ export class ImageGenerationService {
       );
     if (cancellation.aborted)
       throw new ImageGenerationUnavailable('image generation cancelled', 'not_started');
-    this.db.transaction(() => {
-      const count = this.db
-        .prepare(
-          'SELECT COUNT(*) AS count FROM image_generation_operations WHERE run_id=? AND profile_id=?',
-        )
-        .get(owner.runId, profile.profileId) as { count: number };
-      if (count.count >= profile.maxCallsPerRun)
-        throw new ImageGenerationUnavailable('image generation call limit reached', 'not_started');
-      this.db
-        .prepare("INSERT INTO image_generation_operations VALUES (?,?,?,?,'running',NULL)")
-        .run(owner.runId, owner.effectId, identity, profile.profileId);
-    })();
+    const attempt: ModelAttempt = {
+      version: 2,
+      attemptId: `image_${owner.runId}_${owner.effectId}`,
+      intent: {
+        requestId: owner.effectId,
+        purpose: 'image',
+        revision: owner.attemptNo,
+        owner: {
+          kind: 'image',
+          id: owner.effectId,
+          runId: owner.runId,
+          executionId: owner.executionId,
+        },
+      },
+      provider: profile.api,
+      modelId: profile.modelId,
+      status: 'started',
+      startedAt: this.now(),
+      endedAt: null,
+      payloadHash: hash(args),
+      payloadBytes: Buffer.byteLength(canonicalJson(args)),
+      firstEventAt: null,
+      failure: null,
+      usage: {
+        version: 2,
+        inputTokens: null,
+        outputTokens: null,
+        reasoningTokens: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        source: 'unknown',
+        costStatus: 'unknown',
+        costUsd: null,
+      },
+    };
+    try {
+      this.db.transaction(() => {
+        const count = this.db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM image_generation_operations WHERE run_id=? AND profile_id=?',
+          )
+          .get(owner.runId, profile.profileId) as { count: number };
+        if (count.count >= profile.maxCallsPerRun)
+          throw new ImageGenerationUnavailable(
+            'image generation call limit reached',
+            'not_started',
+          );
+        this.db
+          .prepare("INSERT INTO image_generation_operations VALUES (?,?,?,?,'running',NULL)")
+          .run(owner.runId, owner.effectId, identity, profile.profileId);
+        this.attempts?.put(attempt);
+      })();
+    } catch (error) {
+      if (error instanceof ImageGenerationUnavailable) throw error;
+      throw new ImageGenerationUnavailable('image request could not be recorded', 'not_started');
+    }
+
     const abort = new AbortController();
     const off = cancellation.onCancel(() => abort.abort());
     const timer = setTimeout(() => abort.abort(), profile.timeoutMs);
+    let dispatched = false;
     try {
       // Public Images API: explicit model, one PNG, base64 response. No redirects or URL downloads.
       const fields = {
@@ -203,6 +257,7 @@ export class ImageGenerationService {
           );
         requestBody = form;
       }
+      dispatched = true;
       const response = await this.fetcher(endpoint, {
         method: 'POST',
         redirect: 'error',
@@ -218,6 +273,18 @@ export class ImageGenerationService {
         data?: { b64_json?: unknown }[];
         usage?: { input_tokens?: unknown; output_tokens?: unknown };
       };
+      const tokenCount = (value: unknown) =>
+        Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
+      const usage = {
+        inputTokens: tokenCount(body.usage?.input_tokens),
+        outputTokens: tokenCount(body.usage?.output_tokens),
+      };
+      attempt.usage = {
+        ...attempt.usage,
+        ...usage,
+        source: usage.inputTokens !== null && usage.outputTokens !== null ? 'reported' : 'unknown',
+      };
+      this.attempts?.put(attempt);
       const encoded = body.data?.length === 1 ? body.data[0]?.b64_json : null;
       if (
         typeof encoded !== 'string' ||
@@ -231,32 +298,42 @@ export class ImageGenerationService {
       if (bytes.toString('base64') !== encoded)
         throw new Error('noncanonical generated image encoding');
       const media = this.media.put(owner, bytes);
-      const tokenCount = (value: unknown) =>
-        Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
       const result: ImageGenerationResult = {
         media,
-        usage: {
-          inputTokens: tokenCount(body.usage?.input_tokens),
-          outputTokens: tokenCount(body.usage?.output_tokens),
-        },
+        usage,
         costUsd: null,
       };
-      this.db
-        .prepare(
-          "UPDATE image_generation_operations SET state='completed',result_json=? WHERE run_id=? AND effect_id=?",
-        )
-        .run(canonicalJson(result), owner.runId, owner.effectId);
+      attempt.status = 'completed';
+      attempt.endedAt = this.now();
+      this.db.transaction(() => {
+        this.db
+          .prepare(
+            "UPDATE image_generation_operations SET state='completed',result_json=? WHERE run_id=? AND effect_id=?",
+          )
+          .run(canonicalJson(result), owner.runId, owner.effectId);
+        this.attempts?.put(attempt);
+      })();
       return result;
-    } catch {
+    } catch (error) {
+      attempt.status = dispatched ? 'unknown' : 'failed';
+      attempt.endedAt = this.now();
+      attempt.failure = providerFailure(error);
       this.db
         .prepare(
           "UPDATE image_generation_operations SET state='unknown' WHERE run_id=? AND effect_id=?",
         )
         .run(owner.runId, owner.effectId);
+      try {
+        this.attempts?.put(attempt);
+      } catch {
+        /* The operation remains durably unknown; never resend it. */
+      }
       // Provider bodies/errors may contain secrets or prompts. Keep only a bounded safe diagnosis.
       throw new ImageGenerationUnavailable(
-        'image provider operation did not produce a confirmed artifact; billing may be unknown',
-        'unknown',
+        dispatched
+          ? 'image provider operation did not produce a confirmed artifact; billing may be unknown'
+          : 'image request could not be prepared',
+        dispatched ? 'unknown' : 'not_started',
       );
     } finally {
       clearTimeout(timer);

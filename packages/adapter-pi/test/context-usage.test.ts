@@ -320,7 +320,7 @@ describe('context usage measurement', () => {
       [],
       [],
     );
-    expect(record.contextEstimate?.method).toBe('pi-1.3.0-messages');
+    expect(record.contextEstimate?.method).toBe('dsh-density-v2');
     expect(record.contextUsage?.coverage).toBe('request');
     expect(record.contextUsage?.method).toBe('pi-1.3.0-chars4');
     expect(record.contextHash).toHaveLength(64);

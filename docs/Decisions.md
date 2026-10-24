@@ -36,6 +36,8 @@
 
 ## ADR-005: Pi agent-core를 worker로 감싼다
 
+**부분 대체:** 새 관리형 요청의 정책·전송·압축·사용량 한도는 CR-052 / ADR-041을 따른다. 아래 결정의 당시 근거와 기존 상태·소유권 경계는 보존한다.
+
 **상태:** ADR-027이 역할별 SDK 실행에 한해 부분 대체(2026-10-18). 기본 pi-core 실행은 유지한다.
 
 **결정:** coding-agent 전체 대신 agent-core+pi-ai, 명시한 도구만 제공한다. worker는 host RPC로 신규 효과를 요청한다.
@@ -61,6 +63,8 @@
 **결과·제약:** 취소됐다고 모델 공급자 내부 과금 중지까지 주장하지 않는다.
 
 ## ADR-008: 공유 예산에는 예약·정산을 사용
+
+**부분 대체:** 새 관리형 요청의 정책·전송·압축·사용량 한도는 CR-052 / ADR-041을 따른다. 아래 결정의 당시 근거와 기존 상태·소유권 경계는 보존한다.
 
 **결정:** 모델 dispatch 전 한도 검사와 reservation, 완료 후 settlement. unknown usage는 별도 상태로 유지.
 
@@ -215,6 +219,8 @@
 
 ## ADR-024: Admission은 정적 등록 gate와 commit 뒤 observer로 나눈다
 
+**부분 대체:** 새 관리형 요청의 정책·전송·압축·사용량 한도는 CR-052 / ADR-041을 따른다. 아래 결정의 당시 근거와 기존 상태·소유권 경계는 보존한다.
+
 **상태:** 채택 (2026-10-15, [CR-003](change-requests/CR-003-admission-hooks-effort-observe.md), C-067)
 
 **결정:** Coordinator의 모델 요청(`model.admit`)·도구 승인(`tool.authorize`)·도구 실행(`tool.execute`) 검사는 `{id, version, stage, check}` gate의 순서 있는 목록으로 수행한다. gate는 읽기 전용 view만 받고 I/O·시계·난수를 쓰지 않는 동기 함수이며, 첫 거절에서 멈춘다. 예외는 `POLICY_ERROR` 거절(fail closed)이다. commit 뒤에 실행되는 observer는 비동기로 돌고 요청을 막거나 바꾸지 못하며, 결과는 Coordinator가 run·execution·attempt·modelCallId fence를 확인한 sink로만 남긴다. gate와 observer는 `new Coordinator({ admission })`에서 한 번 등록한다. 안전 경계 대기·슬롯·승인 요청 생성·ID·commit은 Coordinator가 계속 소유한다.
@@ -244,6 +250,8 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 **결과·제약:** Linux x64 AppImage가 첫 대상이다. 원격 환경·터미널·Git 쓰기·플러그인 플랫폼은 넣지 않는다. native module·worker·자원 경로는 개발 실행과 설치 패키지에서 각각 검증한다.
 
 ## ADR-027: Pi coding-agent SDK를 역할별 실행 방식으로 추가한다
+
+**부분 대체:** 새 관리형 요청의 정책·전송·압축·사용량 한도는 CR-052 / ADR-041을 따른다. 아래 결정의 당시 근거와 기존 상태·소유권 경계는 보존한다.
 
 **상태:** 채택 (2026-10-18, [CR-018](change-requests/CR-018-pi-standard-harness.md)). H1 S1·S2·S4 통과와 Bell의 H2–H8 구현 계속 요청에 따른다. ADR-005를 역할별 SDK 실행에 한해 부분 대체한다.
 
@@ -296,11 +304,15 @@ Electron은 창·OS 대화상자·서버 수명을 소유한다. 서버와 Pi wo
 
 ## ADR-031: 자동 선택도 취소·예산·중복 명령 경계에 포함한다
 
+**부분 대체:** 새 관리형 요청의 정책·전송·압축·사용량 한도는 CR-052 / ADR-041을 따른다. 아래 결정의 당시 근거와 기존 상태·소유권 경계는 보존한다.
+
 **상태:** 채택 (2026-10-18, [CR-024](change-requests/CR-024-session-auto-team.md), PR #59의 12개 수정과 회귀 검증 요청).
 
 **결정:** 선택 요청의 알려진 사용량 또는 보수적인 미확정 예약을 기존 Coordinator 예산 이벤트로 기록한다. 한도 patch는 이미 소비한 선택 비용을 지우지 않는다. 원래 자동 시작 요청의 hash를 명령과 함께 보존해 처리 중·완료·재시작 후에도 같은 ID의 다른 내용을 거절한다. 선택 중 취소와 화면 이탈은 HTTP 요청까지 전달하고, 파일 기준 트리는 선택이 끝난 뒤 실제 실행 직전에 캡처한다.
 
 **출력 제한:** 지원되는 전송에는 256토큰 상한을 요청한다. ChatGPT 구독 OAuth는 공급자가 이 필드를 거절하므로 모든 경로에서 관측 가능한 text·thinking 스트림의 UTF-8 256바이트와 30초 처리 상한을 별도로 검사한다. 초과한 선택은 취소·대체하고 알려진 사용량을 보존한다. 숨겨진 내부 추론의 생성 토큰까지 클라이언트에서 제한했다고 주장하지 않는다. tokenizer나 새 공급자 의존성은 추가하지 않는다.
+
+2026-10-24 대체: [CR-052의 chooser 정산 보완](change-requests/CR-052-llm-runtime-modernization.md#chooser-accounting-repair--2026-10-24)이 새 요청의 위 출력·정산 조항을 대체한다. 출력 토큰은 실제 모델·컨텍스트 여유를 따르고, JSON text만 4,096바이트로 검사한다. 예약·미확인 사용량은 각 물리 attempt의 실제 허용량을 사용하며, 256토큰을 새 요청의 상한이나 정산 대용값으로 사용하지 않는다. 과거 기록은 보존한다.
 
 **검증:** 정상·출력 초과·비협조적인 공급자의 시간 초과·중단 후 사용량·재전송 충돌·한도 patch·파일 기준·기록 roundtrip을 결정적으로 검사한다. 실제 모델 검토 팀의 종료와 private 기록 조회는 별도 opt-in과 요청 상한으로 검증한다.
 
@@ -317,6 +329,8 @@ ADR-031 보완(2026-10-18): 불명확한 시작은 최초 요청 전체를 재�
 사용자 요청에 따라 새로운 사용자 동작·데이터/권한 경계의 핵심 실패를 먼저 확인하고 기존 시험을 우선 확장한다. 단순 문구/구조 변경이나 구현 내부를 따라가는 테스트는 추가하지 않는다. OS PoC와 콘텐츠 검사도 제품 지원/실모델 품질과 구별한다.
 
 ## ADR-033: 격리 worker의 모델 네트워크는 host permit으로만 연다
+
+**부분 대체:** 새 관리형 요청의 정책·전송·압축·사용량 한도는 CR-052 / ADR-041을 따른다. 아래 결정의 당시 근거와 기존 상태·소유권 경계는 보존한다.
 
 CR-025 C-107. network namespace를 host와 공유하는 proxy는 격리로 표시하지 않는다. Linux bubblewrap 안에는 애플리케이션 runtime과 바인딩된 콘텐츠만 읽기 전용으로 보인다. 자격 증명은 host에 남으며 host Pi provider가 고정 모델·출력 상한·reasoning permit으로 스트림을 연다. 기존 request/payload 기록은 같은 IPC를 통해 확인한 다음 HTTP 전송한다. provider URL이나 임의 headers, payload 수정은 worker 권한이 아니다. profile opt-in이므로 기존 snapshot을 재해석하지 않으며, 미지원 native 기능은 실패하고 fallback하지 않는다.
 
@@ -344,6 +358,8 @@ Bell의 2026-10-19 목표 명확화와 [Oracle 재검토](spikes/Ultra-Multi-Pro
 다른 provider도 [Pi 호환 기준](spikes/Pi-Provider-Compatibility-2026-10-19.md)에 따라 Pi의 공개 모델 metadata와 실제 serializer를 우선한다. 회사별 하드코딩으로 effort 체계를 통일하지 않으며 API/인증 계열별로 conformance를 확인한다. fingerprint는 Pi compat와 모델 출력 한도 변화까지 감지한다. 아직 검증되지 않은 계열을 단순 metadata 노출만으로 Ultra 지원 완료라고 표시하지 않는다.
 
 ## ADR-036: 프로필 컨텍스트는 공통 해석 후 Run에 고정한다
+
+**부분 대체:** 새 관리형 요청의 정책·전송·압축·사용량 한도는 CR-052 / ADR-041을 따른다. 아래 결정의 당시 근거와 기존 상태·소유권 경계는 보존한다.
 
 **상태:** 채택 (2026-10-19, CR-037, Bell의 설정·런타임 전체 구현 요청).
 
@@ -379,3 +395,9 @@ Pi SDK는 카탈로그 복사본과 proxy 모델에 같은 컨텍스트를 적�
 - A fixture에서 shared model·dirty/undo·panel 이동/복원·실제 TypeScript worker를 인앱 브라우저로 확인했다. Node sidecar의 stable PTY도 실제 stdin/resize/종료를 검증했다. Theia B에서는 실제 Corral React 컴포넌트·파일 저장·PTY·Node DAP를 확인했으므로 실행 불가능한 후보로 기각하지 않는다.
 - B를 현재 단계에 채택하면 기본 filesystem/terminal/pluginhost의 쓰기·실행 경로, 공유 React context/설정 수명, Electron 42.8.1 peer를 동시에 조정해야 한다. A는 기존 소유권·route·설정/그래프/Reins를 유지하며 한 경로씩 검증할 수 있다. 이 통합 변경량이 선택 이유이며 최적화 전 번들 크기만으로 우열을 판정하지 않는다.
 - Dockview 공개 move/focus API로 키보드 명령을 제공하고 Enterprise package는 채택하지 않는다. Monaco bundled sanitizer advisory·지연 로딩, PTY 미완료 ANSI replay·후손 종료는 각 후속 작업의 명시 조건이다. qualification은 전체 제품 통합·설치판·타 OS 완료가 아니다. [실제 근거와 미검증 경계](evaluation/Development-Workbench-Foundation-2026-10-21.md).
+
+## ADR-041: Managed model requests share host transport and context policy
+
+**Status:** accepted for implementation, 2026-10-24, [CR-052](change-requests/CR-052-llm-runtime-modernization.md).
+
+Coordinator retains effect/task/revision authority. A shared request boundary owns physical attempt identity, prepared context, provider serialization, scoped cache identity, typed errors and usage observations. Auxiliary requests have operation ownership without synthetic Runs. Core and SDK are execution adapters to this boundary. Immutable history and the model-visible projection are distinct. New executions default to unlimited usage; resource admission remains finite and configurable. Independent meeting replies are parallel, causally dependent replies sequential. The supersession table in CR-052 identifies the earlier clauses this decision replaces; historical data and evidence are not rewritten.

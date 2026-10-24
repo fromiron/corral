@@ -74,7 +74,7 @@ describe('BudgetInspector (C-061)', () => {
         <BudgetInspector session={session} />
       </IntlProvider>,
     );
-    expect(screen.getByRole('note')).toHaveTextContent('no usage limits');
+    expect(screen.getByRole('note')).toHaveTextContent('No default usage limits');
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
     expect(screen.queryByText(/1,000,000/)).not.toBeInTheDocument();
     expect(screen.getByText('Confirmed output tokens').nextSibling).toHaveTextContent('42');

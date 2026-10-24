@@ -266,7 +266,10 @@ export const ModelRequestRecord = z.strictObject({
   purpose: z.enum(['turn', 'compaction', 'retry', 'extension']),
   runtime: z.enum(['pi-core', 'pi-sdk']).optional(),
   contextEstimate: z
-    .strictObject({ tokens: z.int().min(0), method: z.literal('pi-1.3.0-messages') })
+    .strictObject({
+      tokens: z.int().min(0),
+      method: z.enum(['pi-1.3.0-messages', 'dsh-density-v2', 'usage-anchor-v2']),
+    })
     .optional(),
   contextUsage: ContextUsageSnapshot.optional(),
   directiveIds: z.array(Identifier).max(256),

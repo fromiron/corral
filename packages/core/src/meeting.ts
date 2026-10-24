@@ -8,6 +8,7 @@ import {
   type MeetingConfig,
   type MeetingRound,
   MeetingRoundRequest,
+  type MeetingRunOrigin,
   type MeetingState,
   type MeetingView,
   QueuedMeetingMessage,
@@ -29,6 +30,13 @@ export interface MeetingServiceDeps {
   clock: Clock;
   newRoundId(): string;
   random(): number;
+  continuation?(
+    runId: string,
+    sessionId: string,
+    participantId: string,
+    definition: CorralDefinition,
+    mode: 'mock' | 'live',
+  ): MeetingRunOrigin['contextSource'] | null;
 }
 
 export type MeetingResult =
@@ -515,7 +523,7 @@ export class MeetingService {
       '',
       'Conversation so far:',
     ];
-    const messages: { order: number; text: string }[] = [];
+    const messages: { order: number; text: string; runId?: string }[] = [];
     for (const [index, past] of meeting.rounds.entries()) {
       if (past.message !== null)
         messages.push({
@@ -527,22 +535,37 @@ export class MeetingService {
         if (answer.status === 'waiting' || answer.status === 'running' || !answer.runId) continue;
         messages.push({
           order: answerOrder(past, index, past.answers[n]!, n),
+          runId: answer.runId,
           text: `[roundId=${past.roundId}] ${nameOf(config, answer.participantId)} [participantId=${answer.participantId}]: ${answer.status === 'answered' ? answer.text : `(no answer: ${answer.status})`}`,
         });
       }
     }
-    lines.push(...messages.sort((a, b) => a.order - b.order).map((message) => message.text));
+    messages.sort((a, b) => a.order - b.order);
+    const tail: string[] = [];
     if (round.replyTo)
-      lines.push(
+      tail.push(
         `You were mentioned by ${nameOf(config, round.replyTo.participantId)}. Reply to their posted message using the conversation above.`,
       );
-    lines.push(
+    tail.push(
       '',
       round.message === null
         ? 'Latest request: respond to the other participants’ preceding messages, explaining your view naturally.'
         : 'It is your turn to reply as yourself. Continue from the most recent posted messages above. React or add a new point instead of repeating a suggestion or question that was just posted.',
     );
-    return lines.join('\n');
+    return {
+      throughOrder: Math.max(0, ...messages.map((message) => message.order)),
+      render: (afterOrder = -1, previousRunId?: string) =>
+        [
+          ...lines,
+          ...messages
+            .filter(
+              (message) =>
+                message.order > afterOrder && (!previousRunId || message.runId !== previousRunId),
+            )
+            .map((message) => message.text),
+          ...tail,
+        ].join('\n'),
+    };
   }
 
   private async start(
@@ -581,9 +604,7 @@ export class MeetingService {
             ...past,
             // New human input supersedes unstarted replies; a tag moves its recipients next.
             answers: past.answers.filter(
-              (answer) =>
-                answer.state !== 'queued' ||
-                (spec.replyTo && !participantIds.includes(answer.participantId)),
+              (answer) => answer.state !== 'queued' || Boolean(spec.replyTo),
             ),
           })),
           round,
@@ -615,10 +636,7 @@ export class MeetingService {
     // A newly posted message may follow a Run still owned by an earlier process.
     for (const past of session.meeting.rounds) {
       for (const answer of past.answers) {
-        if (
-          answer.state === 'started' &&
-          (await this.answerView(sessionId, past, answer)).status === 'running'
-        )
+        if (answer.state === 'started' && !answer.followed)
           return { ok: true, speaker: { round: past, answer } };
       }
     }
@@ -632,41 +650,83 @@ export class MeetingService {
       );
     if (!round) return { ok: true, speaker: null };
     const roundId = round.roundId;
-    const pending = round.answers.find((answer) => answer.state === 'queued')!;
+    const pending = round.answers.filter((answer) => answer.state === 'queued');
     if (!round.mode) return err('invalid', 'The reply has no saved execution mode.');
+    // All independent replies see the same posted-message snapshot, even if an earlier model finishes quickly.
     const brief = await this.brief(session, round);
-    let answer: MeetingAnswer;
-    try {
-      const result = await this.deps.transport.startRun({
-        schemaVersion: '0.1',
-        commandId: `meeting_${roundId}_${pending.participantId}`,
-        definition: meetingAnswerDefinition(
+    const batch = round.replyTo ? pending.slice(0, 1) : pending;
+    const started: MeetingAnswer[] = [];
+    for (const [index, next] of batch.entries()) {
+      let answer: MeetingAnswer;
+      try {
+        const definition = meetingAnswerDefinition(
           session.meeting.config,
-          pending.participantId,
+          next.participantId,
           roundId,
-          brief,
-        ),
-        mode: round.mode,
-        sessionId,
-        meeting: { sessionId, roundId, participantId: pending.participantId },
-      });
-      answer = result.runId
-        ? { ...pending, runId: result.runId, state: 'started' }
-        : {
-            ...pending,
-            state: 'refused',
-            detail: result.receipt.error?.message ?? 'The runtime refused this answer.',
-          };
-    } catch (error) {
-      return err('storage_unavailable', `The reply start could not be confirmed: ${String(error)}`);
+          brief.render(),
+        );
+        let contextSource: MeetingRunOrigin['contextSource'];
+        if (this.deps.continuation) {
+          const previous = session.meeting.rounds
+            .flatMap((item) => item.answers)
+            .filter(
+              (item) =>
+                item.participantId === next.participantId &&
+                item.runId &&
+                item.contextOrder !== undefined,
+            )
+            .reverse();
+          for (const candidate of previous) {
+            const source = this.deps.continuation(
+              candidate.runId!,
+              sessionId,
+              next.participantId,
+              definition,
+              round.mode,
+            );
+            if (!source) continue;
+            contextSource = source;
+            definition.input.brief = brief.render(candidate.contextOrder, candidate.runId!);
+            break;
+          }
+        }
+        const result = await this.deps.transport.startRun({
+          schemaVersion: '0.1',
+          commandId: `meeting_${roundId}_${next.participantId}`,
+          definition,
+          mode: round.mode,
+          sessionId,
+          meeting: {
+            sessionId,
+            roundId,
+            participantId: next.participantId,
+            ...(contextSource ? { contextSource } : {}),
+          },
+        });
+        answer = result.runId
+          ? { ...next, runId: result.runId, state: 'started' }
+          : {
+              ...next,
+              state: 'refused',
+              detail: result.receipt.error?.message ?? 'The runtime refused this answer.',
+            };
+      } catch {
+        await this.cancelAnswers(roundId, started);
+        return err('storage_unavailable', 'The reply start could not be confirmed.');
+      }
+      answer = {
+        ...answer,
+        order: nextOrder(session.meeting) + index,
+        contextOrder: brief.throughOrder,
+      };
+      started.push(answer);
+      const saved = await this.recordAnswer(sessionId, roundId, answer);
+      if (!saved.ok) {
+        await this.cancelAnswers(roundId, started);
+        return saved;
+      }
     }
-    answer = { ...answer, order: nextOrder(session.meeting) };
-    const saved = await this.recordAnswer(sessionId, roundId, answer);
-    if (!saved.ok) {
-      await this.cancelAnswers(roundId, [answer]);
-      return saved;
-    }
-    return { ok: true, speaker: { round, answer } };
+    return { ok: true, speaker: started[0] ? { round, answer: started[0] } : null };
   }
 
   private async recordAnswer(
@@ -779,6 +839,11 @@ export class MeetingService {
           if (completed) {
             const mentioned = await this.followMentions(sessionId, completed);
             if (!mentioned.ok) return mentioned;
+            const recorded = await this.recordAnswer(sessionId, completed.round.roundId, {
+              ...completed.answer,
+              followed: true,
+            });
+            if (!recorded.ok) return recorded;
           }
           const pending = await this.startNext(sessionId);
           if (pending.ok && !pending.speaker) {

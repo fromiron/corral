@@ -16,3 +16,5 @@
 완료 결과는 `docs/evaluation/`에 기록한다. 계획 전체가 완료·대체되면 유효한 계약과 잔여 작업을 회수한 뒤 삭제한다. 과거 본문은 Git 이력으로 조회하고 별도 사본을 유지하지 않는다. CR·태스크·요구·테스트 ID를 재발급하지 않는다.
 
 미승인 후보는 [proposals](../proposals/README.md)에 둔다. 이전 계획의 체크박스나 인수인계를 자동 재개하지 않는다. 불명확한 항목은 상태표에 대조 필요로 남기며 임의로 완료·폐기하지 않는다.
+
+- [LLM runtime modernization](llm-runtime-modernization.md): CR-052 approved; C-179–184 implementation and validation in progress.

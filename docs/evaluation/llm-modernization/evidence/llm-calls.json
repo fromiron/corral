@@ -1,0 +1,618 @@
+[
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1268,
+    "owner": "<callback>",
+    "callee": "registry.draftTeam(body.goal,{id,signal:controller.signal}).then((value)=>{db.prepare('UPDATEmodel_operationsSETresult_json=?WHEREoperation_id=?').run(JSON.stringify(value),id,);returnvalue;}).finally",
+    "target": {
+      "file": "node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.es2018.promise.d.ts",
+      "line": 27,
+      "name": "finally"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1268,
+    "owner": "<callback>",
+    "callee": "registry.draftTeam(body.goal,{id,signal:controller.signal}).then",
+    "target": {
+      "file": "node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.es5.d.ts",
+      "line": 1555,
+      "name": "then"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1268,
+    "owner": "<callback>",
+    "callee": "registry.draftTeam",
+    "target": {
+      "file": "apps/server/src/models/registry.ts",
+      "line": 427,
+      "name": "draftTeam"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1362,
+    "owner": "<callback>",
+    "callee": "coordinator.startRun",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1536,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1390,
+    "owner": "<callback>",
+    "callee": "coordinator.startRun",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1536,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1414,
+    "owner": "createCorralServer",
+    "callee": "createAutoStarter",
+    "target": {
+      "file": "packages/core/src/auto-team.ts",
+      "line": 349,
+      "name": "createAutoStarter"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1439,
+    "owner": "startRun",
+    "callee": "coordinator.startRun",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1536,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1488,
+    "owner": "route",
+    "callee": "registry.routeAuto",
+    "target": {
+      "file": "apps/server/src/models/registry.ts",
+      "line": 513,
+      "name": "routeAuto"
+    }
+  },
+  {
+    "file": "apps/server/src/app.ts",
+    "line": 1562,
+    "owner": "start",
+    "callee": "coordinator.startRun",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1536,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/server/src/harness/skill-quality.ts",
+    "line": 266,
+    "owner": "<callback>",
+    "callee": "this.deps.coordinator.startRun",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1536,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/server/src/models/registry.ts",
+    "line": 230,
+    "owner": "open",
+    "callee": "this.models.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/models.d.ts",
+      "line": 185,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "apps/server/src/models/registry.ts",
+    "line": 368,
+    "owner": "streamFn",
+    "callee": "this.models.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/models.d.ts",
+      "line": 185,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "apps/server/src/models/request-runtime.ts",
+    "line": 174,
+    "owner": "stream",
+    "callee": "(async()=>{letrelease:(()=>void)|undefined;letended=false;constreleaseOnce=()=>{constheld=release;release=undefined;held?.();};constterminate=(code:string)=>{if(ended)return;ended=true;constmessage:AssistantMessage={role:'assistant',api:model.api,provider:model.provider,model:model.id,content:[],timestamp:Date.now(),stopReason:signal.aborted?'aborted':'error',errorMessage:code,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0},},};out.push({type:'error',reason:signal.aborted?'aborted':'error',error:message});out.end(message);};constaborted=()=>{attempt.status='cancelled';attempt.endedAt=now();try{save();}catch{terminate('STORAGE_ERROR');}finally{terminate('CANCELLED');}};try{constqueuedAt=(this.options.now?.()??newDate()).getTime();if(admitted){lease=this.options.adopt?.(intent);release=lease?.release;}else{for(;;){constwait=this.retryAfterMs(model.provider);if(wait&&!(awaitcancellableDelay(wait,signal)))signal.throwIfAborted();release=awaitthis.options.acquire(cancellationFromSignal(signal));if(!this.retryAfterMs(model.provider))break;releaseOnce();}}signal.throwIfAborted();attempt.queueWaitMs=lease?.queueWaitMs??Math.max(0,(this.options.now?.()??newDate()).getTime()-queuedAt);constestimatedInputTokens=measureContext(normalizeContext(context));constoutputAllowance=requestOutputCap(model,options.maxTokens??model.maxTokens,estimatedInputTokens,);attempt.policy={version:2,provider:model.provider,modelId:model.id,api:model.api,contextWindow:model.contextWindow,maxOutputTokens:model.maxTokens,cacheRetention:options.cacheRetention??'short',maxRetries:2,providerRetries:0,...(snapshot?{profileId:snapshot.profile,auth:snapshot.auth,...(snapshot.endpointHash?{endpointHash:snapshot.endpointHash}:{}),...(snapshot.contextPolicy?{configRevision:snapshot.contextPolicy.configRevision}:{}),...(snapshot.cachePolicy?{cacheSource:snapshot.cachePolicy.source}:{}),}:{}),};save();signal.addEventListener('abort',aborted,{once:true});conststream=accountModelStream(models.streamSimple(model,context,{...options,toolChoice:intent.purpose==='compaction'?'none':options.toolChoice,maxRetries:0,maxTokens:outputAllowance,fetch:async(input,init)=>{constreceived=await(options.fetch??globalThis.fetch)(input,init);response={status:received.status,headers:newHeaders(received.headers)};returnreceived;},onProviderStreamEvent:async(data,selected)=>{if(data&&typeofdata==='object'){constevent=dataas{usage?:Record<string,unknown>;response?:{usage?:Record<string,unknown>};message?:{usage?:Record<string,unknown>};usageMetadata?:Record<string,unknown>;metadata?:{usage?:Record<string,unknown>};};constusage=event.usage??event.response?.usage??event.message?.usage??event.usageMetadata??event.metadata?.usage;if(usage&&typeofusage==='object'){constinput=usage.prompt_tokens??usage.input_tokens??usage.promptTokenCount??usage.inputTokens;constoutput=usage.completion_tokens??usage.output_tokens??usage.candidatesTokenCount??usage.outputTokens;if(Number.isSafeInteger(input)&&Number(input)>=0&&Number.isSafeInteger(output)&&Number(output)>=0)providerReportedUsage=true;}}awaitoptions.onProviderStreamEvent?.(data,selected);},onPayload:async(payload,selected)=>{constprepared=(awaitoptions.onPayload?.(payload,selected))??payload;constserialized=JSON.stringify(prepared);attempt.payloadHash=createHash('sha256').update(serialized).digest('hex');attempt.payloadBytes=Buffer.byteLength(serialized);attempt.prepared={inputRevision:intent.revision,inputHash:attempt.payloadHash,estimatedInputTokens,measurement:'dsh-density-v2',outputAllowance,cacheNamespace:options.sessionId??null,};save();returnprepared;},onResponse:async(received,selected)=>{response={status:received.status,headers:newHeaders(received.headers)};awaitoptions.onResponse?.(received,selected);},}),observe,);forawait(consteventofstream){if('delta'inevent||event.type==='done')attempt.firstEventAt??=now();if(!ended)out.push(event.type==='error'?{...event,error:{...event.error,errorMessage:JSON.stringify(providerFailure(event.error.errorMessage??'',response),),},}:event,);}constresult=awaitstream.result();if(!ended){ended=true;out.end(result);}}catch(error){attempt.status=signal.aborted?'cancelled':attempt.payloadHash?'unknown':'failed';attempt.endedAt=now();attempt.failure=providerFailure(error,response);try{save();}catch{terminate('STORAGE_ERROR');}terminate(JSON.stringify(attempt.failure));}finally{signal.removeEventListener('abort',aborted);releaseOnce();}})",
+    "target": {
+      "file": "apps/server/src/models/request-runtime.ts",
+      "line": 174,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "apps/server/src/models/request-runtime.ts",
+    "line": 266,
+    "owner": "<callback>",
+    "callee": "models.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/models.d.ts",
+      "line": 185,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "apps/server/src/testing.ts",
+    "line": 64,
+    "owner": "login",
+    "callee": "interaction.prompt",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/auth/types.d.ts",
+      "line": 159,
+      "name": "prompt"
+    }
+  },
+  {
+    "file": "apps/server/src/testing.ts",
+    "line": 148,
+    "owner": "streamSimple",
+    "callee": "faux.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/types.d.ts",
+      "line": 238,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "apps/server/src/testing.ts",
+    "line": 200,
+    "owner": "spawnSdk",
+    "callee": "import('@corral/adapter-pi/sdk-worker').then(({runSdkWorker})=>runSdkWorker(worker,{directory,now:()=>Date.now(),streamFn:(model,context,streamOptions)=>{seen.tokens.push(streamOptions?.apiKey);returnfaux.streamSimple(model,context,streamOptions);},resolveModel:(provider,id)=>models.getModel(provider,id),}),).catch",
+    "target": {
+      "file": "node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.es5.d.ts",
+      "line": 1562,
+      "name": "catch"
+    }
+  },
+  {
+    "file": "apps/server/src/testing.ts",
+    "line": 207,
+    "owner": "streamFn",
+    "callee": "faux.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/types.d.ts",
+      "line": 238,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "apps/server/src/testing.ts",
+    "line": 222,
+    "owner": "streamFn",
+    "callee": "workerModels.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/models.d.ts",
+      "line": 185,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "apps/server/src/testing.ts",
+    "line": 225,
+    "owner": "streamFn",
+    "callee": "faux.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/types.d.ts",
+      "line": 238,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "apps/studio/src/TeamDraftDialog.tsx",
+    "line": 63,
+    "owner": "ask",
+    "callee": "models.draftTeam",
+    "target": {
+      "file": "packages/client/src/index.ts",
+      "line": 1513,
+      "name": "draftTeam"
+    }
+  },
+  {
+    "file": "apps/studio/src/demo.worker.ts",
+    "line": 67,
+    "owner": "startRun",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 46,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/studio/src/demo.worker.ts",
+    "line": 86,
+    "owner": "request",
+    "callee": "startRun",
+    "target": {
+      "file": "apps/studio/src/demo.worker.ts",
+      "line": 64,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/studio/src/pages/SessionPage.tsx",
+    "line": 2081,
+    "owner": "startNext",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/studio/src/services.tsx",
+    "line": 206,
+    "owner": "createStudioServices",
+    "callee": "createAutoStarter",
+    "target": {
+      "file": "packages/core/src/auto-team.ts",
+      "line": 349,
+      "name": "createAutoStarter"
+    }
+  },
+  {
+    "file": "apps/studio/src/services.tsx",
+    "line": 207,
+    "owner": "startRun",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/studio/src/services.tsx",
+    "line": 274,
+    "owner": "startExplain",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "apps/studio/src/sessionActions.ts",
+    "line": 46,
+    "owner": "startFollowUp",
+    "callee": "services.transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/model-bridge.ts",
+    "line": 129,
+    "owner": "<callback>",
+    "callee": "(async()=>{letresponse:{status:number;headers:Headers}|undefined;try{constfence=providerRequestFence(options.model,undefined,request.abort.signal);//Noworker-providedURL,headers,key,outputlimitorprovider-specificoptions.constresolved=reasoningRequest(options.model,{apiKey:allowed.apiKey??undefined,maxTokens:requestOutputCap(options.model,Math.min(allowed.maxOutputTokens,frame.maxOutputTokens??allowed.maxOutputTokens),measureContext({messages:frame.context.messagesasMessage[]}),),sessionId:allowed.sessionId,cacheRetention:allowed.cacheRetention,maxRetries:0,...(fence?{fetch:fence.fetch,transport:'sse'asconst}:{}),signal:request.abort.signal,onResponse:(received)=>{response={status:received.status,headers:newHeaders(received.headers)};},onPayload:async(payload)=>{if(request.abort.signal.aborted||stopped)thrownewError('cancelled');constaccepted=awaitnewPromise<boolean>((resolve)=>{if(!active||active.id!==request.id){resolve(false);return;}active.payload=resolve;send({type:'payload',payload});});if(!accepted||request.abort.signal.aborted||stopped)thrownewError('providerpayloadrefused');fence?.approve(payload);returnpayload;},},allowed.reasoning,);conststream=await(options.withPermit?.(allowed)??options.streamFn)(resolved.model,normalizeContext({messages:frame.context.messagesasMessage[]}),resolved.options,);constcoalescer=createStreamCoalescer((event)=>send({type:'event',event}));letterminal:AssistantMessageEvent|undefined;try{forawait(consteventofstream){//Providerexceptionscanincludeauthenticationheaders;neverpassdiagnosticbodies.constsafeEvent=event.type==='error'?{...event,error:{...event.error,errorMessage:JSON.stringify(providerFailure(event.error.errorMessage??'',response),),},}:event;if(safeEvent.type==='done'||safeEvent.type==='error')terminal=safeEvent;elsecoalescer.push(safeEvent);awaitdelivery;}}finally{coalescer.dispose();awaitdelivery;}//Pisettlesresult()ontheterminalevent,soallowthenextpermitbeforedelivery.active=null;if(terminal)coalescer.push(terminal);send({type:'end'});awaitdelivery;}catch(error){if(active===request)active=null;send({type:'failed',failure:providerFailure(error,response)});}finally{if(active===request)active=null;}})",
+    "target": {
+      "file": "packages/adapter-pi/src/model-bridge.ts",
+      "line": 129,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/model-bridge.ts",
+    "line": 169,
+    "owner": "<callback>",
+    "callee": "(options.withPermit?.(allowed)??options.streamFn)",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-agent-core@1.3.0_@aws-sdk+credential-provider-node@3.972.86_@smithy+_4e847d7dbf0a2a9fe8ed60b4c03cefc8/node_modules/@earendil-works/pi-agent-core/dist/types.d.ts",
+      "line": 17,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker-main.ts",
+    "line": 23,
+    "owner": "<callback>",
+    "callee": "models.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/models.d.ts",
+      "line": 185,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 503,
+    "owner": "<callback>",
+    "callee": "deps.streamFn",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-agent-core@1.3.0_@aws-sdk+credential-provider-node@3.972.86_@smithy+_4e847d7dbf0a2a9fe8ed60b4c03cefc8/node_modules/@earendil-works/pi-agent-core/dist/types.d.ts",
+      "line": 17,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1023,
+    "owner": "<callback>",
+    "callee": "runtime.streamSimple(proxyModel,request,{signal:event.signal,maxTokens:model.maxTokens,}).result",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/utils/event-stream.d.ts",
+      "line": 14,
+      "name": "result"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1023,
+    "owner": "<callback>",
+    "callee": "runtime.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-coding-agent@1.3.0_patch_hash=e8fc52f352b7d3a8e023a057501bb93b7935b5_02da7a3488dbec00fa1b4bb8892df4c2/node_modules/@earendil-works/pi-coding-agent/dist/core/model-runtime.d.ts",
+      "line": 100,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1155,
+    "owner": "execute",
+    "callee": "createAgentSession",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-coding-agent@1.3.0_patch_hash=e8fc52f352b7d3a8e023a057501bb93b7935b5_02da7a3488dbec00fa1b4bb8892df4c2/node_modules/@earendil-works/pi-coding-agent/dist/core/sdk.d.ts",
+      "line": 116,
+      "name": "createAgentSession"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1196,
+    "owner": "<callback>",
+    "callee": "runtime.streamSimple(proxyModel,context,{signal,maxTokens:model.maxTokens}).result",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/utils/event-stream.d.ts",
+      "line": 14,
+      "name": "result"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1196,
+    "owner": "<callback>",
+    "callee": "runtime.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-coding-agent@1.3.0_patch_hash=e8fc52f352b7d3a8e023a057501bb93b7935b5_02da7a3488dbec00fa1b4bb8892df4c2/node_modules/@earendil-works/pi-coding-agent/dist/core/model-runtime.d.ts",
+      "line": 100,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1367,
+    "owner": "execute",
+    "callee": "session.prompt",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-coding-agent@1.3.0_patch_hash=e8fc52f352b7d3a8e023a057501bb93b7935b5_02da7a3488dbec00fa1b4bb8892df4c2/node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session.d.ts",
+      "line": 549,
+      "name": "prompt"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1390,
+    "owner": "execute",
+    "callee": "session.prompt",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-coding-agent@1.3.0_patch_hash=e8fc52f352b7d3a8e023a057501bb93b7935b5_02da7a3488dbec00fa1b4bb8892df4c2/node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session.d.ts",
+      "line": 549,
+      "name": "prompt"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/sdk-worker.ts",
+    "line": 1454,
+    "owner": "execute",
+    "callee": "session.prompt",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-coding-agent@1.3.0_patch_hash=e8fc52f352b7d3a8e023a057501bb93b7935b5_02da7a3488dbec00fa1b4bb8892df4c2/node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session.d.ts",
+      "line": 549,
+      "name": "prompt"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/worker-main.ts",
+    "line": 20,
+    "owner": "<callback>",
+    "callee": "models.streamSimple",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-ai@1.3.0_patch_hash=c55b4b570fedbacb55c9dfb677f306504081d52a0990442e_9178446818560a9c7acbea00b109d398/node_modules/@earendil-works/pi-ai/dist/models.d.ts",
+      "line": 185,
+      "name": "streamSimple"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/worker.ts",
+    "line": 513,
+    "owner": "sendRequest",
+    "callee": "deps.streamFn",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-agent-core@1.3.0_@aws-sdk+credential-provider-node@3.972.86_@smithy+_4e847d7dbf0a2a9fe8ed60b4c03cefc8/node_modules/@earendil-works/pi-agent-core/dist/types.d.ts",
+      "line": 17,
+      "name": "<callback>"
+    }
+  },
+  {
+    "file": "packages/adapter-pi/src/worker.ts",
+    "line": 651,
+    "owner": "execute",
+    "callee": "agent.prompt",
+    "target": {
+      "file": "node_modules/.pnpm/@earendil-works+pi-agent-core@1.3.0_@aws-sdk+credential-provider-node@3.972.86_@smithy+_4e847d7dbf0a2a9fe8ed60b4c03cefc8/node_modules/@earendil-works/pi-agent-core/dist/agent.d.ts",
+      "line": 117,
+      "name": "prompt"
+    }
+  },
+  {
+    "file": "packages/cli/src/index.ts",
+    "line": 371,
+    "owner": "runCli",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 46,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/core/src/auto-team.ts",
+    "line": 502,
+    "owner": "run",
+    "callee": "deps.startRun",
+    "target": {
+      "file": "packages/core/src/auto-team.ts",
+      "line": 314,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/core/src/coordinator.ts",
+    "line": 1169,
+    "owner": "<callback>",
+    "callee": "this.startRunWithRecovery",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1585,
+      "name": "startRunWithRecovery"
+    }
+  },
+  {
+    "file": "packages/core/src/coordinator.ts",
+    "line": 1477,
+    "owner": "<callback>",
+    "callee": "this.startRunWithRecovery",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1585,
+      "name": "startRunWithRecovery"
+    }
+  },
+  {
+    "file": "packages/core/src/coordinator.ts",
+    "line": 1540,
+    "owner": "startRun",
+    "callee": "this.startRunWithRecovery",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1585,
+      "name": "startRunWithRecovery"
+    }
+  },
+  {
+    "file": "packages/core/src/evaluation.ts",
+    "line": 115,
+    "owner": "executeOnce",
+    "callee": "createAutoStarter({startRun:(request)=>transport.startRun(request),...(resolveUltra?{resolveUltra}:{}),}).start",
+    "target": {
+      "file": "packages/core/src/auto-team.ts",
+      "line": 521,
+      "name": "start"
+    }
+  },
+  {
+    "file": "packages/core/src/evaluation.ts",
+    "line": 115,
+    "owner": "executeOnce",
+    "callee": "createAutoStarter",
+    "target": {
+      "file": "packages/core/src/auto-team.ts",
+      "line": 349,
+      "name": "createAutoStarter"
+    }
+  },
+  {
+    "file": "packages/core/src/evaluation.ts",
+    "line": 116,
+    "owner": "startRun",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/core/src/evaluation.ts",
+    "line": 129,
+    "owner": "executeOnce",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/core/src/meeting.ts",
+    "line": 693,
+    "owner": "startNext",
+    "callee": "this.deps.transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/core/src/testing/transport-contract.ts",
+    "line": 74,
+    "owner": "firstRequestInFlight",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/core/src/transport.ts",
+    "line": 47,
+    "owner": "startRun",
+    "callee": "this.coordinator.startRun",
+    "target": {
+      "file": "packages/core/src/coordinator.ts",
+      "line": 1536,
+      "name": "startRun"
+    }
+  },
+  {
+    "file": "packages/react/src/run/session.ts",
+    "line": 401,
+    "owner": "start",
+    "callee": "transport.startRun",
+    "target": {
+      "file": "packages/core/src/transport.ts",
+      "line": 25,
+      "name": "startRun"
+    }
+  }
+]

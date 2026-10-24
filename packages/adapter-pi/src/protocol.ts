@@ -34,8 +34,8 @@ import { EndpointSpec } from './endpoint.ts';
 // mismatch. Nothing the model writes decides which execution or permission a frame belongs to.
 // Frames can carry an access token (`permit.apiKey`): they are never logged or stored.
 
-export const PROTOCOL_VERSION = 6;
-export const LEGACY_PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 8;
+export const LEGACY_PROTOCOL_VERSION = 7;
 
 const head = {
   protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION),
@@ -55,6 +55,12 @@ export const WorkerUsage = z.strictObject({
 // ── worker → host ────────────────────────────────────────────────────────────
 
 export const WorkerFrame = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('compaction_report'),
+    ...head,
+    requestId: RequestId,
+    report: CompactionReport,
+  }),
   z.strictObject({ type: z.literal('ready'), protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION) }),
   z.strictObject({ type: z.literal('get_protected_context'), ...head, requestId: RequestId }),
   z.strictObject({
@@ -68,6 +74,8 @@ export const WorkerFrame = z.discriminatedUnion('type', [
     ...head,
     requestId: RequestId,
     record: ModelRequestRecord.optional(),
+    logicalRequestId: Identifier.optional(),
+    retryIndex: z.int().min(0).max(2).optional(),
     reasoningInput: ReasoningInput.optional(),
   }),
   z.strictObject({
@@ -168,12 +176,16 @@ export const StartFrame = z.strictObject({
     z.strictObject({
       name: z.string().min(1),
       artifactVersionId: Identifier.nullable(),
+      sourceRef: Identifier.optional(),
       text: Text,
     }),
   ),
   /** The criteria version reviews must name, and the Loop round (null outside a Loop). */
   criteriaVersionId: Identifier,
   taskBrief: TaskBrief.optional(),
+  compaction: z
+    .strictObject({ reserveTokens: z.int().min(0), keepRecentTokens: z.int().min(0) })
+    .optional(),
   resumeContext: RuntimeCheckpointState.optional(),
   images: z.array(ImageInput).max(3).optional(),
   teamPlanOwner: z.boolean().optional(),
@@ -201,6 +213,7 @@ export const StartFrame = z.strictObject({
 
 export const HostFrame = z.discriminatedUnion('type', [
   StartFrame,
+  z.strictObject({ type: z.literal('compact'), ...head, commandId: Identifier }),
   z.strictObject({
     type: z.literal('runtime_checkpoint'),
     ...head,
@@ -228,6 +241,11 @@ export const HostFrame = z.discriminatedUnion('type', [
     requestId: RequestId,
     modelCallId: Identifier,
     maxOutputTokens: z.int().min(1),
+    logicalRequestId: Identifier.optional(),
+    retryIndex: z.int().min(0).max(2).optional(),
+    sessionId: z.string().min(1).max(256).optional(),
+    cacheRetention: z.enum(['none', 'short', 'long']).optional(),
+    purpose: z.enum(['turn', 'retry', 'compaction', 'extension']).optional(),
     directives: z.array(z.strictObject({ directiveId: Identifier, text: Text })),
     parentQuestions: z
       .array(
@@ -321,12 +339,6 @@ export const SdkStartFrame = StartFrame.extend({
 export type SdkStartFrame = z.infer<typeof SdkStartFrame>;
 export const SdkWorkerFrame = z.union([
   z.strictObject({
-    type: z.literal('compaction_report'),
-    ...sdkHead,
-    requestId: RequestId,
-    report: CompactionReport,
-  }),
-  z.strictObject({
     type: z.literal('mcp_authorization'),
     ...sdkHead,
     requestId: RequestId,
@@ -354,6 +366,8 @@ export const SdkWorkerFrame = z.union([
     ...sdkHead,
     requestId: RequestId,
     ...ModelRequestRecord.shape,
+    logicalRequestId: Identifier.optional(),
+    retryIndex: z.int().min(0).max(2).optional(),
     reasoningInput: ReasoningInput.optional(),
   }),
   z.strictObject({
@@ -391,7 +405,6 @@ export const SdkWorkerFrame = z.union([
 ]);
 export type SdkWorkerFrame = z.infer<typeof SdkWorkerFrame>;
 export const SdkHostFrame = z.union([
-  z.strictObject({ type: z.literal('compact'), ...sdkHead, commandId: Identifier }),
   z.strictObject({
     type: z.literal('mcp_authorization'),
     ...sdkHead,

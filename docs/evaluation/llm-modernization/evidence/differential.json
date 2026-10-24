@@ -1,0 +1,16 @@
+{
+  "checkedAt": "2026-10-24T07:56:20.306Z",
+  "piFixtureCases": 15,
+  "piAssertions": 30,
+  "dshDelayCases": 6,
+  "sourceHashes": {
+    "context-budget.ts": "63a2309dba2c3021eae04f18a43a299e6bc9eaa899f5a408a9b48c4410f2ad59",
+    "provider-binding.ts": "a3fd696425f300fcf0f4971c87dd7603d1d88717a2aed431dcdf26238020a9de",
+    "index.ts": "3e16b7603771fcf4476d7e07ae1fd2715bb5bfd8fa7afe6bcb431f02aa149c8e"
+  },
+  "intentionalDifferences": [
+    "Corral unknown metadata fallback is 32000/4096 rather than PI 128000/8192.",
+    "One-token windows retain zero tokens rather than claiming one retained token fits.",
+    "Corral permits two retries; DSH retry numbering is one-based and its default maximum is five. Retry-After is preserved even above the local backoff cap."
+  ]
+}

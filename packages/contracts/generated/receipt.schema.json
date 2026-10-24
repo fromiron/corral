@@ -79,7 +79,8 @@
             "SESSION_INVALID",
             "ORIGIN_REJECTED",
             "POLICY_ERROR",
-            "MODEL_UNAVAILABLE"
+            "MODEL_UNAVAILABLE",
+            "REQUEST_OUTCOME_UNKNOWN"
           ]
         },
         "message": {

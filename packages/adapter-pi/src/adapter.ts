@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   type AgentAdapter,
   type AgentHandle,
@@ -171,7 +172,7 @@ class WorkerExecution {
       });
     });
     this.handle = {
-      ...(resources && host.reportCompaction
+      ...(host.reportCompaction
         ? {
             requestCompaction: (commandId: string) => {
               this.pendingCompaction = commandId;
@@ -291,6 +292,14 @@ class WorkerExecution {
           artifactVersionId,
           text,
         })),
+        ...(this.input.model.contextPolicy
+          ? {
+              compaction: {
+                reserveTokens: this.input.model.contextPolicy.reserveTokens,
+                keepRecentTokens: this.input.model.contextPolicy.keepRecentTokens,
+              },
+            }
+          : {}),
         criteriaVersionId: this.input.criteriaVersionId,
         ...(this.input.resumeContext ? { resumeContext: this.input.resumeContext } : {}),
         ...(this.input.taskBrief ? { taskBrief: this.input.taskBrief } : {}),
@@ -560,6 +569,24 @@ class WorkerExecution {
             requestId: frame.requestId,
             modelCallId: permit.modelCallId,
             maxOutputTokens: permit.maxOutputTokens,
+            ...(frame.logicalRequestId
+              ? { logicalRequestId: frame.logicalRequestId, retryIndex: frame.retryIndex ?? 0 }
+              : {}),
+            sessionId: createHash('sha256')
+              .update(
+                JSON.stringify({
+                  session:
+                    this.input.sessionId ?? this.input.meeting?.sessionId ?? this.input.runId,
+                  role: this.input.role.id,
+                  participant: this.input.meeting?.participantId ?? null,
+                  profile: this.input.modelProfile,
+                  candidate: this.input.candidateId ?? null,
+                  harness: this.input.harness ?? null,
+                }),
+              )
+              .digest('hex'),
+            cacheRetention: this.input.model.cachePolicy?.retention ?? 'short',
+            purpose: 'purpose' in frame ? frame.purpose : (frame.record?.purpose ?? 'turn'),
             directives: permit.directives,
             ...(permit.parentQuestions ? { parentQuestions: permit.parentQuestions } : {}),
             ...(permit.reasoning ? { reasoning: permit.reasoning } : {}),

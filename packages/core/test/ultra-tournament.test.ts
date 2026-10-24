@@ -1,4 +1,5 @@
 import {
+  type AgentHost,
   type AgentStartInput,
   DEFAULT_LIMITS,
   type EffectiveHarnessSnapshot,
@@ -6,6 +7,7 @@ import {
   type VerificationReport,
 } from '@corral/contracts';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
+import { utf8ToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   Coordinator,
@@ -64,6 +66,9 @@ async function fixture(
   options: {
     ultra?: Partial<Extract<UltraSelection, { version: 2 }>>;
     fileTools?: boolean;
+    diff?: string;
+    contextWindow?: number;
+    onReady?: (input: AgentStartInput, host: AgentHost) => Promise<void>;
     available?: boolean;
     /** Check verdict for a candidate's nth check (1-based, counted per candidate). */
     verdict?: (candidateId: string, nth: number) => Verdict;
@@ -176,7 +181,10 @@ async function fixture(
     async (_runId: string, candidateId: string, tree: string, paths?: string[]) => {
       const files = [`src/${candidateId}.ts`, 'README.md'];
       const shown = paths ? files.filter((file) => paths.includes(file)) : files;
-      return { files, diff: shown.map((file) => `--- ${file} @ ${tree}`).join('\n') };
+      return {
+        files,
+        diff: options.diff ?? shown.map((file) => `--- ${file} @ ${tree}`).join('\n'),
+      };
     },
   );
   const coordinator: Coordinator = new Coordinator({
@@ -185,6 +193,22 @@ async function fixture(
     timers: clock,
     ids: new SequentialIdFactory(),
     harnesses: { resolve: () => harness },
+    ...(options.contextWindow
+      ? {
+          models: {
+            resolve: (profile: string) => ({
+              ok: true as const,
+              snapshot: {
+                profile,
+                provider: null,
+                modelId: null,
+                auth: 'mock' as const,
+                contextWindow: options.contextWindow,
+              },
+            }),
+          },
+        }
+      : {}),
     files: {
       available: () => true,
       execute: async () => ({}),
@@ -229,6 +253,7 @@ async function fixture(
             sideEffect: name === 'run_check' ? 'external' : 'none',
           })),
         });
+        await options.onReady?.(input, host);
         return scripted.start(input, {
           ...host,
           prepareModelRequest: async () => {
@@ -383,9 +408,10 @@ describe('CR-048 candidate tournament', () => {
     const brief = JSON.parse(given(refining, 'refinement')!);
     expect(brief.improvements).toEqual(['tighten the error path']);
     expect(brief.borrow[0].diff).toContain('src/candidate_1.ts');
-    // Corral puts no usage cap on version 2 calls.
+    // The mock has no catalog metadata; unlimited execution is separate from its output fallback.
+    expect(f.final?.usageLimits).toBe('none');
     expect(
-      f.permits.every((permit) => permit.maxOutputTokens > DEFAULT_LIMITS.maxOutputTokensPerCall),
+      f.permits.every((permit) => permit.maxOutputTokens === DEFAULT_LIMITS.maxOutputTokensPerCall),
     ).toBe(true);
     // Another select after the apply cannot apply again.
     expect(
@@ -575,13 +601,13 @@ describe('CR-048 candidate tournament', () => {
     expect(f.coordinator.candidateComparison(f.result.runId!)).toBeNull();
   });
 
-  it('[TC-ULTRA-004-N] version 1 keeps its manual selection and Run caps', async () => {
+  it('[TC-ULTRA-004-N] version 1 keeps manual selection while new Runs use unlimited defaults', async () => {
     const f = await fixture({ legacy: true });
     expect(f.final?.status).toBe('awaiting_user');
     expect(f.coordinator.candidateComparison(f.result.runId!)?.status).toBe('awaiting_selection');
     expect(judges(f.seen)).toHaveLength(0);
     expect(f.promoteCandidate).not.toHaveBeenCalled();
-    expect(f.final?.usageLimits).toBeUndefined();
+    expect(f.final?.usageLimits).toBe('none');
     expect(
       f.permits.every((permit) => permit.maxOutputTokens <= DEFAULT_LIMITS.maxOutputTokensPerCall),
     ).toBe(true);
@@ -659,4 +685,52 @@ describe('CR-048 cancellation and recovery', () => {
     expect(restored.candidateComparison(f.result.runId!)?.status).toBe('interrupted');
     expect(f.promoteCandidate).not.toHaveBeenCalled();
   });
+});
+
+it('[TC-LLM-005-H] judge budgets all evidence together and can page the original anonymous packet', async () => {
+  const diff = '--- source.ts\n' + '가日🙂'.repeat(30000);
+  const observed: { bytes: number; ref: string | null; result: unknown; denied: boolean }[] = [];
+  const f = await fixture({
+    diff,
+    contextWindow: 32768,
+    ultra: { refinementRounds: 1 },
+    onReady: async (input, host) => {
+      if (input.nodeId !== 'judge') return;
+      const candidate = input.inputs.find(
+        (i) => i.name === 'candidate_A' || i.name === 'previous',
+      )!;
+      const result = await host.invokeTool({
+        name: 'read_artifact',
+        args: { artifactVersionId: candidate.sourceRef, offset: 10000, limit: 128 },
+      });
+      const denied = !(
+        await host.invokeTool({
+          name: 'read_artifact',
+          args: { artifactVersionId: 'source_unowned' },
+        })
+      ).ok;
+      observed.push({
+        bytes: utf8ToBytes(JSON.stringify(input.inputs)).length,
+        ref: candidate.sourceRef ?? null,
+        result,
+        denied,
+      });
+    },
+  });
+  expect(observed.length).toBeGreaterThan(0);
+  for (const item of observed) {
+    expect(item.bytes).toBeLessThan(16384);
+    expect(item.ref).toMatch(/^source_/);
+    expect(item.result).toMatchObject({
+      ok: true,
+      result: {
+        offset: 10000,
+        nextOffset: 10128,
+        complete: false,
+        text: expect.stringContaining('가日🙂'),
+      },
+    });
+    expect(item.denied).toBe(true);
+  }
+  expect(f.final?.status).toBe('succeeded');
 });

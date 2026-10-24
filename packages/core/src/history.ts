@@ -7,6 +7,7 @@ import {
   Identifier,
   ImageGenerationProfile,
   ImageInput,
+  MeetingRunOrigin,
   ModelProfileSnapshot,
   PermissionMode,
   ReasoningApplySettings,
@@ -20,11 +21,13 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
+import { checkpointReferences, decodeContextCheckpoint } from './context-checkpoint.ts';
 import { definitionHash } from './definition-hash.ts';
 import { applyEvent, emptyProjection } from './projection.ts';
 import type { RunStore } from './store/run-store.ts';
 
 const Snapshot = z.strictObject({
+  meeting: MeetingRunOrigin.optional(),
   permissionMode: PermissionMode.optional(),
   imageProfiles: z.record(Identifier, ImageGenerationProfile).optional(),
   resumedFrom: ResumedFrom.optional(),
@@ -115,16 +118,24 @@ export function exportRunArchive(
       ...(run.snapshot.definition.input.images ?? []).map((image) => image.imageId),
       ...(run.snapshot.resumedFrom ? [run.snapshot.resumedFrom.contextRef] : []),
       ...(run.snapshot.branchedFrom?.contextRef ? [run.snapshot.branchedFrom.contextRef] : []),
+      ...(run.snapshot.meeting?.contextSource ? ['meeting_context'] : []),
       run.snapshot.criteriaVersionId,
       ...Object.keys(run.projection.artifacts),
       ...recordReferences(events),
     ]);
+    const contextRefs = new Set(
+      events.flatMap((event) =>
+        event.type === 'runtime.checkpoint_created' ? [event.payload.contextRef] : [],
+      ),
+    );
     const artifacts: Record<string, string> = {};
     const media: Record<string, { descriptor: BinaryArtifact; dataHex: string }> = {};
     for (const id of versionIds) {
       const text = store.getArtifactText(runId, id);
       if (text === null) throw new Error('private history is missing a referenced record body');
       artifacts[id] = text;
+      if (contextRefs.has(id))
+        for (const ref of checkpointReferences(JSON.parse(text))) versionIds.add(ref);
       const descriptor = run.projection.artifacts[id]?.media;
       if (descriptor) {
         const bytes = store.getArtifactBinary?.(runId, id);
@@ -179,6 +190,7 @@ export function openRunArchive(input: unknown) {
     canonicalJson(first.payload.reasoningApply ?? null) !==
       canonicalJson(snapshot.reasoningApply ?? null) ||
     canonicalJson(first.payload.autoRoute ?? null) !== canonicalJson(snapshot.autoRoute ?? null) ||
+    canonicalJson(first.payload.meeting ?? null) !== canonicalJson(snapshot.meeting ?? null) ||
     canonicalJson(first.payload.branchedFrom ?? null) !==
       canonicalJson(snapshot.branchedFrom ?? null) ||
     canonicalJson(first.payload.resumedFrom ?? null) !==
@@ -207,6 +219,16 @@ export function openRunArchive(input: unknown) {
     RuntimeCheckpointState.parse(
       JSON.parse(archive.artifacts[snapshot.resumedFrom.contextRef] ?? 'null'),
     );
+  if (snapshot.meeting?.contextSource) {
+    const state = RuntimeCheckpointState.parse(
+      JSON.parse(archive.artifacts.meeting_context ?? 'null'),
+    );
+    if (
+      bytesToHex(sha256(utf8ToBytes(canonicalJson(state)))) !==
+      snapshot.meeting.contextSource.contextHash
+    )
+      throw new Error('meeting context changed');
+  }
   if (snapshot.branchedFrom?.contextRef) {
     const state = RuntimeCheckpointState.parse(
       JSON.parse(archive.artifacts[snapshot.branchedFrom.contextRef] ?? 'null'),
@@ -232,15 +254,14 @@ export function openRunArchive(input: unknown) {
       const manifest = RuntimeCheckpointManifest.parse(
         JSON.parse(archive.artifacts[event.payload.manifestRef] ?? 'null'),
       );
-      const state = RuntimeCheckpointState.parse(
-        JSON.parse(archive.artifacts[event.payload.contextRef] ?? 'null'),
-      );
+      const storedState = JSON.parse(archive.artifacts[event.payload.contextRef] ?? 'null');
+      decodeContextCheckpoint(storedState, (id) => archive.artifacts[id] ?? null);
       if (
         manifest.runId !== archive.runId ||
         manifest.checkpointId !== event.payload.checkpointId ||
         manifest.contextRef !== event.payload.contextRef ||
         bytesToHex(sha256(utf8ToBytes(canonicalJson(manifest)))) !== event.payload.manifestHash ||
-        bytesToHex(sha256(utf8ToBytes(canonicalJson(state)))) !== manifest.contextHash
+        bytesToHex(sha256(utf8ToBytes(canonicalJson(storedState)))) !== manifest.contextHash
       )
         throw new Error('archive runtime checkpoint changed');
     }
@@ -300,6 +321,8 @@ function recordReferences(events: readonly RunEvent[]): Set<string> {
       add(event.payload.after.criteriaVersionId);
     }
     if (event.type === 'model.finished') add(event.payload.responseRef);
+    if (event.type === 'model.request_prepared')
+      for (const id of event.payload.inputArtifactVersionIds) add(id);
     if (event.type === 'runtime.checkpoint_created') {
       add(event.payload.contextRef);
       add(event.payload.manifestRef);

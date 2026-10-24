@@ -1,14 +1,19 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
+  ContextMeter,
   type EndpointSpec,
   type ModelBroker,
+  managedRetryStream,
   modelReasoningCapabilities as reasoningCapabilities,
   reasoningRequest,
 } from '@corral/adapter-pi';
+import { providerFailure } from '@corral/adapter-pi/request-policy';
 import type {
+  AgentStartInput,
   AutoModelChoice,
   AutoRouteLevel,
   ModelProfileSnapshot,
+  ModelRequestIntent,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ReasoningCapabilities,
@@ -16,7 +21,7 @@ import type {
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/contracts';
 import {
-  AUTO_ROUTE_MAX_OUTPUT_TOKENS,
+  AUTO_ROUTE_MAX_RESPONSE_BYTES,
   AUTO_ROUTE_TIMEOUT_MS,
   autoRouterPrompt,
   fixedReasoning,
@@ -26,6 +31,7 @@ import {
   resolveProfileContext,
   SPEC_HARD_CAPS,
 } from '@corral/core';
+import { accountModelStream, withSessionAffinityOptions } from '@corral/pi-runtime-port';
 import type {
   AssistantMessage,
   AuthEvent,
@@ -34,6 +40,7 @@ import type {
   Models,
 } from '@earendil-works/pi-ai';
 import { ENDPOINT_ORIGIN, type Endpoint } from './endpoints.ts';
+import { ModelRequestRuntime, type RequestRuntimeOptions } from './request-runtime.ts';
 import {
   DRAFT_MAX_OUTPUT_TOKENS,
   DRAFT_SYSTEM_PROMPT,
@@ -66,7 +73,6 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
  * apps to use subscription credentials (CR-001 §2). They take an API key instead.
  */
 const NO_SUBSCRIPTION_OAUTH = new Set(['anthropic']);
-const AUTO_ROUTE_MAX_RESPONSE_BYTES = 256;
 
 /** How a provider is reached: `none` is a keyless local endpoint (CR-005). */
 export type AuthMethod = 'oauth' | 'api_key' | 'none';
@@ -173,6 +179,88 @@ export class ModelRegistry implements ModelResolver {
   >();
   private readonly logins = new Map<string, PendingLogin>();
 
+  private requests?: ModelRequestRuntime;
+  configureRequests(options: RequestRuntimeOptions) {
+    this.requests = new ModelRequestRuntime(options);
+  }
+  retryAfterMs(model: ModelProfileSnapshot) {
+    return model.provider ? (this.requests?.retryAfterMs(model.provider) ?? 0) : 0;
+  }
+
+  private managedStream(
+    model: Parameters<Models['streamSimple']>[0],
+    context: Parameters<Models['streamSimple']>[1],
+    options: Parameters<Models['streamSimple']>[2],
+    intent: ModelRequestIntent,
+    admitted = false,
+    snapshot?: ModelProfileSnapshot,
+    meter?: ContextMeter,
+    onDispatch?: () => () => void,
+  ) {
+    const prepared = withSessionAffinityOptions(
+      {
+        ...options,
+        // Re-resolve the host's origin-bound credential; a bare per-request key loses its binding.
+        ...(this.options.endpoints?.has(model.provider) ? { apiKey: undefined } : {}),
+        onPayload: async (payload, selected) => {
+          if (snapshot) this.assertEndpointSnapshot(snapshot);
+          return (await options?.onPayload?.(payload, selected)) ?? payload;
+        },
+        cacheRetention: options?.cacheRetention ?? 'short',
+        sessionId:
+          options?.sessionId ??
+          createHash('sha256')
+            .update(`${intent.owner.kind}:${intent.owner.sessionId ?? intent.owner.id}`)
+            .digest('hex'),
+      },
+      model.api,
+      this.options.endpoints?.get(model.provider)?.spec.sessionAffinity,
+    );
+    const open = (retryIndex = intent.retryIndex ?? 0) => {
+      if (this.requests)
+        return this.requests.stream(
+          this.models,
+          model,
+          context,
+          { ...intent, retryIndex },
+          prepared,
+          admitted,
+          {
+            subscription: this.status.get(model.provider)?.method === 'oauth',
+            ...(this.isBuiltin(model.provider) ? { rates: model.cost } : {}),
+          },
+          snapshot,
+          meter,
+          onDispatch,
+        );
+      const finish = onDispatch?.();
+      try {
+        const stream = this.models.streamSimple(model, context, prepared);
+        return finish ? accountModelStream(stream, finish) : stream;
+      } catch (error) {
+        finish?.();
+        throw error;
+      }
+    };
+    return admitted
+      ? open()
+      : managedRetryStream({
+          model,
+          signal: options?.signal ?? new AbortController().signal,
+          open,
+        });
+  }
+
+  private cachePolicy(profile: ProfileConfig): NonNullable<ModelProfileSnapshot['cachePolicy']> {
+    if (profile.cacheRetention) return { retention: profile.cacheRetention, source: 'profile' };
+    const endpoint = this.options.endpoints?.get(profile.provider)?.spec.cacheRetention;
+    if (endpoint) return { retention: endpoint, source: 'endpoint' };
+    const environment = process.env.PI_CACHE_RETENTION;
+    if (environment === 'none' || environment === 'short' || environment === 'long')
+      return { retention: environment, source: 'environment' };
+    return { retention: 'short', source: 'product' };
+  }
+
   private readonly models: Models;
   private profiles: readonly ProfileConfig[];
   private options: RegistryOptions;
@@ -260,6 +348,8 @@ export class ModelRegistry implements ModelResolver {
           context.policy?.contextWindow ??
           this.models.getModel(config.provider, config.model)!.contextWindow,
         ...(context.policy ? { contextPolicy: context.policy } : {}),
+        cachePolicy: this.cachePolicy(config),
+        maxOutputTokens: this.models.getModel(config.provider, config.model)!.maxTokens,
         imageInput: this.models.getModel(config.provider, config.model)!.input.includes('image'),
         ...(this.options.endpoints?.get(config.provider)
           ? {
@@ -277,22 +367,52 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /** The access token for one request; pi-ai refreshes an expired OAuth token first. */
-  modelBroker(snapshot: ModelProfileSnapshot): ModelBroker {
+  modelBroker(snapshot: ModelProfileSnapshot, owner?: AgentStartInput): ModelBroker {
+    this.assertEndpointSnapshot(snapshot);
     const model =
       snapshot.provider && snapshot.modelId
         ? this.models.getModel(snapshot.provider, snapshot.modelId)
         : undefined;
     if (!model) throw new Error('the pinned sandbox model is unavailable');
+    const meter = new ContextMeter();
     return {
       model: snapshot.contextPolicy
         ? { ...model, contextWindow: snapshot.contextPolicy.contextWindow }
         : model,
       streamFn: (selected, context, options) =>
         this.models.streamSimple(selected, context, options),
+      withPermit: (permit) => (selected, context, options) =>
+        this.managedStream(
+          selected,
+          context,
+          options,
+          {
+            requestId: permit.logicalRequestId
+              ? `${owner?.executionId ?? 'worker'}:${permit.logicalRequestId}`
+              : permit.modelCallId,
+            retryIndex: permit.retryIndex ?? 0,
+            purpose: permit.purpose ?? 'turn',
+            revision: owner?.attemptNo ?? 0,
+            owner: owner
+              ? {
+                  kind: 'execution',
+                  id: owner.executionId,
+                  runId: owner.runId,
+                  executionId: owner.executionId,
+                  modelCallId: permit.modelCallId,
+                  ...(owner.sessionId ? { sessionId: owner.sessionId } : {}),
+                }
+              : { kind: 'execution', id: permit.modelCallId, modelCallId: permit.modelCallId },
+          },
+          true,
+          snapshot,
+          meter,
+        ),
     };
   }
 
   async credentials(model: ModelProfileSnapshot): Promise<string | null> {
+    this.assertEndpointSnapshot(model);
     if (!model.provider || !model.modelId) return null;
     // A keyless endpoint gets no key from this computer (CR-005 §4).
     if (this.options.endpoints?.get(model.provider)?.spec.keyless) return null;
@@ -322,9 +442,14 @@ export class ModelRegistry implements ModelResolver {
    */
   async draftTeam(
     goal: string,
+    operation?: { id: string; signal?: AbortSignal },
   ): Promise<
     | { ok: true; plan: TeamPlan; model: { provider: string; modelId: string } }
-    | { ok: false; code: 'CAPABILITY_DENIED' | 'MODEL_UNAVAILABLE'; message: string }
+    | {
+        ok: false;
+        code: 'CAPABILITY_DENIED' | 'MODEL_UNAVAILABLE' | 'REQUEST_OUTCOME_UNKNOWN';
+        message: string;
+      }
   > {
     const profile = this.profiles[0];
     const resolution = profile ? this.resolve(profile.id, 'live') : null;
@@ -338,26 +463,56 @@ export class ModelRegistry implements ModelResolver {
     const { provider, modelId } = resolution.snapshot;
     const model = this.models.getModel(provider, modelId);
     if (!model) return { ok: false, code: 'CAPABILITY_DENIED', message: 'no such model' };
-    const unavailable = (message: string) =>
-      ({ ok: false, code: 'MODEL_UNAVAILABLE', message }) as const;
+    const unavailable = (message: string, uncertain = false) =>
+      ({
+        ok: false,
+        code: uncertain ? 'REQUEST_OUTCOME_UNKNOWN' : 'MODEL_UNAVAILABLE',
+        message,
+      }) as const;
     let text: string;
+    const operationId = operation?.id ?? randomUUID();
     try {
-      const answer = await this.models
-        .streamSimple(
-          model,
-          {
-            systemPrompt: DRAFT_SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: goal, timestamp: Date.now() }],
-          },
-          { maxTokens: DRAFT_MAX_OUTPUT_TOKENS, signal: AbortSignal.timeout(DRAFT_TIMEOUT_MS) },
-        )
-        .result();
+      const answer = await this.managedStream(
+        resolution.snapshot.contextPolicy
+          ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
+          : model,
+        {
+          systemPrompt: DRAFT_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: goal, timestamp: Date.now() }],
+        },
+        {
+          maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
+          cacheRetention: resolution.snapshot.cachePolicy?.retention,
+          signal: operation?.signal
+            ? AbortSignal.any([operation.signal, AbortSignal.timeout(DRAFT_TIMEOUT_MS)])
+            : AbortSignal.timeout(DRAFT_TIMEOUT_MS),
+        },
+        {
+          requestId: operationId,
+          owner: { kind: 'draft', id: operationId },
+          purpose: 'draft',
+          revision: 0,
+        },
+        false,
+        resolution.snapshot,
+      ).result();
       if (answer.stopReason === 'error' || answer.stopReason === 'aborted') {
-        return unavailable('the model request failed; try again or use the local suggestion');
+        const uncertain =
+          answer.stopReason === 'aborted' ||
+          providerFailure(answer.errorMessage ?? '').code === 'UNKNOWN';
+        return unavailable(
+          uncertain
+            ? 'The model request outcome is unconfirmed. This operation will not be sent again.'
+            : 'The model request failed; generate a new draft or use the local suggestion.',
+          uncertain,
+        );
       }
       text = answer.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
     } catch {
-      return unavailable('the model request failed; try again or use the local suggestion');
+      return unavailable(
+        'The model request outcome is unconfirmed. This operation will not be sent again.',
+        true,
+      );
     } finally {
       void this.refreshStatus();
     }
@@ -368,8 +523,8 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /**
-   * The auto choice for a session request (CR-024): one capped request to the session's model.
-   * The caller checks the profile first and records only the parsed choice, never this text.
+   * CR-052: minimum chooser reasoning, model/context output allowance, and bounded JSON text.
+   * The shared runtime records physical attempts; the caller records only the parsed choice.
    */
   async routeAuto(
     brief: string,
@@ -377,10 +532,12 @@ export class ModelRegistry implements ModelResolver {
     signal?: AbortSignal,
     levels?: readonly AutoRouteLevel[],
     pinned?: ModelProfileSnapshot,
+    operation?: { requestId: string; sessionId?: string },
   ): Promise<RouteAnswer> {
     const resolution = pinned
       ? { ok: true as const, snapshot: pinned }
       : this.resolve(choice.modelProfile, 'live');
+    const requestId = operation?.requestId ?? randomUUID();
     if (!resolution.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId)
       return { ok: false, reason: 'model_error' };
     const selected = this.models.getModel(
@@ -392,37 +549,47 @@ export class ModelRegistry implements ModelResolver {
         ? { ...selected, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
         : selected;
     if (!model) return { ok: false, reason: 'model_error' };
-    const policy = choice.reasoning;
-    const requested =
-      policy?.mode === 'auto' || policy?.mode === 'route'
-        ? ({ mode: 'fixed', level: 'medium' } as const)
-        : (policy ?? ({ mode: 'provider_default' } as const));
+    const lowest = reasoningCapabilities(model).levels[0];
+    const requested = lowest
+      ? ({ mode: 'fixed', level: lowest } as const)
+      : ({ mode: 'provider_default' } as const);
     const stop = new AbortController();
     const requestSignal = signal ? AbortSignal.any([signal, stop.signal]) : stop.signal;
     let timedOut = false;
     let limited = false;
-    let terminal = false;
     let latest: AssistantMessage | undefined;
-    const usage = () =>
-      latest?.usage && (terminal || latest.usage.input > 0 || latest.usage.output > 0)
-        ? { inputTokens: latest.usage.input, outputTokens: latest.usage.output }
+    const usage = () => {
+      if (this.requests) return this.requests.chooserUsage(requestId);
+      const u = latest?.usage;
+      return u &&
+        (u.input + u.output + u.cacheRead + u.cacheWrite > 0 ||
+          u.totalTokens > 0 ||
+          ('corralReported' in u && u.corralReported === true))
+        ? { inputTokens: u.input + u.cacheRead + u.cacheWrite, outputTokens: u.output }
         : null;
+    };
     const failed = (): RouteAnswer => ({
       ok: false,
       reason: limited ? 'output_limit' : timedOut ? 'timeout' : 'model_error',
       usage: usage(),
     });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      stop.abort();
-    }, AUTO_ROUTE_TIMEOUT_MS);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const startResponseTimeout = () => {
+      const current = setTimeout(() => {
+        timedOut = true;
+        stop.abort();
+      }, AUTO_ROUTE_TIMEOUT_MS);
+      timer = current;
+      return () => clearTimeout(current);
+    };
     let off = () => {};
     try {
       if (requestSignal.aborted) return failed();
       const request = reasoningRequest(
         model,
         {
-          maxTokens: AUTO_ROUTE_MAX_OUTPUT_TOKENS,
+          maxTokens: model.maxTokens,
+          cacheRetention: resolution.snapshot.cachePolicy?.retention,
           signal: requestSignal,
         },
         fixedReasoning(requested, 'auto_route'),
@@ -432,18 +599,31 @@ export class ModelRegistry implements ModelResolver {
         requestSignal.addEventListener('abort', abort, { once: true });
         off = () => requestSignal.removeEventListener('abort', abort);
       });
-      const stream = this.models.streamSimple(
+      const stream = this.managedStream(
         request.model,
         {
           systemPrompt: autoRouterPrompt(levels),
           messages: [{ role: 'user', content: brief, timestamp: Date.now() }],
         },
         request.options,
+        {
+          requestId,
+          owner: {
+            kind: 'chooser',
+            id: requestId,
+            ...(operation?.sessionId ? { sessionId: operation.sessionId } : {}),
+          },
+          purpose: 'chooser',
+          revision: 0,
+        },
+        false,
+        resolution.snapshot,
+        undefined,
+        startResponseTimeout,
       );
       const consume = async (): Promise<RouteAnswer> => {
         let bytes = 0;
         for await (const event of stream) {
-          terminal = event.type === 'done' || event.type === 'error';
           latest =
             event.type === 'done'
               ? event.message
@@ -451,7 +631,7 @@ export class ModelRegistry implements ModelResolver {
                 ? event.error
                 : event.partial;
           if (requestSignal.aborted) return failed();
-          if ('delta' in event) bytes += Buffer.byteLength(event.delta);
+          if (event.type === 'text_delta') bytes += Buffer.byteLength(event.delta);
           if (bytes > AUTO_ROUTE_MAX_RESPONSE_BYTES) {
             limited = true;
             stop.abort();
@@ -460,23 +640,11 @@ export class ModelRegistry implements ModelResolver {
         }
         if (requestSignal.aborted) return failed();
         latest = await stream.result();
-        terminal = true;
         const responseBytes = latest.content.reduce(
-          (total, part) =>
-            total +
-            Buffer.byteLength(
-              part.type === 'text'
-                ? part.text
-                : part.type === 'thinking'
-                  ? part.thinking
-                  : `${part.name}${JSON.stringify(part.arguments)}`,
-            ),
+          (total, part) => total + Buffer.byteLength(part.type === 'text' ? part.text : ''),
           0,
         );
-        if (
-          responseBytes > AUTO_ROUTE_MAX_RESPONSE_BYTES ||
-          latest.usage.output > AUTO_ROUTE_MAX_OUTPUT_TOKENS
-        ) {
+        if (responseBytes > AUTO_ROUTE_MAX_RESPONSE_BYTES) {
           limited = true;
           stop.abort();
           return failed();
@@ -485,7 +653,7 @@ export class ModelRegistry implements ModelResolver {
         const text = latest.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
         return { ok: true, text, usage: usage() };
       };
-      // OAuth omits wire caps; bound visible output and waiting even when cancellation is ignored.
+      // Finish promptly even when a dispatched provider ignores cancellation.
       return await Promise.race([consume(), aborted]);
     } catch {
       return failed();
@@ -536,7 +704,11 @@ export class ModelRegistry implements ModelResolver {
         source: endpoint ? (configured !== undefined ? 'endpoint' : 'fallback') : 'catalog',
       },
       configRevision,
-      this.options.maxOutputTokensPerCall ?? SPEC_HARD_CAPS.maxOutputTokensPerCall,
+      model
+        ? 'maxTokens' in model
+          ? model.maxTokens
+          : model.maxOutput
+        : (this.options.maxOutputTokensPerCall ?? SPEC_HARD_CAPS.maxOutputTokensPerCall),
     );
   }
 
@@ -589,7 +761,18 @@ export class ModelRegistry implements ModelResolver {
 
   /** The non-secret definition of the endpoint behind a model, for its worker (CR-005). */
   endpointOf(model: ModelProfileSnapshot): EndpointSpec | null {
+    this.assertEndpointSnapshot(model);
     return (model.provider && this.options.endpoints?.get(model.provider)?.spec) || null;
+  }
+
+  private assertEndpointSnapshot(model: ModelProfileSnapshot) {
+    if (!model.endpointHash) return;
+    const endpoint = model.provider && this.options.endpoints?.get(model.provider)?.spec;
+    if (
+      !endpoint ||
+      createHash('sha256').update(canonicalJson(endpoint)).digest('hex') !== model.endpointHash
+    )
+      throw new Error('The endpoint configuration changed after this request was prepared.');
   }
 
   private methods(providerId: string): { oauth: boolean; apiKey: boolean } {
