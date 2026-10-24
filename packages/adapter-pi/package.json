@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts",
     "./processes": "./src/processes/owned-process.ts",
-    "./sdk-worker": "./src/sdk-worker.ts"
+    "./sdk-worker": "./src/sdk-worker.ts",
+    "./request-policy": "./src/ported/dsh/retry.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
@@ -19,7 +20,8 @@
     "@earendil-works/pi-coding-agent": "1.3.0",
     "@earendil-works/pi-mcp": "1.3.0",
     "@playwright/mcp": "0.0.83",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@corral/pi-runtime-port": "workspace:*"
   },
   "devDependencies": {
     "@corral/core": "workspace:*",

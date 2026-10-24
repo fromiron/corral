@@ -3725,15 +3725,18 @@ function PreRunSummary({
         intent === 'explain' ? record.definition.roles.slice(0, 1) : record.definition.roles;
       const fileTools =
         intent === 'next' && roles.some((r) => r.allowedWorkTools.includes('write_file'));
-      const limits = record.definition.limits;
+      const budget = record.definition.executionPolicy?.budget;
       if (!live) return;
       setText(
         t('preRun', {
           team: `${record.name} r${record.definitionRevision}`,
           profiles: [...new Set(roles.map((r) => r.modelProfile))].join(', '),
           files: fileTools ? (copy ? t('filesCopy') : t('filesNoCopy')) : t('filesNone'),
-          calls: intent === 'explain' ? Math.min(limits.maxModelCalls, 4) : limits.maxModelCalls,
-          minutes: Math.round(limits.runDeadlineMs / 60_000),
+          calls: budget?.maxModelCalls ?? t('unlimited'),
+          minutes:
+            budget?.runDeadlineMs === undefined
+              ? t('unlimited')
+              : Math.round(budget.runDeadlineMs / 60_000),
           mode: mode === 'live' ? t('modeLive') : t('modeMock'),
         }),
       );

@@ -2224,7 +2224,11 @@
                 },
                 "method": {
                   "type": "string",
-                  "const": "pi-1.3.0-messages"
+                  "enum": [
+                    "pi-1.3.0-messages",
+                    "dsh-density-v2",
+                    "usage-anchor-v2"
+                  ]
                 }
               },
               "required": [
@@ -3474,8 +3478,16 @@
                     "type": "object",
                     "properties": {
                       "version": {
-                        "type": "number",
-                        "const": 1
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "const": 1
+                          },
+                          {
+                            "type": "number",
+                            "const": 2
+                          }
+                        ]
                       },
                       "contextWindow": {
                         "type": "integer",
@@ -3536,14 +3548,16 @@
                             "type": "string",
                             "enum": [
                               "profile",
-                              "pi_default"
+                              "pi_default",
+                              "adaptive"
                             ]
                           },
                           "keepRecentTokens": {
                             "type": "string",
                             "enum": [
                               "profile",
-                              "pi_default"
+                              "pi_default",
+                              "adaptive"
                             ]
                           }
                         },
@@ -3580,6 +3594,38 @@
                       "warnings"
                     ],
                     "additionalProperties": false
+                  },
+                  "cachePolicy": {
+                    "type": "object",
+                    "properties": {
+                      "retention": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "short",
+                          "long"
+                        ]
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "profile",
+                          "endpoint",
+                          "environment",
+                          "product"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "retention",
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   },
                   "imageInput": {
                     "type": "boolean"
@@ -3801,7 +3847,7 @@
                 "maxModelConcurrency": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 3
+                  "maximum": 9007199254740991
                 },
                 "maxSpawns": {
                   "type": "integer",
@@ -3811,17 +3857,17 @@
                 "maxModelCalls": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 100
+                  "maximum": 9007199254740991
                 },
                 "maxOutputTokens": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 256000
+                  "maximum": 9007199254740991
                 },
                 "maxOutputTokensPerCall": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 4096
+                  "maximum": 9007199254740991
                 },
                 "maxQuestions": {
                   "type": "integer",
@@ -3836,12 +3882,12 @@
                 "modelTimeoutMs": {
                   "type": "integer",
                   "minimum": 1000,
-                  "maximum": 300000
+                  "maximum": 9007199254740991
                 },
                 "runDeadlineMs": {
                   "type": "integer",
                   "minimum": 1000,
-                  "maximum": 3600000
+                  "maximum": 9007199254740991
                 }
               },
               "required": [
@@ -3857,6 +3903,10 @@
                 "runDeadlineMs"
               ],
               "additionalProperties": false
+            },
+            "usageLimits": {
+              "type": "string",
+              "const": "none"
             },
             "criteriaVersionId": {
               "type": "string",
@@ -4790,6 +4840,34 @@
                 "participantId": {
                   "type": "string",
                   "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "contextSource": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "checkpointId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "manifestHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "contextHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "checkpointId",
+                    "manifestHash",
+                    "contextHash"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -9734,6 +9812,10 @@
                   "type": "null"
                 }
               ]
+            },
+            "progressHash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
             }
           },
           "required": [

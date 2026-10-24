@@ -3,6 +3,7 @@ import {
   type ProfileContextPolicy,
   type ProfileContextResolution,
 } from '@corral/contracts';
+import { contextBudgetLimitsFor } from '@corral/pi-runtime-port/budget';
 
 export const PI_COMPACTION_DEFAULTS = { reserveTokens: 16_384, keepRecentTokens: 20_000 } as const;
 
@@ -33,25 +34,28 @@ export function resolveProfileContext(
       policy: null,
       errors: explicit ? ['the model context limit is unknown; specify contextWindow'] : [],
     };
-  const reserveTokens = profile.compaction?.reserveTokens ?? PI_COMPACTION_DEFAULTS.reserveTokens;
+  const adaptive = contextBudgetLimitsFor({ contextWindow, maxTokens: maxOutputTokens });
+  const reserveTokens = profile.compaction?.reserveTokens ?? adaptive.requestHeadroom;
   const keepRecentTokens =
-    profile.compaction?.keepRecentTokens ?? PI_COMPACTION_DEFAULTS.keepRecentTokens;
+    profile.compaction?.keepRecentTokens ??
+    Math.min(
+      adaptive.keepRecentTokens,
+      Math.max(0, Math.floor((contextWindow - reserveTokens - 1) / 2)),
+    );
   const inconsistent =
     reserveTokens >= contextWindow || keepRecentTokens >= contextWindow - reserveTokens;
-  const errors =
-    explicit && inconsistent
-      ? [
-          'context policy requires reserveTokens < contextWindow and keepRecentTokens < contextWindow - reserveTokens',
-        ]
-      : [];
+  const errors = inconsistent
+    ? [
+        'context policy requires reserveTokens < contextWindow and keepRecentTokens < contextWindow - reserveTokens',
+      ]
+    : [];
   const warnings: ProfileContextPolicy['warnings'] = [];
-  if (inconsistent && !explicit) warnings.push('legacy_inconsistent');
   if (reserveTokens < maxOutputTokens) warnings.push('reserve_below_output');
   if (base.contextWindow !== null && contextWindow > base.contextWindow)
     warnings.push('above_model_limit');
   return {
     policy: {
-      version: 1,
+      version: 2,
       contextWindow,
       reserveTokens,
       keepRecentTokens,
@@ -61,9 +65,9 @@ export function resolveProfileContext(
       baseSource: base.source,
       sources: {
         contextWindow: profile.contextWindow !== undefined ? 'profile' : base.source,
-        reserveTokens: profile.compaction?.reserveTokens !== undefined ? 'profile' : 'pi_default',
+        reserveTokens: profile.compaction?.reserveTokens !== undefined ? 'profile' : 'adaptive',
         keepRecentTokens:
-          profile.compaction?.keepRecentTokens !== undefined ? 'profile' : 'pi_default',
+          profile.compaction?.keepRecentTokens !== undefined ? 'profile' : 'adaptive',
       },
       warnings,
     },

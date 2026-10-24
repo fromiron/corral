@@ -1377,6 +1377,8 @@ export interface EndpointConfig {
   name: string;
   baseUrl: string;
   access: 'api_key' | 'none';
+  cacheRetention?: 'none' | 'short' | 'long';
+  sessionAffinity?: 'headers' | 'headers-and-body';
   models: {
     id: string;
     name?: string;
@@ -1402,6 +1404,17 @@ export class ModelsApi {
 
   constructor(options: HttpOptions) {
     this.http = new Http(options);
+  }
+  requests(
+    query: { before?: number; limit?: number; runId?: string; sessionId?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<import('@corral/contracts').ModelAttemptPage> {
+    const search = new URLSearchParams(
+      Object.entries(query)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]): [string, string] => [key, String(value)]),
+    );
+    return this.http.json(`/model-attempts?${search}`, { signal });
   }
 
   reasoning(): Promise<ReasoningSettings> {
@@ -1499,8 +1512,16 @@ export class ModelsApi {
   /** A team plan for a goal from one model request (CR-006); only a checked plan comes back. */
   draftTeam(
     goal: string,
+    options: { operationId?: string; signal?: AbortSignal } = {},
   ): Promise<{ plan: TeamPlan; model: { provider: string; modelId: string } }> {
-    return this.http.json('/team-drafts', { method: 'POST', body: JSON.stringify({ goal }) });
+    return this.http.json('/team-drafts', {
+      method: 'POST',
+      signal: options.signal,
+      body: JSON.stringify({
+        goal,
+        operationId: options.operationId ?? globalThis.crypto.randomUUID(),
+      }),
+    });
   }
 
   /** Stores an API key on the server (CR-005); the answer never contains it. */

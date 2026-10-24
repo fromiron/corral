@@ -514,6 +514,10 @@ export class WorkspaceService implements FileTools {
   private readonly pendingSnapshots = new Map<string, Promise<string | null>>();
   /** Run → execution → path hash: another attempt's read never authorizes an overwrite. */
   private readonly reads = new Map<string, Map<string, Map<string, string>>>();
+  private readonly readRanges = new WeakMap<
+    Map<string, string>,
+    Map<string, { hash: string; spans: [number, number][] }>
+  >();
   private readonly hashlineReads = new Map<string, Map<string, HashlineEvidence>>();
   private readonly edit: (
     request: EditTextRequest,
@@ -6081,9 +6085,13 @@ export class WorkspaceService implements FileTools {
     }
     const text = decodeText(bytes);
     if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'file is not UTF-8 text');
-    const hash = sha256(bytes);
-    this.readsOf(input.runId, input.executionId).set(path, hash);
-    return { path, text, sha256: hash };
+    return this.fileRange(
+      path,
+      text,
+      sha256(bytes),
+      input.args,
+      this.readsOf(input.runId, input.executionId),
+    );
   }
 
   runStartFiles(runId: string): import('@corral/contracts').RuntimeFiles | null {
@@ -6531,15 +6539,65 @@ export class WorkspaceService implements FileTools {
           throw new ToolRefusal('LIMIT_REACHED', `${rel} is larger than 1 MiB`);
         const text = decodeText(bytes);
         if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', `${rel} is not UTF-8 text`);
-        const hash = sha256(bytes);
-        reads.set(rel, hash);
-        return { path: rel, text, sha256: hash };
+        return this.fileRange(rel, text, sha256(bytes), input.args, reads);
       }
       default:
         return this.lease(root, () =>
           this.change(root, found.sessionId, { ...input, name }, reads, cancellation),
         );
     }
+  }
+
+  private fileRange(
+    path: string,
+    text: string,
+    hash: string,
+    args: Record<string, unknown>,
+    reads: Map<string, string>,
+  ) {
+    const offset = args.offset ?? 0,
+      limit = args.limit ?? 8192;
+    if (
+      !Number.isSafeInteger(offset) ||
+      Number(offset) < 0 ||
+      !Number.isSafeInteger(limit) ||
+      Number(limit) < 1 ||
+      Number(limit) > 8192
+    )
+      throw new ToolRefusal(
+        'SCHEMA_INVALID',
+        'offset must be nonnegative and limit must be 1–8192 Unicode characters',
+      );
+    const points = Array.from(text);
+    if (Number(offset) > points.length)
+      throw new ToolRefusal('SCHEMA_INVALID', 'offset exceeds the file length');
+    const end = Math.min(points.length, Number(offset) + Number(limit));
+    const ranges = this.readRanges.get(reads) ?? new Map();
+    this.readRanges.set(reads, ranges);
+    const previous = ranges.get(path);
+    const spans: [number, number][] = [
+      ...(previous?.hash === hash ? previous.spans : []),
+      [Number(offset), end],
+    ];
+    spans.sort((a, b) => a[0] - b[0]);
+    const merged: [number, number][] = [];
+    for (const span of spans) {
+      const last = merged.at(-1);
+      if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]);
+      else merged.push(span);
+    }
+    ranges.set(path, { hash, spans: merged });
+    if (merged.length === 1 && merged[0]![0] === 0 && merged[0]![1] === points.length)
+      reads.set(path, hash);
+    return {
+      path,
+      text: points.slice(Number(offset), end).join(''),
+      sha256: hash,
+      offset,
+      totalCharacters: points.length,
+      complete: offset === 0 && end === points.length,
+      nextOffset: end < points.length ? end : null,
+    };
   }
 
   private async list(root: string, folder: string, isGit = true, signal?: AbortSignal) {

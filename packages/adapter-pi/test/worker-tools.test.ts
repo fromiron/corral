@@ -1,7 +1,7 @@
 import { ReviewArtifact } from '@corral/contracts';
 import { expect, it } from 'vitest';
 import { assertImagePayload, assertProtectedPayload } from '../src/request-record.ts';
-import { parametersOf, promptSections, systemPrompt } from '../src/worker-tools.ts';
+import { parametersOf, promptSections, systemPrompt, userPrompt } from '../src/worker-tools.ts';
 
 const start = {
   type: 'start',
@@ -136,8 +136,8 @@ it('[TC-ART-003-N] tells reviewers what both evidenceRefs arrays can contain', (
   expect(prompt).toContain('^[A-Za-z][A-Za-z0-9_.:-]{0,119}$');
   expect(prompt).toContain('Do not invent IDs or use headings, quoted prose, or URLs');
   expect(prompt).toContain('use [] for brief or criteria without a supplied evidence identifier');
-  expect(prompt).toContain('"targetArtifactVersionId": "artv_actual"');
-  expect(prompt).toContain('"criteriaVersionId": "crit_actual"');
+  expect(userPrompt(start)).toContain('"targetArtifactVersionId":"artv_actual"');
+  expect(userPrompt(start)).toContain('"criteriaVersionId":"crit_actual"');
 });
 
 it('[TC-ART-003-N] keeps prose and URLs invalid while allowing provided artifact and source IDs', () => {
@@ -154,8 +154,8 @@ it('[TC-ART-003-N] keeps prose and URLs invalid while allowing provided artifact
 });
 
 it('[TC-PROMPT-001-H] [TC-PROMPT-001-N] preserves the output contract and refuses an oversized protected prompt instead of truncating it', () => {
-  expect(systemPrompt(start)).toContain('artv_actual');
-  expect(systemPrompt(start)).toContain('crit_actual');
+  expect(userPrompt(start)).toContain('artv_actual');
+  expect(userPrompt(start)).toContain('crit_actual');
   const sections = promptSections(start);
   expect(() =>
     assertProtectedPayload({ messages: [{ content: systemPrompt(start) }] }, sections),
@@ -166,6 +166,19 @@ it('[TC-PROMPT-001-H] [TC-PROMPT-001-N] preserves the output contract and refuse
   expect(() =>
     systemPrompt({ ...start, role: { ...start.role, prompt: '큰'.repeat(100_000) } }),
   ).toThrow(/prompt.*limit/i);
+});
+
+it('[TC-LLM-004-H] current criteria and artifact revisions do not rewrite the stable system prefix', () => {
+  const changed = {
+    ...start,
+    criteriaVersionId: 'crit_next',
+    inputs: [{ ...start.inputs[0]!, artifactVersionId: 'artv_next' }],
+    item: { batchId: 'batch_fixture', index: 2, total: 3 },
+  };
+  expect(systemPrompt(changed)).toBe(systemPrompt(start));
+  expect(userPrompt(changed)).toContain('crit_next');
+  expect(userPrompt(changed)).toContain('artv_next');
+  expect(userPrompt(changed)).toContain('isolated item 2 of 3');
 });
 
 it('[TC-PROMPT-001-H] identifies the configured model separately from the role, without credentials or endpoint details', () => {
@@ -185,4 +198,43 @@ it('[TC-PROMPT-001-H] identifies the configured model separately from the role, 
   );
   expect(identity.text).not.toContain('fixture-private-key');
   expect(identity.text).not.toContain('private-endpoint.test');
+});
+
+it('[TC-LLM-005-N] model instructions do not present legacy defaults or numeric sentinels as active budgets', async () => {
+  const { DEFAULT_LIMITS } = await import('@corral/contracts');
+  const brief = {
+    version: 1 as const,
+    inputHash: 'a'.repeat(64),
+    criteriaVersionId: 'criteria',
+    assignment: 'scheduled' as const,
+    outputContract: 'text' as const,
+    taskScope: 'work' as const,
+    verificationScope: 'targeted' as const,
+    canModifyFiles: false,
+    limits: DEFAULT_LIMITS,
+    usageLimits: 'none' as const,
+    sourceRefs: [],
+    resources: [],
+  };
+  const unlimited = userPrompt({ ...start, taskBrief: brief });
+  expect(unlimited).not.toContain('maxModelCalls');
+  expect(unlimited).not.toContain('64000');
+  expect(unlimited).toContain('maxSpawns');
+  const limited = userPrompt({
+    ...start,
+    taskBrief: {
+      ...brief,
+      usageLimits: undefined,
+      limits: {
+        ...DEFAULT_LIMITS,
+        maxModelCalls: 20,
+        maxOutputTokens: Number.MAX_SAFE_INTEGER,
+        maxOutputTokensPerCall: Number.MAX_SAFE_INTEGER,
+        modelTimeoutMs: Number.MAX_SAFE_INTEGER,
+        runDeadlineMs: Number.MAX_SAFE_INTEGER,
+      },
+    },
+  });
+  expect(limited).toContain('"maxModelCalls":20');
+  expect(limited).not.toContain(String(Number.MAX_SAFE_INTEGER));
 });

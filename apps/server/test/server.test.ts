@@ -1184,20 +1184,14 @@ describe('workspace configuration (C-062)', () => {
     const number = (text: string) => Number((text.match(/[\d,]+/)?.[0] ?? '').replaceAll(',', ''));
     expect(number(row('실행당 동적 생성')[2] ?? '')).toBe(DEFAULT_LIMITS.maxSpawns);
     expect(number(row('실행당 동적 생성')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxSpawns);
-    expect(number(row('실행당 모델 요청')[2] ?? '')).toBe(DEFAULT_LIMITS.maxModelCalls);
-    expect(number(row('실행당 모델 요청')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxModelCalls);
-    expect(number(row('총 출력 토큰 예산')[2] ?? '')).toBe(DEFAULT_LIMITS.maxOutputTokens);
-    expect(number(row('총 출력 토큰 예산')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxOutputTokens);
-    expect(number(row('요청별 출력 토큰 상한')[2] ?? '')).toBe(
-      DEFAULT_LIMITS.maxOutputTokensPerCall,
-    );
+    expect(row('실행당 모델 요청')[2]).toBe('무제한');
+    expect(row('총 출력 토큰 예산')[2]).toBe('무제한');
+    expect(row('요청별 출력 토큰 상한')[2]).toBe('모델 능력·남은 컨텍스트');
     expect(number(row('동시 모델 요청')[2] ?? '')).toBe(DEFAULT_LIMITS.maxModelConcurrency);
     expect(number(row('실행당 질문')[2] ?? '')).toBe(DEFAULT_LIMITS.maxQuestions);
     expect(number(row('질문 대기')[2] ?? '') * 1000).toBe(DEFAULT_LIMITS.questionTimeoutMs);
-    expect(number(row('모델/문서 도구 timeout')[2] ?? '') * 1000).toBe(
-      DEFAULT_LIMITS.modelTimeoutMs,
-    );
-    expect(number(row('전체 wall deadline')[2] ?? '') * 60_000).toBe(DEFAULT_LIMITS.runDeadlineMs);
+    expect(row('모델/문서 도구 timeout')[2]).toBe('무제한 / 30초');
+    expect(row('전체 wall deadline')[2]).toBe('무제한');
     expect(number(row('Loop 자동 회차')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxLoopIterations);
     expect(number(row('동적 위임 깊이')[2] ?? '')).toBe(DEFAULT_LIMITS.maxDelegationDepth);
   });

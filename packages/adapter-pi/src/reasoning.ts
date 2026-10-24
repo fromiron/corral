@@ -87,8 +87,19 @@ export function reasoningRequest(
  * The output cap a request carries: the Coordinator's permit, lowered to the model's catalog
  * maximum. CR-048 version 2 Ultra permits more than any model allows, so this is its real cap.
  */
-export function requestOutputCap(model: { maxTokens?: number }, permitted: number): number {
-  return model.maxTokens && model.maxTokens > 0 ? Math.min(permitted, model.maxTokens) : permitted;
+export function requestOutputCap(
+  model: { maxTokens?: number; contextWindow?: number; api?: string },
+  permitted: number,
+  inputTokens = 0,
+): number {
+  const cap = Math.min(
+    permitted,
+    model.maxTokens ?? permitted,
+    (model.contextWindow ?? Number.MAX_SAFE_INTEGER) - inputTokens,
+  );
+  if (cap < (model.api?.startsWith('openai') ? 16 : 1))
+    throw new Error('context leaves no supported output space');
+  return cap;
 }
 
 export function verifyReasoningWire(

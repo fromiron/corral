@@ -55,7 +55,19 @@ async function setup(
   const start = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start',
-    definition,
+    definition: {
+      ...definition,
+      executionPolicy: {
+        version: 2,
+        budget: {
+          maxModelCalls: definition.limits.maxModelCalls,
+          maxOutputTokens: definition.limits.maxOutputTokens,
+          maxOutputTokensPerCall: definition.limits.maxOutputTokensPerCall,
+          runDeadlineMs: definition.limits.runDeadlineMs,
+          modelTimeoutMs: definition.limits.modelTimeoutMs,
+        },
+      },
+    },
     mode: 'mock',
   });
   if (!start.runId) throw new Error(JSON.stringify(start.receipt.error));
@@ -252,7 +264,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(afterChildCancel).toBe('cancelled');
   });
 
-  it('[TC-RNS-007-H] [TC-RNS-007-N] decreasing and increasing budgets preserve live reservations and reject hard-cap escalation', async () => {
+  it('[TC-RNS-007-H] [TC-RNS-007-N] explicit budget changes preserve reservations independently of legacy installation defaults', async () => {
     const definition = linearCorral(['writer']);
     definition.limits = { ...definition.limits, maxOutputTokens: 200, maxOutputTokensPerCall: 100 };
     const s = await setup(definition, 500);
@@ -274,11 +286,15 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
         { kind: 'run_limits', changes: { maxOutputTokens: 600 } },
         'escalate',
         revision,
-      ).error?.code,
-    ).toBe('LIMIT_REACHED');
+      ).error,
+    ).toBeUndefined();
     expect(
-      s.send('patch', { kind: 'run_limits', changes: { maxOutputTokens: 500 } }, 'raise', revision)
-        .error,
+      s.send(
+        'patch',
+        { kind: 'run_limits', changes: { maxOutputTokens: 500 } },
+        'raise',
+        revision + 1,
+      ).error,
     ).toBeUndefined();
     expect((await host.prepareModelRequest()).maxOutputTokens).toBe(100);
     expect(s.projection().budget.spent).toBe(47);

@@ -22,7 +22,10 @@ export function normalizeUsage(message: {
 }): UsageObservation {
   const { cost: _computedPrice, ...raw } = message.usage;
   const u = message.usage;
-  const reported = u.totalTokens > 0 || u.input + u.output + u.cacheRead + u.cacheWrite > 0;
+  const reported =
+    ('corralReported' in u && u.corralReported === true) ||
+    u.totalTokens > 0 ||
+    u.input + u.output + u.cacheRead + u.cacheWrite > 0;
   if (!reported) {
     return {
       usage: {

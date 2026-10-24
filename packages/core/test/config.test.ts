@@ -113,7 +113,7 @@ describe('workspace config and installation policy (C-062)', () => {
     ]);
   });
 
-  it('refuses to start a run whose limits exceed the installation policy', () => {
+  it('ignores legacy installation usage caps for a run with no explicit budget', () => {
     const coordinator = new Coordinator({
       clock: new FakeClock(),
       ids: new SequentialIdFactory(),
@@ -126,8 +126,7 @@ describe('workspace config and installation policy (C-062)', () => {
       definition: linearCorral(['writer']),
       mode: 'mock',
     });
-    expect(runId).toBeNull();
-    expect(receipt.error?.code).toBe('GRAPH_INVALID');
-    expect(receipt.error?.message).toContain('maxModelCalls');
+    expect(runId).not.toBeNull();
+    expect(receipt.error).toBeUndefined();
   });
 });

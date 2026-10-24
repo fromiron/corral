@@ -45,6 +45,9 @@ export type MeetingConfig = z.infer<typeof MeetingConfig>;
 
 /** What was recorded when a round asked one participant; its progress is the Run's. */
 export const MeetingAnswer = z.strictObject({
+  contextOrder: z.int().min(0).optional(),
+  /** Completion/mention processing is durable even when parallel answers finish out of order. */
+  followed: z.boolean().optional(),
   participantId: Identifier,
   runId: Identifier.nullable(),
   /** Position in the shared transcript when this speaker starts. Absent in legacy records. */
@@ -190,6 +193,14 @@ export const MeetingRunOrigin = z.strictObject({
   sessionId: Identifier,
   roundId: Identifier,
   participantId: Identifier,
+  contextSource: z
+    .strictObject({
+      runId: Identifier,
+      checkpointId: Identifier,
+      manifestHash: z.string().regex(/^[a-f0-9]{64}$/),
+      contextHash: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .optional(),
 });
 export type MeetingRunOrigin = z.infer<typeof MeetingRunOrigin>;
 

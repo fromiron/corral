@@ -89,3 +89,12 @@ describe('estimateRunCost (roadmap 15)', () => {
     });
   });
 });
+
+it('[TC-LLM-002-N] an unknown Pi zero placeholder remains unpriced', () => {
+  const placeholder = call('u', 'a', { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+  const p = projectionWith({
+    modelProfiles: { a: snapshot('a', 'api_key') },
+    modelCalls: { u: { ...placeholder, certainty: 'unknown' } },
+  });
+  expect(estimateRunCost(p, prices)).toMatchObject({ pricedCalls: 0, unknownCalls: 1 });
+});

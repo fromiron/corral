@@ -32,6 +32,38 @@ const waiting = (id: string, kind: 'children' | 'message', targetIds: string[]):
   }) as ExecutionView;
 
 describe('waits and finite run limits (C-038)', () => {
+  it('[TC-LLM-005-H] new file ranges and changed results count as progress, repeated evidence does not', () => {
+    const p = emptyProjection('run');
+    let progress = { ...emptyProgress(), turns: 6 };
+    progress = applyProgressEvent(
+      progress,
+      event('tool.finished', { error: null, progressHash: 'a'.repeat(64) }),
+      p,
+    );
+    expect(progress.turns).toBe(0);
+    progress = { ...progress, turns: 6 };
+    expect(
+      applyProgressEvent(
+        progress,
+        event('tool.finished', { error: null, progressHash: 'a'.repeat(64) }),
+        p,
+      ).turns,
+    ).toBe(6);
+    expect(
+      applyProgressEvent(
+        progress,
+        event('tool.finished', { error: null, progressHash: 'b'.repeat(64) }),
+        p,
+      ).turns,
+    ).toBe(0);
+    expect(
+      applyProgressEvent(
+        progress,
+        event('tool.finished', { error: 'failed', progressHash: 'c'.repeat(64) }),
+        p,
+      ).turns,
+    ).toBe(6);
+  });
   it('[TC-ABS-011-H] an addressed parent answer advances collaboration; unrelated messages and timeouts do not', () => {
     const p = emptyProjection('run');
     p.questions.child_question = {

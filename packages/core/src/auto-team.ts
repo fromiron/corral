@@ -198,7 +198,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     : result;
 }
 
-export const AUTO_ROUTE_MAX_OUTPUT_TOKENS = 256;
+export const AUTO_ROUTE_MAX_RESPONSE_BYTES = 4096;
 export const AUTO_ROUTE_TIMEOUT_MS = 30_000;
 
 /** The choice request's instructions; with levels, the model also picks the reasoning. */
@@ -219,7 +219,7 @@ export function autoRouterPrompt(levels?: readonly AutoRouteLevel[]): string {
         ]
       : []),
     "Write the reason in the request's language, in at most 40 characters.",
-    'Keep the complete JSON response below 256 UTF-8 bytes.',
+    `Return compact JSON, at most ${AUTO_ROUTE_MAX_RESPONSE_BYTES} UTF-8 bytes.`,
   ].join('\n');
 }
 
@@ -334,6 +334,8 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
    * called, as for simulated runs.
    */
   route?(input: {
+    commandId: string;
+    sessionId?: string;
     models?: Record<string, ModelProfileSnapshot>;
     brief: string;
     choice: AutoModelChoice;
@@ -387,6 +389,8 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         ...medium('local'),
       };
     const asked = deps.route?.({
+      commandId: request.commandId,
+      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
       ...(models ? { models } : {}),
       brief: request.brief,
       choice: request.choice,

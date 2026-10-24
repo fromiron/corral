@@ -41,7 +41,9 @@ export function RuntimeRecovery({ runId, sessionId }: { runId: string; sessionId
             <code>{item.contextHash.slice(0, 12)}</code>
           </p>
           <p>{t('tree', { tree: item.tree?.slice(0, 12) ?? t('noFiles') })}</p>
-          {item.limits ? (
+          {item.usageLimits === 'none' ? (
+            <p>{t('unlimited')}</p>
+          ) : item.limits ? (
             <p>
               {t('remaining', {
                 calls: item.limits.maxModelCalls,

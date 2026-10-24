@@ -13,7 +13,8 @@
   "dependencies": {
     "@corral/contracts": "workspace:*",
     "@noble/hashes": "2.4.0",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@corral/pi-runtime-port": "workspace:*"
   },
   "devDependencies": {
     "@corral/testkit": "workspace:*",

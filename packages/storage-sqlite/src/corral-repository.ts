@@ -169,6 +169,25 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     return this.db.transaction(() => this.saveRequest(request))();
   }
 
+  /** CR-052: original immutable revisions are the backup; the operation receipt makes this repeatable. */
+  async migrateExecutionPolicies(): Promise<void> {
+    for (const summary of await this.list()) {
+      const current = this.read(summary.corralId);
+      if (!current || current.definition.executionPolicy) continue;
+      const result = await this.saveOperation(
+        {
+          definition: { ...current.definition, executionPolicy: { version: 2 } },
+          layout: current.layout,
+          expectedDefinitionRevision: current.definitionRevision,
+        },
+        `cr052_unlimited_${current.corralId}_${current.definitionRevision}`,
+        current.layoutRevision,
+      );
+      if (!result.ok)
+        throw new Error('execution policy migration could not preserve the current revision');
+    }
+  }
+
   /**
    * Apply a reviewed import to an existing Corral. Its durable receipt closes the crash
    * window between committing this revision and updating the caller's import journal.

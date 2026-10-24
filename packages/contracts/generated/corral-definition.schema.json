@@ -2,6 +2,50 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "executionPolicy": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 2
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "maxModelCalls": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxOutputTokensPerCall": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "runDeadlineMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 9007199254740991
+            },
+            "modelTimeoutMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "planOwnerRoleId": {
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
@@ -769,7 +813,7 @@
         "maxModelConcurrency": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 3
+          "maximum": 9007199254740991
         },
         "maxSpawns": {
           "type": "integer",
@@ -779,17 +823,17 @@
         "maxModelCalls": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 100
+          "maximum": 9007199254740991
         },
         "maxOutputTokens": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 256000
+          "maximum": 9007199254740991
         },
         "maxOutputTokensPerCall": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 4096
+          "maximum": 9007199254740991
         },
         "maxQuestions": {
           "type": "integer",
@@ -804,12 +848,12 @@
         "modelTimeoutMs": {
           "type": "integer",
           "minimum": 1000,
-          "maximum": 300000
+          "maximum": 9007199254740991
         },
         "runDeadlineMs": {
           "type": "integer",
           "minimum": 1000,
-          "maximum": 3600000
+          "maximum": 9007199254740991
         }
       },
       "required": [

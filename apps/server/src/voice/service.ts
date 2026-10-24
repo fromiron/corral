@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { VoiceCall, VoiceConfiguration, VoiceStartInput } from '@corral/client';
+import type { ModelAttemptStore } from '@corral/contracts';
 import type { ModelRegistry } from '../models/registry.ts';
+import { voiceSideband } from './sideband.ts';
 
 // Public GA unified WebRTC interface. No subscription/private endpoint fallback.
 // https://developers.openai.com/api/docs/guides/voice-webrtc
@@ -23,6 +25,7 @@ export class VoiceError extends Error {
 
 type Registry = Pick<ModelRegistry, 'profileConfigs' | 'resolve' | 'credentials' | 'refreshStatus'>;
 type Lease = {
+  sideband?: ReturnType<typeof voiceSideband>;
   providerId: string;
   key: string;
   timer: ReturnType<typeof setTimeout>;
@@ -36,6 +39,8 @@ export class VoiceService {
   private unresolvedCreation = false;
   private readonly registry: Registry | null;
   private readonly options: {
+    usageStore?: ModelAttemptStore;
+    connectSideband?: Parameters<typeof voiceSideband>[0]['connect'];
     fetch?: typeof fetch;
     now?: () => number;
     id?: () => string;
@@ -44,6 +49,8 @@ export class VoiceService {
   constructor(
     registry: Registry | null,
     options: {
+      usageStore?: ModelAttemptStore;
+      connectSideband?: Parameters<typeof voiceSideband>[0]['connect'];
       fetch?: typeof fetch;
       now?: () => number;
       id?: () => string;
@@ -164,6 +171,16 @@ export class VoiceService {
         if (sdp.length > 128_000 || !sdp.startsWith('v=0'))
           throw new VoiceError(502, 'The voice provider returned an invalid audio connection.');
         if (signal?.aborted || this.closed) throw new VoiceError(409, 'Voice start was cancelled.');
+        if (this.options.usageStore)
+          this.calls.get(callId)!.sideband = voiceSideband({
+            callId,
+            providerId,
+            key,
+            model: input.model,
+            target: input.target,
+            store: this.options.usageStore,
+            connect: this.options.connectSideband,
+          });
         return {
           callId,
           target: input.target,
@@ -202,6 +219,7 @@ export class VoiceService {
       throw new VoiceError(502, 'Remote voice shutdown is not yet confirmed. Retrying.');
     }
     clearTimeout(lease.timer);
+    await lease.sideband?.close();
     this.calls.delete(callId);
   }
 

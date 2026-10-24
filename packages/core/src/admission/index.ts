@@ -97,6 +97,7 @@ export interface ToolGateView extends ModelGateView {
   parentQuestionTarget?(nodeId: string): string | undefined;
   /** Versions this execution may read (its own, its inputs, its children's, …). */
   readable(): ReadonlySet<string>;
+  toolResultSource?(id: string): string | null;
 }
 
 export interface StageViews {
@@ -700,8 +701,33 @@ const roleAllowlist: Gate<ToolGateView> = {
         return allow;
       }
       case 'read_artifact': {
+        if (
+          (args.offset !== undefined &&
+            (!Number.isSafeInteger(args.offset) || Number(args.offset) < 0)) ||
+          (args.limit !== undefined &&
+            (!Number.isSafeInteger(args.limit) ||
+              Number(args.limit) < 1 ||
+              Number(args.limit) > 8192))
+        )
+          return refuse('SCHEMA_INVALID', 'invalid artifact range');
+        if (args.toolCallId !== undefined) {
+          const call =
+            typeof args.toolCallId === 'string' ? p.toolCalls[args.toolCallId] : undefined;
+          return args.artifactVersionId === undefined &&
+            ((call?.executionId === input.executionId &&
+              call.phase === 'finished' &&
+              call.resultRef) ||
+              (typeof args.toolCallId === 'string' && view.toolResultSource?.(args.toolCallId)))
+            ? allow
+            : denied('this tool result is not in this execution’s scope');
+        }
         const id = args.artifactVersionId;
-        if (typeof id !== 'string' || !p.artifacts[id]) {
+        if (
+          typeof id !== 'string' ||
+          (!p.artifacts[id] &&
+            !input.inputs.some((item) => item.sourceRef === id) &&
+            !input.resumeContext?.sources?.some((source) => source.sourceRef === id))
+        ) {
           return refuse('TARGET_NOT_FOUND', 'no such artifact version');
         }
         return view.readable().has(id)

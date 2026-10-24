@@ -425,7 +425,11 @@ describe('worker in a child process (C-017, ADR-017)', () => {
           const records = events.filter((event) => event.type === 'model.request_recorded');
           expect(records.length).toBeGreaterThan(0);
           expect(
-            records.every((event) => event.payload.contextEstimate?.method === 'pi-1.3.0-messages'),
+            records.every((event) =>
+              ['dsh-density-v2', 'usage-anchor-v2'].includes(
+                event.payload.contextEstimate?.method ?? '',
+              ),
+            ),
           ).toBe(true);
           expect(
             events

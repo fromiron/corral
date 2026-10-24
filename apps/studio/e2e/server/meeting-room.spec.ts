@@ -295,7 +295,7 @@ test.describe('active meeting', () => {
       page.getByTestId('chat-timeline').getByText('@Builder another follow-up', { exact: true }),
     ).toBeVisible();
     expect((await meeting(page, id)).queued).toBeNull();
-    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
+    expect(corral.server.coordinator.listRuns()).toHaveLength(2);
     await page
       .getByRole('textbox', { name: 'Meeting message', exact: true })
       .fill('Still able to type');
@@ -311,7 +311,7 @@ test.describe('active meeting', () => {
       '@Architect original follow-up',
       '@Builder another follow-up',
     ]);
-    expect(corral.server.coordinator.listRuns()).toHaveLength(1);
+    expect(corral.server.coordinator.listRuns()).toHaveLength(2);
     expect(corral.errors).toEqual([]);
   });
 });

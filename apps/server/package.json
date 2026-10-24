@@ -16,6 +16,7 @@
     "@corral/contracts": "workspace:*",
     "@corral/core": "workspace:*",
     "@corral/effort-judge": "workspace:*",
+    "@corral/pi-runtime-port": "workspace:*",
     "@corral/runner-langgraph": "workspace:*",
     "@corral/storage-sqlite": "workspace:*",
     "@corral/testkit": "workspace:*",
@@ -29,11 +30,13 @@
     "playwright-core": "1.64.1",
     "pngjs": "7.0.0",
     "vscode-languageserver-protocol": "3.18.4",
+    "ws": "8.22.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@corral/client": "workspace:*",
     "@types/node": "24.19.2",
-    "@types/pngjs": "6.0.5"
+    "@types/pngjs": "6.0.5",
+    "@types/ws": "8.18.2"
   }
 }

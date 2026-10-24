@@ -46,22 +46,28 @@ export function createLiveModels(): LiveModels {
     agents: (registry, harnesses, workerLeaseDirectory) =>
       new PiAgentAdapter({
         spawn: (input) =>
-          input.model.workerIsolation
-            ? modelBridgeChannel(
-                sandboxChannel(WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
-                registry.modelBroker(input.model),
-              )
-            : processChannel(WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
+          modelBridgeChannel(
+            input.model.workerIsolation
+              ? sandboxChannel(WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory })
+              : processChannel(WORKER_ENTRY, {
+                  leaseDirectory: workerLeaseDirectory,
+                  env: { CORRAL_MODEL_BRIDGE: '1' },
+                }),
+            registry.modelBroker(input.model, input),
+          ),
         spawnSdk: (input, resources) =>
-          input.model.workerIsolation
-            ? modelBridgeChannel(
-                sandboxChannel(SDK_WORKER_ENTRY, {
+          modelBridgeChannel(
+            input.model.workerIsolation
+              ? sandboxChannel(SDK_WORKER_ENTRY, {
                   leaseDirectory: workerLeaseDirectory,
                   contentRoots: resources.bundles.map((bundle) => bundle.root),
+                })
+              : sdkProcessChannel(SDK_WORKER_ENTRY, {
+                  leaseDirectory: workerLeaseDirectory,
+                  env: { CORRAL_MODEL_BRIDGE: '1' },
                 }),
-                registry.modelBroker(input.model),
-              )
-            : sdkProcessChannel(SDK_WORKER_ENTRY, { leaseDirectory: workerLeaseDirectory }),
+            registry.modelBroker(input.model, input),
+          ),
         harness: (input) => harnesses.runtimeResources(input),
         cancelGraceMs: 9_000,
         credentials: (model) => registry.credentials(model),

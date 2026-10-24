@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const ProfileContextOverrides = z.strictObject({
+  cacheRetention: z.enum(['none', 'short', 'long']).optional(),
   contextWindow: z.int().min(1).max(10_000_000).optional(),
   compaction: z
     .strictObject({
@@ -18,7 +19,7 @@ export const ContextWarning = z.enum([
   'above_model_limit',
 ]);
 export const ProfileContextPolicy = z.strictObject({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   contextWindow: z.int().min(1).max(10_000_000),
   reserveTokens: z.int().min(0),
   keepRecentTokens: z.int().min(0),
@@ -28,8 +29,8 @@ export const ProfileContextPolicy = z.strictObject({
   baseSource: ContextBaseSource,
   sources: z.strictObject({
     contextWindow: z.enum(['profile', 'endpoint', 'catalog', 'fallback']),
-    reserveTokens: z.enum(['profile', 'pi_default']),
-    keepRecentTokens: z.enum(['profile', 'pi_default']),
+    reserveTokens: z.enum(['profile', 'pi_default', 'adaptive']),
+    keepRecentTokens: z.enum(['profile', 'pi_default', 'adaptive']),
   }),
   warnings: z.array(ContextWarning).max(3),
 });

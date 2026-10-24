@@ -27,6 +27,26 @@ test('[TC-DX-002-N] unknown or unreviewed licenses fail closed', () => {
   }
 });
 
+test('[TC-LLM-006-N] the pinned LGPL port is reviewed without allowing other LGPL packages', () => {
+  const inventory = createInventory(
+    { 'LGPL-3.0-only': [{ name: '@corral/pi-runtime-port', versions: ['0.0.0'] }] },
+    'fixture',
+    '2026-10-24T00:00:00Z',
+  );
+  assert(
+    inventory.packages[0]?.downloadLocation.includes('1a812ed7b84e0bd1b117080eb4e51c76eba35d48'),
+  );
+  assert.throws(
+    () =>
+      createInventory(
+        { 'LGPL-3.0-only': [{ name: 'unreviewed', versions: ['0.0.0'] }] },
+        'fixture',
+        '2026-10-24T00:00:00Z',
+      ),
+    /license/,
+  );
+});
+
 test('[TC-DX-002-H] Pierre’s reviewed lowercase Apache identifier is canonical in the SBOM', () => {
   const inventory = createInventory(
     { 'apache-2.0': [{ name: '@pierre/diffs', versions: ['1.5.2'] }] },
@@ -137,6 +157,34 @@ test('candidate proof changes for new, modified and deleted source but ignores g
     mkdirSync(join(root, 'output'));
     writeFileSync(join(root, 'output/evidence.json'), 'generated');
     assert.equal(candidateHash(root), original);
+    const evidenceDir = join(root, 'docs/evaluation/llm-modernization/evidence');
+    mkdirSync(evidenceDir, { recursive: true });
+    writeFileSync(join(evidenceDir, 'distribution.json'), '{}');
+    execFileSync('git', ['add', '.'], { cwd: root });
+    for (let revision = 0; revision < 3; revision++) {
+      writeFileSync(
+        join(evidenceDir, 'distribution.json'),
+        JSON.stringify({ candidate: original, revision }),
+      );
+      assert.equal(
+        candidateHash(root),
+        original,
+        'generated proof must not change its own source identity',
+      );
+    }
+    const report = join(root, 'docs/evaluation/llm-modernization/report.md');
+    writeFileSync(report, 'Generated result');
+    assert.equal(candidateHash(root), original);
+    const probes = join(root, 'docs/evaluation/llm-modernization/probes');
+    mkdirSync(probes);
+    const probe = join(probes, 'verify-package.mjs');
+    writeFileSync(probe, 'export const check = true;');
+    assert.notEqual(candidateHash(root), original, 'verification code remains a build input');
+    rmSync(probe);
+    mkdirSync(join(root, 'patches'));
+    writeFileSync(join(root, 'patches/provider.patch'), 'provider fix');
+    assert.notEqual(candidateHash(root), original, 'dependency patches remain a build input');
+    rmSync(join(root, 'patches/provider.patch'));
     writeFileSync(join(root, 'source.ts'), 'edited');
     assert.notEqual(candidateHash(root), original);
     writeFileSync(join(root, 'source.ts'), 'original');

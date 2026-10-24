@@ -14,6 +14,7 @@ import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
 import { ModelImportPanel } from './ModelImportPanel.tsx';
+import { ModelUsagePanel } from './ModelUsagePanel.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 /**
@@ -25,6 +26,7 @@ export function ModelSettingsPage() {
   const ti = useTranslations('ModelImport');
   const tim = useTranslations('ImageProfiles');
   const tr = useTranslations('Reasoning');
+  const tu = useTranslations('ModelUsage');
   const { models, mode, live } = useServices();
   const { profiles, providers, catalog, config, refresh, error, loading } =
     useModelSettings(models);
@@ -56,6 +58,7 @@ export function ModelSettingsPage() {
                   { id: 'models-import', label: ti('heading') },
                   { id: 'models-images', label: tim('heading') },
                   { id: 'models-reasoning', label: tr('workspaceHeading') },
+                  { id: 'models-usage', label: tu('heading') },
                 ]}
               />
               {editing && config ? (
@@ -115,6 +118,7 @@ export function ModelSettingsPage() {
               <div id="models-reasoning" tabIndex={-1} className="outline-none">
                 <ReasoningSettingsPanel key={config?.revision} />
               </div>
+              <ModelUsagePanel />
             </>
           )}
         </main>

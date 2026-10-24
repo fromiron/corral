@@ -74,6 +74,8 @@ export interface ResolvedInput {
   name: string;
   kind: InputBindingKind;
   artifactVersionId: string | null;
+  /** Immutable host input body, readable with read_artifact without claiming artifact authorship. */
+  sourceRef?: string;
   text: string;
 }
 
@@ -92,6 +94,7 @@ export interface CallableTarget {
 }
 
 export interface AgentStartInput {
+  sessionId?: string;
   /** Host-owned provenance for a conversational response, never inferred from the role. */
   meeting?: MeetingRunOrigin;
   candidateId?: string;

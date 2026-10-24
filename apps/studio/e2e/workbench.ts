@@ -46,7 +46,7 @@ export async function openRequestOptions(page: Page) {
 export async function closeRequestOptions(page: Page) {
   const dialog = page.getByRole('dialog', { name: 'Request options', exact: true });
   if (await dialog.isVisible()) {
-    await page.keyboard.press('Escape');
+    await dialog.getByRole('button', { name: 'Close request options', exact: true }).click();
     await expect(dialog).toBeHidden();
   }
 }

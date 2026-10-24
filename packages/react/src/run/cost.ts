@@ -43,7 +43,8 @@ export function estimateRunCost(projection: RunProjection, prices: ModelPrices):
       continue;
     }
     const price = prices(model.provider, model.modelId);
-    const usd = price ? callCost(call.rawUsage, call.usage, price) : null;
+    const usd =
+      price && call.certainty !== 'unknown' ? callCost(call.rawUsage, call.usage, price) : null;
     if (usd === null) estimate.unknownCalls += 1;
     else {
       estimate.usd += usd;

@@ -103,11 +103,13 @@ export function MessageBranch({
                   {preview.tree ? t('tree', { tree: preview.tree.slice(0, 12) }) : t('noFiles')}
                 </p>
                 <p>
-                  {t('budget', {
-                    model: preview.modelProfile,
-                    calls: preview.limits.maxModelCalls,
-                    tokens: preview.limits.maxOutputTokens,
-                  })}
+                  {preview.usageLimits === 'none'
+                    ? t('unlimited', { model: preview.modelProfile })
+                    : t('budget', {
+                        model: preview.modelProfile,
+                        calls: preview.limits.maxModelCalls,
+                        tokens: preview.limits.maxOutputTokens,
+                      })}
                 </p>
                 <Button
                   disabled={busy}

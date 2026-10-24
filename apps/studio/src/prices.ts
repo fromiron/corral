@@ -19,7 +19,9 @@ export function useModelPrices(): ModelPrices | undefined {
         setTable(
           new Map(
             catalog.flatMap((provider) =>
-              provider.models.map((m) => [`${provider.providerId}/${m.id}`, m.cost] as const),
+              provider.endpoint
+                ? []
+                : provider.models.map((m) => [`${provider.providerId}/${m.id}`, m.cost] as const),
             ),
           ),
         );

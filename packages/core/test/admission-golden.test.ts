@@ -5,7 +5,7 @@ import {
   type CorralDefinition,
   CorralDefinition as Definition,
   type RunCommand,
-  type RunEvent,
+  RunEvent,
 } from '@corral/contracts';
 import {
   collaborationCorral,
@@ -18,8 +18,10 @@ import {
 } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import {
+  applyEvent,
   Coordinator,
   canonicalJson,
+  emptyProjection,
   InProcessTransport,
   type RunProjection,
   SPEC_HARD_CAPS,
@@ -50,7 +52,12 @@ declare global {
   }
 }
 
-const RECORDED = import.meta.glob('./golden/*.events.jsonl', {
+const LEGACY_RECORDED = import.meta.glob('./golden/*.events.jsonl', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+const RECORDED = import.meta.glob('./golden/cr052/*.events.jsonl', {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -82,6 +89,21 @@ function scripted(options: Partial<ScriptedAgentOptions> = {}) {
 }
 
 async function start(transport: InProcessTransport, definition: CorralDefinition) {
+  const { maxModelCalls, maxOutputTokens, maxOutputTokensPerCall, modelTimeoutMs, runDeadlineMs } =
+    definition.limits;
+  definition = {
+    ...definition,
+    executionPolicy: {
+      version: 2,
+      budget: {
+        maxModelCalls,
+        maxOutputTokens,
+        maxOutputTokensPerCall,
+        modelTimeoutMs,
+        runDeadlineMs,
+      },
+    },
+  };
   const { runId, receipt } = await transport.startRun({
     schemaVersion: '0.1',
     commandId: 'cmd_start',
@@ -305,12 +327,22 @@ const env = (name: string) =>
 const lines = (events: RunEvent[]) => events.map((e) => canonicalJson(e));
 
 describe('admission golden event streams (C-067, ADR-024)', () => {
+  it('[TC-LLM-005-F] original golden records remain readable without rewriting their events', () => {
+    for (const text of Object.values(LEGACY_RECORDED)) {
+      const events = text
+        .trim()
+        .split('\n')
+        .map((line) => RunEvent.parse(JSON.parse(line)));
+      const projection = events.reduce(applyEvent, emptyProjection(events[0]!.runId));
+      expect(projection.lastSeq).toBe(events.at(-1)!.runSeq);
+    }
+  });
   for (const [name, scenario] of Object.entries(SCENARIOS)) {
     it(`[TC-RUN-008-H] ${name} keeps its recorded event stream`, async () => {
       const first = lines(await scenario());
       // The scenario must be deterministic before it can pin anything.
       expect(lines(await scenario())).toEqual(first);
-      const file = `./golden/${name}.events.jsonl`;
+      const file = `./golden/cr052/${name}.events.jsonl`;
       const recording = env('CORRAL_UPDATE_GOLDEN') === '1';
       if (!recording && !(file in RECORDED)) {
         throw new Error(

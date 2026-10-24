@@ -34,7 +34,8 @@ export { assertBrowserCall, assertOwnedBrowserOrigin, BROWSER_TOOLS } from './br
 export { type McpProbeTool, probeMcp } from './mcp-probe.ts';
 export { createPreviewBrowserTransport, type PreviewBrowserOptions } from './mcp-transport.ts';
 export { type ModelBroker, modelBridgeChannel } from './model-bridge.ts';
-export { modelReasoningCapabilities, reasoningRequest } from './reasoning.ts';
-
+export { ContextMeter, measureContext } from './ported/dsh/context.ts';
+export { modelReasoningCapabilities, reasoningRequest, requestOutputCap } from './reasoning.ts';
+export { managedRetryStream } from './request-retry.ts';
 export { linuxSystemMounts, sandboxChannel } from './sandbox-channel.ts';
 export { staticToolDescriptors } from './static-tools.ts';

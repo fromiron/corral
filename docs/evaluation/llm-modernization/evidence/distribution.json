@@ -1,0 +1,21 @@
+{
+  "packagedCandidate": "48e1c1680cf0e52f489c1432b214f4919d9adddc531ed7129905732a08b8c5f7",
+  "sourceFiles": 1366,
+  "compiledFiles": 291,
+  "dependencyFiles": 1951,
+  "packagedFiles": 29088,
+  "packagingOmissions": [
+    "server/node_modules/@fastify/ajv-compiler/test/.gitkeep",
+    "server/node_modules/@fastify/static/test/static-pre-compressed/empty/.gitkeep"
+  ],
+  "artifact": "Corral-0.1.0-x86_64.AppImage",
+  "bytes": 368143259,
+  "sha256": "08b3ead843ba0cbf9f8076b191e119036cb18cc107aaaac8d40cb5f961a1eabd",
+  "appImageSmoke": "passed: isolated app data; no host Node/pnpm; single instance, quit, history/draft/theme/route, renderer/sidecar recovery, failed-start retry, workspace reopen",
+  "notes": [
+    "Final evidence Markdown is updated after packaging; code/dependency files match the packaged source manifest.",
+    "Only two upstream test .gitkeep files are omitted by electron-builder."
+  ],
+  "verifiedContainer": "AppImage extracted squashfs-root/resources/runtime and unpacked runtime",
+  "appImageHashParity": "passed"
+}

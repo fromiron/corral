@@ -80,6 +80,7 @@ export interface ProgressState {
   observedCalls: string[];
   submittedHashes: string[];
   reviewSignatures: string[];
+  evidenceHashes?: string[];
 }
 
 export const NO_PROGRESS_TURNS = 6;
@@ -95,6 +96,20 @@ export function applyProgressEvent(
   projection: Pick<RunProjection, 'artifacts' | 'questions'>,
 ): ProgressState {
   switch (event.type) {
+    case 'tool.finished': {
+      const signature = event.payload.progressHash;
+      const known = state.evidenceHashes ?? [];
+      return !event.payload.error && signature && !known.includes(signature)
+        ? { ...state, turns: 0, evidenceHashes: [...known, signature] }
+        : state;
+    }
+    case 'artifact.version_created': {
+      const signature = event.payload.contentHash;
+      const known = state.evidenceHashes ?? [];
+      return known.includes(signature)
+        ? state
+        : { ...state, turns: 0, evidenceHashes: [...known, signature] };
+    }
     case 'model.finished':
       if (state.observedCalls.includes(event.payload.modelCallId)) return state;
       return {

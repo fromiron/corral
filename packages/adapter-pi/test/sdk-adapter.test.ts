@@ -408,8 +408,8 @@ describe('SDK worker through the product adapter (H2)', () => {
       expect(spy).toHaveBeenCalledWith(
         expect.objectContaining({
           cacheWarming: 'off',
-          retry: expect.objectContaining({ enabled: true }),
-          compaction: { reserveTokens: 0, keepRecentTokens: 0 },
+          retry: expect.objectContaining({ enabled: false }),
+          compaction: { enabled: false, reserveTokens: 0, keepRecentTokens: 0 },
         }),
       );
       const settings = SettingsManager.inMemory({
@@ -1268,7 +1268,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     const run = runtime([
       fauxAssistantMessage('', {
         stopReason: 'error',
-        errorMessage: 'The service is temporarily unavailable',
+        errorMessage: 'HTTP 503: The service is temporarily unavailable',
       }),
       fauxAssistantMessage('Recovered.'),
     ]);
@@ -1599,7 +1599,7 @@ it('[TC-PROMPT-001-N] context hooks cannot replace the protected Corral role and
   });
 });
 
-it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] core worker applies context only and old IPC versions are rejected', async () => {
+it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] core worker applies context policy and old IPC versions are rejected', async () => {
   const faux = createFauxCore({});
   faux.setResponses([fauxAssistantMessage('Done.')]);
   const catalog = faux.getModel();
@@ -1642,8 +1642,257 @@ it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] core worker applies context only and o
     protocolVersion: LEGACY_PROTOCOL_VERSION,
     model: { contextWindow: 64000 },
   });
-  expect(frame).not.toHaveProperty('compaction');
+  expect(frame).toHaveProperty('compaction', { reserveTokens: 0, keepRecentTokens: 0 });
   expect(StartFrame.safeParse({ ...(frame as object), protocolVersion: 3 }).success).toBe(false);
   expect(SdkStartFrame.safeParse({ ...(frame as object), protocolVersion: 4 }).success).toBe(false);
   expect(PROTOCOL_VERSION).not.toBe(LEGACY_PROTOCOL_VERSION);
+});
+
+it('[TC-LLM-004-H] compaction preserves the summary without reinserting the original large input', async () => {
+  const original = 'ORIGINAL_ATTACHMENT_AUDIT '.repeat(3500);
+  let summaries = 0;
+  const seen: { purpose: string; original: boolean; chars: number; summary: boolean }[] = [];
+  const responses: FauxResponseStep[] = Array.from({ length: 20 }, () => (context) => {
+    const serialized = JSON.stringify(context.messages);
+    seen.push({
+      purpose: (run.requests.at(-1) as { purpose: string }).purpose,
+      original: serialized.includes(original),
+      chars: serialized.length,
+      summary: serialized.includes('AUDIT_SHORT_SUMMARY'),
+    });
+    return fauxAssistantMessage(
+      (run.requests.at(-1) as { purpose: string }).purpose === 'compaction'
+        ? `AUDIT_SHORT_SUMMARY_${++summaries}`
+        : 'REGULAR_ANSWER',
+    );
+  });
+  const run = runtime(
+    responses,
+    `export default pi => { let round=0; pi.on('agent_before_settle', ()=>{ if(round<4) pi.sendUserMessage(round++<3?'LATER_MESSAGE_AUDIT '.repeat(5000):'Continue briefly.',{deliverAs:'followUp'}); }); };`,
+    {},
+    undefined,
+    128000,
+  );
+  run.input.inputs[0]!.text = original;
+  run.input.model.contextPolicy = resolveProfileContext(
+    { contextWindow: 65536, compaction: { reserveTokens: 16384, keepRecentTokens: 0 } },
+    { contextWindow: 128000, source: 'catalog' },
+    'audit',
+    256,
+  ).policy!;
+  const settled = await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+  expect(settled, JSON.stringify({ seen, reports: run.reports })).toMatchObject({
+    outcome: 'succeeded',
+  });
+  const first = seen.findIndex((r) => r.purpose === 'compaction');
+  expect(first).toBeGreaterThanOrEqual(0);
+  const next = seen.slice(first + 1).find((r) => r.purpose === 'turn');
+  expect(next?.original).toBe(false);
+  expect(next?.summary).toBe(true);
+  expect(seen.filter((r) => r.purpose === 'compaction')).toHaveLength(2);
+  expect(seen.filter((r) => r.purpose === 'compaction')[1]?.summary).toBe(true);
+});
+
+it.each([false, true])(
+  '[TC-LLM-004-H] Core manual compaction applies only the current revision (changed=%s)',
+  async (changed) => {
+    const gate = new Gate();
+    const started = new Gate();
+    const start = input();
+    delete start.harness;
+    delete start.role.harness;
+    start.inputs[0]!.text = 'ORIGINAL_FIRST_PROMPT '.repeat(1000);
+    const image =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZxkAAAAASUVORK5CYII=';
+    start.images = [
+      {
+        kind: 'image_attachment',
+        imageId: 'image_core',
+        name: 'pixel.png',
+        mime: 'image/png',
+        bytes: Buffer.from(image, 'base64').length,
+        sha256: createHash('sha256').update(Buffer.from(image, 'base64')).digest('hex'),
+        width: 1,
+        height: 1,
+        data: image,
+      },
+    ];
+    start.model.contextPolicy = resolveProfileContext(
+      { contextWindow: 64000, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+      { contextWindow: 64000, source: 'catalog' },
+      'fixture',
+      256,
+    ).policy!;
+    const faux = createFauxCore({});
+    let currentState = 'CURRENT_REQUIRED_STATE';
+    const reports: { phase: string }[] = [];
+    const checkpoints: unknown[] = [];
+    const failures: unknown[] = [];
+    const seen: string[] = [];
+    faux.setResponses([
+      async () => {
+        started.open();
+        await gate.wait();
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      {
+        ...fauxAssistantMessage(''),
+        stopReason: 'error',
+        errorMessage: JSON.stringify({
+          code: 'RATE_LIMIT',
+          status: 429,
+          retryAfterMs: 0,
+          requestId: null,
+        }),
+      },
+      () => {
+        if (changed) currentState = 'CHANGED_REQUIRED_STATE';
+        return fauxAssistantMessage(
+          'Current goal and remaining work, with the existing evidence references.',
+        );
+      },
+      (context) => {
+        seen.push(JSON.stringify(context));
+        return fauxAssistantMessage('Done.');
+      },
+    ]);
+    const adapter = new PiAgentAdapter({
+      credentials: async () => ACCESS_TOKEN,
+      spawn: () => {
+        const pair = memoryChannelPair();
+        pair.host.onFrame((value) => {
+          if ((value as { type?: string }).type === 'settled') failures.push(value);
+        });
+        runWorker(pair.worker, {
+          resolveModel: () => faux.getModel(),
+          streamFn: faux.streamSimple,
+        });
+        return pair.host;
+      },
+    });
+    const { host } = recordingHost({
+      checkpointContext: async (value) => {
+        checkpoints.push(value);
+        return null;
+      },
+      protectedContext: () => ({
+        version: 1,
+        text: currentState,
+        hash: createHash('sha256').update(canonicalJson(currentState)).digest('hex'),
+      }),
+      reportCompaction: async (report) => {
+        reports.push(report);
+      },
+    });
+    const handle = await adapter.start(start, host);
+    await started.wait();
+    const supported = typeof handle.requestCompaction === 'function';
+    handle.requestCompaction?.('manual_core');
+    gate.open();
+    const outcome = await handle.waitForSettlement();
+    expect(supported).toBe(true);
+    expect(outcome.error, JSON.stringify({ reports, failures })).toBeUndefined();
+    expect(outcome.outcome).toBe('succeeded');
+    expect(reports.map((report) => report.phase)).toEqual([
+      'started',
+      changed ? 'failed' : 'completed',
+    ]);
+    expect(seen[0]?.includes('compacted-summary')).toBe(!changed);
+    expect(seen[0]?.includes('ORIGINAL_FIRST_PROMPT')).toBe(changed);
+    expect(seen[0]).toContain(image);
+    expect(seen[0]).toContain(currentState);
+    expect(JSON.stringify(checkpoints.at(-1))).toContain('Done.');
+  },
+);
+
+it('[TC-LLM-004-H] SDK compacts an oversized first user message before its first task request', async () => {
+  const original = 'ORIGINAL_FIRST_MESSAGE '.repeat(4200);
+  const seen: { purpose: string; original: boolean; summary: boolean }[] = [];
+  const responses: FauxResponseStep[] = Array.from({ length: 6 }, () => (context) => {
+    const text = JSON.stringify(context.messages);
+    const purpose = (run.requests.at(-1) as { purpose: string }).purpose;
+    seen.push({
+      purpose,
+      original: text.includes(original),
+      summary: text.includes('FIRST_SUMMARY'),
+    });
+    return fauxAssistantMessage(
+      purpose === 'compaction'
+        ? 'FIRST_SUMMARY preserve required task identifiers.'
+        : 'Task answer.',
+    );
+  });
+  const run = runtime(
+    responses,
+    `export default pi=>{let sent=false;pi.on('agent_before_settle',()=>{if(!sent){sent=true;pi.sendUserMessage('Continue briefly.',{deliverAs:'followUp'});}});};`,
+    {},
+    undefined,
+    32768,
+  );
+  run.input.inputs[0]!.text = original;
+  run.input.model.contextPolicy = resolveProfileContext(
+    { contextWindow: 32768 },
+    { contextWindow: 32768, source: 'catalog' },
+    'first-message',
+    256,
+  ).policy!;
+  await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+  expect(seen[0]).toMatchObject({ purpose: 'compaction', original: true });
+  expect(seen.filter((r) => r.purpose === 'turn').length).toBeGreaterThan(0);
+  expect(seen.filter((r) => r.purpose === 'turn').every((r) => !r.original && r.summary)).toBe(
+    true,
+  );
+});
+
+it.each([true, false])(
+  '[TC-LLM-004-F] SDK provider overflow uses one validated Corral compaction (valid=%s)',
+  async (valid) => {
+    const seen: string[] = [];
+    const responses: FauxResponseStep[] = Array.from({ length: 5 }, () => () => {
+      const purpose = (run.requests.at(-1) as { purpose: string }).purpose;
+      seen.push(purpose);
+      if (seen.length === 1)
+        return {
+          ...fauxAssistantMessage(''),
+          stopReason: 'error',
+          errorMessage: JSON.stringify({
+            code: 'CONTEXT_OVERFLOW',
+            status: 400,
+            retryAfterMs: null,
+            requestId: null,
+          }),
+        };
+      if (purpose === 'compaction')
+        return {
+          ...fauxAssistantMessage('OVERFLOW_SUMMARY required goal.'),
+          ...(!valid ? { stopReason: 'length' as const } : {}),
+        };
+      return fauxAssistantMessage('Completed synthetic answer.');
+    });
+    const run = runtime(responses);
+    run.input.inputs[0]!.text = 'Reference context. '.repeat(1000);
+    await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+    expect(seen).toEqual(valid ? ['turn', 'compaction', 'retry'] : ['turn', 'compaction']);
+  },
+);
+
+it('[TC-LLM-004-N] explicitly selecting an already mandatory skill does not inject its body twice', async () => {
+  let text = '';
+  const body = 'MANDATORY_SOURCE_BODY_73';
+  const run = runtime(
+    [
+      (context) => {
+        text = JSON.stringify(context.messages);
+        return fauxAssistantMessage('Done.');
+      },
+    ],
+    '',
+    {},
+    { text: body, mode: 'mandatory', brief: '/skill:writing Summarize simply.' },
+  );
+  await (await run.adapter.start(run.input, run.host)).waitForSettlement();
+  expect(text.split(body)).toHaveLength(2);
+  expect(text).toContain('Summarize simply.');
 });

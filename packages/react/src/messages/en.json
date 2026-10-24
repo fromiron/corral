@@ -757,11 +757,12 @@
     "costUnknown": "{count, plural, one {# call} other {# calls}} without a known price",
     "costSimulated": "Simulated: no cost",
     "costNone": "No model calls yet",
-    "noLimits": "This run has no usage limits. It continues until you cancel it.",
+    "noLimits": "No default usage limits. The run continues until the task finishes or you stop it.",
     "callsMade": "Model calls",
     "callsInFlight": "Calls in progress",
     "callsUnknown": "Calls with unknown usage",
-    "noLimitsNote": "Provider-side limits and charges still apply. Calls with unknown usage are not counted as zero."
+    "noLimitsNote": "Provider-side limits and charges still apply. Calls with unknown usage are not counted as zero.",
+    "unlimited": "Unlimited"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -809,7 +810,8 @@
     "loadingCriteria": "Loading current criteria…",
     "finished": "This run has ended. Its settings history remains available.",
     "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots.",
-    "reasoningModel": "Also change model profile (blank keeps current)"
+    "reasoningModel": "Also change model profile (blank keeps current)",
+    "unlimited": "Unlimited"
   },
   "Demo": {
     "template": "Demo template",
@@ -1392,7 +1394,7 @@
     "editQueued": "Edit",
     "autoStart": "Start the next queued task when the run ends",
     "autoStartHint": "Only while this page is open and after it sees the run end; never after a restart.",
-    "preRun": "{team} · models {profiles} · files: {files} · up to {calls} model calls and {minutes} min · {mode}",
+    "preRun": "{team} · models {profiles} · files: {files} · calls: {calls} · time (minutes): {minutes} · {mode}",
     "filesCopy": "can change the working copy",
     "filesNoCopy": "tools on, but no working copy",
     "filesNone": "no file work",
@@ -1445,7 +1447,8 @@
       "local": "local choice",
       "fallback": "fallback"
     },
-    "selectedRun": "Selected run"
+    "selectedRun": "Selected run",
+    "unlimited": "unlimited"
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -2737,7 +2740,8 @@
       "budget_exhausted": "No model budget remains.",
       "checkpoint_corrupt": "Checkpoint integrity could not be verified.",
       "already_resumed": "This Run already has a continuation."
-    }
+    },
+    "unlimited": "Continue with no usage limits."
   },
   "SessionTabs": {
     "label": "Session tabs",
@@ -2780,15 +2784,16 @@
     "unavailable": "This checkpoint cannot be branched. Try context-only or inspect the source Run.",
     "requestOpen": "Branch before this request",
     "requestDescription": "Start this original request in a separate session and Run, using its original team and criteria.",
-    "requestBoundary": "Starts at the original request boundary, before any model response."
+    "requestBoundary": "Starts at the original request boundary, before any model response.",
+    "unlimited": "Model {model} · no default usage limits"
   },
   "ProfileContext": {
     "contextWindow": "Effective context",
     "reserveTokens": "Effective summary reserve",
     "keepRecentTokens": "Effective recent history",
     "threshold": "Automatic compaction threshold: estimated tokens greater than {value, number}.",
-    "hint": "Blank inherits; zero is explicit. Compaction applies only to Pi SDK harness runs. Pi core applies context only. Provider limits do not change.",
-    "sdk": "Pi SDK policy frozen for this Run. Zero does not disable compaction or guarantee removal of all history.",
+    "hint": "Blank uses model-based defaults; zero is explicit. Core and SDK share compaction policy and retain provider limits.",
+    "sdk": "Compaction policy frozen for this run. Original records are retained; only model input is compacted.",
     "legacy": "This Pi core execution applies context only; compaction settings are unsupported and not applied.",
     "mock": "Recorded for a simulated Run; no real model compaction is performed.",
     "unknown": "No context policy was recorded. Current settings cannot reconstruct historical values.",
@@ -2799,7 +2804,8 @@
       "endpoint": "endpoint override",
       "catalog": "model catalog",
       "fallback": "connection fallback",
-      "pi_default": "Pi default"
+      "pi_default": "Pi default",
+      "adaptive": "model-based default"
     },
     "warning": {
       "legacy_inconsistent": "Legacy defaults are inconsistent and preserved for compatibility. Explicit overrides must satisfy the policy.",
@@ -4177,5 +4183,42 @@
     "startDraft": "Start saved handoff",
     "resultLink": "Open result",
     "draftChanged": "The target now has unsent input. Resolve that input before retrying this unconfirmed start; the original handoff command is preserved."
+  },
+  "ModelUsage": {
+    "heading": "Model request history",
+    "description": "Records of execution, draft, routing and media requests. Earlier histories remain available in each run.",
+    "load": "Load history",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "failed": "Could not load request history.",
+    "empty": "No recorded requests.",
+    "request": "Request",
+    "status": "Status",
+    "input": "Input tokens",
+    "output": "Output tokens",
+    "cache": "Cache read",
+    "cost": "Cost",
+    "unknown": "Unknown",
+    "subscription": "Subscription",
+    "estimatedCost": "Estimated {value}",
+    "reportedCost": "Reported {value}",
+    "more": "Load older requests",
+    "purpose": {
+      "turn": "Conversation",
+      "retry": "Retry",
+      "compaction": "Compaction",
+      "extension": "Extension",
+      "chooser": "Routing",
+      "draft": "Draft",
+      "voice": "Voice",
+      "image": "Image"
+    },
+    "state": {
+      "started": "In progress",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "unknown": "Outcome unknown"
+    }
   }
 }

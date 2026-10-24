@@ -61,6 +61,7 @@ export const BranchedFrom = z.strictObject({
 });
 export type BranchedFrom = z.infer<typeof BranchedFrom>;
 export interface MessageBranchPreview {
+  usageLimits?: 'none';
   hash: string;
   sourceRunId: string;
   artifactVersionId: string | null;
