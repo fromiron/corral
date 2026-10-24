@@ -6,7 +6,7 @@ import type {
 } from '@corral/client';
 import { ApiError } from '@corral/client';
 import { DeploymentReadback } from '@corral/contracts';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, Select } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { WorkspacesClient } from '../demo/workspaces-client.ts';
@@ -312,15 +312,12 @@ function Tasks({
           {plan && !attempt ? (
             <>
               {plan.source.dirty ? (
-                <label className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    checked={allowDirty}
-                    disabled={busy}
-                    onChange={(event) => setAllowDirty(event.target.checked)}
-                  />
-                  {t('allowDirty')}
-                </label>
+                <Checkbox
+                  label={t('allowDirty')}
+                  checked={allowDirty}
+                  disabled={busy}
+                  onToggle={() => setAllowDirty(!allowDirty)}
+                />
               ) : null}
               <p className="text-muted-foreground">{t('startHint')}</p>
               <Button

@@ -1,6 +1,5 @@
 import type { HarnessProfile } from '@corral/contracts';
 
-export const field = 'settings-field';
 export const operationId = () => `manage_${crypto.randomUUID()}`;
 
 export function profileInput(p: HarnessProfile): HarnessProfile {

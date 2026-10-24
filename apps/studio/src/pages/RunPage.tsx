@@ -27,7 +27,7 @@ import {
   useSteerTarget,
   WorkPlanPanel,
 } from '@corral/react';
-import { Button } from '@corral/react/design-kit';
+import { Banner, BannerActions, BannerTitle, Button } from '@corral/react/design-kit';
 import { ArrowRight } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
@@ -544,28 +544,35 @@ function RunWorkspace({
       <NarrowViews panel={panel} onChoose={setPanel} />
       {/* On a narrow run the answer lives in another view: point to it, never jump (#74). */}
       {waitingDecisions && panel !== 'side' ? (
-        <div
+        <Banner
           data-testid="decision-waiting"
-          className="flex flex-wrap items-center gap-2 border-b border-line bg-warning/10 px-3 py-1.5 text-xs text-warning @3xl:hidden"
+          status="warning"
+          contrast="high"
+          size="compact"
+          variant="fixed"
+          role="note"
+          className="@3xl:hidden"
         >
-          <span>{t('decisionWaiting', { count: waitingDecisions })}</span>
-          <Button
-            variant="tertiary"
-            size="compact"
-            onClick={() => {
-              setPanel('side');
-              requestAnimationFrame(() => {
-                const card = sideRef.current?.querySelector<HTMLElement>(
-                  '[data-testid^="approval-"]',
-                );
-                card?.scrollIntoView({ block: 'nearest' });
-                (card?.querySelector<HTMLElement>('button') ?? sideRef.current)?.focus();
-              });
-            }}
-          >
-            {t('openResponse')}
-          </Button>
-        </div>
+          <BannerTitle>{t('decisionWaiting', { count: waitingDecisions })}</BannerTitle>
+          <BannerActions>
+            <Button
+              variant="secondary"
+              size="compact"
+              onClick={() => {
+                setPanel('side');
+                requestAnimationFrame(() => {
+                  const card = sideRef.current?.querySelector<HTMLElement>(
+                    '[data-testid^="approval-"]',
+                  );
+                  card?.scrollIntoView({ block: 'nearest' });
+                  (card?.querySelector<HTMLElement>('button') ?? sideRef.current)?.focus();
+                });
+              }}
+            >
+              {t('openResponse')}
+            </Button>
+          </BannerActions>
+        </Banner>
       ) : null}
       <Main className="run-layout min-h-0 flex-1">
         <aside

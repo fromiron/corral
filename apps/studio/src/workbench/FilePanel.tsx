@@ -617,7 +617,7 @@ export function FilePanel({
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <label>
                   {t('fromLine')}{' '}
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={lineCount}
@@ -625,18 +625,18 @@ export function FilePanel({
                     onChange={(e) =>
                       setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))
                     }
-                    className="w-14 rounded fill-control px-1"
+                    className="w-14"
                   />
                 </label>
                 <label>
                   {t('toLine')}{' '}
-                  <input
+                  <Input
                     type="number"
                     min={range.start}
                     max={lineCount}
                     value={range.end}
                     onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
-                    className="w-14 rounded fill-control px-1"
+                    className="w-14"
                   />
                 </label>
                 <Button

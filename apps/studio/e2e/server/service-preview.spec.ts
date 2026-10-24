@@ -105,7 +105,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     const folder = page.getByRole('tabpanel', { name: 'Project folder' });
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
-    const trust = folder.getByRole('checkbox', { name: /Trust this repository/ });
+    const trust = folder.getByRole('switch', { name: /Trust this repository/ });
     await trust.click();
     await expect(trust).toBeChecked();
     await page.getByRole('tab', { name: /^Sessions/ }).click();

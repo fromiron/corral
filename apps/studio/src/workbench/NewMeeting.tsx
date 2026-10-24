@@ -5,7 +5,9 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  Input,
   Select,
+  Textarea,
 } from '@corral/react/design-kit';
 import { Users } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
@@ -152,10 +154,9 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
         <form id={formId} className="flex flex-col gap-4 text-sm" onSubmit={create}>
           <label className="flex flex-col gap-1">
             {t('title')}
-            <input
+            <Input
               value={title}
               maxLength={120}
-              className="rounded fill-control px-2 py-1"
               onChange={(event) => setTitle(event.target.value)}
             />
           </label>
@@ -187,13 +188,12 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
             {participants.map((item, index) => (
               <div key={item.key} className="flex flex-col gap-2 rounded fill-group p-3">
                 <div className="flex flex-wrap items-end gap-2">
-                  <label className="flex min-w-0 flex-1 flex-col gap-1">
+                  <label className="flex min-w-40 flex-1 flex-col gap-1">
                     {t('participantName', { number: index + 1 })}
-                    <input
+                    <Input
                       value={item.name}
                       maxLength={40}
                       required
-                      className="rounded fill-control px-2 py-1"
                       onChange={(event) => change(item.key, { name: event.target.value })}
                     />
                   </label>
@@ -221,11 +221,11 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
                 </div>
                 <label className="flex flex-col gap-1">
                   {t('participantRole', { number: index + 1 })}
-                  <textarea
+                  <Textarea
+                    size="sm"
                     value={item.prompt}
                     maxLength={4000}
                     rows={2}
-                    className="resize-y rounded fill-control px-2 py-1"
                     onChange={(event) => change(item.key, { prompt: event.target.value })}
                   />
                 </label>

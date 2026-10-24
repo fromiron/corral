@@ -62,6 +62,7 @@ export function ChatView({
   items,
   composer,
   header,
+  aside,
   centerEmpty = false,
 }: {
   sessionId: string;
@@ -70,6 +71,11 @@ export function ChatView({
   items: { id: string; content: ReactNode }[];
   composer: ReactNode;
   header?: ReactNode;
+  /**
+   * Widgets that float in the margin right of the conversation and stay put while it scrolls
+   * (CR-053); index.css hides them when the margin cannot hold them.
+   */
+  aside?: ReactNode;
   centerEmpty?: boolean;
 }) {
   const t = useTranslations('Desktop');
@@ -323,6 +329,11 @@ export function ChatView({
         ) : null}
         <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">{composer}</div>
       </div>
+      {aside === undefined ? null : (
+        <aside data-testid="chat-overview" className="chat-overview">
+          {aside}
+        </aside>
+      )}
     </div>
   );
 }

@@ -12,7 +12,7 @@ AI 에이전트의 문서 진입점이다. **이번 요청 → 관련 현재 계
 | 제품 범위·그래프·Reins·기본 상한 | [제품](current/product.md) | [제품 상세](current/product-contract.md), [기능 명세](../specs/README.md) |
 | 상태 소유·실행·취소·파일 효과 | [구조](current/architecture.md), [실행과 안전](current/execution-and-safety.md) | [기술 설계](Technical-Design.md), 관련 core/server/adapter |
 | 프로젝트·세션·컴포저·편집기 | [Workbench](current/workbench.md) | [위젯 상세](current/chat-widgets-contract.md), CR-043·044 |
-| 디자인 토큰·공용 컴포넌트·시각 규칙 | [Design System](../DESIGN.md), [CR-050](change-requests/CR-050-design-kit-adoption.md), [CR-051](change-requests/CR-051-session-workspace-simplification.md) | C-177·178, [도입 검증](evaluation/Design-Kit-Adoption-2026-10-23.md), [세션 화면 단순화](evaluation/Session-Workspace-Simplification-2026-10-24.md), `packages/react/src/design-kit/` |
+| 디자인 토큰·공용 컴포넌트·시각 규칙 | [Design System](../DESIGN.md), [CR-050](change-requests/CR-050-design-kit-adoption.md), [CR-051](change-requests/CR-051-session-workspace-simplification.md), [CR-053](change-requests/CR-053-session-overview-widgets.md) | C-177·178·185, [도입 검증](evaluation/Design-Kit-Adoption-2026-10-23.md), [세션 화면 단순화](evaluation/Session-Workspace-Simplification-2026-10-24.md), [현황 위젯](evaluation/Session-Overview-Widgets-2026-10-24.md), `packages/react/src/design-kit/` |
 | 회의·참가자 발언·회의록·결정·작업 인계 | [Workbench](current/workbench.md), [CR-049](change-requests/CR-049-meeting-room.md) | C-174–176, [실행 기록](evaluation/Meeting-Room-2026-10-23.md) |
 | 화면·코드 용어 | [용어집](current/glossary.md) | 메시지 파일 `packages/react/src/messages/` |
 | Desktop·명령·preview·host·음성 | [Desktop 상세](current/desktop-contract.md) | CR-042, [잔여 조건](plans/desktop-completion.md) |

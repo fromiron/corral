@@ -8,6 +8,7 @@ import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
+import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ChatDensityMenu, ChatView } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
@@ -17,7 +18,7 @@ const fixture = vi.hoisted(() => ({ store: null as RunSessionStore | null, read:
 vi.mock('./useCorralChat.ts', () => ({
   useCorralRun: (runId: string, live: boolean, details: boolean) => {
     fixture.read(runId, live, details);
-    return { store: fixture.store, state: fixture.store?.getState() };
+    return { store: fixture.store, state: useStore(fixture.store as RunSessionStore) };
   },
 }));
 vi.mock('../pages/Workbench.tsx', () => ({
@@ -40,7 +41,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
-async function render() {
+async function render(status: 'running' | 'succeeded' = 'running') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -56,7 +57,7 @@ async function render() {
     },
   );
   const projection = emptyProjection('run_density');
-  projection.status = 'running';
+  projection.status = status;
   const failed: RunProjection['executions'][string] = {
     executionId: 'exec',
     nodeId: 'writer',
@@ -76,7 +77,8 @@ async function render() {
     error: 'Execution failed visibly',
   };
   projection.executions.exec = failed;
-  projection.executionOrder = ['exec'];
+  projection.executions.live = { ...failed, executionId: 'live', status: 'active', error: null };
+  projection.executionOrder = ['exec', 'live'];
   projection.approvals.approval = {
     approvalId: 'approval',
     kind: 'user_action',
@@ -193,16 +195,26 @@ it('[TC-WBD-007-H] changes only display density while keeping results and requir
     expect(fixture.store?.getState().projection).toBe(f.projection);
     expect(fixture.store?.getState().events).toBe(f.events);
   }
-  const log = f.container.querySelector<HTMLDetailsElement>('.work-log');
-  expect(log?.open).toBe(true);
+  // The work log is the kit's ThinkingSteps: a disclosure header over one step per execution.
+  const log = f.container.querySelector<HTMLElement>('.work-log');
+  if (!log) throw new Error('work log missing');
+  expect(log.tagName).not.toBe('DETAILS');
+  const triggers = () => [...log.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')];
+  expect(triggers()[0]?.textContent).toContain('Work log');
+  expect(triggers()[0]?.getAttribute('aria-expanded')).toBe('true');
+  // Only the running execution is the active step; a failed one is not animated as live work.
+  const active = [...log.querySelectorAll('.shimmer-text')].map((node) => node.textContent);
+  expect(active).toEqual(['writer · #2…']);
+  // A transcript is loaded only when its own fold opens.
   expect(f.container.querySelector('[data-testid="density-transcript"]')).toBeNull();
-  const execution = log?.querySelector('details');
-  if (!execution) throw new Error('execution disclosure missing');
-  await act(async () => {
-    execution.open = true;
-    execution.dispatchEvent(new Event('toggle'));
-  });
-  expect(f.container.querySelector('[data-testid="density-transcript"]')).not.toBeNull();
+  const conversation = triggers().find((button) => button.textContent?.startsWith('Conversation'));
+  if (!conversation) throw new Error('execution disclosure missing');
+  expect(conversation.getAttribute('aria-expanded')).toBe('false');
+  await act(async () => conversation.click());
+  expect(conversation.getAttribute('aria-expanded')).toBe('true');
+  expect(f.container.querySelectorAll('[data-testid="density-transcript"]')).toHaveLength(1);
+  await act(async () => triggers()[0]?.click());
+  expect(triggers()[0]?.getAttribute('aria-expanded')).toBe('false');
   expect(f.sendCommand).not.toHaveBeenCalled();
   expect(
     fixture.read.mock.calls.every((call) => call[0] === 'run_density' && call[1] === true),
@@ -233,4 +245,163 @@ it('[TC-WBD-007-F] changing the display preference keeps message and composer no
   expect(f.container.querySelector('textarea[aria-label="Draft"]')).toBe(composer);
   expect(composer?.value).toBe('Keep this draft');
   expect(f.sendCommand).not.toHaveBeenCalled();
+});
+
+it('[TC-WBD-007-N] the live reply stays in place between model calls until the run ends', async () => {
+  const f = await render();
+  const live = () => f.container.querySelector<HTMLElement>('[data-testid="live-text"]');
+  const block = live();
+  expect(block?.textContent).toContain('Currently drafting');
+  const stream = (text: string, completed: boolean) => ({
+    text,
+    next: 1,
+    broken: false,
+    completed,
+  });
+  // The call ends and a tool runs: the last reply stays, no longer marked as being written.
+  await act(async () =>
+    fixture.store?.setState({ streams: { call: stream('Currently drafting', true) } }),
+  );
+  expect(live()).toBe(block);
+  expect(live()?.textContent).toContain('Currently drafting');
+  expect(live()?.textContent).not.toContain('is writing');
+  // The next call takes the same place.
+  await act(async () =>
+    fixture.store?.setState({
+      streams: { call: stream('Currently drafting', true), next: stream('Next step', false) },
+    }),
+  );
+  expect(live()).toBe(block);
+  expect(live()?.textContent).toContain('Next step');
+  expect(live()?.textContent).toContain('is writing');
+  await act(async () =>
+    fixture.store?.setState({ projection: { ...f.projection, status: 'succeeded' } }),
+  );
+  expect(live()).toBeNull();
+});
+
+/** The run succeeds with a result version that first appears now, as a finishing turn does. */
+function succeeded(projection: RunProjection): RunProjection {
+  const previous = projection.artifacts.result;
+  if (!previous) throw new Error('fixture result missing');
+  return {
+    ...projection,
+    status: 'succeeded',
+    artifacts: {
+      ...projection.artifacts,
+      final: { ...previous, artifactVersionId: 'final', version: 2, name: 'Final answer' },
+    },
+    output: { nodeId: 'output', artifactVersionIds: ['final'] },
+  };
+}
+
+it('[TC-WBD-007-N] on success the live reply stays until the result text is read, without a loading flash', async () => {
+  const f = await render();
+  let finish = () => {};
+  await act(async () =>
+    fixture.store?.setState({
+      projection: succeeded(f.projection),
+      streams: { call: { text: 'Draft as written', next: 1, broken: false, completed: true } },
+      artifactTexts: {},
+      loadArtifact: () =>
+        new Promise<void>((done) => {
+          finish = done;
+        }),
+    }),
+  );
+  const live = f.container.querySelector('[data-testid="live-text"]');
+  expect(live?.textContent).toContain('Draft as written');
+  expect(live?.textContent).not.toContain('is writing');
+  expect(f.container.querySelector('[data-testid="chat-result"]')).toBeNull();
+  expect(f.container.textContent).not.toContain('Loading…');
+  await act(async () => {
+    fixture.store?.setState({ artifactTexts: { final: 'Final words' } });
+    finish();
+  });
+  expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
+  expect(f.container.querySelector('[data-testid="chat-result"]')?.textContent).toContain(
+    'Final words',
+  );
+});
+
+it('[TC-WBD-007-F] a result that cannot be read ends the hand-off and shows the error', async () => {
+  const f = await render();
+  await act(async () =>
+    fixture.store?.setState({
+      projection: succeeded(f.projection),
+      streams: { call: { text: 'Draft as written', next: 1, broken: false, completed: true } },
+      artifactTexts: {},
+      loadArtifact: async () => {},
+    }),
+  );
+  expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
+  expect(f.container.querySelector('[role="alert"]')).not.toBeNull();
+});
+
+it('[TC-WBD-007-N] the work log sits above the reply and result from the start of the turn', async () => {
+  const f = await render();
+  const before = (a: Element | null, b: Element | null) =>
+    Boolean(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  await act(async () => preferences.setState({ chatDensity: 'basic' }));
+  const log = () => f.container.querySelector('.work-log');
+  // Working, basic density: the folded log is already in place above the live reply.
+  expect(log()).not.toBeNull();
+  expect(log()?.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
+    'false',
+  );
+  expect(before(log(), f.container.querySelector('[data-testid="live-text"]'))).toBe(true);
+  expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
+  const working = log();
+  await act(async () =>
+    fixture.store?.setState({ projection: { ...f.projection, status: 'succeeded' } }),
+  );
+  // Finishing keeps the same log element above the result.
+  expect(log()).toBe(working);
+  expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
+  // The results-only density still hides the log while the turn works.
+  await act(async () =>
+    fixture.store?.setState({ projection: { ...f.projection, status: 'running' } }),
+  );
+  await act(async () => preferences.setState({ chatDensity: 'results' }));
+  expect(log()).toBeNull();
+});
+
+it('[TC-WBD-007-N] a turn that finishes without streamed text shows its result only once read', async () => {
+  const f = await render();
+  let finish = () => {};
+  await act(async () =>
+    fixture.store?.setState({
+      projection: succeeded(f.projection),
+      streams: {},
+      artifactTexts: {},
+      loadArtifact: () =>
+        new Promise<void>((done) => {
+          finish = done;
+        }),
+    }),
+  );
+  expect(f.container.querySelector('[data-testid="chat-result"]')).toBeNull();
+  expect(f.container.textContent).not.toContain('Loading…');
+  await act(async () => {
+    fixture.store?.setState({ artifactTexts: { final: 'Final words' } });
+    finish();
+  });
+  expect(f.container.querySelector('[data-testid="chat-result"]')?.textContent).toContain(
+    'Final words',
+  );
+});
+
+it('[TC-WBD-007-N] a turn opened after it finished still shows that its result is loading', async () => {
+  const f = await render('succeeded');
+  await act(async () =>
+    fixture.store?.setState({
+      projection: succeeded(f.projection),
+      streams: {},
+      artifactTexts: {},
+      loadArtifact: () => new Promise<void>(() => {}),
+    }),
+  );
+  expect(f.container.querySelector('[data-testid="chat-result"]')?.textContent).toContain(
+    'Loading…',
+  );
 });

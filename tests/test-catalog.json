@@ -4616,5 +4616,38 @@
     "status": "planned",
     "adapter": "injected deterministic provider and loopback; live tests require explicit opt-in",
     "evidence": null
+  },
+  {
+    "id": "TC-RAIL-001-H",
+    "requirements": [
+      "CRL-UX-011"
+    ],
+    "suite": "unit",
+    "scenario": "The Overview widgets show a finished run's context use, output tokens with calls against the limit and a per-call chart, its results and changes, and each opens its existing detail in place without changing the presented run.",
+    "status": "planned",
+    "adapter": "Studio unit tests and local browser demo; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-RAIL-001-N",
+    "requirements": [
+      "CRL-UX-011"
+    ],
+    "suite": "unit",
+    "scenario": "Widgets without data stay hidden; an unmeasured context, a run without usage limits and unconfirmed usage are named rather than shown as zero; the composer summary popover shows the same widgets.",
+    "status": "planned",
+    "adapter": "Studio unit tests and local browser demo; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-RAIL-001-F",
+    "requirements": [
+      "CRL-UX-011"
+    ],
+    "suite": "unit",
+    "scenario": "When the presented run cannot be read, Overview says so and offers a retry for the same run instead of empty widgets.",
+    "status": "planned",
+    "adapter": "Studio unit tests and local browser demo; no paid calls",
+    "evidence": null
   }
 ]

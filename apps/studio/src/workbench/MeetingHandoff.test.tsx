@@ -40,6 +40,8 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 vi.mock('@corral/react/design-kit', () => ({
+  Input: (props: any) => <input {...props} />,
+  Textarea: (props: any) => <textarea {...props} />,
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
     <button {...props}>{children}</button>
   ),

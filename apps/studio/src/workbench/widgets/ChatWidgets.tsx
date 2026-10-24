@@ -1,4 +1,7 @@
 import {
+  Banner,
+  BannerActions,
+  BannerTitle,
   Button,
   Card,
   CardAction,
@@ -26,9 +29,9 @@ import {
   PanelRight,
 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { type ComponentProps, useId, useState } from 'react';
+import { type ComponentProps, type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import type { WidgetChip } from './selectors.ts';
+import { actionCopy, type WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -51,7 +54,7 @@ const CATEGORY_FILL: Record<string, string> = {
   instructions: 'bg-text/75',
   other: 'bg-text/45',
 };
-const chipClass =
+export const chipClass =
   'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
 const number = (value: number) => value.toLocaleString();
 /** "Last run" only for the newest finished run; an older one names its position (#72). */
@@ -64,135 +67,9 @@ function viewedLabel(
     ? t('selectedRun', { number: viewed.number, total: viewed.total })
     : t('selectedRunUnordered');
 }
-const compactNumber = (value: number) =>
+export const compactNumber = (value: number) =>
   value >= 1000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k` : number(value);
 
-/** The reference places contextual widgets in an upper-right companion card. */
-export function SessionWidgetCard({ results = true }: { results?: boolean }) {
-  const model = useChatWidget();
-  const t = useTranslations('Widgets');
-  const ts = useTranslations('Status');
-  if (!model?.runId) return null;
-  return (
-    <Card
-      data-testid="session-summary-card"
-      role="region"
-      aria-label={t('summaryHeading')}
-      className="session-summary-card"
-    >
-      <CardHeader>
-        <CardTitle>{t('summaryHeading')}</CardTitle>
-        <CardDescription>
-          {model.viewed
-            ? viewedLabel(model.viewed, t)
-            : model.plan.runStatus
-              ? ts(model.plan.runStatus)
-              : t('rail')}
-        </CardDescription>
-        <CardAction aria-hidden="true" className="text-muted-foreground">
-          <Bot size={22} />
-        </CardAction>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Button render={<RunLink model={model} />} variant="tertiary" size="compact">
-          <PanelRight size={13} aria-hidden="true" />
-          {t('openExecution')}
-        </Button>
-        <div className="space-y-1">
-          {model.chips
-            .filter((chip) => chip !== 'changes')
-            .map((chip) => (
-              <Chip key={chip} chip={chip} model={model} />
-            ))}
-        </div>
-        {model.tools.length ? (
-          <div>
-            <h4 className="mb-1.5 text-xs text-muted-foreground">{t('activityHeading')}</h4>
-            <ul className="space-y-1">
-              {model.tools.slice(-3).map((tool) => (
-                <li key={tool.id} className="flex min-h-7 items-center gap-2 text-xs">
-                  {tool.tone === 'ok' ? (
-                    <CircleCheck size={13} className="shrink-0 text-muted-foreground" />
-                  ) : tool.tone === 'running' ? (
-                    <LoaderCircle
-                      size={13}
-                      className="shrink-0 text-muted-foreground motion-safe:animate-spin"
-                    />
-                  ) : (
-                    <CircleAlert size={13} className="shrink-0 text-warning" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate" title={tool.name}>
-                    {tool.name}
-                  </span>
-                  <span className="text-2xs text-muted-foreground">{t(`tool.${tool.tone}`)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        {/* The Results pane lists every result below this card; the popover keeps a few. */}
-        {results && model.results.length ? (
-          <div>
-            <h4 className="mb-1.5 text-xs text-muted-foreground">{t('resultsHeading')}</h4>
-            <ul className="space-y-1">
-              {model.results.slice(0, 3).map((result) => (
-                <li key={result.id}>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    render={
-                      <Link
-                        to="/sessions/$sessionId"
-                        params={{ sessionId: model.sessionId }}
-                        search={{
-                          panel: 'run',
-                          run: model.runId ?? undefined,
-                          view: 'results',
-                          result: result.id,
-                        }}
-                      />
-                    }
-                  >
-                    <FileDiff size={13} className="shrink-0 text-muted-foreground" />
-                    <span className="truncate">{result.label}</span>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-/** At narrow widths or while inspecting details, keep the same summary reachable. */
-function SessionWidgetAccess() {
-  const model = useChatWidget();
-  const t = useTranslations('Widgets');
-  if (!model?.runId) return null;
-  return (
-    <div className="session-widget-access ml-auto justify-end">
-      <Popover>
-        <PopoverTrigger data-testid="session-summary-trigger" className={chipClass}>
-          <Bot size={14} />
-          {t('summaryHeading')}
-          <ChevronDown size={12} />
-        </PopoverTrigger>
-        <PopoverPopup
-          data-testid="session-summary-popup"
-          align="end"
-          side="top"
-          width="md"
-          padding="none"
-          className="rounded-2xl"
-        >
-          <SessionWidgetCard />
-        </PopoverPopup>
-      </Popover>
-    </div>
-  );
-}
 function Chip({ chip, model }: { chip: WidgetChip; model: ChatWidgetModel }) {
   if (chip === 'context') return <ContextUsageChip model={model} />;
   if (chip === 'agents' && model.agents) return <AgentChip model={model} />;
@@ -201,22 +78,26 @@ function Chip({ chip, model }: { chip: WidgetChip; model: ChatWidgetModel }) {
   return null;
 }
 
+/** The context chip's words, also the context widget's accessible summary. */
+export function contextLabel(
+  context: ChatWidgetModel['context'],
+  t: ReturnType<typeof useTranslations<'Widgets'>>,
+) {
+  return context.kind === 'messages' && context.tokens != null
+    ? t('contextMessages', { count: compactNumber(context.tokens) })
+    : context.percent != null
+      ? t('contextPercent', { percent: context.percent })
+      : context.completeness === 'error'
+        ? t('contextError')
+        : context.kind === 'partial'
+          ? t('contextPartial')
+          : t('contextPending');
+}
+
 function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
-  const tc = useTranslations('Widgets.category');
   const { context } = model;
-  const label =
-    context.kind === 'messages' && context.tokens != null
-      ? t('contextMessages', { count: compactNumber(context.tokens) })
-      : context.percent != null
-        ? t('contextPercent', { percent: context.percent })
-        : context.completeness === 'error'
-          ? t('contextError')
-          : context.kind === 'partial'
-            ? t('contextPartial')
-            : t('contextPending');
-  const measured = context.tokens != null;
-  const complete = context.coverage === 'request' && context.completeness === 'complete';
+  const label = contextLabel(context, t);
   return (
     <Popover>
       <PopoverTrigger data-testid="context-usage-chip" className={chipClass}>
@@ -225,165 +106,172 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
         <ChevronDown size={12} />
       </PopoverTrigger>
       <PopoverPopup align="start" width="lg">
-        <div data-testid="context-inspector" className="flex flex-col gap-4 text-ui">
-          <div>
-            <div className="flex items-center justify-between gap-3">
-              <PopoverTitle>{t('context')}</PopoverTitle>
-              <span className="rounded-md bg-subtle px-2 py-0.5 text-2xs text-muted-foreground">
-                {complete
-                  ? t('measurementFull')
-                  : context.kind === 'messages'
-                    ? t('measurementMessages')
-                    : measured
-                      ? t('measurementPartial')
-                      : t('measurementPending')}
-              </span>
-            </div>
-            <p className="mt-1.5 break-words text-xs text-muted-foreground">
-              {[
-                model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
-                context.roleLabel,
-                context.modelLabel,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-            {context.recordedAt ? (
-              <p className="mt-1 text-2xs text-muted-foreground">
-                {t('lastRequest', {
-                  time: new Date(context.recordedAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  }),
-                })}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {t(measured ? 'estimatedInput' : 'contextPending')}
-              </p>
-              {context.tokens != null ? (
-                <p className="mt-1 text-lg font-medium tabular-nums">
-                  {number(context.tokens)}
-                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                    {context.windowTokens
-                      ? `/ ${number(context.windowTokens)} ${t('tokens')}`
-                      : t('tokens')}
-                  </span>
-                </p>
-              ) : null}
-            </div>
-            {context.percent != null ? (
-              <span className="flex items-center gap-2 text-sm tabular-nums">
-                <ContextGauge percent={context.barPercent} size={28} />
-                {context.percent}%
-              </span>
-            ) : null}
-          </div>
-          <SegmentBar
-            parts={context.parts}
-            total={complete ? context.windowTokens : context.tokens}
-          />
-          <ul className="flex flex-col gap-2">
-            {CATEGORIES.map((category) => {
-              const part = context.parts.find((item) => item.category === category);
-              return (
-                <li key={category} className="flex items-start justify-between gap-4 text-xs">
-                  <span className="flex items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className={`size-2 shrink-0 rounded-sm ${part ? CATEGORY_FILL[category] : 'bg-line'}`}
-                    />
-                    {tc(category)}
-                  </span>
-                  <span className="max-w-44 text-right tabular-nums text-muted-foreground">
-                    {part
-                      ? `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
-                      : t(complete ? 'notInRequest' : 'notMeasured')}
-                  </span>
-                </li>
-              );
-            })}
-            {context.freeTokens != null ? (
-              <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-xs text-muted-foreground">
-                <span>{t(context.freeTokens < 0 ? 'estimatedOverage' : 'estimatedRemaining')}</span>
-                <span className={`tabular-nums ${context.freeTokens < 0 ? 'text-warning' : ''}`}>
-                  {number(Math.abs(context.freeTokens))}
-                </span>
-              </li>
-            ) : null}
-          </ul>
-          {model.simulated || !complete || context.awaitingRefresh || context.kind === 'highest' ? (
-            <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-xs text-muted-foreground">
-              {model.simulated ? <p>{t('simulatedNote')}</p> : null}
-              {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
-              {!complete ? (
-                <p>
-                  {context.measurementStage === 'assembled'
-                    ? t('measurementAssembled')
-                    : context.completeness === 'error'
-                      ? t('measurementFailed')
-                      : measured
-                        ? t('noPercent')
-                        : t('measurementWaiting')}
-                </p>
-              ) : null}
-              {context.kind === 'highest' ? <p>{t('highestContext')}</p> : null}
-              {context.unmeasuredExecutions ? (
-                <p>{t('unmeasuredExecutions', { count: context.unmeasuredExecutions })}</p>
-              ) : null}
-              {context.omissions?.length ? (
-                <p className="break-words">
-                  {t('missingCoverage')}:{' '}
-                  {context.omissions.map((reason) => t(`omission.${reason}`)).join(' · ')}
-                </p>
-              ) : null}
-              {model.readState === 'error' ? (
-                <Button size="compact" variant="tertiary" onClick={model.retryRead}>
-                  {t('retry')}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-          {model.reserveTokens != null ? (
-            <p className="text-xs text-muted-foreground">
-              {t('outputReserve', { count: number(model.reserveTokens) })}
-            </p>
-          ) : null}
-          {context.providerInput != null ||
-          context.providerCacheRead != null ||
-          context.providerOutput != null ? (
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer rounded-sm py-1 focus-visible:ring-2 focus-visible:ring-ring">
-                {t('providerUsage')}
-              </summary>
-              <p className="mt-1">{t('providerSeparate')}</p>
-              <p className="mt-1 tabular-nums">
-                {t('providerNumbers', {
-                  input: context.providerInput == null ? '—' : number(context.providerInput),
-                  cache:
-                    context.providerCacheRead == null ? '—' : number(context.providerCacheRead),
-                  output: context.providerOutput == null ? '—' : number(context.providerOutput),
-                })}
-              </p>
-            </details>
-          ) : null}
-          <RunLink
-            model={model}
-            className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
-          >
-            {t('contextDetails')}
-            <ArrowRight size={14} />
-          </RunLink>
-        </div>
+        <ContextDetail model={model} />
       </PopoverPopup>
     </Popover>
   );
 }
-function ContextGauge({ percent, size = 16 }: { percent: number | null; size?: number }) {
+/** ContextInspector: what the presented run's last request held (CR-041 §4.2). */
+export function ContextDetail({ model }: { model: ChatWidgetModel }) {
+  const t = useTranslations('Widgets');
+  const tc = useTranslations('Widgets.category');
+  const { context } = model;
+  const measured = context.tokens != null;
+  const complete = context.coverage === 'request' && context.completeness === 'complete';
+  return (
+    <div data-testid="context-inspector" className="flex flex-col gap-4 text-ui">
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <PopoverTitle>{t('context')}</PopoverTitle>
+          <span className="rounded-md bg-subtle px-2 py-0.5 text-2xs text-muted-foreground">
+            {complete
+              ? t('measurementFull')
+              : context.kind === 'messages'
+                ? t('measurementMessages')
+                : measured
+                  ? t('measurementPartial')
+                  : t('measurementPending')}
+          </span>
+        </div>
+        <p className="mt-1.5 break-words text-xs text-muted-foreground">
+          {[
+            model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
+            context.roleLabel,
+            context.modelLabel,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+        {context.recordedAt ? (
+          <p className="mt-1 text-2xs text-muted-foreground">
+            {t('lastRequest', {
+              time: new Date(context.recordedAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              }),
+            })}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs text-muted-foreground">
+            {t(measured ? 'estimatedInput' : 'contextPending')}
+          </p>
+          {context.tokens != null ? (
+            <p className="mt-1 text-lg font-medium tabular-nums">
+              {number(context.tokens)}
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                {context.windowTokens
+                  ? `/ ${number(context.windowTokens)} ${t('tokens')}`
+                  : t('tokens')}
+              </span>
+            </p>
+          ) : null}
+        </div>
+        {context.percent != null ? (
+          <span className="flex items-center gap-2 text-sm tabular-nums">
+            <ContextGauge percent={context.barPercent} size={28} />
+            {context.percent}%
+          </span>
+        ) : null}
+      </div>
+      <SegmentBar parts={context.parts} total={complete ? context.windowTokens : context.tokens} />
+      <ul className="flex flex-col gap-2">
+        {CATEGORIES.map((category) => {
+          const part = context.parts.find((item) => item.category === category);
+          return (
+            <li key={category} className="flex items-start justify-between gap-4 text-xs">
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={`size-2 shrink-0 rounded-sm ${part ? CATEGORY_FILL[category] : 'bg-line'}`}
+                />
+                {tc(category)}
+              </span>
+              <span className="max-w-44 text-right tabular-nums text-muted-foreground">
+                {part
+                  ? `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
+                  : t(complete ? 'notInRequest' : 'notMeasured')}
+              </span>
+            </li>
+          );
+        })}
+        {context.freeTokens != null ? (
+          <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-xs text-muted-foreground">
+            <span>{t(context.freeTokens < 0 ? 'estimatedOverage' : 'estimatedRemaining')}</span>
+            <span className={`tabular-nums ${context.freeTokens < 0 ? 'text-warning' : ''}`}>
+              {number(Math.abs(context.freeTokens))}
+            </span>
+          </li>
+        ) : null}
+      </ul>
+      {model.simulated || !complete || context.awaitingRefresh || context.kind === 'highest' ? (
+        <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-xs text-muted-foreground">
+          {model.simulated ? <p>{t('simulatedNote')}</p> : null}
+          {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
+          {!complete ? (
+            <p>
+              {context.measurementStage === 'assembled'
+                ? t('measurementAssembled')
+                : context.completeness === 'error'
+                  ? t('measurementFailed')
+                  : measured
+                    ? t('noPercent')
+                    : t('measurementWaiting')}
+            </p>
+          ) : null}
+          {context.kind === 'highest' ? <p>{t('highestContext')}</p> : null}
+          {context.unmeasuredExecutions ? (
+            <p>{t('unmeasuredExecutions', { count: context.unmeasuredExecutions })}</p>
+          ) : null}
+          {context.omissions?.length ? (
+            <p className="break-words">
+              {t('missingCoverage')}:{' '}
+              {context.omissions.map((reason) => t(`omission.${reason}`)).join(' · ')}
+            </p>
+          ) : null}
+          {model.readState === 'error' ? (
+            <Button size="compact" variant="tertiary" onClick={model.retryRead}>
+              {t('retry')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {model.reserveTokens != null ? (
+        <p className="text-xs text-muted-foreground">
+          {t('outputReserve', { count: number(model.reserveTokens) })}
+        </p>
+      ) : null}
+      {context.providerInput != null ||
+      context.providerCacheRead != null ||
+      context.providerOutput != null ? (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer rounded-sm py-1 focus-visible:ring-2 focus-visible:ring-ring">
+            {t('providerUsage')}
+          </summary>
+          <p className="mt-1">{t('providerSeparate')}</p>
+          <p className="mt-1 tabular-nums">
+            {t('providerNumbers', {
+              input: context.providerInput == null ? '—' : number(context.providerInput),
+              cache: context.providerCacheRead == null ? '—' : number(context.providerCacheRead),
+              output: context.providerOutput == null ? '—' : number(context.providerOutput),
+            })}
+          </p>
+        </details>
+      ) : null}
+      <RunLink
+        model={model}
+        className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
+      >
+        {t('contextDetails')}
+        <ArrowRight size={14} />
+      </RunLink>
+    </div>
+  );
+}
+export function ContextGauge({ percent, size = 16 }: { percent: number | null; size?: number }) {
   const radius = 7;
   const length = 2 * Math.PI * radius;
   return (
@@ -406,7 +294,7 @@ function ContextGauge({ percent, size = 16 }: { percent: number | null; size?: n
     </svg>
   );
 }
-function SegmentBar({
+export function SegmentBar({
   parts,
   total,
 }: {
@@ -432,7 +320,6 @@ function SegmentBar({
 }
 function AgentChip({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
-  const ts = useTranslations('Status');
   if (!model.agents) return null;
   return (
     <Popover>
@@ -442,44 +329,55 @@ function AgentChip({ model }: { model: ChatWidgetModel }) {
         <ChevronDown size={12} />
       </PopoverTrigger>
       <PopoverPopup align="start" width="md">
-        <PopoverTitle>{t('agentsHeading')}</PopoverTitle>
-        <p className="mt-2 text-xs text-muted-foreground">
-          {[
-            t('agents', model.agents),
-            t('agentsWaiting', { count: model.agents.waiting }),
-            t('agentsFailed', { count: model.agents.failed }),
-          ].join(' · ')}
-        </p>
-        {model.plan.choices.length ? (
-          <ul className="mt-3 space-y-1">
-            {model.plan.choices.map((choice) => (
-              <li key={choice.key}>
-                <Button
-                  size="compact"
-                  variant="ghost"
-                  className="h-auto w-full justify-between gap-2 py-2"
-                  onClick={() => model.plan.choose(choice.key)}
-                >
-                  <span className="truncate">
-                    {choice.key === 'team' ? t('teamPlan') : choice.label}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : ''}
-                  </span>
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <RunLink
-          model={model}
-          className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
-        >
-          {t('allAgents')}
-          <ArrowRight size={14} />
-        </RunLink>
+        <AgentsDetail model={model} />
       </PopoverPopup>
     </Popover>
+  );
+}
+/** Agent states and the plan each agent owns. */
+export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
+  const t = useTranslations('Widgets');
+  const ts = useTranslations('Status');
+  if (!model.agents) return null;
+  return (
+    <>
+      <PopoverTitle>{t('agentsHeading')}</PopoverTitle>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {[
+          t('agents', model.agents),
+          t('agentsWaiting', { count: model.agents.waiting }),
+          t('agentsFailed', { count: model.agents.failed }),
+        ].join(' · ')}
+      </p>
+      {model.plan.choices.length ? (
+        <ul className="mt-3 space-y-1">
+          {model.plan.choices.map((choice) => (
+            <li key={choice.key}>
+              <Button
+                size="compact"
+                variant="ghost"
+                className="h-auto w-full justify-between gap-2 py-2"
+                onClick={() => model.plan.choose(choice.key)}
+              >
+                <span className="truncate">
+                  {choice.key === 'team' ? t('teamPlan') : choice.label}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : ''}
+                </span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <RunLink
+        model={model}
+        className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
+      >
+        {t('allAgents')}
+        <ArrowRight size={14} />
+      </RunLink>
+    </>
   );
 }
 function ChangesChip({ model }: { model: ChatWidgetModel }) {
@@ -519,23 +417,32 @@ function EnvironmentChip({ model }: { model: ChatWidgetModel }) {
         </span>
       </PopoverTrigger>
       <PopoverPopup align="start" width="md">
-        <PopoverTitle>{t('environmentHeading')}</PopoverTitle>
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          {t(
-            model.environment === 'simulated'
-              ? 'environmentSimulationDetail'
-              : 'environmentRestrictedDetail',
-          )}
-        </p>
-        <RunLink model={model} className="mt-3 inline-flex items-center gap-2 text-xs">
-          {t('contextDetails')}
-          <ArrowRight size={14} />
-        </RunLink>
+        <EnvironmentDetail model={model} />
       </PopoverPopup>
     </Popover>
   );
 }
-function RunLink({
+/** Why this run's environment differs from an ordinary local run. */
+export function EnvironmentDetail({ model }: { model: ChatWidgetModel }) {
+  const t = useTranslations('Widgets');
+  return (
+    <>
+      <PopoverTitle>{t('environmentHeading')}</PopoverTitle>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+        {t(
+          model.environment === 'simulated'
+            ? 'environmentSimulationDetail'
+            : 'environmentRestrictedDetail',
+        )}
+      </p>
+      <RunLink model={model} className="mt-3 inline-flex items-center gap-2 text-xs">
+        {t('contextDetails')}
+        <ArrowRight size={14} />
+      </RunLink>
+    </>
+  );
+}
+export function RunLink({
   model,
   ...props
 }: {
@@ -560,21 +467,15 @@ function RunLink({
   );
 }
 /** One announcement and a scoped entry to the existing approval/interaction host. */
-export function ComposerDock() {
+/** `summary` is the narrow-width way into the Overview widgets (CR-053). */
+export function ComposerDock({ summary }: { summary?: ReactNode }) {
   const model = useChatWidget();
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
   if (!model?.runId) return null;
-  const actionLabel =
-    model.action.summary === 'approval'
-      ? t('actionApproval')
-      : model.action.summary === 'question'
-        ? t('actionQuestion')
-        : model.action.summary === 'failure'
-          ? t('actionFailure')
-          : model.action.summary === 'unclear'
-            ? t('actionUnclear')
-            : t('actionMixed', { count: model.action.count });
+  const actionLabel = actionCopy(model.action)
+    .map((key) => (key === 'actionMixed' ? t(key, { count: model.action.count }) : t(key)))
+    .join(' · ');
   const status = model.plan.status;
   const countNotice =
     'completed' in status ? t('planCount', { done: status.completed, total: status.total }) : '';
@@ -616,22 +517,25 @@ export function ComposerDock() {
           </Button>
         ) : null}
         {model.chips.includes('changes') ? <ChangesChip model={model} /> : null}
-        <SessionWidgetAccess />
+        {summary}
       </div>
       {model.action.visible ? (
-        <div
+        // The live region below announces it; the banner itself stays a note.
+        <Banner
           data-testid="action-required"
-          className="mb-2 flex items-center gap-2 rounded-xl bg-warning/10 px-3 py-2 text-xs"
+          status="warning"
+          contrast="high"
+          size="compact"
+          role="note"
+          className="mb-2"
         >
-          <CircleAlert size={15} className="shrink-0 text-warning" />
-          <span className="min-w-0 flex-1">{actionLabel}</span>
-          <RunLink
-            model={model}
-            className="shrink-0 rounded-md px-2 py-1 font-medium hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {t('actionOpen')}
-          </RunLink>
-        </div>
+          <BannerTitle>{actionLabel}</BannerTitle>
+          <BannerActions>
+            <Button size="compact" variant="secondary" render={<RunLink model={model} />}>
+              {t('actionOpen')}
+            </Button>
+          </BannerActions>
+        </Banner>
       ) : null}
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {[countNotice, model.action.visible ? actionLabel : ''].filter(Boolean).join(' · ')}

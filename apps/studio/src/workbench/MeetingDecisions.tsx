@@ -1,6 +1,6 @@
 import type { MeetingDecisionContent, MeetingView } from '@corral/contracts';
 import { activeMeetingDecision, type WorkSession } from '@corral/core';
-import { Button } from '@corral/react/design-kit';
+import { Button, Textarea } from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -204,12 +204,11 @@ export function MeetingDecisions({
           <fieldset disabled={busy} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               {t('goal')}
-              <textarea
+              <Textarea
                 name="goal"
                 required
                 maxLength={4000}
                 rows={2}
-                className="resize-y rounded fill-control p-2"
                 value={draft.content.goal}
                 onChange={(event) =>
                   setDraft({ ...draft, content: { ...draft.content, goal: event.target.value } })
@@ -219,10 +218,9 @@ export function MeetingDecisions({
             {fields.map((field) => (
               <label key={field} className="flex flex-col gap-1">
                 {t(field)}
-                <textarea
+                <Textarea
                   name={field}
                   rows={2}
-                  className="resize-y rounded fill-control p-2"
                   value={draft.content[field].join('\n')}
                   onChange={(event) =>
                     setDraft({
@@ -306,11 +304,10 @@ export function MeetingDecisions({
                   >
                     <label className="flex flex-col gap-1">
                       {t('withdrawReason')}
-                      <textarea
+                      <Textarea
                         required
                         maxLength={2000}
                         rows={2}
-                        className="resize-y rounded fill-control p-2"
                         disabled={busy}
                         value={withdrawal.reason}
                         onChange={(event) =>

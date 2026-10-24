@@ -41,9 +41,9 @@ test('[TC-ABS-009-H] clone and link through Projects; save and explicitly attach
   expect(readFileSync(join(destination, 'README.md'), 'utf8')).toBe('# Project\n');
 
   await page.getByRole('tab', { name: 'Project folder', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Trust this repository', exact: true }).click();
+  await page.getByRole('switch', { name: 'Trust this repository', exact: true }).click();
   await expect(
-    page.getByRole('checkbox', { name: 'Trust this repository', exact: true }),
+    page.getByRole('switch', { name: 'Trust this repository', exact: true }),
   ).toBeChecked();
   // Instructions and memory are project records, not folder files, so they have their own tab (#87).
   await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeHidden();

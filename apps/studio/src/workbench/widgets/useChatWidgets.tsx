@@ -1,6 +1,12 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
-import { type RunSessionState, runResults, useWorkPlanSnapshot } from '@corral/react';
+import {
+  estimateRunCost,
+  type RunCostEstimate,
+  type RunSessionState,
+  runResults,
+  useWorkPlanSnapshot,
+} from '@corral/react';
 import {
   createContext,
   type ReactNode,
@@ -13,6 +19,7 @@ import {
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../../pages/Workbench.tsx';
+import { useModelPrices } from '../../prices.ts';
 import { useServices } from '../../services.tsx';
 import { readRunView } from '../readRunView.ts';
 import { contextCalls } from './contextCalls.ts';
@@ -28,6 +35,8 @@ import {
   presentContext,
   selectPresentedPlan,
   toolRows,
+  type UsageSummary,
+  usageSummary,
   viewedRun,
   visibleWidgets,
   widgetReadState,
@@ -50,10 +59,16 @@ export interface ChatWidgetModel {
   changesLabel: 'provisional' | 'fixed' | 'unavailable' | 'error' | null;
   changeFiles: number | null;
   changeLines: number | null;
+  changeAdditions: number | null;
+  changeDeletions: number | null;
   agents: { total: number; working: number; waiting: number; failed: number } | null;
   tools: { id: string; name: string; tone: string }[];
   results: { id: string; label: string }[];
   environment: 'simulated' | 'restricted' | null;
+  /** Output tokens, calls and their limits for the Usage widget (CR-053). */
+  usage: UsageSummary | null;
+  /** The list-price estimate, or why there is none; null before the run is read. */
+  cost: RunCostEstimate | null;
   action: ReturnType<typeof actionRequired>;
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
@@ -104,6 +119,7 @@ function useChatWidgetState(
   runIds: readonly string[],
 ): ChatWidgetModel {
   const { runFor, sessionFor, retainRun, transport, readHistory, workspaces, mode } = useServices();
+  const prices = useModelPrices();
   const session = presentationRunId ? runFor(presentationRunId) : sessionFor(sessionId);
   useEffect(() => {
     if (!presentationRunId || !live) return;
@@ -196,10 +212,9 @@ function useChatWidgetState(
               const uncounted = value.files.filter(
                 (file) => file.additions == null || file.deletions == null,
               ).length;
-              const lines = value.files.reduce(
-                (sum, file) => sum + (file.additions ?? 0) + (file.deletions ?? 0),
-                0,
-              );
+              const additions = value.files.reduce((sum, file) => sum + (file.additions ?? 0), 0);
+              const deletions = value.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0);
+              const lines = additions + deletions;
               setChanges(
                 changesPresentation({
                   baselineApplied: true,
@@ -207,6 +222,8 @@ function useChatWidgetState(
                   state: value.unavailable ? 'unavailable' : 'ready',
                   files: value.files.length,
                   lines: uncounted ? null : lines,
+                  additions: uncounted ? null : additions,
+                  deletions: uncounted ? null : deletions,
                   uncounted,
                 }),
               );
@@ -458,10 +475,14 @@ function useChatWidgetState(
             : null,
     changeFiles: changes?.kind === 'count' ? changes.files : null,
     changeLines: changes?.kind === 'count' ? changes.lines : null,
+    changeAdditions: changes?.kind === 'count' ? changes.additions : null,
+    changeDeletions: changes?.kind === 'count' ? changes.deletions : null,
     agents,
     tools,
     results: resultItems,
     environment: simulated ? 'simulated' : restricted ? 'restricted' : null,
+    usage: usageSummary(projection, projection?.limits ?? view?.definition?.limits ?? null),
+    cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
     activity,
     plan: {

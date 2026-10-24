@@ -1,5 +1,6 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
+import { Checkbox } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { McpConnection } from './McpConnection.tsx';
@@ -69,27 +70,20 @@ function ServerTools({
             <p className="text-sm text-muted-foreground">{t('probeEmpty')}</p>
           ) : null}
           {verified.tools.map((tool) => (
-            <label key={tool.name} className="settings-row">
-              <span>
-                <span className="text-sm font-medium">{tool.title || tool.name}</span>
-                {tool.description ? (
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {tool.description}
-                  </span>
-                ) : null}
-              </span>
-              <input
-                type="checkbox"
+            <div key={tool.name} className="settings-row flex-col items-start gap-1">
+              <Checkbox
+                label={tool.title || tool.name}
                 checked={allowedTools.includes(tool.name)}
-                onChange={(event) =>
+                onToggle={() =>
                   onChange(
-                    event.target.checked
-                      ? [...new Set([...allowedTools, tool.name])]
-                      : allowedTools.filter((name) => name !== tool.name),
+                    allowedTools.includes(tool.name)
+                      ? allowedTools.filter((name) => name !== tool.name)
+                      : [...new Set([...allowedTools, tool.name])],
                   )
                 }
               />
-            </label>
+              {tool.description ? <p className="text-xs">{tool.description}</p> : null}
+            </div>
           ))}
           <p className="text-xs text-muted-foreground">{t('nextRun')}</p>
         </fieldset>

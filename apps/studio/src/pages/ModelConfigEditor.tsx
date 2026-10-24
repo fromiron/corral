@@ -5,7 +5,7 @@ import {
   type ModelConfig,
   type ProfileConfig,
 } from '@corral/client';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -163,7 +163,6 @@ export function ModelConfigEditor({
   };
 
   useSettingsForm({ dirty, pending: saving, save });
-  const field = 'settings-field';
   return (
     <section aria-labelledby={headingId} className="settings-surface flex flex-col gap-4">
       <h3 id={headingId} className="text-sm font-semibold">
@@ -188,12 +187,12 @@ export function ModelConfigEditor({
                 <span aria-hidden="true" className="text-2xs text-muted-foreground">
                   {t('fieldName')}
                 </span>
-                <input
+                <Input
                   aria-label={t('profileId', { n: index + 1 })}
                   value={profile.id}
                   readOnly={index < config.modelProfiles.length}
                   onChange={(e) => setProfile(index, { id: e.target.value })}
-                  className={`${field} w-32 font-mono`}
+                  className="w-32 font-mono"
                 />
               </div>
               <div className="flex flex-col gap-1">
@@ -235,18 +234,18 @@ export function ModelConfigEditor({
                   ]}
                 />
               </div>
-              <label className="flex h-9 items-center gap-1 self-end text-xs">
-                <input
-                  type="checkbox"
-                  checked={profile.workerIsolation === 'linux-bwrap'}
-                  onChange={(event) =>
-                    setProfile(index, {
-                      workerIsolation: event.target.checked ? 'linux-bwrap' : undefined,
-                    })
-                  }
-                />
-                {t('isolateProfile', { profile: label })}
-              </label>
+              <Switch
+                label={t('isolateProfile', { profile: label })}
+                size="compact"
+                className="self-end"
+                checked={profile.workerIsolation === 'linux-bwrap'}
+                onToggle={() =>
+                  setProfile(index, {
+                    workerIsolation:
+                      profile.workerIsolation === 'linux-bwrap' ? undefined : 'linux-bwrap',
+                  })
+                }
+              />
               <Button
                 variant="tertiary"
                 size="compact"
@@ -262,13 +261,13 @@ export function ModelConfigEditor({
                 {(['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const).map((key) => (
                   <label key={key} className="flex min-w-0 flex-col gap-1 text-xs">
                     <span>{t(key, { profile: label })}</span>
-                    <input
+                    <Input
                       inputMode="numeric"
                       aria-label={t(key, { profile: label })}
                       placeholder={t('inherit')}
                       value={profile[key]}
                       onChange={(event) => setProfile(index, { [key]: event.target.value })}
-                      className={`${field} min-w-0 w-full`}
+                      className="min-w-0 w-full"
                     />
                   </label>
                 ))}
@@ -323,34 +322,33 @@ export function ModelConfigEditor({
             <div key={endpoint.uid} className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs">
                 <span>{t('endpointId', { n })}</span>
-                <input
+                <Input
                   aria-label={t('endpointId', { n })}
                   placeholder="hive"
                   value={endpoint.id}
                   onChange={(e) => setEndpoint(index, { id: e.target.value })}
-                  className={`${field} font-mono`}
+                  className="font-mono"
                 />
                 <span className="text-muted-foreground">{t('endpointIdHint')}</span>
               </label>
               <label className="flex flex-col gap-1 text-xs">
                 <span>{t('endpointName', { n })}</span>
-                <input
+                <Input
                   aria-label={t('endpointName', { n })}
                   placeholder="Hive"
                   value={endpoint.name}
                   onChange={(e) => setEndpoint(index, { name: e.target.value })}
-                  className={field}
                 />
                 <span className="text-muted-foreground">{t('endpointNameHint')}</span>
               </label>
               <label className="flex flex-col gap-1 text-xs sm:col-span-2">
                 <span>{t('endpointAddress', { n })}</span>
-                <input
+                <Input
                   aria-label={t('endpointAddress', { n })}
                   placeholder="http://127.0.0.1:11434/v1"
                   value={endpoint.baseUrl}
                   onChange={(e) => setEndpoint(index, { baseUrl: e.target.value })}
-                  className={`${field} font-mono sm:col-span-2`}
+                  className="font-mono sm:col-span-2"
                 />
               </label>
               <div className="flex flex-col gap-1 text-xs">
@@ -414,11 +412,11 @@ export function ModelConfigEditor({
               ) : null}
               <label className="flex flex-col gap-1 text-xs sm:col-span-2">
                 <span>{t('endpointModels', { n })}</span>
-                <textarea
+                <Textarea
                   value={endpoint.models}
                   rows={2}
                   onChange={(e) => setEndpoint(index, { models: e.target.value })}
-                  className={`${field} font-mono`}
+                  className="font-mono"
                 />
               </label>
             </div>

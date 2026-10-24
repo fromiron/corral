@@ -1,5 +1,5 @@
 import type { CheckpointRestore, CheckpointRestorePlan, FileCheckpoint } from '@corral/contracts';
-import { Button, Input } from '@corral/react/design-kit';
+import { Button, Input, Switch } from '@corral/react/design-kit';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
@@ -110,23 +110,16 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
                 {t(`state.${item.state}`)} · <code>{item.tree?.slice(0, 8)}</code>
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={item.pinned}
-                    disabled={busy || item.state !== 'ready'}
-                    onChange={(event) =>
-                      void act(() =>
-                        workspaces.pinCheckpoint(
-                          sessionId,
-                          item.checkpointId,
-                          event.target.checked,
-                        ),
-                      )
-                    }
-                  />{' '}
-                  {t('pin')}
-                </label>
+                <Switch
+                  label={t('pin')}
+                  checked={item.pinned}
+                  disabled={busy || item.state !== 'ready'}
+                  onToggle={() =>
+                    void act(() =>
+                      workspaces.pinCheckpoint(sessionId, item.checkpointId, !item.pinned),
+                    )
+                  }
+                />
                 <Button
                   size="compact"
                   variant="ghost"

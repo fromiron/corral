@@ -59,9 +59,7 @@ it('[TC-WBD-007-H] explicitly attaches only selected hunks with the frozen compa
     expect(attach).toBeDefined();
     expect(attach?.disabled).toBe(true);
     expect(onAttach).not.toHaveBeenCalled();
-    await act(async () =>
-      container.querySelector<HTMLInputElement>('input[type=checkbox]')?.click(),
-    );
+    await act(async () => container.querySelector<HTMLElement>('[role=checkbox]')?.click());
     await act(async () => button('Hunks.attachSelected')?.click());
     expect(onAttach).toHaveBeenCalledTimes(1);
     expect(onAttach.mock.calls[0]?.[0]).toMatchObject({

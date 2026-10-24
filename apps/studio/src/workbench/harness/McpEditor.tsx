@@ -10,12 +10,15 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  Input,
   Select,
+  Switch,
+  Textarea,
 } from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsCommand, useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
-import { field, operationId } from './Target.tsx';
+import { operationId } from './Target.tsx';
 
 export function mcpDraft(server: RegisteredMcpServer): McpServerDraft {
   const common = {
@@ -178,8 +181,7 @@ export function McpEditor({
           <fieldset disabled={busy} className="flex flex-col gap-4">
             <label className="flex flex-col gap-1 text-sm">
               {t('serverName')}
-              <input
-                className={field}
+              <Input
                 required
                 maxLength={80}
                 value={name}
@@ -204,21 +206,17 @@ export function McpEditor({
             </div>
             {transport === 'stdio' ? (
               <>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={localBrowser}
-                    onChange={(event) => setLocalBrowser(event.target.checked)}
-                  />
-                  {t('browserFixture')}
-                </label>
+                <Switch
+                  label={t('browserFixture')}
+                  checked={localBrowser}
+                  onToggle={() => setLocalBrowser(!localBrowser)}
+                />
                 {localBrowser ? (
                   <>
                     <p className="text-xs text-muted-foreground">{t('browserFixtureHint')}</p>
                     <label className="flex flex-col gap-1 text-sm">
                       {t('browserOrigin')}
-                      <input
-                        className={field}
+                      <Input
                         value={browserOrigin}
                         onChange={(event) => setBrowserOrigin(event.target.value)}
                         required
@@ -226,8 +224,7 @@ export function McpEditor({
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
                       {t('browserExecutable')}
-                      <input
-                        className={field}
+                      <Input
                         value={browserExecutable}
                         onChange={(event) => setBrowserExecutable(event.target.value)}
                         required
@@ -235,8 +232,7 @@ export function McpEditor({
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
                       {t('browserReady')}
-                      <input
-                        className={field}
+                      <Input
                         value={readyText}
                         onChange={(event) => setReadyText(event.target.value)}
                         required
@@ -246,17 +242,12 @@ export function McpEditor({
                 ) : null}
                 <label className="flex flex-col gap-1 text-sm">
                   {t(localBrowser ? 'browserDevCommand' : 'command')}
-                  <input
-                    className={field}
-                    required
-                    value={command}
-                    onChange={(e) => setCommand(e.target.value)}
-                  />
+                  <Input required value={command} onChange={(e) => setCommand(e.target.value)} />
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
                   {t('arguments')}
-                  <textarea
-                    className={`${field} font-mono`}
+                  <Textarea
+                    className="font-mono"
                     rows={4}
                     value={args}
                     onChange={(e) => setArgs(e.target.value)}
@@ -268,13 +259,7 @@ export function McpEditor({
               <>
                 <label className="flex flex-col gap-1 text-sm">
                   {h('mcpUrl')}
-                  <input
-                    type="url"
-                    className={field}
-                    required
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                  />
+                  <Input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />
                 </label>
                 <div className="flex flex-col gap-1 text-sm">
                   {h('mcpAuth')}
@@ -297,20 +282,11 @@ export function McpEditor({
                   <>
                     <label className="flex flex-col gap-1 text-sm">
                       {h('mcpScope')}
-                      <input
-                        className={field}
-                        required
-                        value={scope}
-                        onChange={(e) => setScope(e.target.value)}
-                      />
+                      <Input required value={scope} onChange={(e) => setScope(e.target.value)} />
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
                       {h('mcpClientId')}
-                      <input
-                        className={field}
-                        value={clientId}
-                        onChange={(e) => setClientId(e.target.value)}
-                      />
+                      <Input value={clientId} onChange={(e) => setClientId(e.target.value)} />
                     </label>
                   </>
                 ) : null}
@@ -338,9 +314,8 @@ export function McpEditor({
                 </div>
                 <label className="flex flex-col gap-1 text-sm">
                   {h('mcpTimeout')}
-                  <input
+                  <Input
                     type="number"
-                    className={field}
                     required
                     min={1}
                     max={300}

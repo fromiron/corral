@@ -1,5 +1,5 @@
 import type { ModelProfileView, ProviderAuthView, ReasoningSettings } from '@corral/client';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Switch } from '@corral/react/design-kit';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -307,14 +307,14 @@ function ProviderCard({
               {t('pasteLabel')}
             </label>
             <div className="flex gap-2">
-              <input
+              <Input
                 id={`redirect-${provider.providerId}`}
                 disabled={busy}
                 value={redirect}
                 onChange={(e) => setRedirect(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                className="settings-field min-w-0 flex-1 font-mono"
+                className="min-w-0 flex-1 font-mono"
               />
               <Button
                 variant="tertiary"
@@ -461,30 +461,25 @@ function ReasoningSettingsPanel() {
           </p>
         ) : null}
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={settings?.apply ?? false}
-          disabled={!settings || busy}
-          onChange={async (event) => {
-            if (!models || !settings) return;
-            setBusy(true);
-            setError(false);
-            try {
-              const apply = event.target.checked;
-              setSettings(
-                await runSettingsTask(() => models.setReasoning(apply, settings.revision)),
-              );
-              await refresh();
-            } catch {
-              setError(true);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-        {t('enableApply')}
-      </label>
+      <Switch
+        label={t('enableApply')}
+        checked={settings?.apply ?? false}
+        disabled={!settings || busy}
+        onToggle={async () => {
+          if (!models || !settings) return;
+          setBusy(true);
+          setError(false);
+          try {
+            const apply = !settings.apply;
+            setSettings(await runSettingsTask(() => models.setReasoning(apply, settings.revision)));
+            await refresh();
+          } catch {
+            setError(true);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
     </section>
   );
 }

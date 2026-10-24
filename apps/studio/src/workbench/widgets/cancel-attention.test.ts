@@ -1,7 +1,7 @@
 import { Coordinator, emptyProjection } from '@corral/core';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
-import { actionRequired, effectAttention } from './selectors.ts';
+import { actionCopy, actionRequired, effectAttention } from './selectors.ts';
 
 it('[TC-WIDGET-001-N] confirmed user cancellation is not an unresolved external effect', async () => {
   const entered = new Gate();
@@ -80,4 +80,45 @@ it('[TC-WIDGET-001-N] cancellation does not hide unknown billing, real failure o
     outcome: 'failed',
   };
   expect(effectAttention(projection).failedEffects).toBe(1);
+});
+
+it('[TC-WIDGET-001-N] the attention banner names why an outcome is unclear', () => {
+  const projection = emptyProjection('run_unclear');
+  projection.status = 'succeeded';
+  const copy = () =>
+    actionCopy(
+      actionRequired({
+        pendingApprovals: 0,
+        pendingQuestions: 0,
+        runStatus: projection.status,
+        ...effectAttention(projection),
+      }),
+    );
+  // A finished turn whose routing usage was never reported: usage, not a file effect.
+  projection.budget.unknownOutstanding = 256;
+  expect(copy()).toEqual(['actionUsageUnknown']);
+  projection.budget.unknownOutstanding = 0;
+  projection.budget.imageUnknownOutstandingMicros = 125000;
+  expect(copy()).toEqual(['actionUsageUnknown']);
+  projection.budget.imageUnknownOutstandingMicros = 0;
+  projection.statusReason = 'service_termination_unconfirmed';
+  expect(copy()).toEqual(['actionStopUnconfirmed']);
+  projection.statusReason = null;
+  projection.effects.write = {
+    effectId: 'write',
+    kind: 'tool',
+    scope: 'exec_one',
+    epoch: 0,
+    dispatched: true,
+    reservationId: null,
+    status: 'settled',
+    outcome: 'unknown',
+  };
+  expect(copy()).toEqual(['actionUnclear']);
+  // Several causes are each named; nothing unclear shows nothing.
+  projection.budget.unknownOutstanding = 256;
+  expect(copy()).toEqual(['actionUnclear', 'actionUsageUnknown']);
+  delete projection.effects.write;
+  projection.budget.unknownOutstanding = 0;
+  expect(copy()).toEqual([]);
 });

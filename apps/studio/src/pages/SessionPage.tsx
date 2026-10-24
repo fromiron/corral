@@ -37,6 +37,9 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
+  Banner,
+  BannerActions,
+  BannerTitle,
   Button,
   Dialog,
   DialogDescription,
@@ -187,11 +190,8 @@ import {
   useTeamRoles,
 } from '../workbench/useModels.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
-import {
-  ComposerDock,
-  ComposerPlan,
-  SessionWidgetCard,
-} from '../workbench/widgets/ChatWidgets.tsx';
+import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx';
+import { OverviewAccess, OverviewPanel } from '../workbench/widgets/OverviewWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
@@ -443,7 +443,6 @@ function WorkSessionPage() {
         key={target ? panelKey(services, target) : view}
         className={view === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'}
       >
-        {view === 'artifacts' && presentationRunId ? <SessionWidgetCard results={false} /> : null}
         {panelViews[view]()}
       </div>
     );
@@ -929,6 +928,7 @@ function WorkTab({
       <ChatView
         centerEmpty
         key={session.sessionId}
+        aside={<OverviewPanel />}
         sessionId={session.sessionId}
         messageId={messageId}
         header={<MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />}
@@ -3139,66 +3139,60 @@ export function Composer({
           </ul>
         </section>
       ) : null}
-      <ComposerDock />
+      <ComposerDock summary={<OverviewAccess />} />
       <ComposerSurface.Host>
         <ComposerPlan />
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 p-2">
           {resolved.blocked ? (
-            <div
-              role="alert"
-              data-testid="intent-blocked"
-              className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
-            >
-              <span className="min-w-0 flex-1">
+            <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
+              <BannerTitle>
                 {resolved.blocked === 'target'
                   ? tc('blocked.target', { name: targetName(steerTarget) })
                   : resolved.blocked === 'run'
                     ? tc('blocked.run')
                     : tc('blocked.intent', { intent: t(`intentShort.${intent}`) })}
-              </span>
-              {allowed
-                .filter((value) => value !== intent)
-                .map((value) => (
-                  <Button
-                    key={value}
-                    variant="tertiary"
-                    size="compact"
-                    onClick={() => chooseIntent(value)}
-                  >
-                    {tc(`switchTo.${value}`)}
-                  </Button>
-                ))}
-            </div>
+              </BannerTitle>
+              <BannerActions>
+                {allowed
+                  .filter((value) => value !== intent)
+                  .map((value) => (
+                    <Button
+                      key={value}
+                      variant="secondary"
+                      size="compact"
+                      onClick={() => chooseIntent(value)}
+                    >
+                      {tc(`switchTo.${value}`)}
+                    </Button>
+                  ))}
+              </BannerActions>
+            </Banner>
           ) : null}
           {notReady.length ? (
-            <div
-              role="alert"
-              data-testid="models-not-ready"
-              className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
-            >
-              <span className="min-w-0 flex-1">
+            <Banner data-testid="models-not-ready" status="warning" contrast="high" size="compact">
+              <BannerTitle>
                 {tc('models.notReady', {
                   roles: notReady.map((r) => `${r.name} (${r.profileId})`).join(', '),
                 })}
-              </span>
-              <Button size="compact" render={<Link {...navigation.link('models')} />}>
-                {tc('models.connect')}
-              </Button>
-            </div>
+              </BannerTitle>
+              <BannerActions>
+                <Button size="compact" render={<Link {...navigation.link('models')} />}>
+                  {tc('models.connect')}
+                </Button>
+              </BannerActions>
+            </Banner>
           ) : null}
           {autoBlocked ? (
-            <div
-              role="alert"
-              data-testid="models-not-ready"
-              className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-xs text-warning"
-            >
-              <span className="min-w-0 flex-1">
+            <Banner data-testid="models-not-ready" status="warning" contrast="high" size="compact">
+              <BannerTitle>
                 {t('autoNotReady', { model: autoProfile?.label ?? autoChoice.modelProfile })}
-              </span>
-              <Button size="compact" render={<Link {...navigation.link('models')} />}>
-                {tc('models.connect')}
-              </Button>
-            </div>
+              </BannerTitle>
+              <BannerActions>
+                <Button size="compact" render={<Link {...navigation.link('models')} />}>
+                  {tc('models.connect')}
+                </Button>
+              </BannerActions>
+            </Banner>
           ) : null}
           {missingTeam && (intent === 'next' || intent === 'explain') ? (
             <p role="alert" data-testid="selected-team-missing" className="text-xs text-warning">

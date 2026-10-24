@@ -115,28 +115,6 @@
   .settings-list {
     min-width: 0;
   }
-  .settings-field {
-    width: 100%;
-    border: 1px solid var(--input);
-    border-radius: var(--control-radius);
-    background: var(--surface-1);
-    padding: 7px 11px;
-    font-size: var(--fs-body);
-    line-height: var(--lh-body);
-    color: inherit;
-  }
-  .settings-field:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-  }
-  .settings-field:disabled {
-    opacity: 0.64;
-  }
-  .settings-surface .settings-field,
-  .settings-row .settings-field,
-  .settings-list .settings-field {
-    background: var(--surface);
-  }
 }
 .dropdown-glass {
   background: var(--raised);
@@ -158,22 +136,33 @@
 .chat-timeline {
   scrollbar-gutter: stable;
 }
+/* CR-053: Overview widgets float in the empty margin right of the centered conversation and
+   stay put while it scrolls; the view keeps its own layout. When that margin cannot hold them
+   they hide, and the composer's Overview button opens the same widgets. */
+[data-chat-view] {
+  container: chat-view / inline-size;
+}
+.chat-overview {
+  position: absolute;
+  top: 0;
+  right: 0.75rem;
+  z-index: 10;
+  display: none;
+  flex-direction: column;
+  width: min(18rem, calc((100cqw - var(--chat-content-max-width)) / 2 - 1.5rem));
+  max-height: calc(100% - 12rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .session-widget-access {
   display: none;
 }
-.workbench-frame[data-detail-open="true"] .session-widget-access {
-  display: flex;
-}
-.session-summary-card [data-slot="popover-trigger"],
-.session-summary-card [data-testid="run-changes-chip"] {
-  width: 100%;
-  justify-content: flex-start;
-  padding-inline: 0.5rem;
-}
-@container workbench (max-width: 900px) {
-  .session-summary-slot {
-    display: none;
+@container chat-view (min-width: 75rem) {
+  .chat-overview:not(:empty) {
+    display: flex;
   }
+}
+@container chat-view (max-width: 74.99rem) {
   .session-widget-access {
     display: flex;
   }
@@ -424,17 +413,10 @@
   grid-row-start: 1;
   backdrop-filter: none;
 }
-@media (forced-colors: active) {
-  .settings-field:focus-visible {
-    outline: 2px solid Highlight;
-    outline-offset: 2px;
-  }
-}
 @media (pointer: coarse) {
   .settings-content [data-slot="select-trigger"],
   .settings-content [data-slot="button"],
-  .settings-content [data-slot="input-control"],
-  .settings-content input.settings-field {
+  .settings-content [data-slot="input-control"] {
     min-height: 44px;
   }
   .settings-content [data-slot="input"] {

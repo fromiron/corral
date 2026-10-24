@@ -9,7 +9,7 @@ import type {
 } from '@corral/contracts';
 import { canonicalJson, WorkTool } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -28,7 +28,6 @@ import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
 import { HarnessMcpTools } from './HarnessMcpTools.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
-const field = 'settings-field';
 const emptyProfile = (): HarnessProfile => ({
   name: '',
   policy: 'strict',
@@ -401,21 +400,18 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               </p>
               <div className="settings-list flex flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <input
-                    className={field}
+                  <Input
                     aria-label={r('profileSearch')}
                     placeholder={r('profileSearch')}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
-                  <label className="flex shrink-0 items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={archived}
-                      onChange={(e) => setArchived(e.target.checked)}
-                    />
-                    {r('showArchived')}
-                  </label>
+                  <Switch
+                    label={r('showArchived')}
+                    size="compact"
+                    checked={archived}
+                    onToggle={() => setArchived(!archived)}
+                  />
                   <Button variant="tertiary" onClick={() => choose(null)}>
                     {t('newProfile')}
                   </Button>
@@ -498,8 +494,8 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 <div>
                   <h3>{t('name')}</h3>
                 </div>
-                <input
-                  className={`${field} sm:w-72`}
+                <Input
+                  className="sm:w-72"
                   aria-label={t('name')}
                   value={profile.name}
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
@@ -561,33 +557,9 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                         );
                         return (
                           <div key={skill.entry} className="flex flex-col gap-3">
-                            <label className="settings-row">
-                              <span>
-                                <span className="text-sm font-medium">
-                                  {t('useSkill', {
-                                    name:
-                                      entries.find(
-                                        (e) =>
-                                          e.resourceHash === resource.hash &&
-                                          e.entry === skill.entry,
-                                      )?.name ?? skill.name,
-                                  })}
-                                </span>
-                                <span className="mt-1 block text-xs text-muted-foreground">
-                                  {skill.description}
-                                </span>
-                                {entries.find(
-                                  (e) =>
-                                    e.resourceHash === resource.hash && e.entry === skill.entry,
-                                )?.archivedAt ? (
-                                  <span className="mt-1 block text-xs text-warning">
-                                    {r('archivedSelected')}
-                                  </span>
-                                ) : null}
-                              </span>
-                              <input
-                                type="checkbox"
-                                aria-label={t(
+                            <div className="settings-row flex-col items-start gap-1">
+                              <Checkbox
+                                label={t(
                                   selection?.kind === 'extension' ? 'useExtension' : 'useSkill',
                                   {
                                     name:
@@ -600,23 +572,29 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                 )}
                                 checked={!!selection}
                                 disabled={!selection && !resource.trustedAt}
-                                onChange={(e) =>
+                                onToggle={() =>
                                   selectResource(
                                     resource.hash,
                                     skill.entry,
-                                    e.target.checked
-                                      ? {
+                                    selection
+                                      ? null
+                                      : {
                                           resourceHash: resource.hash,
                                           entry: skill.entry,
                                           kind: 'skill',
                                           required: false,
                                           skillMode: 'auto',
-                                        }
-                                      : null,
+                                        },
                                   )
                                 }
                               />
-                            </label>
+                              <p className="text-xs">{skill.description}</p>
+                              {entries.find(
+                                (e) => e.resourceHash === resource.hash && e.entry === skill.entry,
+                              )?.archivedAt ? (
+                                <p className="text-xs text-warning">{r('archivedSelected')}</p>
+                              ) : null}
+                            </div>
                             {selection ? (
                               <section className="settings-row">
                                 <div>
@@ -650,28 +628,9 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                         );
                         return (
                           <div key={entry} className="flex flex-col gap-3">
-                            <label className="settings-row">
-                              <span>
-                                <span className="text-sm font-medium">
-                                  {t('useExtension', {
-                                    name:
-                                      entries.find(
-                                        (e) =>
-                                          e.resourceHash === resource.hash && e.entry === entry,
-                                      )?.name ?? entry,
-                                  })}
-                                </span>
-                                {entries.find(
-                                  (e) => e.resourceHash === resource.hash && e.entry === entry,
-                                )?.archivedAt ? (
-                                  <span className="mt-1 block text-xs text-warning">
-                                    {r('archivedSelected')}
-                                  </span>
-                                ) : null}
-                              </span>
-                              <input
-                                type="checkbox"
-                                aria-label={t('useExtension', {
+                            <div className="settings-row flex-col items-start gap-1">
+                              <Checkbox
+                                label={t('useExtension', {
                                   name:
                                     entries.find(
                                       (e) => e.resourceHash === resource.hash && e.entry === entry,
@@ -681,26 +640,31 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                 disabled={
                                   !selection && (!resource.trustedAt || profile.policy === 'strict')
                                 }
-                                onChange={(e) =>
+                                onToggle={() =>
                                   selectResource(
                                     resource.hash,
                                     entry,
-                                    e.target.checked
-                                      ? {
+                                    selection
+                                      ? null
+                                      : {
                                           resourceHash: resource.hash,
                                           entry,
                                           kind: 'extension',
                                           required: true,
-                                        }
-                                      : null,
+                                        },
                                   )
                                 }
                               />
-                            </label>
+                              {entries.find(
+                                (e) => e.resourceHash === resource.hash && e.entry === entry,
+                              )?.archivedAt ? (
+                                <p className="text-xs text-warning">{r('archivedSelected')}</p>
+                              ) : null}
+                            </div>
                             {selection ? (
-                              <label className="settings-row">
-                                <span className="text-sm font-medium">
-                                  {t('required', {
+                              <div className="settings-row">
+                                <Switch
+                                  label={t('required', {
                                     name:
                                       entries.find(
                                         (value) =>
@@ -708,18 +672,15 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                           value.entry === entry,
                                       )?.name ?? entry,
                                   })}
-                                </span>
-                                <input
-                                  type="checkbox"
                                   checked={selection.required}
-                                  onChange={(e) =>
+                                  onToggle={() =>
                                     selectResource(resource.hash, entry, {
                                       ...selection,
-                                      required: e.target.checked,
+                                      required: !selection.required,
                                     })
                                   }
                                 />
-                              </label>
+                              </div>
                             ) : null}
                           </div>
                         );
@@ -801,15 +762,12 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   {selectionMode(group.key) === 'choose' ? (
                     <div className="flex flex-col gap-3">
                       {group.items.map((item) => (
-                        <label key={item.id} className="settings-row">
-                          <span className="text-sm font-medium">
-                            {t(group.use, { name: item.name })}
-                          </span>
-                          <input
-                            type="checkbox"
+                        <div key={item.id} className="settings-row">
+                          <Checkbox
+                            label={t(group.use, { name: item.name })}
                             checked={profile[group.key]?.includes(item.id) ?? false}
-                            onChange={(event) => {
-                              const checked = event.target.checked;
+                            onToggle={() => {
+                              const checked = !(profile[group.key]?.includes(item.id) ?? false);
                               setProfile((current) => ({
                                 ...current,
                                 [group.key]: checked
@@ -818,26 +776,23 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                               }));
                             }}
                           />
-                        </label>
+                        </div>
                       ))}
                       {profile[group.key]
                         ?.filter((id) => !group.items.some((item) => item.id === id))
                         .map((id) => (
-                          <label key={id} className="settings-row">
-                            <span className="text-sm font-medium text-warning">
-                              {t(group.missing, { id })}
-                            </span>
-                            <input
-                              type="checkbox"
+                          <div key={id} className="settings-row">
+                            <Checkbox
+                              label={t(group.missing, { id })}
                               checked
-                              onChange={() =>
+                              onToggle={() =>
                                 setProfile((current) => ({
                                   ...current,
                                   [group.key]: current[group.key]?.filter((value) => value !== id),
                                 }))
                               }
                             />
-                          </label>
+                          </div>
                         ))}
                       {!group.items.length ? (
                         <p className="text-xs text-muted-foreground">{t(group.empty)}</p>
@@ -868,33 +823,26 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   setProfile((current) => ({ ...current, permissionPolicy }))
                 }
               />
-              <label className="settings-row">
-                <span>
-                  <span className="text-sm font-medium">{t('codemode')}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {t('codemodeHint')}
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  aria-label={t('codemode')}
+              <div className="settings-row flex-col items-start gap-1">
+                <Switch
+                  label={t('codemode')}
                   checked={pendingProfile.allowedTools.includes('codemode')}
                   disabled={profile.policy !== 'trusted-native'}
-                  onChange={(event) =>
+                  onToggle={() =>
                     setToolNames(
                       [
                         ...pendingProfile.allowedTools.filter((name) => name !== 'codemode'),
-                        ...(event.target.checked ? ['codemode'] : []),
+                        ...(pendingProfile.allowedTools.includes('codemode') ? [] : ['codemode']),
                       ].join(', '),
                     )
                   }
                 />
-              </label>
+                <p className="text-xs">{t('codemodeHint')}</p>
+              </div>
               <section className="settings-surface flex flex-col gap-2">
                 <h3 className="text-sm font-medium">{t('allowedTools')}</h3>
                 <p className="text-xs text-muted-foreground">{t('toolsHint')}</p>
-                <textarea
-                  className={field}
+                <Textarea
                   aria-label={t('allowedTools')}
                   value={toolNames}
                   onChange={(e) => setToolNames(e.target.value)}
@@ -904,8 +852,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               <section className="settings-surface flex flex-col gap-2">
                 <h3 className="text-sm font-medium">{t('commands')}</h3>
                 <p className="text-xs text-muted-foreground">{t('commandsHint')}</p>
-                <textarea
-                  className={field}
+                <Textarea
                   aria-label={t('commands')}
                   value={commands}
                   onChange={(e) => setCommands(e.target.value)}

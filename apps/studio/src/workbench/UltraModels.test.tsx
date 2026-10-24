@@ -8,7 +8,8 @@ import { UltraModels } from './UltraModels.tsx';
 
 const translate = vi.hoisted(() => (key: string) => key);
 vi.mock('use-intl', () => ({ useTranslations: () => translate }));
-vi.mock('@corral/react/design-kit', () => ({
+vi.mock('@corral/react/design-kit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@corral/react/design-kit')>()),
   Select: ({ label, value, options, onValueChange, disabled }: any) => (
     <select
       aria-label={label}
@@ -77,10 +78,8 @@ it('[TC-ULTRA-004-H] new Ultra requests are tournaments with candidates, refinem
   expect(select('ultraRefinementRounds').value).toBe('2');
   await choose('ultraRefinementRounds', '0');
   expect(tournament().refinementRounds).toBe(0);
-  const autoApply = container.querySelector<HTMLInputElement>(
-    'input[aria-label="ultraAutoApply"]',
-  )!;
-  expect(autoApply.checked).toBe(true);
+  const autoApply = container.querySelector<HTMLElement>('[role="switch"]')!;
+  expect(autoApply.getAttribute('aria-checked')).toBe('true');
   await act(async () => autoApply.click());
   expect(tournament().autoApply).toBe(false);
   expect(value.verifierProfile).toBe('reviewer');

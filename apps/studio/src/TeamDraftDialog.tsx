@@ -1,7 +1,7 @@
 import { ApiError } from '@corral/client';
 import { TEAM_SLOTS, TeamPlan } from '@corral/contracts';
 import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/react';
-import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
+import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useMessages, useTranslations } from 'use-intl';
@@ -291,14 +291,11 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
             />
           </div>
         ) : null}
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={plan.finalApproval}
-            onChange={(e) => onChange({ ...plan, finalApproval: e.target.checked })}
-          />
-          {t('approval')}
-        </label>
+        <Switch
+          label={t('approval')}
+          checked={plan.finalApproval}
+          onToggle={() => onChange({ ...plan, finalApproval: !plan.finalApproval })}
+        />
       </div>
     </div>
   );

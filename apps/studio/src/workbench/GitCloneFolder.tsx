@@ -1,4 +1,4 @@
-import { Button } from '@corral/react/design-kit';
+import { Button, Input } from '@corral/react/design-kit';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale } from 'use-intl';
 import { type CloneOperation, projectRequest } from '../projects-api.ts';
@@ -41,20 +41,18 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
         </p>
         <label className="flex flex-col gap-1 text-xs">
           {ko ? '저장소 주소' : 'Repository URL'}
-          <input
+          <Input
             value={source}
             onChange={(e) => setSource(e.target.value)}
             placeholder="https://github.com/owner/repository.git"
-            className="rounded fill-control px-2 py-1 text-sm"
             spellCheck={false}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
           {ko ? '새 폴더의 전체 경로' : 'Absolute path of new folder'}
-          <input
+          <Input
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
-            className="rounded fill-control px-2 py-1 text-sm"
             spellCheck={false}
           />
         </label>

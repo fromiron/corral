@@ -71,7 +71,7 @@ it('[TC-WBD-022-H] sends only checked hunks with the reviewed target and patch i
   const read = vi.fn(async (_session: string, input: GitHunksRequest) => hunks(input));
   const view = await mount(read);
   expect(view.submit()?.disabled).toBe(true);
-  const pick = () => view.element.querySelectorAll<HTMLInputElement>('input[type=checkbox]')[1];
+  const pick = () => view.element.querySelectorAll<HTMLElement>('[role=checkbox][aria-label]')[1];
   await act(async () => pick()?.click());
   await view.render(request, true);
   expect(view.submit()?.disabled).toBe(true);
@@ -89,7 +89,7 @@ it('[TC-WBD-022-H] sends only checked hunks with the reviewed target and patch i
     hunkIds: ['f'.repeat(64)],
   });
   await view.render({ ...request, side: 'staged' });
-  expect(pick()?.checked).toBe(false);
+  expect(pick()?.getAttribute('aria-checked')).toBe('false');
   await act(async () => pick()?.click());
   await act(async () => view.submit()?.click());
   expect(view.onCommand).toHaveBeenLastCalledWith(

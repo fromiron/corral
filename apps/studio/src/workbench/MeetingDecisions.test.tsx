@@ -10,6 +10,8 @@ vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
 vi.mock('./MeetingHandoff.tsx', () => ({ MeetingHandoff: () => <p>handoff-action</p> }));
 vi.mock('@corral/react/design-kit', () => ({
+  Input: (props: any) => <input {...props} />,
+  Textarea: (props: any) => <textarea {...props} />,
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
     <button {...props}>{children}</button>
   ),

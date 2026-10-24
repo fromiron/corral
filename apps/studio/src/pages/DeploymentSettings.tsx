@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredDeployment } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Textarea } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
@@ -130,9 +130,8 @@ export function DeploymentSettings({
         {(['id', 'name', 'environment', 'envRefs'] as const).map((key) => (
           <label key={key} className="flex flex-col gap-1 text-sm">
             {t(key)}
-            <input
+            <Input
               name={key}
-              className="settings-field"
               value={draft[key]}
               disabled={key === 'id' && editing !== null}
               onChange={(event) => setDraft((draft) => ({ ...draft, [key]: event.target.value }))}
@@ -143,8 +142,7 @@ export function DeploymentSettings({
         {(['argv', 'readbackArgv'] as const).map((key) => (
           <label key={key} className="flex flex-col gap-1 text-sm">
             {t(key)}
-            <textarea
-              className="settings-field"
+            <Textarea
               rows={3}
               value={draft[key]}
               onChange={(event) => setDraft((draft) => ({ ...draft, [key]: event.target.value }))}
@@ -155,11 +153,10 @@ export function DeploymentSettings({
         <p className="text-xs text-muted-foreground">{t('readbackHint')}</p>
         <label className="flex flex-col gap-1 text-sm">
           {t('timeout')}
-          <input
+          <Input
             type="number"
             min={1}
             max={1800}
-            className="settings-field"
             value={draft.seconds}
             onChange={(event) => setDraft((draft) => ({ ...draft, seconds: event.target.value }))}
           />

@@ -1,5 +1,5 @@
 import { createRunSession } from '@corral/react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import { readRunView } from './readRunView.ts';
@@ -15,6 +15,8 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
   // open() resolves; starting an independent subscription during that gap duplicates it.
   const store = live ? runFor(runId) : own;
   const readDetails = !live && details;
+  const state = useStore(store);
+  const last = useRef<{ runId: string; store: typeof store; state: typeof state } | null>(null);
   useEffect(() => {
     if (live) {
       const release = retainRun(runId);
@@ -27,7 +29,13 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
         if (current)
           own.setState({
             ...view,
-            artifactTexts: { ...own.getState().artifactTexts, ...view.artifactTexts },
+            // Result texts are per version and immutable: keep what the live view already
+            // read, so a finishing turn does not blank its answer while reading it again.
+            artifactTexts: {
+              ...(last.current?.runId === runId ? last.current.state.artifactTexts : {}),
+              ...own.getState().artifactTexts,
+              ...view.artifactTexts,
+            },
           });
       },
       (error: unknown) => {
@@ -44,12 +52,15 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
     };
   }, [own, store, runId, transport, readHistory, live, readDetails, retainRun]);
   useEffect(() => () => own.getState().dispose(), [own]);
-  const state = useStore(store);
+  const current = state.runId === runId ? state : null;
+  // A finishing turn swaps the live store for a finished snapshot that loads asynchronously.
+  // Keep the last loaded view of this run meanwhile, so its work log stays mounted.
+  if (current?.projection) last.current = { runId, store, state: current };
+  const kept = last.current;
+  if (!current?.projection && !current?.streamError && kept?.runId === runId)
+    return { store: kept.store, state: kept.state };
   return {
     store,
-    state:
-      state.runId === runId
-        ? state
-        : { ...state, projection: null, definition: null, streamError: null },
+    state: current ?? { ...state, projection: null, definition: null, streamError: null },
   };
 }

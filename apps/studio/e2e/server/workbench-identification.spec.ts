@@ -180,10 +180,10 @@ test('[TC-UX-007-H] list filtering is named separately from private text search'
     'no-match-for-this-filter',
   );
   await expect(
-    dialog.getByRole('checkbox', { name: 'Include private messages and results' }),
+    dialog.getByRole('switch', { name: 'Include private messages and results' }),
   ).not.toBeChecked();
   await expect(
-    dialog.getByRole('checkbox', { name: 'Include archived', exact: true }),
+    dialog.getByRole('switch', { name: 'Include archived', exact: true }),
   ).not.toBeChecked();
   await page.keyboard.press('Escape');
   await expect(filter).toHaveValue('no-match-for-this-filter');

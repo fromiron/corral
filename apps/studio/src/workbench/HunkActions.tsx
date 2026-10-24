@@ -5,7 +5,7 @@ import type {
   TextAttachment,
 } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Button } from '@corral/react/design-kit';
+import { Button, Checkbox } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -98,24 +98,21 @@ export function HunkActions({
           <ul className="space-y-2">
             {hunks.hunks.map((hunk, index) => (
               <li key={hunk.id}>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(hunk.id)}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setSelected(
-                        event.target.checked
-                          ? [...selected, hunk.id]
-                          : selected.filter((id) => id !== hunk.id),
-                      );
-                      setPlan(null);
-                      setResult(null);
-                      setAttached(false);
-                    }}
-                  />
-                  {t('part', { number: index + 1 })} · <code>{hunk.id.slice(0, 8)}</code>
-                </label>
+                <Checkbox
+                  label={`${t('part', { number: index + 1 })} · ${hunk.id.slice(0, 8)}`}
+                  checked={selected.includes(hunk.id)}
+                  disabled={busy}
+                  onToggle={() => {
+                    setSelected(
+                      selected.includes(hunk.id)
+                        ? selected.filter((id) => id !== hunk.id)
+                        : [...selected, hunk.id],
+                    );
+                    setPlan(null);
+                    setResult(null);
+                    setAttached(false);
+                  }}
+                />
                 <details>
                   <summary className="cursor-pointer text-muted-foreground">
                     {t('showPatch')}

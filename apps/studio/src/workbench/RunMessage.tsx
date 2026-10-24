@@ -14,15 +14,18 @@ import {
   StatusBadge,
   WorkPlanPanel,
 } from '@corral/react';
-import { Button } from '@corral/react/design-kit';
 import {
-  Activity,
-  ChevronRight,
-  FileText,
-  LoaderCircle,
-  PanelRight,
-  Pause,
-} from '@corral/react/icons';
+  Banner,
+  BannerActions,
+  BannerTitle,
+  Button,
+  ThinkingStep,
+  ThinkingStepDetails,
+  ThinkingSteps,
+  ThinkingStepsContent,
+  ThinkingStepsHeader,
+} from '@corral/react/design-kit';
+import { ChevronRight, FileText, LoaderCircle, PanelRight, Pause } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -49,6 +52,7 @@ export function RunMessage({
 }) {
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
+  const tt = useTranslations('Transcript');
   const tw = useTranslations('Widgets');
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const [disclosure, setDisclosure] = useState<{
@@ -61,6 +65,11 @@ export function RunMessage({
       ? disclosure.open
       : chatDensity === 'detailed';
   const [openExecutions, setOpenExecutions] = useState<Record<string, boolean>>({});
+  // The log's steps load when it first opens and stay for its closing animation.
+  const [logShown, setLogShown] = useState(false);
+  if (expanded && !logShown) setLogShown(true);
+  // Whether this view saw the turn working: only a turn finishing here hands its reply over.
+  const [watched, setWatched] = useState(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
   const { store, state } = useCorralRun(runId, live, expanded);
@@ -106,6 +115,7 @@ export function RunMessage({
       <div className="h-4 w-24 animate-pulse rounded bg-line/30" />
     );
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
+  if (working && !watched) setWatched(true);
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
   const requiredLabel =
     interactions.length === 1
@@ -141,14 +151,30 @@ export function RunMessage({
     })),
   ).filter((row) => row.tone !== 'ok' && row.tone !== 'running');
   // What a model is writing right now, shown in the conversation; never a fact (C-018).
-  const writing = working
-    ? Object.entries(state.streams)
+  // A turn finishing here hands its last reply (if any) over to the result once the result's
+  // text is read, so the answer never flashes "Loading…" in between. A failed read ends it.
+  const handoff =
+    watched &&
+    !working &&
+    !resultError &&
+    visible.some(
+      (result) =>
+        !result.media &&
+        !projection.reviews[result.artifactVersionId] &&
+        state.artifactTexts[result.artifactVersionId] === undefined,
+    );
+  const streams = working || handoff ? Object.entries(state.streams) : [];
+  const current = working
+    ? streams
         .filter(
           ([id, stream]) =>
             !stream.completed && !stream.broken && !projection.modelCalls[id]?.finished,
         )
         .at(-1)
     : undefined;
+  // Between model calls the last reply keeps its place until the run ends, so the block
+  // does not vanish and return with every call.
+  const writing = current ?? streams.filter(([, stream]) => stream.text).at(-1);
   const writer = writing ? projection.modelCalls[writing[0]]?.executionId : undefined;
   const agentRow = (execution: (typeof executions)[number]) => (
     <li key={execution.executionId} className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs">
@@ -182,20 +208,31 @@ export function RunMessage({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {sessionId && interactions.length ? (
-        <div
+        // The composer's live region announces it; the banner itself stays a note.
+        <Banner
           data-testid="run-required-action"
-          className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-3 py-2 text-xs"
+          status="warning"
+          contrast="high"
+          size="compact"
+          role="note"
         >
-          <span>{requiredLabel}</span>
-          <Link
-            to="/sessions/$sessionId"
-            params={{ sessionId }}
-            search={{ panel: 'run', run: runId, view: 'run' }}
-            className="ml-auto rounded px-2 py-1 font-medium hover:bg-subtle focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {tw('actionOpen')}
-          </Link>
-        </div>
+          <BannerTitle>{requiredLabel}</BannerTitle>
+          <BannerActions>
+            <Button
+              size="compact"
+              variant="secondary"
+              render={
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId }}
+                  search={{ panel: 'run', run: runId, view: 'run' }}
+                />
+              }
+            >
+              {tw('actionOpen')}
+            </Button>
+          </BannerActions>
+        </Banner>
       ) : null}
       {working && !sessionId ? <RunActions session={store} compact /> : null}
       {sessionId ? null : <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />}
@@ -250,17 +287,82 @@ export function RunMessage({
           ) : null}
         </section>
       ) : null}
+      {/* The work log leads the turn, above its reply and result, from the turn's start. */}
+      {!working || !sessionId || chatDensity !== 'results' ? (
+        <ThinkingSteps
+          id={`work-log-${runId}`}
+          className="work-log w-full"
+          size="compact"
+          open={expanded}
+          onOpenChange={(open) => setDisclosure({ runId, density: chatDensity, open })}
+        >
+          <ThinkingStepsHeader>
+            {t('activity')} <span className="tabular-nums">{projection.executionOrder.length}</span>
+          </ThinkingStepsHeader>
+          <ThinkingStepsContent>
+            {expanded || logShown ? (
+              <>
+                <WorkPlanPanel session={store} />
+                {projection.executionOrder.map((id, index) => {
+                  const execution = projection.executions[id];
+                  if (!execution) return null;
+                  const key = `${runId}:${id}`;
+                  const call = execution.modelCallIds.at(-1);
+                  return (
+                    <ThinkingStep
+                      key={id}
+                      label={name(id)}
+                      status={execution.status === 'active' ? 'active' : 'complete'}
+                      icon={
+                        execution.status === 'succeeded'
+                          ? 'check'
+                          : execution.status === 'failed' || execution.status === 'cancelled'
+                            ? 'x'
+                            : 'dot'
+                      }
+                      isLast={index === projection.executionOrder.length - 1}
+                    >
+                      <span className="flex flex-wrap items-center gap-2 text-xs">
+                        <StatusBadge status={execution.status} />
+                        {call ? <ReasoningSummary call={projection.modelCalls[call]!} /> : null}
+                      </span>
+                      <ThinkingStepDetails
+                        summary={tt('label')}
+                        open={Boolean(openExecutions[key])}
+                        onOpenChange={(open) =>
+                          setOpenExecutions((current) => ({ ...current, [key]: open }))
+                        }
+                      >
+                        {/* Loaded on first open and kept for the closing animation. */}
+                        {key in openExecutions ? (
+                          <ExecutionTranscript session={store} executionId={id} compact />
+                        ) : null}
+                      </ThinkingStepDetails>
+                    </ThinkingStep>
+                  );
+                })}
+              </>
+            ) : null}
+          </ThinkingStepsContent>
+        </ThinkingSteps>
+      ) : null}
       {writing && chatDensity !== 'results' ? (
         <div data-testid="live-text" aria-live="off" className="min-w-0">
           <p className="mb-1 text-2xs text-muted-foreground">
-            {t('writing', { name: writer ? name(writer) : '' })}
+            {current
+              ? t('writing', { name: writer ? name(writer) : '' })
+              : writer
+                ? name(writer)
+                : null}
           </p>
           <p className="live-text max-h-40 overflow-hidden text-sm leading-6 whitespace-pre-wrap text-text/80 wrap-anywhere">
             {writing[1].text.slice(-1200)}
-            <span
-              aria-hidden="true"
-              className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted align-text-bottom motion-reduce:animate-none"
-            />
+            {current ? (
+              <span
+                aria-hidden="true"
+                className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted align-text-bottom motion-reduce:animate-none"
+              />
+            ) : null}
           </p>
         </div>
       ) : null}
@@ -272,7 +374,7 @@ export function RunMessage({
           </Button>
         </p>
       ) : null}
-      {visible.map((result, index) => (
+      {(handoff ? [] : visible).map((result, index) => (
         <ChatResult
           key={result.artifactVersionId}
           result={result}
@@ -284,56 +386,6 @@ export function RunMessage({
           first={index === 0}
         />
       ))}
-      {!working || !sessionId || chatDensity === 'detailed' ? (
-        <details
-          id={`work-log-${runId}`}
-          className="work-log group/log"
-          open={expanded}
-          onToggle={(e) =>
-            setDisclosure({ runId, density: chatDensity, open: e.currentTarget.open })
-          }
-        >
-          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded py-0.5 text-xs text-muted-foreground hover:text-text">
-            <Activity size={13} />
-            {t('activity')}
-            <span className="tabular-nums">{projection.executionOrder.length}</span>
-            <ChevronRight size={12} className="transition-transform group-open/log:rotate-90" />
-          </summary>
-          {expanded ? (
-            <div className="mt-2 space-y-1 border-l border-line pl-3">
-              <WorkPlanPanel session={store} />
-              {projection.executionOrder.map((id) => {
-                const execution = projection.executions[id];
-                if (!execution) return null;
-                return (
-                  <details
-                    key={id}
-                    className="text-xs"
-                    open={Boolean(openExecutions[`${runId}:${id}`])}
-                    onToggle={(event) => {
-                      const open = event.currentTarget.open;
-                      setOpenExecutions((current) => ({ ...current, [`${runId}:${id}`]: open }));
-                    }}
-                  >
-                    <summary className="flex cursor-pointer items-center gap-2 py-1.5">
-                      <span className="font-medium">{name(id)}</span>
-                      <StatusBadge status={execution.status} />
-                      {execution.modelCallIds.at(-1) ? (
-                        <ReasoningSummary
-                          call={projection.modelCalls[execution.modelCallIds.at(-1)!]!}
-                        />
-                      ) : null}
-                    </summary>
-                    {openExecutions[`${runId}:${id}`] ? (
-                      <ExecutionTranscript session={store} executionId={id} compact />
-                    ) : null}
-                  </details>
-                );
-              })}
-            </div>
-          ) : null}
-        </details>
-      ) : null}
       {state.streamError ? (
         <p role="alert" className="text-xs text-danger">
           {state.streamError}

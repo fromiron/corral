@@ -18,6 +18,7 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
+  Checkbox,
   InputField,
   InputGroup,
   KitButton,
@@ -345,11 +346,10 @@ export function WorkspacePage() {
                 key={run.runId}
                 className="flex flex-wrap items-center gap-3 border-b border-line/50 py-2 text-sm last:border-b-0"
               >
-                <input
-                  type="checkbox"
-                  aria-label={tc('select', { runId: run.runId })}
+                <Checkbox
+                  label={tc('select', { runId: run.runId })}
                   checked={picked.includes(run.runId)}
-                  onChange={(e) => pick(run.runId, e.target.checked)}
+                  onToggle={() => pick(run.runId, !picked.includes(run.runId))}
                 />
                 <StatusBadge status={run.status} />
                 <Link

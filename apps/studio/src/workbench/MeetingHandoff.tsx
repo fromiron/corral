@@ -9,7 +9,7 @@ import {
   type UltraSelection,
 } from '@corral/contracts';
 import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@corral/core';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -254,8 +254,7 @@ export function MeetingHandoff({
             {target === 'new' ? (
               <label className="flex flex-col gap-1">
                 {t('title')}
-                <input
-                  className="rounded fill-control p-2"
+                <Input
                   maxLength={120}
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}

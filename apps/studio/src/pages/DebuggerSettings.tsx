@@ -4,7 +4,7 @@ import {
   RegisteredDebugAdapter,
   RegisteredDebugConfiguration,
 } from '@corral/contracts';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
@@ -149,18 +149,16 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
     >
       {t(label)}
       {multiline ? (
-        <textarea
+        <Textarea
           id={`debug-settings-${projectId}-${group}-${label}`}
-          className="settings-field"
           rows={3}
           value={value}
           onChange={(event) => change(event.target.value)}
           disabled={disabled}
         />
       ) : (
-        <input
+        <Input
           id={`debug-settings-${projectId}-${group}-${label}`}
-          className="settings-field"
           value={value}
           onChange={(event) => change(event.target.value)}
           disabled={disabled}
@@ -401,16 +399,13 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
           ) : (
             <p className="text-xs text-muted-foreground">{t('attachHint')}</p>
           )}
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={configuration.sourceMaps}
-              onChange={(event) =>
-                setConfiguration({ ...configuration, sourceMaps: event.target.checked })
-              }
-            />
-            {t('sourceMaps')}
-          </label>
+          <Switch
+            label={t('sourceMaps')}
+            checked={configuration.sourceMaps}
+            onToggle={() =>
+              setConfiguration({ ...configuration, sourceMaps: !configuration.sourceMaps })
+            }
+          />
           {field(
             'outFiles',
             configuration.outFiles,

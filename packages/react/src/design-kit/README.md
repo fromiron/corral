@@ -4,7 +4,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 41 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 43 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.
@@ -23,9 +23,10 @@ All imports use package-relative paths instead of the original `@/` alias. TypeS
 - SidebarMenu wraps its decorative hover, active and focus layers in a hidden, boxless list item. This keeps the `ul` structure valid without changing the overlay coordinate system or keyboard rows.
 - Button's content container fills the control and inherits its flex alignment so multi-part labels and trailing counts remain correctly arranged. The compatibility bridge supports Base UI render functions and composed refs; source icon/label components retain their own defaults. Destructive actions and media overlays add only their required semantic contrast.
 - Dialog exposes actual Base UI change details to consumers before changing state or starting an exit, and respects `details.cancel()`. This preserves settings' nested-popup Escape and IME guards. It also forwards `initialFocus` and `finalFocus` to the primitive.
-- Select accepts controlled `open`/`onOpenChange`, supplied display labels, a React-node leading slot/placeholder and popup alignment. Its original selection acknowledgement and animation remain intact. The options bridge adds grouped rows, hints and original-index keys for repeated option values.
+- Select accepts controlled `open`/`onOpenChange`, supplied display labels, a React-node leading slot/placeholder and popup alignment. Its original selection acknowledgement and animation remain intact. The options bridge uses kit groups and separators for labeled groups and descriptive choices. Descriptions wrap inside content-sized rows in a viewport-bounded popup; plain choices keep their original density. Original-index keys preserve repeated option values.
 - MenuItem accepts `labelContent` for existing JSX labels while retaining a text label for typeahead. The Menu bridge composes source rows with Base UI action/radio/checkbox/link behavior and assigns source row indices across groups and fragments.
 - Popup `data-slot` hooks remain available for contextual dismissal, focus and responsive integration. ScrollArea accepts `viewportTabIndex` for existing keyboard navigation.
+- ThinkingStepDetails accepts controlled `open`/`onOpenChange`, so the work log mounts an execution transcript only after its fold first opens. Its timing, layout and other parts remain the source's.
 - ChatMessage imports its text/body/action slots without the unused `File[]` thumbnail branch. Corral's existing authorized artifact preview remains responsible for attachments; no PDF package or external worker is introduced.
 
 ## Narrow API bridges
@@ -55,6 +56,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/sidebar-app/workspace-header.tsx` | `components/sidebar-app/workspace-tile.tsx` | `b0a11e2c1a76e93beafce0cc7fa1008ae910917ee4d776c4703de86e311600c1` | `95fa0fb9d4af781b9769e912ec01c4c965aadde9556a1a95a6ef59b8ca6d7add` |
 | `components/ui/accordion.tsx` | `components/ui/accordion.tsx` | `df243622f1cdd6da26146313cb9d4077830b039d575740b5a442b3552daf0ce7` | `e5268aa2e9d731054a3f8ed1ba2bcffb52fc1c17c620ded9beb93f7768a51eb6` |
 | `components/ui/badge.tsx` | `components/ui/badge.tsx` | `8109fc79fa47e1f66f6987a739d6de2ed5d16b0161a2ee7614e8b2f1ece14b70` | `5ff028aa5b8b37ca4b782a703b992b7319b1058b1ac68eed2a4f7e66d57370e8` |
+| `components/ui/banner.tsx` | `components/ui/banner.tsx` | `228c8aef29f45b1df6e1309a5cab6bc3c8c6e544d13fc735f695cb828a871f58` | `3bfd57e867f90e052295664c7d6d9ea82352e212b54b8abea740ab616368cde9` |
 | `components/ui/button.tsx` | `components/ui/button.tsx` | `7b04016d46ec44492ff60e59678ee7e0b86de1cebafb6911df5626498f7f1d64` | `a9499332557c4bfac819539ad8228407cc2ca5eb842364a50ff08be69e0a0022` |
 | `components/ui/card.tsx` | `components/ui/card.tsx` | `9dc46d2a73d0074c74c9ec80f0445aaf9ff68b8858b2d06cf9d483b7b1d1a173` | `ba72aa78cc726d3a72ce894a399b9a010d172a12313ed3f061a854d5cd7cc032` |
 | `components/ui/chat-message.tsx` | `components/ui/chat-message.tsx` | `d730eaf53c185da8f51fc329654839b31af9c90a3e54ea16d8799b9ce3d65079` | `72c3c1f4f9209e0acb28e67389bddae69be4c962a37e0470371024de9a60df31` |
@@ -74,6 +76,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/sidebar.tsx` | `components/ui/sidebar.tsx` | `402bd8d5b593460bd00d116758fdc7d7491bd6109bfec5c4cfc173fa807fd469` | `c0efb309a5ce51ffd39a5fbdf1749b833fa16ebaf134ab2f4a7169c59e20ec6d` |
 | `components/ui/switch.tsx` | `components/ui/switch.tsx` | `7dc6ea276d9a3160bb831c81011dd5b1c32d458574370e447591adeff0387dc6` | `81042dff28be44a31707045d87915653d822335a38c78c7e42514c6f8a90334a` |
 | `components/ui/table.tsx` | `components/ui/table.tsx` | `06c8f0ff67776454b3d4b1ab85d2782606f8324c386baf2211e73db70eab785f` | `dc9a729696e6ca5845afe5807493c59da55cae78d00f5198e4ca6643253d9e08` |
+| `components/ui/thinking-steps.tsx` | `components/ui/thinking-steps.tsx` | `394e5188ff0e1b2d143d3268aae6a5632d29bf934213c273c8fe58ad50388ee3` | `9b341706508f5de0a5db61cc69182c7583b6b4c3a73cf4ec18d8febd6e4ed67e` |
 | `components/ui/tooltip.tsx` | `components/ui/tooltip.tsx` | `bd7e0fef5ebff19d31a20ed49dd08750608996b28fd42fb7808038932b17005b` | `262302c99f0552c3ae7a45f30030c4eac8f22078955c10abeb9d0e500e1f6d30` |
 | `lib/elevated.tsx` | `lib/elevated.tsx` | `96ffaa93dc22fc2e23b208d47c359d05a70c072c936c28f5a69f728d17fd11ec` | `fa96d671a249c20a560245668168fbad26fc07d17da5de294f9436757a921102` |
 | `lib/font-weight.ts` | `lib/font-weight.ts` | `b9ed69148ccb3fa30e559418ea9ee1c1e0037389ee177aaacd9d17db0b3d0c46` | `b9ed69148ccb3fa30e559418ea9ee1c1e0037389ee177aaacd9d17db0b3d0c46` |

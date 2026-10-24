@@ -1,6 +1,14 @@
 import type { EffectiveHarnessSnapshot } from '@corral/contracts';
 import type { EditorDraft, EditorStore } from '@corral/react';
-import { Button, Dialog, DialogPopup, DialogTitle, Select } from '@corral/react/design-kit';
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  DialogPopup,
+  DialogTitle,
+  Select,
+  Textarea,
+} from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from 'use-intl';
 import { useStore } from 'zustand';
@@ -153,13 +161,13 @@ export function MarkdownAgentImport({
             </label>
             <label className="flex flex-col gap-1 text-sm">
               {text('Markdown source', 'Markdown 원문')}
-              <textarea
+              <Textarea
                 value={source}
                 onChange={(event) => updateSource(event.target.value)}
                 rows={7}
                 maxLength={MAX_AGENT_MARKDOWN_BYTES}
                 spellCheck={false}
-                className="rounded fill-control p-2 font-mono text-xs"
+                className="font-mono"
               />
             </label>
             {source ? (
@@ -348,17 +356,17 @@ export function MarkdownAgentImport({
                 '자식은 이 부모에게 질문하고 답변을 받은 뒤 같은 작업을 이어갑니다. 질문·답변은 작업을 완료하거나 사용자 승인을 부여하지 않습니다.',
               )}
             </p>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(event) => setConfirmed(event.target.checked)}
-              />
+            <p className="text-sm">
               {text(
-                'I reviewed the mapping and allow delegation and parent questions (parent: spawn_subagents / await_tasks / ask / reply; child: ask).',
-                '매핑을 검토했으며 위임과 부모 질문을 허용합니다 (부모: spawn_subagents / await_tasks / ask / reply, 자식: ask).',
+                'Delegation and parent questions will be allowed (parent: spawn_subagents / await_tasks / ask / reply; child: ask).',
+                '위임과 부모 질문이 허용됩니다 (부모: spawn_subagents / await_tasks / ask / reply, 자식: ask).',
               )}
-            </label>
+            </p>
+            <Checkbox
+              checked={confirmed}
+              onToggle={() => setConfirmed(!confirmed)}
+              label={text('I reviewed the mapping', '매핑을 검토했습니다')}
+            />
             {fileError || error ? (
               <p role="alert" className="whitespace-pre-wrap text-xs text-danger">
                 {fileError || error}

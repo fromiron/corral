@@ -1,5 +1,5 @@
 import { UltraSelection, UltraTeamSnapshot } from '@corral/contracts';
-import { Select } from '@corral/react/design-kit';
+import { Checkbox, Select, Switch } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 import type { ProfileInfo } from './useModels.ts';
 
@@ -109,22 +109,19 @@ export function UltraModels({
         ].map((profile) => {
           const checked = value.modelProfiles.includes(profile.profileId);
           return (
-            <label key={profile.profileId} className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={checked}
-                disabled={
-                  profile.profileId === primary ||
-                  (!checked &&
-                    (!profile.available ||
-                      !profile.reasoningCapabilities?.levels.length ||
-                      value.modelProfiles.length >= 5))
-                }
-                onChange={(event) => changePool(profile.profileId, event.target.checked)}
-              />
-              {profile.label}
-              {profile.profileId === primary ? ` (${t('ultraPrimary')})` : ''}
-            </label>
+            <Checkbox
+              key={profile.profileId}
+              label={`${profile.label}${profile.profileId === primary ? ` (${t('ultraPrimary')})` : ''}`}
+              checked={checked}
+              disabled={
+                profile.profileId === primary ||
+                (!checked &&
+                  (!profile.available ||
+                    !profile.reasoningCapabilities?.levels.length ||
+                    value.modelProfiles.length >= 5))
+              }
+              onToggle={() => changePool(profile.profileId, !checked)}
+            />
           );
         })}
       </div>
@@ -192,15 +189,11 @@ export function UltraModels({
         options={[0, 1, 2, 3].map((rounds) => ({ value: String(rounds), label: String(rounds) }))}
         onValueChange={(rounds) => onChange({ ...value, refinementRounds: Number(rounds) })}
       />
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          aria-label={t('ultraAutoApply')}
-          checked={value.autoApply ?? true}
-          onChange={(event) => onChange({ ...value, autoApply: event.target.checked })}
-        />
-        {t('ultraAutoApply')}
-      </label>
+      <Switch
+        label={t('ultraAutoApply')}
+        checked={value.autoApply ?? true}
+        onToggle={() => onChange({ ...value, autoApply: !(value.autoApply ?? true) })}
+      />
       <p role="note" className="text-warning">
         {t('ultraNoLimits')}
       </p>

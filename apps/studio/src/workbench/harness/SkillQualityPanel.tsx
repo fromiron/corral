@@ -9,7 +9,7 @@ import type {
   SkillKey,
   SkillUpdatePreview,
 } from '@corral/contracts';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, Select, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -285,8 +285,8 @@ export function SkillQualityPanel({
               <legend className="text-sm font-medium">{t('fixture', { number: index + 1 })}</legend>
               <label className="text-sm">
                 {t('request')}
-                <textarea
-                  className="settings-field mt-1 w-full"
+                <Textarea
+                  className="mt-1 w-full"
                   rows={2}
                   value={fixture.brief}
                   onChange={(event) =>
@@ -302,8 +302,8 @@ export function SkillQualityPanel({
               </label>
               <label className="text-sm">
                 {t('expected')}
-                <textarea
-                  className="settings-field mt-1 w-full"
+                <Textarea
+                  className="mt-1 w-full"
                   rows={2}
                   value={
                     fixture.expected.kind === 'exact'
@@ -550,15 +550,12 @@ export function SkillQualityPanel({
             {t('targetVersion', { revision: target.binding.revision })}
           </p>
         )}
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={reviewed}
-            disabled={busy || running || view?.status !== 'completed'}
-            onChange={(event) => setReviewed(event.target.checked)}
-          />
-          {t('reviewed')}
-        </label>
+        <Checkbox
+          label={t('reviewed')}
+          checked={reviewed}
+          disabled={busy || running || view?.status !== 'completed'}
+          onToggle={() => setReviewed(!reviewed)}
+        />
         <Button
           disabled={
             busy || running || !reviewed || !target?.binding || view?.status !== 'completed'

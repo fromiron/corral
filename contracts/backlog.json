@@ -3642,5 +3642,26 @@
     "done": "Implement and verify live comparison and distribution verification against CR-052 acceptance criteria.",
     "status": "implemented",
     "evidence": "docs/evaluation/llm-modernization/report.md"
+  },
+  {
+    "id": "C-185",
+    "phase": "P12",
+    "title": "CR-053 session overview widgets",
+    "dependsOn": [
+      "C-178"
+    ],
+    "requirements": [
+      "CRL-UX-011"
+    ],
+    "files": [
+      "apps/studio/src/workbench/widgets/",
+      "apps/studio/src/workbench/docking/",
+      "apps/studio/src/workbench/panels/registry.ts",
+      "apps/studio/src/pages/SessionPage.tsx",
+      "DESIGN.md"
+    ],
+    "done": "Lead the session side area with an Overview pane of kit Card widgets (context, usage, results, changes, agents, environment) for the presented run, each shown only when it has something to say and opening its existing detail on click; keep audit detail in the Run pane, show the same widgets in the composer summary popover, and add no stream, poll or model call.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Session-Overview-Widgets-2026-10-24.md"
   }
 ]

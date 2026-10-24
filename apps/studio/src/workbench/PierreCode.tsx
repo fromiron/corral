@@ -1,5 +1,5 @@
 import type { ReviewCommentView } from '@corral/client';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
 import type { CodeViewItem, FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
 import { CodeView, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
@@ -142,22 +142,22 @@ export function DiffCode({
           />
           <label>
             {td('fromLine')}{' '}
-            <input
+            <Input
               type="number"
               min={1}
               value={range.start}
               onChange={(e) => setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))}
-              className="w-14 rounded fill-control px-1"
+              className="w-14"
             />
           </label>
           <label>
             {td('toLine')}{' '}
-            <input
+            <Input
               type="number"
               min={1}
               value={range.end}
               onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
-              className="w-14 rounded fill-control px-1"
+              className="w-14"
             />
           </label>
           <Button
@@ -194,14 +194,14 @@ export function DiffCode({
             {anchor.side === 'before' ? tf('before') : tf('after')} · {anchor.startLine}–
             {anchor.endLine}
           </p>
-          <textarea
+          <Textarea
             ref={(node) => node?.focus()}
             aria-label={t('commentLine', { line: anchor.startLine })}
             placeholder={t('commentPlaceholder')}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={2}
-            className="w-full rounded fill-group p-2 text-xs"
+            className="w-full"
           />
           <div className="flex gap-2">
             <Button type="submit" size="compact" disabled={busy || !body.trim()}>

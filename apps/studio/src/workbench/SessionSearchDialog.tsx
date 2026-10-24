@@ -8,6 +8,7 @@ import {
   DialogPopup,
   DialogTitle,
   Input,
+  Switch,
 } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -86,28 +87,22 @@ export function SessionSearchDialog({
             }}
           />
           <div className="flex flex-wrap gap-3 text-sm">
-            <label>
-              <input
-                type="checkbox"
-                checked={privateText}
-                onChange={(event) => {
-                  setPrivateText(event.target.checked);
-                  setOffset(0);
-                }}
-              />{' '}
-              {t('private')}
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={archived}
-                onChange={(event) => {
-                  setArchived(event.target.checked);
-                  setOffset(0);
-                }}
-              />{' '}
-              {t('archived')}
-            </label>
+            <Switch
+              label={t('private')}
+              checked={privateText}
+              onToggle={() => {
+                setPrivateText(!privateText);
+                setOffset(0);
+              }}
+            />
+            <Switch
+              label={t('archived')}
+              checked={archived}
+              onToggle={() => {
+                setArchived(!archived);
+                setOffset(0);
+              }}
+            />
           </div>
           {result ? (
             <p role="status" className="text-xs text-muted-foreground">

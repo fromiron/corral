@@ -1,12 +1,13 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import {
   Select as KitSelect,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectLabel,
+  SelectSeparator,
   SelectTrigger,
 } from '../components/ui/select.tsx';
 import { cn } from '../lib/utils.ts';
@@ -49,16 +50,24 @@ export function Select<T extends string>({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const hasHints = options.some((option) => option.hint);
   const groups: { title?: string; options: { option: SelectOption<T>; index: number }[] }[] = [];
   options.forEach((option, index) => {
     const previous = groups.at(-1);
-    if (previous && previous.title === option.group) previous.options.push({ option, index });
+    if (previous && previous.title === option.group && (option.group || !hasHints))
+      previous.options.push({ option, index });
     else groups.push({ title: option.group, options: [{ option, index }] });
   });
   const renderItem = ({ option, index }: { option: SelectOption<T>; index: number }) => (
-    <SelectItem key={index} index={index} value={option.value} disabled={option.disabled}>
+    <SelectItem
+      key={index}
+      index={index}
+      value={option.value}
+      disabled={option.disabled}
+      className={option.hint ? 'h-auto py-2' : undefined}
+    >
       {option.hint ? (
-        <span className="flex min-w-0 flex-col">
+        <span className="flex min-w-0 flex-col gap-1 whitespace-normal">
           <span>{option.label}</span>
           <span className="text-caption text-muted-foreground">{option.hint}</span>
         </span>
@@ -87,17 +96,23 @@ export function Select<T extends string>({
         className={cn(variant !== 'outline' && 'min-w-0 max-w-full', className)}
         data-slot="select-trigger"
       />
-      <SelectContent align={align}>
-        {groups.map((group) =>
-          group.title ? (
-            <SelectGroup key={group.options[0]?.index}>
-              <SelectLabel>{group.title}</SelectLabel>
-              {group.options.map(renderItem)}
-            </SelectGroup>
-          ) : (
-            group.options.map(renderItem)
-          ),
-        )}
+      <SelectContent
+        align={align}
+        className={hasHints ? 'max-w-[min(24rem,calc(100vw-2rem))]' : undefined}
+      >
+        {groups.map((group, index) => (
+          <Fragment key={group.options[0]?.index}>
+            {index > 0 && <SelectSeparator />}
+            {group.title || hasHints ? (
+              <SelectGroup>
+                {group.title && <SelectLabel>{group.title}</SelectLabel>}
+                {group.options.map(renderItem)}
+              </SelectGroup>
+            ) : (
+              group.options.map(renderItem)
+            )}
+          </Fragment>
+        ))}
       </SelectContent>
     </KitSelect>
   );

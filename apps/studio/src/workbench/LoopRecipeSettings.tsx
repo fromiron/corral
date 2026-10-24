@@ -1,13 +1,12 @@
 import { type LoopNode, type RegisteredCheck, ReviewRecipeRevision } from '@corral/contracts';
 import { reviewCriteriaHash } from '@corral/core';
 import { useStudioStores } from '@corral/react';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, Input, Select, Textarea } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 
-const field = 'rounded fill-control p-2 text-sm';
 export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projectId: string }) {
   const { editor } = useStudioStores(),
     { harnesses: api } = useServices();
@@ -152,9 +151,8 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
       ).map(([key, min, max]) => (
         <label key={key} className="flex flex-col gap-1 text-xs">
           {t(key)}
-          <input
+          <Input
             type="number"
-            className={field}
             min={key === 'maxWallMs' ? min / 1000 : min}
             max={key === 'maxWallMs' ? max / 1000 : max}
             value={
@@ -176,48 +174,39 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
       <p className="text-xs text-muted-foreground">{t('limitsHint')}</p>
       <p className="text-xs font-medium">{t('checks')}</p>
       {checks.map((check) => (
-        <label key={check.id} className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={values.checkIds.includes(check.id)}
-            onChange={(event) =>
-              setValues((value) => ({
-                ...value,
-                checkIds: event.target.checked
-                  ? [...value.checkIds, check.id]
-                  : value.checkIds.filter((id) => id !== check.id),
-              }))
-            }
-          />
-          {check.name}
-        </label>
+        <Checkbox
+          key={check.id}
+          label={check.name}
+          checked={values.checkIds.includes(check.id)}
+          onToggle={() =>
+            setValues((value) => ({
+              ...value,
+              checkIds: value.checkIds.includes(check.id)
+                ? value.checkIds.filter((id) => id !== check.id)
+                : [...value.checkIds, check.id],
+            }))
+          }
+        />
       ))}
       {values.checkIds
         .filter((id) => !checks.some((check) => check.id === id))
         .map((id) => (
-          <label key={id} className="flex items-center gap-2 text-xs text-warning">
-            <input
-              type="checkbox"
-              checked
-              onChange={() =>
-                setValues((value) => ({
-                  ...value,
-                  checkIds: value.checkIds.filter((item) => item !== id),
-                }))
-              }
-            />
-            {t('missingCheck', { id })}
-          </label>
+          <Checkbox
+            key={id}
+            label={t('missingCheck', { id })}
+            checked
+            onToggle={() =>
+              setValues((value) => ({
+                ...value,
+                checkIds: value.checkIds.filter((item) => item !== id),
+              }))
+            }
+          />
         ))}
       <p className="text-xs text-muted-foreground">{t('checksHint')}</p>
       <label className="flex flex-col gap-1 text-xs">
         {t('files')}
-        <textarea
-          className={field}
-          rows={2}
-          value={paths}
-          onChange={(event) => setPaths(event.target.value)}
-        />
+        <Textarea rows={2} value={paths} onChange={(event) => setPaths(event.target.value)} />
       </label>
       <p className="text-xs text-muted-foreground">{t('filesHint')}</p>
       {error ? (

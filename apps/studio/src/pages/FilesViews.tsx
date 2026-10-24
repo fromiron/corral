@@ -4,7 +4,7 @@ import type {
   WorkspaceBindingView,
   WorktreeView,
 } from '@corral/client';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -118,12 +118,12 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
             {mode === 'server' && !desktop ? (
-              <input
+              <Input
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
                 spellCheck={false}
                 aria-label={t('pathLabel')}
-                className="settings-field font-mono sm:w-80"
+                className="font-mono sm:w-80"
               />
             ) : null}
             <div className="flex gap-2">
@@ -190,20 +190,16 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             </Button>
           </section>
           {binding.isGit ? (
-            <label className="settings-row">
-              <span>
-                <span className="text-sm font-medium">{t('trust')}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">{t('trustHint')}</span>
-              </span>
-              <input
-                type="checkbox"
-                aria-label={t('trust')}
+            <div className="settings-row flex-col items-start gap-1">
+              <Switch
+                label={t('trust')}
                 checked={binding.trusted}
-                onChange={(e) =>
-                  void act(() => workspaces.configure(projectId, { trusted: e.target.checked }))
+                onToggle={() =>
+                  void act(() => workspaces.configure(projectId, { trusted: !binding.trusted }))
                 }
               />
-            </label>
+              <p className="text-xs">{t('trustHint')}</p>
+            </div>
           ) : null}
           {binding.trusted ? (
             <section className="settings-surface flex flex-col gap-3">
@@ -211,14 +207,14 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                 <h3 className="text-sm font-medium">{t('checksHeading')}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">{t('checksHint')}</p>
               </div>
-              <textarea
+              <Textarea
                 rows={3}
                 value={checks ?? formatChecks(binding.verifyCommands)}
                 placeholder={t('checksPlaceholder')}
                 onChange={(e) => setChecks(e.target.value)}
                 spellCheck={false}
                 aria-label={t('checksHeading')}
-                className="settings-field font-mono"
+                className="font-mono"
               />
               <Button
                 variant="tertiary"

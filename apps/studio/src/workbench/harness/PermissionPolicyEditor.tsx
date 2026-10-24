@@ -1,6 +1,6 @@
 import type { ToolDescriptor, ToolPermissionPolicy } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, Input, Select, Switch } from '@corral/react/design-kit';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -28,14 +28,11 @@ export function PermissionPolicyEditor({
     <fieldset className="settings-surface flex flex-col gap-3">
       <legend className="text-sm font-medium">{t('permissionPolicy')}</legend>
       <p className="text-xs text-muted-foreground">{t('permissionPolicyHint')}</p>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked ? { default: 'ask', rules: [] } : undefined)}
-        />
-        {t('permissionEnabled')}
-      </label>
+      <Switch
+        label={t('permissionEnabled')}
+        checked={Boolean(value)}
+        onToggle={() => onChange(value ? undefined : { default: 'ask', rules: [] })}
+      />
       {value ? (
         <>
           <div className="flex flex-col gap-1 text-sm">
@@ -103,18 +100,16 @@ export function PermissionPolicyEditor({
                   onChange={(e) => rule(index, { descriptorHash: e.target.value || undefined })}
                 />
               </label>
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={Boolean(item.path)}
-                  onChange={(e) =>
-                    rule(index, {
-                      path: e.target.checked ? { argument: 'path', prefix: 'src' } : undefined,
-                    })
-                  }
-                />
-                {t('permissionPath')}
-              </label>
+              <Switch
+                label={t('permissionPath')}
+                size="compact"
+                checked={Boolean(item.path)}
+                onToggle={() =>
+                  rule(index, {
+                    path: item.path ? undefined : { argument: 'path', prefix: 'src' },
+                  })
+                }
+              />
               {item.path ? (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="text-xs" htmlFor={`${formId}-${index}-path-argument`}>

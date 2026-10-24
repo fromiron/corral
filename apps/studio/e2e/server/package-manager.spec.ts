@@ -74,7 +74,7 @@ test('reviewed packages install untrusted, preserve plain text metadata, and kee
   await folder.getByLabel('Folder path on this computer').fill(repository);
   await folder.getByRole('button', { name: 'Link folder' }).click();
   await expect(folder).toContainText('no uncommitted changes');
-  const trust = folder.getByRole('checkbox', { name: /Trust this repository/ });
+  const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   await trust.click();
   await expect(trust).toBeChecked();
   await page.goto(`${corral.server.url}/settings/hooks?projectId=default`);

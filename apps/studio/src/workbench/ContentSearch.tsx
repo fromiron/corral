@@ -6,7 +6,7 @@ import type {
   TextRange,
   WorkspaceTarget,
 } from '@corral/contracts';
-import { Button, Input } from '@corral/react/design-kit';
+import { Button, Input, Switch } from '@corral/react/design-kit';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -254,14 +254,12 @@ export function ContentSearch({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={caseSensitive}
-              onChange={(event) => setCaseSensitive(event.target.checked)}
-            />
-            {t('caseSensitive')}
-          </label>
+          <Switch
+            label={t('caseSensitive')}
+            size="compact"
+            checked={caseSensitive}
+            onToggle={() => setCaseSensitive(!caseSensitive)}
+          />
           <Button
             type="submit"
             size="compact"

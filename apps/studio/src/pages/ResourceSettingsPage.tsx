@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryKey, HarnessEntryView, ManagedHook } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -10,7 +10,7 @@ import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.ts
 import { PackageManager } from '../workbench/harness/PackageManager.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
 import { SkillQualityPanel } from '../workbench/harness/SkillQualityPanel.tsx';
-import { field, operationId } from '../workbench/harness/Target.tsx';
+import { operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
@@ -140,18 +140,21 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
         <div>
           <h3>{t('search')}</h3>
         </div>
-        <input
+        <Input
           aria-label={t('search')}
-          className={`${field} sm:w-72`}
+          className="sm:w-72"
           value={search}
           placeholder={t('search')}
           onChange={(e) => setSearch(e.target.value)}
         />
       </section>
-      <label className="settings-row">
-        <span className="text-sm font-medium">{t('showArchived')}</span>
-        <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
-      </label>
+      <div className="settings-row">
+        <Switch
+          label={t('showArchived')}
+          checked={archived}
+          onToggle={() => setArchived(!archived)}
+        />
+      </div>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

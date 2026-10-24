@@ -7,11 +7,13 @@ import {
 } from '@corral/contracts';
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogDescription,
   DialogPopup,
   DialogTitle,
   Select,
+  Switch,
 } from '@corral/react/design-kit';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
@@ -240,15 +242,12 @@ function SequenceControls({
           ) : null}
         </>
       )}
-      <label className="flex items-center gap-1.5">
-        <input
-          type="checkbox"
-          checked={runHooks}
-          disabled={disabled || sending}
-          onChange={(event) => onRunHooksChange(event.target.checked)}
-        />
-        {t('runHooks')}
-      </label>
+      <Switch
+        label={t('runHooks')}
+        checked={runHooks}
+        disabled={disabled || sending}
+        onToggle={() => onRunHooksChange(!runHooks)}
+      />
       {drafts ? (
         <p role="alert" className="text-warning">
           {t('drafts')}
@@ -317,16 +316,12 @@ function SequenceControls({
                       </li>
                     ))}
                   </ul>
-                  <label className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      aria-label={t('abortConfirm')}
-                      checked={confirmed}
-                      disabled={sending}
-                      onChange={(event) => setConfirmed(event.target.checked)}
-                    />
-                    {t('abortConfirm')}
-                  </label>
+                  <Checkbox
+                    label={t('abortConfirm')}
+                    checked={confirmed}
+                    disabled={sending}
+                    onToggle={() => setConfirmed(!confirmed)}
+                  />
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">{t('signing')}</p>

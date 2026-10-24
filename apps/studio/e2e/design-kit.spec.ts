@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { requestBox } from './workbench.ts';
 
 test('[TC-DKIT-001-H] the kit themes preserve project creation and explicit theme choice', async ({
   page,
@@ -57,4 +58,49 @@ test('[TC-DKIT-001-N] narrow forms retain names, keyboard focus and reduced moti
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+
+test('[TC-DKIT-001-H] described select choices stay separated and readable without losing a draft', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await requestBox(page).fill('Keep this draft');
+  const picker = page.getByRole('combobox', { name: 'Permissions for next request', exact: true });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await picker.click();
+    const options = page.getByRole('option');
+    await expect(options).toHaveCount(4);
+    await expect
+      .poll(() =>
+        options.evaluateAll((rows) =>
+          rows.every((row, index) => {
+            const box = row.getBoundingClientRect();
+            const previous = rows[index - 1]?.getBoundingClientRect();
+            return (
+              (!previous || box.top > previous.bottom + 1) &&
+              box.left >= 0 &&
+              box.right <= window.innerWidth &&
+              Array.from(row.querySelectorAll('span')).every((span) => {
+                if (!span.textContent?.trim()) return true;
+                const content = span.getBoundingClientRect();
+                return content.top >= box.top - 1 && content.bottom <= box.bottom + 1;
+              })
+            );
+          }),
+        ),
+      )
+      .toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`described-select-${width}.png`) });
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeFocused();
+  }
+  await picker.press('Enter');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(picker).toHaveText('Ask');
+  await expect(picker).toHaveAttribute('aria-expanded', 'false');
+  await expect(requestBox(page)).toHaveValue('Keep this draft');
 });

@@ -111,9 +111,7 @@ it('[TC-WBD-024-H] [TC-WBD-024-N] reviews source and credential references befor
   expect(f.container.textContent).toContain('DEPLOY_TOKEN');
   expect(f.container.textContent).toContain(plan.source.commit);
   expect(f.button('start')?.disabled).toBe(true);
-  await act(async () =>
-    f.container.querySelector<HTMLInputElement>('input[type=checkbox]')?.click(),
-  );
+  await act(async () => f.container.querySelector<HTMLElement>('[role=checkbox]')?.click());
   await act(async () => f.button('start')?.click());
   expect(fixture.api.startDeployment).toHaveBeenCalledWith(
     'session',
@@ -132,9 +130,7 @@ it('[TC-WBD-024-F] keeps a lost start on the same operation and does not redeplo
     throw new Error('Connection lost');
   });
   await act(async () => f.button('review')?.click());
-  await act(async () =>
-    f.container.querySelector<HTMLInputElement>('input[type=checkbox]')?.click(),
-  );
+  await act(async () => f.container.querySelector<HTMLElement>('[role=checkbox]')?.click());
   await act(async () => f.button('start')?.click());
   const start = vi.mocked(fixture.api.startDeployment as (...args: unknown[]) => Promise<unknown>);
   const input = start.mock.calls[0]?.[1] as { operationId: string } | undefined;
@@ -167,9 +163,7 @@ it('[TC-WBD-024-N] ignores a late review after a session change and blocks unsav
 it('[TC-WBD-024-N] rechecks unsaved buffers immediately before starting after a target lookup', async () => {
   const f = await mount();
   await act(async () => f.button('review')?.click());
-  await act(async () =>
-    f.container.querySelector<HTMLInputElement>('input[type=checkbox]')?.click(),
-  );
+  await act(async () => f.container.querySelector<HTMLElement>('[role=checkbox]')?.click());
   let resolve: (value: unknown) => void = () => {};
   fixture.api.worktree = vi.fn(
     () =>
@@ -192,9 +186,7 @@ it('[TC-WBD-024-F] ending local verification preserves an unknown external resul
     reason: 'stopped_remote_unknown',
   }));
   await act(async () => f.button('review')?.click());
-  await act(async () =>
-    f.container.querySelector<HTMLInputElement>('input[type=checkbox]')?.click(),
-  );
+  await act(async () => f.container.querySelector<HTMLElement>('[role=checkbox]')?.click());
   await act(async () => f.button('start')?.click());
   await act(async () => f.button('finish')?.click());
   expect(fixture.api.stopDeployment).toHaveBeenCalledOnce();
@@ -210,9 +202,7 @@ it('[TC-WBD-024-N] a definitive admission refusal requires a fresh review instea
     throw new ApiError(409, 'REVISION_CONFLICT', 'Source changed');
   });
   await act(async () => f.button('review')?.click());
-  await act(async () =>
-    f.container.querySelector<HTMLInputElement>('input[type=checkbox]')?.click(),
-  );
+  await act(async () => f.container.querySelector<HTMLElement>('[role=checkbox]')?.click());
   await act(async () => f.button('start')?.click());
   expect(f.button('refreshReceipt')).toBeUndefined();
   expect(f.button('review')?.disabled).toBe(false);

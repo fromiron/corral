@@ -5,7 +5,7 @@ import {
   type GitHunks as GitHunksView,
   type GitHunkWrite,
 } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, Checkbox } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -172,20 +172,17 @@ function HunkSelection({
             <ul className="flex min-w-0 flex-col gap-2">
               {value.hunks.map((hunk) => (
                 <li key={hunk.id} className="flex min-w-0 flex-col gap-1">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={ids.includes(hunk.id)}
-                      disabled={disabled || submitting}
-                      onChange={(event) => {
-                        const next = event.target.checked
-                          ? [...ids, hunk.id]
-                          : ids.filter((id) => id !== hunk.id);
-                        setSelection({ snapshot: value, ids: next });
-                      }}
-                    />
-                    <span className="break-all font-mono">{hunk.header}</span>
-                  </label>
+                  <Checkbox
+                    label={hunk.header}
+                    checked={ids.includes(hunk.id)}
+                    disabled={disabled || submitting}
+                    onToggle={() => {
+                      const next = ids.includes(hunk.id)
+                        ? ids.filter((id) => id !== hunk.id)
+                        : [...ids, hunk.id];
+                      setSelection({ snapshot: value, ids: next });
+                    }}
+                  />
                   <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2">
                     {hunk.patch}
                   </pre>

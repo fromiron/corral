@@ -5,7 +5,7 @@ import type {
   VaultPreview,
   VaultStatus,
 } from '@corral/client';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, Input, Select } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useLocale } from '../locale.tsx';
@@ -19,7 +19,7 @@ import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle
 import { SettingsLayout } from './SettingsPage.tsx';
 
 type Choice = { value: string; label: string };
-const inputClass = 'settings-field min-w-0';
+const inputClass = 'min-w-0';
 export function VaultSettingsPage() {
   const t = useTranslations('Vault');
   const projectText = useTranslations('Projects');
@@ -187,8 +187,7 @@ export function VaultSettingsPage() {
             <p className="text-sm text-muted-foreground">{t('intro')}</p>
             <label className="flex flex-col gap-1 text-sm">
               {t('password')}
-              <input
-                className={inputClass}
+              <Input
                 type="password"
                 aria-describedby="vault-password-hint"
                 autoComplete="off"
@@ -204,24 +203,19 @@ export function VaultSettingsPage() {
               <h3 className="text-sm font-semibold">{t('scope')}</h3>
               <div className="flex flex-wrap gap-3">
                 {status?.domains.map(({ domain, available }) => (
-                  <label key={domain} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(domain)}
-                      disabled={busy || !available}
-                      onChange={(event) =>
-                        setSelected((values) =>
-                          event.target.checked
-                            ? [...values, domain]
-                            : values.filter((value) => value !== domain),
-                        )
-                      }
-                    />
-                    {t(domain)}
-                    {!available ? (
-                      <span className="text-xs text-muted-foreground">{t('needsBinding')}</span>
-                    ) : null}
-                  </label>
+                  <Checkbox
+                    key={domain}
+                    label={available ? t(domain) : `${t(domain)} · ${t('needsBinding')}`}
+                    checked={selected.includes(domain)}
+                    disabled={busy || !available}
+                    onToggle={() =>
+                      setSelected((values) =>
+                        values.includes(domain)
+                          ? values.filter((value) => value !== domain)
+                          : [...values, domain],
+                      )
+                    }
+                  />
                 ))}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -273,21 +267,19 @@ export function VaultSettingsPage() {
                   <summary className="cursor-pointer text-sm">{t('secretOptions')}</summary>
                   <p className="my-2 text-xs text-muted-foreground">{t('secretHint')}</p>
                   {keys.map((key) => (
-                    <label key={key.value} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={includeSecrets.includes(key.value)}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setIncludeSecrets((values) =>
-                            event.target.checked
-                              ? [...values, key.value]
-                              : values.filter((id) => id !== key.value),
-                          )
-                        }
-                      />
-                      {key.label}
-                    </label>
+                    <Checkbox
+                      key={key.value}
+                      label={key.label}
+                      checked={includeSecrets.includes(key.value)}
+                      disabled={busy}
+                      onToggle={() =>
+                        setIncludeSecrets((values) =>
+                          values.includes(key.value)
+                            ? values.filter((id) => id !== key.value)
+                            : [...values, key.value],
+                        )
+                      }
+                    />
                   ))}
                 </details>
               ) : null}
@@ -357,21 +349,18 @@ export function VaultSettingsPage() {
               </Button>
               {preview?.entries.map((entry) => (
                 <div key={entry.domain} className="border-t border-line pt-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      disabled={busy || !entry.available}
-                      checked={selected.includes(entry.domain)}
-                      onChange={(event) =>
-                        setSelected((values) =>
-                          event.target.checked
-                            ? [...values, entry.domain]
-                            : values.filter((domain) => domain !== entry.domain),
-                        )
-                      }
-                    />
-                    {t(entry.domain)} · {t(entry.changed ? 'changed' : 'unchanged')}
-                  </label>
+                  <Checkbox
+                    label={`${t(entry.domain)} · ${t(entry.changed ? 'changed' : 'unchanged')}`}
+                    disabled={busy || !entry.available}
+                    checked={selected.includes(entry.domain)}
+                    onToggle={() =>
+                      setSelected((values) =>
+                        values.includes(entry.domain)
+                          ? values.filter((domain) => domain !== entry.domain)
+                          : [...values, entry.domain],
+                      )
+                    }
+                  />
                   {entry.warnings.map((warning) => (
                     <p key={warning} className="mt-1 text-xs text-muted-foreground">
                       {warning}
@@ -411,8 +400,7 @@ export function VaultSettingsPage() {
                       ) : (
                         <label key={field.key} className="flex flex-col gap-1 text-xs">
                           {field.label}
-                          <input
-                            className={inputClass}
+                          <Input
                             value={value}
                             disabled={busy}
                             onChange={(event) => {
@@ -502,8 +490,7 @@ export function VaultSettingsPage() {
                 ).map((key) => (
                   <label key={key} className="flex flex-col gap-1 text-xs">
                     {t(key)}
-                    <input
-                      className={inputClass}
+                    <Input
                       type={
                         key === 'secretAccessKey' || key === 'sessionToken' ? 'password' : 'text'
                       }

@@ -1,11 +1,11 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { RegisteredMcpServer } from '@corral/contracts';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
-import { field, operationId } from '../workbench/harness/Target.tsx';
+import { operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
@@ -269,10 +269,9 @@ export function McpConnection({
                         <p>{t('mcpAuthHint')}</p>
                       </div>
                       <div className="flex w-full flex-col gap-2 sm:w-72">
-                        <input
+                        <Input
                           type="password"
                           autoComplete="off"
-                          className={field}
                           aria-label={t('mcpToken')}
                           value={token}
                           onChange={(e) => setToken(e.target.value)}

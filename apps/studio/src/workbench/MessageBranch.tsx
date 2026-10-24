@@ -7,6 +7,7 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
+  Switch,
 } from '@corral/react/design-kit';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -86,15 +87,12 @@ export function MessageBranch({
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3 text-sm">
-            <label>
-              <input
-                type="checkbox"
-                checked={contextOnly}
-                disabled={busy}
-                onChange={(event) => setContextOnly(event.target.checked)}
-              />{' '}
-              {t('contextOnly')}
-            </label>
+            <Switch
+              label={t('contextOnly')}
+              checked={contextOnly}
+              disabled={busy}
+              onToggle={() => setContextOnly(!contextOnly)}
+            />
             {preview ? (
               <>
                 <p>{t(requestStart ? 'requestBoundary' : preview.kind)}</p>

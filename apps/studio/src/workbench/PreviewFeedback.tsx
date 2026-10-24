@@ -13,6 +13,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  Switch,
 } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -276,24 +277,20 @@ export function PreviewFeedback({
       className="flex min-w-0 flex-col gap-2 text-xs"
     >
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={screenshot}
-            disabled={phase !== 'idle' || Boolean(review)}
-            onChange={(event) => setScreenshot(event.target.checked)}
-          />
-          {t('screenshot')}
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={consoleMessages}
-            disabled={phase !== 'idle' || Boolean(review)}
-            onChange={(event) => setConsoleMessages(event.target.checked)}
-          />
-          {t('console')}
-        </label>
+        <Switch
+          label={t('screenshot')}
+          size="compact"
+          checked={screenshot}
+          disabled={phase !== 'idle' || Boolean(review)}
+          onToggle={() => setScreenshot(!screenshot)}
+        />
+        <Switch
+          label={t('console')}
+          size="compact"
+          checked={consoleMessages}
+          disabled={phase !== 'idle' || Boolean(review)}
+          onToggle={() => setConsoleMessages(!consoleMessages)}
+        />
       </div>
       <Button
         size="compact"

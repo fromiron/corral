@@ -88,6 +88,34 @@ describe('design guard (Workbench polish P0)', () => {
     expect(found).toEqual([]);
   });
 
+  it('builds text fields and toggles from the kit, never a native input with local styling', () => {
+    // The request composer and the command palette own their editing surface and caret behavior;
+    // schema question choices keep native fieldset, name/value and option descriptions (DESIGN.md).
+    const own = /(ComposerInput|RequestInput|CommandPalette|InteractionPanel)\.tsx$/;
+    const found = [...text].flatMap(([path, body]) =>
+      own.test(path) || path.includes('design-kit')
+        ? []
+        : [...body.matchAll(/<(input|textarea)\b((?:[^>{]|\{[^}]*\})*)>/g)]
+            .filter((m) => !/type="(?:radio|file|hidden)"/.test(m[2] as string))
+            .map((m) => `${where(path)}: <${m[1]}>`),
+    );
+    expect(found).toEqual([]);
+    const local = [...text].flatMap(([path, body]) =>
+      /\bsettings-field\b/.test(body) ? [where(path)] : [],
+    );
+    expect(local).toEqual([]);
+  });
+
+  it('shows status messages with the kit Banner, never a hand-tinted warning box', () => {
+    const found = [...text].flatMap(([path, body]) =>
+      path.includes('design-kit')
+        ? []
+        : // The banner tint; approval cards and graph nodes keep their own (DESIGN.md exceptions).
+          [...body.matchAll(/\bbg-warning\/10\b/g)].map((m) => `${where(path)}: ${m[0]}`),
+    );
+    expect(found).toEqual([]);
+  });
+
   it('merges the extra type steps as font sizes, not colors', () => {
     expect(cn('text-ui text-muted')).toBe('text-ui text-muted');
     expect(cn('text-xs text-ui')).toBe('text-ui');

@@ -13,7 +13,7 @@ import {
   type GitWriteResult,
   type WorkspaceTarget,
 } from '@corral/contracts';
-import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
+import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Minus, Plus } from '@corral/react/icons';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -778,14 +778,12 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                     {t('cancel')}
                   </Button>
                 ) : null}
-                <label className="flex items-center gap-1.5 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={runHooks}
-                    onChange={(event) => setRunHooks(event.target.checked)}
-                  />
-                  {t('runHooks')}
-                </label>
+                <Switch
+                  label={t('runHooks')}
+                  size="compact"
+                  checked={runHooks}
+                  onToggle={() => setRunHooks(!runHooks)}
+                />
               </div>
             </form>
           ) : null}

@@ -94,7 +94,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     await expect(folder).toContainText('no uncommitted changes');
-    const trust = folder.getByRole('checkbox', { name: /Trust this repository/ });
+    const trust = folder.getByRole('switch', { name: /Trust this repository/ });
     await trust.click();
     await expect(trust).toBeChecked();
     await folder

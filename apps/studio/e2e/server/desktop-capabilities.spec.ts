@@ -183,7 +183,7 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   const folder = page.getByRole('tabpanel', { name: 'Project folder', exact: true });
   await folder.getByLabel('Folder path on this computer').fill(capability.source);
   await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
-  const trust = folder.getByRole('checkbox', { name: /Trust this repository/ });
+  const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   await trust.click();
   await expect(trust).toBeChecked();
 

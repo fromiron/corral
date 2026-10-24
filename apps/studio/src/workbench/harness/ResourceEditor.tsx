@@ -1,18 +1,21 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessDocumentDraft, HarnessEntryView, ManagedHook } from '@corral/contracts';
 import {
+  Banner,
+  BannerTitle,
   Button,
   Dialog,
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  Input,
   Select,
+  Textarea,
 } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../../desktop.tsx';
 import { useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
-import { field } from './Target.tsx';
 
 const EXTENSION_TEMPLATE = `export default function (pi) {
   pi.on('session_start', async (_event, ctx) => {
@@ -239,8 +242,7 @@ export function ResourceEditor({
                 ) : null}
                 <label className="flex flex-col gap-1 text-sm">
                   {t(mode === 'local' ? 'folderPath' : 'packageSource')}
-                  <input
-                    className={field}
+                  <Input
                     required
                     value={source}
                     onChange={(e) => change(() => setSource(e.target.value))}
@@ -262,8 +264,7 @@ export function ResourceEditor({
                 {mode === 'package' ? (
                   <label className="flex flex-col gap-1 text-sm">
                     {t(packageKind === 'npm' ? 'exactVersion' : 'exactCommit')}
-                    <input
-                      className={field}
+                    <Input
                       required
                       value={pin}
                       onChange={(e) => change(() => setPin(e.target.value))}
@@ -294,8 +295,7 @@ export function ResourceEditor({
               <>
                 <label className="flex flex-col gap-1 text-sm">
                   {t('displayName')}
-                  <input
-                    className={field}
+                  <Input
                     required
                     maxLength={100}
                     value={name}
@@ -323,8 +323,7 @@ export function ResourceEditor({
                     </div>
                     <label className="flex flex-col gap-1 text-sm">
                       {t('hookTitle')}
-                      <input
-                        className={field}
+                      <Input
                         required
                         maxLength={300}
                         value={hook.title}
@@ -333,8 +332,7 @@ export function ResourceEditor({
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
                       {t('hookMessage')}
-                      <textarea
-                        className={field}
+                      <Textarea
                         rows={4}
                         value={hook.message}
                         onChange={(e) =>
@@ -361,8 +359,7 @@ export function ResourceEditor({
                     {mode === 'new' && kind === 'skill' ? (
                       <label className="flex flex-col gap-1 text-sm">
                         {t('description')}
-                        <input
-                          className={field}
+                        <Input
                           required
                           value={description}
                           onChange={(e) => change(() => setDescription(e.target.value))}
@@ -371,8 +368,8 @@ export function ResourceEditor({
                     ) : null}
                     <label className="flex flex-col gap-1 text-sm">
                       {t(mode === 'new' && kind === 'skill' ? 'instructions' : 'sourceCode')}
-                      <textarea
-                        className={`${field} min-h-48 font-mono`}
+                      <Textarea
+                        className="min-h-48 font-mono"
                         rows={10}
                         required
                         value={content}
@@ -386,9 +383,9 @@ export function ResourceEditor({
               </>
             )}
             {kind === 'extension' ? (
-              <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
-                {h('nativeWarning')}
-              </p>
+              <Banner status="warning" role="note">
+                <BannerTitle>{h('nativeWarning')}</BannerTitle>
+              </Banner>
             ) : null}
             {error ? (
               <p role="alert" className="text-sm text-danger">

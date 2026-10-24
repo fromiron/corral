@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Textarea } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -10,7 +10,6 @@ import { DeploymentSettings } from './DeploymentSettings.tsx';
 import { WORKSPACE_CHANGED } from './FilesViews.tsx';
 import { projectToolValues } from './projectToolValues.ts';
 
-const field = 'settings-field';
 const empty = { id: '', name: '', argv: '', languages: '', extensions: '', seconds: '30' };
 export function ProjectToolSettings({
   api,
@@ -218,8 +217,7 @@ export function ProjectToolSettings({
         ).map(([key, label]) => (
           <label key={key} className="flex flex-col gap-1 text-sm">
             {t(label)}
-            <input
-              className={field}
+            <Input
               value={draft[key]}
               disabled={key === 'id' && editing !== null}
               onChange={(event) =>
@@ -230,8 +228,7 @@ export function ProjectToolSettings({
         ))}
         <label className="flex flex-col gap-1 text-sm">
           {t('lspArgv')}
-          <textarea
-            className={field}
+          <Textarea
             rows={3}
             value={draft.argv}
             onChange={(event) => setDraft((current) => ({ ...current, argv: event.target.value }))}
@@ -240,11 +237,10 @@ export function ProjectToolSettings({
         <p className="text-xs text-muted-foreground">{t('lspArgvHint')}</p>
         <label className="flex flex-col gap-1 text-sm">
           {t('lspTimeout')}
-          <input
+          <Input
             type="number"
             min={1}
             max={1800}
-            className={field}
             value={draft.seconds}
             onChange={(event) =>
               setDraft((current) => ({ ...current, seconds: event.target.value }))

@@ -8,7 +8,7 @@ import {
 } from '@corral/contracts';
 import type { MeetingResult, WorkSession } from '@corral/core';
 import { SafeMarkdown } from '@corral/react';
-import { Button, Menu, MenuPopup, MenuTrigger } from '@corral/react/design-kit';
+import { Button, Menu, MenuPopup, MenuTrigger, Textarea } from '@corral/react/design-kit';
 import { Ellipsis, Send, Square, Users } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
@@ -455,13 +455,13 @@ function MeetingComposer({
         onChange={setMentions}
         disabled={sending}
       />
-      <textarea
+      <Textarea
         aria-label={t('message')}
         placeholder={t('placeholder')}
         value={text}
         rows={2}
         maxLength={20000}
-        className="w-full resize-y rounded fill-control px-2 py-1.5"
+        className="w-full"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
       />
@@ -547,13 +547,13 @@ function QueuedMessage({
         onChange={setMentions}
         disabled={saving}
       />
-      <textarea
+      <Textarea
         aria-label={t('queued')}
         value={text}
         maxLength={20000}
         rows={2}
         disabled={saving}
-        className="w-full resize-y rounded fill-control px-2 py-1.5"
+        className="w-full"
         onChange={(event) => setText(event.target.value)}
       />
       <MeetingEvidencePicker

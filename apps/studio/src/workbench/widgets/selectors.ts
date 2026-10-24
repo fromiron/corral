@@ -417,11 +417,15 @@ export function presentContext(input: {
   };
 }
 
+/** Why an outcome is unclear: an effect, usage still held against the budget, or a stop. */
+export type UnclearCause = 'effect' | 'usage' | 'termination';
+
 export function actionRequired(input: {
   pendingApprovals: number;
   pendingQuestions: number;
   failedEffects: number;
   unclearEffects: number;
+  unclearCauses?: UnclearCause[];
   runStatus?: string;
 }) {
   const failed = Math.max(
@@ -440,7 +444,24 @@ export function actionRequired(input: {
     hasFailure: failed + input.unclearEffects > 0,
     count: input.pendingApprovals + input.pendingQuestions + failed + input.unclearEffects,
     summary: kinds.length === 0 ? 'none' : kinds.length === 1 ? kinds[0]! : 'mixed',
+    unclearCauses: input.unclearEffects ? (input.unclearCauses ?? ['effect']) : [],
   };
+}
+
+const unclearCopy = {
+  effect: 'actionUnclear',
+  usage: 'actionUsageUnknown',
+  termination: 'actionStopUnconfirmed',
+} as const;
+
+/** Widgets message keys for the attention banner; several unclear causes are each named. */
+export function actionCopy(action: ReturnType<typeof actionRequired>) {
+  if (!action.visible) return [];
+  if (action.summary === 'approval') return ['actionApproval'] as const;
+  if (action.summary === 'question') return ['actionQuestion'] as const;
+  if (action.summary === 'failure') return ['actionFailure'] as const;
+  if (action.summary === 'unclear') return action.unclearCauses.map((cause) => unclearCopy[cause]);
+  return ['actionMixed'] as const;
 }
 
 export function effectAttention(projection: RunProjection | null) {
@@ -453,14 +474,18 @@ export function effectAttention(projection: RunProjection | null) {
     Object.values(projection?.executions ?? {}).some(
       (execution) => execution.error?.endsWith('termination_unconfirmed') === true,
     );
+  const unknownEffects = effects.filter((effect) => effect.outcome === 'unknown').length;
+  const unclearCauses: UnclearCause[] = [
+    ...(unknownEffects ? (['effect'] as const) : []),
+    ...(budgetUnknown ? (['usage'] as const) : []),
+    ...(terminationUnknown ? (['termination'] as const) : []),
+  ];
   return {
     failedEffects: effects.filter((effect) => effect.outcome === 'failed').length,
     // A confirmed cancellation is a settled outcome. Unknown effects, unconfirmed cleanup
     // and still-held billing remain actionable even when the run was intentionally stopped.
-    unclearEffects: Math.max(
-      effects.filter((effect) => effect.outcome === 'unknown').length,
-      budgetUnknown || terminationUnknown ? 1 : 0,
-    ),
+    unclearEffects: Math.max(unknownEffects, budgetUnknown || terminationUnknown ? 1 : 0),
+    unclearCauses,
   };
 }
 
@@ -508,6 +533,59 @@ export function toolRows(
 
 export type WidgetChip = 'context' | 'environment' | 'agents' | 'changes';
 
+/** What the Usage widget states about a run (CR-053). Limits are null when none apply. */
+export interface UsageSummary {
+  spent: number;
+  reserved: number;
+  unknown: number;
+  tokenLimit: number | null;
+  calls: number;
+  callLimit: number | null;
+  /** Output tokens of the latest finished calls with reported usage, oldest first. */
+  perCall: number[];
+}
+
+const PER_CALL_BARS = 12;
+
+export function usageSummary(
+  projection: RunProjection | null,
+  limits: { maxOutputTokens: number; maxModelCalls: number } | null,
+): UsageSummary | null {
+  if (!projection) return null;
+  const { budget } = projection;
+  const perCall = Object.values(projection.modelCalls).flatMap((call) =>
+    call.finished && call.usage?.outputTokens != null ? [call.usage.outputTokens] : [],
+  );
+  if (!budget.modelCalls && !budget.spent && !budget.unknownOutstanding && !perCall.length)
+    return null;
+  const unlimited = projection.usageLimits === 'none' || !limits;
+  return {
+    spent: budget.spent,
+    reserved: budget.reserved,
+    unknown: budget.unknownOutstanding,
+    tokenLimit: unlimited ? null : limits.maxOutputTokens,
+    calls: budget.modelCalls,
+    callLimit: unlimited ? null : limits.maxModelCalls,
+    perCall: perCall.slice(-PER_CALL_BARS),
+  };
+}
+
+export type OverviewWidget = 'context' | 'usage' | 'results' | 'changes' | 'agents' | 'environment';
+
+/** The Overview's widgets in their fixed order; one with nothing to say is left out. */
+export function overviewWidgets(input: {
+  chips: readonly WidgetChip[];
+  usage: UsageSummary | null;
+  results: readonly unknown[];
+}): OverviewWidget[] {
+  const shown = new Set<OverviewWidget>(input.chips);
+  if (input.usage) shown.add('usage');
+  if (input.results.length) shown.add('results');
+  return (['context', 'usage', 'results', 'changes', 'agents', 'environment'] as const).filter(
+    (widget) => shown.has(widget),
+  );
+}
+
 export function visibleWidgets(input: {
   hasContext: boolean;
   agents: { total: number; working: number; waiting: number; failed: number; delegated: boolean };
@@ -534,6 +612,9 @@ export function changesPresentation(input: {
   files: number;
   lines: number | null;
   uncounted: number;
+  /** Added and removed lines; null when any file is not counted. */
+  additions?: number | null;
+  deletions?: number | null;
 }):
   | { kind: 'hidden' }
   | { kind: 'loading' }
@@ -543,6 +624,8 @@ export function changesPresentation(input: {
       kind: 'count';
       files: number;
       lines: number | null;
+      additions: number | null;
+      deletions: number | null;
       provisional: boolean;
       uncounted: number;
     } {
@@ -553,6 +636,8 @@ export function changesPresentation(input: {
     kind: 'count',
     files: input.files,
     lines: input.lines,
+    additions: input.additions ?? null,
+    deletions: input.deletions ?? null,
     provisional: input.provisional,
     uncounted: input.uncounted,
   };

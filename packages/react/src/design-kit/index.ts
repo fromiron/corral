@@ -1,6 +1,7 @@
 export * from './adapters/badge.tsx';
 export * from './adapters/button.tsx';
 export * from './adapters/card.tsx';
+export * from './adapters/checkbox.tsx';
 export * from './adapters/dialog.tsx';
 export * from './adapters/input.tsx';
 export * from './adapters/menu.tsx';
@@ -27,6 +28,13 @@ export {
   AccordionTrigger as KitAccordionTrigger,
 } from './components/ui/accordion.tsx';
 export { Badge as KitBadge } from './components/ui/badge.tsx';
+export {
+  Banner,
+  BannerAction,
+  BannerActions,
+  BannerDescription,
+  BannerTitle,
+} from './components/ui/banner.tsx';
 export { Button as KitButton } from './components/ui/button.tsx';
 export {
   Card as KitCard,
@@ -82,4 +90,11 @@ export {
   TableRow,
   TableRow as KitTableRow,
 } from './components/ui/table.tsx';
+export {
+  ThinkingStep,
+  ThinkingStepDetails,
+  ThinkingSteps,
+  ThinkingStepsContent,
+  ThinkingStepsHeader,
+} from './components/ui/thinking-steps.tsx';
 export { UIProvider as DesignKitProvider } from './lib/ui-provider.tsx';

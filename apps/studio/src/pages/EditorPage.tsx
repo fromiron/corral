@@ -19,7 +19,7 @@ import {
   useStudioStores,
   ValidationPanel,
 } from '@corral/react';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Input, Select } from '@corral/react/design-kit';
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -361,13 +361,13 @@ function Editor({
             <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
               <label className="flex items-center gap-2 text-sm">
                 <span className="sr-only">{t('name')}</span>
-                <input
+                <Input
                   value={draft.definition.name}
                   onChange={(e) => editor.getState().setName(e.target.value)}
                   onFocus={() => editor.getState().beginBatch()}
                   onBlur={() => editor.getState().endBatch()}
                   aria-label={t('name')}
-                  className="rounded-md fill-control px-2 py-1 font-medium"
+                  className="font-medium"
                 />
               </label>
               <span className="text-xs text-muted-foreground" data-testid="revisions">

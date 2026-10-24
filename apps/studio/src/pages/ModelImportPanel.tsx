@@ -1,5 +1,5 @@
 import type { ModelCatalogMetadata, ModelImportPreview, ModelImportSource } from '@corral/client';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, Input, Select } from '@corral/react/design-kit';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -113,20 +113,14 @@ export function ModelImportPanel() {
               key={candidate.id}
               className="flex flex-col gap-1 border-t border-line pt-2 text-sm"
             >
-              <label className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  disabled={busy || !candidate.supported}
-                  checked={Boolean(selected[candidate.id])}
-                  onChange={(event) =>
-                    setSelected((value) => ({ ...value, [candidate.id]: event.target.checked }))
-                  }
-                />
-                <span className="min-w-0 break-words">
-                  {candidate.provider} / {candidate.model}{' '}
-                  <span className="text-muted-foreground">— {t(candidate.change)}</span>
-                </span>
-              </label>
+              <Checkbox
+                label={`${candidate.provider} / ${candidate.model} — ${t(candidate.change)}`}
+                disabled={busy || !candidate.supported}
+                checked={Boolean(selected[candidate.id])}
+                onToggle={() =>
+                  setSelected((value) => ({ ...value, [candidate.id]: !value[candidate.id] }))
+                }
+              />
               {candidate.previous ? (
                 <p className="text-xs text-muted-foreground">
                   {t('previous', {
@@ -147,17 +141,14 @@ export function ModelImportPanel() {
                 </p>
               ))}
               {candidate.hasKey ? (
-                <label className="flex items-start gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    disabled={busy || !selected[candidate.id]}
-                    checked={Boolean(copyKeys[candidate.id])}
-                    onChange={(event) =>
-                      setCopyKeys((value) => ({ ...value, [candidate.id]: event.target.checked }))
-                    }
-                  />
-                  {t('copyKey')}
-                </label>
+                <Checkbox
+                  label={t('copyKey')}
+                  disabled={busy || !selected[candidate.id]}
+                  checked={Boolean(copyKeys[candidate.id])}
+                  onToggle={() =>
+                    setCopyKeys((value) => ({ ...value, [candidate.id]: !value[candidate.id] }))
+                  }
+                />
               ) : null}
             </div>
           ))}

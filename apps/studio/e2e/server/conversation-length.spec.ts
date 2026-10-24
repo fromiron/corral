@@ -74,7 +74,7 @@ test('[TC-CONTINUITY-001-H] [TC-CHAT-002-H] [TC-CHAT-002-N] a long conversation 
   const search = page.getByRole('dialog');
   await search.getByRole('textbox', { name: 'Search text' }).fill('Request 123 한국어');
   await expect(search).toContainText('0 matches');
-  await search.getByRole('checkbox', { name: 'Include private messages and results' }).check();
+  await search.getByRole('switch', { name: 'Include private messages and results' }).check();
   await expect(search).toContainText('1 matches');
   await search.getByRole('link').filter({ hasText: 'request 123' }).click();
   await expect(timeline.locator('[data-chat-item="entry_fixture123"]')).toBeVisible();

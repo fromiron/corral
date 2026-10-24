@@ -148,8 +148,8 @@ it('[TC-WBD-022-N] preserves every draft in the copy and requires a separate abo
   await view.click('reviewAbort');
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('resolved.ts');
   expect(view.button('confirm')?.disabled).toBe(true);
-  const confirm = document.querySelector<HTMLInputElement>(
-    'input[aria-label="GitSequence.abortConfirm"]',
+  const confirm = document.querySelector<HTMLElement>(
+    '[role="checkbox"][aria-label="GitSequence.abortConfirm"]',
   );
   expect(confirm).not.toBeNull();
   await act(async () => confirm?.click());

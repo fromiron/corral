@@ -27,7 +27,7 @@ test.describe('model profiles', () => {
 
 test('#75 the archived resources filter is named by its visible text', async ({ page, corral }) => {
   await corral.open('/settings/skills');
-  const filter = page.getByRole('checkbox', { name: 'Show archived items', exact: true });
+  const filter = page.getByRole('switch', { name: 'Show archived items', exact: true });
   await expect(filter).toBeVisible();
   await page.getByText('Show archived items', { exact: true }).click();
   await expect(filter).toBeChecked();
@@ -213,7 +213,7 @@ test('#88 a settings address opens the same settings dialog over work, and closi
   await expect(page).toHaveURL(/\/projects\?(?:.*&)?settings=skills/);
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   await expect(
-    dialog.getByRole('checkbox', { name: 'Show archived items', exact: true }),
+    dialog.getByRole('switch', { name: 'Show archived items', exact: true }),
   ).toBeVisible();
   await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(dialog).toHaveCount(0);

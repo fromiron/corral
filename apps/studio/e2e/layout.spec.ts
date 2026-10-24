@@ -104,7 +104,7 @@ test('#95 an untrusted folder offers its trust settings, and a linked folder dro
   await expect(page.getByText("Trust the project's repository first.")).toBeVisible();
   await page.getByRole('link', { name: 'Open trust settings', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
-  await expect(settings.getByRole('checkbox', { name: 'Trust this repository' })).toBeVisible();
+  await expect(settings.getByRole('switch', { name: 'Trust this repository' })).toBeVisible();
 });
 
 test('#94 at 390px a session opens on the conversation and other panes open and close over it', async ({

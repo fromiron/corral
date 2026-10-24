@@ -1,5 +1,5 @@
 import type { RunSessionStore } from '@corral/react';
-import { Button } from '@corral/react/design-kit';
+import { Button, Switch } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -80,14 +80,12 @@ export function DemoGuide({
                 {step.id === 'steer' &&
                 (step.state === 'pending' ||
                   (step.state === 'current' && pausedFor.current !== target)) ? (
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={armed}
-                      onChange={(event) => setArmed(event.target.checked)}
-                    />
-                    {t('pauseAtRound2')}
-                  </label>
+                  <Switch
+                    label={t('pauseAtRound2')}
+                    size="compact"
+                    checked={armed}
+                    onToggle={() => setArmed(!armed)}
+                  />
                 ) : null}
                 {step.steerTarget ? (
                   <Button

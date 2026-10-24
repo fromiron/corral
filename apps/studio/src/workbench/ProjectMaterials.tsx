@@ -4,7 +4,7 @@ import {
   textAttachmentKey,
 } from '@corral/contracts';
 import { validTextAttachments } from '@corral/core';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ProjectMaterial, projectRequest } from '../projects-api.ts';
@@ -237,13 +237,7 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
       >
         <label className="flex flex-col gap-1 text-xs">
           {t('name')}
-          <input
-            required
-            maxLength={90}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="rounded fill-control px-2 py-1 text-sm"
-          />
+          <Input required maxLength={90} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div className="flex flex-col gap-1 text-xs">
           <span>{t('kind')}</span>
@@ -260,13 +254,12 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
         </div>
         <label className="flex flex-col gap-1 text-xs">
           {t('contents')}
-          <textarea
+          <Textarea
             required
             rows={5}
             maxLength={65536}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="rounded fill-control px-2 py-1 text-sm"
           />
         </label>
         <div className="flex gap-2">

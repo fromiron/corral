@@ -378,9 +378,11 @@ it('[TC-MEET-001-N] active replies and a legacy draft never block new messages; 
     'textarea[aria-label="queued"]',
   )!;
   const queuedButton = (label: string) =>
-    [...queuedBox.parentElement!.querySelectorAll('button')].find(
-      (item) => item.textContent?.trim() === label,
-    );
+    [
+      ...queuedBox
+        .closest('[data-slot="textarea-control"]')!
+        .parentElement!.querySelectorAll('button'),
+    ].find((item) => item.textContent?.trim() === label);
   expect(queuedButton('@Architect')).toBeDefined();
   await act(async () => queuedButton('@Architect')?.click());
   await act(async () => queuedButton('@Builder')?.click());

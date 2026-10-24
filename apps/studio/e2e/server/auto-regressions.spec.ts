@@ -230,7 +230,7 @@ test('[TC-ABS-006-H] [TC-ABS-006-N] a question about an earlier result starts be
   const folder = page.getByRole('tabpanel', { name: 'Project folder', exact: true });
   await folder.getByLabel('Folder path on this computer').fill(source);
   await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
-  const trust = folder.getByRole('checkbox', { name: /Trust this repository/ });
+  const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   await trust.click();
   await expect(trust).toBeChecked();
   // Reuse the authenticated browser session; its bootstrap token is single-use.

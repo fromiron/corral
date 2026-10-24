@@ -1,6 +1,6 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -8,7 +8,7 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { McpEditor, mcpDraft } from '../workbench/harness/McpEditor.tsx';
-import { field, operationId } from '../workbench/harness/Target.tsx';
+import { operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { McpConnection } from './McpConnection.tsx';
@@ -49,6 +49,11 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
   const active = useRef(true),
     add = useRef<HTMLButtonElement>(null);
   const selected = config?.mcpServers?.find((server) => server.id === selection);
+  const enabledNow = selected
+    ? pendingEnabled?.id === selected.id
+      ? pendingEnabled.value
+      : selected.enabled !== false
+    : false;
   const verified = probe?.configRevision === config?.revision ? probe : null;
   useEffect(() => {
     active.current = true;
@@ -127,8 +132,8 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
         <div>
           <h3>{t('search')}</h3>
         </div>
-        <input
-          className={`${field} sm:w-72`}
+        <Input
+          className="sm:w-72"
           aria-label={t('search')}
           placeholder={t('search')}
           value={search}
@@ -203,24 +208,13 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 </Button>
               </div>
             </section>
-            <label className="settings-row">
-              <span>
-                <span className="text-sm font-medium">{t('enabled')}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {t('mcpEnableHint')}
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                aria-label={t('enabled')}
-                checked={
-                  pendingEnabled?.id === selected.id
-                    ? pendingEnabled.value
-                    : selected.enabled !== false
-                }
+            <div className="settings-row flex-col items-start gap-1">
+              <Switch
+                label={t('enabled')}
+                checked={enabledNow}
                 disabled={busy}
-                onChange={(e) => {
-                  const enabled = e.target.checked;
+                onToggle={() => {
+                  const enabled = !enabledNow;
                   setPendingEnabled({ id: selected.id, value: enabled });
                   void work(() =>
                     api.saveMcp(
@@ -233,7 +227,8 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                   );
                 }}
               />
-            </label>
+              <p className="text-xs">{t('mcpEnableHint')}</p>
+            </div>
             <McpConnection
               key={`${config.revision}:${selected.id}`}
               api={api}
