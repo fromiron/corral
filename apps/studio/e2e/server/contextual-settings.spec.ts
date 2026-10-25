@@ -166,7 +166,6 @@ test.describe('active work and credentials', () => {
       release = resolve;
     });
     corral.fake?.setResponses([
-      fauxAssistantMessage('{"template":"single","reason":"A short question"}'),
       async () => {
         await waiting;
         return fauxAssistantMessage(

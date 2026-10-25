@@ -1,6 +1,7 @@
 import type {
   AutoRoute,
   BranchedFrom,
+  ContinuedConversation,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   ImageGenerationProfile,
@@ -43,6 +44,8 @@ export interface RunSnapshot {
   autoRoute?: AutoRoute;
   /** CR-049: the meeting answer this Run is. */
   meeting?: MeetingRunOrigin;
+  /** CR-054: where this Run's copied session turns came from; the text is its own record. */
+  conversation?: ContinuedConversation;
   startedAt: string;
 }
 

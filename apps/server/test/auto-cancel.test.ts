@@ -265,3 +265,17 @@ it('[TC-AUTO-003-N] a pre-start cancellation survives restart and remains sessio
   const other = await s.json('/sessions', { projectId: 'default', title: 'Other' });
   expect((await s.cancel('cmd_restart', other.body.session.sessionId)).status).toBe(404);
 });
+
+it('[TC-TEAM-001-F] cancels a committed conversation start like any auto start', async () => {
+  const s = await setup();
+  const started = await s.json('/runs/auto', { ...s.request('cmd_team'), team: 'none' });
+  expect(started.status).toBe(201);
+  expect(started.body.autoRoute).toBeNull();
+  expect(s.fake.seen.hostRequests).toHaveLength(0);
+  const cancelled = await s.cancel('cmd_team');
+  expect(cancelled.status).toBe(200);
+  expect(cancelled.body.start.runId).toBe(started.body.runId);
+  expect(cancelled.body.cancellation.error).toBeUndefined();
+  s.releaseWorker();
+  await expect.poll(() => s.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
+});

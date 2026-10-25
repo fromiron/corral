@@ -1,9 +1,9 @@
-import { closeRequestOptions, openRequestOptions, requestBox } from '../workbench.ts';
+import { requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
 
-test('[TC-COMPOSER-001-H] attachment inputs survive their menu and templates insert once per command', async ({
+test('[TC-COMPOSER-001-H] attachment inputs survive their menu, the draft and a reload', async ({
   page,
   corral,
 }) => {
@@ -20,24 +20,11 @@ test('[TC-COMPOSER-001-H] attachment inputs survive their menu and templates ins
   });
   await expect(page.getByRole('button', { name: 'Remove notes.txt', exact: true })).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Keep my draft');
-  await openRequestOptions(page);
-  await page.getByRole('button', { name: 'Templates', exact: true }).click();
-  const command = page.getByRole('menuitem', { name: 'Review an interface', exact: true });
-  const name = await command.innerText();
-  await command.click();
-  await closeRequestOptions(page);
-  const once = await requestBox(page).inputValue();
-  expect(once.startsWith('Keep my draft')).toBe(true);
-  expect(once.length).toBeGreaterThan(20);
-  await openRequestOptions(page);
-  await page.getByRole('button', { name: 'Templates', exact: true }).click();
-  await page.getByRole('menuitem', { name, exact: true }).click();
-  await closeRequestOptions(page);
-  expect(await requestBox(page).inputValue()).toBe(
-    `${once}\n\n${once.slice('Keep my draft\n\n'.length)}`,
-  );
+  // CR-055 §6: the composer has no request options, so no templates to insert.
+  await expect(page.getByRole('button', { name: 'Request options', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Remove notes.txt', exact: true })).toBeVisible();
+  await expect(requestBox(page)).toHaveValue('Keep my draft');
 });
 
 test('[TC-COMPOSER-001-N] independent choices preserve effort and block conflicting saves or unsupported new requests', async ({

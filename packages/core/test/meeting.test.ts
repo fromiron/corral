@@ -226,12 +226,16 @@ describe('CR-049 meeting messages', () => {
         ),
       )
       .toBe(true);
+    for (const input of f.seen.slice(0, 3)) expect(brief(input)).toContain('Conversation so far:');
     const second = f.seen.slice(3);
     expect(second).toHaveLength(3);
     for (const input of second) {
       expect(JSON.stringify(input.resumeContext)).toContain('ORIGINAL_MEETING_INPUT');
       expect(brief(input)).toContain('FOLLOW_UP_ONLY');
       expect(brief(input)).not.toContain('ORIGINAL_MEETING_INPUT');
+      // CR-054: a continuation names its content as new, not as the whole conversation.
+      expect(brief(input)).toContain('Messages posted since your last reply:');
+      expect(brief(input)).not.toContain('Conversation so far:');
       expect(JSON.stringify(input.resumeContext)).toContain(`${input.role.name} answers`);
       expect(brief(input)).not.toContain(`${input.role.name} answers`);
     }

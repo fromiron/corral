@@ -85,6 +85,11 @@ export const AgentRole = z.strictObject({
   allowedCollaborationTools: z.array(CollaborationTool).max(8),
   outputContract: OutputContract,
   harness: HarnessBindingRef.optional(),
+  /**
+   * CR-055: the agent's last reply without a tool call is its result. It is offered neither
+   * write_artifact nor submit_result; the Coordinator records and submits that reply.
+   */
+  answer: z.literal('final_reply').optional(),
 });
 export type AgentRole = z.infer<typeof AgentRole>;
 

@@ -15,7 +15,7 @@ async function sessionWithTeam(page: Page, delay: number) {
 const box = requestBox;
 const cards = (page: Page) => page.locator('[data-testid^="entry-"]');
 
-test('[WBTST-004] a follow-up starts a new run from the last result; an IME Enter sends nothing', async ({
+test('[WBTST-004] a follow-up continues the conversation in a new run; an IME Enter sends nothing', async ({
   page,
 }) => {
   await sessionWithTeam(page, 50);
@@ -31,23 +31,30 @@ test('[WBTST-004] a follow-up starts a new run from the last result; an IME Ente
   await box(page).press('Control+Enter');
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page).first()).toContainText('Started');
-  await expect(cards(page).first().getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+  await expect(cards(page).first().getByText('Succeeded', { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
 
-  // The next request starts from that result; the first run is left as it was.
-  await expect(page.getByText(/^Starts from .+ v\d+$/)).toBeVisible();
+  // CR-054: the next request carries the conversation; the first run is left as it was.
+  await expect(page.getByText('Continues this conversation', { exact: true })).toBeVisible();
   await box(page).fill('Now only for one writer');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(cards(page)).toHaveCount(2);
-  await expect(cards(page).nth(1).getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
-  await expect(cards(page).first().getByText('Succeeded')).toBeVisible();
+  await expect(cards(page).nth(1).getByText('Succeeded', { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(cards(page).first().getByText('Succeeded', { exact: true })).toBeVisible();
 
-  // A question about the result is its own run, chosen with a / command.
-  await slash(page, 'ask');
+  // CR-055: a question about an answer is an ordinary message; there is no separate mode.
+  await box(page).fill('/');
+  await expect(page.getByRole('option', { name: /\/ask/ })).toHaveCount(0);
   await box(page).fill('Which one is simpler to back up?');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(cards(page)).toHaveCount(3);
-  await expect(cards(page).nth(2)).toContainText('Question about the result');
-  await expect(cards(page).nth(2).getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+  await expect(cards(page).nth(2)).not.toContainText('Question about the result');
+  await expect(cards(page).nth(2).getByText('Succeeded', { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
 });
 
 test('[WBTST-004] while a run works, a request waits in the queue until a person starts it', async ({
@@ -66,7 +73,9 @@ test('[WBTST-004] while a run works, a request waits in the queue until a person
   const queue = page.getByRole('region', { name: 'Queued next tasks' });
   await expect(queue).toContainText('Then summarise it');
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();
-  await expect(cards(page).first().getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+  await expect(cards(page).first().getByText('Succeeded', { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeEnabled();
   await queue.getByRole('button', { name: 'Start now' }).click();
   await expect(cards(page)).toHaveCount(2);

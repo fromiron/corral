@@ -81,6 +81,8 @@ export interface ProgressState {
   submittedHashes: string[];
   reviewSignatures: string[];
   evidenceHashes?: string[];
+  /** CR-055: artifacts written since the last submission; a new version of one is no progress. */
+  writtenArtifacts?: string[];
 }
 
 export const NO_PROGRESS_TURNS = 6;
@@ -106,9 +108,17 @@ export function applyProgressEvent(
     case 'artifact.version_created': {
       const signature = event.payload.contentHash;
       const known = state.evidenceHashes ?? [];
+      const written = state.writtenArtifacts ?? [];
+      // Rewording an answer that was never submitted is not new work (the question-mode loop).
+      if (written.includes(event.payload.artifactId)) return state;
       return known.includes(signature)
-        ? state
-        : { ...state, turns: 0, evidenceHashes: [...known, signature] };
+        ? { ...state, writtenArtifacts: [...written, event.payload.artifactId] }
+        : {
+            ...state,
+            turns: 0,
+            evidenceHashes: [...known, signature],
+            writtenArtifacts: [...written, event.payload.artifactId],
+          };
     }
     case 'model.finished':
       if (state.observedCalls.includes(event.payload.modelCallId)) return state;
@@ -127,8 +137,9 @@ export function applyProgressEvent(
             ...state,
             turns: 0,
             submittedHashes: [...new Set([...state.submittedHashes, ...hashes])],
+            writtenArtifacts: [],
           }
-        : state;
+        : { ...state, writtenArtifacts: [] };
     }
     case 'review.recorded': {
       const { criteriaVersionId, verdict, issues } = event.payload;

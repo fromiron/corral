@@ -253,6 +253,40 @@ export function resumedMessages(
   ];
 }
 
+/**
+ * CR-054: the session's earlier turns as text-only user/assistant messages. They are rendered
+ * the same way in every follow-up, so a later request's prefix repeats an earlier one's.
+ */
+export function conversationMessages(
+  conversation: import('@corral/contracts').SessionConversation | undefined,
+): import('@earendil-works/pi-ai').Message[] {
+  if (!conversation) return [];
+  const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+  return conversation.turns.flatMap((turn) => [
+    { role: 'user' as const, content: turn.request, timestamp: 1 },
+    {
+      role: 'assistant' as const,
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            turn.answer ??
+            (turn.answerOmitted
+              ? '(The answer is omitted here because it exceeds the conversation size limit.)'
+              : `(No answer was recorded; this request ended ${turn.status}.)`),
+        },
+      ],
+      // Not a provider response: no reasoning, tool calls or usage are replayed.
+      api: 'corral-session',
+      provider: 'corral',
+      model: 'session-history',
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: zero },
+      stopReason: 'stop' as const,
+      timestamp: 1,
+    },
+  ]);
+}
+
 export function checkpointContext(
   context: { messages: unknown[] },
   runtime: 'pi-core' | 'pi-sdk',

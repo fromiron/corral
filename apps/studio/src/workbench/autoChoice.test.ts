@@ -46,23 +46,12 @@ describe('the auto model choice (CR-024)', () => {
     const a = autoCommandSeed('Hello', [], { modelProfile: 'model-a' });
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' })).toBe(a);
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-b' })).not.toBe(a);
-    const pool = {
-      version: 1 as const,
-      modelProfiles: ['model-a', 'model-b'],
-      verifierProfile: 'model-b',
-    };
-    expect(
-      autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, undefined, 'ultra', pool),
-    ).not.toBe(
-      autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, undefined, 'ultra', {
-        ...pool,
-        modelProfiles: ['model-a', 'model-c'],
-        verifierProfile: 'model-c',
-      }),
+    // CR-055: the team is part of the request, so changing it after a lost answer is new.
+    expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, 'none')).toBe(a);
+    expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, 'auto')).not.toBe(a);
+    expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, 'corral:c1')).not.toBe(
+      autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, 'corral:c2'),
     );
-    expect(
-      autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, { taskScope: 'review_only' }),
-    ).not.toBe(a);
     expect(
       autoCommandSeed('Hello', [], {
         modelProfile: 'model-a',

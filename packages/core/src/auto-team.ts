@@ -1,4 +1,5 @@
 import {
+  type AgentRole,
   AUTO_REASON_MAX,
   AUTO_ROUTE_LEVELS,
   AUTO_TEMPLATE_VERSION,
@@ -7,6 +8,7 @@ import {
   type AutoRouteLevel,
   AutoTemplate,
   type CommandError,
+  type ConversationSource,
   type CorralDefinition,
   FILE_TOOLS,
   type HarnessBindingRef,
@@ -198,6 +200,139 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     : result;
 }
 
+/** The conversation lead's duty (CR-055); file and command notes follow it as for auto roles. */
+const LEAD_DUTY =
+  "You are the assistant in this conversation. Answer the person's latest message directly and completely, using the earlier messages as context. Use tools only when the request needs them. Delegate to subagents only when the person explicitly asks for subagents, parallel agents or a team; then give each a self-contained task, read their results and answer yourself. State routine assumptions; use ask_user when a missing decision would materially change the work.";
+const HELPER_PROMPT =
+  'You are a subagent. Do the delegated task given below completely and reply with your findings. You do not see the conversation; rely only on the task text and your tools.';
+
+/** CR-055: delegates the lead may call; `guidance` describes how a saved team worked. */
+export interface ConversationRoster {
+  roles: AgentRole[];
+  guidance?: string;
+}
+
+/**
+ * CR-055: session chat is one lead agent that answers with its final reply. It keeps the auto
+ * single role's tools, model, harness and reasoning, minus the output tools. Without a roster
+ * it may call a helper on explicit request; with one, it leads that team by itself.
+ */
+export function conversationDefinition(
+  input: Omit<AutoDefinitionInput, 'template' | 'ultra' | 'qualityPreset'> & {
+    roster?: ConversationRoster;
+  },
+): CorralDefinition {
+  const { roster, ...rest } = input;
+  const base = autoDefinition({ ...rest, template: 'single' });
+  const duty = roster ? leadTeamDuty(roster) : LEAD_DUTY;
+  const roles = base.roles.map((role) => ({
+    ...role,
+    name: 'Assistant',
+    prompt: role.prompt.replace(WORDING.roles.worker.duty, duty),
+    answer: 'final_reply' as const,
+    outputContract: 'text' as const,
+    allowedWorkTools: role.allowedWorkTools.filter((tool) => tool !== 'write_artifact'),
+    allowedCollaborationTools: [
+      ...role.allowedCollaborationTools.filter((tool) => tool !== 'submit_result'),
+      'spawn_subagents' as const,
+      'await_tasks' as const,
+    ],
+  }));
+  const lead = roles[0];
+  const leadNode = base.nodes.find((node) => node.type === 'agent');
+  if (!lead || !leadNode) return { ...base, name: 'Conversation', roles };
+  // Without a team, one helper with the lead's model and tools and a fresh context.
+  const delegates = roster?.roles ?? [
+    {
+      ...lead,
+      id: 'helper',
+      name: 'Helper',
+      prompt: lead.prompt.replace(duty, HELPER_PROMPT),
+      allowedCollaborationTools: [],
+    },
+  ];
+  return {
+    ...base,
+    name: 'Conversation',
+    roles: [...roles, ...delegates],
+    nodes: [
+      ...base.nodes,
+      ...delegates.map((role) => ({
+        id: role.id,
+        type: 'agent' as const,
+        label: role.name,
+        roleId: role.id,
+        invocation: 'callable' as const,
+        inputBindings: [],
+        outputName: 'notes',
+      })),
+    ],
+    capabilityLinks: [
+      ...base.capabilityLinks,
+      ...delegates.map((role) => ({
+        id: `lead_${role.id}`,
+        kind: 'delegate' as const,
+        sourceNodeId: leadNode.id,
+        targetNodeId: role.id,
+      })),
+    ],
+  };
+}
+
+function leadTeamDuty(roster: ConversationRoster): string {
+  const members = roster.roles.map((role) => `${role.name} (${role.id})`).join(', ');
+  return [
+    "You lead a team in this conversation. Answer the person's latest message, using the earlier messages as context.",
+    `Your team: ${members}. When the work benefits, give them self-contained tasks with spawn_subagents, wait with await_tasks, read their results and write the answer yourself. Answer simple messages directly.`,
+    ...(roster.guidance
+      ? [`The team was designed to work like this; use it as guidance: ${roster.guidance}`]
+      : []),
+    'State routine assumptions; use ask_user when a missing decision would materially change the work.',
+  ].join(' ');
+}
+
+/** A delegate's copy of a role: it answers with its reply and publishes nothing itself. */
+function delegateRole(role: AgentRole, id: string, prompt = role.prompt): AgentRole {
+  return {
+    ...role,
+    id,
+    prompt,
+    answer: 'final_reply',
+    outputContract: 'text',
+    allowedWorkTools: role.allowedWorkTools.filter((tool) => tool !== 'write_artifact'),
+    allowedCollaborationTools: role.allowedCollaborationTools.filter(
+      (tool) => !['submit_result', 'spawn_subagents', 'await_tasks', 'reply'].includes(tool),
+    ),
+  };
+}
+
+/** CR-055 auto: the auto team's roles as delegates, with the session's model and tools. */
+export function autoRoster(
+  input: Omit<AutoDefinitionInput, 'template' | 'ultra' | 'qualityPreset'>,
+): ConversationRoster {
+  const team = autoDefinition({ ...input, template: 'research_write_review' });
+  const planner = autoDefinition({ ...input, template: 'write_review' }).roles.find(
+    (role) => role.id === 'planner',
+  );
+  const order = ['planner', 'researcher', 'writer', 'reviewer'];
+  const roles = [...(planner ? [planner] : []), ...team.roles]
+    .filter((role, index, all) => all.findIndex((other) => other.id === role.id) === index)
+    .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  return { roles: roles.map((role) => delegateRole(role, `team_${role.id}`)) };
+}
+
+/** CR-055 Corral: a saved Corral's roles as delegates; its graph becomes guidance. */
+export function corralRoster(corral: CorralDefinition): ConversationRoster {
+  const label = (id: string) => corral.nodes.find((node) => node.id === id)?.label ?? id;
+  const flow = corral.controlEdges
+    .map((edge) => `${label(edge.source)} → ${label(edge.target)}`)
+    .join('; ');
+  return {
+    roles: corral.roles.map((role) => delegateRole(role, `team_${role.id}`)),
+    ...(flow ? { guidance: `${corral.name}: ${flow}.` } : {}),
+  };
+}
+
 export const AUTO_ROUTE_MAX_RESPONSE_BYTES = 4096;
 export const AUTO_ROUTE_TIMEOUT_MS = 30_000;
 
@@ -284,6 +419,13 @@ export interface AutoStart {
   mode: 'mock' | 'live';
   choice: AutoModelChoice;
   startFrom?: StartFrom;
+  /** CR-054: the session's turns through this ended run. */
+  conversation?: ConversationSource;
+  /**
+   * CR-055: the conversation lead, alone (`none`), leading the auto roster (`auto`) or a saved
+   * Corral's roles. No chooser request runs. Absent keeps the CR-024 auto choice.
+   */
+  team?: 'none' | 'auto' | { corralId: string };
   references?: RunReference[];
 }
 
@@ -299,6 +441,8 @@ const cancelled = () => new Error('the auto request was cancelled before a run s
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
   prepareModels?(
     request: AutoStart,
+    /** CR-055: every profile a roster uses; the request's own profiles when absent. */
+    profiles?: readonly string[],
   ):
     | { ok: true; models: Record<string, ModelProfileSnapshot> }
     | { ok: false; error: CommandError };
@@ -322,6 +466,20 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
     requestHash: string,
     request: AutoStart,
   ): AutoStartResult | null;
+  /**
+   * CR-055: whether the session has a working copy for the conversation lead's file tools; the
+   * start context's value when absent. No chooser runs, so the answer is read at start.
+   */
+  fileTools?(request: AutoStart): boolean | Promise<boolean>;
+  /** CR-055: a saved Corral whose roles the lead may call; null when it does not exist. */
+  corral?(corralId: string): CorralDefinition | null | Promise<CorralDefinition | null>;
+  /**
+   * CR-055 §7: the work style a session turn uses in a trusted folder when none was chosen, so
+   * the lead can run commands and previews; null leaves the turn without one.
+   */
+  sessionHarness?(
+    request: AutoStart,
+  ): HarnessBindingRef | null | undefined | Promise<HarnessBindingRef | null | undefined>;
   /** A refusal before any choice is asked for (busy, model not connected); null to go on. */
   precheck?(request: AutoStart): StartRunResult | null;
   /** The reasoning levels the model supports; null or absent when unknown (simulated). */
@@ -471,6 +629,84 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         autoRoute: null,
         receipt: { ...conflict(request).receipt, error: resolvedUltra.error },
       };
+    if (request.team !== undefined && request.qualityPreset !== 'ultra') {
+      const fileTools = (await deps.fileTools?.(request)) ?? context.fileTools;
+      if (signal?.aborted) throw cancelled();
+      // CR-055 §7: in a linked, trusted folder a live session works with commands and previews
+      // by default. An explicit work style wins; otherwise the session's default is layered under
+      // the person's and project's defaults, which may restrict it. Simulated agents get none:
+      // a work style would only be simulated and would take their file tools away.
+      const harness =
+        request.harness ??
+        (fileTools && request.mode === 'live'
+          ? ((await deps.sessionHarness?.(request)) ?? undefined)
+          : undefined);
+      if (signal?.aborted) throw cancelled();
+      const common = {
+        id: `conversation_${(request.sessionId ?? request.commandId).replace(/^session_/, '')}`,
+        brief: request.brief,
+        ...(request.taskScope ? { taskScope: request.taskScope } : {}),
+        ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
+        ...(request.criteria ? { criteria: request.criteria } : {}),
+        choice: request.choice,
+        ...(harness ? { harness, commandTools: true } : {}),
+        fileTools,
+      };
+      let roster: ConversationRoster | undefined;
+      if (request.team === 'auto') roster = autoRoster(common);
+      else if (typeof request.team === 'object') {
+        const corral = (await deps.corral?.(request.team.corralId)) ?? null;
+        if (signal?.aborted) throw cancelled();
+        // A deleted team is never silently replaced by another way of working.
+        if (!corral)
+          return {
+            runId: null,
+            autoRoute: null,
+            receipt: {
+              ...conflict(request).receipt,
+              error: { code: 'TARGET_NOT_FOUND', message: 'the chosen Corral no longer exists' },
+            },
+          };
+        roster = corralRoster(corral);
+        // A Corral role without its own work style works in the session's.
+        if (harness)
+          roster = {
+            ...roster,
+            roles: roster.roles.map((role) => (role.harness ? role : { ...role, harness })),
+          };
+      }
+      const definition = conversationDefinition({ ...common, ...(roster ? { roster } : {}) });
+      // A saved team's roles may use other models; each must be prepared before the start.
+      const profiles = [...new Set(definition.roles.map((role) => role.modelProfile))];
+      let teamModels = models;
+      if (models && profiles.some((profile) => !models[profile])) {
+        const again = deps.prepareModels?.(request, profiles);
+        if (again && !again.ok)
+          return {
+            runId: null,
+            autoRoute: null,
+            receipt: { ...conflict(request).receipt, error: again.error },
+          };
+        teamModels = again?.models;
+      }
+      const result = await deps.startRun(
+        {
+          schemaVersion: '0.1',
+          commandId: request.commandId,
+          definition,
+          mode: request.mode,
+          autoRequestHash: requestHash,
+          ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
+          ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+          ...(request.startFrom ? { startFrom: request.startFrom } : {}),
+          ...(request.conversation ? { conversation: request.conversation } : {}),
+          ...(request.references?.length ? { references: request.references } : {}),
+        },
+        signal,
+        teamModels,
+      );
+      return { ...result, autoRoute: null };
+    }
     const chosen = await choose(request, signal, models);
     if (signal?.aborted) throw cancelled();
     const autoRoute: AutoRoute = {
@@ -508,6 +744,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
         ...(request.sessionId ? { sessionId: request.sessionId } : {}),
         ...(request.startFrom ? { startFrom: request.startFrom } : {}),
+        ...(request.conversation ? { conversation: request.conversation } : {}),
         ...(request.references?.length ? { references: request.references } : {}),
         autoRoute,
       },

@@ -93,19 +93,7 @@ test.describe('model identification', () => {
       await page
         .getByRole('button', { name: locale === 'en' ? 'Start chat' : '대화 시작', exact: true })
         .click();
-      const options = page.getByRole('button', {
-        name: locale === 'en' ? 'Request options' : '요청 옵션',
-        exact: true,
-      });
-      await options.click();
-      await page
-        .getByRole('combobox', {
-          name: locale === 'en' ? 'Quality preset' : '품질 프리셋',
-          exact: true,
-        })
-        .click();
-      await page.getByRole('option', { name: /^Ultra/ }).click();
-      await page.keyboard.press('Escape');
+      // Ultra and the request options are gone (CR-055 §6); the model chip carries the choice.
       const box = page.getByRole('combobox', {
         name: locale === 'en' ? 'Request' : '요청',
         exact: true,

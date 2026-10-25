@@ -25,7 +25,7 @@ This CR supersedes the conflicting *new-execution* limits in Spec §9, CR-048 §
 
 Before implementation, reproduce bridge call 101, model-cap/identity mismatch, quadratic delta traffic, full prompt reinjection and auxiliary accounting gaps. Cover normal, failure, cancellation, duplicate and late-event cases; compare Core/SDK and isolated/non-isolated requests. Validate multi-language and image context, paired tool calls/results, old-data migration, meeting steering and live ChatGPT/Hive requests. Paid tests stay opt-in and stop on provider quota exhaustion. Live performance distributions require 30 completed samples per compared condition or an explicit incomplete result.
 
-See [execution plan](../plans/llm-runtime-modernization.md) for remaining work and [architecture](../current/architecture.md) for state ownership.
+See [execution plan](../plans/llm-runtime-modernization.md) for remaining work and [architecture](../current/architecture.md) for state ownership. [CR-054](CR-054-session-conversation-continuity.md) reviews this CR after merge. It extends §5 to session conversation turns, which come before the current assignment, and names continuation content for §7.
 
 ## Oracle simplification follow-up — 2026-10-24
 

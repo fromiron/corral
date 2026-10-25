@@ -68,6 +68,12 @@ export {
 export { useSteerTarget } from './run/steer-target.ts';
 export { buildTranscript, type TranscriptEntry } from './run/transcript.ts';
 export {
+  buildTurnProcess,
+  type ProcessRow,
+  type TurnProcess,
+  turnSummary,
+} from './run/turn-process.ts';
+export {
   useWorkPlanSnapshot,
   type WorkPlanRef,
   type WorkPlanSnapshotInput,

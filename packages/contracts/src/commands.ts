@@ -11,6 +11,7 @@ import { ContentHash, ExtensionUiValue, HarnessOverrides, PermissionMode } from 
 import { Identifier, SchemaVersion } from './ids.ts';
 import { MeetingRunOrigin } from './meeting.ts';
 import { ReasoningPolicy, RoleRunOverrides } from './reasoning.ts';
+import { ConversationSource } from './session-continuity.ts';
 import { GitOid } from './user-git.ts';
 import { UserAnswers } from './user-input.ts';
 
@@ -260,11 +261,18 @@ export const StartRunRequest = z.strictObject({
   startFrom: StartFrom.optional(),
   /** The work session this run continues (CR-011); recorded with the run, not in its snapshot. */
   sessionId: Identifier.optional(),
+  /** CR-054: carry the session's turns through an ended run of the same session. */
+  conversation: ConversationSource.optional(),
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
   roleOverrides: RoleRunOverrides.optional(),
   /** The auto choice this run's definition came from (CR-024); set by the runtime's starter. */
   autoRoute: AutoRoute.optional(),
+  /** CR-055: the session request a conversation start came from, so a resend finds this run. */
+  autoRequestHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   /** CR-049: one meeting answer. Only the meeting service sets it; HTTP starts refuse it. */
   meeting: MeetingRunOrigin.optional(),
 });
@@ -284,6 +292,7 @@ export const CreateRunRequest = z.strictObject({
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
   sessionId: Identifier.optional(),
+  conversation: ConversationSource.optional(),
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
   roleOverrides: RoleRunOverrides.optional(),

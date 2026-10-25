@@ -5,7 +5,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { closeRequestOptions, openRequestOptions, panelTab, requestBox } from '../workbench.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -63,7 +63,6 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     );
   };
   corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"Inspect the local application"}'),
     tool('run_command', { command: 'node preview-app.cjs', mode: 'service', timeoutMs: 60000 }),
     (context) => {
       const started = last(context.messages);
@@ -94,13 +93,8 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     },
   ]);
   try {
-    await corral.open('/settings/harness?projectId=default');
-    await page.getByLabel('Work style name', { exact: true }).fill('Service preview');
-    await page.getByRole('combobox', { name: 'Policy', exact: true }).click();
-    await page.getByRole('option', { name: 'Trusted native extensions', exact: true }).click();
-    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
-    await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
-    await page.goto(corral.server.url);
+    // CR-055: a trusted folder's session runs commands in the built-in work style.
+    await corral.open('/');
     await page.getByRole('tab', { name: /^Project folder/ }).click();
     const folder = page.getByRole('tabpanel', { name: 'Project folder' });
     await folder.getByLabel('Folder path on this computer').fill(original);
@@ -119,10 +113,6 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       .getByRole('region', { name: 'Working copy' })
       .getByRole('button', { name: /Make a working copy from/ })
       .click();
-    await openRequestOptions(page);
-    await page.getByRole('combobox', { name: 'Work style for next request', exact: true }).click();
-    await page.getByRole('option', { name: 'Service preview · r1', exact: true }).click();
-    await closeRequestOptions(page);
     await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();
     await page
       .getByRole('option')

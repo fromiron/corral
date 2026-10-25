@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { closeRequestOptions, openRequestOptions, panelTab, requestBox } from '../workbench.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('[TC-ABS-004-H] [TC-ABS-004-N] session file preview isolates cookies, reads refreshed assets and closes its lease', async ({
@@ -140,8 +140,9 @@ test.describe('run-owned previews', () => {
     let previewUrl = '';
     const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
       fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: 'toolUse' });
+    // CR-055: the session's lead works in the built-in work style of a trusted folder, so it
+    // can preview without a chosen work style, and it answers with its final reply.
     corral.fake?.setResponses([
-      fauxAssistantMessage('{"template":"single","reason":"Inspect the local application"}'),
       tool('preview_file', { path: 'index.html' }),
       (context) => {
         leaseId = /preview_[a-f0-9]{32}/.exec(JSON.stringify(context.messages))?.[0] ?? '';
@@ -185,20 +186,7 @@ test.describe('run-owned previews', () => {
           questions: [{ id: 'preview', kind: 'text', prompt: 'Keep this preview?' }],
         });
       },
-      tool('write_artifact', { text: 'The live browser interaction was verified.' }),
-      (context) => {
-        const latest = context.messages.at(-1);
-        if (latest?.role !== 'toolResult')
-          throw new Error('Written artifact did not reach the model');
-        const text = latest.content
-          .filter((item) => item.type === 'text')
-          .map((item) => item.text)
-          .join('\n');
-        const written = JSON.parse(text).artifactVersionId;
-        if (typeof written !== 'string') throw new Error('Written artifact version is missing');
-        return tool('submit_result', { artifactVersionIds: [written] });
-      },
-      fauxAssistantMessage('Done.'),
+      fauxAssistantMessage('The live browser interaction was verified.'),
     ]);
     await page.route('http://127.0.0.2:*/**', (route) => {
       if (!previewUrl || new URL(route.request().url()).origin !== new URL(previewUrl).origin)
@@ -206,13 +194,7 @@ test.describe('run-owned previews', () => {
       return route.continue();
     });
     try {
-      await corral.open('/settings/harness?projectId=default');
-      await page.getByLabel('Work style name', { exact: true }).fill('Preview work style');
-      await page.getByRole('combobox', { name: 'Policy', exact: true }).click();
-      await page.getByRole('option', { name: 'Trusted native extensions', exact: true }).click();
-      await page.getByRole('button', { name: 'Save work style', exact: true }).click();
-      await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
-      await page.goto(corral.server.url);
+      await corral.open('/');
       await page.getByRole('tab', { name: /^Project folder/ }).click();
       const folder = page.getByRole('tabpanel', { name: 'Project folder' });
       await folder.getByLabel('Folder path on this computer').fill(original);
@@ -231,12 +213,6 @@ test.describe('run-owned previews', () => {
         .getByRole('region', { name: 'Working copy' })
         .getByRole('button', { name: /Make a working copy from/ })
         .click();
-      await openRequestOptions(page);
-      await page
-        .getByRole('combobox', { name: 'Work style for next request', exact: true })
-        .click();
-      await page.getByRole('option', { name: 'Preview work style · r1', exact: true }).click();
-      await closeRequestOptions(page);
       await page
         .getByRole('combobox', { name: 'Permissions for next request', exact: true })
         .click();
@@ -276,12 +252,13 @@ test.describe('run-owned previews', () => {
       const question = page.getByRole('form', { name: 'Waiting for your answer' });
       await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
       await question.getByRole('button', { name: 'Send answer' }).click();
-      // The normal quality budget requires a decision before the seventh model request.
-      // Continue through that visible gate rather than changing limits behind the UI.
-      await page.getByRole('button', { name: 'Continue with this version', exact: true }).click();
-      await expect(page.getByTestId('chat-result')).toContainText(
-        'The live browser interaction was verified.',
-      );
+      // A no-progress pause may ask before the reply; continue through that visible gate rather
+      // than changing limits behind the UI.
+      const answer = page.getByTestId('chat-result');
+      const gate = page.getByRole('button', { name: 'Continue with this version', exact: true });
+      await expect(answer.or(gate).first()).toBeVisible({ timeout: 30_000 });
+      if (await gate.isVisible()) await gate.click();
+      await expect(answer).toContainText('The live browser interaction was verified.');
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
       const ended = await page.request.get(
         `${corral.server.url}/api/v1/sessions/${sessionId}/previews`,

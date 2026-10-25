@@ -3663,5 +3663,118 @@
     "done": "Lead the session side area with an Overview pane of kit Card widgets (context, usage, results, changes, agents, environment) for the presented run, each shown only when it has something to say and opening its existing detail on click; keep audit detail in the Run pane, show the same widgets in the composer summary popover, and add no stream, poll or model call.",
     "status": "implemented",
     "evidence": "docs/evaluation/Session-Overview-Widgets-2026-10-24.md"
+  },
+  {
+    "id": "C-186",
+    "phase": "M8",
+    "title": "CR-054 session conversation continuity and request prefix review",
+    "dependsOn": [
+      "C-184"
+    ],
+    "requirements": [
+      "CRL-LLM-007"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "packages/adapter-pi/src/",
+      "apps/server/src/",
+      "apps/studio/src/",
+      "docs/"
+    ],
+    "done": "Send session follow-ups as the session's copied request/answer turns before the current assignment instead of CR-007's start point; record and export the copy; keep explicit start points and explain unchanged; name meeting continuation content; show reported cached input in the Usage detail without treating unreported calls as zero.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Session-Conversation-Continuity-2026-10-24.md"
+  },
+  {
+    "id": "C-187",
+    "phase": "M8",
+    "title": "CR-055 final-reply answers and the conversation agent",
+    "dependsOn": [
+      "C-186"
+    ],
+    "requirements": [
+      "CRL-LLM-008"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "packages/adapter-pi/src/",
+      "packages/react/src/",
+      "apps/server/src/",
+      "apps/studio/src/",
+      "docs/"
+    ],
+    "done": "Let a role answer with its final reply (no write_artifact/submit_result, one request for a short reply); start session chat as one lead conversation role without a chooser request; remove the follow-up/question selector; give explain a tool-less final-reply role; count rewrites of an unsubmitted artifact as no progress and pause every run after six replies without progress; number raw replies by request.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Conversation-Agent-2026-10-25.md"
+  },
+  {
+    "id": "C-188",
+    "phase": "M8",
+    "title": "CR-055 turn display and composer statistics",
+    "dependsOn": [
+      "C-187"
+    ],
+    "requirements": [
+      "CRL-UX-012"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "packages/adapter-pi/src/",
+      "packages/react/src/",
+      "apps/server/src/",
+      "apps/studio/src/",
+      "docs/"
+    ],
+    "done": "Render each turn as message, one flat process group and an always-visible answer; stream rows with a running status; fold finished process under its duration and step count; move version headers and nested run folds out of chat; show turns, steps, tokens and cache hit under the composer (output speed deferred).",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Conversation-Agent-2026-10-25.md"
+  },
+  {
+    "id": "C-189",
+    "phase": "M8",
+    "title": "CR-055 explicit subagents and the team selector",
+    "dependsOn": [
+      "C-187"
+    ],
+    "requirements": [
+      "CRL-LLM-009"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "packages/adapter-pi/src/",
+      "packages/react/src/",
+      "apps/server/src/",
+      "apps/studio/src/",
+      "docs/"
+    ],
+    "done": "Give the lead a helper delegate it calls only on explicit request; add a composer team selector (none, then a Corral group of auto, saved Corrals and Corral management) whose roster the lead delegates to by itself; no per-message chooser request; remove the request-options popover and Ultra from the composer.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Conversation-Agent-2026-10-25.md"
+  },
+  {
+    "id": "C-190",
+    "phase": "M8",
+    "title": "CR-055 default session tools",
+    "dependsOn": [
+      "C-189"
+    ],
+    "requirements": [
+      "CRL-LLM-010"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "packages/testkit/src/",
+      "apps/server/src/",
+      "apps/studio/e2e/",
+      "docs/"
+    ],
+    "done": "Bind the built-in session work style to live session turns in trusted folders (explicit work style wins, defaults may restrict it); give writers command and preview tools; publish final replies regardless of the work style's tool list; settle a cancelled wait as cancelled; let a resent conversation start and its cancellation find the recorded run.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Conversation-Agent-2026-10-25.md"
   }
 ]

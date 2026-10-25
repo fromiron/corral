@@ -4043,6 +4043,59 @@
               ],
               "additionalProperties": false
             },
+            "conversation": {
+              "type": "object",
+              "properties": {
+                "throughRunId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "turns": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "runId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "artifactVersionId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "runId",
+                      "artifactVersionId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "omittedTurns": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "contextHash": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "throughRunId",
+                "turns",
+                "omittedTurns",
+                "contextHash"
+              ],
+              "additionalProperties": false
+            },
             "harnesses": {
               "type": "object",
               "propertyNames": {

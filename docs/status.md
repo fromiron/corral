@@ -9,6 +9,8 @@
 | 범위 | 승인·현재 계약 | 구현·기존 증거 | 남은 경계 |
 |---|---|---|---|
 | LLM 요청·컨텍스트·정산 | CR-052, [현재 runtime](current/llm-runtime.md) | C-179–184 구현·검증 범위는 [이번 기록](evaluation/llm-modernization/report.md)과 backlog 참조 | Linux/ChatGPT/Hive와 mock·loopback 범위. 기존 전체 회귀 실패, 다른 OS·실제 음성/이미지·일반 과제 품질 동등성은 별도 |
+| 대화 에이전트·팀 선택·차례 표시 | CR-055, [현재 runtime](current/llm-runtime.md), [채팅 위젯 계약](current/chat-widgets-contract.md) | C-187–190, [검증 기록](evaluation/Conversation-Agent-2026-10-25.md) | 결정적 provider·scripted agent·Studio 단위·브라우저 데모·서버 E2E 범위. 실제 모델 대화·다른 OS는 미검증 |
+| 세션 대화 연속성·요청 prefix | CR-054, [현재 runtime](current/llm-runtime.md) | C-186, [검증 기록](evaluation/Session-Conversation-Continuity-2026-10-24.md) | 결정적 provider·in-process worker·Studio 단위 범위. 실제 ChatGPT/Hive 후속 대화와 ChatGPT 구독 경로의 cache 0 원인은 opt-in live 확인 전까지 미검증 |
 | 세션 현황 위젯 | CR-053, [채팅 위젯 계약](current/chat-widgets-contract.md), [Design System](../DESIGN.md) | C-185 구현, [Linux 로컬 서버 화면·단위 회귀](evaluation/Session-Overview-Widgets-2026-10-24.md) | 서버 E2E·다른 OS·스크린리더·실제 IME 검증은 별도. 대화 화면이 75rem 미만이면 위젯을 숨기고 입력창의 현황 버튼으로 연다 |
 | 세션 작업 화면 단순화(도킹·대화·남은 킷 전환) | CR-051, [Workbench](current/workbench.md), [Design System](../DESIGN.md) | C-178 구현, [Linux 화면·레이아웃·핵심 회귀](evaluation/Session-Workspace-Simplification-2026-10-24.md) | 전체 서버 E2E·다른 OS·실제 IME·스크린리더 검증은 별도 |
 | 디자인 킷·공용 컴포넌트·토큰 정형화 | CR-050, [Design System](../DESIGN.md) | C-177 구현, [Linux light/dark·390px·키보드·설정·핵심 회귀](evaluation/Design-Kit-Adoption-2026-10-23.md) | 전체 출시·다른 OS·실제 IME·스크린리더·모든 도메인 여정 검증은 별도 |

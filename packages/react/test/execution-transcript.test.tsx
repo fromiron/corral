@@ -121,6 +121,19 @@ describe('ExecutionTranscript (UX-A3)', () => {
     expect(screen.queryByText(messages.Transcript.waiting)).not.toBeInTheDocument();
     expect(screen.getAllByText('Response complete · no text')).toHaveLength(2);
   });
+  it('[TC-TURN-001-H] numbers compact raw replies by request order, not event sequence', async () => {
+    const { session, writer } = await collaborationRun();
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionTranscript session={session} executionId={writer} compact />
+      </IntlProvider>,
+    );
+    const numbers = screen
+      .getAllByText(/^Model call \d+ · response text$/)
+      .map((element) => Number(element.textContent?.match(/\d+/)?.[0]));
+    // The writer made two requests; event sequence numbers would be far larger.
+    expect([...new Set(numbers)].sort()).toEqual([1, 2]);
+  });
   it('[TC-RNS-010-H] shows the person’s instruction with where it went, and the reply that followed it', async () => {
     const { session, writer } = await collaborationRun({ steerWriter: 'Cite the vendor docs.' });
     render(

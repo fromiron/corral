@@ -80,10 +80,12 @@ export class ScriptedAgentAdapter implements AgentAdapter {
     const collaboration = this.options.collaborate ?? true;
     const tools = input.role.allowedCollaborationTools;
 
+    let lastModelCallId: string | undefined;
     /** One model request through the host: permit, reply, streamed text, observation. */
     const request = async (turn: number, extra: string[]): Promise<string> => {
       checkpoint();
       const permit = await host.prepareModelRequest();
+      lastModelCallId = permit.modelCallId;
       checkpoint();
       await host.modelRequestDispatched?.(permit.modelCallId);
       await this.options.beforeReply?.(turn, input);
@@ -122,6 +124,7 @@ export class ScriptedAgentAdapter implements AgentAdapter {
 
         // Delegate on the first round; repairs reuse the evidence instead of spawning again.
         const delegateTo = input.capabilities.delegateTo[0];
+        let delegated = false;
         if (
           collaboration &&
           delegateTo &&
@@ -138,6 +141,7 @@ export class ScriptedAgentAdapter implements AgentAdapter {
             },
           });
           if (!spawned.ok) return failed(spawned.error);
+          delegated = true;
           checkpoint();
           let children: { artifactVersionIds: string[] }[];
           for (;;) {
@@ -200,8 +204,12 @@ export class ScriptedAgentAdapter implements AgentAdapter {
         if (input.role.outputContract === 'review') text = this.reviewOf(input);
         checkpoint();
         // A role with file tools (CR-012) keeps its reply in the working copy as well: it reads
-        // the file first when it exists, as the broker requires, then writes it.
-        if ((input.role.allowedWorkTools as readonly string[]).includes('write_file')) {
+        // the file first when it exists, as the broker requires, then writes it. A lead that
+        // delegated leaves the files to its delegates.
+        if (
+          !delegated &&
+          (input.role.allowedWorkTools as readonly string[]).includes('write_file')
+        ) {
           const path = `notes/${input.nodeId}.md`;
           const listed = await host.invokeTool({ name: 'list_files', args: { path: 'notes' } });
           const exists =
@@ -211,6 +219,9 @@ export class ScriptedAgentAdapter implements AgentAdapter {
           checkpoint();
           await host.invokeTool({ name: 'write_file', args: { path, text: `${text}\n` } });
         }
+        // CR-055: a final-reply role's last reply is its answer; the Coordinator publishes it.
+        if (input.role.answer === 'final_reply' && lastModelCallId)
+          return { outcome: 'succeeded', finalTextModelCallId: lastModelCallId };
         const written = await host.invokeTool({ name: 'write_artifact', args: { text } });
         if (!written.ok) return failed(written.error);
         checkpoint();

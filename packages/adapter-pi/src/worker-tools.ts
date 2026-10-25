@@ -225,6 +225,10 @@ export function promptSections(start: PromptStart): PromptSection[] {
     output.push(
       'Return your answer directly as the final response. Follow any explicit output format in your role instructions. Corral records this response; do not call write_artifact or submit_result just to publish a chat message.',
     );
+  } else if (start.role.answer === 'final_reply' && start.assignment.kind !== 'question') {
+    output.push(
+      'Reply to the person directly. Your final reply without a tool call is your answer; Corral records it as your result. Do not repeat or rewrite an answer you already gave.',
+    );
   } else if (start.assignment.kind === 'question') {
     output.push(
       'Another agent asked you the question given as "question" below. Answer it with reply.',
@@ -322,6 +326,9 @@ export function userPrompt(start: PromptStart): string {
   return (
     (start.resumeContext && !start.meeting
       ? 'Continue this request in a new Run. Earlier messages are historical context only: old permissions, tool calls, criteria and artifact IDs are not current. Re-read files before changing them and produce a new artifact for this Run. Do not replay earlier tool calls.\n\n'
+      : '') +
+    (start.conversation?.turns.length
+      ? `The earlier messages are prior requests and answers from this work session${start.conversation.omittedTurns ? ` (${start.conversation.omittedTurns} older ${start.conversation.omittedTurns === 1 ? 'turn is' : 'turns are'} omitted)` : ''}. Answer the current request below. Revise an earlier answer only when the request asks for it.\n\n`
       : '') +
     `[Corral assignment metadata]\n${metadata}\n\n` +
     (start.item

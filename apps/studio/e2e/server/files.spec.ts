@@ -99,7 +99,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await expect(trust).toBeChecked();
     await folder
       .getByRole('textbox', { name: /Checks/ })
-      .fill("Notes exist = node -e \"require('fs').statSync('notes/writer.md')\"");
+      .fill("Notes exist = node -e \"require('fs').statSync('notes/team_writer_role.md')\"");
     await folder.getByRole('button', { name: 'Save checks' }).click();
 
     await page.getByRole('tab', { name: /^Teams/ }).click();
@@ -108,7 +108,8 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await page.getByRole('link', { name: 'Project home', exact: true }).click();
     await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
     await page.getByLabel('Purpose').fill('Keep notes in the repository');
-    // CR-024: a new session starts in auto mode; this journey runs the imported team.
+    // CR-055: this journey runs the imported team; the session's lead calls its writer, whose
+    // node is team_writer_role.
     await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
     await page.getByRole('option', { name: 'Writer with files', exact: true }).click();
     await page.getByRole('button', { name: 'Start chat' }).click();
@@ -132,7 +133,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await requestBox(page).fill('Write the notes');
     await page.getByRole('button', { name: 'Send' }).click();
     const card = page.locator('[data-testid^="entry-"]').first();
-    await expect(card.getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(card.getByTestId('run-change-summary')).toContainText(/1 changed file · \+\d+ −0/);
     await expect(card.getByRole('link', { name: /1 changed file/ })).toHaveAttribute(
       'href',
@@ -141,7 +142,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
 
     await copy.getByRole('link', { name: 'Review changes' }).click();
     await expect(page).toHaveURL(/\/review/);
-    const file = page.getByRole('button', { name: /notes\/writer\.md/ });
+    const file = page.getByRole('button', { name: /notes\/team_writer_role\.md/ });
     await expect(file).toContainText('Added');
     await expect(file).toContainText('Corral');
     await file.click();
@@ -167,7 +168,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await draft.fill('Start with a title.');
 
     await page.setViewportSize({ width: 1024, height: 800 });
-    const diff = page.getByRole('region', { name: 'notes/writer.md', exact: true });
+    const diff = page.getByRole('region', { name: 'notes/team_writer_role.md', exact: true });
     await expect
       .poll(async () => (await diff.boundingBox())?.width ?? 0)
       .toBeGreaterThanOrEqual(400);
@@ -201,21 +202,21 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await expect(page.getByTestId('decision')).toContainText('Approved');
     await page.getByRole('button', { name: 'Plan applying the approved changes' }).click();
     await expect(page.getByTestId('integration-plan')).toContainText(
-      'notes/writer.md · Will write',
+      'notes/team_writer_role.md · Will write',
     );
     await page.getByRole('button', { name: /^Apply \d+ files?$/ }).click();
     await expect(page.getByTestId('integration').first()).toContainText('Applied');
-    expect(existsSync(join(original, 'notes', 'writer.md'))).toBe(true);
+    expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(true);
     await page.getByRole('button', { name: 'Revert' }).click();
     await expect(page.getByTestId('integration').first()).toContainText('Reverted');
-    expect(existsSync(join(original, 'notes', 'writer.md'))).toBe(false);
+    expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(false);
     const parts = page.getByRole('region', { name: 'Selected changes', exact: true });
     await parts.getByRole('button', { name: 'Select changed parts' }).click();
     await parts.getByRole('checkbox', { name: /Part 1/ }).check();
     await parts.getByRole('button', { name: 'Preview original-folder changes' }).click();
     await expect(parts).toContainText('Target: original folder');
     await parts.getByRole('button', { name: 'Approve and apply to original' }).click();
-    await expect.poll(() => existsSync(join(original, 'notes', 'writer.md'))).toBe(true);
+    await expect.poll(() => existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(true);
     await page.goto(
       new URL(
         `/sessions/${new URL(page.url()).pathname.split('/')[2]}?panel=changes`,
@@ -232,7 +233,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     const originalPreview = checkpoints.getByRole('region', { name: 'Preview restore' });
     await expect(originalPreview).toContainText('Original folder');
     await originalPreview.getByRole('button', { name: 'Restore original folder' }).click();
-    await expect.poll(() => existsSync(join(original, 'notes', 'writer.md'))).toBe(false);
+    await expect.poll(() => existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(false);
 
     await checkpoints.getByLabel('Checkpoint name').fill('After review');
     await checkpoints.getByRole('button', { name: 'Save checkpoint', exact: true }).click();
@@ -245,7 +246,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
       .last();
     await baseline.getByRole('button', { name: 'Preview restore' }).click();
     const preview = checkpoints.getByRole('region', { name: 'Preview restore' });
-    await expect(preview).toContainText('notes/writer.md');
+    await expect(preview).toContainText('notes/team_writer_role.md');
     await preview.getByRole('button', { name: 'Restore working copy' }).click();
     await expect(
       checkpoints

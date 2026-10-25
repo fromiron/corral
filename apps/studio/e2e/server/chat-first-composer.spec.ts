@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { requestBox, slash } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// CR-043: use the real browser entry, server, adapter and Coordinator. Only the
+// CR-043/CR-055: use the real browser entry, server, adapter and Coordinator. Only the
 // provider response is deterministic; no session, Corral or run is injected.
 test.use({ live: true, codexLogin: true, reasoningApi: true });
 
@@ -28,12 +28,19 @@ async function savedCorrals(page: Page): Promise<CorralSummary[]> {
   return response.json();
 }
 
-const optionsButton = (page: Page) =>
-  page.getByRole('button', { name: 'Request options', exact: true });
-const optionsDialog = (page: Page) =>
-  page.getByRole('dialog', { name: 'Request options', exact: true });
+// CR-055: the team for the next turn is a chip in the composer; there are no request options.
+const teamChip = (page: Page) =>
+  page
+    .getByRole('region', { name: 'Request', exact: true })
+    .getByRole('combobox', { name: 'Team', exact: true });
 
-test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced choices and keeps its answer after reload', async ({
+async function chooseTeam(page: Page, name: string) {
+  await teamChip(page).click();
+  await page.getByRole('option', { name: new RegExp(`^${name}`) }).click();
+  await expect(teamChip(page)).toContainText(name);
+}
+
+test('[TC-UX-005-H] a default chat starts with no team, one conversation turn and keeps its answer after reload', async ({
   page,
   corral,
 }) => {
@@ -42,7 +49,8 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   expect((await session(page)).corralId).toBeNull();
   expect((await session(page)).autoTitle).toBe(true);
 
-  await expect(optionsButton(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Request options', exact: true })).toHaveCount(0);
+  await expect(teamChip(page)).toContainText('No team');
   await expect(page.getByRole('button', { name: 'Attachments', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).not.toContainText(
@@ -53,12 +61,7 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   ).toContainText('Default policy');
   await expect(page.getByRole('button', { name: 'Live voice', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  for (const label of [
-    'Quality preset',
-    'Verification scope',
-    'Corral',
-    'Work style for next request',
-  ]) {
+  for (const label of ['Quality preset', 'Verification scope', 'Work style for next request']) {
     await expect(page.getByRole('combobox', { name: label, exact: true })).toBeHidden();
   }
   await expect(
@@ -74,9 +77,7 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
 
   await expect(requestBox(page)).toBeInViewport();
 
-  corral.fake?.answerWith('Start by writing what you want to accomplish.', {
-    hostReply: '{"template":"single","reason":"One direct answer is enough"}',
-  });
+  corral.fake?.answerWith('Start by writing what you want to accomplish.');
   const prompt = 'How do I start a normal conversation?';
   await requestBox(page).fill(prompt);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -95,7 +96,15 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   );
   expect(persisted.corralId).toBeNull();
   expect(persisted.entries[0]).toMatchObject({ text: prompt, state: 'started', intent: 'next' });
-  expect(persisted.entries[0]?.runId).toBe(corral.server.coordinator.listRuns()[0]?.runId);
+  const run = corral.server.coordinator.listRuns()[0];
+  expect(persisted.entries[0]?.runId).toBe(run?.runId);
+  // One lead answers directly: no auto choice, no write/submit round trip.
+  const snapshot = run ? corral.server.coordinator.getRunSnapshot(run.runId) : null;
+  expect(snapshot?.autoRoute ?? null).toBeNull();
+  expect(snapshot?.definition.roles.map((role) => role.name)).toEqual(['Assistant', 'Helper']);
+  expect(
+    run ? corral.server.coordinator.getSnapshot(run.runId).projection.budget.modelCalls : 0,
+  ).toBe(1);
   expect(await savedCorrals(page)).toEqual([]);
 
   await page.reload();
@@ -109,63 +118,40 @@ test('[TC-UX-005-H] a default chat starts without a saved Corral or advanced cho
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-UX-005-N] explicit request scope survives closing options and reload, remains visible and reaches the run', async ({
+test('[TC-UX-005-N] the auto team survives reload and gives the lead its roster for the next turn', async ({
   page,
   corral,
 }) => {
   await startChat(page, corral);
-  await requestBox(page).fill('Review the proposed launch without editing files.');
-  await optionsButton(page).click();
-  const dialog = optionsDialog(page);
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('switch', { name: 'Review only · no file changes', exact: true }).check();
-  await dialog.getByRole('combobox', { name: 'Verification scope', exact: true }).click();
-  await page.getByRole('option', { name: 'Release checks', exact: true }).click();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(optionsButton(page)).toBeFocused();
-  await expect(
-    page.getByRole('button', { name: 'Review only · no file changes', exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Release checks', exact: true })).toBeVisible();
-
+  await requestBox(page).fill('Plan and review the launch checklist.');
+  await chooseTeam(page, 'auto');
   await page.reload();
-  await expect(requestBox(page)).toHaveValue('Review the proposed launch without editing files.');
-  await expect(
-    page.getByRole('button', { name: 'Review only · no file changes', exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Release checks', exact: true })).toBeVisible();
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  expect(
-    await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
-  ).toBe(true);
+  await expect(requestBox(page)).toHaveValue('Plan and review the launch checklist.');
+  await expect(teamChip(page)).toContainText('auto');
   await page.setViewportSize({ width: 390, height: 844 });
-  await optionsButton(page).click();
-  await expect(
-    dialog.getByRole('switch', { name: 'Review only · no file changes', exact: true }),
-  ).toBeChecked();
-  await expect(
-    dialog.getByRole('combobox', { name: 'Verification scope', exact: true }),
-  ).toContainText('Release checks');
-  await expect(dialog).toBeInViewport();
+  await teamChip(page).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('option', { name: /^No team/ })).toBeInViewport();
   await page.keyboard.press('Escape');
-  await expect(optionsButton(page)).toBeFocused();
+  await expect(teamChip(page)).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
-  corral.fake?.answerWith('The proposed launch has been reviewed without file changes.', {
-    hostReply: '{"template":"single","reason":"Review the requested scope"}',
-  });
+  corral.fake?.answerWith('The checklist is planned and reviewed.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
   const run = corral.server.coordinator.listRuns()[0];
   if (!run) throw new Error('The request must reach the Coordinator');
-  expect(corral.server.coordinator.getRunSnapshot(run.runId)?.definition.input).toMatchObject({
-    taskScope: 'review_only',
-    verificationScope: 'release',
-  });
-  await expect
-    .poll(async () => (await session(page)).entries[0])
-    .toMatchObject({ taskScope: 'review_only', verificationScope: 'release', runId: run.runId });
+  const definition = corral.server.coordinator.getRunSnapshot(run.runId)?.definition;
+  expect(definition?.roles.map((role) => role.name)).toEqual([
+    'Assistant',
+    'Planner',
+    'Researcher',
+    'Writer',
+    'Reviewer',
+  ]);
+  await expect(page.getByTestId('chat-result')).toContainText(
+    'The checklist is planned and reviewed.',
+  );
   expect(await savedCorrals(page)).toEqual([]);
   expect(corral.errors).toEqual([]);
 });
@@ -192,38 +178,24 @@ test('[TC-UX-005-H] a saved Corral is an optional choice that can be cleared bac
   await expect(page).toHaveURL(/\/sessions\/session_/);
   expect((await session(page)).corralId).toBeNull();
 
-  await optionsButton(page).click();
-  const dialog = optionsDialog(page);
-  await dialog.getByRole('combobox', { name: 'Corral', exact: true }).click();
-  await page.getByRole('option', { name: custom.name, exact: true }).click();
+  await chooseTeam(page, custom.name);
   await expect.poll(async () => (await session(page)).corralId).toBe(custom.corralId);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  const selected = page
-    .getByRole('region', { name: 'Request', exact: true })
-    .getByRole('button', { name: custom.name, exact: true });
-  await expect(selected).toBeVisible();
   await page.reload();
-  await expect(selected).toBeVisible();
+  await expect(teamChip(page)).toContainText(custom.name);
   expect((await session(page)).corralId).toBe(custom.corralId);
-  await selected.click();
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('combobox', { name: 'Corral', exact: true }).click();
-  await page.getByRole('option', { name: 'Default chat', exact: true }).click();
+  await chooseTeam(page, 'No team');
   await expect.poll(async () => (await session(page)).corralId).toBeNull();
-  await page.keyboard.press('Escape');
-  await expect(selected).toBeHidden();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
 
-  corral.fake?.answerWith('You can continue without selecting a Corral.', {
-    hostReply: '{"template":"single","reason":"The saved Corral is optional"}',
-  });
+  corral.fake?.answerWith('You can continue without selecting a Corral.');
   await requestBox(page).fill('Continue as a normal chat.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
   const run = corral.server.coordinator.listRuns()[0];
   if (!run) throw new Error('The default chat must create a run');
-  expect(corral.server.coordinator.getRunSnapshot(run.runId)?.autoRoute?.template).toBe('single');
+  expect(corral.server.coordinator.getRunSnapshot(run.runId)?.definition.roles[0]?.name).toBe(
+    'Assistant',
+  );
   expect(await savedCorrals(page)).toEqual(saved);
   await expect(page.getByTestId('chat-result')).toContainText(
     'You can continue without selecting a Corral.',
@@ -231,13 +203,12 @@ test('[TC-UX-005-H] a saved Corral is an optional choice that can be cleared bac
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-UX-005-N] a queue blocked by request scope explains why outside the closed options and offers recovery', async ({
+test('[TC-UX-005-N] a request typed while the lead waits is queued, not started', async ({
   page,
   corral,
 }) => {
   await startChat(page, corral);
   corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"Ask before continuing"}'),
     fauxAssistantMessage(
       [
         fauxToolCall('ask_user', {
@@ -255,33 +226,10 @@ test('[TC-UX-005-N] a queue blocked by request scope explains why outside the cl
   await slash(page, 'queue');
   const draft = 'Keep this queued request while I decide the next step.';
   await requestBox(page).fill(draft);
-  await optionsButton(page).click();
-  const dialog = optionsDialog(page);
-  const review = dialog.getByRole('switch', {
-    name: 'Review only · no file changes',
-    exact: true,
-  });
-  await review.check();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-  // #89: Send says what it will do in this state, and every "new request only" item shares one
-  // notice with one wording.
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveAttribute(
     'aria-description',
     'Send · Queue as next task',
   );
-  const warning = page.getByRole('status').filter({
-    hasText: 'Applies to a new request only: review scope',
-  });
-  await expect(warning).toBeVisible();
-  await warning.getByRole('button', { name: 'Change scope', exact: true }).click();
-  await expect(dialog).toBeVisible();
-  await review.uncheck();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(requestBox(page)).toHaveValue(draft);
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect
     .poll(async () => (await session(page)).entries.at(-1))

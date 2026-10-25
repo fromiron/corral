@@ -28,6 +28,7 @@ import type {
   RuntimeCheckpointState,
   RuntimeContext,
 } from './runtime-checkpoints.ts';
+import type { SessionConversation } from './session-continuity.ts';
 
 // Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
 
@@ -100,6 +101,8 @@ export interface AgentStartInput {
   candidateId?: string;
   candidateComparison?: true;
   resumeContext?: RuntimeCheckpointState;
+  /** CR-054: the session's earlier requests and answers, for an execution given the brief. */
+  conversation?: SessionConversation;
   images?: ImageInput[];
   taskBrief?: TaskBrief;
   runId: string;

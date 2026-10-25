@@ -735,3 +735,41 @@ it('[TC-BPACK-002-H] [TC-BPACK-002-N] bundled content is reviewed and pinned, on
   }
   await expect(service.discoverBuiltin('../private')).rejects.toThrow();
 }, 30_000);
+
+describe('session default work style (CR-055 §7)', () => {
+  it('[TC-TEAM-002-H] seeds one built-in trusted work style that offers command and preview tools', () => {
+    const { service } = setup();
+    const binding = service.sessionDefault();
+    if (!binding) throw new Error('the session default must be seeded');
+    expect(binding).toEqual({ profileId: 'session-default', revision: 1 });
+    // Asking again reuses the same revision instead of saving another.
+    expect(service.sessionDefault()).toEqual(binding);
+    const snapshot = service.preview(binding, 'default').snapshot;
+    expect(snapshot.policy).toBe('trusted-native');
+    expect(snapshot.allowedTools).toEqual(
+      expect.arrayContaining(['run_command', 'preview_app', 'read_file', 'write_file']),
+    );
+  });
+
+  it('[TC-TEAM-002-N] a strict project default restricts the session default, and an archived one is not used', () => {
+    const { service } = setup();
+    const binding = service.sessionDefault();
+    if (!binding) throw new Error('the session default must be seeded');
+    const strict = service.saveProfile('read-only', 0, {
+      name: 'Read only',
+      policy: 'strict',
+      allowedTools: ['read_file', 'ask_user'],
+      resources: [],
+      startupCommands: [],
+    });
+    service.setDefault('project', 'default', 0, {
+      profileId: strict.profileId,
+      revision: strict.revision,
+    });
+    const snapshot = service.preview(binding, 'default').snapshot;
+    expect(snapshot.policy).toBe('strict');
+    expect(snapshot.allowedTools).toEqual(['read_file', 'ask_user']);
+    service.archiveProfile('session-default', 0, true, 'archive_session_default');
+    expect(service.sessionDefault()).toBeNull();
+  });
+});

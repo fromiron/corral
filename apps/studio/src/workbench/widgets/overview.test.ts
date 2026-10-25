@@ -1,10 +1,18 @@
 import { emptyProjection, type RunProjection } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import { overviewWidgets, usageSummary } from './selectors.ts';
+import { overviewWidgets, sessionStats, usageSummary } from './selectors.ts';
 
 const limits = { maxOutputTokens: 64_000, maxModelCalls: 40 };
 
-function call(id: string, outputTokens: number | null, finished = true) {
+function call(
+  id: string,
+  outputTokens: number | null,
+  finished = true,
+  input: { inputTokens: number | null; cachedInputTokens: number | null } = {
+    inputTokens: 100,
+    cachedInputTokens: null,
+  },
+) {
   return {
     modelCallId: id,
     executionId: 'exec',
@@ -15,9 +23,8 @@ function call(id: string, outputTokens: number | null, finished = true) {
     inputArtifactVersionIds: [],
     finished,
     usage: {
-      inputTokens: 100,
+      ...input,
       outputTokens,
-      cachedInputTokens: null,
       reasoningTokens: null,
     },
     rawUsage: null,
@@ -51,7 +58,29 @@ describe('overview usage widget (CR-053)', () => {
       callLimit: 40,
       // Finished calls with reported output, oldest first; a call still streaming is not a bar.
       perCall: [194, 63],
+      // CR-054: input of the finished calls; none of them reported cached input.
+      input: { tokens: 300, cached: null, cacheShare: null, cacheUnreported: 3 },
     });
+  });
+
+  it('[TC-LLM-007-N] totals reported cached input and names calls that did not report it', () => {
+    const projection = run();
+    projection.modelCalls = {
+      a: call('a', 10, true, { inputTokens: 2_000, cachedInputTokens: 1_500 }),
+      b: call('b', 10, true, { inputTokens: 1_000, cachedInputTokens: 0 }),
+      c: call('c', 10, true, { inputTokens: 500, cachedInputTokens: null }),
+      d: call('d', 10, true, { inputTokens: null, cachedInputTokens: null }),
+      e: call('e', null, false, { inputTokens: 9_000, cachedInputTokens: 9_000 }),
+    };
+    // The share counts only calls that reported both figures; an unreported cache is not zero.
+    expect(usageSummary(projection, limits)?.input).toEqual({
+      tokens: 3_500,
+      cached: 1_500,
+      cacheShare: 0.5,
+      cacheUnreported: 2,
+    });
+    projection.modelCalls = { d: call('d', 10, true, { inputTokens: null, cachedInputTokens: 5 }) };
+    expect(usageSummary(projection, limits)?.input).toBeNull();
   });
 
   it('[TC-RAIL-001-N] names unconfirmed usage and a run without limits, never as zero', () => {
@@ -102,5 +131,25 @@ describe('overview widget order (CR-053)', () => {
     expect(overviewWidgets({ ...base, results: [{ id: 'r', label: 'draft v1' }] })).toEqual([
       'results',
     ]);
+  });
+});
+
+describe('session statistics (CR-055)', () => {
+  it('[TC-TURN-001-N] totals turns, steps and tokens, and names calls without a cache report', () => {
+    const one = run();
+    one.modelCalls = {
+      a: call('a', 10, true, { inputTokens: 1_000, cachedInputTokens: 900 }),
+      b: call('b', 20, true, { inputTokens: 1_000, cachedInputTokens: null }),
+    };
+    const two = run();
+    two.modelCalls = { c: call('c', 30, true, { inputTokens: 1_000, cachedInputTokens: 100 }) };
+    expect(sessionStats([one, two], () => 2)).toEqual({
+      turns: 2,
+      steps: 4,
+      tokens: 3_060,
+      cacheShare: 0.5,
+      cacheUnreported: 1,
+    });
+    expect(sessionStats([], () => 0)).toBeNull();
   });
 });

@@ -23,6 +23,8 @@ import {
   type CompactContextCommand,
   CompactionReport,
   type ContextCheckpointV2,
+  type ContinuedConversation,
+  type ConversationTurn,
   CorralDefinition,
   CreateRunRequest,
   type DecisionCancellation,
@@ -88,6 +90,7 @@ import {
   type Scheduler,
   type SelectCandidateCommand,
   SelectionJudgment,
+  SessionConversation,
   StartRunRequest,
   type SteerCommand,
   type StreamFrame,
@@ -149,6 +152,7 @@ import {
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
+import { SESSION_CONVERSATION } from './history.ts';
 import { projectJudgeInputs } from './judge-context.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
@@ -1604,7 +1608,10 @@ export class Coordinator {
     }
     const request = parsed.data;
     const payloadHash = recovery?.requestHash ?? branch?.requestHash ?? hashOf(request);
-    const originalRequestHash = 'autoRoute' in request ? request.autoRoute?.requestHash : undefined;
+    const originalRequestHash =
+      'definition' in request
+        ? (request.autoRoute?.requestHash ?? request.autoRequestHash)
+        : undefined;
     const previous = this.store.getCommand(START_SCOPE, request.commandId);
     if (previous) {
       const cancelled =
@@ -1753,6 +1760,12 @@ export class Coordinator {
       ? this.startFromVersion(resolved.definition, request.startFrom)
       : resolved;
     if ('error' in seeded) return refuse(seeded.error);
+    // CR-054: a resumed, branched or meeting context already carries its own history.
+    const conversation =
+      request.conversation && !recovery && !branch && !meeting
+        ? this.sessionConversation(request.sessionId, request.conversation.throughRunId)
+        : undefined;
+    if (conversation && 'error' in conversation) return refuse(conversation.error);
     const referenced = request.references?.length
       ? this.withReferences(seeded.definition, request.references)
       : seeded;
@@ -2112,6 +2125,7 @@ export class Coordinator {
             },
           }
         : {}),
+      ...(conversation ? { conversation: conversation.provenance } : {}),
       ...(recovery
         ? {
             resumedFrom: {
@@ -2241,6 +2255,7 @@ export class Coordinator {
           ...(snapshot.imageProfiles ? { imageProfiles: snapshot.imageProfiles } : {}),
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
+          ...(snapshot.conversation ? { conversation: snapshot.conversation } : {}),
           ...(snapshot.autoRoute ? { autoRoute: snapshot.autoRoute } : {}),
           ...(snapshot.meeting ? { meeting: snapshot.meeting } : {}),
           ...(snapshot.resumedFrom ? { resumedFrom: snapshot.resumedFrom } : {}),
@@ -2285,6 +2300,12 @@ export class Coordinator {
           this.store.putArtifactText(runId, source.sourceRef, source.text);
         if (meetingContext)
           this.store.putArtifactText(runId, 'meeting_context', canonicalJson(meetingContext));
+        if (conversation)
+          this.store.putArtifactText(
+            runId,
+            SESSION_CONVERSATION,
+            canonicalJson(conversation.conversation),
+          );
         if (recovery && snapshot.resumedFrom)
           this.store.putArtifactText(
             runId,
@@ -2396,15 +2417,104 @@ export class Coordinator {
     }
     const parsed = definition as CorralDefinition;
     if (!parsed?.input || typeof parsed.input.brief !== 'string') return { definition };
-    const brief = [
-      parsed.input.brief,
-      '',
-      'Start from this earlier version:',
-      `(${version.name} v${version.version} from run ${from.runId})`,
-      '',
-      text,
-    ].join('\n');
+    const brief = parsed.input.brief + startPointText(version, from.runId, text);
     return { definition: { ...parsed, input: { ...parsed.input, brief } } };
+  }
+
+  /**
+   * CR-054: the session's ended runs through `throughRunId`, in start order, as request/answer
+   * turns read from this Coordinator's records. Older turns give way to the artifact cap.
+   */
+  private sessionConversation(
+    sessionId: string | undefined,
+    throughRunId: string,
+  ):
+    | { conversation: SessionConversation; provenance: ContinuedConversation }
+    | { error: CommandError } {
+    const notFound = (message: string) => ({
+      error: { code: 'TARGET_NOT_FOUND' as const, message },
+    });
+    if (!sessionId) return notFound('a conversation continues a work session');
+    const read = (runId: string) => {
+      const stored = this.store.getRun(runId);
+      return stored
+        ? { ...stored, projection: this.live.get(runId)?.projection ?? stored.projection }
+        : null;
+    };
+    const through = read(throughRunId);
+    if (!through || (through.sessionId ?? null) !== sessionId)
+      return notFound(`session ${sessionId} has no run ${throughRunId}`);
+    if (!TERMINAL_RUN_STATUSES.has(through.projection.status))
+      return notFound(`run ${throughRunId} has not ended`);
+    // Both stores list newest first, ties in reverse insertion order.
+    const order = this.store
+      .listRuns()
+      .filter((summary) => summary.sessionId === sessionId)
+      .map((summary) => summary.runId)
+      .reverse();
+    const turns: (ConversationTurn & { artifactVersionId: string | null })[] = [];
+    for (const runId of order.slice(0, order.indexOf(throughRunId) + 1)) {
+      const run = read(runId);
+      if (!run || run.snapshot.meeting || !TERMINAL_RUN_STATUSES.has(run.projection.status))
+        continue;
+      let request = run.snapshot.definition.input.brief;
+      const from = run.projection.startedFrom;
+      const source = from ? read(from.runId) : null;
+      const version = from ? source?.projection.artifacts[from.artifactVersionId] : undefined;
+      const copied =
+        from && version ? this.store.getArtifactText(from.runId, from.artifactVersionId) : null;
+      if (from && version && copied !== null)
+        request = request.replace(startPointText(version, from.runId, copied), '');
+      const outputId = run.projection.output?.artifactVersionIds[0];
+      const answer =
+        outputId && !run.projection.artifacts[outputId]?.media
+          ? this.store.getArtifactText(runId, outputId)
+          : null;
+      turns.push({
+        runId,
+        request,
+        answer,
+        status: run.projection.status,
+        artifactVersionId: answer === null ? null : (outputId ?? null),
+      });
+    }
+    const bytes = (turn: ConversationTurn) =>
+      utf8ToBytes(turn.request).length + (turn.answer ? utf8ToBytes(turn.answer).length : 0);
+    const cap = this.policy.maxArtifactBytes;
+    let total = turns.reduce((sum, turn) => sum + bytes(turn), 0);
+    let omittedTurns = 0;
+    while (turns.length && total > cap) {
+      const oldest = turns[0]!;
+      if (
+        turns.length === 1 &&
+        oldest.answer !== null &&
+        utf8ToBytes(oldest.request).length <= cap
+      ) {
+        // The newest turn alone is too large: keep the request, name the missing answer.
+        total -= bytes(oldest);
+        oldest.answer = null;
+        oldest.answerOmitted = true;
+        oldest.artifactVersionId = null;
+        total += bytes(oldest);
+        continue;
+      }
+      total -= bytes(oldest);
+      turns.shift();
+      omittedTurns += 1;
+    }
+    const conversation: SessionConversation = {
+      turns: turns.map(({ artifactVersionId: _id, ...turn }) => turn),
+      omittedTurns,
+    };
+    return {
+      conversation,
+      provenance: {
+        throughRunId,
+        turns: turns.map(({ runId, artifactVersionId }) => ({ runId, artifactVersionId })),
+        omittedTurns,
+        contextHash: hashOf(conversation),
+      },
+    };
   }
 
   /**
@@ -5331,8 +5441,20 @@ export class Coordinator {
       run.snapshot.resumedFrom?.contextRef ??
       run.snapshot.branchedFrom?.contextRef ??
       (run.snapshot.meeting?.contextSource ? 'meeting_context' : undefined);
+    // CR-054: the session's turns go with the brief to the run's own scheduled agents.
+    const conversation =
+      run.snapshot.conversation &&
+      !contextRef &&
+      !item &&
+      spec.assignment.kind === 'scheduled' &&
+      node.inputBindings.some((binding) => binding.kind === 'run_input' && binding.name === 'brief')
+        ? SessionConversation.parse(
+            JSON.parse(this.store.getArtifactText(run.runId, SESSION_CONVERSATION) ?? 'null'),
+          )
+        : undefined;
     const input: AgentStartInput = {
       sessionId: this.store.getRun(run.runId)?.sessionId ?? undefined,
+      ...(conversation ? { conversation } : {}),
       ...(run.snapshot.meeting ? { meeting: run.snapshot.meeting } : {}),
       ...(contextRef
         ? {
@@ -5560,7 +5682,7 @@ export class Coordinator {
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
         settlement = await handle.waitForSettlement();
-        await host.submitMeetingAnswer(settlement);
+        await host.submitFinalAnswer(settlement);
       } catch (error) {
         settlement = { outcome: 'failed', error: String(error) };
       } finally {
@@ -7374,7 +7496,7 @@ export class Coordinator {
   private hostFor(
     run: LiveRun,
     input: AgentStartInput,
-  ): AgentHost & { submitMeetingAnswer(settlement: AgentSettlement): Promise<void> } {
+  ): AgentHost & { submitFinalAnswer(settlement: AgentSettlement): Promise<void> } {
     const { executionId, harness } = input;
     const agent: Actor = { kind: 'agent', id: executionId };
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
@@ -7529,8 +7651,11 @@ export class Coordinator {
       NonNullable<ContextCheckpointV2['sources']>[number]
     >();
     let preparing = false;
-    const toolView = (proposal: ToolProposal): ToolGateView => ({
+    // Tool calls the Coordinator authorized itself to publish a plain-text answer (CR-049/055).
+    const hostAnswerCalls = new Set<string>();
+    const toolView = (proposal: ToolProposal, automatic = false): ToolGateView => ({
       ...this.toolView(run, input, proposal),
+      ...(automatic ? { hostAnswer: true } : {}),
       ...(harnessState === 'simulated' ? { simulation: true } : {}),
       ...(descriptors.has(proposal.name) ? { descriptor: descriptors.get(proposal.name)! } : {}),
     });
@@ -7589,7 +7714,7 @@ export class Coordinator {
       // Checks a pause cannot change run before the safe boundary (Technical-Design §5.4).
       const early =
         parentRefusal(proposal) ??
-        toolRefusal(runGates(this.gates['tool.pre_boundary'], toolView(proposal)));
+        toolRefusal(runGates(this.gates['tool.pre_boundary'], toolView(proposal, automatic)));
       if (early) {
         const error: CommandError = { code: early.code, message: early.message };
         if (proposal.name === 'reply') {
@@ -7638,7 +7763,7 @@ export class Coordinator {
             }
           : null) ??
         parentRefusal(proposal) ??
-        toolRefusal(runGates(this.gates['tool.authorize'], toolView(proposal)));
+        toolRefusal(runGates(this.gates['tool.authorize'], toolView(proposal, automatic)));
       const error: CommandError | null = refusal
         ? { code: refusal.code, message: refusal.message }
         : null;
@@ -7730,6 +7855,7 @@ export class Coordinator {
         claimed: false,
         ...(harness ? { descriptorHash: hashOf(descriptors.get(proposal.name) ?? null) } : {}),
       });
+      if (automatic) hostAnswerCalls.add(toolCallId);
       return { ok: true, toolCallId };
     };
 
@@ -7824,7 +7950,12 @@ export class Coordinator {
         };
       const refusal =
         parentRefusal(call.proposal) ??
-        toolRefusal(runGates(this.gates['tool.execute'], toolView(call.proposal)));
+        toolRefusal(
+          runGates(
+            this.gates['tool.execute'],
+            toolView(call.proposal, hostAnswerCalls.has(toolCallId)),
+          ),
+        );
       if (refusal)
         return { ok: false, toolCallId, error: { code: refusal.code, message: refusal.message } };
       const permission = permissionDecision(call.proposal);
@@ -8044,7 +8175,7 @@ export class Coordinator {
       );
       return outcome;
     };
-    const host: AgentHost & { submitMeetingAnswer(settlement: AgentSettlement): Promise<void> } = {
+    const host: AgentHost & { submitFinalAnswer(settlement: AgentSettlement): Promise<void> } = {
       ...(harness
         ? {
             requestExtensionUi: (
@@ -9020,7 +9151,7 @@ export class Coordinator {
             ? `notice_${observation.modelCallId}`
             : null;
         const warning =
-          'No new file evidence, artifact or review progress in the last six model replies. This run continues; you can pause or stop it.';
+          'No new file evidence, artifact or review progress in the last six model replies. Corral paused this run; continue or stop it.';
         if (warningRef)
           drafts.push({
             type: 'extension.ui_notified',
@@ -9041,12 +9172,15 @@ export class Coordinator {
         this.maybePaused(run);
       },
 
-      // CR-049: plain speech needs no extra model call; runtime tool requests retain provenance.
-      submitMeetingAnswer: async (settlement) => {
+      // CR-049/055: a meeting answer or a final-reply role's last reply needs no extra model
+      // call; the runtime's tool requests retain provenance.
+      submitFinalAnswer: async (settlement) => {
         const callId = settlement.finalTextModelCallId;
         const call = callId ? run.projection.modelCalls[callId] : null;
+        const finalReply =
+          input.role.answer === 'final_reply' && input.assignment.kind !== 'question';
         if (
-          !run.snapshot.meeting ||
+          (!run.snapshot.meeting && !finalReply) ||
           settlement.outcome !== 'succeeded' ||
           (settlement.terminationMode && settlement.terminationMode !== 'normal') ||
           !call?.finished ||
@@ -9056,7 +9190,11 @@ export class Coordinator {
           run.cancelRequested.has(executionId) ||
           TERMINAL_RUN_STATUSES.has(run.projection.status) ||
           run.projection.tasks[input.taskId]?.status === 'completed' ||
-          Object.values(run.projection.toolCalls).some((tool) => tool.executionId === executionId)
+          // A meeting answer comes before any tool; a final-reply role may use tools first.
+          (!finalReply &&
+            Object.values(run.projection.toolCalls).some(
+              (tool) => tool.executionId === executionId,
+            ))
         )
           return;
         const text = this.store.getArtifactText(run.runId, call.responseRef);
@@ -9558,7 +9696,11 @@ export class Coordinator {
             },
           },
         ]);
-      this.commit(run, tool.closing(null, error));
+      // A wait the person's cancellation ended is cancelled, like the children it waited on.
+      this.commit(
+        run,
+        tool.closing(null, error, error === 'scope cancelled' ? 'cancelled' : undefined),
+      );
     }
     if (error)
       return {
@@ -10675,6 +10817,22 @@ function summarizeArgs(args: Record<string, unknown>): Record<string, unknown> {
 
 function autoCancellationHash(sessionId: string | undefined): string {
   return hashOf({ type: 'cancel_auto_start', sessionId: sessionId ?? null });
+}
+
+/** The text CR-007 appends to a brief that starts from an earlier version. */
+function startPointText(
+  version: { name: string; version: number },
+  runId: string,
+  text: string,
+): string {
+  return [
+    '',
+    '',
+    'Start from this earlier version:',
+    `(${version.name} v${version.version} from run ${runId})`,
+    '',
+    text,
+  ].join('\n');
 }
 
 function hashOf(value: unknown): string {

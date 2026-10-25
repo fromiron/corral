@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
 // Shared user-facing steps: start a chat directly, or explicitly choose a saved Corral.
-// Advanced request controls are reached through Request options (CR-043).
+// The team for the next turn is chosen from the composer's team chip (CR-055).
 
 /** On a project page: makes a Corral from a template and comes back to the project. */
 export async function teamFromTemplate(page: Page, name = 'Single agent') {
@@ -33,38 +33,14 @@ export async function startSession(page: Page, purpose: string) {
 export const requestBox = (page: Page) =>
   page.getByRole('combobox', { name: 'Request', exact: true });
 
-/** Discloses the actual advanced controls, including keyboard-accessible nested menus. */
-export async function openRequestOptions(page: Page) {
-  const dialog = page.getByRole('dialog', { name: 'Request options', exact: true });
-  if (!(await dialog.isVisible()))
-    await page.getByRole('button', { name: 'Request options', exact: true }).click();
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-/** Returns from advanced controls to the request without selecting or submitting anything. */
-export async function closeRequestOptions(page: Page) {
-  const dialog = page.getByRole('dialog', { name: 'Request options', exact: true });
-  if (await dialog.isVisible()) {
-    await dialog.getByRole('button', { name: 'Close request options', exact: true }).click();
-    await expect(dialog).toBeHidden();
-  }
-}
-
-/** Chooses an optional saved Corral through the same disclosure used by a person. */
+/** Chooses the team for the next turn from the composer's team chip (CR-055). */
 export async function selectSessionTeam(page: Page, name: string) {
-  const dialog = await openRequestOptions(page);
-  const picker = dialog.getByRole('combobox', { name: 'Corral', exact: true });
+  const picker = page
+    .getByRole('region', { name: 'Request', exact: true })
+    .getByRole('combobox', { name: 'Team', exact: true });
   await picker.click();
-  await page.getByRole('option', { name, exact: true }).click();
+  await page.getByRole('option', { name: new RegExp(`^${name}`) }).click();
   await expect(picker).toContainText(name);
-  await closeRequestOptions(page);
-  if (name !== 'Default chat')
-    await expect(
-      page
-        .getByRole('region', { name: 'Request', exact: true })
-        .getByRole('button', { name, exact: true }),
-    ).toBeVisible();
 }
 
 /** Runs a `/` command from the request box, keeping nothing else typed. */

@@ -2,6 +2,7 @@
 
 - 변경 ID / 제안자 / 날짜: CR-011 / Bell(제안 `CR-WB-001`), Claude(저장소 적용) / 2026-10-16
 - 상태: **승인**(Bell /goal: "개선플랜의 완성까지 … 바로 머지해버려도 됨", 2026-10-16. 로드맵 23·24번)
+- 대체: §3 `next`의 "직전 Run의 최종 결과가 있으면 그 버전에서 시작한다(CR-007)"는 [CR-054](CR-054-session-conversation-continuity.md)가 대체한다. 후속 요청은 세션의 지난 요청·답을 대화 차례로 받는다. 명시한 CR-007 시작점과 `explain`은 그대로다.
 - 연결 문서:
   - Workbench 개선 플랜 (Git `373764467a52:docs/plans/Workbench-Improvement-Plan.md`) W2.
   - 제안 01 §5.2–§5.5 (Git `373764467a52:docs/proposals/workbench-v0.1/01-Improvement-Spec.md`)과 02 §6 (Git `373764467a52:docs/proposals/workbench-v0.1/02-UX-Spec.md`).

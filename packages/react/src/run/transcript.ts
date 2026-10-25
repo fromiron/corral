@@ -29,6 +29,8 @@ export type TranscriptEntry =
       kind: 'reply';
       seq: number;
       modelCallId: string;
+      /** The request this reply answers, counted per execution like `request.no`. */
+      no: number;
       text: string;
       live: boolean;
       broken: boolean;
@@ -115,6 +117,7 @@ export function buildTranscript(
           kind: 'reply' as const,
           seq: event.runSeq,
           modelCallId: call,
+          no: requests,
           text: stream?.text ?? '',
           live: !projection.modelCalls[call]?.finished,
           broken: stream?.broken ?? false,

@@ -1946,5 +1946,60 @@
       "TC-RAIL-001-N",
       "TC-RAIL-001-F"
     ]
+  },
+  {
+    "requirementId": "CRL-LLM-007",
+    "tests": [
+      "TC-LLM-007-H",
+      "TC-LLM-007-N",
+      "TC-LLM-007-F"
+    ],
+    "tasks": [
+      "C-186"
+    ]
+  },
+  {
+    "requirementId": "CRL-LLM-008",
+    "tests": [
+      "TC-LLM-008-H",
+      "TC-LLM-008-N",
+      "TC-LLM-008-F"
+    ],
+    "tasks": [
+      "C-187"
+    ]
+  },
+  {
+    "requirementId": "CRL-UX-012",
+    "tests": [
+      "TC-TURN-001-H",
+      "TC-TURN-001-N",
+      "TC-TURN-001-F"
+    ],
+    "tasks": [
+      "C-188"
+    ]
+  },
+  {
+    "requirementId": "CRL-LLM-009",
+    "tests": [
+      "TC-TEAM-001-H",
+      "TC-TEAM-001-N",
+      "TC-TEAM-001-F"
+    ],
+    "tasks": [
+      "C-189"
+    ]
+  },
+  {
+    "requirementId": "CRL-LLM-010",
+    "tests": [
+      "TC-TEAM-002-H",
+      "TC-TEAM-002-N",
+      "TC-TEAM-002-F"
+    ],
+    "tasks": [
+      "C-190"
+    ]
   }
 ]

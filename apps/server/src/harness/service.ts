@@ -42,6 +42,7 @@ import {
   PinnedPackageSource,
   RegisteredMcpServer,
   ResourcePath,
+  WorkTool,
 } from '@corral/contracts';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
 import builtinManifest from '../../resources/builtin/manifest.json' with { type: 'json' };
@@ -64,6 +65,30 @@ const hash = (value: string | Uint8Array) => createHash('sha256').update(value).
 const treeHash = (files: HarnessResource['files']) => hash(canonicalJson(files));
 
 /** Resource discovery and preview read bytes only. Execution imports happen in the Pi worker. */
+const SESSION_DEFAULT_PROFILE = 'session-default';
+const SESSION_DEFAULT: HarnessProfile = {
+  name: 'Session default',
+  policy: 'trusted-native',
+  allowedTools: [
+    ...WorkTool.options,
+    'read',
+    'edit',
+    'write',
+    'run_check',
+    'lsp_query',
+    'submit_result',
+    'spawn_subagents',
+    'await_tasks',
+    'ask',
+    'ask_user',
+    'update_plan',
+    'reply',
+    'read_artifact',
+  ],
+  resources: [],
+  startupCommands: [],
+};
+
 export class HarnessService {
   private readonly evaluationDefinitions = new Map<string, HarnessBindingRef>();
   readonly store: SqliteHarnessStore;
@@ -869,6 +894,20 @@ export class HarnessService {
   trust(resourceHash: string, trusted: boolean) {
     if (trusted) this.verify(resourceHash);
     return this.store.trustResource(resourceHash, trusted);
+  }
+
+  /**
+   * CR-055 §7: the built-in work style a session turn uses when none was chosen, so the lead in
+   * a trusted folder can run commands and previews. The person's and project's defaults still
+   * layer over it and may restrict it; an archived copy means the person turned it off.
+   */
+  sessionDefault(): HarnessBindingRef | null {
+    const current = this.store
+      .listProfiles()
+      .find((profile) => profile.profileId === SESSION_DEFAULT_PROFILE);
+    if (current && this.store.profileManagement(SESSION_DEFAULT_PROFILE).archivedAt) return null;
+    const profile = current ?? this.saveProfile(SESSION_DEFAULT_PROFILE, 0, SESSION_DEFAULT);
+    return { profileId: profile.profileId, revision: profile.revision };
   }
 
   saveProfile(profileId: string, expectedRevision: number, raw: HarnessProfile) {

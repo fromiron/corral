@@ -16,7 +16,7 @@ AI 에이전트의 문서 진입점이다. **이번 요청 → 관련 현재 계
 | 회의·참가자 발언·회의록·결정·작업 인계 | [Workbench](current/workbench.md), [CR-049](change-requests/CR-049-meeting-room.md) | C-174–176, [실행 기록](evaluation/Meeting-Room-2026-10-23.md) |
 | 화면·코드 용어 | [용어집](current/glossary.md) | 메시지 파일 `packages/react/src/messages/` |
 | Desktop·명령·preview·host·음성 | [Desktop 상세](current/desktop-contract.md) | CR-042, [잔여 조건](plans/desktop-completion.md) |
-| 관리형 LLM·컨텍스트·캐시·정산 | [LLM runtime](current/llm-runtime.md), [CR-052](change-requests/CR-052-llm-runtime-modernization.md) | C-179–184, [실행 계획](plans/llm-runtime-modernization.md) |
+| 관리형 LLM·컨텍스트·캐시·정산 | [LLM runtime](current/llm-runtime.md), [CR-052](change-requests/CR-052-llm-runtime-modernization.md), [CR-054](change-requests/CR-054-session-conversation-continuity.md), [CR-055](change-requests/CR-055-conversation-agent-and-teams.md) | C-179–184, C-186–189, [실행 계획](plans/llm-runtime-modernization.md), [세션 대화 검증](evaluation/Session-Conversation-Continuity-2026-10-24.md), [대화 에이전트 검증](evaluation/Conversation-Agent-2026-10-25.md) |
 | 모델·추론·Ultra·Skill·MCP | [모델과 리소스](current/models-and-resources.md) | [모델 안내](Models.md), [하네스 상세](current/harness-contract.md) |
 | HTTP·이벤트·스키마 | [API 원본 안내](current/api.md) | [HTTP 상세](API-Contract.md), Zod·handler·client |
 | 다음 구현 작업 | [활성 계획](plans/README.md) | 승인 CR와 해당 태스크만 |

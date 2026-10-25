@@ -236,7 +236,9 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
   for (const [index, text] of ['First request', 'Second request'].entries()) {
     await requestBox(page).fill(text);
     await requestBox(page).press('Control+Enter');
-    await expect(timeline.getByText('Succeeded')).toHaveCount(index + 1, { timeout: 20_000 });
+    await expect(timeline.getByText('Succeeded', { exact: true })).toHaveCount(index + 1, {
+      timeout: 20_000,
+    });
   }
   await expect(page.getByText('Last run').first()).toBeAttached();
   const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
@@ -250,7 +252,7 @@ async function finishedRunPage(page: Page) {
   const timeline = page.getByTestId('chat-timeline');
   await requestBox(page).fill('Summarise the plan');
   await requestBox(page).press('Control+Enter');
-  await expect(timeline.getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+  await expect(timeline.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
   // The demo keeps runs in this page's worker, so the run page is reached in-app.
   await page.locator('a[href*="/runs/run_"]').first().dispatchEvent('click');
   await expect(page).toHaveURL(/\/runs\/run_/);
@@ -267,10 +269,15 @@ test('#73 an automatically composed team offers no edit link to a team that was 
 });
 
 test('#73 a saved team keeps its edit link on the run page', async ({ page }) => {
+  // CR-055: in a session a saved team is the lead's roster, so its own run starts from the editor.
   await page.goto('/?delay=50');
   await teamFromTemplate(page);
-  await startSession(page, 'Saved team run');
-  await finishedRunPage(page);
+  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await page.getByRole('button', { name: 'Edit this team' }).first().click();
+  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('link', { name: 'Open execution page' }).click();
+  await expect(page).toHaveURL(/\/runs\/run_/);
   await page.getByRole('link', { name: 'Edit team', exact: true }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit/);
   await expect(page.getByText('not found', { exact: false })).toHaveCount(0);
@@ -319,20 +326,33 @@ test('#76 dragging a step across a Loop boundary says it changes the team, and U
   );
 });
 
-test('#77 request options say what is kept for the conversation and what is for the next request', async ({
+// CR-055 §6: there are no request options; the team chip lists no team, then the Corral group.
+test('#77 the team chip lists no team, then auto, saved Corrals and Corral management', async ({
   page,
 }) => {
   await blankSession(page);
-  await page.getByRole('button', { name: 'Request options', exact: true }).click();
-  const options = page.getByRole('dialog', { name: 'Request options', exact: true });
-  await expect(options.getByTestId('applies-session')).toHaveText(
-    'Saved for this conversation; later requests use it too',
+  await expect(page.getByRole('button', { name: 'Request options', exact: true })).toHaveCount(0);
+  const chip = page
+    .getByRole('region', { name: 'Request', exact: true })
+    .getByRole('combobox', { name: 'Team', exact: true });
+  await expect(chip).toContainText('No team');
+  await chip.click();
+  const list = page.getByRole('listbox');
+  // The Corral made from the template sits between auto and the management entry.
+  await expect(list.getByRole('option')).toHaveText([
+    /^No team/,
+    /^auto/,
+    /^Single agent/,
+    'Create or manage Corrals',
+  ]);
+  await expect(list.getByRole('group').filter({ hasText: 'Corral' }).last()).toContainText(
+    'Create or manage Corrals',
   );
-  await expect(options.getByRole('group', { name: 'Scope · Next request only' })).toBeVisible();
-  await expect(options.getByRole('group', { name: 'Add to the request' })).toBeVisible();
   await page.screenshot({
-    path: `${process.env.SHOTS ?? 'test-results'}/77-options.png`,
+    path: `${process.env.SHOTS ?? 'test-results'}/77-team-chip.png`,
   });
+  await page.getByRole('option', { name: 'Create or manage Corrals', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\/[^/]+#corrals$/);
 });
 
 test('#77 a test run says it starts a separate run outside any conversation', async ({ page }) => {

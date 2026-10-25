@@ -24,13 +24,7 @@ import {
   sdkProcessChannel,
   WORKER_ENTRY,
 } from '../../../../packages/adapter-pi/src/index.ts';
-import {
-  closeRequestOptions,
-  openRequestOptions,
-  panelTab,
-  requestBox,
-  selectSessionTeam,
-} from '../workbench.ts';
+import { panelTab, requestBox, selectSessionTeam } from '../workbench.ts';
 
 // Only the remote model response is deterministic. Both Pi worker processes, every
 // Coordinator approval, the native command job and managed file broker are production.
@@ -216,7 +210,8 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   role.harness = { profileId: profile.profileId, revision: profile.revision };
   const definitionPath = join(capability.root, 'native-integration.corral.json');
   writeFileSync(definitionPath, JSON.stringify(definition));
-  await page.getByRole('link', { name: 'Back to work', exact: true }).click();
+  // The bootstrap link is single use; the signed-in page navigates on.
+  await page.goto(`${capability.server.url}/projects/default`);
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.locator('input[type="file"]').setInputFiles(definitionPath);
   await expect(page).toHaveURL(/\/edit$/);
@@ -230,11 +225,9 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   const sessionId = new URL(page.url()).pathname.split('/').at(-1);
   if (!sessionId) throw new Error('The UI did not create a session');
   await panelTab(page, 'Changes');
-  const workingCopy = page.getByRole('tabpanel', { name: 'Changes', exact: true });
-  await workingCopy.getByRole('button', { name: /Make a working copy from/ }).click();
-  await expect(
-    workingCopy.getByRole('link', { name: 'Review changes', exact: true }),
-  ).toBeVisible();
+  // The working copy offer sits beside the panel's empty state.
+  await page.getByRole('button', { name: /Make a working copy from/ }).click();
+  await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
   await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();
   await page
     .getByRole('option')
@@ -272,6 +265,43 @@ function lastToolResult(body: unknown): Record<string, unknown> {
   return JSON.parse(content) as Record<string, unknown>;
 }
 
+type Reply = Parameters<CompatibleEndpoint['setReply']>[0];
+const offeredTools = (body: unknown) =>
+  (body as { tools?: { function?: { name?: string } }[] }).tools?.map(
+    (tool) => tool.function?.name,
+  ) ?? [];
+
+/**
+ * CR-055: in a Corral session the conversation lead gives the Corral's writer one task, waits
+ * for it and answers with its own reply. The writer keeps its pinned work style and Hashline.
+ */
+function leadThenWriter(writer: Reply, answer: string): Reply {
+  return (body) => {
+    if (!offeredTools(body).includes('spawn_subagents')) return writer(body);
+    const messages = (body as { messages: { role: string; content: unknown }[] }).messages;
+    if (!messages.some((message) => message.role === 'tool')) {
+      // The only delegate the spawn tool offers is the Corral's writer.
+      const spawn = (
+        body as { tools: { function: { name: string; parameters: unknown } }[] }
+      ).tools.find((tool) => tool.function.name === 'spawn_subagents');
+      const target = /"targetNodeId":\{[^}]*?"const":"([^"]+)"/.exec(
+        JSON.stringify(spawn?.function.parameters),
+      )?.[1];
+      if (!target) throw new Error('The lead was offered no delegate');
+      return {
+        toolCall: {
+          name: 'spawn_subagents',
+          args: { tasks: [{ targetNodeId: target, brief: 'Do the requested work in the copy.' }] },
+        },
+      };
+    }
+    const result = lastToolResult(body);
+    if (Array.isArray(result.taskIds) && !Array.isArray(result.tasks))
+      return { toolCall: { name: 'await_tasks', args: { taskIds: result.taskIds } } };
+    return answer;
+  };
+}
+
 async function readCommandReport(page: Page, capability: CapabilityFixture, sessionId: string) {
   const baseUrl = `${capability.server.url}/api/v1/sessions/${sessionId}/processes`;
   const commands = await page.request.get(baseUrl);
@@ -289,12 +319,10 @@ test('[TC-ABS-001-H] [TC-ABS-002-H] [TC-ABS-003-H] Ask approves a real command a
 }) => {
   test.setTimeout(120000);
   let step = 0;
-  capability.endpoint.setReply((body) => {
+  const answer = 'The managed copy contains both requested changes.';
+  const writer: Reply = (body) => {
     step += 1;
-    const offered = (body as { tools?: { function?: { name?: string } }[] }).tools?.map(
-      (tool) => tool.function?.name,
-    );
-    expect(offered).toEqual(
+    expect(offeredTools(body)).toEqual(
       expect.arrayContaining(['run_command', 'read_hashline', 'edit_hashline']),
     );
     if (step === 1)
@@ -319,22 +347,9 @@ test('[TC-ABS-001-H] [TC-ABS-002-H] [TC-ABS-003-H] Ask approves a real command a
         },
       };
     }
-    if (step === 4)
-      return {
-        toolCall: {
-          name: 'write_artifact',
-          args: { text: 'The managed copy contains both requested changes.' },
-        },
-      };
-    if (step === 5)
-      return {
-        toolCall: {
-          name: 'submit_result',
-          args: { artifactVersionIds: [lastToolResult(body).artifactVersionId] },
-        },
-      };
-    return 'Done.';
-  });
+    return answer;
+  };
+  capability.endpoint.setReply(leadThenWriter(writer, answer));
   const { sessionId, worktree } = await prepareSession(page, capability);
   await requestBox(page).fill('Run the local writer command, then update the note using Hashline.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -362,10 +377,7 @@ test('[TC-ABS-001-H] [TC-ABS-002-H] [TC-ABS-003-H] Ask approves a real command a
     cleanupConfirmed: true,
   });
   await panelTab(page, 'Changes');
-  await page
-    .getByRole('tabpanel', { name: 'Changes', exact: true })
-    .getByRole('link', { name: 'Review changes', exact: true })
-    .click();
+  await page.getByRole('link', { name: 'Review changes', exact: true }).click();
   await expect(page).toHaveURL(/\/review/);
   await page.getByRole('button', { name: /command\.txt/ }).click();
   await expect(page.getByTestId('file-diff')).toContainText('created by run_command');
@@ -381,7 +393,8 @@ for (const cancelScope of ['run', 'command'] as const) {
   }) => {
     test.setTimeout(120000);
     let step = 0;
-    capability.endpoint.setReply((body) => {
+    const answer = 'The local command and its descendants were stopped by the user.';
+    const writer: Reply = (body) => {
       step += 1;
       if (step === 1)
         return {
@@ -390,24 +403,10 @@ for (const cancelScope of ['run', 'command'] as const) {
             args: { command: 'node long-job.mjs', timeoutMs: 60000 },
           },
         };
-      if (step === 2) {
-        expect(lastToolResult(body)).toMatchObject({ state: 'cancelled', cleanupConfirmed: true });
-        return {
-          toolCall: {
-            name: 'write_artifact',
-            args: { text: 'The local command and its descendants were stopped by the user.' },
-          },
-        };
-      }
-      if (step === 3)
-        return {
-          toolCall: {
-            name: 'submit_result',
-            args: { artifactVersionIds: [lastToolResult(body).artifactVersionId] },
-          },
-        };
-      return 'Done.';
-    });
+      expect(lastToolResult(body)).toMatchObject({ state: 'cancelled', cleanupConfirmed: true });
+      return answer;
+    };
+    capability.endpoint.setReply(leadThenWriter(writer, answer));
     const { sessionId, worktree } = await prepareSession(page, capability);
     await requestBox(page).fill('Run the long local job so I can cancel its whole process tree.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -444,7 +443,7 @@ for (const cancelScope of ['run', 'command'] as const) {
         .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
         .click();
     } else {
-      await panelTab(page, 'Files');
+      await panelTab(page, 'Tasks & preview');
       const commands = page.getByTestId('worktree-command-panel');
       await expect(commands).toContainText('node long-job.mjs');
       await commands.getByRole('button', { name: 'Stop command', exact: true }).click();
@@ -455,7 +454,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     await expect
       .poll(() => readCommandReport(page, capability, sessionId), { timeout: 30000 })
       .toMatchObject({ state: 'cancelled', cleanupConfirmed: true });
-    await panelTab(page, 'Files');
+    await panelTab(page, 'Tasks & preview');
     const commands = page.getByTestId('worktree-command-panel');
     await expect(commands).toContainText('Stopped');
     await expect(commands).toContainText('Process cleanup confirmed');
@@ -493,7 +492,9 @@ for (const cancelScope of ['run', 'command'] as const) {
   });
 }
 
-test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader keep separate controls while another session works', async ({
+// CR-055 §6: the composer no longer starts a review-only reader beside a running writer, so
+// ABS-06's same-session reader is not reachable here; the other-session writer still is.
+test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] a session writer and another session’s writer keep separate controls', async ({
   page,
   capability,
 }) => {
@@ -501,13 +502,14 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader
   let commandIssued = false;
   let commandConfirmed = false;
   capability.endpoint.setReply((body) => {
-    const offered = (body as { tools?: { function?: { name?: string } }[] }).tools?.map(
-      (tool) => tool.function?.name,
-    );
-    if (!offered?.length) return '{"template":"single","reason":"A direct request."}';
+    const offered = offeredTools(body);
     const messages = (body as { messages: { role: string; content: unknown }[] }).messages;
-    const latestUser = messages.findLast((message) => message.role === 'user');
-    const label = /Hold ([ABC])/.exec(JSON.stringify(latestUser?.content))?.[1];
+    // Corral's current state follows the request as the last user message (CR-052), so the
+    // request's label is the latest one in any user message.
+    const users = JSON.stringify(
+      messages.filter((message) => message.role === 'user').map((message) => message.content),
+    );
+    const label = [...users.matchAll(/Hold ([ABC])/g)].at(-1)?.[1];
     if (!label) throw new Error('The model request is missing its current Hold instruction');
     expect(offered).toContain('ask_user');
     if (label === 'A' && !commandIssued) {
@@ -536,14 +538,8 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader
     };
   });
   const first = await prepareSession(page, capability);
-  await selectSessionTeam(page, 'Default chat');
-  const selectStyle = async () => {
-    await openRequestOptions(page);
-    await page.getByRole('combobox', { name: 'Work style for next request', exact: true }).click();
-    await page.getByRole('option', { name: 'Native integration work · r1', exact: true }).click();
-    await closeRequestOptions(page);
-  };
-  await selectStyle();
+  // Without a team, the lead works in the session default of the trusted folder.
+  await selectSessionTeam(page, 'No team');
   await requestBox(page).fill(
     'Hold A: run node command-write.mjs, then wait while I inspect the independent controls.',
   );
@@ -577,43 +573,14 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader
   const status = (label: string) => findRun(label)?.status;
   await expect.poll(() => status('A'), { timeout: 30000 }).toBe('awaiting_user');
   const a = findRun('A')?.runId;
-  if (!a) throw new Error('Auto writer A did not start');
-  expect(capability.server.coordinator.getRunSnapshot(a)?.autoRoute?.harness).toBeDefined();
+  if (!a) throw new Error('Session writer A did not start');
+  expect(capability.server.coordinator.getRunSnapshot(a)?.definition.roles[0]?.harness).toEqual({
+    profileId: 'session-default',
+    revision: 1,
+  });
   expect(
     capability.server.coordinator.getRunSnapshot(a)?.definition.roles[0]?.allowedWorkTools,
   ).toContain('run_command');
-
-  await openRequestOptions(page);
-  await page.getByRole('switch', { name: 'Review only · no file changes', exact: true }).check();
-  await closeRequestOptions(page);
-  await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
-  await page.getByRole('option', { name: /^Follow-up / }).click();
-  await selectStyle();
-  await requestBox(page).fill('Hold B and read the frozen input only.');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect.poll(() => status('B'), { timeout: 30000 }).toBe('awaiting_user');
-  const b = findRun('B')?.runId;
-  if (!b) throw new Error('Reader B did not start');
-  expect(findRun('A')?.sessionId).toBe(findRun('B')?.sessionId);
-  expect(
-    capability.server.coordinator.getRunSnapshot(b)?.definition.roles[0]?.allowedWorkTools,
-  ).not.toContain('run_command');
-  for (const id of [a, b])
-    await expect(
-      page.getByTestId(`run-card-${id}`).getByTestId('run-required-action'),
-    ).toBeVisible();
-  await page.getByRole('combobox', { name: 'Selected run', exact: true }).click();
-  await page.getByRole('option', { name: /Hold A/ }).click();
-  await expect(page).toHaveURL(new RegExp(`run=${a}`));
-  await page
-    .getByTestId(`run-card-${b}`)
-    .getByTestId('run-required-action')
-    .getByRole('link')
-    .click();
-  await expect(page).toHaveURL(new RegExp(`run=${b}`));
-  await expect(
-    page.getByText('Fixture B is waiting for your answer.', { exact: true }),
-  ).toBeVisible();
 
   await page.goto(`${capability.server.url}/projects/default`);
   await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
@@ -621,16 +588,13 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await panelTab(page, 'Changes');
-  await page
-    .getByRole('tabpanel', { name: 'Changes', exact: true })
-    .getByRole('button', { name: /Make a working copy from/ })
-    .click();
-  await selectStyle();
+  await page.getByRole('button', { name: /Make a working copy from/ }).click();
   await requestBox(page).fill('Hold C in this separate working copy.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => status('C'), { timeout: 30000 }).toBe('awaiting_user');
-  expect(findRun('C')?.sessionId).not.toBe(first.sessionId);
-  await page.goto(`${capability.server.url}/sessions/${first.sessionId}?run=${b}`);
+  const c = findRun('C');
+  expect(c?.sessionId).not.toBe(first.sessionId);
+  // Cancelling the other session's writer leaves this session's writer waiting.
   await page
     .getByRole('region', { name: 'Request', exact: true })
     .getByRole('button', { name: 'Cancel whole run', exact: true })
@@ -639,8 +603,9 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] Auto writer and pinned reader
     .getByRole('dialog', { name: 'Cancel whole run', exact: true })
     .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
     .click();
-  await expect.poll(() => status('B'), { timeout: 30000 }).toBe('cancelled');
+  await expect.poll(() => status('C'), { timeout: 30000 }).toBe('cancelled');
   expect(status('A')).toBe('awaiting_user');
-  expect(status('C')).toBe('awaiting_user');
+  await page.goto(`${capability.server.url}/sessions/${first.sessionId}?run=${a}`);
+  await expect(page.getByTestId(`run-card-${a}`).getByTestId('run-required-action')).toBeVisible();
   expect(capability.errors).toEqual([]);
 });

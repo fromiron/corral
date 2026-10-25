@@ -73,6 +73,7 @@ import {
   assertImagePayload,
   assertProtectedPayload,
   checkpointContext,
+  conversationMessages,
   missingParentQuestions,
   requestRecord,
   resumedMessages,
@@ -191,6 +192,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       if ((await call(frame)).type !== 'ack') throw new Error('host refused');
     };
     let completionAccepted = false;
+    let finalReplyModelCallId: string | undefined;
     let manualCompactionCalls: string[] | null = null;
     let notifications = Promise.resolve();
     let reported = false;
@@ -569,6 +571,14 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               out.push(proxyEvent(event));
             }
             const answer = await stream.result();
+            // CR-055: the latest clean reply without a tool call is a final-reply role's answer.
+            finalReplyModelCallId =
+              start.role.answer === 'final_reply' &&
+              answer.stopReason === 'stop' &&
+              textOf(answer).trim() &&
+              !answer.content.some((part) => part.type === 'toolCall')
+                ? modelCallId
+                : undefined;
             if (!observed)
               send({
                 type: 'observe',
@@ -1146,7 +1156,10 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       if (loader.getExtensions().errors.length) throw new Error('extension failed to load');
       failureCode = 'sdk_start_failed';
       const sessionManager = SessionManager.inMemory(cwd);
-      for (const message of resumedMessages(start.resumeContext, Boolean(start.meeting)))
+      for (const message of [
+        ...conversationMessages(start.conversation),
+        ...resumedMessages(start.resumeContext, Boolean(start.meeting)),
+      ])
         sessionManager.appendMessage(message);
       ({ session } = await createAgentSession({
         cwd,
@@ -1482,14 +1495,18 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       await shutdown();
       await registryUpdates;
       if (requiredExtensionFailed) throw new Error('required extension shutdown failed');
+      const outcome =
+        cancelled || last?.stopReason === 'aborted'
+          ? 'cancelled'
+          : !last || last.stopReason === 'error'
+            ? 'failed'
+            : 'succeeded';
       send({
         type: 'settled',
-        outcome:
-          cancelled || last?.stopReason === 'aborted'
-            ? 'cancelled'
-            : !last || last.stopReason === 'error'
-              ? 'failed'
-              : 'succeeded',
+        outcome,
+        ...(outcome === 'succeeded' && finalReplyModelCallId
+          ? { finalTextModelCallId: finalReplyModelCallId }
+          : {}),
       });
     } catch {
       try {

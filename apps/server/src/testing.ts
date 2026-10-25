@@ -244,7 +244,10 @@ export function fakeOpenAI(
       checkId?: string;
       lspQuery?: LspQuery;
       mcpCall?: { name: string; args: JsonObject };
-      /** A plain answer to a host request first, such as the auto choice (CR-024). */
+      /**
+       * A plain answer to a host request first. Session chat sends no auto choice since
+       * CR-055, so a session test must not script one.
+       */
       hostReply?: string;
     } = {},
   ) => {
@@ -271,7 +274,17 @@ export function fakeOpenAI(
             }),
           ]
         : []),
-      fauxAssistantMessage([fauxToolCall('write_artifact', { text })], { stopReason: 'toolUse' }),
+      // CR-055: a final-reply role (a session's conversation lead) is offered no
+      // write_artifact; it answers in plain text, and the publishing steps are dropped.
+      (context) => {
+        // Tool declarations travel in the transcript's system messages.
+        if (JSON.stringify(context.messages).includes('"name":"write_artifact"'))
+          return fauxAssistantMessage([fauxToolCall('write_artifact', { text })], {
+            stopReason: 'toolUse',
+          });
+        faux.setResponses([]);
+        return fauxAssistantMessage(text);
+      },
       (context) => {
         const written =
           [...JSON.stringify(context.messages).matchAll(/artv_[a-f0-9]{32}/g)].at(-1)?.[0] ?? '';

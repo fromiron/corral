@@ -17,7 +17,7 @@ async function session(page: Page, corral: Harness) {
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  // CR-024: a new session starts in auto mode; these checks run the imported team.
+  // CR-055: these checks run the imported team; the session conversation starts it.
   await selectSessionTeam(page, linearCorral(['writer']).name);
 }
 
@@ -36,7 +36,7 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
     const committed = new Promise<void>((resolve) => {
       entered = resolve;
     });
-    await page.route('**/api/v1/runs', async (route) => {
+    await page.route('**/api/v1/runs/auto', async (route) => {
       if (route.request().method() !== 'POST' || heldOnce) return route.fallback();
       heldOnce = true;
       const response = await route.fetch();
@@ -46,7 +46,7 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
     });
     const finished = page.waitForResponse(
       (response) =>
-        response.url().endsWith('/api/v1/runs') && response.request().method() === 'POST',
+        response.url().endsWith('/api/v1/runs/auto') && response.request().method() === 'POST',
     );
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await committed;
@@ -61,11 +61,13 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
     if (nextDraft === undefined)
       await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await expect(requestBox(page)).toHaveValue(nextDraft ?? '');
-    await page.unroute('**/api/v1/runs');
+    await page.unroute('**/api/v1/runs/auto');
   };
   await requestBox(page).fill('First draft');
   await sendAcrossSettings();
-  await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible({
+  await expect(
+    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: true }),
+  ).toBeVisible({
     timeout: 20_000,
   });
   const [first] = corral.server.coordinator.listRuns();

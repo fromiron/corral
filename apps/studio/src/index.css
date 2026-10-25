@@ -186,6 +186,12 @@
   .corral-quiet-activity > span {
     animation: none;
   }
+  /* CR-055: a running turn's header stays still; its ticking time still says it works. */
+  .turn-process .shimmer-text {
+    animation: none;
+    color: var(--muted-foreground);
+    background: none;
+  }
 }
 /* Keep the input and response action reachable on short screens and at high zoom. */
 @media (max-height: 600px) {

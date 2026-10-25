@@ -145,7 +145,7 @@ function Entry({
       return (
         <Accordion>
           <AccordionItem value="reply" highlight="trigger">
-            <AccordionTrigger>{t('rawReply', { no: entry.seq })}</AccordionTrigger>
+            <AccordionTrigger>{t('rawReply', { no: entry.no })}</AccordionTrigger>
             <AccordionContent>{body}</AccordionContent>
           </AccordionItem>
         </Accordion>

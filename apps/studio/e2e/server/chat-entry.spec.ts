@@ -23,9 +23,7 @@ test.describe('ordinary chat entry', () => {
     const session = await page.request.get(`${corral.server.url}/api/v1/sessions/${sessionId}`);
     expect((await session.json()).corralId).toBeNull();
 
-    corral.fake?.answerWith('Here is your answer.', {
-      hostReply: '{"template":"single","reason":"A direct question."}',
-    });
+    corral.fake?.answerWith('Here is your answer.');
     await requestBox(page).fill('Answer my first question.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');

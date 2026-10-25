@@ -35,6 +35,7 @@ import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { MessageBranch } from './MessageBranch.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
+import { TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { toolRows } from './widgets/selectors.ts';
 
@@ -60,10 +61,10 @@ export function RunMessage({
     density: ChatDensity;
     open: boolean;
   } | null>(null);
-  const expanded =
-    disclosure?.runId === runId && disclosure.density === chatDensity
-      ? disclosure.open
-      : chatDensity === 'detailed';
+  // CR-055: a chat turn shows its process while it works and folds it when it ends.
+  const chosen =
+    disclosure?.runId === runId && disclosure.density === chatDensity ? disclosure.open : null;
+  const expanded = chosen ?? (chatDensity === 'detailed' || (sessionId !== null && live));
   const [openExecutions, setOpenExecutions] = useState<Record<string, boolean>>({});
   // The log's steps load when it first opens and stay for its closing animation.
   const [logShown, setLogShown] = useState(false);
@@ -116,6 +117,7 @@ export function RunMessage({
     );
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
   if (working && !watched) setWatched(true);
+  const processOpen = chosen ?? (chatDensity === 'detailed' || working);
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
   const requiredLabel =
     interactions.length === 1
@@ -163,7 +165,15 @@ export function RunMessage({
         !projection.reviews[result.artifactVersionId] &&
         state.artifactTexts[result.artifactVersionId] === undefined,
     );
-  const streams = working || handoff ? Object.entries(state.streams) : [];
+  // In a conversation only the lead's reply can become the answer; delegates speak in rows.
+  const lead = projection.executionOrder[0];
+  const streams =
+    working || handoff
+      ? Object.entries(state.streams).filter(([id]) => {
+          const owner = projection.modelCalls[id]?.executionId;
+          return !sessionId || !owner || owner === lead;
+        })
+      : [];
   const current = working
     ? streams
         .filter(
@@ -287,8 +297,19 @@ export function RunMessage({
           ) : null}
         </section>
       ) : null}
+      {/* CR-055: in a conversation, the turn's process is one flat list above its answer. */}
+      {sessionId && (!working || chatDensity !== 'results') ? (
+        <TurnProcess
+          events={state.events}
+          projection={projection}
+          streams={state.streams}
+          label={label}
+          open={processOpen}
+          onOpenChange={(open) => setDisclosure({ runId, density: chatDensity, open })}
+        />
+      ) : null}
       {/* The work log leads the turn, above its reply and result, from the turn's start. */}
-      {!working || !sessionId || chatDensity !== 'results' ? (
+      {!sessionId ? (
         <ThinkingSteps
           id={`work-log-${runId}`}
           className="work-log w-full"
@@ -346,7 +367,16 @@ export function RunMessage({
           </ThinkingStepsContent>
         </ThinkingSteps>
       ) : null}
-      {writing && chatDensity !== 'results' ? (
+      {writing && sessionId && chatDensity !== 'results' ? (
+        // The reply being written reads as the answer it may become.
+        <div
+          data-testid="live-text"
+          aria-live="off"
+          className="live-text min-w-0 text-sm leading-7 whitespace-pre-wrap wrap-anywhere"
+        >
+          {writing[1].text}
+        </div>
+      ) : writing && chatDensity !== 'results' ? (
         <div data-testid="live-text" aria-live="off" className="min-w-0">
           <p className="mb-1 text-2xs text-muted-foreground">
             {current
@@ -420,9 +450,10 @@ function ChatResult({
     first,
   );
   // Reading a result in the conversation is the checklist's last step (UX-09).
+  const inline = Boolean(sessionId && !partial && !result.media);
   useEffect(() => {
-    if (open === true && (text !== undefined || result.media)) markRunReviewed();
-  }, [open, text, result.media]);
+    if ((open === true || inline) && (text !== undefined || result.media)) markRunReviewed();
+  }, [open, inline, text, result.media]);
   const author = projection.executions[result.authorExecutionId];
   const review = projection.reviews[result.artifactVersionId];
   const target = review ? projection.artifacts[review.targetVersionId] : null;
@@ -435,6 +466,32 @@ function ChatResult({
     view: 'results' as const,
     result: id,
   });
+  // CR-055: in a conversation the answer is always visible, without a version header.
+  if (sessionId && !partial && !result.media && !review)
+    return (
+      <div className="min-w-0 space-y-2 text-sm leading-7 wrap-anywhere" data-testid="chat-result">
+        {text === undefined ? (
+          <p className="text-xs text-muted-foreground">{ta('loading')}</p>
+        ) : (
+          <SafeMarkdown text={text} />
+        )}
+        <div className="chat-result-actions flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <Link
+            {...location}
+            search={search(result.artifactVersionId)}
+            className="inline-flex items-center gap-1 hover:text-text"
+          >
+            <PanelRight size={12} aria-hidden="true" />
+            {tr('openResults')}
+          </Link>
+          <MessageBranch
+            runId={projection.runId}
+            artifactVersionId={result.artifactVersionId}
+            disabled={!TERMINAL_RUN_STATUSES.has(projection.status)}
+          />
+        </div>
+      </div>
+    );
   return (
     <details
       open={open === true}

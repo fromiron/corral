@@ -543,6 +543,18 @@ export interface UsageSummary {
   callLimit: number | null;
   /** Output tokens of the latest finished calls with reported usage, oldest first. */
   perCall: number[];
+  /** CR-054: reported input of finished calls; null when none reported it. */
+  input: UsageInput | null;
+}
+
+export interface UsageInput {
+  tokens: number;
+  /** Reported cached input; null when no finished call reported it. */
+  cached: number | null;
+  /** Cached share of the input of calls that reported both figures. */
+  cacheShare: number | null;
+  /** Finished calls without a cached-input report; never counted as zero. */
+  cacheUnreported: number;
 }
 
 const PER_CALL_BARS = 12;
@@ -567,6 +579,75 @@ export function usageSummary(
     calls: budget.modelCalls,
     callLimit: unlimited ? null : limits.maxModelCalls,
     perCall: perCall.slice(-PER_CALL_BARS),
+    input: usageInput(projection),
+  };
+}
+
+function usageInput(projection: RunProjection): UsageInput | null {
+  const finished = Object.values(projection.modelCalls).filter((call) => call.finished);
+  let tokens = 0;
+  let reportedInput = 0;
+  let cached = 0;
+  let cachedOf = 0;
+  let cacheReported = 0;
+  for (const call of finished) {
+    const input = call.usage?.inputTokens;
+    const cache = call.usage?.cachedInputTokens;
+    if (input == null) continue;
+    tokens += input;
+    reportedInput += 1;
+    if (cache == null) continue;
+    cached += cache;
+    cachedOf += input;
+    cacheReported += 1;
+  }
+  if (!reportedInput) return null;
+  return {
+    tokens,
+    cached: cacheReported ? cached : null,
+    cacheShare: cacheReported && cachedOf ? cached / cachedOf : null,
+    cacheUnreported: finished.filter((call) => call.usage?.cachedInputTokens == null).length,
+  };
+}
+
+/** CR-055: the session's statistics under the composer, from each turn's Coordinator usage. */
+export interface SessionStats {
+  turns: number;
+  steps: number;
+  tokens: number;
+  /** Cached share of input over calls that reported both figures; null when none did. */
+  cacheShare: number | null;
+  cacheUnreported: number;
+}
+
+export function sessionStats(
+  projections: readonly RunProjection[],
+  steps: (projection: RunProjection) => number,
+): SessionStats | null {
+  if (!projections.length) return null;
+  let tokens = 0;
+  let cached = 0;
+  let cachedOf = 0;
+  let cacheUnreported = 0;
+  for (const projection of projections)
+    for (const call of Object.values(projection.modelCalls)) {
+      if (!call.finished) continue;
+      tokens += (call.usage?.inputTokens ?? 0) + (call.usage?.outputTokens ?? 0);
+      const input = call.usage?.inputTokens;
+      const cache = call.usage?.cachedInputTokens;
+      if (input == null || cache == null) {
+        cacheUnreported += 1;
+        continue;
+      }
+      cached += cache;
+      cachedOf += input;
+    }
+  return {
+    turns: projections.length,
+    steps: projections.reduce((sum, projection) => sum + steps(projection), 0),
+    tokens,
+    cacheShare: cachedOf ? cached / cachedOf : null,
+    cacheUnreported,
   };
 }
 

@@ -1384,6 +1384,7 @@
     "modeLive": "Live models",
     "working": "Working…",
     "fromResult": "Starts from {label}",
+    "continuesConversation": "Continues this conversation",
     "request": "Request",
     "save": "Save",
     "cancel": "Cancel",
@@ -1992,7 +1993,14 @@
     "ultraTournamentScope": "With a working copy and Linux isolation, each candidate works in its own copy. Among candidates that pass the registered checks, the judging model picks a winner without knowing which model wrote it; the winner goes through refinement rounds and is applied to this session. Otherwise Ultra runs as a collaboration; the actual mode is shown right after the start.",
     "ultraRefinementRounds": "Refinement rounds",
     "ultraAutoApply": "Apply the winner to this session without asking",
-    "ultraNoLimits": "Ultra has no usage limits. It keeps running until you cancel it, and costs accrue accordingly."
+    "ultraNoLimits": "Ultra has no usage limits. It keeps running until you cancel it, and costs accrue accordingly.",
+    "teamLabel": "Team",
+    "teamNone": "No team",
+    "teamAuto": "auto",
+    "teamNoneHint": "One assistant answers; it calls subagents only when you ask.",
+    "teamAutoHint": "The assistant leads planner, researcher, writer and reviewer agents when the work benefits.",
+    "teamCorralHint": "The assistant leads this Corral's roles, using its flow as guidance.",
+    "teamCorralGroup": "Corral"
   },
   "Commands": {
     "newSession": "New session",
@@ -2957,6 +2965,11 @@
       "limit": "Limit",
       "noLimit": "No limit",
       "modelCalls": "Model calls",
+      "inputTokens": "Input tokens",
+      "cachedInput": "Cached input",
+      "cachedShare": "{tokens} ({share})",
+      "cacheNotReported": "Not reported",
+      "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
       "fullBudget": "Open the run"
     }
   },
@@ -4249,5 +4262,46 @@
       "cancelled": "Cancelled",
       "unknown": "Outcome unknown"
     }
+  },
+  "Turn": {
+    "working": "Working · {time}",
+    "worked": "Worked {time}",
+    "workedSteps": "Worked {time} · {count, plural, one {# step} other {# steps}}",
+    "seconds": "{s}s",
+    "minutes": "{m}m {s}s",
+    "think": "Think",
+    "blocked": "blocked",
+    "failed": "failed",
+    "agentStatus": "{label} · {status}",
+    "openRun": "Open the run beside the conversation",
+    "tool": {
+      "read_file": "Read",
+      "list_files": "List",
+      "write_file": "Write",
+      "delete_file": "Delete",
+      "move_file": "Move",
+      "edit": "Edit",
+      "edit_hashline": "Edit",
+      "read_hashline": "Read",
+      "run_command": "Run",
+      "search": "Search",
+      "read_document": "Read",
+      "read_artifact": "Read",
+      "preview_file": "Preview",
+      "preview_app": "Preview",
+      "preview_action": "Preview",
+      "generate_image": "Image",
+      "ask_user": "Ask",
+      "update_plan": "Plan",
+      "spawn_subagents": "Subagents",
+      "await_tasks": "Wait",
+      "ask": "Ask",
+      "reply": "Reply"
+    },
+    "statTurns": "{count, plural, one {# turn} other {# turns}}",
+    "statSteps": "{count, plural, one {# step} other {# steps}}",
+    "statTokens": "{tokens} tokens",
+    "statCache": "cache hit {share}",
+    "statCacheUnreported": "cache not reported"
   }
 }

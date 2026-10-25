@@ -47,6 +47,7 @@ import {
   assertImagePayload,
   assertProtectedPayload,
   checkpointContext,
+  conversationMessages,
   missingParentQuestions,
   requestRecord,
   resumedMessages,
@@ -550,7 +551,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         model,
         systemPrompt: systemPrompt(start),
         tools,
-        messages: resumedMessages(start.resumeContext, Boolean(start.meeting)),
+        messages: [
+          ...conversationMessages(start.conversation),
+          ...resumedMessages(start.resumeContext, Boolean(start.meeting)),
+        ],
       },
       // Each request carries the token and output cap from its own permit.
       streamFn: (m, context, options) => {
@@ -625,8 +629,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         const message = event.message as AssistantMessage;
         if (lastPrepared) meter.observe(lastPrepared, model, message);
         attemptedTools ||= message.content.some((part) => part.type === 'toolCall');
+        // Meetings answer before any tool; a CR-055 final-reply role may use tools first.
         finalTextModelCallId =
-          message.stopReason === 'stop' && textOf(message).trim() && !attemptedTools
+          message.stopReason === 'stop' &&
+          textOf(message).trim() &&
+          (start.role.answer === 'final_reply' || !attemptedTools)
             ? permit.modelCallId
             : undefined;
         const { usage, rawUsage } = normalizeUsage(message);

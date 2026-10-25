@@ -3,7 +3,6 @@ import {
   type AutoReasoning,
   ReasoningLevel,
   type RunReference,
-  type UltraSelection,
 } from '@corral/contracts';
 import type { ProfileInfo } from './useModels.ts';
 
@@ -53,19 +52,18 @@ export function autoReasoningUnsupported(
       );
 }
 
-/** User-edited request identity; the pending command separately freezes mode and startFrom. */
+/**
+ * User-edited request identity; the pending command separately freezes mode and startFrom.
+ * `team` is the composer's team choice (CR-055): `none` is the default and adds nothing.
+ */
 export function autoCommandSeed(
   text: string,
   references: RunReference[],
   choice: AutoModelChoice,
-  scope?: { taskScope?: 'work' | 'review_only'; verificationScope?: 'targeted' | 'release' },
-  qualityPreset?: 'default' | 'ultra',
-  ultra?: UltraSelection,
+  team = 'none',
 ): string {
   const identity: unknown[] = [references, choice.modelProfile, choice.reasoning ?? null];
-  if (scope?.taskScope || scope?.verificationScope) identity.push(scope);
-  if (qualityPreset === 'ultra') identity.push({ qualityPreset });
-  if (ultra) identity.push({ ultra });
+  if (team !== 'none') identity.push({ team });
   return `auto\u0000${text}\u0000${JSON.stringify(identity)}`;
 }
 

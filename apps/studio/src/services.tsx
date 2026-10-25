@@ -205,6 +205,8 @@ export async function createStudioServices(): Promise<StudioServices> {
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
+    // CR-055: a saved Corral lends its roles to the conversation lead.
+    corral: async (corralId) => (await repository.get(corralId))?.definition ?? null,
     // The demo has no candidate copies, so a version 2 tournament runs as collaboration (CR-048).
     resolveUltra: (selection, primary, mode, _models, context) =>
       resolveUltraSelection(

@@ -24,6 +24,7 @@ import {
   RuntimeCheckpointRecord,
   RuntimeCheckpointState,
   RuntimeContext,
+  SessionConversation,
   TaskBrief,
 } from '@corral/contracts';
 import { z } from 'zod';
@@ -34,8 +35,8 @@ import { EndpointSpec } from './endpoint.ts';
 // mismatch. Nothing the model writes decides which execution or permission a frame belongs to.
 // Frames can carry an access token (`permit.apiKey`): they are never logged or stored.
 
-export const PROTOCOL_VERSION = 8;
-export const LEGACY_PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 9;
+export const LEGACY_PROTOCOL_VERSION = 8;
 
 const head = {
   protocolVersion: z.literal(LEGACY_PROTOCOL_VERSION),
@@ -171,6 +172,8 @@ export const StartFrame = z.strictObject({
     prompt: z.string().min(1),
     outputContract: z.string().min(1),
     imageProfile: Identifier.optional(),
+    /** CR-055: the last reply without a tool call is the result. */
+    answer: z.literal('final_reply').optional(),
   }),
   inputs: z.array(
     z.strictObject({
@@ -187,6 +190,8 @@ export const StartFrame = z.strictObject({
     .strictObject({ reserveTokens: z.int().min(0), keepRecentTokens: z.int().min(0) })
     .optional(),
   resumeContext: RuntimeCheckpointState.optional(),
+  /** CR-054: the session's earlier requests and answers, sent before this assignment. */
+  conversation: SessionConversation.optional(),
   images: z.array(ImageInput).max(3).optional(),
   teamPlanOwner: z.boolean().optional(),
   round: z.int().min(1).nullable(),

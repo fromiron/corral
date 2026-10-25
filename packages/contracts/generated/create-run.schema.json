@@ -150,6 +150,19 @@
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
     },
+    "conversation": {
+      "type": "object",
+      "properties": {
+        "throughRunId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        }
+      },
+      "required": [
+        "throughRunId"
+      ],
+      "additionalProperties": false
+    },
     "references": {
       "maxItems": 20,
       "type": "array",

@@ -211,6 +211,7 @@ export type {
 import {
   type AutoModelChoice,
   type AutoRoute,
+  type ConversationSource,
   type CorralDefinition,
   type CreateRunRequest,
   type EffectiveHarnessSnapshot,
@@ -286,6 +287,10 @@ export interface AutoRunStart {
   choice: AutoModelChoice;
   mode: 'mock' | 'live';
   startFrom?: StartFrom;
+  /** CR-054: the session's turns through this ended run. */
+  conversation?: ConversationSource;
+  /** CR-055: the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
+  team?: 'none' | 'auto' | { corralId: string };
   references?: RunReference[];
 }
 

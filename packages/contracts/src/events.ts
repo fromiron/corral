@@ -30,7 +30,7 @@ import { ReasoningApplySettings, ReasoningCapabilities, ReasoningResolution } fr
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
 import { ResumedFrom, RuntimeCheckpointRecord } from './runtime-checkpoints.ts';
-import { BranchedFrom } from './session-continuity.ts';
+import { BranchedFrom, ContinuedConversation } from './session-continuity.ts';
 import { ExecutionActivity, ExecutionStatus, ReviewVerdict, RunStatus } from './states.ts';
 
 // RunEvent = envelope (contracts/event-envelope.schema.json) + a typed payload for each entry
@@ -119,6 +119,8 @@ export const RunStarted = event(
     reasoningApply: ReasoningApplySettings.optional(),
     /** The earlier version whose text this run's brief starts from (CR-007). */
     startedFrom: StartFrom.optional(),
+    /** The session turns this run carries as conversation (CR-054). */
+    conversation: ContinuedConversation.optional(),
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
     /** The auto choice the definition came from (CR-024). */
     autoRoute: AutoRoute.optional(),

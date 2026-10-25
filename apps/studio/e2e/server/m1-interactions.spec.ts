@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { closeRequestOptions, openRequestOptions, requestBox } from '../workbench.ts';
+import { requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -14,8 +14,8 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
     if (!run) throw new Error('missing fixture run');
     return { runId: run.runId, ...corral.server.coordinator.getSnapshot(run.runId) };
   };
+  // CR-055: the session's conversation lead plans, asks, then replies; no auto choice is sent.
   corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"Focused fixture"}'),
     (context) => {
       expect(JSON.stringify(context.messages)).toContain(source);
       expect(
@@ -25,9 +25,6 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
             message.content.some((part) => part.type === 'image' && part.mimeType === 'image/png'),
         ),
       ).toBe(true);
-      expect(
-        corral.server.coordinator.getRunSnapshot(current().runId)?.definition.input.taskScope,
-      ).toBe('review_only');
       return fauxAssistantMessage(
         [
           fauxToolCall('update_plan', {
@@ -59,20 +56,11 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
             criteriaVersionId: current().projection.currentCriteriaVersionId,
             items: [{ id: 'answer', title: 'Read attachment and answer', status: 'completed' }],
           }),
-          fauxToolCall('write_artifact', { text: 'Attachment verified. The answer is a table.' }),
         ],
         { stopReason: 'toolUse' },
       );
     },
-    () =>
-      fauxAssistantMessage(
-        [
-          fauxToolCall('submit_result', {
-            artifactVersionIds: Object.keys(current().projection.artifacts),
-          }),
-        ],
-        { stopReason: 'toolUse' },
-      ),
+    fauxAssistantMessage('Attachment verified. The answer is a table.'),
   ]);
   await corral.open('/');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
@@ -82,9 +70,6 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   await page.getByRole('menuitem', { name: 'Reasoning effort', exact: true }).hover();
   await page.getByRole('menuitemradio', { name: 'Low', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toContainText('Low');
-  await openRequestOptions(page);
-  await page.getByRole('switch', { name: 'Review only · no file changes' }).check();
-  await closeRequestOptions(page);
   await requestBox(page).fill('Read the attachment and use my chosen format');
   await page
     .getByLabel('Attach text files', { exact: true })
@@ -105,9 +90,6 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
   await expect(page).toHaveURL(url);
   await expect(requestBox(page)).toHaveValue('Read the attachment and use my chosen format');
   await expect(page.getByRole('button', { name: 'Remove notes.txt' })).toBeVisible();
-  await openRequestOptions(page);
-  await expect(page.getByRole('switch', { name: 'Review only · no file changes' })).toBeChecked();
-  await closeRequestOptions(page);
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('action-required')).toBeVisible();

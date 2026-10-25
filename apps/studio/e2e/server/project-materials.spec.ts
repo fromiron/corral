@@ -1,13 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { closeRequestOptions, openRequestOptions, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
-test('[TC-ABS-009-H] clone and link through Projects; save and explicitly attach versioned instructions', async ({
+// CR-055 §6: the composer no longer attaches project instructions or memory to a request;
+// they stay versioned project records.
+test('[TC-ABS-009-H] clone and link through Projects; save versioned instructions', async ({
   page,
   corral,
-}, testInfo) => {
+}) => {
   test.setTimeout(60000);
   const source = join(corral.workspace, 'source-repo');
   const destination = join(corral.workspace, 'cloned-repo');
@@ -56,29 +57,4 @@ test('[TC-ABS-009-H] clone and link through Projects; save and explicitly attach
   await expect(page.getByRole('button', { name: 'Project guide · v1', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Project guide · v1', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
-  await expect(page).toHaveURL(/\/sessions\/session_/);
-  await openRequestOptions(page);
-  await page
-    .getByRole('combobox', { name: 'Attach project instructions or memory to this request' })
-    .click();
-  await page.getByRole('option', { name: 'Project guide · v1', exact: true }).click();
-  await closeRequestOptions(page);
-  await expect(
-    page.getByRole('button', { name: 'Remove Project guide (v1).md', exact: true }),
-  ).toBeVisible();
-  // The chosen immutable snapshot is part of the existing composer draft, not an automatic prompt.
-  await page.reload();
-  await expect(
-    page.getByRole('button', { name: 'Remove Project guide (v1).md', exact: true }),
-  ).toBeVisible();
-  await requestBox(page).fill('Summarize the attached project guide.');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(1);
-  const runId = corral.server.coordinator.listRuns()[0]?.runId;
-  expect(runId).toBeTruthy();
-  expect(JSON.stringify(corral.server.coordinator.getRunSnapshot(runId as string))).toContain(
-    'Keep the original public API.',
-  );
-  await page.screenshot({ path: testInfo.outputPath('explicit-project-document.png') });
 });

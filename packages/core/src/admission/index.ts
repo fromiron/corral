@@ -76,6 +76,8 @@ export interface ToolGateView extends ModelGateView {
   currentEffectId?: string;
   reservedSpawns?: number;
   pendingChildContinuation?: boolean;
+  /** CR-049/055: the Coordinator itself publishes a plain-text answer for this execution. */
+  hostAnswer?: boolean;
   harnessRead?: boolean;
   descriptor?: import('@corral/contracts').ToolDescriptor;
   proposal: ToolProposal;
@@ -262,8 +264,9 @@ export function notifyObservers(
 const noProgress: Gate<ModelGateView> = {
   id: 'no_progress',
   version: 1,
-  check: ({ projection, usageLimits }) =>
-    !usageLimits && noProgressReached(projection.progress)
+  // CR-055: every run, limited or not, waits for the person after six replies without progress.
+  check: ({ projection }) =>
+    noProgressReached(projection.progress)
       ? {
           kind: 'require_approval',
           approval: 'user_action',
@@ -368,9 +371,14 @@ const roleAllowlist: Gate<ToolGateView> = {
       ].includes(proposal.name)
     )
       return denied('this tool needs an actual harness execution');
-    if (input.harness && !view.descriptor && !view.simulation)
+    // CR-055: publishing a final reply is the Coordinator's act, not a tool the work style offers.
+    const hostPublishes =
+      view.hostAnswer === true &&
+      input.role.answer === 'final_reply' &&
+      (proposal.name === 'write_artifact' || proposal.name === 'submit_result');
+    if (input.harness && !view.descriptor && !view.simulation && !hostPublishes)
       return denied('tool is absent from the loaded harness');
-    if (input.harness && !input.harness.allowedTools.includes(proposal.name))
+    if (input.harness && !input.harness.allowedTools.includes(proposal.name) && !hostPublishes)
       return denied('tool is not allowed by this harness');
     if (view.descriptor?.source.startsWith('extension:')) {
       return input.harness?.policy === 'trusted-native' &&
@@ -567,15 +575,21 @@ const roleAllowlist: Gate<ToolGateView> = {
         return UserInputRequest.safeParse(args).success
           ? allow
           : refuse('SCHEMA_INVALID', 'invalid user questions');
-      case 'write_artifact':
-        if (!input.role.allowedWorkTools.includes('write_artifact')) {
+      case 'write_artifact': {
+        // A final-reply role's answer is published by the Coordinator, never by the model.
+        const hostPublishes = view.hostAnswer === true && input.role.answer === 'final_reply';
+        if (!input.role.allowedWorkTools.includes('write_artifact') && !hostPublishes) {
           return denied('role may not write artifacts');
         }
         return typeof args.text === 'string'
           ? allow
           : refuse('SCHEMA_INVALID', 'text must be a string');
+      }
       case 'submit_result': {
-        if (!input.role.allowedCollaborationTools.includes('submit_result')) {
+        if (
+          !input.role.allowedCollaborationTools.includes('submit_result') &&
+          !(view.hostAnswer === true && input.role.answer === 'final_reply')
+        ) {
           return denied('role may not submit results');
         }
         if (view.pendingChildContinuation)

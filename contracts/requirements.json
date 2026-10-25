@@ -1066,5 +1066,35 @@
     "requirement": "CR-053: The session side area leads with an Overview of design-kit widgets for the presented run: context, usage, results, changes, agents and environment, each shown only when it has something to say and opening its existing detail in place. Figures follow the chat widget numeric invariants; unmeasured or unconfirmed values are named, never shown as zero. Audit detail stays in the Run pane. No new stream, poll or model call.",
     "owner": "studio",
     "phase": "P12"
+  },
+  {
+    "id": "CRL-LLM-007",
+    "requirement": "CR-054: A session follow-up carries the session's ended turns (recorded request without CR-007 start text, final answer text or ended status) as user/assistant messages after stable instructions and before the current assignment, copied by the Coordinator into the run under a size cap with recorded provenance. Explicit CR-007 start points and explain are unchanged; resumed, branched, delegated and meeting contexts do not receive it. Meeting continuation names newly posted messages as such. The Usage detail shows reported input and cached input; unreported cache figures are named, never zero.",
+    "owner": "core",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-008",
+    "requirement": "CR-055: A role may answer with its final reply; it receives no write_artifact or submit_result, and the Coordinator records and submits the last finished reply of a normally ended execution as its result, citing that model call. Session chat starts one lead conversation role without a chooser request; a question is an ordinary message. A rewrite of an unsubmitted artifact is not progress, and every run waits for the person after six replies without progress.",
+    "owner": "core",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-UX-012",
+    "requirement": "CR-055: A chat turn shows the message, one flat process group of one-line rows and the answer, which is always visible; the group streams with a running status and folds under its duration and step count when finished. Audit detail stays in the side panes. The composer shows turns, steps, tokens and cache hit, naming unreported figures.",
+    "owner": "studio",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-009",
+    "requirement": "CR-055: In basic chat the lead delegates to a helper only when the person explicitly asks. A composer team selector (none, auto, saved Corrals) gives the lead a roster of named delegates it calls by itself; the selection applies from the next turn and sends no per-message chooser request.",
+    "owner": "core",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-LLM-010",
+    "requirement": "CR-055 §7: A live session turn in a linked, trusted folder runs under the built-in session work style unless a work style is chosen; the person's and project's defaults layer over it and may restrict it. Writers get command and preview tools under the permission mode; reviewers stay read-only. Simulated agents and untrusted folders get no work style. The Coordinator's own final-reply publication is not limited by the work style, a wait ended by cancellation settles as cancelled, and a resent conversation start returns its recorded run.",
+    "owner": "core",
+    "phase": "M8"
   }
 ]

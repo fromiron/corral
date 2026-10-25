@@ -317,6 +317,10 @@
               "revision"
             ],
             "additionalProperties": false
+          },
+          "answer": {
+            "type": "string",
+            "const": "final_reply"
           }
         },
         "required": [

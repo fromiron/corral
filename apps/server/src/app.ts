@@ -13,6 +13,7 @@ import {
   type CommandError,
   ContentHash,
   ContentSearch,
+  ConversationSource,
   CorralDefinitionDraft,
   CreateRunRequest,
   canonicalJson,
@@ -366,6 +367,9 @@ const AutoRunRequest = z.strictObject({
   choice: AutoModelChoice,
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
+  conversation: ConversationSource.optional(),
+  /** CR-055: the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
+  team: z.union([z.enum(['none', 'auto']), z.strictObject({ corralId: Identifier })]).optional(),
   references: RunReferences.optional(),
 });
 const CreateProject = z.strictObject({
@@ -1413,13 +1417,19 @@ async function createCorralServer(
       .listRuns()
       .some((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
   const autoStarter = createAutoStarter<AbortSignal>({
-    prepareModels: (request) =>
+    prepareModels: (request, profiles) =>
       coordinator.prepareModels(
-        request.ultra?.modelProfiles ?? [request.choice.modelProfile],
+        profiles ?? request.ultra?.modelProfiles ?? [request.choice.modelProfile],
         request.mode,
       ),
     resolveUltra: (selection, primary, mode, models, context) =>
       coordinator.resolveUltra(selection, primary, mode, models, context),
+    // CR-055: the conversation lead gets file tools when the session has a working copy.
+    fileTools: async (request) =>
+      request.sessionId ? (await files.currentTree(request.sessionId)) !== null : false,
+    corral: async (corralId) => (await corrals.get(corralId))?.definition ?? null,
+    // CR-055 §7: a session turn in a trusted folder works in the built-in work style by default.
+    sessionHarness: () => harnesses.sessionDefault(),
     startRun: async (request, signal, models) => {
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
       const startTree = request.sessionId ? await files.currentTree(request.sessionId) : null;
@@ -1705,6 +1715,8 @@ async function createCorralServer(
           ...(body.taskScope ? { taskScope: body.taskScope } : {}),
           ...(body.verificationScope ? { verificationScope: body.verificationScope } : {}),
           ...(body.startFrom ? { startFrom: body.startFrom } : {}),
+          ...(body.conversation ? { conversation: body.conversation } : {}),
+          ...(body.team ? { team: body.team } : {}),
           ...(body.references ? { references: body.references } : {}),
         },
         { fileTools: false, signal: dropped.signal },
@@ -1754,6 +1766,13 @@ async function createCorralServer(
         return fail(reply, 'SCHEMA_INVALID', 'cancellation needs its own command ID');
       if (!(await corrals.getSession(body.sessionId)))
         return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      // A start this route made: a chosen auto route, or a session conversation (CR-055).
+      const autoStarted = (result: AutoResult | null) =>
+        Boolean(
+          result?.autoRoute ||
+            (result?.runId &&
+              coordinator.getRunSnapshot(result.runId)?.definition.id.startsWith('conversation_')),
+        );
       const pending = autoRequests.get(commandId);
       const previous = recordedAuto(commandId);
       const run = previous?.runId
@@ -1761,7 +1780,7 @@ async function createCorralServer(
         : null;
       if (
         (pending && pending.sessionId !== body.sessionId) ||
-        (run && (run.sessionId !== body.sessionId || !previous?.autoRoute))
+        (run && (run.sessionId !== body.sessionId || !autoStarted(previous)))
       )
         return fail(reply, 'TARGET_NOT_FOUND', 'no such auto request in this session');
       const stopped = coordinator.cancelAutoStart(commandId, body.sessionId);
@@ -1772,7 +1791,7 @@ async function createCorralServer(
       const start = recordedAuto(commandId);
       if (!start?.runId) return { start: null, cancellation: null };
       const committed = coordinator.listRuns().find((run) => run.runId === start.runId);
-      if (committed?.sessionId !== body.sessionId || !start.autoRoute)
+      if (committed?.sessionId !== body.sessionId || !autoStarted(start))
         return fail(reply, 'TARGET_NOT_FOUND', 'no such auto request in this session');
       const cancellation =
         !TERMINAL_RUN_STATUSES.has(committed.status) ||

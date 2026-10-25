@@ -284,16 +284,19 @@ test('[TC-WBD-012-H] one deterministic agent request changes the copy, and the p
   await requestBox(page).fill('Write the notes');
   await page.getByRole('button', { name: 'Send' }).click();
   const card = page.locator('[data-testid^="entry-"]').first();
-  await expect(card.getByText('Succeeded')).toBeVisible({ timeout: 20_000 });
+  await expect(card.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
   const copy = copyOf(original, sessionId);
-  expect(readFileSync(join(copy, 'notes', 'writer.md'), 'utf8').length).toBeGreaterThan(0);
+  // CR-055: the session's lead calls the team's writer, whose node is team_writer_role.
+  expect(readFileSync(join(copy, 'notes', 'team_writer_role.md'), 'utf8').length).toBeGreaterThan(
+    0,
+  );
 
-  await commitAndPush(page, 'notes/writer.md', 'Add notes', 'feature/notes');
+  await commitAndPush(page, 'notes/team_writer_role.md', 'Add notes', 'feature/notes');
   await expect
     .poll(() => git(remote, 'for-each-ref', '--format=%(refname)', 'refs/heads/feature/notes'))
     .toBe('refs/heads/feature/notes');
   expect(git(remote, 'show', '--name-only', '--format=%s', 'feature/notes')).toBe(
-    'Add notes\n\nnotes/writer.md',
+    'Add notes\n\nnotes/team_writer_role.md',
   );
   expect(git(original, 'rev-parse', 'HEAD')).toBe(before.head);
   expect(git(original, 'status', '--porcelain')).toBe(before.status);

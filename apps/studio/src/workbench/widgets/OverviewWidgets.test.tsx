@@ -176,3 +176,45 @@ it('[TC-RAIL-001-N] without a run, Overview renders nothing so its column stays 
   const container = await render(model({ runId: null, chips: [], results: [], usage: null }));
   expect(container.innerHTML).toBe('');
 });
+
+it('[TC-LLM-007-N] the usage detail states reported input and cached input and names unreported calls', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      usage: {
+        ...base.usage!,
+        input: { tokens: 3_500, cached: 1_500, cacheShare: 0.5, cacheUnreported: 2 },
+      },
+    }),
+  );
+  const trigger = container.querySelector<HTMLElement>(
+    '[data-overview-widget="usage"] [role="button"]',
+  );
+  await act(async () => trigger?.click());
+  const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
+  expect(detail).toContain('Input tokens');
+  expect(detail).toContain('3,500');
+  expect(detail).toContain('Cached input');
+  expect(detail).toContain('1,500 (50%)');
+  expect(detail).toContain('2 calls did not report cached input');
+});
+
+it('[TC-LLM-007-N] the usage detail never shows an unreported cache as zero', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      usage: {
+        ...base.usage!,
+        input: { tokens: 300, cached: null, cacheShare: null, cacheUnreported: 3 },
+      },
+    }),
+  );
+  const trigger = container.querySelector<HTMLElement>(
+    '[data-overview-widget="usage"] [role="button"]',
+  );
+  await act(async () => trigger?.click());
+  const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
+  expect(detail).toContain('Cached input');
+  expect(detail).toContain('Not reported');
+  expect(detail).not.toContain('0%');
+});

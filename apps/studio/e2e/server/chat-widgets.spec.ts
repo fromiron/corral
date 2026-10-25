@@ -50,17 +50,6 @@ function updatePlan(corral: Harness, completed: number, expectedRevision = compl
   );
 }
 
-function submitted(corral: Harness) {
-  return fauxAssistantMessage(
-    [
-      fauxToolCall('submit_result', {
-        artifactVersionIds: Object.keys(current(corral).projection.artifacts),
-      }),
-    ],
-    { stopReason: 'toolUse' },
-  );
-}
-
 async function session(page: Page, corral: Harness) {
   await corral.open('/');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
@@ -85,7 +74,6 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     if (/\/runs\/[^/]+\/events$/.test(url.pathname)) subscriptions.push(url.pathname);
   });
   corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"A focused layout update"}'),
     () => updatePlan(corral, 0),
     async () => {
       await next.waiting;
@@ -109,13 +97,8 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
     },
     (context) => {
       expect(JSON.stringify(context.messages)).toContain('The compact layout');
-      return fauxAssistantMessage(
-        [fauxToolCall('write_artifact', { text: 'The compact chat layout is ready for review.' })],
-        { stopReason: 'toolUse' },
-      );
+      return fauxAssistantMessage('The compact chat layout is ready for review.');
     },
-    () => submitted(corral),
-    fauxAssistantMessage('Done.'),
   ]);
 
   try {
@@ -247,8 +230,8 @@ test.describe('serialized provider context', () => {
     if (!corral.endpoint) throw new Error('The local compatible endpoint is required');
     corral.endpoint.setReply(() => {
       request += 1;
-      if (request === 1) return '{"template":"single","reason":"A bounded text-only task"}';
-      if (request === 2)
+      // CR-055: no auto choice request; the lead plans, asks, then replies.
+      if (request === 1)
         return {
           toolCall: {
             name: 'update_plan',
@@ -262,7 +245,7 @@ test.describe('serialized provider context', () => {
             },
           },
         };
-      if (request === 3)
+      if (request === 2)
         return {
           toolCall: {
             name: 'ask_user',
@@ -272,21 +255,7 @@ test.describe('serialized provider context', () => {
             },
           },
         };
-      if (request === 4)
-        return {
-          toolCall: {
-            name: 'write_artifact',
-            args: { text: 'The request used the recorded provider payload.' },
-          },
-        };
-      if (request === 5)
-        return {
-          toolCall: {
-            name: 'submit_result',
-            args: { artifactVersionIds: Object.keys(current(corral).projection.artifacts) },
-          },
-        };
-      return 'Done.';
+      return 'The request used the recorded provider payload.';
     });
     await session(page, corral);
     await send(page, 'Read this text, make a short plan, and ask before answering.');
@@ -346,26 +315,18 @@ test('[TC-WIDGET-001-N] opening an earlier result preserves the draft and keeps 
   corral,
 }) => {
   await session(page, corral);
-  corral.fake?.answerWith('Earlier result.', {
-    hostReply: '{"template":"single","reason":"A short answer"}',
-  });
+  corral.fake?.answerWith('Earlier result.');
   await send(page, 'Write the earlier result.');
   await expect(page.getByTestId('chat-result')).toContainText('Earlier result.');
   await expect.poll(() => current(corral).projection.status).toBe('succeeded');
   const earlierRunId = current(corral).runId;
   const next = gate();
   corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"A focused follow-up"}'),
     () => updatePlan(corral, 0),
     async () => {
       await next.waiting;
-      return fauxAssistantMessage(
-        [fauxToolCall('write_artifact', { text: 'The next version is available.' })],
-        { stopReason: 'toolUse' },
-      );
+      return fauxAssistantMessage('The next version is available.');
     },
-    () => submitted(corral),
-    fauxAssistantMessage('Done.'),
   ]);
   try {
     await send(page, 'Update the layout and retain the earlier result.');
@@ -405,7 +366,6 @@ test('[TC-WIDGET-001-H] a finished checklist does not finish its run, and only a
   const completePlan = gate();
   const completeRun = gate();
   corral.fake?.setResponses([
-    fauxAssistantMessage('{"template":"single","reason":"A bounded checklist"}'),
     () => updatePlan(corral, 0),
     async () => {
       await completePlan.waiting;
@@ -413,13 +373,8 @@ test('[TC-WIDGET-001-H] a finished checklist does not finish its run, and only a
     },
     async () => {
       await completeRun.waiting;
-      return fauxAssistantMessage(
-        [fauxToolCall('write_artifact', { text: 'The completed checklist has a final result.' })],
-        { stopReason: 'toolUse' },
-      );
+      return fauxAssistantMessage('The completed checklist has a final result.');
     },
-    () => submitted(corral),
-    fauxAssistantMessage('Done.'),
   ]);
   try {
     await session(page, corral);

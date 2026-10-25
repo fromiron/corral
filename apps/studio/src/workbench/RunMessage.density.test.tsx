@@ -195,26 +195,22 @@ it('[TC-WBD-007-H] changes only display density while keeping results and requir
     expect(fixture.store?.getState().projection).toBe(f.projection);
     expect(fixture.store?.getState().events).toBe(f.events);
   }
-  // The work log is the kit's ThinkingSteps: a disclosure header over one step per execution.
-  const log = f.container.querySelector<HTMLElement>('.work-log');
-  if (!log) throw new Error('work log missing');
+  // CR-055: the turn's process is the kit's ThinkingSteps with one flat row per step.
+  const log = f.container.querySelector<HTMLElement>('[data-testid="turn-process"]');
+  if (!log) throw new Error('turn process missing');
   expect(log.tagName).not.toBe('DETAILS');
-  const triggers = () => [...log.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')];
-  expect(triggers()[0]?.textContent).toContain('Work log');
-  expect(triggers()[0]?.getAttribute('aria-expanded')).toBe('true');
-  // Only the running execution is the active step; a failed one is not animated as live work.
-  const active = [...log.querySelectorAll('.shimmer-text')].map((node) => node.textContent);
-  expect(active).toEqual(['writer · #2…']);
-  // A transcript is loaded only when its own fold opens.
+  const trigger = () => log.querySelector<HTMLButtonElement>('button[aria-expanded]');
+  expect(trigger()?.textContent).toContain('Working · ');
+  expect(trigger()?.getAttribute('aria-expanded')).toBe('true');
+  // Only the running delegate is an active row; the failed lead is not animated as live work.
+  const active = [...log.querySelectorAll('.turn-process-row .shimmer-text')].map(
+    (node) => node.textContent,
+  );
+  expect(active).toEqual(['writer · Active…']);
+  // Raw transcripts stay in the run pane beside the conversation.
   expect(f.container.querySelector('[data-testid="density-transcript"]')).toBeNull();
-  const conversation = triggers().find((button) => button.textContent?.startsWith('Conversation'));
-  if (!conversation) throw new Error('execution disclosure missing');
-  expect(conversation.getAttribute('aria-expanded')).toBe('false');
-  await act(async () => conversation.click());
-  expect(conversation.getAttribute('aria-expanded')).toBe('true');
-  expect(f.container.querySelectorAll('[data-testid="density-transcript"]')).toHaveLength(1);
-  await act(async () => triggers()[0]?.click());
-  expect(triggers()[0]?.getAttribute('aria-expanded')).toBe('false');
+  await act(async () => trigger()?.click());
+  expect(trigger()?.getAttribute('aria-expanded')).toBe('false');
   expect(f.sendCommand).not.toHaveBeenCalled();
   expect(
     fixture.read.mock.calls.every((call) => call[0] === 'run_density' && call[1] === true),
@@ -265,7 +261,7 @@ it('[TC-WBD-007-N] the live reply stays in place between model calls until the r
   expect(live()).toBe(block);
   expect(live()?.textContent).toContain('Currently drafting');
   expect(live()?.textContent).not.toContain('is writing');
-  // The next call takes the same place.
+  // The next call takes the same place; the process header, not a label, says it works.
   await act(async () =>
     fixture.store?.setState({
       streams: { call: stream('Currently drafting', true), next: stream('Next step', false) },
@@ -273,7 +269,7 @@ it('[TC-WBD-007-N] the live reply stays in place between model calls until the r
   );
   expect(live()).toBe(block);
   expect(live()?.textContent).toContain('Next step');
-  expect(live()?.textContent).toContain('is writing');
+  expect(live()?.textContent).not.toContain('is writing');
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'succeeded' } }),
   );
@@ -338,27 +334,31 @@ it('[TC-WBD-007-F] a result that cannot be read ends the hand-off and shows the 
   expect(f.container.querySelector('[role="alert"]')).not.toBeNull();
 });
 
-it('[TC-WBD-007-N] the work log sits above the reply and result from the start of the turn', async () => {
+it('[TC-TURN-001-H] the turn process sits above the reply, open while working and folded when done', async () => {
   const f = await render();
   const before = (a: Element | null, b: Element | null) =>
     Boolean(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   await act(async () => preferences.setState({ chatDensity: 'basic' }));
-  const log = () => f.container.querySelector('.work-log');
-  // Working, basic density: the folded log is already in place above the live reply.
+  const log = () => f.container.querySelector('[data-testid="turn-process"]');
+  const expandedState = () =>
+    log()?.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded');
+  // Working: the process is open above the live reply.
   expect(log()).not.toBeNull();
-  expect(log()?.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
-    'false',
-  );
+  expect(expandedState()).toBe('true');
   expect(before(log(), f.container.querySelector('[data-testid="live-text"]'))).toBe(true);
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
   const working = log();
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'succeeded' } }),
   );
-  // Finishing keeps the same log element above the result.
+  // Finishing folds the same element under its duration and steps, above the answer.
   expect(log()).toBe(working);
+  expect(expandedState()).toBe('false');
+  expect(log()?.textContent).toMatch(/Worked \d+s · 1 step/);
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
-  // The results-only density still hides the log while the turn works.
+  // The answer is visible without opening anything.
+  expect(f.container.querySelector('[data-testid="chat-result"]')?.closest('details')).toBeNull();
+  // The results-only density still hides the process while the turn works.
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'running' } }),
   );
@@ -404,4 +404,26 @@ it('[TC-WBD-007-N] a turn opened after it finished still shows that its result i
   expect(f.container.querySelector('[data-testid="chat-result"]')?.textContent).toContain(
     'Loading…',
   );
+});
+
+it('[TC-TEAM-001-H] a delegate’s streaming text stays out of the lead’s answer', async () => {
+  const f = await render();
+  await act(async () =>
+    fixture.store?.setState({
+      projection: {
+        ...f.projection,
+        modelCalls: {
+          ...f.projection.modelCalls,
+          child: { modelCallId: 'child', executionId: 'live', finished: false } as never,
+        },
+      },
+      streams: {
+        call: { text: 'Lead draft', next: 1, broken: false, completed: true },
+        child: { text: 'Delegate notes', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  const live = f.container.querySelector('[data-testid="live-text"]');
+  expect(live?.textContent).toContain('Lead draft');
+  expect(live?.textContent).not.toContain('Delegate notes');
 });

@@ -2797,7 +2797,7 @@
       "CRL-COMPOSER-001"
     ],
     "suite": "integration+browser",
-    "scenario": "메뉴·첨부 초안·모델/노력 독립성과 저장 경쟁 및 기존 전송 계약을 확인한다.",
+    "scenario": "메뉴·첨부 초안·모델/노력 독립성과 저장 경쟁 및 기존 전송 계약을 확인한다. Composer에 요청 옵션과 Ultra가 없다(CR-055 §6).",
     "status": "planned",
     "adapter": "deterministic fixtures and actual browser; no paid calls",
     "evidence": null
@@ -3061,7 +3061,7 @@
       "CRL-ABS-009"
     ],
     "suite": "unit+integration+browser",
-    "scenario": "ABS-09: 프로젝트 open/관리 clone→폴더 연결·명시 신뢰→사본을 제공하고 진행률·취소·부분 디렉터리 복구를 확인한다. 선택한 지침/메모리는 요청 snapshot/hash에 포함되며 원문 편집·삭제 후에도 과거 readback이 같다.",
+    "scenario": "ABS-09: 프로젝트 open/관리 clone→폴더 연결·명시 신뢰→사본을 제공하고 진행률·취소·부분 디렉터리 복구를 확인한다. 지침 저장은 제품 UI에서, 선택한 지침/메모리가 요청 snapshot/hash에 들어가고 원문 편집·삭제 후에도 과거 readback이 같은지는 서버 API로 확인한다(Composer 자료 첨부는 CR-055 §6으로 제거).",
     "status": "planned",
     "adapter": "actual local Git fixture repositories and versioned documents through normal project/composer flow; no external clone needed",
     "evidence": null
@@ -3215,7 +3215,7 @@
       "CRL-UX-005"
     ],
     "suite": "unit+server+e2e",
-    "scenario": "기본 대화·선택적 Corral·옵션 요약과 모델/초안 저장, 실제 요청 결과·재로드를 제품 UI에서 확인한다.",
+    "scenario": "기본 대화·팀 선택(팀 없음, auto, 저장한 Corral, Corral 만들기·관리)과 모델/초안 저장, 실제 요청 결과·재로드를 제품 UI에서 확인한다. 요청 옵션 팝오버는 없다(CR-055 §6).",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -3226,7 +3226,7 @@
       "CRL-UX-005"
     ],
     "suite": "unit+server+e2e",
-    "scenario": "명시 Corral 유실·저장 경합·실패/취소·큐·늦은 응답·좁은 화면·키보드에서 초안/대상/권한을 잃거나 숨겨진 옵션이 예기치 않은 효과를 만들면 실패한다.",
+    "scenario": "명시 Corral 유실·저장 경합·실패/취소·큐·늦은 응답·좁은 화면·키보드에서 초안/대상/권한/팀을 잃으면 실패한다.",
     "status": "planned",
     "adapter": "mock unless explicitly live",
     "evidence": null
@@ -4648,6 +4648,171 @@
     "scenario": "When the presented run cannot be read, Overview says so and offers a retry for the same run instead of empty widgets.",
     "status": "planned",
     "adapter": "Studio unit tests and local browser demo; no paid calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-LLM-007-H",
+    "requirements": [
+      "CRL-LLM-007"
+    ],
+    "suite": "integration",
+    "scenario": "A follow-up in a session sends the earlier requests and answers as user/assistant messages before the current assignment, the brief stays as typed without a CR-007 start point, run.started records the turns, and a later follow-up's request prefix contains the earlier turns.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-LLM-007-N",
+    "requirements": [
+      "CRL-LLM-007"
+    ],
+    "suite": "integration",
+    "scenario": "Turns exclude runs still in progress and meeting answers; a run without a text result contributes its status; oversized history drops the oldest turns and records the count; missing, foreign or unended throughRunId and a conversation without a session are refused without a run; delegated, resumed, branched and meeting executions get no turns; meeting continuation names newly posted messages; unreported cached input is named, not zero.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-LLM-007-F",
+    "requirements": [
+      "CRL-LLM-007"
+    ],
+    "suite": "integration",
+    "scenario": "A repeated start command returns the same run and turns; a tampered conversation record fails private history verification; explicit CR-007 start points and explain keep their behaviour.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-LLM-008-H",
+    "requirements": [
+      "CRL-LLM-008"
+    ],
+    "suite": "integration",
+    "scenario": "A final-reply role answers a short message with one provider request and no write_artifact/submit_result offered; the result version cites that request. After a tool call, the following plain reply is the result. Session chat starts the conversation role without a chooser.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-LLM-008-N",
+    "requirements": [
+      "CRL-LLM-008"
+    ],
+    "suite": "integration",
+    "scenario": "An ordinary role still needs write_artifact and submit_result; rewriting the same unsubmitted artifact does not reset progress; the explain run has no tools; meetings keep their rule.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-LLM-008-F",
+    "requirements": [
+      "CRL-LLM-008"
+    ],
+    "suite": "integration",
+    "scenario": "An empty, truncated or failed final reply submits nothing and the task fails; an unlimited run pauses for the person after six replies without progress and continues only on approval.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TURN-001-H",
+    "requirements": [
+      "CRL-UX-012"
+    ],
+    "suite": "integration",
+    "scenario": "A turn renders the message, flat process rows and the answer; a running turn shows the elapsed status; a finished turn folds its process under duration and steps; raw replies are numbered by request.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TURN-001-N",
+    "requirements": [
+      "CRL-UX-012"
+    ],
+    "suite": "integration",
+    "scenario": "A turn without process shows only the answer; folding never hides the answer; unreported cache is named in composer statistics.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TURN-001-F",
+    "requirements": [
+      "CRL-UX-012"
+    ],
+    "suite": "integration",
+    "scenario": "A failed or cancelled turn shows its status row and keeps its process rows reachable.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TEAM-001-H",
+    "requirements": [
+      "CRL-LLM-009"
+    ],
+    "suite": "integration",
+    "scenario": "With team none the lead delegates to the helper only when asked; with auto or a Corral the lead receives the roster as delegates and the selection applies from the next turn.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TEAM-001-N",
+    "requirements": [
+      "CRL-LLM-009"
+    ],
+    "suite": "integration",
+    "scenario": "No chooser request is sent per message; a running turn keeps its team; a deleted Corral is not silently replaced.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TEAM-001-F",
+    "requirements": [
+      "CRL-LLM-009"
+    ],
+    "suite": "integration",
+    "scenario": "A delegate failure reaches the lead as a failed task, and delegation stays within Coordinator limits. Cancelling a turn while the lead waits on delegates ends the wait as cancelled with no failure; a resent start returns its run, and its cancellation reaches that run.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TEAM-002-H",
+    "requirements": [
+      "CRL-LLM-010"
+    ],
+    "suite": "unit+server+e2e",
+    "scenario": "In a trusted folder a live session turn binds the built-in session work style: the lead, the helper and writers are offered run_command and preview tools, and a command runs under the permission mode.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TEAM-002-N",
+    "requirements": [
+      "CRL-LLM-010"
+    ],
+    "suite": "unit+server",
+    "scenario": "Without a trusted folder, or with simulated agents, no work style is bound and no command tool is offered; an explicit work style wins; an archived session work style binds none; reviewers stay read-only.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
+    "evidence": null
+  },
+  {
+    "id": "TC-TEAM-002-F",
+    "requirements": [
+      "CRL-LLM-010"
+    ],
+    "suite": "integration",
+    "scenario": "A final reply is published even when the loaded work style lists no output tools; the model itself still cannot call them.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
     "evidence": null
   }
 ]

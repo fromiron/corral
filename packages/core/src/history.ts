@@ -2,6 +2,7 @@ import {
   AutoRoute,
   BinaryArtifact,
   BranchedFrom,
+  ContinuedConversation,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   Identifier,
@@ -16,6 +17,7 @@ import {
   RunStatus,
   RuntimeCheckpointManifest,
   RuntimeCheckpointState,
+  SessionConversation,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
@@ -26,12 +28,16 @@ import { definitionHash } from './definition-hash.ts';
 import { applyEvent, emptyProjection } from './projection.ts';
 import type { RunStore } from './store/run-store.ts';
 
+/** The run record holding a session follow-up's copied turns (CR-054). */
+export const SESSION_CONVERSATION = 'session_conversation';
+
 const Snapshot = z.strictObject({
   meeting: MeetingRunOrigin.optional(),
   permissionMode: PermissionMode.optional(),
   imageProfiles: z.record(Identifier, ImageGenerationProfile).optional(),
   resumedFrom: ResumedFrom.optional(),
   branchedFrom: BranchedFrom.optional(),
+  conversation: ContinuedConversation.optional(),
   definition: CorralDefinition,
   definitionHash: z.string().regex(/^[0-9a-f]{64}$/),
   source: z
@@ -119,6 +125,7 @@ export function exportRunArchive(
       ...(run.snapshot.resumedFrom ? [run.snapshot.resumedFrom.contextRef] : []),
       ...(run.snapshot.branchedFrom?.contextRef ? [run.snapshot.branchedFrom.contextRef] : []),
       ...(run.snapshot.meeting?.contextSource ? ['meeting_context'] : []),
+      ...(run.snapshot.conversation ? [SESSION_CONVERSATION] : []),
       run.snapshot.criteriaVersionId,
       ...Object.keys(run.projection.artifacts),
       ...recordReferences(events),
@@ -195,6 +202,8 @@ export function openRunArchive(input: unknown) {
       canonicalJson(snapshot.branchedFrom ?? null) ||
     canonicalJson(first.payload.resumedFrom ?? null) !==
       canonicalJson(snapshot.resumedFrom ?? null) ||
+    canonicalJson(first.payload.conversation ?? null) !==
+      canonicalJson(snapshot.conversation ?? null) ||
     (first.payload.criteriaVersionId !== undefined &&
       first.payload.criteriaVersionId !== snapshot.criteriaVersionId) ||
     canonicalJson(
@@ -219,6 +228,17 @@ export function openRunArchive(input: unknown) {
     RuntimeCheckpointState.parse(
       JSON.parse(archive.artifacts[snapshot.resumedFrom.contextRef] ?? 'null'),
     );
+  if (snapshot.conversation) {
+    const copied = SessionConversation.safeParse(
+      JSON.parse(archive.artifacts[SESSION_CONVERSATION] ?? 'null'),
+    );
+    if (
+      !copied.success ||
+      bytesToHex(sha256(utf8ToBytes(canonicalJson(copied.data)))) !==
+        snapshot.conversation.contextHash
+    )
+      throw new Error('archive session conversation changed');
+  }
   if (snapshot.meeting?.contextSource) {
     const state = RuntimeCheckpointState.parse(
       JSON.parse(archive.artifacts.meeting_context ?? 'null'),

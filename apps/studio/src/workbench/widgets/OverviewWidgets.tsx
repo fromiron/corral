@@ -338,6 +338,25 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
       t('modelCalls'),
       usage.callLimit == null ? String(usage.calls) : `${usage.calls} / ${usage.callLimit}`,
     ],
+    ...(usage.input
+      ? ([
+          [t('inputTokens'), format.number(usage.input.tokens)],
+          [
+            t('cachedInput'),
+            usage.input.cached == null
+              ? t('cacheNotReported')
+              : usage.input.cacheShare == null
+                ? format.number(usage.input.cached)
+                : t('cachedShare', {
+                    tokens: format.number(usage.input.cached),
+                    share: format.number(usage.input.cacheShare, {
+                      style: 'percent',
+                      maximumFractionDigits: 0,
+                    }),
+                  }),
+          ],
+        ] as [string, string][])
+      : []),
   ];
   return (
     <div data-testid="usage-detail" className="flex flex-col gap-3 text-body">
@@ -353,6 +372,11 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
       {usage.unknown > 0 ? (
         <p className="text-caption text-warning">
           {t('unknownHeld', { count: format.number(usage.unknown) })}
+        </p>
+      ) : null}
+      {usage.input && usage.input.cached != null && usage.input.cacheUnreported > 0 ? (
+        <p className="text-caption text-muted-foreground">
+          {t('cacheUnreported', { count: usage.input.cacheUnreported })}
         </p>
       ) : null}
       {costLines.length || cost?.simulated ? (

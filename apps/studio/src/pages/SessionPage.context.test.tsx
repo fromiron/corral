@@ -48,9 +48,7 @@ vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
   ComposerDock: () => null,
   ComposerPlan: () => null,
 }));
-vi.mock('../workbench/RunHarnessOverrides.tsx', () => ({ RunHarnessOverrides: () => null }));
-vi.mock('../workbench/RunRoleOverrides.tsx', () => ({ RunRoleOverrides: () => null }));
-vi.mock('../workbench/ProjectMaterials.tsx', () => ({ ProjectMaterialPicker: () => null }));
+vi.mock('../workbench/widgets/ComposerStats.tsx', () => ({ ComposerStats: () => null }));
 vi.mock('../workbench/ImageAttachments.tsx', () => ({
   ImageAttachmentPicker: () => null,
   ImageAttachmentList: () => null,
@@ -168,9 +166,16 @@ async function mount(
     })),
   };
   const startExplain = vi.fn();
+  // CR-055: a Corral session's turn starts the conversation lead with the Corral as its team.
+  const startAuto = vi.fn(async (_request: unknown, _signal?: AbortSignal) => ({
+    runId: 'started',
+    receipt: { error: null },
+    autoRoute: null,
+  }));
   fixture.services = {
     repository,
     transport,
+    startAuto,
     mode: 'server',
     live: false,
     workspaceId: 'host',
@@ -213,7 +218,7 @@ async function mount(
     expect(button?.disabled, label).toBe(false);
     await act(async () => button?.click());
   };
-  return { container, session, repository, transport, startExplain, render, click };
+  return { container, session, repository, transport, startAuto, startExplain, render, click };
 }
 
 it('[TC-WBD-007-H] queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
@@ -248,7 +253,7 @@ it('[TC-WBD-007-H] queues a captured source, consumes its draft attachment, and 
     attachments: [captured],
   });
   expect(saved).not.toHaveProperty('images');
-  expect(f.transport.startRun).not.toHaveBeenCalled();
+  expect(f.startAuto).not.toHaveBeenCalled();
   expect(readComposerDraft(sessionId)).toMatchObject({ text: '', images: [image] });
   expect(readComposerDraft(sessionId).attachments).toBeUndefined();
 
@@ -263,12 +268,14 @@ it('[TC-WBD-007-H] queues a captured source, consumes its draft attachment, and 
     ).toEqual({ ok: true });
   });
   await f.click('Start now');
-  expect(f.transport.startRun).toHaveBeenCalledWith(
+  expect(f.startAuto).toHaveBeenCalledWith(
     expect.objectContaining({
       sessionId,
       references: [captured],
-      input: expect.objectContaining({ brief: 'Keep my typed request' }),
+      brief: 'Keep my typed request',
+      team: { corralId: 'team' },
     }),
+    expect.anything(),
   );
   expect(f.repository.updateSessionEntry).toHaveBeenCalledWith(
     sessionId,
@@ -280,15 +287,15 @@ it('[TC-WBD-007-H] queues a captured source, consumes its draft attachment, and 
 
 it('[TC-WBD-007-F] retries an uncertain queued snapshot with the same command identity and includes provenance in changed request identity', async () => {
   const f = await mount('queue_retry', null, [queuedEntry(captured)]);
-  f.transport.startRun.mockRejectedValue(new Error('response lost'));
+  f.startAuto.mockRejectedValue(new Error('response lost'));
   await f.click('Start now');
   await f.click('Start now');
-  expect(f.transport.startRun).toHaveBeenCalledTimes(2);
-  const first = f.transport.startRun.mock.calls[0]?.[0] as {
+  expect(f.startAuto).toHaveBeenCalledTimes(2);
+  const first = f.startAuto.mock.calls[0]?.[0] as {
     commandId: string;
     references: TextAttachment[];
   };
-  const retry = f.transport.startRun.mock.calls[1]?.[0] as typeof first;
+  const retry = f.startAuto.mock.calls[1]?.[0] as typeof first;
   expect(first.references).toEqual([captured]);
   expect(retry.commandId).toBe(first.commandId);
   expect(f.repository.updateSessionEntry).not.toHaveBeenCalled();
@@ -296,7 +303,7 @@ it('[TC-WBD-007-F] retries an uncertain queued snapshot with the same command id
   const changed = { ...captured, provenance: { ...captured.provenance, editVersion: 5 } };
   await f.render(null, [queuedEntry(changed)]);
   await f.click('Start now');
-  const edited = f.transport.startRun.mock.calls[2]?.[0] as typeof first;
+  const edited = f.startAuto.mock.calls[2]?.[0] as typeof first;
   expect(edited.references).toEqual([changed]);
   expect(edited.commandId).not.toBe(first.commandId);
 });
@@ -327,10 +334,8 @@ it('[TC-WBD-007-N] an explain draft with captured context requires an explicit f
   await f.click('Send as a follow-up');
   await f.click('Send');
   expect(f.startExplain).not.toHaveBeenCalled();
-  expect(f.transport.startRun).toHaveBeenCalledWith(
-    expect.objectContaining({
-      references: [captured],
-      input: expect.objectContaining({ brief: 'Explain this capture' }),
-    }),
+  expect(f.startAuto).toHaveBeenCalledWith(
+    expect.objectContaining({ references: [captured], brief: 'Explain this capture' }),
+    expect.anything(),
   );
 });

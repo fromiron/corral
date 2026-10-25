@@ -517,12 +517,7 @@ export class MeetingService {
   private async brief(session: WorkSession, round: MeetingRound) {
     const meeting = session.meeting!;
     const { config } = meeting;
-    const lines = [
-      'Participants:',
-      ...config.participants.map((p) => `- ${p.name}`),
-      '',
-      'Conversation so far:',
-    ];
+    const lines = ['Participants:', ...config.participants.map((p) => `- ${p.name}`), ''];
     const messages: { order: number; text: string; runId?: string }[] = [];
     for (const [index, past] of meeting.rounds.entries()) {
       if (past.message !== null)
@@ -557,6 +552,8 @@ export class MeetingService {
       render: (afterOrder = -1, previousRunId?: string) =>
         [
           ...lines,
+          // CR-054: a continuation's earlier messages are already in its own context.
+          previousRunId ? 'Messages posted since your last reply:' : 'Conversation so far:',
           ...messages
             .filter(
               (message) =>

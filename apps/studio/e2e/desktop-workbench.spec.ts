@@ -52,7 +52,9 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
     ),
   );
   await input.press('Control+Enter');
-  await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
+  await expect(
+    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: true }),
+  ).toBeVisible();
   await input.fill('Preserve this follow-up draft');
   await panelTab(page, 'Run');
   const workUrl = page.url();

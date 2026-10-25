@@ -286,6 +286,7 @@ class WorkerExecution {
           prompt: role.prompt,
           outputContract: role.outputContract,
           ...(role.imageProfile ? { imageProfile: role.imageProfile } : {}),
+          ...(role.answer ? { answer: role.answer } : {}),
         },
         inputs: this.input.inputs.map(({ name, artifactVersionId, text }) => ({
           name,
@@ -302,6 +303,7 @@ class WorkerExecution {
           : {}),
         criteriaVersionId: this.input.criteriaVersionId,
         ...(this.input.resumeContext ? { resumeContext: this.input.resumeContext } : {}),
+        ...(this.input.conversation ? { conversation: this.input.conversation } : {}),
         ...(this.input.taskBrief ? { taskBrief: this.input.taskBrief } : {}),
         ...(this.input.images?.length ? { images: this.input.images } : {}),
         ...(this.input.teamPlanOwner ? { teamPlanOwner: true } : {}),
@@ -676,7 +678,9 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   const tools: WorkerTool[] = [];
   if (role.allowedWorkTools.includes('search')) tools.push('search');
   if (role.allowedWorkTools.includes('read_document')) tools.push('read_document');
-  if (role.allowedWorkTools.includes('write_artifact')) tools.push('write_artifact');
+  // CR-055: a final-reply role publishes its answer by replying, never through these tools.
+  const replies = role.answer === 'final_reply';
+  if (role.allowedWorkTools.includes('write_artifact') && !replies) tools.push('write_artifact');
   if (role.allowedWorkTools.includes('preview_file') && role.allowedWorkTools.includes('read_file'))
     tools.push('preview_file');
   if (input.harness?.policy === 'trusted-native' && input.taskBrief?.taskScope !== 'review_only') {
@@ -712,7 +716,8 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   if (may('ask') && capabilities.askTo.length > 0) tools.push('ask');
   if (may('reply') && (assignment.kind === 'question' || capabilities.replyToChildren))
     tools.push('reply');
-  if (may('submit_result') && assignment.kind !== 'question') tools.push('submit_result');
+  if (may('submit_result') && assignment.kind !== 'question' && !replies)
+    tools.push('submit_result');
   return tools;
 }
 
