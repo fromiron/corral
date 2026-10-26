@@ -153,7 +153,6 @@ import {
   RequestLimiter,
   SECURITY_HEADERS,
   Sessions,
-  sessionCookie,
 } from './security.ts';
 import { prepareBranchSession } from './session-branches.ts';
 import { SessionSearch } from './session-search.ts';
@@ -658,8 +657,9 @@ async function createCorralServer(
   });
 
   const token = options.bootstrapToken ?? newBootstrapToken();
-  const sessions = new Sessions(token);
   let port = options.port ?? 0;
+  // Cookies share a host across ports; each listener must have its own name.
+  const sessions = new Sessions(token, () => `corral_session_${port}`);
   const boundary = boundaryFor(() => port, options.extraOrigins);
   const streams = new Set<() => void>();
   const limiter = new RequestLimiter(() => clock.monotonicMs());
@@ -822,11 +822,15 @@ async function createCorralServer(
     return { ok: true };
   });
   app.post('/api/v1/session', async (request, reply) => {
-    const session = sessions.redeem((request.body as { token?: unknown } | null)?.token);
-    if (!session) return fail(reply, 'SESSION_INVALID', 'this link was already used or is wrong');
+    const session = sessions.redeem(
+      (request.body as { token?: unknown } | null)?.token,
+      request.headers.cookie,
+    );
+    if (!session) return fail(reply, 'SESSION_INVALID', 'this link is invalid or has expired');
+    const cookie = sessions.cookie(session);
     return reply
-      .header('set-cookie', sessionCookie(session))
-      .header('x-corral-csrf', sessions.csrfToken(sessionCookie(session)))
+      .header('set-cookie', cookie)
+      .header('x-corral-csrf', sessions.csrfToken(cookie))
       .code(204)
       .send();
   });

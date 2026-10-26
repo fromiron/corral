@@ -13,6 +13,7 @@
     "test": "vitest run",
     "build": "pnpm -r build",
     "test:e2e": "pnpm --filter @corral/studio test:e2e",
+    "test:e2e:extended": "pnpm --filter @corral/studio test:e2e:extended",
     "dev": "pnpm --filter @corral/studio dev",
     "corral": "node packages/cli/src/main.ts",
     "serve": "pnpm --filter @corral/studio build && node apps/server/src/main.ts --static apps/studio/dist",

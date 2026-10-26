@@ -10,7 +10,7 @@ import { decisionRunStatus, nodeExecutionCount, nodeRunStatus } from '../run/sel
 
 // One view per node kind. Handle ids are the compiler's port names, so a drawn connection is
 // exactly the ControlEdge it creates. Call links use separate handles below/above agents.
-// Handles come after the node body in the DOM so the body never covers them.
+// The body stays at z-0 so the following handles receive pointer events.
 
 export type CanvasNodeData = Record<string, never>;
 export const FLOW_TYPES = {
@@ -81,7 +81,7 @@ function Shell({
 }) {
   return (
     <Card
-      className={`min-w-40 border bg-card px-3 py-2 shadow-surface-3 ${
+      className={`z-0 min-w-40 border bg-card px-3 py-2 shadow-surface-3 ${
         selected ? 'border-primary ring-2 ring-primary/40' : 'border-line'
       }`}
     >

@@ -179,7 +179,7 @@ test('#88 both default screens show the same four-step ladder and mark which ste
     ['/settings/defaults', 'Personal default'],
     ['/settings/project-defaults?projectId=default', 'Project default'],
   ] as const) {
-    // The bootstrap token is redeemed once; later pages reuse the session cookie.
+    // Later pages reuse the session cookie.
     await page.goto(`${corral.server.url}${path}`);
     const ladder = page.getByRole('list', { name: 'Which work style a run uses', exact: true });
     await expect(ladder.getByRole('listitem')).toHaveCount(4);

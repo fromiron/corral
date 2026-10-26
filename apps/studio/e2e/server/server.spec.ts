@@ -135,7 +135,7 @@ test('Studio works under the strict CSP, and a tab without a session says so', a
   await page.addInitScript(() => {
     document.addEventListener('securitypolicyviolation', (event) => {
       (window as unknown as { reportViolation(t: string): void }).reportViolation(
-        `${event.violatedDirective} ${event.blockedURI}`,
+        `${event.violatedDirective} ${event.blockedURI} ${event.sourceFile}:${event.lineNumber}:${event.columnNumber}`,
       );
     });
   });

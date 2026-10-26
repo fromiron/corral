@@ -5,8 +5,6 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 // changes need the Studio origin, and every API call needs a session that only the person
 // holding the printed bootstrap link can open. No CORS: other origins get no readable answer.
 
-export const SESSION_COOKIE = 'corral_session';
-
 export const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy': [
     "default-src 'none'",
@@ -81,27 +79,30 @@ export function boundaryFor(port: () => number, extraOrigins: readonly string[] 
   };
 }
 
-/** One bootstrap token, redeemable once, for any number of sessions sharing its cookie. */
+/** A bootstrap token lasts for this server instance; browser cookies keep separate sessions. */
 export class Sessions {
-  private token: Buffer | null;
+  private readonly token: Buffer;
   private readonly sessions = new Map<string, string>();
+  private readonly cookieName: () => string;
 
-  constructor(token: string) {
+  constructor(token: string, cookieName: () => string) {
     this.token = Buffer.from(token, 'utf-8');
+    this.cookieName = cookieName;
   }
 
-  redeem(candidate: unknown): string | null {
-    if (!this.token || typeof candidate !== 'string') return null;
+  redeem(candidate: unknown, cookieHeader: string | undefined): string | null {
+    if (typeof candidate !== 'string') return null;
     const given = Buffer.from(candidate, 'utf-8');
     if (given.length !== this.token.length || !timingSafeEqual(given, this.token)) return null;
-    this.token = null;
+    const existing = parseCookies(cookieHeader)[this.cookieName()];
+    if (existing && this.sessions.has(existing)) return existing;
     const session = randomBytes(32).toString('hex');
     this.sessions.set(session, randomBytes(32).toString('hex'));
     return session;
   }
 
   csrfToken(cookieHeader: string | undefined): string | null {
-    return this.sessions.get(parseCookies(cookieHeader)[SESSION_COOKIE] ?? '') ?? null;
+    return this.sessions.get(parseCookies(cookieHeader)[this.cookieName()] ?? '') ?? null;
   }
 
   validCsrf(cookieHeader: string | undefined, candidate: unknown): boolean {
@@ -113,17 +114,16 @@ export class Sessions {
   }
 
   valid(cookieHeader: string | undefined): boolean {
-    const session = parseCookies(cookieHeader)[SESSION_COOKIE];
-    return session !== undefined && this.sessions.has(session);
+    return this.csrfToken(cookieHeader) !== null;
+  }
+
+  cookie(session: string): string {
+    return `${this.cookieName()}=${session}; HttpOnly; SameSite=Strict; Path=/`;
   }
 }
 
 export function newBootstrapToken(): string {
   return randomBytes(32).toString('base64url');
-}
-
-export function sessionCookie(session: string): string {
-  return `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/`;
 }
 
 export function parseCookies(header: string | undefined): Record<string, string> {

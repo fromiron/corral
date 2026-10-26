@@ -1,13 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const STATIC_DEMO = process.env.CORRAL_STATIC_DEMO === '1';
-const PORT = STATIC_DEMO ? 5181 : 5179;
-
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
-  // Playwright counts host CPUs even in a smaller CI container; avoid starving timed UI flows.
-  workers: process.env.CI ? 2 : undefined,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   // Flaky UI timing must be fixed, not retried away.
   retries: 0,
@@ -15,40 +10,9 @@ export default defineConfig({
     ? [['list'], ['junit', { outputFile: 'test-results/junit.xml' }]]
     : 'list',
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    ...devices['Desktop Chrome'],
     trace: 'retain-on-failure',
     viewport: { width: 1280, height: 800 },
   },
-  projects: [
-    {
-      // The in-browser runtime (demo): Vite dev server, simulated agents in a worker.
-      name: 'chromium',
-      testIgnore: ['server/**', 'performance/**'],
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
-    },
-    {
-      name: 'firefox',
-      // Cross-browser coverage is for canvas, keyboard/IME and responsive navigation.
-      testMatch: [
-        'studio.spec.ts',
-        'accessibility.spec.ts',
-        'palette.spec.ts',
-        'run-page-narrow.spec.ts',
-      ],
-      use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } },
-    },
-    {
-      // Against the local server: each test starts its own server, workspace and DB
-      // through the harness, serving the production build of Studio (`pnpm build` first).
-      name: 'server',
-      testMatch: 'server/**/*.spec.ts',
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
-    },
-  ],
-  webServer: {
-    command: `pnpm exec vite ${STATIC_DEMO ? 'preview ' : ''}--port ${PORT} --strictPort`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI && !STATIC_DEMO,
-    timeout: 60_000,
-  },
+  projects: [{ name: 'smoke', testMatch: 'server/smoke.spec.ts' }],
 });

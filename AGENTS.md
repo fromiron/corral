@@ -31,6 +31,7 @@ These rules apply to every development agent making changes to Corral. This file
 
 - Report implementation and validation in a specific environment separately. State what remains unverified, and do not claim API support without integration tests.
 - Run `pnpm lint`, `pnpm typecheck`, and the relevant unit, integration, and UI tests for runtime changes. Also run `pnpm contracts:check` when contracts change and `pnpm deps:check` when dependencies change.
+- Follow [test operation guidance](docs/guides/testing.md) when selecting or adding E2E coverage; keep the default PR gate to its core smoke flows and run detailed browser cases only when relevant.
 - Record a contract once, in the spec that owns it, and link to it from elsewhere. Do not create independent copies of the same rules.
 - Before moving or deleting documents, check links and tools that consume them, including tests that read files directly. Do not bulk-delete `LICENSE`, `THIRD-PARTY-NOTICES/`, or bundled notices.
 - Development instructions are separate from the product's built-in Skills and prompts. Do not clean up `apps/server/resources/builtin/` on the grounds that it is outdated documentation.

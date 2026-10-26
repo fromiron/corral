@@ -18,7 +18,7 @@
         <label><span data-label="alias">SSH config alias</span><input name="sshAlias" required pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}" autocomplete="off" spellcheck="false" placeholder="corral-build"></label>
         <label><span data-label="port">Remote Corral port</span><input name="port" type="number" min="1024" max="65535" required value="4317"></label>
         <label><span data-label="bootstrap">Remote bootstrap link</span><input name="bootstrapUrl" type="password" autocomplete="off" spellcheck="false" aria-describedby="bootstrap-help"></label>
-        <p id="bootstrap-help" data-label="bootstrapHelp">Paste the link printed by the remote Corral server. The link is used once and is not saved.</p>
+        <p id="bootstrap-help" data-label="bootstrapHelp">Paste the link printed by the remote Corral server. It remains valid until that server stops and is not saved.</p>
         <button type="submit" data-label="save">Save and connect</button>
       </form>
       <p id="status" role="status" aria-live="polite"></p>

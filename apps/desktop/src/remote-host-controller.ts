@@ -217,11 +217,6 @@ export class RemoteHostController {
       throw new Error('Install OpenSSH and add this host to your ~/.ssh/config first.');
     const remoteSession = session.fromPartition(remotePartition(host));
     const origin = `http://127.0.0.1:${host.port}`;
-    if (
-      !bootstrapUrl &&
-      !(await remoteSession.cookies.get({ url: origin, name: 'corral_session' })).length
-    )
-      throw new Error('Paste a fresh bootstrap link from the remote Corral server to connect.');
     const state: OpenHost = {
       abort: new AbortController(),
       stopped: false,
@@ -311,7 +306,9 @@ export class RemoteHostController {
             redirect: 'error',
           });
           if (response.status !== 204)
-            throw new Error('The bootstrap link expired or was already used. Paste a fresh link.');
+            throw new Error(
+              'The bootstrap link is invalid or expired. Paste the current server link.',
+            );
         }
         const authenticated = await remoteSession.fetch(`${origin}/api/v1/session`, {
           signal: AbortSignal.timeout(10000),
@@ -319,7 +316,7 @@ export class RemoteHostController {
         });
         if (!authenticated.ok)
           throw new Error(
-            'This remote session expired. Paste a fresh bootstrap link to reconnect.',
+            "This remote session expired. Paste the current server's bootstrap link to reconnect.",
           );
         if (state.stopped || this.disposed) {
           await state.connection.close();

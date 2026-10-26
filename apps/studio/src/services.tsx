@@ -122,7 +122,7 @@ function browserStore(memoryOnly = false): { store: KeyValueStore; persistent: b
   };
 }
 
-/** Takes `#bootstrap=<token>` off the address so it is neither reused nor shared. */
+/** Removes `#bootstrap=<token>` from the address to avoid sharing it accidentally. */
 function takeBootstrapToken(): string | null {
   const match = /^#bootstrap=([A-Za-z0-9_-]+)$/.exec(window.location.hash);
   if (!match) return null;

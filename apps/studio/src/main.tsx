@@ -17,6 +17,11 @@ if (!root) throw new Error('missing #root');
 applyTheme(preferences.getState().theme);
 if (desktop) document.documentElement.classList.add('desktop-app');
 
+// Pasting a bootstrap link can change only the fragment without rerunning startup.
+window.addEventListener('hashchange', () => {
+  if (window.location.hash.startsWith('#bootstrap=')) window.location.reload();
+});
+
 const renderer = createRoot(root);
 try {
   const services = await createStudioServices();
