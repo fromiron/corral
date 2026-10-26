@@ -194,7 +194,7 @@ describe('decision and output node status (UX-A4)', () => {
     outcome,
   });
 
-  it('a review decision counts the rounds it decided; approval and output wait for the person', () => {
+  it('a review decision counts its rounds; unattributed approvals stay at Run level', () => {
     const p = projectionWith({
       iterations: { iter_1: iteration(1, 'revise'), iter_2: iteration(2, 'pass') },
       loopIterations: { review_loop: ['iter_1', 'iter_2'] },
@@ -216,11 +216,11 @@ describe('decision and output node status (UX-A4)', () => {
       },
     });
     expect(decisionRunStatus(p, node('review_decision'))).toEqual({ status: 'done', count: 2 });
-    expect(decisionRunStatus(p, node('approval'))).toEqual({ status: 'done', count: 1 });
-    expect(decisionRunStatus(p, node('output'))).toEqual({ status: 'waiting', count: 0 });
+    expect(decisionRunStatus(p, node('approval'))).toEqual({ status: 'idle', count: 0 });
+    expect(decisionRunStatus(p, node('output'))).toEqual({ status: 'idle', count: 0 });
   });
 
-  it('nothing decided yet is idle, a rejection is failed, and a round in progress is not done', () => {
+  it('an unowned rejection does not fail a node and a round in progress is not done', () => {
     const p = projectionWith({
       iterations: { iter_1: iteration(1, null) },
       loopIterations: { review_loop: ['iter_1'] },
@@ -235,7 +235,7 @@ describe('decision and output node status (UX-A4)', () => {
       },
     });
     expect(decisionRunStatus(p, node('review_decision'))).toEqual({ status: 'idle', count: 0 });
-    expect(decisionRunStatus(p, node('approval'))).toEqual({ status: 'failed', count: 1 });
+    expect(decisionRunStatus(p, node('approval'))).toEqual({ status: 'idle', count: 0 });
     expect(decisionRunStatus(projectionWith({}), node('output'))).toEqual({
       status: 'idle',
       count: 0,

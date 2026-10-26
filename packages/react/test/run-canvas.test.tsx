@@ -137,6 +137,38 @@ describe('RunCanvas', () => {
     expect(screen.getByRole('application', { name: 'Run graph' })).toBeTruthy();
   });
 
+  it('shows concurrent waiting and failed tasks and keeps loop observations separate', async () => {
+    const { definition } = team();
+    renderCanvas(
+      definition,
+      projectionWith({
+        executions: {
+          failed: execution('failed', 'write', { status: 'failed' }),
+          waiting: execution('waiting', 'write', { status: 'waiting_message' }),
+        },
+        executionOrder: ['failed', 'waiting'],
+        nodeExecutions: { write: ['failed', 'waiting'] },
+        iterations: {
+          round: {
+            iterationId: 'round',
+            loopNodeId: 'review_loop',
+            no: 1,
+            criteriaVersionId: 'criteria',
+            outcome: 'revise',
+          },
+        },
+        loopIterations: { review_loop: ['round'] },
+      }),
+    );
+    await act(async () => {});
+    const writer = document.querySelector('.react-flow__node[data-id="write"]');
+    expect(writer?.textContent).toContain('Waiting for a reply');
+    expect(writer?.textContent).toContain('Failed: 1');
+    const loop = document.querySelector('.react-flow__node[data-id="review_loop"]');
+    expect(loop?.textContent).toContain('1 observed round');
+    expect(loop?.textContent).toContain('Revision requested');
+  });
+
   it('is read-only: nodes cannot be dragged and ports cannot be connected', async () => {
     const { definition } = team();
     renderCanvas(definition, projectionWith({}));
