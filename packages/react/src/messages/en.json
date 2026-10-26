@@ -4213,5 +4213,16 @@
     "statTokens": "{tokens} tokens",
     "statCache": "cache hit {share}",
     "statCacheUnreported": "cache not reported"
+  },
+  "RunMonitor": {
+    "views": "Execution views",
+    "graph": "Graph",
+    "events": "Events",
+    "details": "Details",
+    "closeDetails": "Close details",
+    "overview": "Overview",
+    "calls": "Calls",
+    "usage": "Usage",
+    "chooseExecution": "Select an execution to inspect its calls."
   }
 }

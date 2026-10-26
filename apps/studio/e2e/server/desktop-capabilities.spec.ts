@@ -245,7 +245,7 @@ async function approval(page: Page, name: string) {
   await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 30000 });
   await page.getByTestId('action-required').getByRole('link').click();
   const card = page
-    .getByTestId('compact-run')
+    .getByTestId('run-monitor')
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: `${name} · corral` });
   await expect(card).toBeVisible({ timeout: 30000 });
@@ -548,7 +548,7 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect(commandApproval).toContainText('node command-write.mjs');
   expect(existsSync(join(first.worktree, 'command.txt'))).toBe(false);
   await commandApproval.getByRole('button', { name: 'Allow once', exact: true }).click();
-  await expect(page.getByTestId('compact-run')).toContainText(
+  await expect(page.getByTestId('run-monitor')).toContainText(
     'Fixture A is waiting for your answer.',
     { timeout: 30000 },
   );

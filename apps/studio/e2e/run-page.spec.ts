@@ -23,8 +23,10 @@ async function finishedTeamRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
-  // a finished run opens on its results; these checks are about the run view.
-  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 }
 
 const graph = (page: Page) => page.getByRole('application', { name: 'Run graph' });
@@ -45,6 +47,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   await list.getByRole('button', { name: /Round 2/ }).click();
   await expect(page).toHaveURL(/execution=exec_/);
   const executionId = new URL(page.url()).searchParams.get('execution');
+  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();
   const reins = page.getByRole('region', { name: 'Reins', exact: true });
   await expect(reins).toContainText(`execution ${executionId}`);
   // The tree row of the chosen execution is marked as the current one.
@@ -54,6 +57,10 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   );
 
   // Choosing another role from the tree must also update the previously selected graph node.
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('button', { name: 'Executions', exact: true })
+    .click();
   await page
     .locator('li[data-execution-id]')
     .filter({ hasText: /^Research ·/ })
@@ -92,10 +99,13 @@ test('the Run graph cannot be edited: dragging and Delete change nothing', async
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
 });
 
-test('the Budget tab lists each request’s effort judgment as observe only', async ({ page }) => {
+test('the Usage tab lists each request’s effort judgment as observe only', async ({ page }) => {
   await finishedTeamRun(page);
-  const tabs = page.getByRole('tablist', { name: 'Run details' });
-  await tabs.getByRole('tab', { name: 'Budget' }).click();
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('button', { name: 'Details', exact: true })
+    .click();
+  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Usage', exact: true }).click();
   const judgments = page.getByRole('region', { name: 'Effort judgments' });
   await expect(judgments).toContainText('Observe only. Not applied to any request.');
   await expect(judgments.locator('[data-testid^="judgment-call_"]').first()).toContainText(

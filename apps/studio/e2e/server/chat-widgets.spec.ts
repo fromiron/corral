@@ -118,7 +118,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     );
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(plan.getByRole('listitem')).toHaveCount(5);
-    await expect(page.getByTestId('compact-run')).toHaveCount(0);
+    await expect(page.getByTestId('run-monitor')).toHaveCount(0);
 
     const widgets = page.getByTestId('session-summary-card');
     await expect(widgets).toBeVisible();
