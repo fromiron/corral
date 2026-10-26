@@ -10,10 +10,10 @@ import {
 } from '@xyflow/react';
 import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
-import { useStore } from 'zustand';
 import { StudioStoresProvider } from '../context.tsx';
 import { draftFromDefinition } from '../editor/model.ts';
 import { createEditorStore } from '../editor/store.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunCanvasLayout } from '../run/layout.ts';
 import { type ObservedRunRelation, observedRunRelations } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
@@ -55,7 +55,7 @@ export function RunCanvas({
       })),
     [definition.nodes, layout.nodes, selectedNodeId],
   );
-  const relationSignature = useStore(session, (s) =>
+  const relationSignature = useRunDisplay(session, (s) =>
     JSON.stringify(observedRunRelations(s.projection, definition)),
   );
   const edges = useMemo<Edge[]>(() => {

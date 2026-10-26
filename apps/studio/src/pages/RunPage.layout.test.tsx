@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
+import { RunEvent } from '@corral/contracts';
 import type { CorralRecord, RuntimeTransport } from '@corral/core';
-import { emptyProjection } from '@corral/core';
+import { applyEvent, emptyProjection } from '@corral/core';
 import { createRunSession, type RunCanvasLayout } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act, useState } from 'react';
@@ -10,7 +11,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {} }));
+const fixture = vi.hoisted(() => ({ services: {}, replays: 0 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ runRoute: {} }));
 vi.mock('../workbench/RunStatusCards.tsx', () => ({ RunStatusCards: () => null }));
@@ -18,18 +19,25 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   useNavigate: () => () => {},
 }));
-vi.mock('@corral/react', async (original) => ({
-  ...(await original<typeof import('@corral/react')>()),
-  RunResults: () => <output data-testid="results">Results</output>,
-  ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
-    <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
-      Approval evidence
-    </button>
-  ),
-  RunCanvas: ({ layout }: { layout: RunCanvasLayout }) => (
-    <output data-testid="layout">{JSON.stringify(layout)}</output>
-  ),
-}));
+vi.mock('@corral/react', async (original) => {
+  const module = await original<typeof import('@corral/react')>();
+  return {
+    ...module,
+    reconstructRunHistory: (...args: Parameters<typeof module.reconstructRunHistory>) => {
+      fixture.replays++;
+      return module.reconstructRunHistory(...args);
+    },
+    RunResults: () => <output data-testid="results">Results</output>,
+    ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
+      <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
+        Approval evidence
+      </button>
+    ),
+    RunCanvas: ({ layout }: { layout: RunCanvasLayout }) => (
+      <output data-testid="layout">{JSON.stringify(layout)}</output>
+    ),
+  };
+});
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -76,13 +84,17 @@ async function mount(
     await act(async () => root.unmount());
     container.remove();
   });
+  const navigations: { patch: RunDetailSearch; options: { replace?: boolean } | undefined }[] = [];
   function Screen() {
     const [selection, setSelection] = useState(search);
     return (
       <RunDetail
         runId={projection.runId}
         search={selection}
-        setSearch={(patch) => setSelection((current) => ({ ...current, ...patch }))}
+        setSearch={(patch, options) => {
+          navigations.push({ patch, options });
+          setSelection((current) => ({ ...current, ...patch }));
+        }}
       />
     );
   }
@@ -93,7 +105,7 @@ async function mount(
       </IntlProvider>,
     ),
   );
-  return { repository, container };
+  return { repository, container, run, navigations };
 }
 
 it('an inline handoff run lays out its graph without fetching an unsaved Corral', async () => {
@@ -156,4 +168,43 @@ it('the selected Graph tab returns from the tree and result links keep the monit
     'none',
   );
   expect(container.querySelector('.run-layout')?.getAttribute('data-details')).toBe('true');
+});
+
+it('an explicit cursor at the current head stays read-only as live state changes until Latest', async () => {
+  const { container, run, navigations } = await mount('inline_team', null, { atSeq: 0 });
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Created');
+  expect(container.querySelector('fieldset[disabled]')).not.toBeNull();
+  const event = RunEvent.parse({
+    schemaVersion: '0.1',
+    eventId: 'evt_future',
+    runId: 'run_layout',
+    runSeq: 1,
+    recordedAt: '2026-10-26T00:00:00.000Z',
+    actor: { kind: 'runtime', id: 'runtime' },
+    causedByEventIds: [],
+    type: 'run.state_changed',
+    payload: { from: 'created', to: 'running', reasonCode: 'started' },
+  });
+  const live = applyEvent(emptyProjection('run_layout'), event);
+  await act(async () => run.setState({ projection: live, events: [event] }));
+  const replays = fixture.replays;
+  await act(async () => {
+    for (let i = 0; i < 100; i++)
+      run.setState({
+        streams: {
+          future: { text: String(i), completed: false, broken: false, next: i },
+        },
+      });
+  });
+  expect(fixture.replays).toBe(replays);
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Created');
+  expect(run.getState().projection).toBe(live);
+  const latest = [...container.querySelectorAll('button')].find((el) =>
+    el.textContent?.includes('Latest'),
+  );
+  expect(latest).toBeDefined();
+  await act(async () => latest?.click());
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Running');
+  expect(container.querySelector('fieldset[disabled]')).toBeNull();
+  expect(navigations.at(-1)).toEqual({ patch: { atSeq: undefined }, options: { replace: true } });
 });

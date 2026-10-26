@@ -10,6 +10,7 @@ import {
   KitButton as Button,
   KitChatMessage as ChatMessage,
 } from '../design-kit/index.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript, type TranscriptEntry } from '../run/transcript.ts';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
@@ -33,9 +34,9 @@ export function ExecutionTranscript({
   compact?: boolean;
 }) {
   const t = useTranslations('Transcript');
-  const events = useStore(session, (s) => s.events);
-  const projection = useStore(session, (s) => s.projection);
-  const streams = useStore(session, (s) => s.streams);
+  const events = useRunDisplay(session, (s) => s.events);
+  const projection = useRunDisplay(session, (s) => s.projection);
+  const streams = useRunDisplay(session, (s) => s.streams);
   const definition = useStore(session, (s) => s.definition);
   const entries = useMemo(
     () => buildTranscript(events, projection, streams, executionId),

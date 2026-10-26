@@ -1,11 +1,12 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 
 /** Committed references and hashes only; previews never stand in for what actually ran. */
 export function HarnessDetails({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Harness');
-  const events = useStore(session, (s) => s.events);
+  const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
   const harnesses = events.find((event) => event.type === 'run.started')?.payload.harnesses;
   const requests = events.filter((event) => event.type === 'model.request_recorded');

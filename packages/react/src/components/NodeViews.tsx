@@ -6,6 +6,7 @@ import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
 import { Card } from '../design-kit/index.ts';
 import { findNode } from '../editor/model.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import {
   decisionRunStatus,
   type NodeRunStatus,
@@ -36,7 +37,7 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
   const { session } = useStudioStores();
   const node = useNode(nodeId);
   // Primitive subscriptions keep unrelated committed events and token frames off the graph.
-  const serialized = useStore(session, (s) => {
+  const serialized = useRunDisplay(session, (s) => {
     if (node?.type === 'decision' || node?.type === 'output') {
       return JSON.stringify({ ...decisionRunStatus(s.projection, node), unit: 'decisions' });
     }
@@ -259,7 +260,7 @@ export function LoopNodeView({ id, selected, isConnectable }: NodeProps<Node<Can
     editor,
     (s) => s.draft.definition.nodes.filter((n) => 'loopId' in n && n.loopId === id).length,
   );
-  const patchedLimit = useStore(session, (s) => {
+  const patchedLimit = useRunDisplay(session, (s) => {
     let revision = -1;
     let limit: number | null = null;
     for (const patch of Object.values(s.projection?.patches ?? {})) {

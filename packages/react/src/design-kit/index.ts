@@ -75,6 +75,7 @@ export {
   RadioItem as KitRadioItem,
 } from './components/ui/radio-group.tsx';
 export * from './components/ui/sidebar.tsx';
+export { Slider, type SliderProps } from './components/ui/slider.tsx';
 export { Switch, Switch as KitSwitch } from './components/ui/switch.tsx';
 export {
   Table,

@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button } from '../design-kit/index.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { useWorkPlanSnapshot, type WorkPlanRef } from '../run/work-plan-snapshot.ts';
 
 export function WorkPlanPanel({ session }: { session: RunSessionStore }) {
   const t = useTranslations('WorkPlan');
-  const plans = useStore(session, (s) => s.projection?.workPlans);
+  const plans = useRunDisplay(session, (s) => s.projection?.workPlans);
   if (!plans || !Object.keys(plans).length) return null;
   return (
     <section aria-label={t('heading')} className="flex flex-col gap-2">
@@ -25,7 +26,7 @@ export function WorkPlanPanel({ session }: { session: RunSessionStore }) {
 function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: WorkPlanRef }) {
   const t = useTranslations('WorkPlan');
   const runId = useStore(session, (s) => s.runId);
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const bodies = useStore(session, (s) => s.artifactTexts);
   const [failedEvidence, setFailedEvidence] = useState<string | null>(null);
   const { status, retry } = useWorkPlanSnapshot({
