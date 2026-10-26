@@ -6,7 +6,6 @@ import {
   type MeetingView,
   RunStatus,
   TERMINAL_RUN_STATUSES,
-  type UltraSelection,
 } from '@corral/contracts';
 import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@corral/core';
 import { Button, Input, Select } from '@corral/react/design-kit';
@@ -23,8 +22,7 @@ import {
   sessionRunMode,
 } from './autoChoice.ts';
 import { readComposerDraft, serializeComposerDraft } from './sessionDraft.ts';
-import { defaultUltraSelection, UltraModels } from './UltraModels.tsx';
-import { useModelProfiles } from './useModels.ts';
+import { type ProfileInfo, useModelProfiles } from './useModels.ts';
 
 const changed = 'corral:meeting-handoffs-changed';
 const pendingKey = (sessionId: string, versionId: string) =>
@@ -61,7 +59,6 @@ export function MeetingHandoff({
   onChange(): Promise<void>;
 }) {
   const t = useTranslations('MeetingsHandoff');
-  const tc = useTranslations('Composer');
   const services = useServices();
   const api = services.meetingHandoffs;
   const profiles = useModelProfiles();
@@ -85,40 +82,26 @@ export function MeetingHandoff({
   );
   const choice = autoChoiceFor(savedChoice, profiles);
   const mode = sessionRunMode(services.mode, services.live);
-  const [quality, setQuality] = useState<'default' | 'ultra'>(
-    pending?.execution.kind === 'auto' ? (pending.execution.qualityPreset ?? 'default') : 'default',
-  );
-  const [savedUltra, setUltra] = useState<UltraSelection | null>(
-    pending?.execution.kind === 'auto' ? (pending.execution.ultra ?? null) : null,
-  );
   const [modelMenu, setModelMenu] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<MeetingHandoffReceipt | null>(null);
-  const ultraProfiles = useMemo(
+  // Mock runs use the simulated profiles, whatever the connected models are.
+  const menuProfiles = useMemo<ProfileInfo[]>(
     () =>
       mode === 'mock'
         ? ['model-a', 'model-b'].map((profileId) => ({
             profileId,
             label: profileId,
             available: true,
-            reasoningCapabilities: {
-              providerDefault: true,
-              levels: ['medium', 'high'] as ('medium' | 'high')[],
-            },
+            reasoningCapabilities: { providerDefault: true, levels: ['medium', 'high'] },
           }))
-        : profiles,
+        : (profiles ?? []),
     [mode, profiles],
   );
-  const ultra = savedUltra ?? defaultUltraSelection(choice.modelProfile, ultraProfiles);
   const autoBlocked =
     execution === 'auto' &&
-    (autoNotReady(choice, profiles, mode) ||
-      (quality !== 'ultra' && autoReasoningUnsupported(choice, profiles, mode)) ||
-      (quality === 'ultra' &&
-        (ultra.modelProfiles.length < 2 ||
-          !ultra.modelProfiles.includes(choice.modelProfile) ||
-          ultra.verifierProfile === choice.modelProfile)));
+    (autoNotReady(choice, profiles, mode) || autoReasoningUnsupported(choice, profiles, mode));
   useEffect(() => {
     if (!open || !api) return;
     let active = true;
@@ -170,13 +153,7 @@ export function MeetingHandoff({
           : { kind: 'existing', sessionId: target },
       action,
       execution:
-        execution === 'auto'
-          ? {
-              kind: 'auto',
-              choice: quality === 'ultra' ? { modelProfile: choice.modelProfile } : choice,
-              ...(quality === 'ultra' ? { qualityPreset: 'ultra', ultra } : {}),
-            }
-          : { kind: 'corral', corralId: execution },
+        execution === 'auto' ? { kind: 'auto', choice } : { kind: 'corral', corralId: execution },
       mode,
       targetHasDraft: target !== 'new' && hasUnsentInput(target),
     };
@@ -275,54 +252,15 @@ export function MeetingHandoff({
               />
             </div>
             {execution === 'auto' ? (
-              <>
-                <AutoModelMenu
-                  value={choice}
-                  profiles={(ultraProfiles ?? []).filter(
-                    (profile) =>
-                      quality !== 'ultra' || ultra.modelProfiles.includes(profile.profileId),
-                  )}
-                  showReasoning
-                  ultra={quality === 'ultra'}
-                  disabled={busy || !!pending}
-                  open={modelMenu}
-                  onOpenChange={setModelMenu}
-                  onChange={(next) => {
-                    setChoice(next);
-                    if (next.modelProfile !== choice.modelProfile)
-                      setUltra(
-                        quality === 'ultra'
-                          ? {
-                              ...ultra,
-                              verifierProfile:
-                                ultra.verifierProfile === next.modelProfile
-                                  ? choice.modelProfile
-                                  : ultra.verifierProfile,
-                            }
-                          : null,
-                      );
-                  }}
-                />
-                <Select
-                  label={tc('qualityPreset')}
-                  value={quality}
-                  disabled={busy || !!pending}
-                  onValueChange={setQuality}
-                  options={[
-                    { value: 'default', label: tc('qualityDefault') },
-                    { value: 'ultra', label: tc('qualityUltra') },
-                  ]}
-                />
-                {quality === 'ultra' ? (
-                  <UltraModels
-                    primary={choice.modelProfile}
-                    profiles={ultraProfiles}
-                    value={ultra}
-                    onChange={setUltra}
-                    disabled={busy || !!pending}
-                  />
-                ) : null}
-              </>
+              <AutoModelMenu
+                value={choice}
+                profiles={menuProfiles}
+                showReasoning
+                disabled={busy || !!pending}
+                open={modelMenu}
+                onOpenChange={setModelMenu}
+                onChange={setChoice}
+              />
             ) : null}
           </fieldset>
           <p className="text-muted-foreground">{t('draftHint')}</p>
@@ -495,7 +433,7 @@ export function MeetingHandoffLinks({
           <p className="text-muted-foreground wrap-anywhere">
             {t('execution')}:{' '}
             {receipt.execution.kind === 'auto'
-              ? `${t('auto')} · ${receipt.execution.choice.modelProfile}${receipt.execution.qualityPreset === 'ultra' ? ' · Ultra' : ''}`
+              ? `${t('auto')} · ${receipt.execution.choice.modelProfile}`
               : `${receipt.execution.corralId} · ${receipt.definitionRevision}`}
           </p>
           {receipt.detail ? <p className="wrap-anywhere">{receipt.detail}</p> : null}

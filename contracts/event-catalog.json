@@ -343,10 +343,5 @@
     "type": "runtime.checkpoint_skipped",
     "requiredContent": "executionId,capacity reason",
     "status": "payload_schema_to_implement"
-  },
-  {
-    "type": "candidate.comparison_changed",
-    "requiredContent": "runId,baselineTree,status,selectedCandidateId,candidates (2–5 scoped candidate states, checks, exact trees and usage)",
-    "status": "payload_schema_to_implement"
   }
 ]

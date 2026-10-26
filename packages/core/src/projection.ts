@@ -25,7 +25,6 @@ import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.
 // coordinator and in every client, so a replayed log and a live view cannot drift.
 
 export interface ExecutionView {
-  candidateId?: string;
   item?: ItemRef;
   executionId: string;
   nodeId: string;
@@ -202,7 +201,6 @@ export interface ReviewView {
 }
 
 export interface RunProjection {
-  candidateComparison?: import('@corral/contracts').CandidateComparisonView;
   /** When run.started and the terminal state change were recorded; null until then. */
   startedAt: string | null;
   endedAt: string | null;
@@ -242,7 +240,7 @@ export interface RunProjection {
   patches: Record<string, PatchView>;
   currentCriteriaVersionId: string | null;
   limits: RunLimits | null;
-  /** CR-048: version 2 Ultra, where `limits` are not applied. */
+  /** An unlimited run (CR-052) or a meeting, where `limits` are not applied. */
   usageLimits?: 'none';
   budget: BudgetState;
   progress: ProgressState;
@@ -345,9 +343,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         startedAt: event.recordedAt,
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
-        ...(event.payload.usageLimits ||
-        event.payload.autoRoute?.ultra?.version === 2 ||
-        event.payload.meeting
+        ...(event.payload.usageLimits || event.payload.meeting
           ? { usageLimits: 'none' as const }
           : {}),
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
@@ -359,25 +355,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         ...p,
         status: to,
         statusReason: reasonCode,
-        ...(TERMINAL_RUN_STATUSES.has(to) &&
-        p.candidateComparison &&
-        !['selected', 'no_acceptable_candidate'].includes(p.candidateComparison.status)
-          ? {
-              candidateComparison: {
-                ...p.candidateComparison,
-                status: 'interrupted' as const,
-                candidates: p.candidateComparison.candidates.map((candidate) =>
-                  ['pending', 'running'].includes(candidate.state)
-                    ? {
-                        ...candidate,
-                        state: to === 'cancelled' ? ('cancelled' as const) : ('failed' as const),
-                        reason: reasonCode,
-                      }
-                    : candidate,
-                ),
-              },
-            }
-          : {}),
         ...(TERMINAL_RUN_STATUSES.has(to) && p.endedAt === null
           ? { endedAt: event.recordedAt }
           : {}),
@@ -439,12 +416,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       };
       return { ...p, tasks: { ...p.tasks, [taskId]: task } };
     }
-    case 'candidate.comparison_changed':
-      return {
-        ...p,
-        candidateComparison: event.payload,
-        controlRevision: p.controlRevision + (event.commandId ? 1 : 0),
-      };
     case 'execution.created':
       return executionCreated(p, event);
     case 'task.attempt_assigned':
@@ -948,7 +919,6 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
   const { executionId, nodeId, taskId, attemptNo, parentExecutionId, depth, iterationId } =
     event.payload;
   const execution: ExecutionView = {
-    ...(event.payload.candidateId ? { candidateId: event.payload.candidateId } : {}),
     executionId,
     nodeId,
     taskId,

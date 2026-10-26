@@ -30,7 +30,6 @@ import {
 import { HunkActions } from '../workbench/HunkActions.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
-import { CandidateComparison } from './CandidateComparison.tsx';
 import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
 import { WorkbenchLayout } from './Workbench.tsx';
@@ -105,7 +104,6 @@ export function ReviewPage() {
     runs: [],
   });
   const runs = loadedRuns.sessionId === session.sessionId ? loadedRuns.runs : [];
-  const comparisonRunId = scope.kind === 'run' ? scope.runId : runs[0]?.runId;
   const [version, setVersion] = useState(0);
   const { binding } = useBinding(session.projectId);
   const [loadedComments, setComments] = useState<{
@@ -349,33 +347,6 @@ export function ReviewPage() {
               ) : null}
             </section>
             <aside className="review-details flex min-w-0 flex-col gap-3 border-line p-3">
-              {workspaces && mode === 'server' && comparisonRunId ? (
-                <CandidateComparison
-                  key={`${session.sessionId}:${comparisonRunId}`}
-                  api={workspaces}
-                  transport={transport}
-                  runId={comparisonRunId}
-                  onApplied={() => setVersion((current) => current + 1)}
-                  renderFile={(candidate, path) => {
-                    const tree = candidate.tree;
-                    if (!tree) return null;
-                    return (
-                      <FileDiff
-                        path={path}
-                        loadKey={`${comparisonRunId}:${candidate.candidateId}:${tree}:${path}`}
-                        load={() =>
-                          workspaces.candidateFileVersions(
-                            comparisonRunId,
-                            candidate.candidateId,
-                            tree,
-                            path,
-                          )
-                        }
-                      />
-                    );
-                  }}
-                />
-              ) : null}
               {workspaces && mode === 'server' ? (
                 <LspProposals
                   key={session.sessionId}

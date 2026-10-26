@@ -2001,5 +2001,16 @@
     "tasks": [
       "C-190"
     ]
+  },
+  {
+    "requirementId": "CRL-ULTRA-005",
+    "tests": [
+      "TC-ULTRA-005-H",
+      "TC-ULTRA-005-N",
+      "TC-ULTRA-005-F"
+    ],
+    "tasks": [
+      "C-191"
+    ]
   }
 ]

@@ -35,9 +35,6 @@ export function createDemoWorkspaces(
     throw new Error('Development tasks require the local server.');
   };
   return {
-    candidateComparison: async () => null,
-    candidateChanges: noCheckpoints,
-    candidateFileVersions: noCheckpoints,
     languageState: noTasks,
     inspectLanguage: noTasks,
     startLanguage: noTasks,

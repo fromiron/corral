@@ -42,7 +42,7 @@ describe('BudgetInspector (C-061)', () => {
     expect(screen.queryByText('$0')).not.toBeInTheDocument();
   });
 
-  it('[TC-ULTRA-004-N] a version 2 Ultra run shows usage without an allowance and never counts unknown usage as zero', () => {
+  it('[TC-LLM-005-N] an unlimited run shows usage without an allowance and never counts unknown usage as zero', () => {
     const session = createRunSession({} as never);
     const p = emptyProjection('run_unlimited');
     p.usageLimits = 'none';

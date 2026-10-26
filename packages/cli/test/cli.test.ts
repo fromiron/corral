@@ -347,40 +347,26 @@ describe('judgments the run ended before (#22)', () => {
 });
 
 describe('headless exec and eval (roadmap Core-③)', () => {
-  it('[TC-ULTRA-001-H] [TC-ULTRA-001-N] headless built-in Ultra uses the same bounded workflow and rejects custom-team conversion', async () => {
-    const cwd = workspace(),
-      output: string[] = [];
+  it('[TC-ULTRA-005-H] exec has no Ultra options any more (CR-056)', async () => {
+    const cwd = workspace();
     const brief = join(cwd, 'brief.txt');
     writeFileSync(brief, 'Hello');
-    expect(
-      await runCli(
-        [
-          'exec',
-          'auto',
-          '--ultra',
-          '--ultra-models',
-          'model-a,model-b',
-          '--ultra-verifier',
-          'model-b',
-          '--input',
-          brief,
-          '--demo',
-          '--json',
-        ],
-        io(cwd, output),
-      ),
-      output.join('\n'),
-    ).toBe(0);
-    const result = JSON.parse(output.at(-1)!);
-    expect(result).toMatchObject({ status: 'succeeded', repairRounds: 1 });
-    expect(result.executions).toBeGreaterThanOrEqual(7);
-    expect(result.executions).toBeLessThanOrEqual(11);
-    expect(await runCli(['exec', 'auto', '--ultra', '--input', brief, '--demo'], io(cwd, []))).toBe(
-      1,
-    );
-    const custom = join(cwd, 'custom.json');
-    writeFileSync(custom, JSON.stringify(linearCorral(['worker'])));
-    expect(await runCli(['exec', custom, '--ultra', '--demo'], io(cwd, []))).toBe(1);
+    for (const flags of [
+      ['--ultra'],
+      ['--ultra', '--ultra-models', 'model-a,model-b', '--ultra-verifier', 'model-b'],
+      ['--ultra-models', 'model-a,model-b'],
+    ]) {
+      const output: string[] = [];
+      expect(
+        await runCli(
+          ['exec', 'auto', ...flags, '--input', brief, '--demo', '--json'],
+          io(cwd, output),
+        ),
+      ).toBe(1);
+      expect(output).toEqual([
+        'Command failed. Check the input, workspace, port and local model setup.',
+      ]);
+    }
   });
   const io = (cwd: string, output: string[]) => ({
     cwd,

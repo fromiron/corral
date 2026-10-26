@@ -4814,5 +4814,38 @@
     "status": "planned",
     "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; live tests require explicit opt-in",
     "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-005-H",
+    "requirements": [
+      "CRL-ULTRA-005"
+    ],
+    "suite": "unit+server",
+    "scenario": "An auto start, a session message, an explicit start with an autoRoute and a meeting handoff that carry `qualityPreset` or `ultra` are refused as invalid and start nothing; the CLI rejects `--ultra`; `select_candidate` / `cancel_candidate` are unknown commands and the candidate routes are gone.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; no live provider calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-005-N",
+    "requirements": [
+      "CRL-ULTRA-005"
+    ],
+    "suite": "unit+server",
+    "scenario": "A store holding Runs written by the pre-removal Ultra code (a version 2 tournament and an unfinished version 1 comparison) starts: the unfinished Run is interrupted with ordinary events, the server refuses both Runs on every run route with an Ultra-removed message, an ordinary Run still opens, and Studio shows the message in the session without failing its results.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; no live provider calls",
+    "evidence": null
+  },
+  {
+    "id": "TC-ULTRA-005-F",
+    "requirements": [
+      "CRL-ULTRA-005"
+    ],
+    "suite": "unit+server",
+    "scenario": "\"Request again\" on an Ultra Run, and starting a meeting handoff saved with an Ultra choice, are refused with an Ultra-removed message and create no run; a session entry saved with an Ultra choice still loads with that choice ignored.",
+    "status": "planned",
+    "adapter": "injected deterministic provider, in-process worker, scripted agents and Studio unit tests; no live provider calls",
+    "evidence": null
   }
 ]

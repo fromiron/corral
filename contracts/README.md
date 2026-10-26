@@ -3,7 +3,7 @@
 | 경로 | 역할 | 상태 해석 |
 |---|---|---|
 | `requirements.json` | 제품 요구 ID의 원장 | 요구 등록은 구현 완료가 아님 |
-| `backlog.json` | 태스크·의존성·완료 조건·구현 상태·증거 연결 | planned / in_progress / implemented. 환경별 실행 결과와 구분 |
+| `backlog.json` | 태스크·의존성·완료 조건·구현 상태·증거 연결 | planned / in_progress / implemented / removed. `removed`는 기능이 제거된 태스크이며 `removedBy`가 제거 태스크를 가리킨다. 환경별 실행 결과와 구분 |
 | `*.schema.json` | 초기 문서팩의 seed schema·예제 검사 입력 | 현재 runtime DTO나 생성 스키마의 정본이 아님 |
 | `event-catalog.json` | 초기 이벤트 설계 목록 | 현재 payload union 전체를 대신하지 않음 |
 

@@ -1,15 +1,10 @@
 import { z } from 'zod';
-import { AutoModelChoice, AutoRoute, QualityPreset, UltraSelection } from './auto-team.ts';
+import { AutoModelChoice, AutoRoute } from './auto-team.ts';
 import { Identifier } from './ids.ts';
 
 export const MeetingHandoffExecution = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('corral'), corralId: Identifier }),
-  z.strictObject({
-    kind: z.literal('auto'),
-    choice: AutoModelChoice,
-    qualityPreset: QualityPreset.optional(),
-    ultra: UltraSelection.optional(),
-  }),
+  z.strictObject({ kind: z.literal('auto'), choice: AutoModelChoice }),
 ]);
 export type MeetingHandoffExecution = z.infer<typeof MeetingHandoffExecution>;
 

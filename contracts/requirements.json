@@ -673,19 +673,19 @@
   },
   {
     "id": "CRL-ULTRA-001",
-    "requirement": "CR-031-A: mode와 독립된 명시 Ultra는 검증된 built-in planner/writer/reviewer와 최대 두 번 수정을 사용하며 사용자 팀·모델/effort·정책·예산을 자동 변경하지 않는다. 기본 경로와 재시도 identity를 유지하고 같은 과제로 결과/총비용을 비교한다.",
+    "requirement": "CR-056로 제거됨(이력). CR-031-A: mode와 독립된 명시 Ultra는 검증된 built-in planner/writer/reviewer와 최대 두 번 수정을 사용하며 사용자 팀·모델/effort·정책·예산을 자동 변경하지 않는다. 기본 경로와 재시도 identity를 유지하고 같은 과제로 결과/총비용을 비교한다.",
     "owner": "core",
     "phase": "M4"
   },
   {
     "id": "CRL-ULTRA-002",
-    "requirement": "CR-031-B: 후보는 동일 Run/baseline/criteria와 별도 사본/lease를 사용하고 검증 실패·불확정 후보를 제외한다. 총예산의 80%에서 새 후보/수정을 차단하며 마무리 비용을 보호한다. 명시 한 후보만 안전 승격하고 all-fail을 성공으로 만들지 않는다.",
+    "requirement": "CR-056로 제거됨(이력). CR-031-B: 후보는 동일 Run/baseline/criteria와 별도 사본/lease를 사용하고 검증 실패·불확정 후보를 제외한다. 총예산의 80%에서 새 후보/수정을 차단하며 마무리 비용을 보호한다. 명시 한 후보만 안전 승격하고 all-fail을 성공으로 만들지 않는다.",
     "owner": "core",
     "phase": "M4"
   },
   {
     "id": "CRL-ULTRA-003",
-    "requirement": "CR-031 C-118: 새 Ultra는 명시 pool의 복수 모델에 역할을 고정하고 최대 지원 추론과 필수 교차 검토를 수행한다. 실제 provider wire/한 번의 dispatch/공유 예산/취소를 검증하고 legacy snapshot과 승인한 입력 범위를 보존한다. 저장소가 있는 새 Ultra는 선택된 등록 검사를 고정 tree의 host 소유 OS 격리에서 실행하고 격리/소유권/신선도 증거 없는 완료를 거절한다.",
+    "requirement": "CR-056로 제거됨(이력). CR-031 C-118: 새 Ultra는 명시 pool의 복수 모델에 역할을 고정하고 최대 지원 추론과 필수 교차 검토를 수행한다. 실제 provider wire/한 번의 dispatch/공유 예산/취소를 검증하고 legacy snapshot과 승인한 입력 범위를 보존한다. 저장소가 있는 새 Ultra는 선택된 등록 검사를 고정 tree의 host 소유 OS 격리에서 실행하고 격리/소유권/신선도 증거 없는 완료를 거절한다.",
     "owner": "core",
     "phase": "M4"
   },
@@ -991,7 +991,7 @@
   },
   {
     "id": "CRL-ULTRA-004",
-    "requirement": "CR-048: 조건을 갖춘 새 Ultra는 pool 모델별 격리 후보를 기본으로 실행하고, 필수 검사를 통과한 후보만 익명 판정해 우승안을 고르며, 우승 사본에서 검사·비교로 수용한 고도화 라운드만 남긴다. 최종 tree는 재검증과 체크포인트 뒤 사용자 확인 없이 세션 사본에 한 번 반영하고, 재검증 실패·판정 무효·취소·재시작에서는 반영하지 않는다. version 2 Ultra에는 Corral의 사용량·폭주 방지 한도가 없고 사용자 취소가 모든 소유 실행을 확정적으로 멈춘다. 일반 모드·version 1 기록의 예산과 기존 권한·격리 경계를 보존한다.",
+    "requirement": "CR-056로 제거됨(이력). CR-048: 조건을 갖춘 새 Ultra는 pool 모델별 격리 후보를 기본으로 실행하고, 필수 검사를 통과한 후보만 익명 판정해 우승안을 고르며, 우승 사본에서 검사·비교로 수용한 고도화 라운드만 남긴다. 최종 tree는 재검증과 체크포인트 뒤 사용자 확인 없이 세션 사본에 한 번 반영하고, 재검증 실패·판정 무효·취소·재시작에서는 반영하지 않는다. version 2 Ultra에는 Corral의 사용량·폭주 방지 한도가 없고 사용자 취소가 모든 소유 실행을 확정적으로 멈춘다. 일반 모드·version 1 기록의 예산과 기존 권한·격리 경계를 보존한다.",
     "owner": "core",
     "phase": "M4"
   },
@@ -1094,6 +1094,12 @@
   {
     "id": "CRL-LLM-010",
     "requirement": "CR-055 §7: A live session turn in a linked, trusted folder runs under the built-in session work style unless a work style is chosen; the person's and project's defaults layer over it and may restrict it. Writers get command and preview tools under the permission mode; reviewers stay read-only. Simulated agents and untrusted folders get no work style. The Coordinator's own final-reply publication is not limited by the work style, a wait ended by cancellation settles as cancelled, and a resent conversation start returns its recorded run.",
+    "owner": "core",
+    "phase": "M8"
+  },
+  {
+    "id": "CRL-ULTRA-005",
+    "requirement": "CR-056: No start, command, CLI or meeting path accepts Ultra (`qualityPreset`, `ultra`, candidate selection or cancellation), and the Coordinator no longer runs Ultra pools, candidates, judges or tournaments. Old Ultra records are not read (Bell, 2026-10-25): a store holding Ultra Runs still opens, those Runs are refused over the API with an Ultra-removed message and never sent to clients, unfinished ones are interrupted at restart, and a saved Ultra handoff or \"request again\" on an Ultra Run is refused and starts nothing.",
     "owner": "core",
     "phase": "M8"
   }

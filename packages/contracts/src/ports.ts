@@ -98,8 +98,6 @@ export interface AgentStartInput {
   sessionId?: string;
   /** Host-owned provenance for a conversational response, never inferred from the role. */
   meeting?: MeetingRunOrigin;
-  candidateId?: string;
-  candidateComparison?: true;
   resumeContext?: RuntimeCheckpointState;
   /** CR-054: the session's earlier requests and answers, for an execution given the brief. */
   conversation?: SessionConversation;

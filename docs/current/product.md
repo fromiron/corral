@@ -22,7 +22,7 @@ Corral은 로컬 우선 AI 작업 도구다. 일반 사용자는 대화에서 �
 |---|---|---|
 | 기본 대화·선택적 Corral | [CR-043](../change-requests/CR-043-chat-first-optional-corral.md) | [Chat-first 검토](../evaluation/Chat-First-UX-Review.md) |
 | Desktop·명령·병행 실행 등 | [CR-042](../change-requests/CR-042-desktop-capabilities.md) | [기능별 진행 기록](../evaluation/Desktop-Capabilities-Implementation-Progress.md) |
-| 모델 연결·복수 모델 Ultra | [모델 안내](../Models.md) | 각 기능의 코드·시험 및 해당 후보의 live 증거 |
+| 모델 연결 | [모델 안내](../Models.md) | 각 기능의 코드·시험 및 해당 후보의 live 증거 |
 | 출하 준비 | [Release](../Release.md) | 동일 후보의 gate·플랫폼·외부 서비스 증거 |
 
 위 자료가 Windows에서 특정 흐름을 확인했다고 기록하더라도 다른 OS·SSH host·마이크·유료 모델·업데이트 채널의 성공으로 확대하지 않는다. 검증하지 않은 환경은 미검증으로 남긴다.

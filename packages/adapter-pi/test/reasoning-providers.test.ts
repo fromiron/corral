@@ -18,7 +18,7 @@ import {
 import { providerRequestFence } from '../src/request-fence.ts';
 import { sandboxChannel } from '../src/sandbox-channel.ts';
 
-it('[TC-ULTRA-003-N] accepts Pi ChatGPT OAuth cap omission only for the pinned official transport, while API keys retain their cap', async () => {
+it('[TC-RSN-001-N] accepts Pi ChatGPT OAuth cap omission only for the pinned official transport, while API keys retain their cap', async () => {
   const model = builtinModels().getModel('openai', 'gpt-6.1-sol')!;
   const resolution: ReasoningResolution = {
     requested: { mode: 'fixed', level: 'high' },
@@ -69,7 +69,7 @@ it('[TC-ULTRA-003-N] accepts Pi ChatGPT OAuth cap omission only for the pinned o
   }
 });
 
-it('[TC-ULTRA-003-H] [TC-ULTRA-003-N] resolves OpenAI and DeepSeek maximum from actual Pi payloads and rejects changed effort or output caps', async () => {
+it('[TC-RSN-001-H] [TC-RSN-001-N] resolves OpenAI and DeepSeek maximum from actual Pi payloads and rejects changed effort or output caps', async () => {
   const catalog = builtinModels();
   for (const [provider, id] of [
     ['openai', 'gpt-6.1-sol'],
@@ -134,7 +134,7 @@ it('[TC-ULTRA-003-H] [TC-ULTRA-003-N] resolves OpenAI and DeepSeek maximum from 
 it
   .skipIf(process.env.CORRAL_SANDBOX_PROBE !== '1' || process.platform !== 'linux')
   .each([false, true])(
-  '[TC-ULTRA-003-H] DeepSeek maximum traverses the actual isolated Pi worker (SDK=%s), host permit and local HTTP tool round trip',
+  '[TC-RSN-001-H] DeepSeek maximum traverses the actual isolated Pi worker (SDK=%s), host permit and local HTTP tool round trip',
   async (sdk) => {
     const endpoint = await startCompatibleEndpoint();
     const source = builtinModels().getModel('deepseek', 'deepseek-v4-pro')!;
@@ -226,7 +226,7 @@ it
   30_000,
 );
 
-it('[TC-ULTRA-003-N] one permit sends one approved inference request even when transport retries or changes its destination/body', async () => {
+it('[TC-RSN-001-N] one permit sends one approved inference request even when transport retries or changes its destination/body', async () => {
   const model = {
     ...builtinModels().getModel('deepseek', 'deepseek-v4-pro')!,
     baseUrl: 'http://127.0.0.1:1',

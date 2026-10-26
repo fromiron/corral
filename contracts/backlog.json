@@ -2226,7 +2226,8 @@
       "apps/studio/src/pages/SessionPage.tsx"
     ],
     "done": "고정 팀·read-only 검토·수정 최대 2회·default 및 예산/권한 보존과 동일 과제 결정적 비교를 확인한다.",
-    "status": "implemented"
+    "status": "removed",
+    "removedBy": "C-191"
   },
   {
     "id": "C-114",
@@ -2248,8 +2249,9 @@
       "packages/adapter-pi/src/"
     ],
     "done": "후보 최대5/동시3, 사본/검사/취소 소유권, 80% admission과 마무리 예약, 전원 실패 및 정확한 후보 단일 승격을 확인한다.",
-    "status": "implemented",
-    "evidence": "docs/evaluation/Development-Workbench-Candidates-2026-10-23.md"
+    "status": "removed",
+    "evidence": "docs/evaluation/Development-Workbench-Candidates-2026-10-23.md",
+    "removedBy": "C-191"
   },
   {
     "id": "C-118",
@@ -2268,8 +2270,9 @@
       "apps/studio/src/pages/SessionPage.tsx"
     ],
     "done": "명시 모델 배정·필수 교차 검토·제한된 병렬 위임·최대 추론 wire와 공유 예산·취소를 검증하고 UI/API/CLI 및 과거 snapshot을 보존한다.",
-    "status": "in_progress",
-    "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md"
+    "status": "removed",
+    "evidence": "docs/evaluation/Quality-Completion-2026-10-21.md",
+    "removedBy": "C-191"
   },
   {
     "id": "C-119",
@@ -3424,8 +3427,9 @@
       "packages/cli/src/"
     ],
     "done": "selection version 2의 기본 후보 경쟁, 검사 통과 후보의 익명 판정과 host 검증, 우승 사본의 고도화 라운드 수용/폐기, 재검증·체크포인트 뒤 확인 없는 단일 자동 반영과 보류 사유, 사용량 한도 없는 실행과 이를 멈추는 사용자 취소·늦은 결과·재시작 경계를 확인한다.",
-    "status": "implemented",
-    "evidence": "docs/evaluation/Ultra-Tournament-2026-10-23.md"
+    "status": "removed",
+    "evidence": "docs/evaluation/Ultra-Tournament-2026-10-23.md",
+    "removedBy": "C-191"
   },
   {
     "id": "C-174",
@@ -3776,5 +3780,30 @@
     "done": "Bind the built-in session work style to live session turns in trusted folders (explicit work style wins, defaults may restrict it); give writers command and preview tools; publish final replies regardless of the work style's tool list; settle a cancelled wait as cancelled; let a resent conversation start and its cancellation find the recorded run.",
     "status": "implemented",
     "evidence": "docs/evaluation/Conversation-Agent-2026-10-25.md"
+  },
+  {
+    "id": "C-191",
+    "phase": "M8",
+    "title": "CR-056 Ultra removal",
+    "dependsOn": [
+      "C-173",
+      "C-190"
+    ],
+    "requirements": [
+      "CRL-ULTRA-005"
+    ],
+    "files": [
+      "packages/contracts/src/",
+      "packages/core/src/",
+      "apps/server/src/",
+      "packages/client/src/",
+      "packages/cli/src/",
+      "apps/studio/src/",
+      "packages/react/src/",
+      "docs/"
+    ],
+    "done": "Refuse Ultra on every start, command, CLI and meeting path; remove the Coordinator's Ultra, candidate and tournament paths and their routes, client methods and UI; drop every legacy Ultra schema (Bell, 2026-10-25) while a store holding Ultra runs still starts, refuses those runs on the run routes with an Ultra-removed message and interrupts unfinished ones, and refuse to start a recorded Ultra choice.",
+    "status": "implemented",
+    "evidence": "docs/evaluation/Ultra-Removal-2026-10-25.md"
   }
 ]

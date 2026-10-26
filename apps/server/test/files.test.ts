@@ -1124,7 +1124,7 @@ describe('file broker (CR-012)', () => {
     );
   });
   it.each(process.platform === 'linux' ? [undefined, 'linux-bwrap' as const] : [undefined])(
-    '[TC-HAR-012-N] [TC-ULTRA-003-N] automatic checks enforce pinned selection, exact fingerprint approval, owner and stale-tree rejection (%s)',
+    '[TC-HAR-012-N] automatic checks enforce pinned selection, exact fingerprint approval, owner and stale-tree rejection (%s)',
     async (isolation) => {
       const { service, call } = await setup();
       await service.configure('default', {
@@ -1161,9 +1161,6 @@ describe('file broker (CR-012)', () => {
       if (isolation) {
         const plain = await service.planCheck({ ...context, isolation: undefined }, cancellation);
         expect(plain.fingerprint).not.toBe(plan.fingerprint);
-        await expect(
-          service.planCheck({ ...context, expectedTree: 'f'.repeat(40) }, cancellation),
-        ).rejects.toThrow(/tree/);
       }
       await expect(service.runCheck(context, plan, null, cancellation)).rejects.toThrow(
         /approval|trust/,

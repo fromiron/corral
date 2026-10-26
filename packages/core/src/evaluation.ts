@@ -84,7 +84,6 @@ export async function executeOnce(
     sessionId,
     answers = [],
     auto,
-    resolveUltra,
     stopOnInput = false,
     onStart,
     wallNow = Date.now,
@@ -93,8 +92,7 @@ export async function executeOnce(
     signal: EvaluationSignal;
     stopOnInput?: boolean;
     onStart?: (runId: string) => void;
-    auto?: Pick<AutoStart, 'choice' | 'qualityPreset' | 'ultra'>;
-    resolveUltra?: Coordinator['resolveUltra'];
+    auto?: Pick<AutoStart, 'choice'>;
     sessionId?: string;
     now?: () => number;
     wallNow?: () => number;
@@ -114,7 +112,6 @@ export async function executeOnce(
   const { runId, receipt } = auto
     ? await createAutoStarter({
         startRun: (request) => transport.startRun(request),
-        ...(resolveUltra ? { resolveUltra } : {}),
       }).start(
         {
           ...auto,

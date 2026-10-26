@@ -107,43 +107,15 @@ Models → 모델 편집에서 엔드포인트와 프로필을 추가한다. 이
 
 공식 두 주소와 정확한 모델 ID에는 context 1,000,000, 이미지 입력, `off/low/high/max` 추론을 등록한다. 출력 기본 상한은 기존 4,096을 유지하며 명시한 모델 한도·기능 설정이 우선한다. Pi 1.3.0의 `thinkingLevelMap`과 OpenAI completions compatibility를 사용해 `off`는 `none`, `max`는 `max`로 보낸다. provider default는 effort를 생략한다. 모델 ID가 같더라도 다른 gateway에 이 설정을 적용하지 않는다.
 
-근거: [Hive 모델 API](https://docs.thehive.ai/docs/deepseek-v41-flash), [연결·인증·도구 호출 문서](https://docs.thehive.ai/docs/chat-completions-openai-compatible-llms). Hive 요청은 `max_completion_tokens`와 SSE를 사용한다. 2026-10-19 별도 opt-in 시험에서 실제 Hive 모델의 `high` 요청 2회와 산출물 작성·제출, usage 응답을 확인했다. 모델 품질 개선·최대 추론의 실제 청구량·복수 제공자 전체 live Ultra 검증과는 구분한다. 비용 정보가 없는 사용자 정의 엔드포인트를 무료라고 해석하지 않는다.
+근거: [Hive 모델 API](https://docs.thehive.ai/docs/deepseek-v41-flash), [연결·인증·도구 호출 문서](https://docs.thehive.ai/docs/chat-completions-openai-compatible-llms). Hive 요청은 `max_completion_tokens`와 SSE를 사용한다. 2026-10-19 별도 opt-in 시험에서 실제 Hive 모델의 `high` 요청 2회와 산출물 작성·제출, usage 응답을 확인했다. 모델 품질 개선·최대 추론의 실제 청구량과는 구분한다. 비용 정보가 없는 사용자 정의 엔드포인트를 무료라고 해석하지 않는다.
 
-## 복수 모델 Ultra
+## Ultra (제거됨)
 
-자동 세션에서 **Ultra** 또는 `/ultra`를 선택하면 참여 모델(서로 다른 모델 2~5개)과 검토·판정 모델을 고른다. 같은 회사의 다른 모델도 가능하며, 같은 모델의 프로필 별칭 두 개는 서로 다른 모델로 세지 않는다. 새 요청은 [CR-048](change-requests/CR-048-ultra-candidate-tournament.md)의 선택 형식 version 2를 쓴다.
+복수 모델 Ultra와 후보 비교·경쟁(CR-031, CR-048)은 [CR-056](change-requests/CR-056-ultra-removal.md)으로 제거됐다. 입력창·`/ultra`·HTTP·CLI(`--ultra`, `--ultra-models`, `--ultra-verifier`)·회의 인계 어디에서도 시작할 수 없다. 이전 Ultra Run은 더 이상 열리지 않는다. 세션에는 Ultra가 제거되어 열 수 없다는 안내가 표시되고, 끝나지 않은 Run은 다른 Run처럼 재시작 때 중단된다. Ultra로 저장된 회의 인계는 시작할 수 없다. 모델 프로필의 최고 추론 단계 메타데이터와 요청별 추론 적용은 Ultra와 별개로 유지한다.
 
-Ultra는 각 모델에서 검증된 최고 추론 단계를 사용한다. 현재 결정적 conformance는 OpenAI Responses/Codex, 검증된 OpenAI-compatible 계열과 Anthropic adaptive thinking API key 계열을 다룬다. Anthropic OAuth serializer 시험은 제품의 구독 로그인 지원을 뜻하지 않는다. Pi 1.3.0의 Google Generative AI는 요청별 HTTP 제어를 제공하지 않아 Ultra 선택 대상이 아니다. 일반 모드에 저장한 추론 강도는 바꾸지 않는다. 미연결 모델이나 최고 추론 매핑이 확인되지 않은 모델은 시작 전에 거절한다. 선택한 연결에는 이번 요청·첨부·허용한 프로젝트 자료·파생 결과가 전달될 수 있다.
+## 사용량 한도 없음
 
-### 사용량 한도 없음
-
-CR-052부터 일반 실행·Ultra·회의 모두 기본 사용량 예산이 없다. 사용자가 명시한 예산만 적용하며, 호출당 출력은 모델 한도와 남은 컨텍스트 공간을 따른다. 진행 없음은 관측한 증거 변화에 따른 경고이며, 기본 무제한 실행을 횟수만으로 종료하지 않는다. 실행은 흐름의 구조(후보 2–5개, 후보 안의 수정 최대 2회, 고도화 라운드)로만 끝나며, 끝나지 않는 실행은 **직접 취소할 때까지** 계속되고 비용이 발생한다. 공급자 쪽 사용량 제한·과금은 그대로다. 사용량 화면은 한도 대신 확인된 출력·호출 수·진행 중·사용량 미확인 호출을 보여 주며 미확인 사용량을 0으로 계산하지 않는다. 모델 요청 동시성 기본값은 6, resident execution 기본값은 12이며 사용량 예산과 별도로 설정한다.
-
-### 후보 경쟁·판정·고도화·자동 반영
-
-작업 사본과 검증된 Linux 격리가 있는 요청에서 후보 경쟁이 기본이다. 후보는 기본적으로 참여 모델마다 하나(2–5개, 같은 모델 중복 가능)이며 각자 별도 관리 사본에서 작업한다. 필수 등록 검사를 통과한 후보만 판정 대상이다.
-
-1. **판정**: 검토·판정 모델이 후보를 A–E 익명 라벨로 받아 diff·보고서·검사 결과로 우승안을 고른다. 판정 결과는 strict JSON이며 host가 라벨·순위·차용 파일을 검증한다. 형식 오류는 1회 다시 요청하고, 그래도 무효면 자동 반영 없이 직접 선택으로 넘어간다. 통과 후보가 하나면 판정 없이 우승이다.
-2. **고도화**: 우승 사본에서 판정 지적과 다른 후보에서 가져올 diff를 받아 라운드(0–3, 기본 2)를 진행한다. 매 라운드 검사를 다시 하고 판정 모델이 직전 채택본과 비교한다. 검사 실패·퇴보·개선 없음·판정 무효 라운드는 폐기하고 사본을 채택본 tree로 되돌린다. 판정이 “추가 개선 없음”이라고 하면 멈춘다.
-3. **자동 반영**: 기본적으로 사용자 확인 없이 기존 승격 경로로 세션 사본에 한 번 반영하고 반영 전 체크포인트를 남긴다. 세션 사본이 Run 중 바뀌었거나 작업·효과가 정산되지 않는 등 재검증이 실패하면 반영하지 않고 **자동 반영 보류**와 사유를 표시하며 직접 선택을 열어 둔다. Git commit·push·merge·배포는 하지 않는다. 요청에서 자동 반영을 끄면 판정 결과를 보여 주고 직접 선택을 기다린다.
-
-고도화 중인 우승 후보를 취소하면 고도화를 멈추고 채택본으로 직접 선택을 기다린다. Run 취소는 반영하지 않으며, 서버 재시작 뒤에는 자동 반영을 재개하지 않는다. 진행과 판정·라운드 결과는 기존 검토 화면의 **후보 비교**에서 확인한다.
-
-작업 사본이 없거나 Linux 격리를 제공하지 않으면 C-118 협업 방식(주 모델이 계획·실행·종합, 다른 모델이 검토, 필요하면 읽기 전용 보조)으로 실행하고 Run snapshot의 `mode`와 `fallbackReason`에 남긴다. 저장소가 있는데 등록 검사가 없거나 harness가 strict가 아니면 기존처럼 시작 전에 거절한다.
-
-CLI 예시(연결된 프로필 ID를 사용):
-
-```sh
-pnpm corral exec auto --ultra --model-profile model-b \
-  --ultra-models model-b,deepseek-hive --ultra-verifier deepseek-hive \
-  --input brief.txt
-```
-
-CLI `exec auto`는 작업 사본 없이 실행하므로 version 2 협업 방식이다. 새 Ultra CLI의 `--effort`는 허용하지 않는다. HTTP 자동 실행 요청에는 `qualityPreset: "ultra"`와 함께 `ultra: {"version": 2, "modelProfiles": ["model-b", "deepseek-hive"], "verifierProfile": "deepseek-hive", "candidates": [...], "refinementRounds": 2, "autoApply": true}`(뒤 세 필드는 선택)를 전달하고 `choice.reasoning`을 생략한다. 선택·해석된 추론 단계·실행 방식은 Run snapshot에 남으며 실행 도중 모델 교체는 새 Run이 필요하다.
-
-### 이전 선택 형식
-
-과거 version 1 Run snapshot의 예산·80% 중지와 후보 비교 의미는 보존한다. 저장 정의를 새로 실행할 때는 CR-052의 새 무제한 revision을 사용한다. 과거 `ultra` 선택 필드가 없는 단일 모델 기록도 기존 방식으로 해석한다. Studio에서 다시 불러온 version 1 초안은 같은 pool·검토 모델·후보로 version 2 선택을 만든다.
+CR-052부터 일반 실행과 회의 모두 기본 사용량 예산이 없다. 사용자가 명시한 예산만 적용하며, 호출당 출력은 모델 한도와 남은 컨텍스트 공간을 따른다. 진행 없음은 관측한 증거 변화에 따른 경고이며, 기본 무제한 실행을 횟수만으로 종료하지 않는다. 끝나지 않는 실행은 **직접 취소할 때까지** 계속되고 비용이 발생한다. 공급자 쪽 사용량 제한·과금은 그대로다. 사용량 화면은 한도 대신 확인된 출력·호출 수·진행 중·사용량 미확인 호출을 보여 주며 미확인 사용량을 0으로 계산하지 않는다. 모델 요청 동시성 기본값은 6, resident execution 기본값은 12이며 사용량 예산과 별도로 설정한다.
 
 ## 프로필 컨텍스트와 압축
 

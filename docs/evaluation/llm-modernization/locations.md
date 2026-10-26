@@ -24,7 +24,7 @@ CR-052 후보 소스의 현재 위치다. 기존 감사의 기준선 라인 번�
 | F13 | [packages/core/src/coordinator.ts:5829](../../../packages/core/src/coordinator.ts#L5829) |
 | F14/F21 | [packages/core/src/context-checkpoint.ts:8](../../../packages/core/src/context-checkpoint.ts#L8) |
 | F15 | [packages/adapter-pi/src/sdk-worker.ts:1381](../../../packages/adapter-pi/src/sdk-worker.ts#L1381) |
-| F16 | [packages/core/src/judge-context.ts:6](../../../packages/core/src/judge-context.ts#L6) |
+| F16 | `packages/core/src/judge-context.ts:6` (Git `90cfa39`; deleted by CR-056) |
 | F18 | [packages/adapter-pi/src/ported/dsh/context.ts:224](../../../packages/adapter-pi/src/ported/dsh/context.ts#L224) |
 | F21 | [packages/core/src/coordinator.ts:9062](../../../packages/core/src/coordinator.ts#L9062) |
 | F24 | [apps/server/src/app.ts:1258](../../../apps/server/src/app.ts#L1258) |

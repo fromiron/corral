@@ -22,7 +22,7 @@ type AnthropicPayload = Record<string, unknown> & {
 };
 
 it.each(['claude-sonnet-4-6', 'claude-opus-5-5'])(
-  '[TC-ULTRA-003-H] [TC-ULTRA-003-N] Anthropic %s maximum survives real API-key and OAuth serializers and exactly one HTTP dispatch',
+  '[TC-RSN-001-H] [TC-RSN-001-N] Anthropic %s maximum survives real API-key and OAuth serializers and exactly one HTTP dispatch',
   async (id) => {
     const model = builtinModels().getModel('anthropic', id)!;
     if (!hasApi(model, 'anthropic-messages')) throw new Error('wrong fixture API');
@@ -107,7 +107,7 @@ it.each(['claude-sonnet-4-6', 'claude-opus-5-5'])(
   },
 );
 
-it('[TC-ULTRA-003-N] Gemini remains unavailable to Ultra while Pi 1.3.0 refuses a per-request HTTP fence', async () => {
+it('[TC-RSN-001-N] Gemini offers no manual reasoning while Pi 1.3.0 refuses a per-request HTTP fence', async () => {
   const model = builtinModels().getModel('google', 'gemini-3.8-flash')!;
   if (!hasApi(model, 'google-generative-ai')) throw new Error('wrong fixture API');
   let requests = 0;
@@ -128,7 +128,7 @@ it('[TC-ULTRA-003-N] Gemini remains unavailable to Ultra while Pi 1.3.0 refuses 
 });
 
 it.each(['claude-sonnet-4-6', 'claude-opus-5-5'])(
-  '[TC-ULTRA-003-N] Anthropic %s keeps provider-default and every advertised manual effort compatible',
+  '[TC-RSN-001-N] Anthropic %s keeps provider-default and every advertised manual effort compatible',
   async (id) => {
     const model = builtinModels().getModel('anthropic', id)!;
     if (!hasApi(model, 'anthropic-messages')) throw new Error('wrong fixture API');

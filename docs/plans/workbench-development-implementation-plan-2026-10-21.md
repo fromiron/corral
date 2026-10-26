@@ -16,7 +16,7 @@ baseline: 071276873dee4bb51491bf608e604fbb4e123475
 
 `a3711bc`까지 P26·P27을 구현한 뒤 사용자가 P28·P29의 핵심 검증·실제 화면·커밋과 병렬 진행을 요청했다. P28은 같은 사본의 편집·검사·Git·로컬 배포 결과 연결을, P29는 현재 Linux unpacked runtime·복구·편집기 worker·좁은 화면을 확인했다. 검증 중 제보된 잘못된 재설치 안내는 `1553d37`에서 수정했다. 범위와 증거는 [P28 코어 여정](../evaluation/Development-Workbench-Daily-Driver-2026-10-23.md)·[P29 Linux 코어](../evaluation/Development-Workbench-Qualification-2026-10-23.md)에 있다. 전체 OS·장치·실제 외부 배포/업데이트·부하 qualification은 이번 코어 인수 완료와 구분한다.
 
-P19(C-114)는 같은 Run의 후보별 사본·검사·예산·취소·명시 단일 반영을 구현했다. 현재 계약은 [모델 안내](../Models.md#선택적-후보-비교)·[CR-031](../change-requests/CR-031-ultra-quality.md), 실제 파일·Linux 검사와 화면 결과는 [P19 실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)을 따른다.
+P19(C-114) 후보 비교는 구현됐다가 [CR-056](../change-requests/CR-056-ultra-removal.md)으로 Ultra와 함께 제거됐다. 당시 결과는 [P19 실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)에 남는다.
 
 기존 task·Git·문서·공통 owner를 재사용한다. P24-B의 불변 제안은 전용 저장 기록으로 보존하고 적용 상태는 공통 operation receipt를 따른다. 상태 원장은 `contracts/backlog.json`이며 전체 release gate 통과를 뜻하지 않는다.
 
@@ -84,8 +84,8 @@ P19(C-114)는 같은 Run의 후보별 사본·검사·예산·취소·명시 단
 | C-127 / ABS-06 | implemented | writer/reader 보존. 새 인간 작업과의 조정은 계약 변경 |
 | C-140·141 | implemented | 설정·초안·컨트롤·자동 제목·모델 표시 회귀. 다시 만들지 않음 |
 | C-125·128·135·136 | in_progress | [Desktop 잔여 계획](../plans/desktop-completion.md)의 플랫폼/원격/장치 검증과 연결. 전부 미구현으로 집계하지 않음 |
-| C-118 | in_progress | 복수 모델 Ultra의 기존 협업을 패널에 연결. 미지원 provider는 그대로 표시 |
-| C-114 | implemented | [P19 실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md). 기존 Run/검토 화면에 후보 비교·단일 반영 연결 |
+| C-118 | removed | CR-056으로 복수 모델 Ultra 제거 |
+| C-114 | removed | CR-056으로 후보 비교 제거. 당시 결과는 [P19 실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md) |
 
 ## 3. 확정한 결정과 남은 조건
 
@@ -121,7 +121,7 @@ P00–P18(C-142–159)·P21-A(C-160)·P22(C-161)·P23(C-162)·P24-A(C-163)·P20(
 
 ### M4 남은 검토·preview·원격 연결
 
-P19(C-114)은 구현됐다. 같은 Run에서 2–5개 후보를 최대 3개씩 격리 실행하고 기존 검토 화면에서 검사·변경·사용량을 비교해 하나만 세션 사본에 반영한다. 현재 계약은 [모델 안내](../Models.md#선택적-후보-비교)·[CR-031](../change-requests/CR-031-ultra-quality.md), 핵심 회귀·실제 화면·환경 경계는 [실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)을 따른다. 일반 Ultra·D&D·Reins를 대체하지 않으며 검증된 격리·등록 검사가 없는 환경은 계속 거절한다.
+P19(C-114) 후보 비교는 CR-056으로 Ultra와 함께 제거됐다. 이전 Ultra Run은 열리지 않으며 [실행 기록](../evaluation/Development-Workbench-Candidates-2026-10-23.md)은 그대로 둔다.
 
 P20(C-164)은 구현됐다. 현재 동작은 [미리보기 요소 피드백](../current/workbench.md#미리보기-요소-피드백), 실제 Desktop 선택·첨부·동일 화면 갱신과 환경 경계는 [실행 기록](../evaluation/Development-Workbench-Preview-Feedback-2026-10-23.md)을 따른다. 전체 설치판/OS·원격 capture와 실제 이미지 지원 모델은 이번 증거에 포함하지 않는다.
 

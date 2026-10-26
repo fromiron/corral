@@ -83,7 +83,7 @@ export class PiAgentAdapter implements AgentAdapter {
         resources.extensions.length ||
         resources.mcp?.length ||
         resources.startupCommands.length ||
-        (input.harness.projectTools?.checkIds.length && input.candidateComparison !== true) ||
+        input.harness.projectTools?.checkIds.length ||
         input.harness.projectTools?.lspServerIds.length
       )
         throw new Error(
@@ -582,7 +582,8 @@ class WorkerExecution {
                   role: this.input.role.id,
                   participant: this.input.meeting?.participantId ?? null,
                   profile: this.input.modelProfile,
-                  candidate: this.input.candidateId ?? null,
+                  // Ultra candidates are gone (CR-056); null keeps the provider cache key unchanged.
+                  candidate: null,
                   harness: this.input.harness ?? null,
                 }),
               )

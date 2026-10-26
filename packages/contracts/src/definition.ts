@@ -228,7 +228,7 @@ export const TaskBrief = z.strictObject({
   verificationScope: z.enum(['targeted', 'release']),
   canModifyFiles: z.boolean(),
   limits: RunLimits,
-  /** CR-048: version 2 Ultra; `limits` are not applied to this run. */
+  /** An unlimited run (CR-052): `limits` are not applied. */
   usageLimits: z.literal('none').optional(),
   sourceRefs: z
     .array(z.strictObject({ name: z.string().min(1), artifactVersionId: Identifier.nullable() }))

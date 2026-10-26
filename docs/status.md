@@ -9,12 +9,13 @@
 | 범위 | 승인·현재 계약 | 구현·기존 증거 | 남은 경계 |
 |---|---|---|---|
 | LLM 요청·컨텍스트·정산 | CR-052, [현재 runtime](current/llm-runtime.md) | C-179–184 구현·검증 범위는 [이번 기록](evaluation/llm-modernization/report.md)과 backlog 참조 | Linux/ChatGPT/Hive와 mock·loopback 범위. 기존 전체 회귀 실패, 다른 OS·실제 음성/이미지·일반 과제 품질 동등성은 별도 |
+| Ultra 제거 | [CR-056](change-requests/CR-056-ultra-removal.md), [API 계약](API-Contract.md#ultra-제거-cr-056) | C-191, [검증 기록](evaluation/Ultra-Removal-2026-10-25.md) | 결정적 core·server·CLI·Studio 단위, 제거 전 코드가 쓴 fixture 저장소의 Linux 화면 확인과 서버 E2E 범위. 이전 Ultra Run은 열리지 않음(Bell 결정). 실제 사용자 저장소·다른 OS는 미검증 |
 | 대화 에이전트·팀 선택·차례 표시 | CR-055, [현재 runtime](current/llm-runtime.md), [채팅 위젯 계약](current/chat-widgets-contract.md) | C-187–190, [검증 기록](evaluation/Conversation-Agent-2026-10-25.md) | 결정적 provider·scripted agent·Studio 단위·브라우저 데모·서버 E2E 범위. 실제 모델 대화·다른 OS는 미검증 |
 | 세션 대화 연속성·요청 prefix | CR-054, [현재 runtime](current/llm-runtime.md) | C-186, [검증 기록](evaluation/Session-Conversation-Continuity-2026-10-24.md) | 결정적 provider·in-process worker·Studio 단위 범위. 실제 ChatGPT/Hive 후속 대화와 ChatGPT 구독 경로의 cache 0 원인은 opt-in live 확인 전까지 미검증 |
 | 세션 현황 위젯 | CR-053, [채팅 위젯 계약](current/chat-widgets-contract.md), [Design System](../DESIGN.md) | C-185 구현, [Linux 로컬 서버 화면·단위 회귀](evaluation/Session-Overview-Widgets-2026-10-24.md) | 서버 E2E·다른 OS·스크린리더·실제 IME 검증은 별도. 대화 화면이 75rem 미만이면 위젯을 숨기고 입력창의 현황 버튼으로 연다 |
 | 세션 작업 화면 단순화(도킹·대화·남은 킷 전환) | CR-051, [Workbench](current/workbench.md), [Design System](../DESIGN.md) | C-178 구현, [Linux 화면·레이아웃·핵심 회귀](evaluation/Session-Workspace-Simplification-2026-10-24.md) | 전체 서버 E2E·다른 OS·실제 IME·스크린리더 검증은 별도 |
 | 디자인 킷·공용 컴포넌트·토큰 정형화 | CR-050, [Design System](../DESIGN.md) | C-177 구현, [Linux light/dark·390px·키보드·설정·핵심 회귀](evaluation/Design-Kit-Adoption-2026-10-23.md) | 전체 출시·다른 OS·실제 IME·스크린리더·모든 도메인 여정 검증은 별도 |
-| 검토·실행·후보 비교 배치 | CR-047, [Workbench](current/workbench.md) | C-172 구현, [현재 화면·핵심 회귀](evaluation/Review-Comparison-Layout-2026-10-23.md) | 사본 없는 초기 development/deployments 조회 404로 files E2E 최종 콘솔 검사 실패. 새 레이아웃·초안/반영 단계와 분리해 기록 |
+| 검토·실행 비교 배치 | CR-047, [Workbench](current/workbench.md) | C-172 구현, [현재 화면·핵심 회귀](evaluation/Review-Comparison-Layout-2026-10-23.md) | 사본 없는 초기 development/deployments 조회 404로 files E2E 최종 콘솔 검사 실패. 새 레이아웃·초안/반영 단계와 분리해 기록 |
 | D&D·협업·Loop·Reins·저장·CLI | [제품 상세](current/product-contract.md), [Reins](../specs/reins/spec.md) | C-001–075 및 [P0–P9 기록](../specs/001-canvas/evidence/) | 과거 게이트를 현재 후보의 출시 증거로 재사용하지 않음 |
 | 프로젝트·세션·파일 검토·대화 중심 Workbench | CR-010–017·023–024·043, [Workbench](current/workbench.md) | [Desktop Workbench](evaluation/Desktop-Workbench.md), [기본 대화](evaluation/Chat-First-UX-Review.md) | 후속 기능별 환경 검증은 아래 표 |
 | 개인 하네스 H2–H8 | CR-018–020, [하네스 상세](current/harness-contract.md) | C-077–083, [구현·로컬 검증](evaluation/Personal-Harness-Validation-2026-10-18.md) | native 확장은 OS sandbox가 아님. 당시 OS·provider 검증 범위 보존 |
@@ -32,7 +33,6 @@
 | 컴포저·컨텍스트·채팅 위젯 | CR-037–041, C-119–121 | [M4 기록](evaluation/Integrated-Improvement-M4-2026-10-19.md), [위젯 계약·증거](change-requests/CR-041-chat-widgets.md) | native IME·외부 provider 미검증 범위 유지 |
 | Desktop 확장 | CR-042, C-122–136, [상세 계약](current/desktop-contract.md) | [기능별 구현·검증](evaluation/Desktop-Capabilities-Implementation-Progress.md) | 부분 구현과 환경 대기를 아래에서 분리 |
 | 알림 대상 이동 | CR-033-B, C-171, [현재 계약](current/desktop-contract.md) | [Linux Electron 정확한 Run·승인 이동, 중복·늦은 클릭·재시작 경계](evaluation/Desktop-Notification-Targets-2026-10-23.md) | OS 알림 표시/전달·다른 OS·설치판 전체 여정은 별도 |
-| Ultra 후보 비교 | CR-031, C-114, [모델 안내](Models.md#선택적-후보-비교) | [P19 같은 Run·격리 사본·검사·단일 반영의 핵심 회귀와 실제 화면](evaluation/Development-Workbench-Candidates-2026-10-23.md) | 검증된 Linux 격리·등록 검사 필요. 외부 모델 품질/비용·다른 OS는 별도 |
 
 ## 남은 구현·검증
 
@@ -41,8 +41,6 @@
 | 추적 | 구현 상태 | 남은 일 | 근거 |
 |---|---|---|---|
 | C-174–176 / CR-049 | 그룹 채팅 후속 수정 구현·Linux 실제 모델/서버/브라우저 검증 | 기본 모델 이름·선택 역할·후속 대화·명시적 비서 플랜. 실제 모델14회 대화·플랜 통과, 인계·실행 연결은 결정적 서버 E2E. 다른 OS·설치판·하네스 및 추천/복제·생성은 별도 | [CR-049](change-requests/CR-049-meeting-room.md), [그룹 채팅 검증](evaluation/Meeting-Chat-2026-10-23.md), [이전 실행 검증](evaluation/Meeting-Room-2026-10-23.md) |
-| C-173 / CR-048 | 구현, 통합 검증 일부 | 실제 서버·사본·격리로 후보 경쟁 전체를 한 번에 실행하는 통합 검증, 실제 공급자 품질·비용, 시작 전 실행 방식 예측 표시 | [구현 기록](evaluation/Ultra-Tournament-2026-10-23.md) |
-| C-118 | 지원 범위 구현·검증, 미지원 계열 잔여 | Linux 격리·Anthropic adaptive conformance·GPT live 완료. Gemini transport 제약, 다른 계정/OS 검증 별도 | [현재 실행 기록](evaluation/Quality-Completion-2026-10-21.md) |
 | C-125 / ABS-04 | 부분 구현 | Linux AppImage preview 검증 완료. macOS 로컬 앱 TCP 소유권 구현·실기 별도 | [Desktop 잔여 계획](plans/desktop-completion.md) |
 | C-128 / ABS-07 | 구현 있음, 플랫폼 검증 진행 | NSIS 실제 설치, macOS·지원 arch, 서명·업데이트 채널 등 | [배포 기록](evaluation/Desktop-Delivery-Verification.md) |
 | C-135 / ABS-14 | 구현 있음, 외부 통합 검증 대기 | 허용된 SSH host의 실제 연결·실행·끊김·복구 | [Desktop 잔여 계획](plans/desktop-completion.md) |

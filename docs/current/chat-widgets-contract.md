@@ -152,7 +152,7 @@ CR-053은 이 요약 카드를 대화 화면 오른쪽에 떠 있는 **현황** 
 - 전체 범위가 추정 가능하고 유효 창이 알려졌을 때만 약 N%와 추정 잔여 공간을 표시한다. 막대 렌더는 범위를 제한하되 수치 초과 자체를 숨기지 않는다.
 - context window는 해당 Run/호출의 고정 snapshot에 따른다. 다음 요청의 모델 선택을 바꿔 과거 요청 분모를 바꾸지 않는다.
 - compact 성공 receipt만으로 사용량 감소를 그리지 않는다. 새 snapshot 전까지 이전 요청 기준·갱신 대기임을 표시한다.
-- Ultra는 execution별 분모가 다르므로 가상 합산 창을 만들지 않는다. 선택한 대상 또는 가장 높은 알려진 비율을 표시할 때 대상·미측정 수를 함께 밝힌다.
+- 역할별 모델이 다른 Run은 execution별 분모가 다르므로 가상 합산 창을 만들지 않는다. 선택한 대상 또는 가장 높은 알려진 비율을 표시할 때 대상·미측정 수를 함께 밝힌다.
 
 ### 4.5 변경사항
 
@@ -208,7 +208,7 @@ WorkPlanPanel의 본문 로딩·검증을 공용 useWorkPlanSnapshot/selector로
 - 실제 LLM의 계획 발행 여부는 별도 opt-in·기존 한도 내 smoke로 확인한다. 일반 CI는 결정적 fixture를 사용한다. 실제 LLM이 계획을 발행하지 않은 경우 UI에 가짜 계획을 생성하지 않는다.
 - 검증 필수 항목은 기존 Coordinator의 run_check immutable evidence 검증을 따른다. artifact 존재·model 완료·submit_result 성공으로 대체하지 않는다.
 
-### 5.5 Ultra와 팀 계획의 정적 소유자 문제
+### 5.5 팀 계획의 정적 소유자 문제
 
 이번 수정에서는 **팀 계획이 존재한다는 이유만으로 항상 팀 계획을 우선하지 않는다.** 현재 팀 계획은 planOwnerRoleId와 첫 소유 execution에 묶인다. 그 planner가 종료한 뒤 worker가 수행하는 단계가 팀 체크리스트에 자동 반영된다고 가정하면 화면이 정적으로 남을 수 있다.
 
@@ -320,7 +320,7 @@ ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌�
 | CTX-03 | provider input usage와 cache usage가 함께 존재 | input/output/cache 무조건 합산·과거 누적 합산 없음 |
 | CTX-04 | unsupported payload 또는 미측정 이미지 | 부분 측정 명시, 가짜 전체 비율/free space 없음 |
 | CTX-05 | 압축 완료 후 새 측정 전 | 이전 요청 기준 및 갱신 대기 유지 |
-| CTX-06 | Ultra 모델별 context window 차이 | execution별 분모 유지, 가상 총용량 없음 |
+| CTX-06 | 역할별 모델의 context window 차이 | execution별 분모 유지, 가상 총용량 없음 |
 | CTX-07 | 모델 선택 변경 중 과거 실행 검사 | 과거 기록 분모·사용량 불변 |
 | ACTION-01 | 승인/ask_user 대기, 실행 정보 disclosure 닫힘 | 대응 필요 정보와 기존 응답 경로가 계속 접근 가능 |
 | ACTION-02 | 질문/승인 응답 중 stale schema/revision 및 취소 경쟁 | 기존 receipt 경계 유지, 임의 재개·대기 소실 없음 |

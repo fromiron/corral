@@ -66,7 +66,7 @@ export interface ModelGateView {
   projection: RunProjection;
   limits: RunLimits;
   input: AgentStartInput;
-  /** CR-048: version 2 Ultra, where the default usage and no-progress gates do not apply. */
+  /** An unlimited run (CR-052), where the default usage gates do not apply. */
   usageLimits?: 'none';
 }
 

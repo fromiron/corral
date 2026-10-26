@@ -31,8 +31,6 @@ import {
   MeetingService,
   type RunArchive,
   type RuntimeTransport,
-  resolveUltraSelection,
-  SIMULATED_MODELS,
   type StartRunResult,
 } from '@corral/core';
 import { createRunRecovery, type RunSessionStore } from '@corral/react';
@@ -207,15 +205,6 @@ export async function createStudioServices(): Promise<StudioServices> {
     startRun: (request) => transport.startRun(request),
     // CR-055: a saved Corral lends its roles to the conversation lead.
     corral: async (corralId) => (await repository.get(corralId))?.definition ?? null,
-    // The demo has no candidate copies, so a version 2 tournament runs as collaboration (CR-048).
-    resolveUltra: (selection, primary, mode, _models, context) =>
-      resolveUltraSelection(
-        selection,
-        primary,
-        mode,
-        SIMULATED_MODELS,
-        selection.version === 2 ? (context?.fileTools ? 'no_isolation' : 'no_working_copy') : null,
-      ),
   });
   const repository = createKeyValueCorralRepository(store, {
     clock: systemClock,

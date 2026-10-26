@@ -12,7 +12,7 @@ const result = {
 };
 
 describe('composer draft (UX-02)', () => {
-  it('[TC-CHAT-001-H] [TC-UX-02-H] [TC-ULTRA-002-H] keeps text, intent, target and references through storage', () => {
+  it('[TC-CHAT-001-H] [TC-UX-02-H] keeps text, intent, target and references through storage', () => {
     const draft = {
       text: 'Compare with @"draft v1"',
       intent: 'steer' as const,
@@ -34,15 +34,23 @@ describe('composer draft (UX-02)', () => {
       ],
       taskScope: 'review_only' as const,
       verificationScope: 'release' as const,
-      qualityPreset: 'ultra' as const,
-      ultra: {
-        version: 1 as const,
-        modelProfiles: ['model-a', 'deepseek-hive'],
-        verifierProfile: 'deepseek-hive',
-        comparison: { modelProfiles: ['model-a', 'deepseek-hive', 'model-a'] },
-      },
     };
     expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);
+  });
+
+  it('[TC-ULTRA-005-F] reads a draft saved with an Ultra choice without it (CR-056)', () => {
+    const saved = JSON.stringify({
+      v: 2,
+      text: 'Hello',
+      intent: 'next',
+      references: [],
+      qualityPreset: 'ultra',
+      ultra: { version: 2, modelProfiles: ['model-a', 'model-b'], verifierProfile: 'model-b' },
+    });
+    const draft = parseComposerDraft(saved);
+    expect(draft.text).toBe('Hello');
+    expect(draft).not.toHaveProperty('qualityPreset');
+    expect(draft).not.toHaveProperty('ultra');
   });
 
   it('[TC-UX-02-N] reads an older text-only draft as text', () => {

@@ -22,18 +22,6 @@ vi.mock('./AutoModelMenu.tsx', () => ({
     </button>
   ),
 }));
-vi.mock('./UltraModels.tsx', () => ({
-  UltraModels: ({ value, onChange }: any) => (
-    <button type="button" onClick={() => onChange({ ...value, refinementRounds: 1 })}>
-      chooseUltra
-    </button>
-  ),
-  defaultUltraSelection: () => ({
-    version: 2,
-    modelProfiles: ['model-a', 'model-b'],
-    verifierProfile: 'model-b',
-  }),
-}));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, params }: any) => (
     <a href={`${to}:${Object.values(params).join('/')}`}>{children}</a>
@@ -242,20 +230,16 @@ it.each(['paused', 'awaiting_user'])(
   },
 );
 
-it('[TC-MEET-003-N] changing the primary model in an edited Ultra setup keeps an independent verifier', async () => {
+it('[TC-ULTRA-005-H] an auto handoff sends only the chosen model, never an Ultra choice', async () => {
   const f = await mount();
   await act(async () => f.button('open').click());
-  await f.select('qualityPreset', 'ultra');
-  await act(async () => f.button('chooseUltra').click());
+  expect(f.container.querySelector('select[aria-label="qualityPreset"]')).toBeNull();
   await act(async () => f.button('switchPrimary').click());
   await act(async () => f.button('start').click());
   expect(f.api.send).toHaveBeenCalledWith(
     'meeting',
     expect.objectContaining({
-      execution: expect.objectContaining({
-        choice: { modelProfile: 'model-b' },
-        ultra: expect.objectContaining({ verifierProfile: 'model-a', refinementRounds: 1 }),
-      }),
+      execution: { kind: 'auto', choice: { modelProfile: 'model-b' } },
     }),
   );
 });

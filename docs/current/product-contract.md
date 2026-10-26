@@ -10,7 +10,7 @@ baseline: 373764467a52a7c6978de1272ac8253c73a27077
 
 ## 0. 적용 범위와 변경 근거
 
-사용자 확정 요구와 승인 CR에 따라 제품·기능·기술 계약을 해석한다. 초기 설계 이후 기본 대화는 CR-043, Desktop·동시 Run·명령·Hashline은 CR-042, 추론 적용은 CR-021, 복수 모델 Ultra는 CR-031로 보완됐다. 과거 제외 목록을 근거로 후속 승인 기능을 제거하지 않는다.
+사용자 확정 요구와 승인 CR에 따라 제품·기능·기술 계약을 해석한다. 초기 설계 이후 기본 대화는 CR-043, Desktop·동시 Run·명령·Hashline은 CR-042, 추론 적용은 CR-021로 보완됐다. 복수 모델 Ultra(CR-031·048)는 CR-056으로 제거됐다. 과거 제외 목록을 근거로 후속 승인 기능을 제거하지 않는다.
 
 D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태와 스키마는 [기술 설계](../Technical-Design.md), [API 원본](api.md), [기능 명세](../../specs/README.md)를 함께 확인한다. 날짜나 코드의 존재만으로 계약 충돌을 해소하지 않는다.
 
@@ -99,7 +99,7 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 
 일반 명령·service와 Hashline은 [CR-042](../change-requests/CR-042-desktop-capabilities.md)의 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·예산·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
-기본 대화의 자동 팀 선택은 CR-024/043, 수동·자동 추론의 요청 적용은 CR-021, 복수 모델 Ultra는 CR-031이다. 초기의 자동 라우팅·추론 적용 제외 문구로 이 범위를 되돌리지 않는다. 일반 off/observe와 apply 계약은 각각 유지한다.
+기본 대화의 자동 팀 선택은 CR-024/043, 수동·자동 추론의 요청 적용은 CR-021이다. Ultra는 CR-056으로 제거됐다. 초기의 자동 라우팅·추론 적용 제외 문구로 이 범위를 되돌리지 않는다. 일반 off/observe와 apply 계약은 각각 유지한다.
 
 코딩 도구·Skill·MCP·LSP는 [하네스 계약](harness-contract.md)을 따른다. 검색·문서 읽기·산출물 쓰기라는 초기 도구 분류가 현재 전체 도구 목록은 아니다. [활성 계획](../plans/README.md)의 잔여 구현과 [장기 후보](../proposals/README.md)는 현재 제공 기능과 구분한다.
 
@@ -296,7 +296,7 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 
 ## 9. 사용량 예산과 자원 정책
 
-[CR-052](../change-requests/CR-052-llm-runtime-modernization.md)는 일반·Ultra·회의의 새 실행을 기본 무제한으로 통일한다. `executionPolicy.version=2`의 `budget`에 사용자가 명시한 항목만 적용한다. 실행 사용량 예산과 모델의 물리적 context/output 한도, 동시성·프로세스 자원 정책은 서로 별개다. 구현·환경별 검증 상태는 C-179–184와 해당 증거를 따른다.
+[CR-052](../change-requests/CR-052-llm-runtime-modernization.md)는 일반·회의의 새 실행을 기본 무제한으로 통일한다. `executionPolicy.version=2`의 `budget`에 사용자가 명시한 항목만 적용한다. 실행 사용량 예산과 모델의 물리적 context/output 한도, 동시성·프로세스 자원 정책은 서로 별개다. 구현·환경별 검증 상태는 C-179–184와 해당 증거를 따른다.
 
 | 항목 | 기본값 | 조절·적용 |
 |---|---:|---|

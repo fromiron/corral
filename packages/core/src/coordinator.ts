@@ -11,9 +11,6 @@ import {
   type Assignment,
   BinaryArtifact,
   type BrokerFileToolName,
-  type CancelCandidateCommand,
-  type CandidateComparisonView,
-  type CandidateView,
   CheckPlan,
   type Clock,
   type CommandError,
@@ -49,7 +46,6 @@ import {
   ImageInput,
   type InputBinding,
   LspQuery,
-  MANUAL_SELECTION_STATUSES,
   MessageBranchPoint,
   type MessageBranchPreview,
   MessageBranchRequest,
@@ -67,8 +63,6 @@ import {
   type ReasoningResolution,
   type Receipt,
   type RecipeStopReason,
-  RefinementJudgment,
-  type RefinementRoundView,
   type RequestPermit,
   type ResolveApprovalCommand,
   type ResolvedInput,
@@ -88,8 +82,6 @@ import {
   RuntimeContext,
   type RuntimeFiles,
   type Scheduler,
-  type SelectCandidateCommand,
-  SelectionJudgment,
   SessionConversation,
   StartRunRequest,
   type SteerCommand,
@@ -101,10 +93,7 @@ import {
   type ToolOutcome,
   type ToolPermissionPlan,
   type ToolProposal,
-  type TournamentView,
   taskBriefForModel,
-  type UltraFallbackReason,
-  type UltraSelection,
   UserInputRequest,
   VerificationReport,
   validUserAnswers,
@@ -133,8 +122,6 @@ import {
   settlementFor,
   UNLIMITED_OUTPUT_TOKENS_PER_CALL,
 } from './budget.ts';
-import { candidateAllowance } from './candidate-budget.ts';
-import { candidateNumber } from './candidate-team.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
@@ -153,7 +140,6 @@ import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
-import { projectJudgeInputs } from './judge-context.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
 import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
@@ -176,12 +162,6 @@ import {
   type StoredCommand,
 } from './store/run-store.ts';
 import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
-import {
-  resolveUltraSelection,
-  ULTRA_STAGES,
-  ultraBudgetAllowance,
-  ultraSelectionOf,
-} from './ultra-team.ts';
 
 // The single place domain state is decided (ADR-003, C-012/C-013). A command is validated and
 // turned into events; the events, the projection they produce, the command record and artifact
@@ -254,26 +234,6 @@ export interface ExternalTools {
  * a run may use file tools only when `available` says its session has one.
  */
 export interface FileTools {
-  prepareCandidates?(runId: string, candidateIds: string[]): Promise<{ baselineTree: string }>;
-  bindCandidateExecution?(runId: string, candidateId: string, executionId: string): void;
-  currentCandidateTree?(runId: string, candidateId: string): Promise<string | null>;
-  promoteCandidate?(input: {
-    runId: string;
-    candidateId: string;
-    expectedTree: string;
-    baselineTree: string;
-    commandId: string;
-  }): Promise<{ checkpointId: string }>;
-  /** CR-048: a candidate's changed paths and diff from its baseline, optionally only `paths`. */
-  candidateDiff?(
-    runId: string,
-    candidateId: string,
-    tree: string,
-    paths?: string[],
-  ): Promise<{ files: string[]; diff: string }>;
-  /** CR-048: put a candidate copy back to its accepted tree after a discarded refinement. */
-  restoreCandidate?(runId: string, candidateId: string, tree: string): Promise<void>;
-
   acquireRun?(runId: string, sessionId: string | undefined, writer: boolean): void;
   prepareRun?(runId: string): Promise<void>;
   releaseRun?(runId: string, terminationConfirmed: boolean): void;
@@ -455,27 +415,20 @@ interface Subscriber {
 }
 
 interface RecipeCandidate {
-  tree?: string;
   artifactVersionId: string;
   contentHash: string;
   checks: VerificationReport[];
   resultRefs: string[];
 }
 interface RecipeRun {
-  candidateTree?: string;
   recipe: ReviewRecipeRevision;
   cancelDeadline(): void;
   candidates: Map<string, RecipeCandidate>;
   failureSignature?: string;
 }
 interface LiveRun {
-  candidatePromotion?: Promise<void>;
-  /** CR-048: version 2 Ultra has no Corral usage limits; only a person's cancel stops it. */
+  /** An unlimited run (CR-052): `limits` are not applied; only a person's cancel stops it. */
   usageLimits?: 'none';
-  /** Host-made inputs for one activation, keyed `nodeId@iterationId` (CR-048 judge, refinement). */
-  extraInputs: Map<string, ResolvedInput[]>;
-  /** CR-048: the refinement in progress on the winner's Loop. */
-  tournament?: { loopId: string; refining: boolean; problem: string | null; cancelled: boolean };
   recipes: Map<string, RecipeRun>;
   runId: string;
   snapshot: RunSnapshot;
@@ -493,7 +446,6 @@ interface LiveRun {
    * open. A parent waiting for children or an answer holds none.
    */
   slots: { free: number; waiters: (() => void)[]; held: Map<string, string> };
-  ultraDraining: boolean;
   /** How every started execution ended, by task (await_tasks, a parent's own end). */
   taskOutcomes: Map<string, Promise<StepOutcome>>;
   /** Open questions and how to wake their askers. */
@@ -549,113 +501,6 @@ interface LiveRun {
   cancelListeners: Map<string, Set<() => void>>;
   toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
   capStop: 'declined' | 'hard_cap' | null;
-}
-
-/** A checked candidate tree as the tournament compares and applies it (CR-048). */
-interface TournamentEvidence {
-  tree: string;
-  artifactVersionId: string;
-  checks: VerificationReport[];
-}
-const TOURNAMENT_LABELS = ['A', 'B', 'C', 'D', 'E'] as const;
-
-/** What the judge is asked, with the exact JSON it must write. Names no model or author. */
-function tournamentTask(
-  task: { kind: 'selection'; candidates: string[] } | { kind: 'refinement'; round: number },
-): ResolvedInput {
-  const respondWith =
-    task.kind === 'selection'
-      ? {
-          version: 1,
-          kind: 'selection',
-          winner: 'the label of the best candidate',
-          ranking: ['labels from best to worst, starting with the winner'],
-          reasons: [{ candidate: 'label', criterion: 'criterion', evidence: 'diff or check' }],
-          improvements: ['what the winner should still improve'],
-          borrow: [
-            {
-              from: 'another label',
-              what: 'what the winner should take from it',
-              paths: ['changed files of that candidate'],
-            },
-          ],
-        }
-      : {
-          version: 1,
-          kind: 'refinement',
-          verdict: 'improved | equal | worse: the proposed version against the previous one',
-          done: 'true when another round is not worth it',
-          reasons: ['why'],
-          improvements: ['what the next round should change'],
-        };
-  return {
-    name: 'tournament',
-    kind: 'explicit_version',
-    artifactVersionId: null,
-    text: canonicalJson({ ...task, respondWith }),
-  };
-}
-
-function parseJudgment<T>(
-  schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
-  text: string | null,
-): { ok: true; value: T } | { ok: false; reason: string } {
-  if (text === null) return { ok: false, reason: 'the judge submitted nothing' };
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return { ok: false, reason: 'the judgment is not JSON' };
-  }
-  const parsed = schema.safeParse(value);
-  return parsed.success
-    ? { ok: true, value: parsed.data }
-    : { ok: false, reason: 'the judgment does not match its schema' };
-}
-
-/** The judgment may name only passing candidates and files those candidates changed. */
-function selectionProblem(
-  judgment: SelectionJudgment,
-  labels: ReadonlyMap<string, { files: string[] }>,
-): string | null {
-  if (!labels.has(judgment.winner))
-    return `the winner ${judgment.winner} is not a passing candidate`;
-  if (
-    judgment.ranking[0] !== judgment.winner ||
-    new Set(judgment.ranking).size !== judgment.ranking.length ||
-    judgment.ranking.some((label) => !labels.has(label))
-  )
-    return 'the ranking must start with the winner and name passing candidates once';
-  if (judgment.reasons.some((reason) => !labels.has(reason.candidate)))
-    return 'a reason names a candidate that is not passing';
-  for (const item of judgment.borrow) {
-    const source = labels.get(item.from);
-    if (!source || item.from === judgment.winner)
-      return `borrowing must come from another passing candidate, not ${item.from}`;
-    const missing = item.paths.find((path) => !source.files.includes(path));
-    if (missing) return `${item.from} did not change ${missing}`;
-  }
-  return null;
-}
-
-function roundsWith(
-  rounds: RefinementRoundView[],
-  round: number,
-  state: RefinementRoundView['state'],
-  proposed: TournamentEvidence | null,
-  reason: string | null,
-): RefinementRoundView[] {
-  return rounds.map((item) =>
-    item.round === round
-      ? {
-          round,
-          state,
-          tree: proposed?.tree ?? null,
-          artifactVersionId: proposed?.artifactVersionId ?? null,
-          reason,
-        }
-      : item,
-  );
 }
 
 interface OpenQuestion {
@@ -1206,6 +1051,13 @@ export class Coordinator {
       source = this.store.getRun(point.sourceRunId);
     if (point.requestStart) {
       if (!source) throw new ToolRefusal('TARGET_NOT_FOUND', 'source request unavailable');
+      // CR-056: a run that recorded the removed Ultra is not opened, so it cannot run again.
+      const route = source.snapshot.autoRoute;
+      if (route && ('qualityPreset' in route || 'ultra' in route))
+        throw new ToolRefusal(
+          'CAPABILITY_DENIED',
+          'Ultra was removed; send the request again to run it without Ultra',
+        );
       const definition = JSON.parse(canonicalJson(source.snapshot.definition)) as CorralDefinition;
       const files = point.contextOnly ? null : (this.files?.runStartFiles?.(source.runId) ?? null);
       const modelHashes = Object.fromEntries(
@@ -1694,67 +1546,6 @@ export class Coordinator {
       }
     }
     const autoRoute = 'autoRoute' in request ? request.autoRoute : undefined;
-    if (autoRoute?.ultra) {
-      if (autoRoute.qualityPreset !== 'ultra' || autoRoute.reasoning)
-        return refuse({
-          code: 'CAPABILITY_DENIED',
-          message: 'Multi-model Ultra requires its maximum supported reasoning policy',
-        });
-      const chosen = this.resolveUltra(
-        ultraSelectionOf(autoRoute.ultra),
-        autoRoute.modelProfile,
-        request.mode,
-        preparedModels,
-        {
-          fileTools:
-            CorralDefinition.safeParse(resolved.definition).data?.roles.some((role) =>
-              role.allowedWorkTools.includes('read_file'),
-            ) ?? false,
-        },
-      );
-      if (!chosen.ok) return refuse(chosen.error);
-      if (hashOf(chosen.snapshot) !== hashOf(autoRoute.ultra))
-        return refuse({
-          code: 'CAPABILITY_DENIED',
-          message: 'Ultra model reasoning metadata changed before the run started',
-        });
-    }
-    if (autoRoute?.qualityPreset === 'ultra') {
-      const parsedDefinition = CorralDefinition.safeParse(resolved.definition);
-      if (!parsedDefinition.success)
-        return refuse({ code: 'SCHEMA_INVALID', message: 'invalid Ultra definition' });
-      const source = parsedDefinition.data;
-      const expected = autoDefinition({
-        id: source.id,
-        template: 'write_review',
-        qualityPreset: 'ultra',
-        ...(autoRoute.ultra ? { ultra: autoRoute.ultra } : {}),
-        brief: source.input.brief,
-        criteria: source.input.criteria,
-        taskScope: source.input.taskScope,
-        verificationScope: source.input.verificationScope,
-        choice: {
-          modelProfile: autoRoute.modelProfile,
-          ...(autoRoute.reasoning ? { reasoning: autoRoute.reasoning } : {}),
-        },
-        fileTools: source.roles.some((role) => role.allowedWorkTools.includes('read_file')),
-        ...(autoRoute.harness ? { harness: autoRoute.harness, commandTools: true } : {}),
-        ...(autoRoute.reasoningChoice ? { routeLevel: autoRoute.reasoningChoice.level } : {}),
-      });
-      if (
-        autoRoute.template !== 'write_review' ||
-        autoRoute.source !== 'local' ||
-        autoRoute.usage !== null ||
-        hashOf(source) !== hashOf(expected) ||
-        Object.keys(request.roleOverrides ?? {}).length ||
-        Object.keys(request.harnessOverrides ?? {}).length
-      )
-        return refuse({
-          code: 'CAPABILITY_DENIED',
-          message:
-            'Ultra requires its unchanged built-in team; custom teams and role overrides keep their own workflow',
-        });
-    }
 
     const seeded = request.startFrom
       ? this.startFromVersion(resolved.definition, request.startFrom)
@@ -1806,9 +1597,7 @@ export class Coordinator {
         message: 'referenced generated image is unavailable or exceeds vision input limits',
       });
     }
-    const planned = planRun(referenced.definition, {
-      candidateComparison: Boolean(autoRoute?.ultra?.comparison),
-    });
+    const planned = planRun(referenced.definition);
     if (!planned.ok) {
       const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
         ? 'GRAPH_INVALID'
@@ -1974,7 +1763,7 @@ export class Coordinator {
           (snapshot.policy !== 'strict' ||
             snapshot.resources.some((resource) => resource.kind === 'extension') ||
             snapshot.projectTools?.mcpServerIds?.length ||
-            (snapshot.projectTools?.checkIds.length && !autoRoute?.ultra?.comparison) ||
+            snapshot.projectTools?.checkIds.length ||
             snapshot.projectTools?.lspServerIds.length ||
             snapshot.allowedTools.includes('codemode'))
         )
@@ -1998,17 +1787,6 @@ export class Coordinator {
         (candidate) => candidate.id === recipe.candidateNodeId,
       );
       const harness = candidate?.type === 'agent' ? harnesses[candidate.roleId] : undefined;
-      if (
-        autoRoute?.ultra &&
-        planned.definition.roles.some((role) => role.allowedWorkTools.includes('read_file'))
-      ) {
-        if (!this.files?.isolatedChecksAvailable?.() || !harness?.projectTools?.checkIds.length)
-          return refuse({
-            code: 'CAPABILITY_DENIED',
-            message: 'Repository Ultra requires selected project checks and Linux check isolation',
-          });
-        recipe.checkIds = [...harness.projectTools.checkIds];
-      }
       if (
         recipe.checkIds.length &&
         (!this.files?.planCheck ||
@@ -2044,36 +1822,6 @@ export class Coordinator {
         ))
     )
       return refuse({ code: 'CAPABILITY_DENIED', message: 'branch model or resources changed' });
-    if (autoRoute?.ultra?.comparison) {
-      if (
-        !planned.definition.roles.some((role) => role.allowedWorkTools.includes('read_file')) ||
-        !request.sessionId ||
-        !this.files?.prepareCandidates ||
-        !this.files.bindCandidateExecution ||
-        !this.files.currentCandidateTree ||
-        !this.files.promoteCandidate ||
-        !this.files.isolatedChecksAvailable?.()
-      )
-        return refuse({
-          code: 'CAPABILITY_DENIED',
-          message: 'Candidate comparison requires isolated managed copies and registered checks',
-        });
-      for (const model of Object.values(models)) model.workerIsolation = 'linux-bwrap';
-      if (
-        Object.values(harnesses).some(
-          (harness) =>
-            harness.policy !== 'strict' ||
-            harness.resources.some((resource) => resource.kind === 'extension') ||
-            harness.projectTools?.mcpServerIds?.length ||
-            harness.projectTools?.lspServerIds.length ||
-            harness.allowedTools.includes('codemode'),
-        )
-      )
-        return refuse({
-          code: 'CAPABILITY_DENIED',
-          message: 'Candidate comparison requires a strict broker-only harness',
-        });
-    }
     const runId = this.ids.next('run');
     const definition = planned.definition;
     const writesFiles =
@@ -2182,9 +1930,7 @@ export class Coordinator {
       rounds: new Map(),
       recipes: new Map(),
       ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
-      extraInputs: new Map(),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
-      ultraDraining: false,
       taskOutcomes: new Map(),
       questions: new Map(),
       itemBatches: new Map(),
@@ -2655,8 +2401,6 @@ export class Coordinator {
       return unavailable(command.commandId, command.runId, this.storageError);
     }
     try {
-      if (command.type === 'select_candidate' || command.type === 'cancel_candidate')
-        return this.candidateCommand(command, payloadHash);
       if (command.type === 'steer') return this.steer(command, payloadHash);
       if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
       if (command.type === 'compact_context') return this.compactContext(command, payloadHash);
@@ -2793,8 +2537,6 @@ export class Coordinator {
       | AnswerExtensionUiCommand
       | AnswerUserCommand
       | CompactContextCommand
-      | SelectCandidateCommand
-      | CancelCandidateCommand
     >,
     payloadHash: string,
   ): Receipt {
@@ -2813,19 +2555,6 @@ export class Coordinator {
       );
     if (run.projection.status === 'cancelling' && command.type !== 'cancel')
       return refuse('TARGET_TERMINAL', 'the run is cancelling');
-    if (
-      run.snapshot.autoRoute?.ultra?.comparison &&
-      (command.type === 'patch' || command.type === 'restart_task')
-    )
-      return refuse(
-        'CAPABILITY_DENIED',
-        'Candidate comparison keeps its criteria and assigned models fixed; start another comparison to change them',
-      );
-    if (run.projection.candidateComparison?.status === 'promoting')
-      return refuse(
-        'CAPABILITY_DENIED',
-        'The selected candidate is being applied; wait for its result before changing this Run',
-      );
     if (command.type === 'patch') return this.patch(run, command, payloadHash);
     if (command.type === 'restart_task') return this.restart(run, command, payloadHash);
     if (command.type === 'pause') {
@@ -3081,21 +2810,6 @@ export class Coordinator {
     const change = command.payload;
     const refuse = (code: CommandError['code'], message: string) =>
       this.refuseControl(command, payloadHash, { code, message });
-    if (
-      run.snapshot.autoRoute?.ultra &&
-      change.kind === 'node_future' &&
-      (change.modelProfile || change.reasoning)
-    )
-      return refuse(
-        'CAPABILITY_DENIED',
-        'Changing an Ultra model or its maximum reasoning requires a new run',
-      );
-    if (
-      run.snapshot.autoRoute?.ultra &&
-      change.kind === 'run_limits' &&
-      (change.changes.maxSpawns ?? 0) > 4
-    )
-      return refuse('CAPABILITY_DENIED', 'Ultra permits at most four optional delegations');
     let before: Record<string, unknown> = {},
       after: Record<string, unknown> = {};
     let patchedModel: ModelProfileSnapshot | undefined;
@@ -3567,18 +3281,6 @@ export class Coordinator {
                   : 'accepted';
         return { ...record.receipt, status, relatedEventIds: own.map((event) => event.eventId) };
       }
-      const candidate = own.findLast((e) => e.type === 'candidate.comparison_changed');
-      if (candidate?.type === 'candidate.comparison_changed')
-        return {
-          ...record.receipt,
-          status:
-            candidate.payload.status === 'selected'
-              ? 'applied'
-              : this.projectionOf(record.runId)?.status === 'failed'
-                ? 'cancelled'
-                : 'accepted',
-          relatedEventIds: own.map((e) => e.eventId),
-        };
       const cancel = own.find((e) => e.type === 'cancel.requested');
       const pause =
         record.receipt.requestedBoundary === 'safe_boundary' && !cancel
@@ -3736,45 +3438,6 @@ export class Coordinator {
       this.judgments?.settings.reasoning_effort.apply === true,
     );
     return error ? { code: 'CAPABILITY_DENIED', message: error } : null;
-  }
-
-  /** Resolve every selected Ultra model before any paid planning or worker call. */
-  resolveUltra(
-    selection: UltraSelection,
-    primary: string,
-    mode: 'mock' | 'live',
-    preparedModels?: Record<string, ModelProfileSnapshot>,
-    context: { fileTools: boolean } = { fileTools: false },
-  ) {
-    return resolveUltraSelection(
-      selection,
-      primary,
-      mode,
-      preparedModels
-        ? {
-            resolve: (profile) =>
-              preparedModels[profile]
-                ? { ok: true, snapshot: preparedModels[profile] }
-                : { ok: false, code: 'CAPABILITY_DENIED', reason: 'profile was not prepared' },
-          }
-        : this.models,
-      selection.version === 2 ? this.tournamentBlocked(context.fileTools) : null,
-    );
-  }
-
-  /** Why version 2 Ultra must run as collaboration here; null when a tournament can run. */
-  private tournamentBlocked(fileTools: boolean): UltraFallbackReason | null {
-    if (!fileTools) return 'no_working_copy';
-    const files = this.files;
-    return files?.prepareCandidates &&
-      files.bindCandidateExecution &&
-      files.currentCandidateTree &&
-      files.promoteCandidate &&
-      files.restoreCandidate &&
-      files.candidateDiff &&
-      files.isolatedChecksAvailable?.()
-      ? null
-      : 'no_isolation';
   }
 
   /** The reasoning levels a profile supports; null when unknown or simulated (CR-024 §7). */
@@ -4097,15 +3760,6 @@ export class Coordinator {
   private failRun(run: LiveRun, reason: string) {
     const status = run.projection.status;
     if (TERMINAL_RUN_STATUSES.has(status)) return;
-    if (run.candidatePromotion) {
-      run.stop.aborted = true;
-      const promotion = run.candidatePromotion;
-      void promotion.then(() => {
-        if (run.candidatePromotion === promotion) delete run.candidatePromotion;
-        this.failRun(run, reason);
-      });
-      return;
-    }
     if (this.storageError) {
       void this.stopOwnedServices(run).catch(() => {});
       return;
@@ -4238,11 +3892,6 @@ export class Coordinator {
         },
       });
     }
-    if (p.candidateComparison && p.candidateComparison.status !== 'selected')
-      drafts.push({
-        type: 'candidate.comparison_changed',
-        payload: { ...p.candidateComparison, status: 'interrupted' },
-      });
     drafts.push(
       {
         type: 'run.interrupted',
@@ -4255,706 +3904,7 @@ export class Coordinator {
 
   // ── graph execution ───────────────────────────────────────────────────────
 
-  candidateComparison(runId: string): CandidateComparisonView | null {
-    const projection = this.projectionOf(runId);
-    const view = projection?.candidateComparison;
-    if (!view || !projection) return null;
-    return {
-      ...view,
-      candidates: view.candidates.map((candidate) => {
-        const executions = Object.values(projection.executions).filter(
-          (execution) => execution.candidateId === candidate.candidateId,
-        );
-        const executionIds = executions.map((execution) => execution.executionId);
-        const calls = Object.values(projection.modelCalls).filter((call) =>
-          executionIds.includes(call.executionId),
-        );
-        const reservations = Object.values(projection.budget.reservations).filter((reservation) =>
-          executionIds.includes(reservation.scope),
-        );
-        return {
-          ...candidate,
-          executionIds,
-          usage: {
-            modelCalls: calls.length,
-            outputTokens: calls.reduce((sum, call) => sum + (call.usage?.outputTokens ?? 0), 0),
-            unknownOutputTokens: reservations
-              .filter((reservation) => reservation.status === 'unknown')
-              .reduce((sum, reservation) => sum + reservation.reserved, 0),
-          },
-        };
-      }),
-    };
-  }
-
-  private candidateTree(run: LiveRun, nodeId: string) {
-    const number = run.snapshot.autoRoute?.ultra?.comparison ? candidateNumber(nodeId) : null;
-    return number
-      ? this.files?.currentCandidateTree?.(run.runId, `candidate_${number}`)
-      : this.files?.currentTreeForRun?.(
-          run.runId,
-          run.snapshot.autoRoute?.ultra ? 'linux-bwrap' : undefined,
-        );
-  }
-
-  private updateCandidate(run: LiveRun, candidateId: string, update: Partial<CandidateView>) {
-    const view = this.candidateComparison(run.runId);
-    if (!view || run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-    const current = view.candidates.find((candidate) => candidate.candidateId === candidateId);
-    if (!current || current.state === 'cancelled' || current.state === 'failed') return;
-    this.commit(run, [
-      {
-        type: 'candidate.comparison_changed',
-        payload: {
-          ...view,
-          candidates: view.candidates.map((candidate) =>
-            candidate.candidateId === candidateId ? { ...candidate, ...update } : candidate,
-          ),
-        },
-      },
-    ]);
-  }
-
-  private async driveCandidates(run: LiveRun) {
-    const profiles = run.snapshot.autoRoute!.ultra!.comparison!.modelProfiles;
-    const candidates: CandidateView[] = profiles.map((modelProfile, index) => ({
-      candidateId: `candidate_${index + 1}`,
-      modelProfile,
-      state: 'pending',
-      tree: null,
-      artifactVersionId: null,
-      checks: [],
-      reason: null,
-      executionIds: [],
-      usage: { modelCalls: 0, outputTokens: 0, unknownOutputTokens: 0 },
-    }));
-    const prepared = await this.files!.prepareCandidates!(
-      run.runId,
-      candidates.map((candidate) => candidate.candidateId),
-    );
-    await this.boundary(run);
-    this.commit(run, [
-      {
-        type: 'candidate.comparison_changed',
-        payload: {
-          runId: run.runId,
-          baselineTree: prepared.baselineTree,
-          status: 'running',
-          selectedCandidateId: null,
-          candidates,
-        },
-      },
-    ]);
-    const plan = await this.activate(run, 'plan', null);
-    if (!plan.ok) {
-      this.failRun(run, 'candidate_planning_failed');
-      return;
-    }
-    let next = 0;
-    await Promise.all(
-      Array.from({ length: Math.min(3, candidates.length) }, async () => {
-        while (next < candidates.length && !run.stop.aborted) {
-          const index = ++next;
-          const candidateId = `candidate_${index}`;
-          if (run.projection.candidateComparison?.candidates[index - 1]?.state !== 'pending')
-            continue;
-          if (!run.usageLimits && !candidateAllowance(run.projection.budget, run.limits, 'start')) {
-            this.updateCandidate(run, candidateId, {
-              state: 'failed',
-              reason: 'completion_budget_reserved',
-            });
-            continue;
-          }
-          this.updateCandidate(run, candidateId, { state: 'running' });
-          const callbacks = this.callbacksFor(run),
-            loopId = `review_loop_${index}`;
-          try {
-            for (let round = 1; round <= 3; round++) {
-              await callbacks.loopEntered(loopId, round);
-              for (const stage of ['write', 'synthesize', 'review']) {
-                if (run.projection.candidateComparison?.candidates[index - 1]?.state !== 'running')
-                  throw new Error('candidate_cancelled_or_failed');
-                const result = await this.activate(run, `${stage}_${index}`, { loopId, no: round });
-                if (!result.ok) throw new Error(result.reason);
-              }
-              if (run.projection.candidateComparison?.candidates[index - 1]?.state !== 'running')
-                throw new Error('candidate_cancelled_or_failed');
-              const verdict = await this.decide(run, `review_decision_${index}`, 'review');
-              await callbacks.loopLeft(loopId, round, verdict === 'pass' ? 'pass' : 'revise');
-              if (verdict === 'pass') {
-                const evidence = [...run.recipes.get(loopId)!.candidates.values()].at(-1)!;
-                if (
-                  !evidence.tree ||
-                  !evidence.checks.length ||
-                  evidence.checks.some((check) => check.verdict !== 'pass')
-                )
-                  throw new Error('candidate_checks_not_acceptable');
-                this.updateCandidate(run, candidateId, {
-                  state: 'acceptable',
-                  tree: evidence.tree,
-                  artifactVersionId: evidence.artifactVersionId,
-                  checks: evidence.checks,
-                });
-                break;
-              }
-              if (round === 3) throw new Error('candidate_repair_limit');
-            }
-          } catch {
-            const evidence = [...(run.recipes.get(loopId)?.candidates.values() ?? [])].at(-1);
-            this.updateCandidate(run, candidateId, {
-              ...(evidence
-                ? {
-                    tree: evidence.tree ?? null,
-                    artifactVersionId: evidence.artifactVersionId,
-                    checks: evidence.checks,
-                  }
-                : {}),
-              state: 'failed',
-              reason: 'candidate_execution_failed',
-            });
-          } finally {
-            run.recipes.get(loopId)?.cancelDeadline();
-            const round = run.rounds.get(loopId);
-            if (round && !run.stop.aborted && !TERMINAL_RUN_STATUSES.has(run.projection.status)) {
-              this.commit(run, [this.roundFinished(run, loopId, round.iterationId, 'cancelled')]);
-              run.rounds.delete(loopId);
-            }
-          }
-        }
-      }),
-    );
-    if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-    const view = this.candidateComparison(run.runId)!;
-    const acceptable = view.candidates.some((candidate) => candidate.state === 'acceptable');
-    if (acceptable && run.snapshot.autoRoute?.ultra?.version === 2)
-      return this.driveTournament(run);
-    this.commit(run, [
-      {
-        type: 'candidate.comparison_changed',
-        payload: { ...view, status: acceptable ? 'awaiting_selection' : 'no_acceptable_candidate' },
-      },
-      runState(
-        run.projection.status,
-        acceptable ? 'awaiting_user' : 'failed',
-        acceptable ? 'candidate_selection_required' : 'no_acceptable_candidate',
-      ),
-    ]);
-  }
-
-  private candidateCommand(
-    command: SelectCandidateCommand | CancelCandidateCommand,
-    payloadHash: string,
-  ): Receipt {
-    const run = this.live.get(command.runId),
-      view = this.candidateComparison(command.runId);
-    const refuse = (code: CommandError['code'], message: string) =>
-      this.refuseControl(command, payloadHash, { code, message });
-    if (
-      !run ||
-      !view ||
-      run.stop.aborted ||
-      TERMINAL_RUN_STATUSES.has(run.projection.status) ||
-      run.projection.status === 'cancelling'
-    )
-      return refuse('TARGET_TERMINAL', 'candidate comparison has ended');
-    if (command.expectedControlRevision !== run.projection.controlRevision)
-      return refuse('STALE_CONTROL_REVISION', 'control revision changed');
-    const candidate = view.candidates.find(
-      (candidate) => candidate.candidateId === command.payload.candidateId,
-    );
-    if (!candidate) return refuse('TARGET_NOT_FOUND', 'candidate does not exist');
-    if (view.status === 'promoting' || view.status === 'selected')
-      return refuse('TARGET_TERMINAL', 'a candidate was already selected');
-    if (
-      command.type === 'cancel_candidate' &&
-      view.status === 'refining' &&
-      view.tournament?.winnerCandidateId === candidate.candidateId &&
-      run.tournament
-    ) {
-      // CR-048 §6: stop refining the winner; its accepted tree stays for a person to choose.
-      run.tournament.cancelled = true;
-      const receipt = this.controlReceipt(
-        run,
-        command,
-        payloadHash,
-        [{ type: 'candidate.comparison_changed', payload: view }],
-        'applied',
-        'immediate',
-      );
-      for (const execution of Object.values(run.projection.executions))
-        if (
-          execution.candidateId === candidate.candidateId &&
-          !TERMINAL_EXECUTION_STATUSES.has(execution.status)
-        )
-          this.requestCancel(run, execution.executionId, 'candidate cancelled');
-      return receipt;
-    }
-    if (command.type === 'cancel_candidate') {
-      if (!['pending', 'running'].includes(candidate.state))
-        return refuse('TARGET_TERMINAL', 'candidate has ended');
-      const receipt = this.controlReceipt(
-        run,
-        command,
-        payloadHash,
-        [
-          {
-            type: 'candidate.comparison_changed',
-            payload: {
-              ...view,
-              candidates: view.candidates.map((item) =>
-                item.candidateId === candidate.candidateId
-                  ? { ...item, state: 'cancelled', reason: 'user_cancelled' }
-                  : item,
-              ),
-            },
-          },
-        ],
-        'applied',
-        'immediate',
-      );
-      for (const execution of Object.values(run.projection.executions))
-        if (
-          execution.candidateId === candidate.candidateId &&
-          !TERMINAL_EXECUTION_STATUSES.has(execution.status)
-        )
-          this.requestCancel(run, execution.executionId, 'candidate cancelled');
-      return receipt;
-    }
-    if (
-      !MANUAL_SELECTION_STATUSES.has(view.status) ||
-      candidate.state !== 'acceptable' ||
-      candidate.tree !== command.payload.tree ||
-      !candidate.artifactVersionId
-    )
-      return refuse('REVISION_CONFLICT', 'select an exact acceptable checked candidate');
-    if (!this.candidatesSettled(run))
-      return refuse('CAPABILITY_DENIED', 'candidate workers or effects are not settled');
-    const receipt = this.controlReceipt(
-      run,
-      command,
-      payloadHash,
-      [{ type: 'candidate.comparison_changed', payload: { ...view, status: 'promoting' } }],
-      'accepted',
-      'safe_boundary',
-    );
-    void this.promote(run, candidate, view.baselineTree, command.commandId, false);
-    return receipt;
-  }
-
-  private candidatesSettled(run: LiveRun) {
-    return !(
-      Object.values(run.projection.executions).some(
-        (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
-      ) ||
-      run.projection.budget.reserved ||
-      run.projection.budget.unknownOutstanding ||
-      Object.values(run.projection.effects).some(
-        (effect) => effect.status === 'admitted' || effect.outcome === 'unknown',
-      )
-    );
-  }
-
-  /**
-   * Applies one checked candidate tree to the session copy. A person's selection fails the Run
-   * when it cannot complete; CR-048's automatic apply holds the winner for a person instead.
-   */
-  private promote(
-    run: LiveRun,
-    candidate: CandidateView,
-    baselineTree: string,
-    commandId: string,
-    automatic: boolean,
-  ): Promise<void> {
-    const promotion = Promise.resolve().then(async () => {
-      try {
-        await this.files!.promoteCandidate!({
-          runId: run.runId,
-          candidateId: candidate.candidateId,
-          expectedTree: candidate.tree!,
-          baselineTree,
-          commandId,
-        });
-        if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-        this.commit(run, [
-          {
-            type: 'candidate.comparison_changed',
-            ...(automatic ? {} : { commandId }),
-            payload: {
-              ...this.candidateComparison(run.runId)!,
-              status: 'selected',
-              selectedCandidateId: candidate.candidateId,
-            },
-          },
-          {
-            type: 'output.finalized',
-            payload: {
-              nodeId: 'output',
-              artifactVersionIds: [candidate.artifactVersionId!],
-              approvalId: null,
-            },
-          },
-          runState(
-            run.projection.status,
-            'succeeded',
-            automatic ? 'candidate_auto_applied' : 'candidate_selected',
-          ),
-        ]);
-      } catch (error) {
-        delete run.candidatePromotion;
-        if (!automatic) return this.failRun(run, 'candidate_promotion_failed');
-        if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-        this.holdAutoApply(run, error instanceof Error ? error.message : String(error));
-      }
-    });
-    run.candidatePromotion = promotion;
-    void promotion.finally(() => {
-      if (run.candidatePromotion === promotion) delete run.candidatePromotion;
-    });
-    return promotion;
-  }
-
-  // ── CR-048 candidate tournament ───────────────────────────────────────────
-
-  /** Keeps the winner for a person when the automatic apply cannot happen (CR-048 §4). */
-  private holdAutoApply(run: LiveRun, reason: string) {
-    const view = this.candidateComparison(run.runId)!;
-    this.commit(run, [
-      {
-        type: 'candidate.comparison_changed',
-        payload: {
-          ...view,
-          status: 'auto_apply_held',
-          ...(view.tournament ? { tournament: { ...view.tournament, held: reason } } : {}),
-        },
-      },
-      runState(run.projection.status, 'awaiting_user', 'candidate_selection_required'),
-    ]);
-  }
-
-  /** Runs the judge once with host-made inputs and returns what it submitted. */
-  private async judge(run: LiveRun, given: ResolvedInput[]) {
-    run.extraInputs.set('judge@-', given);
-    let ok = false;
-    try {
-      ok = (await this.runAgent(run, 'judge', null)).ok;
-    } catch {
-      ok = false;
-    } finally {
-      run.extraInputs.delete('judge@-');
-    }
-    const executionId = run.projection.nodeExecutions.judge?.at(-1);
-    const execution = executionId ? run.projection.executions[executionId] : undefined;
-    const artifactVersionId =
-      (ok && execution
-        ? run.projection.tasks[execution.taskId]?.submittedArtifactVersionIds?.[0]
-        : null) ?? null;
-    return {
-      artifactVersionId,
-      text: artifactVersionId ? this.store.getArtifactText(run.runId, artifactVersionId) : null,
-    };
-  }
-
-  /** One anonymous candidate as the judge sees it: report, changed files, diff and checks. */
-  private async tournamentPacket(
-    run: LiveRun,
-    candidateId: string,
-    evidence: TournamentEvidence,
-    name: string,
-    label: string,
-  ) {
-    const diff = await this.files!.candidateDiff!(run.runId, candidateId, evidence.tree);
-    return {
-      files: diff.files,
-      input: {
-        name,
-        kind: 'explicit_version' as const,
-        artifactVersionId: null,
-        text: canonicalJson({
-          label,
-          report: this.store.getArtifactText(run.runId, evidence.artifactVersionId) ?? '',
-          files: diff.files,
-          diff: diff.diff,
-          checks: evidence.checks.map((check) => ({
-            commandId: check.commandId,
-            state: check.state,
-            verdict: check.verdict,
-            exitCode: check.exitCode,
-            output: check.output.text,
-          })),
-        }),
-      },
-    };
-  }
-
-  /**
-   * CR-048: judge the passing candidates, refine the winner's copy, then apply it unless the
-   * request turned the automatic apply off. Every stop leaves a person a checked tree to choose.
-   */
-  private async driveTournament(run: LiveRun) {
-    const ultra = run.snapshot.autoRoute?.ultra;
-    if (ultra?.version !== 2) return;
-    const stopped = () => run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status);
-    const start = this.candidateComparison(run.runId)!;
-    const eligible = start.candidates.filter((candidate) => candidate.state === 'acceptable');
-    let tournament: TournamentView = {
-      judgeProfile: ultra.verifierProfile,
-      autoApply: ultra.autoApply,
-      refinementRounds: ultra.refinementRounds,
-      winnerCandidateId: null,
-      ranking: [],
-      judgment: {
-        state: eligible.length > 1 ? 'pending' : 'skipped',
-        artifactVersionId: null,
-        reason: null,
-      },
-      rounds: [],
-      held: null,
-    };
-    let winner = eligible[0]!;
-    const publish = (
-      status: CandidateComparisonView['status'],
-      change: Partial<TournamentView> = {},
-      evidence?: TournamentEvidence,
-      extra: EventDraft[] = [],
-    ) => {
-      tournament = { ...tournament, ...change };
-      const view = this.candidateComparison(run.runId)!;
-      this.commit(run, [
-        {
-          type: 'candidate.comparison_changed',
-          payload: {
-            ...view,
-            status,
-            tournament,
-            candidates: view.candidates.map((candidate) =>
-              evidence && candidate.candidateId === winner.candidateId
-                ? { ...candidate, ...evidence }
-                : candidate,
-            ),
-          },
-        },
-        ...extra,
-      ]);
-    };
-    const awaitPerson = (status: 'awaiting_selection' | 'judgment_failed', change = {}) =>
-      publish(status, change, undefined, [
-        runState(run.projection.status, 'awaiting_user', 'candidate_selection_required'),
-      ]);
-
-    let improvements: string[] = [];
-    let borrow: { what: string; paths: string[]; diff: string }[] = [];
-    if (eligible.length > 1) {
-      publish('judging');
-      const entries = [];
-      for (const [index, candidate] of eligible.entries()) {
-        const label = TOURNAMENT_LABELS[index]!;
-        const packet = await this.tournamentPacket(
-          run,
-          candidate.candidateId,
-          {
-            tree: candidate.tree!,
-            artifactVersionId: candidate.artifactVersionId!,
-            checks: candidate.checks,
-          },
-          `candidate_${label}`,
-          label,
-        );
-        entries.push({ label, candidate, ...packet });
-      }
-      if (stopped()) return;
-      const byLabel = new Map(entries.map((entry) => [entry.label, entry]));
-      const task = tournamentTask({ kind: 'selection', candidates: [...byLabel.keys()] });
-      let chosen: SelectionJudgment | null = null;
-      let reason: string | null = null;
-      let artifactVersionId: string | null = null;
-      for (let attempt = 1; attempt <= 2 && !chosen; attempt++) {
-        const result = await this.judge(run, [task, ...entries.map((entry) => entry.input)]);
-        if (stopped()) return;
-        artifactVersionId = result.artifactVersionId;
-        const parsed = parseJudgment(SelectionJudgment, result.text);
-        reason = parsed.ok ? selectionProblem(parsed.value, byLabel) : parsed.reason;
-        if (parsed.ok && !reason) chosen = parsed.value;
-      }
-      if (!chosen)
-        return awaitPerson('judgment_failed', {
-          judgment: { state: 'invalid', artifactVersionId, reason },
-        });
-      winner = byLabel.get(chosen.winner)!.candidate;
-      improvements = chosen.improvements;
-      for (const item of chosen.borrow) {
-        const source = byLabel.get(item.from)!.candidate;
-        const diff = await this.files!.candidateDiff!(
-          run.runId,
-          source.candidateId,
-          source.tree!,
-          item.paths,
-        );
-        borrow.push({ what: item.what, paths: item.paths, diff: diff.diff });
-      }
-      if (stopped()) return;
-      publish('judging', {
-        judgment: { state: 'valid', artifactVersionId, reason: null },
-        winnerCandidateId: winner.candidateId,
-        ranking: chosen.ranking.map((label) => byLabel.get(label)!.candidate.candidateId),
-      });
-    } else
-      publish('judging', { winnerCandidateId: winner.candidateId, ranking: [winner.candidateId] });
-
-    const number = Number(winner.candidateId.slice('candidate_'.length));
-    const loopId = `review_loop_${number}`;
-    let accepted: TournamentEvidence = {
-      tree: winner.tree!,
-      artifactVersionId: winner.artifactVersionId!,
-      checks: winner.checks,
-    };
-    const state = { loopId, refining: false, problem: null as string | null, cancelled: false };
-    run.tournament = state;
-    const callbacks = this.callbacksFor(run);
-    for (let round = 1; round <= ultra.refinementRounds; round++) {
-      publish('refining', {
-        rounds: [
-          ...tournament.rounds,
-          { round, state: 'running', tree: null, artifactVersionId: null, reason: null },
-        ],
-      });
-      let outcome: RefinementRoundView['state'] = 'discarded';
-      let reason: string | null = null;
-      let proposed: TournamentEvidence | null = null;
-      let verdict: RefinementJudgment | null = null;
-      state.refining = true;
-      state.problem = null;
-      try {
-        if (state.cancelled) throw new Error('candidate cancelled');
-        const no =
-          Object.values(run.projection.iterations).filter((item) => item.loopNodeId === loopId)
-            .length + 1;
-        await callbacks.loopEntered(loopId, no);
-        const iterationId = run.rounds.get(loopId)!.iterationId;
-        run.extraInputs.set(`write_${number}@${iterationId}`, [
-          {
-            name: 'refinement',
-            kind: 'explicit_version',
-            artifactVersionId: null,
-            text: canonicalJson({ round, improvements, borrow }),
-          },
-        ]);
-        for (const stage of ['write', 'synthesize']) {
-          if (state.cancelled) throw new Error('candidate cancelled');
-          const result = await this.activate(run, `${stage}_${number}`, { loopId, no });
-          if (!result.ok) throw new Error(result.reason);
-        }
-        const executionId = run.projection.nodeExecutions[`synthesize_${number}`]?.at(-1);
-        const evidence =
-          executionId && run.projection.executions[executionId]?.iterationId === iterationId
-            ? run.recipes.get(loopId)?.candidates.get(executionId)
-            : undefined;
-        if (
-          !evidence?.tree ||
-          !evidence.checks.length ||
-          evidence.checks.some((check) => check.verdict !== 'pass')
-        )
-          reason = 'checks_failed';
-        else {
-          proposed = {
-            tree: evidence.tree,
-            artifactVersionId: evidence.artifactVersionId,
-            checks: evidence.checks,
-          };
-          const previous = await this.tournamentPacket(
-            run,
-            winner.candidateId,
-            accepted,
-            'previous',
-            'previous',
-          );
-          const next = await this.tournamentPacket(
-            run,
-            winner.candidateId,
-            proposed,
-            'proposed',
-            'proposed',
-          );
-          const result = await this.judge(run, [
-            tournamentTask({ kind: 'refinement', round }),
-            previous.input,
-            next.input,
-          ]);
-          const parsed = parseJudgment(RefinementJudgment, result.text);
-          if (!parsed.ok) reason = 'judgment_invalid';
-          else {
-            verdict = parsed.value;
-            if (verdict.verdict === 'improved') outcome = 'accepted';
-            else reason = verdict.verdict === 'worse' ? 'judged_worse' : 'judged_equal';
-          }
-        }
-      } catch {
-        reason = state.problem ?? 'round_failed';
-      } finally {
-        state.refining = false;
-        const open = run.rounds.get(loopId);
-        if (open && !stopped())
-          this.commit(run, [
-            this.roundFinished(
-              run,
-              loopId,
-              open.iterationId,
-              outcome === 'accepted' ? 'pass' : 'revise',
-            ),
-          ]);
-        run.rounds.delete(loopId);
-      }
-      if (stopped()) return;
-      if (state.cancelled) {
-        outcome = 'cancelled';
-        reason = 'user_cancelled';
-      }
-      if (outcome !== 'accepted') {
-        let restored = false;
-        try {
-          await this.files!.restoreCandidate!(run.runId, winner.candidateId, accepted.tree);
-          restored =
-            (await this.files!.currentCandidateTree!(run.runId, winner.candidateId)) ===
-            accepted.tree;
-        } catch {
-          restored = false;
-        }
-        if (stopped()) return;
-        if (!restored) {
-          publish('refining', {
-            rounds: roundsWith(tournament.rounds, round, outcome, proposed, reason),
-          });
-          return this.holdAutoApply(
-            run,
-            'the winner copy could not be restored to its accepted tree',
-          );
-        }
-      } else {
-        accepted = proposed!;
-        improvements = verdict!.improvements;
-        borrow = [];
-      }
-      publish(
-        'refining',
-        { rounds: roundsWith(tournament.rounds, round, outcome, proposed, reason) },
-        outcome === 'accepted' ? accepted : undefined,
-      );
-      if (outcome === 'cancelled') return awaitPerson('awaiting_selection');
-      if (verdict?.done) break;
-    }
-    delete run.tournament;
-    if (!ultra.autoApply) return awaitPerson('awaiting_selection');
-    if (!this.candidatesSettled(run))
-      return this.holdAutoApply(run, 'candidate workers or effects are not settled');
-    publish('promoting');
-    const final = this.candidateComparison(run.runId)!.candidates.find(
-      (candidate) => candidate.candidateId === winner.candidateId,
-    )!;
-    await this.promote(run, final, start.baselineTree, `auto_apply_${run.runId}`, true);
-  }
-
   private async drive(run: LiveRun): Promise<void> {
-    if (run.snapshot.autoRoute?.ultra?.comparison) return this.driveCandidates(run);
-
     const result = await this.runner.run(run.plan, this.callbacksFor(run), run.stop);
     if (['pausing', 'paused'].includes(run.projection.status)) await this.boundary(run);
     this.conclude(run, result);
@@ -5094,18 +4044,6 @@ export class Coordinator {
   ) {
     const state = run.recipes.get(loopId);
     if (!state || TERMINAL_RUN_STATUSES.has(run.projection.status) || run.stop.aborted) return;
-    if (run.tournament?.refining && run.tournament.loopId === loopId) {
-      // CR-048 §3: a refinement round that stops is discarded; the winner keeps its accepted tree.
-      run.tournament.problem ??= reason;
-      const number = candidateNumber(loopId);
-      for (const execution of Object.values(run.projection.executions))
-        if (
-          execution.candidateId === `candidate_${number}` &&
-          !TERMINAL_EXECUTION_STATUSES.has(execution.status)
-        )
-          this.requestCancel(run, execution.executionId, reason);
-      return;
-    }
     this.commit(run, [
       {
         type: 'recipe.stopped',
@@ -5117,27 +4055,7 @@ export class Coordinator {
         },
       },
     ]);
-    const number = run.snapshot.autoRoute?.ultra?.comparison ? candidateNumber(loopId) : null;
-    if (number) {
-      const evidence = [...state.candidates.values()].at(-1);
-      this.updateCandidate(run, `candidate_${number}`, {
-        ...(evidence
-          ? {
-              tree: evidence.tree ?? null,
-              artifactVersionId: evidence.artifactVersionId,
-              checks: evidence.checks,
-            }
-          : {}),
-        state: 'failed',
-        reason: `review_recipe:${reason}`,
-      });
-      for (const execution of Object.values(run.projection.executions))
-        if (
-          execution.candidateId === `candidate_${number}` &&
-          !TERMINAL_EXECUTION_STATUSES.has(execution.status)
-        )
-          this.requestCancel(run, execution.executionId, reason);
-    } else this.failRun(run, `review_recipe:${reason}`);
+    this.failRun(run, `review_recipe:${reason}`);
   }
 
   private recipeForExecution(run: LiveRun, executionId: string) {
@@ -5196,7 +4114,6 @@ export class Coordinator {
     )
       return 'repeated_output';
     state.candidates.set(input.executionId, {
-      ...(state.candidateTree ? { tree: state.candidateTree } : {}),
       artifactVersionId: artifact.artifactVersionId,
       contentHash: artifact.contentHash,
       checks: [],
@@ -5227,8 +4144,7 @@ export class Coordinator {
     if (candidate.checks.length !== state.recipe.checkIds.length) return 'check_error';
     const tree = candidate.checks[0]?.tree;
     try {
-      if (tree && (await this.candidateTree(run, state.recipe.candidateNodeId)) !== tree)
-        return 'check_stale';
+      if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
     } catch {
       return 'check_stale';
     }
@@ -5277,17 +4193,12 @@ export class Coordinator {
         report.owner.attemptNo !== input.attemptNo
       )
         return 'check_error';
-      if (
-        stale !== false ||
-        (candidate.tree && report.tree !== candidate.tree) ||
-        candidate.checks.some((check) => check.tree !== report.tree)
-      )
+      if (stale !== false || candidate.checks.some((check) => check.tree !== report.tree))
         return 'check_stale';
       candidate.checks.push(report);
       candidate.resultRefs.push(`result_${outcome.toolCallId}`);
       if (
         report.state !== 'completed' ||
-        (run.snapshot.autoRoute?.ultra && report.isolation !== 'linux-bwrap') ||
         !report.cleanupConfirmed ||
         report.targetUnchanged !== true ||
         !['pass', 'fail'].includes(report.verdict)
@@ -5296,8 +4207,7 @@ export class Coordinator {
     }
     if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
     const tree = candidate.checks[0]?.tree;
-    if (tree && (await this.candidateTree(run, state.recipe.candidateNodeId)) !== tree)
-      return 'check_stale';
+    if (tree && (await this.files?.currentTreeForRun?.(run.runId)) !== tree) return 'check_stale';
     if (
       tree &&
       [...state.candidates.entries()].some(
@@ -5374,24 +4284,13 @@ export class Coordinator {
     await this.boundary(run);
     const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
     const recipe = loopId ? run.recipes.get(loopId) : undefined;
-    if (
-      run.snapshot.autoRoute?.ultra &&
-      recipe?.recipe.candidateNodeId === nodeId &&
-      recipe.recipe.checkIds.length
-    ) {
-      if (!run.snapshot.autoRoute?.ultra?.comparison) await this.stopOwnedServices(run);
-      await this.boundary(run);
-      const tree = await this.candidateTree(run, nodeId);
-      if (!tree) throw new Error('Ultra candidate tree is unavailable');
-      recipe.candidateTree = tree;
-    }
     const prepared = this.prepareExecution(run, {
       nodeId,
       iterationId,
       parentExecutionId: null,
       depth: 0,
       assignment: { kind: 'scheduled' },
-      given: run.extraInputs.get(`${nodeId}@${iterationId ?? '-'}`) ?? [],
+      given: [],
     });
     this.commit(run, prepared.drafts);
     return this.launch(run, prepared);
@@ -5473,10 +4372,6 @@ export class Coordinator {
           }
         : {}),
       runId: run.runId,
-      ...(run.snapshot.autoRoute?.ultra?.comparison ? { candidateComparison: true as const } : {}),
-      ...(run.snapshot.autoRoute?.ultra?.comparison && candidateNumber(spec.nodeId)
-        ? { candidateId: `candidate_${candidateNumber(spec.nodeId)}` }
-        : {}),
       executionId,
       taskId,
       nodeId: spec.nodeId,
@@ -5525,13 +4420,6 @@ export class Coordinator {
       (node.id === recipe.recipe.candidateNodeId || role.id === recipe.recipe.evaluatorRoleId)
     ) {
       const candidate = [...recipe.candidates.values()].at(-1);
-      if (recipe.candidateTree)
-        input.inputs.push({
-          name: 'candidate_tree',
-          kind: 'explicit_version',
-          artifactVersionId: null,
-          text: recipe.candidateTree,
-        });
       for (const [index, check] of (candidate?.checks ?? []).entries())
         input.inputs.push({
           name: `recipe_check_${check.commandId}`,
@@ -5556,8 +4444,6 @@ export class Coordinator {
         return { ...source, sourceRef };
       });
     }
-    if (spec.nodeId === 'judge' && run.snapshot.autoRoute?.ultra?.version === 2)
-      input.inputs = projectJudgeInputs(input.inputs, model);
     run.inputsByExecution.set(executionId, input.inputs);
     const resolvedImages = generatedImageInputs(
       run.runId,
@@ -5606,7 +4492,6 @@ export class Coordinator {
         executionId,
         taskId,
         payload: {
-          ...(input.candidateId ? { candidateId: input.candidateId } : {}),
           executionId,
           parentExecutionId: spec.parentExecutionId,
           ...(item ? { item } : {}),
@@ -5662,21 +4547,6 @@ export class Coordinator {
           throw new ToolRefusal('RESOURCE_CAPACITY', 'host resident worker capacity exhausted');
         this.hostResidents++;
         resident = true;
-        if (input.candidateId) {
-          // CR-048: the accepted winner works again only inside its own refinement round.
-          const refining =
-            run.tournament?.refining &&
-            !run.tournament.cancelled &&
-            run.tournament.loopId === `review_loop_${input.candidateId.slice('candidate_'.length)}`;
-          if (
-            !refining &&
-            run.projection.candidateComparison?.candidates.find(
-              (candidate) => candidate.candidateId === input.candidateId,
-            )?.state !== 'running'
-          )
-            throw new Error('candidate is no longer running');
-          this.files!.bindCandidateExecution!(run.runId, input.candidateId, input.executionId);
-        }
         const host = this.hostFor(run, input);
         const handle = await this.agents.start(input, host);
         run.handles.set(input.executionId, handle);
@@ -6197,59 +5067,6 @@ export class Coordinator {
     }
   }
 
-  private ultraAllowance(run: LiveRun, input: AgentStartInput, optional = input.depth > 0) {
-    if (!run.snapshot.autoRoute?.ultra || run.usageLimits) return null;
-    let nodeId = input.nodeId;
-    let parent = run.projection.executions[input.executionId]?.parentExecutionId;
-    while (parent) {
-      const execution = run.projection.executions[parent];
-      if (!execution) break;
-      nodeId = execution.nodeId;
-      parent = execution.parentExecutionId;
-    }
-    if (run.snapshot.autoRoute.ultra.comparison) {
-      const phase = /^review(?:_\d+)?$/.test(nodeId) ? 'finish' : 'work';
-      return {
-        draining: !candidateAllowance(run.projection.budget, run.limits, 'start'),
-        maxOutputTokens: candidateAllowance(run.projection.budget, run.limits, phase),
-      };
-    }
-    const stage = ULTRA_STAGES.find((stage) => stage === nodeId);
-    if (!stage) return { draining: true, maxOutputTokens: 0 };
-    const allowance = ultraBudgetAllowance(
-      run.projection.budget,
-      run.limits,
-      stage,
-      optional,
-      run.ultraDraining,
-    );
-    run.ultraDraining ||= allowance.draining;
-    return allowance;
-  }
-
-  private ultraSpawnRefusal(
-    run: LiveRun,
-    input: AgentStartInput,
-    proposal: ToolProposal,
-  ): Refusal | null {
-    if (!run.snapshot.autoRoute?.ultra) return null;
-    const count = proposal.args.mode === 'items' ? 1 : (proposal.args.tasks as unknown[]).length;
-    const active = Object.values(run.projection.executions).filter(
-      (execution) =>
-        execution.parentExecutionId !== null && !TERMINAL_EXECUTION_STATUSES.has(execution.status),
-    ).length;
-    const allowance = this.ultraAllowance(run, input, true);
-    const message =
-      input.depth > 0
-        ? 'Ultra specialists cannot delegate further'
-        : count + active > 2
-          ? 'Ultra allows at most two active specialists'
-          : !run.usageLimits && !allowance?.maxOutputTokens
-            ? 'Ultra is preserving its remaining budget for required synthesis and verification'
-            : null;
-    return message ? { kind: 'refuse', code: 'LIMIT_REACHED', message } : null;
-  }
-
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
     await this.boundary(run);
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
@@ -6353,33 +5170,6 @@ export class Coordinator {
       const verdict = candidate.checks.some((check) => check.verdict === 'fail')
         ? 'revise'
         : recorded.verdict;
-      if (
-        verdict === 'revise' &&
-        run.snapshot.autoRoute?.ultra?.comparison &&
-        !run.usageLimits &&
-        !candidateAllowance(run.projection.budget, run.limits, 'revise')
-      ) {
-        this.stopRecipe(run, node.loopId, 'token_limit', candidate.artifactVersionId);
-        throw new Error('Candidate revision would consume its final verification reserve');
-      }
-      if (
-        verdict === 'revise' &&
-        run.snapshot.autoRoute?.ultra &&
-        !run.snapshot.autoRoute.ultra.comparison
-      ) {
-        const next = ultraBudgetAllowance(
-          run.projection.budget,
-          run.limits,
-          'write',
-          false,
-          run.ultraDraining,
-        );
-        run.ultraDraining ||= next.draining;
-        if (run.ultraDraining || !next.maxOutputTokens) {
-          this.stopRecipe(run, node.loopId, 'token_limit', candidate.artifactVersionId);
-          throw new Error('Ultra stopped revisions to preserve its completion budget');
-        }
-      }
       this.commit(run, [
         {
           type: 'recipe.evaluated',
@@ -7440,10 +6230,7 @@ export class Coordinator {
       }
       let tree: string | null | undefined;
       try {
-        tree = await this.files?.currentTreeForRun?.(
-          run.runId,
-          run.snapshot.autoRoute?.ultra ? 'linux-bwrap' : undefined,
-        );
+        tree = await this.files?.currentTreeForRun?.(run.runId);
       } catch {
         return refuse('current verification target is unavailable');
       }
@@ -8842,11 +7629,6 @@ export class Coordinator {
           let recipeRemaining: number;
           try {
             recipeRemaining = this.recipeAllowance(run, executionId);
-            const ultra = this.ultraAllowance(run, input);
-            if (ultra) {
-              if (!ultra.maxOutputTokens) throw new Error('LIMIT_REACHED: Ultra completion budget');
-              recipeRemaining = Math.min(recipeRemaining, ultra.maxOutputTokens);
-            }
           } catch (error) {
             this.releaseSlot(run);
             throw error;
@@ -9450,18 +8232,7 @@ export class Coordinator {
     tool: ToolFrame,
     recheck: (proposal: ToolProposal, batchId?: string) => Refusal | null,
   ): Promise<ToolOutcome> {
-    const check = (candidate: ToolProposal, batchId?: string) =>
-      this.ultraSpawnRefusal(run, input, candidate) ?? recheck(candidate, batchId);
-    if (proposal.args.mode === 'items') return this.spawnItems(run, input, proposal, tool, check);
-    const refused = this.ultraSpawnRefusal(run, input, proposal);
-    if (refused) {
-      this.commit(run, [...tool.opening, ...tool.closing(null, refused.message)]);
-      return {
-        ok: false,
-        toolCallId: tool.toolCallId,
-        error: { code: refused.code, message: refused.message },
-      };
-    }
+    if (proposal.args.mode === 'items') return this.spawnItems(run, input, proposal, tool, recheck);
     const tasks = proposal.args.tasks as { targetNodeId: string; brief: string }[];
     const children = tasks.map((task) =>
       this.prepareExecution(run, {
@@ -9626,8 +8397,7 @@ export class Coordinator {
             name: 'spawn_subagents',
             args: { mode: 'items', tasks: [task] },
           };
-          const refusal =
-            this.ultraSpawnRefusal(run, input, candidate) ?? recheck(candidate, batch.batchId);
+          const refusal = recheck(candidate, batch.batchId);
           if (refusal) {
             error = refusal.message;
             batch.stopped = true;
@@ -10514,10 +9284,6 @@ export class Coordinator {
           const check = {
             ...owner,
             commandId: String(proposal.args.commandId),
-            ...(run.snapshot.autoRoute?.ultra ? { isolation: 'linux-bwrap' as const } : {}),
-            ...(recipe?.recipe.candidateNodeId === input.nodeId && recipe.candidateTree
-              ? { expectedTree: recipe.candidateTree }
-              : {}),
           };
           plan = CheckPlan.parse(await files.planCheck(check, cancellation));
           const runCheck = files.runCheck.bind(files);

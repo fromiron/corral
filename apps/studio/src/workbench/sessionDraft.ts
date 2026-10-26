@@ -4,7 +4,6 @@ import {
   ImageAttachments,
   PermissionMode,
   type TextAttachment,
-  UltraSelection,
 } from '@corral/contracts';
 import type { SessionIntent } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
@@ -23,8 +22,6 @@ const consumed = new Map<string, number>();
 export interface ComposerDraft {
   harness?: HarnessBindingRef;
   permissionMode?: PermissionMode;
-  ultra?: UltraSelection;
-  qualityPreset?: 'ultra';
   images?: ImageAttachment[];
   taskScope?: 'review_only';
   verificationScope?: 'release';
@@ -75,10 +72,6 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
         ? { images: ImageAttachments.safeParse(value.images).data ?? [] }
         : {}),
       text: typeof value.text === 'string' ? value.text : '',
-      ...(value.qualityPreset === 'ultra' ? { qualityPreset: 'ultra' as const } : {}),
-      ...(UltraSelection.safeParse(value.ultra).success
-        ? { ultra: UltraSelection.parse(value.ultra) }
-        : {}),
       ...(value.taskScope === 'review_only' ? { taskScope: 'review_only' as const } : {}),
       ...(value.verificationScope === 'release' ? { verificationScope: 'release' as const } : {}),
       ...(Array.isArray(value.attachments)
@@ -102,8 +95,6 @@ export function serializeComposerDraft(draft: ComposerDraft): string | null {
     !draft.references.length &&
     !draft.attachments?.length &&
     !draft.images?.length &&
-    !draft.qualityPreset &&
-    !draft.ultra &&
     !draft.permissionMode &&
     !draft.harness &&
     !draft.taskScope &&

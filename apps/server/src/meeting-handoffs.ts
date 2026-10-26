@@ -56,6 +56,8 @@ type Stored = {
   cancelRequested?: boolean;
 };
 
+const ULTRA_REMOVED = 'Ultra was removed; send the handoff again with auto or a Corral.';
+
 export class MeetingHandoffError extends Error {
   readonly status: number;
   constructor(message: string, status = 400) {
@@ -106,12 +108,6 @@ export class MeetingHandoffService {
     const parsed = MeetingHandoffRequest.safeParse(input);
     if (!parsed.success) return Promise.reject(new MeetingHandoffError('Invalid handoff fields.'));
     const request = parsed.data;
-    if (
-      request.execution.kind === 'auto' &&
-      request.execution.ultra &&
-      request.execution.qualityPreset !== 'ultra'
-    )
-      return Promise.reject(new MeetingHandoffError('Ultra selection requires the Ultra preset.'));
     const key = `${sourceSessionId}:${request.commandId}`;
     const hash = createHash('sha256')
       .update(canonicalJson({ sourceSessionId, request }))
@@ -195,6 +191,14 @@ export class MeetingHandoffService {
 
   private async dispatch(stored: Stored): Promise<MeetingHandoffReceipt> {
     const { sourceSessionId, commandId, entryId } = stored.receipt;
+    // CR-056: a handoff saved with the removed Ultra is refused, not started as plain auto.
+    const { execution } = stored.start;
+    if ('qualityPreset' in execution || 'ultra' in execution) {
+      stored.receipt.state = 'refused';
+      stored.receipt.detail = ULTRA_REMOVED;
+      this.save(stored);
+      throw new MeetingHandoffError(ULTRA_REMOVED);
+    }
     const source = this.repository.session(sourceSessionId);
     if (
       !source?.meeting ||
@@ -331,14 +335,6 @@ export class MeetingHandoffService {
               commandId: request.commandId,
               decisionVersionId: request.decisionVersionId,
             },
-            ...(request.execution.kind === 'auto'
-              ? {
-                  ...(request.execution.qualityPreset
-                    ? { qualityPreset: request.execution.qualityPreset }
-                    : {}),
-                  ...(request.execution.ultra ? { ultra: request.execution.ultra } : {}),
-                }
-              : {}),
           },
           { now, entryId },
         );

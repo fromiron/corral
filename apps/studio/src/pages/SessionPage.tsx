@@ -1,9 +1,10 @@
-import type {
-  AutoCancelResult,
-  AutoRunStart,
-  FileChangeView,
-  VoiceTranscript,
-  VoiceTranscriptReceipt,
+import {
+  ApiError,
+  type AutoCancelResult,
+  type AutoRunStart,
+  type FileChangeView,
+  type VoiceTranscript,
+  type VoiceTranscriptReceipt,
 } from '@corral/client';
 import type { AutoModelChoice, TextAttachment } from '@corral/contracts';
 import {
@@ -1122,9 +1123,14 @@ function ArtifactsPanel({
     void (async () => {
       const found: Item[] = [];
       for (const runId of key ? key.split(',') : []) {
-        const { projection } = await transport.getSnapshot(runId);
+        const snapshot = await transport.getSnapshot(runId).catch((failure: unknown) => {
+          // CR-056: a run the server no longer opens (it used Ultra) has no results to list.
+          if (failure instanceof ApiError && failure.code === 'TARGET_NOT_FOUND') return null;
+          throw failure;
+        });
         if (!live) return;
-        const results = runResults(projection);
+        if (!snapshot) continue;
+        const results = runResults(snapshot.projection);
         for (const artifact of [
           ...results.final,
           ...results.intermediate.map((group) => group.latest),
@@ -1266,25 +1272,21 @@ function EntryCard({
     ? [
         `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`,
         entry.auto.fallback ? t(`autoFallbackReason.${entry.auto.fallback}`) : null,
-        entry.auto.ultra?.modelProfiles.join(', ') ?? entry.auto.modelProfile,
-        entry.auto.ultra
-          ? Object.entries(entry.auto.ultra.reasoning)
-              .map(([profile, level]) => `${profile}: ${tq(`level.${level}`)}`)
-              .join(', ')
-          : entry.auto.requestedReasoning?.mode === 'fixed'
-            ? tq(`level.${entry.auto.requestedReasoning.level}`)
-            : entry.auto.requestedReasoning?.mode === 'route'
-              ? t('reasoningRoute')
-              : entry.auto.requestedReasoning
-                ? tq(entry.auto.requestedReasoning.mode)
-                : entry.auto.modelProfile
-                  ? tq('legacy')
-                  : null,
+        entry.auto.modelProfile,
+        entry.auto.requestedReasoning?.mode === 'fixed'
+          ? tq(`level.${entry.auto.requestedReasoning.level}`)
+          : entry.auto.requestedReasoning?.mode === 'route'
+            ? t('reasoningRoute')
+            : entry.auto.requestedReasoning
+              ? tq(entry.auto.requestedReasoning.mode)
+              : entry.auto.modelProfile
+                ? tq('legacy')
+                : null,
         // CR-024 §7: the level the start model picked for this request.
         entry.auto.reasoning
           ? `${t('reasoningPicked', { level: tq(`level.${entry.auto.reasoning}`) })}${entry.auto.reasoningSource ? ` (${t(`reasoningSource.${entry.auto.reasoningSource}`)})` : ''}`
           : null,
-        entry.auto.qualityPreset === 'ultra' ? 'Ultra' : entry.auto.reason,
+        entry.auto.reason,
       ]
         .filter(Boolean)
         .join(' · ')
@@ -1334,8 +1336,6 @@ function EntryCard({
               harness: entry.harness,
               attachments: entry.attachments,
               images: entry.images,
-              qualityPreset: entry.qualityPreset ?? entry.auto?.qualityPreset,
-              ultra: entry.ultra ?? entry.auto?.ultra,
               taskScope: entry.taskScope,
               verificationScope: entry.verificationScope,
             })
@@ -2053,10 +2053,6 @@ export function Composer({
           ? {
               template: result.autoRoute.template,
               ...(result.autoRoute.harness ? { harness: result.autoRoute.harness } : {}),
-              ...(result.autoRoute.ultra ? { ultra: result.autoRoute.ultra } : {}),
-              ...(result.autoRoute.qualityPreset
-                ? { qualityPreset: result.autoRoute.qualityPreset }
-                : {}),
               source: result.autoRoute.source,
               reason: result.autoRoute.reason,
               modelProfile: result.autoRoute.modelProfile,
@@ -3018,7 +3014,6 @@ export function Composer({
                 value={autoChoice}
                 profiles={profiles}
                 showReasoning={intent === 'next'}
-                ultra={false}
                 disabled={busy}
                 open={autoModelOpen}
                 onOpenChange={setAutoModelOpen}

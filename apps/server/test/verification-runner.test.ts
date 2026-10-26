@@ -73,7 +73,7 @@ function cancellation() {
 
 describe('owned verification runner', { timeout: 25000 }, () => {
   it.skipIf(process.platform !== 'linux').each([false, true])(
-    '[TC-ULTRA-003-N] namespace cleanup owns detached descendants (cancel=%s)',
+    '[TC-SBX-001-N] namespace cleanup owns detached descendants (cancel=%s)',
     async (cancelled) => {
       const f = fixture(
         `import {spawn} from 'node:child_process'; spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'}).unref(); console.log('READY'); ${cancelled ? 'setInterval(()=>{},1000);' : ''}`,
@@ -98,7 +98,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     },
   );
   it.skipIf(process.platform !== 'linux')(
-    '[TC-ULTRA-003-N] sandbox exec failures are inconclusive even after the namespace started',
+    '[TC-SBX-001-N] sandbox exec failures are inconclusive even after the namespace started',
     async () => {
       const f = fixture('');
       const report = await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(
@@ -118,7 +118,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     },
   );
   it.skipIf(process.platform !== 'linux')(
-    '[TC-ULTRA-003-N] isolated snapshot checkout and status never execute repository filters on the host',
+    '[TC-SBX-001-N] isolated snapshot checkout and status never execute repository filters on the host',
     async () => {
       const f = fixture(
         "import fs from 'node:fs'; if(fs.readFileSync('a.txt','utf8') !== 'original') process.exit(1);",
@@ -137,7 +137,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
       expect(report, report.output.text).toMatchObject({ verdict: 'pass', targetUnchanged: true });
     },
   );
-  it('[TC-ULTRA-003-N] exit zero without sandbox attestation is inconclusive', async () => {
+  it('[TC-SBX-001-N] exit zero without sandbox attestation is inconclusive', async () => {
     const f = fixture('');
     const report = await new VerificationRunner({
       clock: f.clock,
@@ -149,7 +149,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     expect(report.isolation).toBeUndefined();
   });
   it.skipIf(process.platform !== 'linux')(
-    '[TC-ULTRA-003-N] isolated checks cannot read the host, Git administration or inherited secrets',
+    '[TC-SBX-001-N] isolated checks cannot read the host, Git administration or inherited secrets',
     async () => {
       const f = fixture('');
       vi.stubEnv('CORRAL_CHECK_SECRET', 'fixture-secret');
@@ -188,7 +188,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
       expect(readFileSync(privateFile, 'utf8')).toBe('host-only');
     },
   );
-  it('[TC-ULTRA-003-N] a failed sandbox launch never falls back to the registered host command', async () => {
+  it('[TC-SBX-001-N] a failed sandbox launch never falls back to the registered host command', async () => {
     const f = fixture('');
     const launched: string[] = [];
     const report = await new VerificationRunner({

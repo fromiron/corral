@@ -45,7 +45,6 @@ import {
   MessageBranchPoint,
   MessageBranchRequest,
   PermissionMode,
-  QualityPreset,
   QueuedMeetingMessage,
   type Receipt,
   ResourcePath,
@@ -62,7 +61,6 @@ import {
   TaskStart,
   TERMINAL_RUN_STATUSES,
   TextAttachments,
-  UltraSelection,
   WorkspaceTarget,
 } from '@corral/contracts';
 import {
@@ -322,8 +320,6 @@ const UpdateSession = z.strictObject({
 const NewEntry = z.strictObject({
   harness: HarnessBindingRef.optional(),
   permissionMode: PermissionMode.optional(),
-  ultra: UltraSelection.optional(),
-  qualityPreset: QualityPreset.optional(),
   images: ImageAttachments.optional(),
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
@@ -356,8 +352,6 @@ const ExplainRequest = z.strictObject({
 const AutoRunRequest = z.strictObject({
   harness: HarnessBindingRef.optional(),
   permissionMode: PermissionMode.optional(),
-  ultra: UltraSelection.optional(),
-  qualityPreset: QualityPreset.optional(),
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
   schemaVersion: SchemaVersion,
@@ -737,6 +731,31 @@ async function createCorralServer(
     ) {
       return fail(reply, 'ORIGIN_REJECTED', 'a session CSRF token is required');
     }
+  });
+  // CR-056: Runs that recorded the removed Ultra are not opened. Their records use shapes no
+  // client reads any more, and no new one can start, so the set is fixed at start-up.
+  const ultraRuns = new Set(
+    (
+      db
+        .prepare(
+          `SELECT id FROM runs WHERE json_type(snapshot_json,'$.autoRoute.qualityPreset') IS NOT NULL
+             OR json_type(snapshot_json,'$.autoRoute.ultra') IS NOT NULL`,
+        )
+        .all() as { id: string }[]
+    ).map((row) => row.id),
+  );
+  app.addHook('preHandler', async (request, reply) => {
+    const runId = (request.params as { runId?: unknown } | undefined)?.runId;
+    if (
+      typeof runId === 'string' &&
+      ultraRuns.has(runId) &&
+      request.routeOptions.url?.startsWith('/api/v1/runs/:runId')
+    )
+      return fail(
+        reply,
+        'TARGET_NOT_FOUND',
+        'This run used Ultra, which was removed; it cannot be opened.',
+      );
   });
   app.addHook('onSend', async (request, reply, payload) => {
     const headers =
@@ -1418,12 +1437,7 @@ async function createCorralServer(
       .some((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
   const autoStarter = createAutoStarter<AbortSignal>({
     prepareModels: (request, profiles) =>
-      coordinator.prepareModels(
-        profiles ?? request.ultra?.modelProfiles ?? [request.choice.modelProfile],
-        request.mode,
-      ),
-    resolveUltra: (selection, primary, mode, models, context) =>
-      coordinator.resolveUltra(selection, primary, mode, models, context),
+      coordinator.prepareModels(profiles ?? [request.choice.modelProfile], request.mode),
     // CR-055: the conversation lead gets file tools when the session has a working copy.
     fileTools: async (request) =>
       request.sessionId ? (await files.currentTree(request.sessionId)) !== null : false,
@@ -1454,8 +1468,6 @@ async function createCorralServer(
               definition: autoDefinition({
                 id: request.definition.id,
                 template: route.template,
-                ...(route.qualityPreset ? { qualityPreset: route.qualityPreset } : {}),
-                ...(route.ultra ? { ultra: route.ultra } : {}),
                 brief: request.definition.input.brief,
                 criteria: request.definition.input.criteria,
                 taskScope: request.definition.input.taskScope,
@@ -1551,10 +1563,6 @@ async function createCorralServer(
               criteria: input.criteria,
               mode: input.mode,
               choice: input.execution.choice,
-              ...(input.execution.qualityPreset
-                ? { qualityPreset: input.execution.qualityPreset }
-                : {}),
-              ...(input.execution.ultra ? { ultra: input.execution.ultra } : {}),
             },
             { fileTools: false, signal: controller.signal },
           );
@@ -1706,8 +1714,6 @@ async function createCorralServer(
           commandId: body.commandId,
           sessionId: body.sessionId,
           brief: body.brief,
-          ...(body.qualityPreset ? { qualityPreset: body.qualityPreset } : {}),
-          ...(body.ultra ? { ultra: body.ultra } : {}),
           choice: body.choice,
           mode: body.mode,
           ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
@@ -3003,50 +3009,6 @@ async function createCorralServer(
   });
 
   type RunParams = { Params: { runId: string } };
-  app.get<RunParams>('/api/v1/runs/:runId/candidates', async (request, reply) => {
-    if (!coordinator.getRunSnapshot(request.params.runId))
-      return fail(reply, 'TARGET_NOT_FOUND', 'no such run');
-    return reply
-      .header('cache-control', 'private, no-store')
-      .send(coordinator.candidateComparison(request.params.runId));
-  });
-  for (const kind of ['changes', 'files'] as const)
-    app.get<{ Params: { runId: string; candidateId: string } }>(
-      `/api/v1/runs/:runId/candidates/:candidateId/${kind}`,
-      async (request, reply) => {
-        const query = z
-          .strictObject({
-            tree: GitOid,
-            path: kind === 'files' ? ResourcePath : z.never().optional(),
-          })
-          .safeParse(request.query);
-        if (!query.success)
-          return fail(
-            reply,
-            'SCHEMA_INVALID',
-            'an exact candidate tree and relative file path are required',
-          );
-        const { runId, candidateId } = request.params;
-        const candidate = coordinator
-          .candidateComparison(runId)
-          ?.candidates.find((item) => item.candidateId === candidateId);
-        if (!candidate) return fail(reply, 'TARGET_NOT_FOUND', 'no such candidate in this run');
-        try {
-          const result =
-            kind === 'files'
-              ? await files.candidateFileVersions(
-                  runId,
-                  candidateId,
-                  query.data.tree,
-                  query.data.path!,
-                )
-              : await files.candidateChanges(runId, candidateId, query.data.tree);
-          return reply.header('cache-control', 'private, no-store').send(result);
-        } catch (error) {
-          return documentFail(reply, error);
-        }
-      },
-    );
   app.get<RunParams>('/api/v1/runs/:runId/runtime-checkpoints', async (request, reply) => {
     try {
       return await coordinator.runtimeCheckpoints(request.params.runId);

@@ -138,7 +138,6 @@ import {
 import { CommandCapacityError, CommandRuntime, type UserTaskOwner } from '../processes/runtime.ts';
 import { commandEnvironment, listShells, resolveShellCommand } from '../processes/shells.ts';
 import { systemTimers } from '../runtime.ts';
-import { CandidateWorkspaces } from './candidate-workspaces.ts';
 import { isolatedChecksAvailable } from './check-isolation.ts';
 import { redactToolText } from './check-output.ts';
 import { type DebugOptions, DebugSessions } from './debug-sessions.ts';
@@ -155,6 +154,7 @@ import {
 } from './hashline.ts';
 import { LanguageSessions, type LanguageTransport } from './language-sessions.ts';
 import { checkLaunchFingerprint, launchFingerprint } from './launch-fingerprint.ts';
+import { removeLegacyCandidateCopies } from './legacy-candidate-copies.ts';
 import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
@@ -486,7 +486,6 @@ export class WorkspaceService implements FileTools {
   private readonly language: LanguageSessions;
   private readonly debugger: DebugSessions;
   private readonly deploymentTasks: DeploymentTasks;
-  private readonly candidateCopies: CandidateWorkspaces;
   private readonly fileEdits: FileEditProposals;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
@@ -673,30 +672,6 @@ export class WorkspaceService implements FileTools {
       options.newLspProposalId ?? (() => `lsp_${randomUUID().replaceAll('-', '')}`);
     this.edit = options.edit ?? ((request, cancellation) => editText(request, { cancellation }));
     this.worktreeRoot = resolve(options.worktreeRoot);
-    this.candidateCopies = new CandidateWorkspaces({
-      db: this.db,
-      clock: this.clock,
-      root: join(this.worktreeRoot, 'candidates'),
-      target: (runId) => {
-        const sessionId = this.sessionOfRun(runId);
-        const row = sessionId ? this.worktree(sessionId) : null;
-        if (
-          !row ||
-          !this.db
-            .prepare('SELECT 1 FROM workspace_bindings WHERE id=? AND trusted=1')
-            .get(row.binding_id)
-        )
-          throw new ToolRefusal('CAPABILITY_DENIED', 'trusted candidate target is unavailable');
-        return {
-          sessionId: row.session_id,
-          bindingId: row.binding_id,
-          copyGeneration: row.copy_generation,
-          path: row.worktree_path,
-        };
-      },
-      snapshot: (path) => this.snapshotTree(path, 'linux-bwrap'),
-      lease: (path, work) => this.lease(path, work),
-    });
     this.forbidden = [...options.forbidden, this.worktreeRoot].map((p) => resolve(p));
     this.terminals = new PtyRuntime({
       ...options.pty,
@@ -1107,8 +1082,6 @@ export class WorkspaceService implements FileTools {
   }
 
   async runtimeMcp(runId: string, selection: CheckExecution['selection']) {
-    if (this.candidateCopies.enabled(runId))
-      throw new ToolRefusal('CAPABILITY_DENIED', 'candidate executions cannot launch MCP servers');
     const { row, config } = this.projectToolContext({ runId, selection });
     const servers: { server: RegisteredMcpServer; fingerprint: string }[] = [];
     for (const id of selection.mcpServerIds ?? []) {
@@ -1343,7 +1316,7 @@ export class WorkspaceService implements FileTools {
             'working copy access has active or uncertain owners',
           );
         if (binding) {
-          await this.candidateCopies.remove(sessionId, binding.root_path);
+          await removeLegacyCandidateCopies(this.db, sessionId, binding.root_path);
           await git(binding.root_path, ['worktree', 'remove', '--force', row.worktree_path]).catch(
             () => rm(row.worktree_path, { recursive: true, force: true }),
           );
@@ -2855,10 +2828,7 @@ export class WorkspaceService implements FileTools {
       const tree =
         access?.writer === 0 && access.tree
           ? access.tree
-          : await this.snapshotTree(
-              row.worktree_path,
-              this.candidateCopies.enabled(runId) ? 'linux-bwrap' : undefined,
-            );
+          : await this.snapshotTree(row.worktree_path);
       await this.pin(row.worktree_path, `refs/corral/${sessionId}/runs/${runId}/${phase}`, tree);
       this.db
         .prepare(
@@ -3042,21 +3012,13 @@ export class WorkspaceService implements FileTools {
 
   /** Each path Corral changed, with the content hash its last applied operation left (null: none). */
   private managedPaths(sessionId: string, runId: string | null): Map<string, string | null> {
+    // CR-056: edits made in a removed Ultra candidate's own copy never count for the session copy.
     const rows = this.db
       .prepare(
         `SELECT f.kind, f.path, f.to_path, f.after_hash FROM file_operations f
            LEFT JOIN candidate_executions c ON c.run_id=f.run_id AND c.execution_id=f.execution_id
-           LEFT JOIN candidate_promotions p ON p.run_id=c.run_id
-           LEFT JOIN runs r ON r.id=c.run_id
            WHERE f.session_id=? AND f.state='applied' AND (? IS NULL OR f.run_id=?)
-             AND (c.execution_id IS NULL OR (
-               json_extract(r.projection_json,'$.candidateComparison.status')='selected'
-               AND json_extract(r.projection_json,'$.candidateComparison.selectedCandidateId')=c.candidate_id
-               AND EXISTS (SELECT 1 FROM checkpoint_restores restore
-                 WHERE restore.session_id=f.session_id
-                   AND json_extract(restore.result_json,'$.checkpointId')=p.checkpoint_id
-                   AND json_extract(restore.result_json,'$.state')='applied')
-             ))
+             AND c.execution_id IS NULL
            ORDER BY f.created_at, f.rowid`,
       )
       .all(sessionId, runId, runId) as {
@@ -4322,9 +4284,7 @@ export class WorkspaceService implements FileTools {
       );
     const sessionId = this.sessionOfRun(input.runId);
     const row = (
-      input.executionId
-        ? this.worktreeOfExecution(input.runId, input.executionId)
-        : this.worktreeOfRun(input.runId)
+      input.executionId ? this.worktreeOfRun(input.runId) : this.worktreeOfRun(input.runId)
     )?.row;
     const binding = this.binding(input.selection.projectId);
     if (!sessionId || !row || !binding || row.binding_id !== binding.id || !binding.trusted)
@@ -4339,8 +4299,6 @@ export class WorkspaceService implements FileTools {
   }
 
   private checkContext(input: CheckExecution) {
-    if (this.candidateCopies.enabled(input.runId) && input.isolation !== 'linux-bwrap')
-      throw new ToolRefusal('CAPABILITY_DENIED', 'candidate checks require Linux isolation');
     const context = this.projectToolContext(input);
     if (!input.selection.checkIds.includes(input.commandId))
       throw new ToolRefusal('CAPABILITY_DENIED', 'check is not selected');
@@ -4350,11 +4308,6 @@ export class WorkspaceService implements FileTools {
   }
 
   private lspContext(input: LspExecution) {
-    if (this.candidateCopies.enabled(input.runId))
-      throw new ToolRefusal(
-        'CAPABILITY_DENIED',
-        'candidate executions cannot launch language servers',
-      );
     const context = this.projectToolContext(input),
       query = LspQuery.parse(input.query);
     if (!input.selection.lspServerIds.includes(query.serverId))
@@ -4840,8 +4793,6 @@ export class WorkspaceService implements FileTools {
     if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'check cancelled');
     const plan = await this.lease(row.worktree_path, async () => {
       const tree = await this.snapshotTree(row.worktree_path, input.isolation);
-      if (input.expectedTree && tree !== input.expectedTree)
-        throw new ToolRefusal('REVISION_CONFLICT', 'Ultra candidate tree changed before its check');
       const launch = await checkLaunchFingerprint(
         row.worktree_path,
         config.revision,
@@ -5115,11 +5066,6 @@ export class WorkspaceService implements FileTools {
   // ── the file broker (FileTools) ─────────────────────────────────────────────
 
   private commandContext(input: CommandExecution) {
-    if (this.candidateCopies.enabled(input.runId))
-      throw new ToolRefusal(
-        'CAPABILITY_DENIED',
-        'candidate executions use registered isolated checks, not native commands',
-      );
     if (this.disposing) throw new ToolRefusal('TARGET_TERMINAL', 'workspace is shutting down');
     const found = this.worktreeOfRun(input.runId);
     const access = this.runAccess.get(input.runId);
@@ -5677,219 +5623,6 @@ export class WorkspaceService implements FileTools {
     return row ? { row, sessionId } : null;
   }
 
-  private worktreeOfExecution(runId: string, executionId: string) {
-    const found = this.worktreeOfRun(runId);
-    if (!found) return null;
-    const candidate = this.candidateCopies.forExecution(runId, executionId);
-    return candidate
-      ? {
-          sessionId: found.sessionId,
-          row: {
-            ...found.row,
-            worktree_path: candidate.worktree_path,
-            base_tree: candidate.baseline_tree,
-          },
-        }
-      : found;
-  }
-
-  async prepareCandidates(runId: string, candidateIds: string[]) {
-    if (!this.isolatedChecksAvailable())
-      throw new ToolRefusal('CAPABILITY_DENIED', 'candidate comparison requires Linux isolation');
-    const access = this.runAccess.get(runId);
-    if (!access || access.writer !== 1 || access.state !== 'active')
-      throw new ToolRefusal(
-        'CAPABILITY_DENIED',
-        'candidate comparison requires an active working copy writer',
-      );
-    const tree = await this.startBaseline(runId);
-    if (!tree) throw new ToolRefusal('TARGET_NOT_FOUND', 'candidate baseline is unavailable');
-    return this.candidateCopies.prepare(runId, candidateIds, tree);
-  }
-
-  bindCandidateExecution(runId: string, candidateId: string, executionId: string) {
-    this.candidateCopies.bind(runId, candidateId, executionId);
-  }
-
-  currentCandidateTree(runId: string, candidateId: string): Promise<string | null> {
-    return this.candidateCopies.tree(runId, candidateId);
-  }
-
-  candidateDiff(runId: string, candidateId: string, tree: string, paths?: string[]) {
-    return this.candidateCopies.diff(runId, candidateId, tree, paths);
-  }
-
-  restoreCandidate(runId: string, candidateId: string, tree: string) {
-    return this.candidateCopies.restore(runId, candidateId, tree);
-  }
-
-  async candidateChanges(runId: string, candidateId: string, expectedTree: string) {
-    const copy = await this.candidateCopies.inspect(runId, candidateId, expectedTree);
-    return {
-      from: copy.baseline_tree,
-      to: expectedTree,
-      files: await this.changedPaths(copy.worktree_path, copy.baseline_tree, expectedTree),
-    };
-  }
-
-  async candidateFileVersions(
-    runId: string,
-    candidateId: string,
-    expectedTree: string,
-    path: string,
-  ) {
-    const copy = await this.candidateCopies.inspect(runId, candidateId, expectedTree);
-    return this.fileVersions(copy.session_id, copy.baseline_tree, expectedTree, path);
-  }
-
-  async promoteCandidate(input: {
-    runId: string;
-    candidateId: string;
-    expectedTree: string;
-    baselineTree: string;
-    commandId: string;
-  }): Promise<{ checkpointId: string }> {
-    const selection = this.candidateCopies.selection(input);
-    const sessionId = this.sessionOfRun(input.runId);
-    if (!sessionId) throw new ToolRefusal('TARGET_NOT_FOUND', 'candidate session is unavailable');
-    const operationId = `promote_${sha256(Buffer.from(`${input.runId}:${input.commandId}`)).slice(0, 32)}`;
-    if (selection.previous) {
-      const previous = this.checkpointRestores(sessionId).find(
-        (item) => item.operationId === operationId,
-      );
-      if (previous?.state === 'applied') return { checkpointId: selection.checkpointId };
-      throw new ToolRefusal(
-        'REVISION_CONFLICT',
-        'candidate promotion is incomplete; inspect recovery evidence before another action',
-      );
-    }
-    const access = this.runAccess.get(input.runId);
-    if (!access || access.writer !== 1 || access.state !== 'active')
-      throw new ToolRefusal(
-        'CAPABILITY_DENIED',
-        'candidate promotion requires its active working copy owner',
-      );
-    this.candidateCopies.assertSettled(input.runId);
-    const copy = await this.candidateCopies.inspect(
-      input.runId,
-      input.candidateId,
-      input.expectedTree,
-    );
-    await this.validateCandidateEvidence(input, copy.worktree_path);
-    if (copy.baseline_tree !== input.baselineTree)
-      throw new ToolRefusal('REVISION_CONFLICT', 'candidate baseline tree changed');
-    const target = await this.checkpointTarget(sessionId);
-    const checkpoint = await this.lease(target.worktree_path, async () => {
-      this.candidateCopies.assertSettled(input.runId);
-      if ((await this.snapshotTree(target.worktree_path, 'linux-bwrap')) !== input.baselineTree)
-        throw new ToolRefusal(
-          'REVISION_CONFLICT',
-          'working copy tree changed since candidate comparison began',
-        );
-      await this.candidateCopies.inspect(input.runId, input.candidateId, input.expectedTree);
-      this.candidateCopies.selection(input, true);
-      return this.checkpointAt(target, {
-        checkpointId: selection.checkpointId,
-        label: 'Selected Ultra candidate',
-        kind: 'manual',
-        runId: input.runId,
-        tree: input.expectedTree,
-        pinned: true,
-      });
-    });
-    const result = await this.restoreCheckpoint(
-      sessionId,
-      {
-        operationId,
-        checkpointId: checkpoint.checkpointId,
-        manifestHash: checkpoint.manifestHash,
-        expectedTree: input.baselineTree,
-      },
-      {
-        isolation: 'linux-bwrap',
-        beforeApply: async () => {
-          if (this.runAccess.get(input.runId)?.state !== 'active')
-            throw new ToolRefusal(
-              'TARGET_TERMINAL',
-              'candidate comparison no longer owns its target',
-            );
-          this.candidateCopies.assertSettled(input.runId);
-          await this.candidateCopies.inspect(input.runId, input.candidateId, input.expectedTree);
-          await this.validateCandidateEvidence(input, copy.worktree_path);
-        },
-      },
-    );
-    if (result.state !== 'applied')
-      throw new ToolRefusal(
-        'REVISION_CONFLICT',
-        'candidate promotion did not complete; inspect recovery evidence',
-      );
-    return { checkpointId: checkpoint.checkpointId };
-  }
-
-  private async validateCandidateEvidence(
-    input: { runId: string; candidateId: string; expectedTree: string },
-    path: string,
-  ) {
-    const row = this.db
-      .prepare('SELECT project_id,projection_json FROM runs WHERE id=?')
-      .get(input.runId) as { project_id: string; projection_json: string };
-    const projection = JSON.parse(row.projection_json) as RunProjection;
-    const candidate = projection.candidateComparison?.candidates.find(
-      (item) => item.candidateId === input.candidateId,
-    );
-    const config = this.projectTools.latest(row.project_id);
-    if (
-      !candidate ||
-      candidate.state !== 'acceptable' ||
-      candidate.tree !== input.expectedTree ||
-      !candidate.checks.length ||
-      !config
-    )
-      throw new ToolRefusal(
-        'REVISION_CONFLICT',
-        'candidate requires complete passing check evidence',
-      );
-    for (const check of candidate.checks) {
-      const owner = check.owner;
-      const command = config.checks.find((item) => item.id === check.commandId);
-      const saved = this.db
-        .prepare('SELECT report_json FROM verifications WHERE id=?')
-        .get(check.verificationId) as { report_json: string | null } | undefined;
-      const stored = saved?.report_json
-        ? VerificationReport.parse(JSON.parse(saved.report_json))
-        : null;
-      if (
-        owner.kind !== 'execution' ||
-        owner.runId !== input.runId ||
-        projection.executions[owner.executionId]?.candidateId !== input.candidateId ||
-        projection.executions[owner.executionId]?.attemptNo !== owner.attemptNo ||
-        check.tree !== input.expectedTree ||
-        check.state !== 'completed' ||
-        check.verdict !== 'pass' ||
-        !check.cleanupConfirmed ||
-        check.targetUnchanged !== true ||
-        check.isolation !== 'linux-bwrap' ||
-        check.configRevision !== config.revision ||
-        !command ||
-        !stored ||
-        canonicalJson({ ...stored, output: null }) !== canonicalJson({ ...check, output: null })
-      )
-        throw new ToolRefusal(
-          'REVISION_CONFLICT',
-          'candidate check evidence or configuration changed',
-        );
-      const launch = await checkLaunchFingerprint(path, config.revision, command, 'linux-bwrap');
-      if (launch.fingerprint !== check.fingerprint)
-        throw new ToolRefusal('REVISION_CONFLICT', 'candidate check launch fingerprint changed');
-    }
-    if (this.projectTools.latest(row.project_id)?.revision !== config.revision)
-      throw new ToolRefusal(
-        'REVISION_CONFLICT',
-        'candidate check configuration changed during promotion',
-      );
-  }
-
   available(runId: string): boolean {
     return this.worktreeOfRun(runId) !== null;
   }
@@ -5944,10 +5677,7 @@ export class WorkspaceService implements FileTools {
       const tree =
         this.runAccess.get(runId)?.tree ||
         (!access.writer && writer?.tree) ||
-        (await this.snapshotTree(
-          row.worktree_path,
-          this.candidateCopies.enabled(runId) ? 'linux-bwrap' : undefined,
-        ));
+        (await this.snapshotTree(row.worktree_path));
       await this.pin(
         row.worktree_path,
         `refs/corral/${access.session_id}/runs/${runId}/start`,
@@ -6044,9 +5774,7 @@ export class WorkspaceService implements FileTools {
     const access = this.runAccess.get(input.runId);
     if (cancellation.aborted || (access && access.state !== 'active'))
       throw new ToolRefusal('TARGET_TERMINAL', 'run file access is no longer active');
-    const comparison = this.candidateCopies.enabled(input.runId);
-    const candidate = this.candidateCopies.forExecution(input.runId, input.executionId);
-    if (candidate || (!comparison && (!access || access.writer))) return null;
+    if (!access || access.writer) return null;
     if (!access) throw new ToolRefusal('TARGET_NOT_FOUND', 'run input snapshot unavailable');
     if (!['list_files', 'read_file', 'read_hashline'].includes(input.name))
       throw new ToolRefusal(
@@ -6398,18 +6126,6 @@ export class WorkspaceService implements FileTools {
     },
     cancellation: ToolCancellation,
   ): Promise<Record<string, unknown>> {
-    if (this.candidateCopies.enabled(input.runId)) {
-      this.candidateCopies.forExecution(input.runId, input.executionId);
-      const parent = cancellation;
-      const active = () =>
-        this.candidateCopies.executionActive(input.runId, input.executionId, input.attemptNo);
-      cancellation = {
-        get aborted() {
-          return parent.aborted || !active();
-        },
-        onCancel: (callback) => parent.onCancel(callback),
-      };
-    }
     const frozen = await this.readPinnedRun(input, cancellation);
     if (frozen) return frozen;
     if (input.name === 'write') {
@@ -6419,7 +6135,7 @@ export class WorkspaceService implements FileTools {
         cancellation,
       );
     }
-    const found = this.worktreeOfExecution(input.runId, input.executionId);
+    const found = this.worktreeOfRun(input.runId);
     if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
     const root = found.row.worktree_path;
     const reads = this.readsOf(input.runId, input.executionId);

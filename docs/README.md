@@ -17,7 +17,7 @@ AI 에이전트의 문서 진입점이다. **이번 요청 → 관련 현재 계
 | 화면·코드 용어 | [용어집](current/glossary.md) | 메시지 파일 `packages/react/src/messages/` |
 | Desktop·명령·preview·host·음성 | [Desktop 상세](current/desktop-contract.md) | CR-042, [잔여 조건](plans/desktop-completion.md) |
 | 관리형 LLM·컨텍스트·캐시·정산 | [LLM runtime](current/llm-runtime.md), [CR-052](change-requests/CR-052-llm-runtime-modernization.md), [CR-054](change-requests/CR-054-session-conversation-continuity.md), [CR-055](change-requests/CR-055-conversation-agent-and-teams.md) | C-179–184, C-186–189, [실행 계획](plans/llm-runtime-modernization.md), [세션 대화 검증](evaluation/Session-Conversation-Continuity-2026-10-24.md), [대화 에이전트 검증](evaluation/Conversation-Agent-2026-10-25.md) |
-| 모델·추론·Ultra·Skill·MCP | [모델과 리소스](current/models-and-resources.md) | [모델 안내](Models.md), [하네스 상세](current/harness-contract.md) |
+| 모델·추론·Skill·MCP | [모델과 리소스](current/models-and-resources.md) | [모델 안내](Models.md), [하네스 상세](current/harness-contract.md) |
 | HTTP·이벤트·스키마 | [API 원본 안내](current/api.md) | [HTTP 상세](API-Contract.md), Zod·handler·client |
 | 다음 구현 작업 | [활성 계획](plans/README.md) | 승인 CR와 해당 태스크만 |
 | 장기 아이디어 | [제안 지도](proposals/README.md) | 미승인 후보·대조 필요 항목 |
@@ -39,7 +39,7 @@ AI 에이전트의 문서 진입점이다. **이번 요청 → 관련 현재 계
 | 전역 활성 Run 하나 | CR-042 ABS-06: snapshot reader 병행, 작업 사본별 단일 writer, host 상한·소유권 |
 | 임의 명령 제외·Hashline 평가 전용 | CR-042 ABS-01/03: 관리 사본 명령과 명시 편집 방식. 등록 검사·기존 Pi edit 경계 유지 |
 | 추론 판정은 관찰 전용 | CR-021: 기존 off/observe와 역할별 요청 적용을 구분 |
-| Ultra는 같은 모델 후보 비교 | CR-031/C-118: 복수 모델 협업. C-114는 별도 opt-in 후보 비교이며 같은 Run에서 하나만 명시 반영. CR-048/C-173: 새 선택 형식(version 2)은 후보 경쟁 기본·자동 판정·고도화·자동 반영·사용량 한도 없음 |
+| Ultra는 같은 모델 후보 비교 | CR-056: Ultra(CR-031 C-113·114·118, CR-048 C-173)는 제거됨. 이전 Ultra Run도 열리지 않음 |
 | 초기 RELEASE-INDEX가 현재 상태 | 초기 패키지는 Git 이력에만 유지. 현재 상태는 상태표와 해당 후보 증거 |
 
 ## 유지보수

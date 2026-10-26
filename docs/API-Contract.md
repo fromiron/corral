@@ -16,9 +16,6 @@
 | POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,sessionId?,conversation?,references? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED` (CR-007). `conversation {throughRunId}`는 같은 세션의 끝난 Run까지의 요청·답을 Coordinator 기록에서 복사해 대화 차례로 보내고 `run.started.conversation`에 출처·hash를 남김. 세션 없음·없는 Run·다른 세션·끝나지 않은 Run은 `TARGET_NOT_FOUND`, 산출물 크기 한도를 넘는 오래된 차례는 빠지고 그 수를 기록 (CR-054). `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED` (CR-016) |
 | GET /runs/:id/snapshot | — | read model + snapshotSeq |
 | GET /model-attempts | `ownerId?`, `runId?`, `sessionId?`, `before?`, `limit?` (1–100; 기본 50) | `{items,nextCursor}`. 물리 시도·nullable usage·subscription/unknown 가격 상태. private/no-store. 본문·자격 증명 제외 |
-| GET /runs/:id/candidates | — | C-114 `CandidateComparisonView`, 일반 Run은 `null`, 없는 Run은 404. 후보별 상태·정확한 tree·검사·사용량; private/no-store |
-| GET /runs/:id/candidates/:candidateId/changes | `tree` | 해당 Run 후보의 현재 고정 tree와 기준 사이 파일 목록. 다른 후보·오래된 tree 거절 |
-| GET /runs/:id/candidates/:candidateId/files | `tree,path` | 같은 후보의 상대 경로에 대한 기존 `FileVersions`. 임의 ref·경로 이탈 거절 |
 | GET /runs/:id/events?after=N | cursor | commit된 domain events의 SSE; token frames 별도 type |
 | POST /runs/:id/commands | `packages/contracts/generated/command.schema.json` | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |
 | GET /runs/:id/commands/:commandId | — | command 상태·관련 events·적용 scope |
@@ -231,7 +228,6 @@ provider/network error는 사용자 키 원문·응답 헤더를 포함하지 �
 | `run.state_changed` | from,to,reasonCode |
 | `run.interrupted` | previousStatus,backendSessionId |
 | `execution.created` | parentExecutionId,nodeId,taskId,attemptNo,depth,iterationId |
-| `candidate.comparison_changed` | C-114 같은 Run의 baselineTree·status·selectedCandidateId·2–5개 후보 상태와 검사/usage. `execution.created.candidateId`는 후보 소속을 고정하는 선택 필드 |
 | `execution.state_changed` | from,to,activity,waitingOn |
 | `execution.settled` | outcome,terminationMode,error |
 | `task.created` | role,node,contract,dependencies |
@@ -306,13 +302,11 @@ SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 �
 인증된 `GET /api/v1/documents/:documentId/source`는 `{ metadata, rawText }` JSON을 반환한다. `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`를 사용하고 HTML로 렌더링하지 않는다. 형식이 잘못된 ID는 400, 등록 출처가 없는 문서는 404다. 원문까지 포함한 workspace 입력의 저장 용량은 기존 32 MiB 상한 안에서 계산한다.
 
 
-## Ultra 프리셋과 후보 비교 (CR-031 / C-113·118·114)
+## Ultra 제거 (CR-056)
 
-`POST /api/v1/runs/auto`의 optional `qualityPreset: default | ultra`는 mode와 별개다. 미지정은 기존 경로이며 Ultra는 고정 planner→writer→reviewer 팀과 최대 두 번 수정하는 review recipe를 사용한다. 실제 선택은 시작 snapshot/event의 `autoRoute.qualityPreset`에 고정한다. 모델/effort·기본 예산·정책은 유지한다. custom 팀이나 역할 override를 Ultra로 변환하지 않는다.
+Ultra(CR-031 C-113·114·118, CR-048 C-173)는 [CR-056](change-requests/CR-056-ultra-removal.md)으로 제거됐다. `POST /api/v1/runs/auto`, 세션 메시지, `autoRoute`를 싣는 시작 요청과 회의 인계 실행은 `qualityPreset`·`ultra`를 알 수 없는 필드로 400 거절하고 아무것도 시작하지 않는다. `select_candidate`·`cancel_candidate` Run command와 `/runs/:id/candidates…` 경로는 없다(각각 400·404).
 
-Composer 선택과 `/ultra`는 같은 요청을 만든다. 현재 복수 모델 선택·최고 추론·CLI 인자는 [모델 안내](Models.md#복수-모델-ultra)를 따른다. CLI auto는 같은 Coordinator 시작 경로를 사용한다. `--ultra`를 사용자 정의 Corral 파일에 적용하면 거절하며, headless auto는 파일 도구 없는 콘텐츠 작업 범위다. 과거 선택 필드가 없는 단일 모델 기록은 기존 방식으로 해석한다.
-
-선택적 `ultra.comparison: {modelProfiles: Identifier[]}`는 선택 pool에 포함된 2–5개 후보 모델을 고정한다. 같은 모델을 반복할 수 있으며 일반 Ultra에는 이 필드를 보내지 않는다. 비교 결과는 위 후보 조회 경로에서 읽고, 선택·취소는 기존 Run command/receipt를 사용한다: `select_candidate {candidateId,tree}`, `cancel_candidate {candidateId}`. `expectedControlRevision`을 확인하고 응답 유실은 원래 command ID를 조회한다. `accepted`는 반영 완료가 아니며 `promoting` 동안 취소/정지를 거절한다. 최종 `selected`와 command 결과를 확인해야 한다.
+Bell의 2026-10-25 결정에 따라 이전 Ultra 기록은 읽지 않는다. `candidate.comparison_changed` event, `execution.created.candidateId`, `autoRoute.qualityPreset`·`autoRoute.ultra`는 어떤 schema에도 없다. 저장소에 Ultra Run이 있어도 서버는 시작한다. snapshot의 `autoRoute`가 `qualityPreset`이나 `ultra`를 가진 Run은 모든 `/api/v1/runs/:runId…` 경로에서 `TARGET_NOT_FOUND`(404)와 "This run used Ultra, which was removed; it cannot be opened."로 거절되고, 그 snapshot·event는 client에 보내지 않는다. 끝나지 않은 Ultra Run은 다른 Run처럼 재시작 때 중단된다. 그 Run의 "다시 요청"과 Ultra를 기록한 회의 인계의 시작·재전송은 거절하며, 사람이 요청을 새로 보낸다. 세션 항목에 저장된 Ultra 선택은 무시한다.
 
 
 ## 사용자 PTY 전송과 복구 (CR-046 P07–08)

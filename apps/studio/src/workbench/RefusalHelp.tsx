@@ -3,7 +3,6 @@ import type {
   ImageAttachment,
   PermissionMode,
   TextAttachment,
-  UltraSelection,
 } from '@corral/contracts';
 import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
@@ -21,8 +20,6 @@ export function editRequest(
     permissionMode?: PermissionMode;
     attachments?: TextAttachment[];
     images?: ImageAttachment[];
-    qualityPreset?: 'default' | 'ultra';
-    ultra?: UltraSelection;
     taskScope?: 'work' | 'review_only';
     verificationScope?: 'targeted' | 'release';
   },

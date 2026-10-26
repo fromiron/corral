@@ -20,7 +20,6 @@ export function AutoModelMenu({
   value,
   profiles,
   showReasoning,
-  ultra,
   disabled,
   open,
   onOpenChange,
@@ -29,7 +28,6 @@ export function AutoModelMenu({
   value: AutoModelChoice;
   profiles: ProfileInfo[];
   showReasoning: boolean;
-  ultra: boolean;
   disabled: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,8 +43,7 @@ export function AutoModelMenu({
       : value.reasoning?.mode === 'route'
         ? t('reasoningRoute')
         : tq(value.reasoning?.mode ?? 'legacy');
-  const visibleEffort =
-    showReasoning && (ultra || value.reasoning) ? (ultra ? tc('ultraMaximumShort') : effort) : null;
+  const visibleEffort = showReasoning && value.reasoning ? effort : null;
   const description = [tc('nextRequest'), profile?.label ?? value.modelProfile, visibleEffort]
     .filter(Boolean)
     .join(' · ');
@@ -96,7 +93,7 @@ export function AutoModelMenu({
       >
         <span className="min-w-0 [overflow-wrap:anywhere]">
           <span className="block text-2xs text-muted-foreground sm:mr-1.5 sm:inline">
-            {tc(ultra ? 'nextUltraRequest' : 'nextRequest')}
+            {tc('nextRequest')}
           </span>
           <span>{profile?.label ?? value.modelProfile}</span>
           {visibleEffort ? (
@@ -132,7 +129,7 @@ export function AutoModelMenu({
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
-        {showReasoning && !ultra ? (
+        {showReasoning ? (
           <>
             <MenuSeparator />
             <MenuSub>

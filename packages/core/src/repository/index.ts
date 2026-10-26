@@ -15,10 +15,8 @@ import {
   MeetingState,
   type NodeLayout,
   PermissionMode,
-  QualityPreset,
   RunInput,
   type TextAttachment,
-  UltraSelection,
 } from '@corral/contracts';
 import { z } from 'zod';
 import { validTextAttachments } from '../attachments.ts';
@@ -75,8 +73,6 @@ export interface SessionEntry {
   meetingHandoff?: MeetingHandoffOrigin;
   harness?: HarnessBindingRef;
   permissionMode?: PermissionMode;
-  ultra?: UltraSelection;
-  qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
   taskScope?: RunInput['taskScope'];
@@ -100,8 +96,6 @@ export interface SessionEntry {
 
 export const SessionEntryAuto = AutoRoute.pick({
   harness: true,
-  ultra: true,
-  qualityPreset: true,
   template: true,
   source: true,
   reason: true,
@@ -170,8 +164,6 @@ export interface NewSessionEntry {
   meetingHandoff?: MeetingHandoffOrigin;
   harness?: HarnessBindingRef;
   permissionMode?: PermissionMode;
-  ultra?: UltraSelection;
-  qualityPreset?: 'default' | 'ultra';
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
   taskScope?: RunInput['taskScope'];
@@ -421,23 +413,14 @@ export function planSessionEntry(
     }).success
   )
     return { ok: false, error: 'invalid', message: 'invalid request scope' };
-  if (
-    entry.qualityPreset !== undefined &&
-    (!QualityPreset.safeParse(entry.qualityPreset).success || entry.intent !== 'next')
-  )
-    return { ok: false, error: 'invalid', message: 'quality preset requires a next request' };
-  const text = entry.text.trim();
-  if (
-    entry.ultra &&
-    (!UltraSelection.safeParse(entry.ultra).success ||
-      entry.intent !== 'next' ||
-      entry.qualityPreset !== 'ultra')
-  )
+  // CR-056: Ultra was removed; a request naming it is refused, not run without it.
+  if ('qualityPreset' in entry || 'ultra' in entry)
     return {
       ok: false,
       error: 'invalid',
-      message: 'Ultra model selection requires an Ultra next request',
+      message: 'Ultra was removed; a request cannot choose it',
     };
+  const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
   if (entry.commandId) {
@@ -451,10 +434,8 @@ export function planSessionEntry(
           executionId: value.executionId ?? null,
           attachments: value.attachments ?? [],
           images: value.images ?? [],
-          qualityPreset: value.qualityPreset ?? null,
           ...(value.permissionMode ? { permissionMode: value.permissionMode } : {}),
           ...(value.harness ? { harness: value.harness } : {}),
-          ...(value.ultra ? { ultra: value.ultra } : {}),
           taskScope: value.taskScope ?? null,
           verificationScope: value.verificationScope ?? null,
           meetingHandoff: value.meetingHandoff ?? null,
@@ -505,8 +486,6 @@ export function planSessionEntry(
           ...(entry.auto ? { auto: entry.auto } : {}),
           ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
           ...(entry.harness ? { harness: HarnessBindingRef.parse(entry.harness) } : {}),
-          ...(entry.qualityPreset ? { qualityPreset: entry.qualityPreset } : {}),
-          ...(entry.ultra ? { ultra: UltraSelection.parse(entry.ultra) } : {}),
           ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),
           ...(entry.verificationScope ? { verificationScope: entry.verificationScope } : {}),
           ...(entry.attachments?.length

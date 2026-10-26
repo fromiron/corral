@@ -47,6 +47,8 @@
 ### 6. Composer without request options (amendment)
 Bell, 2026-10-25: with the team selector, Ultra and the rest of the request options are no longer needed. The composer drops the request-options popover and everything in it: the Corral picker and its management link (now in the team selector), automatic work style, per-run role models and styles, Ultra, review-only, verification scope, project-material attachment and design templates, plus the `/ultra` command. Text and image attachments stay in the `+` menu and project files stay reachable through `@`. Server APIs for these options are unchanged for other clients; meetings keep their Ultra handoff.
 
+[CR-056](CR-056-ultra-removal.md) later removed Ultra from the whole product, so for Ultra the last sentence no longer holds: no server API, client, CLI or meeting handoff starts it.
+
 ### 7. Default session tools (amendment)
 Bell, 2026-10-25: tool calling such as commands and previews must be available automatically, especially in the main session, unless a subagent was deliberately restricted. Command approval follows the permission mode.
 1. A live session turn in a linked, trusted folder runs under the built-in **Session default** work style (`session-default`, trusted-native) unless the request names a work style. Its tool list covers the file, command, preview, check and collaboration tools of the conversation roles.

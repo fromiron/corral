@@ -1,5 +1,4 @@
 import type {
-  CandidateComparisonView,
   CheckpointRestore,
   CheckpointRestorePlan,
   ContentSearch,
@@ -246,7 +245,6 @@ import {
   type StreamFrame,
   type TeamPlan,
   TerminalStreamMessage,
-  type UltraSelection,
   type VerificationReport,
 } from '@corral/contracts';
 import type {
@@ -277,8 +275,6 @@ import type {
 export interface AutoRunStart {
   harness?: import('@corral/contracts').HarnessBindingRef;
   permissionMode?: import('@corral/contracts').PermissionMode;
-  ultra?: UltraSelection;
-  qualityPreset?: 'default' | 'ultra';
   taskScope?: 'work' | 'review_only';
   verificationScope?: 'targeted' | 'release';
   commandId: string;
@@ -2032,12 +2028,6 @@ export interface ChangeSetView {
   files: FileChangeView[];
 }
 
-export interface CandidateChanges {
-  from: string;
-  to: string;
-  files: { path: string; status: 'A' | 'M' | 'D' | 'T' }[];
-}
-
 export type FileSideView =
   | { kind: 'absent' }
   | { kind: 'text'; text: string }
@@ -2601,24 +2591,6 @@ export class WorkspacesApi {
         ? `scope=run&runId=${encodeURIComponent(scope.runId)}`
         : `scope=${scope.kind}`;
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes?${query}`);
-  }
-  candidateComparison(runId: string): Promise<CandidateComparisonView | null> {
-    return this.send(`/runs/${encodeURIComponent(runId)}/candidates`);
-  }
-  candidateChanges(runId: string, candidateId: string, tree: string): Promise<CandidateChanges> {
-    return this.send(
-      `/runs/${encodeURIComponent(runId)}/candidates/${encodeURIComponent(candidateId)}/changes?tree=${encodeURIComponent(tree)}`,
-    );
-  }
-  candidateFileVersions(
-    runId: string,
-    candidateId: string,
-    tree: string,
-    path: string,
-  ): Promise<{ path: string; before: FileSideView; after: FileSideView }> {
-    return this.send(
-      `/runs/${encodeURIComponent(runId)}/candidates/${encodeURIComponent(candidateId)}/files?${new URLSearchParams({ tree, path })}`,
-    );
   }
   hunks(
     sessionId: string,
