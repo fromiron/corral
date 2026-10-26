@@ -91,6 +91,12 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
   const context = useRef({ workspaces, sessionId, workspaceId });
   context.current = { workspaces, sessionId, workspaceId };
   useEffect(() => {
+    const changed = () => setRevision((value) => value + 1);
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, []);
+  useEffect(() => {
+    void revision;
     let live = true;
     if (!workspaces?.binding) return;
     void workspaces.binding(projectId).then(
@@ -100,7 +106,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     return () => {
       live = false;
     };
-  }, [workspaces, projectId]);
+  }, [workspaces, projectId, revision]);
   const settle = useCallback(
     (receipt: GitOperation | GitAdvancedOperation, pending: Pending) => {
       if (context.current.workspaces !== workspaces || context.current.sessionId !== sessionId)

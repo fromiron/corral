@@ -1671,9 +1671,14 @@
       "recipe_stopped": "검토 중단: {detail}",
       "lsp_proposal": "검토 대기 중인 언어 서버 제안 ({detail})"
     },
-    "open": "열기"
+    "open": "열기",
+    "retrySend": "같은 요청 결과 확인",
+    "sendUnconfirmed": "요청 또는 기록 결과를 확인하지 못했습니다. 새로 보내기 전에 같은 요청의 결과를 확인하세요.",
+    "modelsUnavailable": "모델 연결 정보를 아직 확인하지 못했습니다. 보내기 전에 모델 설정을 확인하세요."
   },
   "Workbench": {
+    "reviewFeedback": "변경 검토 · 수정 요청",
+    "backToGit": "Git 변경으로 돌아가기",
     "sidebar": "프로젝트와 세션",
     "collapseSidebar": "사이드바 숨기기",
     "expandSidebar": "사이드바 보이기",
@@ -2001,7 +2006,7 @@
       "panel": "패널",
       "settings": "설정"
     },
-    "togglePanel": "사이드 패널 보이기/숨기기",
+    "togglePanel": "파일 뷰어 열기·닫기",
     "openPanel": "{panel} 열기",
     "review": "검토 화면 열기",
     "rename": "세션 이름 바꾸기",
@@ -3240,8 +3245,10 @@
     "attachSnapshot": "캡처한 내용 추가",
     "selectedSnapshot": "캡처한 선택 내용",
     "captureFailed": "선택 내용을 첨부하지 못했습니다. 캡처한 내용을 보존했습니다. 다시 시도하거나 선택 범위를 줄이세요.",
-    "writerHeld": "실행 중인 작업이나 터미널이 이 사본을 쓰고 있습니다.",
-    "writerReleased": "중지했습니다. 다시 저장하면 파일에 씁니다."
+    "writerHeld": "진행 중인 작업, 터미널 또는 실행이 이 사본을 사용하고 있습니다.",
+    "writerReleased": "중지했습니다. 다시 저장하면 파일에 씁니다.",
+    "openTerminal": "터미널 제어 열기",
+    "openActiveRun": "진행 중인 실행 {id} 열기"
   },
   "Terminals": {
     "title": "터미널",
@@ -3302,6 +3309,11 @@
     "sourceUnavailable": "이 터미널 출처를 현재 화면에서 열 수 없습니다."
   },
   "Docking": {
+    "fileViewer": "파일 뷰어",
+    "openFileViewer": "파일 뷰어 열기",
+    "closeFileViewer": "파일 뷰어 닫기",
+    "history": "실행 기록",
+    "sessionViews": "세션 보기",
     "title": "작업 공간 배치",
     "preset": "배치",
     "conversation": "대화",
@@ -3635,7 +3647,10 @@
     "draft": "이 파일에 미저장 초안이 있습니다. 저장하거나 버린 뒤 검색 결과로 이동하세요.",
     "unavailable": "검색을 완료하지 못했습니다.",
     "openFailed": "검색 결과를 열지 못했습니다.",
-    "open": "{path}:{line} 열기"
+    "open": "{path}:{line} 열기",
+    "needsCopyPreparation": "파일 내용을 검색하려면 먼저 작업 사본을 준비하세요.",
+    "prepareCopy": "작업 사본 준비",
+    "selectCopy": "작업 사본 선택"
   },
   "PreviewFeedback": {
     "details": "선택 정보와 스타일",

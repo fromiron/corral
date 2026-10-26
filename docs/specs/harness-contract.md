@@ -18,6 +18,7 @@
 - 실행 자산과 `HarnessProfileRevision`은 불변이다. 내용 변경은 신뢰 재검토 대상이며 실행 중 snapshot을 바꾸지 않는다. reload로 현재 Run 자산을 교체하지 않는다.
 - 개인 → 프로젝트 → 역할 → 실행의 scope를 구분하고, 하위 설정이 필수 정책·허용 도구 제한을 확대하지 못한다.
 - 정적 미리보기와 실제 Run은 같은 해석 경로를 사용한다. 설치·선택·읽기·payload 전달·실제 수행은 다른 상태다.
+- 작업 방식 편집에서는 선택한 저장 revision의 적용 설정 미리보기와 정책·상속·도구 요약을 상세 편집보다 먼저 확인할 수 있다. 미저장 편집을 이미 적용된 설정으로 표시하지 않으며 프로젝트·revision이 바뀌면 이전 미리보기를 유지하지 않는다.
 - 사용자 홈 설정은 명시적 복사 import만 허용한다. 실행용 HOME/XDG 분리는 설정 충돌을 줄이는 장치이며 OS 보안 격리 자체가 아니다. `strict` 역할에 trusted-native 확장을 우회 결합하지 않는다.
 - 확장 UI 질문은 원래 실행·요청 ID·timeout을 가지며 stale/중복 답변·종결 뒤 응답을 거절한다.
 - 구현 입구는 `apps/server/src/harness/`, Studio `workbench/harness/`, storage의 revision·binding이다.

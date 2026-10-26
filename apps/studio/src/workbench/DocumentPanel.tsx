@@ -298,7 +298,7 @@ export function DocumentPanel({
         </p>
       ) : null}
       {entry.writerBusy ? (
-        <WriterHeld sessionId={entry.target.sessionId} />
+        <WriterHeld key={documentKey} target={entry.target} />
       ) : entry.error || actionError ? (
         <p role="alert" className="text-xs text-danger">
           {entry.error || actionError}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useState } from 'react';
+import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
@@ -32,13 +32,72 @@ const readFile = vi.hoisted(() =>
   })),
 );
 vi.mock('../services.tsx', () => {
-  const services = { mode: 'server', workspaces: { readFile } };
+  const services = { mode: 'server', workspaceId: 'local', workspaces: { readFile } };
   return { useServices: () => services };
 });
 vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: (_key: string, initial: unknown) => useState(initial),
 }));
-vi.mock('./useWorkspaceFiles.ts', () => ({ useWorkspaceFiles: () => fixture.files }));
+vi.mock('./useWorkspaceFiles.ts', () => ({
+  useWorkspaceFiles: (_project: string, _session: string, source?: string) => ({
+    ...fixture.files,
+    scope: source
+      ? { kind: source, id: source === 'session' ? 'session' : 'project' }
+      : fixture.files.scope,
+  }),
+}));
+vi.mock('@corral/react/design-kit', async (original) => ({
+  ...(await original<typeof import('@corral/react/design-kit')>()),
+  Select: ({
+    label,
+    value,
+    options,
+    onValueChange,
+  }: {
+    label: string;
+    value: string;
+    options: { value: string; label: string }[];
+    onValueChange: (value: string) => void;
+  }) => (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(event) => onValueChange(event.target.value)}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
+}));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    params,
+    search,
+    children,
+    ...props
+  }: {
+    to: string;
+    params?: { sessionId: string };
+    search?: Record<string, string>;
+    children?: ReactNode;
+  }) => (
+    <a
+      {...props}
+      href={`${to.replace('$sessionId', params?.sessionId ?? '')}${search ? `?${new URLSearchParams(search)}` : ''}`}
+    >
+      {children}
+    </a>
+  ),
+}));
+vi.mock('./ContentSearch.tsx', () => ({
+  ContentSearch: ({ target }: { target: { sessionId: string } }) => (
+    <div data-search-session={target.sessionId} />
+  ),
+}));
 vi.mock('./documents/store.ts', () => {
   const owner = { getState: () => fixture.state, subscribe: () => () => {}, open: fixture.open };
   return { documentStore: () => owner };
@@ -116,6 +175,7 @@ const sessionFiles = fixture.files;
 async function panel(
   onOpenDocument: () => boolean,
   check: (container: HTMLDivElement) => Promise<void>,
+  readOnly = false,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
@@ -130,6 +190,7 @@ async function panel(
             sessionId="session"
             onReference={() => {}}
             onOpenDocument={onOpenDocument}
+            readOnly={readOnly}
           />
         </IntlProvider>,
       );
@@ -200,3 +261,83 @@ it('an original-folder file previews read-only inside Files, one at a time (#87)
   });
   fixture.files = sessionFiles;
 });
+
+it('the read-only viewer stays on the original folder even when a session copy is available', async () => {
+  fixture.files = sessionFiles;
+  fixture.open.mockClear();
+  readFile.mockClear();
+  fixture.state = {
+    documents: {
+      'canonical-key': {
+        target: fixture.target,
+        path: 'note.txt',
+        file: { content: { kind: 'text', text: 'working copy text' } },
+        dirty: true,
+        pendingSave: null,
+        recoveries: [],
+      },
+    },
+  };
+  const onOpenDocument = vi.fn(() => true);
+  await panel(
+    onOpenDocument,
+    async (container) => {
+      await click(container, 'note.txt');
+      expect(readFile).toHaveBeenCalledWith({ kind: 'project', id: 'project' }, 'note.txt');
+      expect(container.querySelector('[data-source]')?.textContent).toBe('body of note.txt');
+      expect(container.textContent).toContain(messages.Desktop.sourceFolder);
+      expect(container.textContent).toContain(messages.Files.readOnlyPreview);
+      expect(container.querySelector('[data-inline-editor]')).toBeNull();
+      expect(
+        container.querySelector(`select[aria-label="${messages.Desktop.fileSource}"]`),
+      ).toBeNull();
+      expect(
+        container.querySelector(`select[aria-label="${messages.ContentSearch.mode}"]`),
+      ).toBeNull();
+      expect(container.querySelector('a[href="/sessions/session?panel=changes"]')).toBeNull();
+      expect(onOpenDocument).not.toHaveBeenCalled();
+      expect(fixture.open).not.toHaveBeenCalled();
+    },
+    true,
+  );
+});
+
+it.each([false, true])(
+  'content search offers preparation or selection without creating a copy (exists: %s)',
+  async (hasCopy) => {
+    fixture.files = {
+      ...sessionFiles,
+      scope: { kind: 'project', id: 'project' },
+      hasCopy,
+      copy: hasCopy ? sessionFiles.copy : null,
+    } as typeof sessionFiles;
+    fixture.state = { documents: {} };
+    await panel(
+      () => true,
+      async (container) => {
+        await act(async () => {
+          const mode = container.querySelector<HTMLSelectElement>(
+            `select[aria-label="${messages.ContentSearch.mode}"]`,
+          );
+          if (!mode) throw new Error('Content search mode is missing');
+          mode.value = 'contents';
+          mode.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        if (hasCopy) {
+          const select = [...container.querySelectorAll('button')].find(
+            (button) => button.textContent === 'Select working copy',
+          );
+          expect(select).toBeDefined();
+          await act(async () => select?.click());
+          expect(container.querySelector('[data-search-session="session"]')).not.toBeNull();
+        } else {
+          expect(
+            container.querySelector('a[href="/sessions/session?panel=changes"]')?.textContent,
+          ).toBe('Prepare working copy');
+          expect(container.querySelector('[data-search-session]')).toBeNull();
+        }
+      },
+    );
+    fixture.files = sessionFiles;
+  },
+);

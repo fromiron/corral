@@ -91,6 +91,16 @@ export {
   TableRow as KitTableRow,
 } from './components/ui/table.tsx';
 export {
+  TabItem,
+  type TabItemProps,
+  TabPanel,
+  type TabPanelProps,
+  Tabs,
+  TabsList,
+  type TabsListProps,
+  type TabsProps,
+} from './components/ui/tabs.tsx';
+export {
   ThinkingStep,
   ThinkingStepDetails,
   ThinkingSteps,

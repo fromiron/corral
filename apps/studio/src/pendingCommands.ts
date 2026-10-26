@@ -10,10 +10,11 @@ interface PendingCommand {
 export function createPendingSessionCommands(
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>,
   hostId?: string,
+  scope: 'composer' | 'review' = 'composer',
 ) {
   const cache = new Map<string, PendingCommand>();
   const storageKey = (sessionId: string) =>
-    `corral:composer-command:v1:${encodeURIComponent(hostId ?? '')}:${encodeURIComponent(sessionId)}`;
+    `corral:${scope}-command:v1:${encodeURIComponent(hostId ?? '')}:${encodeURIComponent(sessionId)}`;
   return {
     get(sessionId: string) {
       const existing = cache.get(sessionId);

@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import {
   patchSessionSearch,
   resolveSessionSearch,
+  reviewSessionSearch,
   sessionPanelDescriptor,
   validateEditorSearch,
   validateReviewSearch,
@@ -122,4 +123,81 @@ it('existing graph, run and review validators preserve accepted values and rejec
   expect(validateEditorSearch({ fromRun: 'run_a', fromSession: '/sessions/session_a' })).toEqual(
     {},
   );
+});
+
+it.each([
+  { search: {}, expected: { panel: 'changes', review: true } },
+  {
+    search: { scope: 'run' as const, runId: 'run_selected', file: 'src/a.ts' },
+    expected: {
+      panel: 'changes',
+      review: true,
+      scope: 'run',
+      runId: 'run_selected',
+      file: 'src/a.ts',
+    },
+  },
+  {
+    search: { scope: 'review' as const, file: 'README.md' },
+    expected: { panel: 'changes', review: true, scope: 'review', file: 'README.md' },
+  },
+  { search: { scope: 'git' as const, file: 'README.md' }, expected: { panel: 'git' } },
+])('preserves a legacy review destination inside Changes: $search', ({ search, expected }) => {
+  expect(reviewSessionSearch(search)).toEqual(expected);
+  expect(validateSessionSearch(expected)).toEqual(expected);
+});
+
+it('review selectors belong only to the Changes review view and clear when leaving it', () => {
+  const review = {
+    panel: 'changes' as const,
+    review: true as const,
+    scope: 'run' as const,
+    runId: 'run_selected',
+    file: 'src/a.ts',
+  };
+  expect(validateSessionSearch(review)).toEqual(review);
+  expect(validateSessionSearch({ ...review, review: false })).toEqual({ panel: 'changes' });
+  expect(validateSessionSearch({ ...review, panel: undefined })).toEqual({});
+  expect(patchSessionSearch(review, { panel: 'files' })).toEqual({ panel: 'files' });
+  expect(
+    patchSessionSearch(review, {
+      panel: 'run',
+      run: 'run_result',
+      view: 'results',
+      result: 'version',
+    }),
+  ).toEqual({ panel: 'run', run: 'run_result', view: 'results', result: 'version' });
+  expect(patchSessionSearch(review, { panel: undefined })).toEqual({});
+  expect(patchSessionSearch(review, { review: undefined })).toEqual({ panel: 'changes' });
+  expect(
+    patchSessionSearch(review, { scope: 'session', runId: undefined, file: undefined }),
+  ).toEqual({ panel: 'changes', review: true, scope: 'session' });
+});
+
+it('an explicit review target cannot inherit old run/result or review selections', () => {
+  const review = { panel: 'changes' as const, review: true as const, scope: 'session' as const };
+  expect(
+    resolveSessionSearch(review, {
+      panel: 'run',
+      run: 'old_run',
+      result: 'old_version',
+      view: 'results',
+      file: 'old.ts',
+    }),
+  ).toEqual(review);
+  expect(
+    resolveSessionSearch(review, {
+      panel: 'changes',
+      review: true,
+      scope: 'run',
+      runId: 'old_run',
+      file: 'old.ts',
+    }),
+  ).toEqual(review);
+  expect(
+    resolveSessionSearch(
+      { panel: 'files' },
+      { panel: 'changes', review: true, scope: 'run', runId: 'old_run', file: 'old.ts' },
+    ),
+  ).toEqual({ panel: 'files' });
 });

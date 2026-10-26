@@ -6,6 +6,24 @@
   min-width: 0;
   height: 100%;
 }
+.corral-dock-tabs,
+.corral-dock-session-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.corral-dock-session-panel[hidden] {
+  display: none;
+}
+.corral-dock-primary-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.375rem;
+}
 .corral-dock-toolbar {
   display: flex;
   flex-wrap: wrap;

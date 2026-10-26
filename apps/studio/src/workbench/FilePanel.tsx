@@ -57,12 +57,15 @@ export function FilePanel({
   onReference,
   onAttach,
   onOpenDocument,
+  readOnly = false,
 }: {
   projectId: string;
   sessionId: string;
   onReference: (reference: FileReference) => void;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   onOpenDocument?: (document: OpenDocumentRequest, range?: TextRange) => boolean;
+  /** Browse only the original folder, with inline previews and no document actions. */
+  readOnly?: boolean;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
@@ -72,7 +75,7 @@ export function FilePanel({
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces, mode, workspaceId } = services;
-  const owner = workspaces && mode === 'server' ? documentStore(workspaces) : null;
+  const owner = !readOnly && workspaces && mode === 'server' ? documentStore(workspaces) : null;
   const { documents } = useSyncExternalStore(
     owner?.subscribe ?? noSubscription,
     owner?.getState ?? emptyDocuments,
@@ -82,14 +85,18 @@ export function FilePanel({
     `corral:file-source:v1:${sessionId}`,
     null,
   );
-  const source = savedSource === 'project' || savedSource === 'session' ? savedSource : undefined;
+  const source = readOnly
+    ? 'project'
+    : savedSource === 'project' || savedSource === 'session'
+      ? savedSource
+      : undefined;
   const { scope, list, hasCopy, copy, loading, error, refresh } = useWorkspaceFiles(
     projectId,
     sessionId,
     source,
   );
   const [saved, setPreview] = useRemembered<string | null>(
-    `corral:file-preview:v1:${sessionId}:${scope?.kind ?? 'project'}`,
+    `corral:file-preview:v1:${sessionId}:${readOnly ? 'project-viewer' : (scope?.kind ?? 'project')}`,
     null,
   );
   const active = typeof saved === 'string' ? saved : null;
@@ -462,18 +469,22 @@ export function FilePanel({
         </p>
       ) : null}
       <div className="flex items-center gap-2">
-        <Select
-          label={t('fileSource')}
-          size="xs"
-          variant="ghost"
-          className="min-w-0 flex-1 justify-start"
-          value={scopeKind ?? 'project'}
-          onValueChange={setSource}
-          options={[
-            { value: 'project' as const, label: t('sourceFolder') },
-            ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
-          ]}
-        />
+        {readOnly ? (
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">{t('sourceFolder')}</span>
+        ) : (
+          <Select
+            label={t('fileSource')}
+            size="xs"
+            variant="ghost"
+            className="min-w-0 flex-1 justify-start"
+            value={scopeKind ?? 'project'}
+            onValueChange={setSource}
+            options={[
+              { value: 'project' as const, label: t('sourceFolder') },
+              ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
+            ]}
+          />
+        )}
         <Button
           size="icon-compact"
           variant="ghost"
@@ -483,7 +494,7 @@ export function FilePanel({
           <RefreshCw />
         </Button>
       </div>
-      {searchMode === 'contents' ? (
+      {!readOnly && searchMode === 'contents' ? (
         searchTarget && workspaces && owner && onOpenDocument ? (
           <ContentSearch
             key={JSON.stringify(searchTarget)}
@@ -506,12 +517,39 @@ export function FilePanel({
                 className="min-w-0 flex-1"
               />
             </div>
-            <p className="text-xs text-muted-foreground">{ts('needsCopy')}</p>
+            <p className="text-xs text-muted-foreground">
+              {ts(hasCopy ? 'needsCopy' : 'needsCopyPreparation')}
+            </p>
+            {hasCopy && scopeKind === 'project' ? (
+              <Button
+                size="compact"
+                variant="tertiary"
+                className="self-start"
+                onClick={() => setSource('session')}
+              >
+                {ts('selectCopy')}
+              </Button>
+            ) : !hasCopy ? (
+              <Button
+                size="compact"
+                variant="tertiary"
+                className="self-start"
+                render={
+                  <Link
+                    to="/sessions/$sessionId"
+                    params={{ sessionId }}
+                    search={{ panel: 'changes' }}
+                  />
+                }
+              >
+                {ts('prepareCopy')}
+              </Button>
+            ) : null}
           </div>
         )
       ) : (
         <div className="flex min-w-0 items-center gap-2">
-          {searchModeControl}
+          {readOnly ? null : searchModeControl}
           <Input
             size="sm"
             aria-label={t('filterFiles')}
@@ -522,7 +560,7 @@ export function FilePanel({
           />
         </div>
       )}
-      {searchMode === 'names' ? (
+      {readOnly || searchMode === 'names' ? (
         <>
           <div ref={scroll} className="h-44 overflow-auto">
             <div style={{ height: rows.getTotalSize(), position: 'relative' }}>

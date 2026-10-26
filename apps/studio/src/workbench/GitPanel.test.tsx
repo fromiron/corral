@@ -5,6 +5,9 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { GitPanel } from './GitPanel.tsx';
+import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
+
+Element.prototype.getAnimations ??= () => [];
 
 const fixture = vi.hoisted(() => ({ services: {} }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
@@ -81,6 +84,11 @@ function diff(input: {
 }
 async function mount(workspaces: object, sessionId = 'session') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -236,6 +244,54 @@ const control = (container: HTMLElement, label: string) =>
   [...container.querySelectorAll<HTMLButtonElement>('button')].filter(
     (element) => element.getAttribute('aria-label') === label || element.textContent === label,
   );
+
+it('workspace changes refresh an existing copy and trust without losing the draft or pending command', async () => {
+  sessionStorage.clear();
+  let hasCopy = false;
+  let trusted = false;
+  const gitStatus = vi.fn(async () => status());
+  const binding = vi.fn(async () => ({ trusted }));
+  const gitChange = vi.fn(async () => {
+    throw new Error('response lost');
+  });
+  const f = await mount({
+    gitStatus,
+    binding,
+    gitChange,
+    worktree: vi.fn(async () => (hasCopy ? { missing: false } : null)),
+  });
+  expect(f.container.textContent).toContain('Git.noSessionCopy');
+  expect(gitStatus).not.toHaveBeenCalled();
+  hasCopy = true;
+  trusted = true;
+  await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
+  expect(f.container.textContent).not.toContain('Git.noSessionCopy');
+  expect(gitStatus).toHaveBeenCalledWith({ kind: 'session', id: 'session' });
+  expect(control(f.container, 'Git.stage').length).toBeGreaterThan(0);
+  const message = f.container.querySelector<HTMLTextAreaElement>(
+    'textarea[aria-label="Git.commitMessage"]',
+  );
+  expect(message).not.toBeNull();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+      message,
+      'Keep this commit draft',
+    );
+    message?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => control(f.container, 'Git.commit')[0]?.click());
+  const pending = sessionStorage.getItem('corral:git-operation:v1:session');
+  expect(pending).not.toBeNull();
+  expect(f.container.textContent).toContain('Git.unconfirmed');
+  await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
+  expect(
+    f.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Git.commitMessage"]')
+      ?.value,
+  ).toBe('Keep this commit draft');
+  expect(sessionStorage.getItem('corral:git-operation:v1:session')).toBe(pending);
+  expect(f.container.textContent).toContain('Git.unconfirmed');
+  expect(gitChange).toHaveBeenCalledTimes(1);
+});
 
 it('a trusted copy stages a row and commits the confirmed staged list with one receipt each', async () => {
   sessionStorage.clear();

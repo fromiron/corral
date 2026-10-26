@@ -1671,9 +1671,14 @@
       "recipe_stopped": "Review stopped: {detail}",
       "lsp_proposal": "Language server proposals awaiting review ({detail})"
     },
-    "open": "Open"
+    "open": "Open",
+    "retrySend": "Check the same request",
+    "sendUnconfirmed": "The request or its record could not be confirmed. Check the same request before sending another.",
+    "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending."
   },
   "Workbench": {
+    "reviewFeedback": "Review changes and request revisions",
+    "backToGit": "Back to Git changes",
     "sidebar": "Projects and sessions",
     "collapseSidebar": "Hide the sidebar",
     "expandSidebar": "Show the sidebar",
@@ -2001,7 +2006,7 @@
       "panel": "Panel",
       "settings": "Settings"
     },
-    "togglePanel": "Show or hide the side panel",
+    "togglePanel": "Toggle file viewer",
     "openPanel": "Open {panel}",
     "review": "Open the review screen",
     "rename": "Rename session",
@@ -3240,8 +3245,10 @@
     "attachSnapshot": "Add captured text",
     "selectedSnapshot": "Captured selection",
     "captureFailed": "The selection could not be attached. The captured text is kept; retry or choose a smaller selection.",
-    "writerHeld": "A running task or terminal is using this copy.",
-    "writerReleased": "Stopped. Save again to write the file."
+    "writerHeld": "A running task, terminal or Run is using this copy.",
+    "writerReleased": "Stopped. Save again to write the file.",
+    "openTerminal": "Open terminal controls",
+    "openActiveRun": "Open active Run {id}"
   },
   "Terminals": {
     "title": "Terminal",
@@ -3302,6 +3309,11 @@
     "sourceUnavailable": "This terminal source cannot be opened here."
   },
   "Docking": {
+    "fileViewer": "File viewer",
+    "openFileViewer": "Open file viewer",
+    "closeFileViewer": "Close file viewer",
+    "history": "Execution history",
+    "sessionViews": "Session views",
     "title": "Workbench layout",
     "preset": "Layout",
     "conversation": "Conversation",
@@ -3635,7 +3647,10 @@
     "draft": "This file has an unsaved draft. Save or discard it before jumping to a saved-file result.",
     "unavailable": "Search could not be completed.",
     "openFailed": "This result could not be opened.",
-    "open": "Open {path}:{line}"
+    "open": "Open {path}:{line}",
+    "needsCopyPreparation": "Prepare a working copy before searching file contents.",
+    "prepareCopy": "Prepare working copy",
+    "selectCopy": "Select working copy"
   },
   "PreviewFeedback": {
     "details": "Element and style details",
