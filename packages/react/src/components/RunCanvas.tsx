@@ -63,7 +63,6 @@ export function RunCanvas({
     return [
       ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`)).map((edge) => ({
         ...edge,
-        label: undefined,
         style: { ...edge.style, opacity: 0.4 },
         deletable: false,
         selectable: false,

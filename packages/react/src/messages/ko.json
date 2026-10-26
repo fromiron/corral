@@ -558,7 +558,8 @@
     "evidenceResults": "결과",
     "evidenceChecks": "검사",
     "uncertainWrite": "결과 모름",
-    "evidenceCheckEarlier": "이전 기준"
+    "evidenceCheckEarlier": "이전 기준",
+    "waitingExecutions": "실행 {count}개 대기 중"
   },
   "Timeline": {
     "heading": "타임라인",
