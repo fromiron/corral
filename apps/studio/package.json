@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:extended": "playwright test --config playwright.extended.config.ts"
   },
   "dependencies": {
     "@corral/client": "workspace:*",

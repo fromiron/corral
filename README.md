@@ -34,15 +34,16 @@ pnpm storybook    # 상태별 component와 접근성 검사
 ```sh
 pnpm contracts:check
 pnpm deps:check
-pnpm --filter @corral/studio exec playwright install --with-deps chromium firefox
+pnpm --filter @corral/studio exec playwright install --with-deps chromium
 pnpm test
 pnpm build
-pnpm test:e2e
+pnpm test:e2e           # Chromium 핵심 스모크 2개
+pnpm test:e2e:extended  # 필요할 때만 상세·다중 브라우저 검사
 pnpm test:performance
 pnpm release:gate
 ```
 
-위 명령은 실행 절차이지 이 commit에서의 통과 증거가 아니다. 일반 테스트·release gate는 유료 모델/검색을 호출하지 않는다. 실제 공급자 smoke에는 별도 opt-in과 상한이 필요하며, `release:check`는 같은 후보의 live 증거를 요구한다. [출시 절차](docs/guides/release.md)를 참고한다.
+위 명령은 실행 절차이지 이 commit에서의 통과 증거가 아니다. 기본·선택 검사의 기준은 [테스트 운영](docs/guides/testing.md)을 따른다. 일반 테스트·release gate는 유료 모델/검색을 호출하지 않는다. 실제 공급자 smoke에는 별도 opt-in과 상한이 필요하며, `release:check`는 같은 후보의 live 증거를 요구한다. [출시 절차](docs/guides/release.md)를 참고한다.
 
 ## 구조와 라이선스
 

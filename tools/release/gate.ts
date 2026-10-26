@@ -15,7 +15,7 @@ const commands = [
   ['tests', ['pnpm', 'test']],
   ['release-tests', ['pnpm', 'test:release']],
   ['build', ['pnpm', 'build']],
-  ['e2e', ['pnpm', 'test:e2e']],
+  ['e2e', ['pnpm', 'test:e2e:extended']],
   [
     'demo-production',
     [
@@ -25,6 +25,8 @@ const commands = [
       'exec',
       'playwright',
       'test',
+      '--config',
+      'playwright.extended.config.ts',
       'e2e/studio.spec.ts',
       'e2e/accessibility.spec.ts',
       'e2e/demo.spec.ts',
