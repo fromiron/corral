@@ -156,7 +156,31 @@
       "failed": "실패",
       "executions": "{count, plural, one {실행 #회} other {실행 #회}}",
       "waiting": "결정 대기",
-      "decisions": "{count, plural, one {판단 #회} other {판단 #회}}"
+      "decisions": "{count, plural, one {판단 #회} other {판단 #회}}",
+      "model": "모델 응답 생성",
+      "tool": "도구 실행",
+      "finalizing": "마무리 중",
+      "cancelled": "취소됨",
+      "queued": "대기열",
+      "ready": "준비",
+      "waiting_children": "하위 작업 대기",
+      "waiting_message": "답변 대기",
+      "waiting_approval": "승인 대기",
+      "pausing": "정지 요청 중",
+      "paused": "일시정지",
+      "cancelling": "취소 중",
+      "stateCount": "{status} {count}개",
+      "previousFailures": "이전 실패 시도 {count}회",
+      "iterations": "반복 {count}회 관측",
+      "loopOutcome": {
+        "pending": "진행 중",
+        "pass": "통과",
+        "revise": "수정 요청",
+        "inconclusive": "판단 불가",
+        "cap_reached": "회차 한도 도달",
+        "cancelled": "취소됨"
+      },
+      "mixed": "여러 작업 상태"
     }
   },
   "Inspector": {
@@ -534,7 +558,8 @@
     "evidenceResults": "결과",
     "evidenceChecks": "검사",
     "uncertainWrite": "결과 모름",
-    "evidenceCheckEarlier": "이전 기준"
+    "evidenceCheckEarlier": "이전 기준",
+    "waitingExecutions": "실행 {count}개 대기 중"
   },
   "Timeline": {
     "heading": "타임라인",
@@ -846,7 +871,9 @@
       "saved": "저장된 팀의 배치",
       "auto": "자동 배치"
     },
-    "layoutNote": "위치일 뿐이며 실행 내용은 바꾸지 않습니다."
+    "layoutNote": "위치일 뿐이며 실행 내용은 바꾸지 않습니다.",
+    "relationsLegend": "옅은 선: 정의 연결 · 굵은 선: 관측된 호출",
+    "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개"
   },
   "Judgments": {
     "heading": "추론 강도 판정",

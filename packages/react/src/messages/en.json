@@ -156,7 +156,31 @@
       "failed": "Failed",
       "executions": "{count, plural, one {# execution} other {# executions}}",
       "waiting": "Waiting for you",
-      "decisions": "{count, plural, one {# decision} other {# decisions}}"
+      "decisions": "{count, plural, one {# decision} other {# decisions}}",
+      "model": "Generating response",
+      "tool": "Running tools",
+      "finalizing": "Finalizing",
+      "cancelled": "Cancelled",
+      "queued": "Queued",
+      "ready": "Ready",
+      "waiting_children": "Waiting for child tasks",
+      "waiting_message": "Waiting for a reply",
+      "waiting_approval": "Waiting for approval",
+      "pausing": "Pause requested",
+      "paused": "Paused",
+      "cancelling": "Cancelling",
+      "stateCount": "{status}: {count}",
+      "previousFailures": "{count, plural, one {# earlier failed attempt} other {# earlier failed attempts}}",
+      "iterations": "{count, plural, one {# observed round} other {# observed rounds}}",
+      "loopOutcome": {
+        "pending": "In progress",
+        "pass": "Passed",
+        "revise": "Revision requested",
+        "inconclusive": "Inconclusive",
+        "cap_reached": "Round limit reached",
+        "cancelled": "Cancelled"
+      },
+      "mixed": "Multiple task states"
     }
   },
   "Inspector": {
@@ -534,7 +558,8 @@
     "evidenceResults": "Results",
     "evidenceChecks": "Checks",
     "uncertainWrite": "outcome unknown",
-    "evidenceCheckEarlier": "earlier version"
+    "evidenceCheckEarlier": "earlier version",
+    "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}"
   },
   "Timeline": {
     "heading": "Timeline",
@@ -846,7 +871,9 @@
       "saved": "Layout from the saved team",
       "auto": "Arranged automatically"
     },
-    "layoutNote": "Positions only; they do not change what ran."
+    "layoutNote": "Positions only; they do not change what ran.",
+    "relationsLegend": "Faint lines: definition · bold lines: observed calls",
+    "observedRelation": "{kind} · {count} observed · {active} in progress"
   },
   "Judgments": {
     "heading": "Effort judgments",

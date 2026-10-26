@@ -1,5 +1,5 @@
 import type { CorralDefinition, NodeLayout } from '@corral/contracts';
-import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
@@ -580,12 +580,9 @@ function RunSummary({
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   const working = [
-    ...new Set(
-      executions
-        .filter((e) => !TERMINAL_EXECUTION_STATUSES.has(e.status))
-        .map((e) => labelOf(e.nodeId)),
-    ),
+    ...new Set(executions.filter((e) => e.status === 'active').map((e) => labelOf(e.nodeId))),
   ];
+  const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
   const tasks = Object.values(projection.tasks);
   const inFlight = Object.values(projection.modelCalls).filter((c) => !c.finished).length;
   const loops = definition.nodes.flatMap((node) =>
@@ -648,6 +645,7 @@ function RunSummary({
                   ? null
                   : t('idle')}
             </span>
+            {waiting ? <span>{t('waitingExecutions', { count: waiting })}</span> : null}
             {loops.map((text) => (
               <span key={text}>{text}</span>
             ))}

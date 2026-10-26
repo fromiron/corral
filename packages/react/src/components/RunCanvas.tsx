@@ -1,11 +1,21 @@
 import type { CorralDefinition } from '@corral/contracts';
-import { Background, Controls, type Node, ReactFlow, ReactFlowProvider } from '@xyflow/react';
+import {
+  Background,
+  Controls,
+  type Edge,
+  MarkerType,
+  type Node,
+  ReactFlow,
+  ReactFlowProvider,
+} from '@xyflow/react';
 import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
+import { useStore } from 'zustand';
 import { StudioStoresProvider } from '../context.tsx';
 import { draftFromDefinition } from '../editor/model.ts';
 import { createEditorStore } from '../editor/store.ts';
 import type { RunCanvasLayout } from '../run/layout.ts';
+import { type ObservedRunRelation, observedRunRelations } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { flowEdges, flowNodes } from './CorralCanvas.tsx';
 import { type CanvasNodeData, nodeTypes } from './NodeViews.tsx';
@@ -45,15 +55,46 @@ export function RunCanvas({
       })),
     [definition.nodes, layout.nodes, selectedNodeId],
   );
-  const edges = useMemo(
-    () =>
-      flowEdges(definition, (kind) => tc(`linkLabel.${kind}`)).map((edge) => ({
+  const relationSignature = useStore(session, (s) =>
+    JSON.stringify(observedRunRelations(s.projection, definition)),
+  );
+  const edges = useMemo<Edge[]>(() => {
+    const observed = JSON.parse(relationSignature) as ObservedRunRelation[];
+    return [
+      ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`)).map((edge) => ({
         ...edge,
+        style: { ...edge.style, opacity: 0.4 },
         deletable: false,
         selectable: false,
       })),
-    [definition, tc],
-  );
+      ...observed.map((relation) => ({
+        id: `observed:${relation.kind}:${relation.source}:${relation.target}`,
+        source: relation.source,
+        sourceHandle: relation.kind,
+        target: relation.target,
+        targetHandle: relation.targetHandle,
+        label: t('observedRelation', {
+          kind: tc(`linkLabel.${relation.kind}`),
+          count: relation.count,
+          active: relation.activeCount,
+        }),
+        ariaLabel: t('observedRelation', {
+          kind: tc(`linkLabel.${relation.kind}`),
+          count: relation.count,
+          active: relation.activeCount,
+        }),
+        className: 'corral-observed-link',
+        style: {
+          stroke: relation.activeCount ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
+          strokeWidth: 2.5,
+        },
+        markerEnd: { type: MarkerType.ArrowClosed },
+        deletable: false,
+        selectable: false,
+        animated: false,
+      })),
+    ];
+  }, [definition, relationSignature, t, tc]);
   return (
     <StudioStoresProvider editor={editor} session={session} readOnly>
       <ReactFlowProvider>
@@ -78,7 +119,7 @@ export function RunCanvas({
             <Controls showInteractive={false} />
           </ReactFlow>
           <p className="pointer-events-none absolute right-2 top-2 rounded bg-raised/90 px-2 py-0.5 text-2xs text-muted-foreground">
-            {t(`layout.${layout.source}`)} · {t('layoutNote')}
+            {t(`layout.${layout.source}`)} · {t('layoutNote')} · {t('relationsLegend')}
           </p>
         </div>
       </ReactFlowProvider>
