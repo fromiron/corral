@@ -13,7 +13,7 @@
 
 1. systemPrompt와 ModelRequestRecord를 확장해 identity·operating_rules·tools_policy·safety·project_context·mandatory_skills·assignment·output_contract를 결정적으로 조립한다. 역할·출처·hash·포함 이유·추정 context를 기록한다.
 2. TaskBrief는 RunInput/assignment/criteria/snapshot 참조의 투영이다. review_only/허용 수정·targeted/release·대상 tree·선택팩·예산을 구별한다. 별도 실행 엔진을 만들지 않는다.
-3. 실제 등록 descriptor에 있는 도구만 안내한다. ask_user/update_plan의 동작 경로가 먼저 구현돼야 해당 행동 규칙을 넣는다. 필수 규칙을 조용히 잘라 넣지 않는다.
+3. 실제 등록 descriptor에 있는 도구만 안내한다. ask_user/update_plan의 동작 경로가 먼저 구현돼야 해당 행동 규칙을 넣는다. 필수 규칙을 조용히 잘라 넣지 않는다. 2026-10-26 보완: tools_policy는 사용 가능한 도구 이름 목록을 다시 나열하지 않는다. 도구 목록과 설명은 요청의 tools 배열이 전달하므로 프롬프트에는 "이 실행에서 제공된 도구만 사용하며 호스트 권한이 우선한다"는 경계만 둔다. 역할별 위임·질문 대상 안내는 유지한다.
 4. 승인한 프로젝트 규약만 snapshot에 포함하며 자동 AGENTS 탐색을 켜지 않는다. 공통 계약은 두 runtime에서 검증하고 Skill 지원 때문에 runtime을 조용히 교체하지 않는다.
 
 ## 검증과 배포

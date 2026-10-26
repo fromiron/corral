@@ -321,7 +321,7 @@ export function autoRouterPrompt(levels?: readonly AutoRouteLevel[]): string {
           `Reasoning is how hard every agent thinks, one of: ${levels.join(', ')}. Use low for simple questions and quick edits, medium for ordinary work, high only for hard analysis, design or tricky code.`,
         ]
       : []),
-    "Write the reason in the request's language, in at most 40 characters.",
+    "Write the reason in the request's language as a short phrase a person can scan at a glance.",
     `Return compact JSON, at most ${AUTO_ROUTE_MAX_RESPONSE_BYTES} UTF-8 bytes.`,
   ].join('\n');
 }

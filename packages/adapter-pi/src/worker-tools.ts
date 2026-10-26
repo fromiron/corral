@@ -201,9 +201,7 @@ export function promptSections(start: PromptStart): PromptSection[] {
         'Complete the requested work with the smallest adequate change.',
         'Report what was observed, inferred, and not checked. A tool request, plan completion, or artifact creation is not proof of task completion.',
       ];
-  const tools = [
-    `Available tools: ${[...start.tools].sort().join(', ') || 'none'}. Use only these tools; host permissions remain authoritative.`,
-  ];
+  const tools = ['Use only the tools provided in this run; host permissions remain authoritative.'];
   if (start.tools.includes('generate_image') && start.role.imageProfile)
     tools.push(
       `For generate_image, use profileId ${JSON.stringify(start.role.imageProfile)}. No other image profile is authorized for this role.`,
