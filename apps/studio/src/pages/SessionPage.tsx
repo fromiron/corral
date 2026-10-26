@@ -283,10 +283,10 @@ function WorkSessionPage() {
   } | null>(null);
   const reference =
     pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
-  const setSearch = (patch: Partial<typeof search>) => {
+  const setSearch = (patch: Partial<typeof search>, options?: { replace?: boolean }) => {
     const next = patchSessionSearch(search, patch);
     rememberView({ ...next, compose: undefined });
-    void navigate({ search: () => next });
+    void navigate({ search: () => next, replace: options?.replace });
   };
   const showPanel = (patch: Partial<typeof search>) => {
     dock.current?.openContext(patch.panel ?? 'chat');
@@ -575,7 +575,7 @@ function WorkSessionPage() {
                   if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
                 }}
                 controls={
-                  active ? (
+                  active && panel !== 'run' ? (
                     <DockRunControls
                       key={active.runId}
                       runId={active.runId}
@@ -1065,14 +1065,14 @@ function RunPanel({
 }: {
   runs: RunSummary[];
   search: SessionSearch;
-  setSearch: (patch: Partial<SessionSearch>) => void;
+  setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
 }) {
   const tw = useTranslations('Workbench');
   const ts = useTranslations('Status');
   const runId = search.run ?? runs.at(-1)?.runId;
   if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
         <Select
           label={tw('chooseRun')}
@@ -1082,6 +1082,7 @@ function RunPanel({
           onValueChange={(value) =>
             setSearch({
               run: value,
+              atSeq: undefined,
               execution: undefined,
               artifact: undefined,
               view: undefined,
@@ -1090,7 +1091,7 @@ function RunPanel({
           }
           options={[...runs].reverse().map((r, index) => ({
             value: r.runId,
-            label: `${tw('runNumber', { number: runs.length - index })} · ${ts(r.status)}`,
+            label: `${tw('runNumber', { number: runs.length - index })}${search.atSeq === undefined ? ` · ${ts(r.status)}` : ''}`,
             hint: r.runId,
           }))}
         />
@@ -1101,14 +1102,14 @@ function RunPanel({
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
           embedded
-          compact
           search={{
+            atSeq: search.atSeq,
             execution: search.execution,
             artifact: search.artifact,
-            view: search.view,
+            view: search.view ?? (search.result ? 'results' : 'run'),
             result: search.result,
           }}
-          setSearch={(patch) => setSearch({ run: runId, ...patch })}
+          setSearch={(patch, options) => setSearch({ run: runId, ...patch }, options)}
         />
       </div>
     </div>

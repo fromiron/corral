@@ -2,6 +2,7 @@ import type { RunProjection } from '@corral/core';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 
@@ -17,7 +18,7 @@ export function EffortJudgments({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Judgments');
   const tr = useTranslations('Reasoning');
   const headingId = useId();
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   const settings = projection?.decisionSettings?.reasoning_effort;
   if (!projection) return null;

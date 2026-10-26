@@ -396,9 +396,7 @@ test('#83 the narrow settings menu keeps the desktop groups and order', async ({
   expect(narrow).toEqual(desktop);
 });
 
-test('#74 a narrow run that waits for a decision points to where it is answered', async ({
-  page,
-}) => {
+test('#74 a narrow run keeps the response reachable outside its detail tabs', async ({ page }) => {
   await page.goto('/?delay=50');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   const examples = join(import.meta.dirname, '..', '..', '..', 'examples');
@@ -417,19 +415,25 @@ test('#74 a narrow run that waits for a decision points to where it is answered'
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
   await page.setViewportSize({ width: 501, height: 757 });
-  const views = page.getByRole('tablist', { name: 'Run view' });
-  await expect(views.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
-  const waiting = page.getByTestId('decision-waiting');
-  await expect(waiting).toContainText('A decision is waiting for you');
-  await waiting.getByRole('button', { name: 'Open the response', exact: true }).click();
-  await expect(views.getByRole('tab', { name: 'Conversation & Reins' })).toHaveAttribute(
+  const monitor = page.getByTestId('run-monitor');
+  await expect(monitor.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
+  const response = monitor
+    .locator('[data-testid^="approval-"]')
+    .filter({ hasText: 'Your decision' });
   await expect(
-    page.getByRole('button', { name: 'Continue with this version' }).first(),
+    response.getByRole('button', { name: 'Continue with this version', exact: true }),
   ).toBeVisible();
-  await expect(waiting).toHaveCount(0);
+  await monitor.getByRole('button', { name: 'Details', exact: true }).click();
+  await monitor.getByRole('tab', { name: 'Usage', exact: true }).click();
+  await expect(
+    response.getByRole('button', { name: 'Continue with this version', exact: true }),
+  ).toBeVisible();
+  await expect(
+    monitor.getByRole('button', { name: 'Continue with this version', exact: true }),
+  ).toHaveCount(1);
 });
 
 test('#84 the desktop shell hears the chosen language, and General says where native options are', async ({

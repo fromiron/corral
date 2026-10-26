@@ -3,6 +3,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { diffLines } from '../artifacts/diff.ts';
 import { Button, RadioGroup, RadioItem } from '../design-kit/index.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import { type ResultItem, runResults } from '../run/results.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { GeneratedImage } from './ArtifactViewer.tsx';
@@ -45,15 +46,13 @@ export function RunResults({
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
 }) {
   const t = useTranslations('Results');
-  const projection = useStore(session, (s) => s.projection);
+  const targetText = useTranslations('RunPage');
+  const projection = useRunDisplay(session, (s) => s.projection);
   const results = useMemo(() => (projection ? runResults(projection) : null), [projection]);
   if (!projection || !results) return null;
 
   const all = [...results.final, ...results.intermediate.flatMap((g) => g.versions)];
-  const chosen =
-    all.find((r) => r.artifactVersionId === selectedId) ??
-    all.find((r) => r.artifactVersionId === results.defaultId) ??
-    null;
+  const chosen = all.find((r) => r.artifactVersionId === (selectedId ?? results.defaultId)) ?? null;
 
   return (
     // UX-03: one column until the results have room for a list beside the text, measured on
@@ -132,6 +131,10 @@ export function RunResults({
             {...(previewUrl ? { previewUrl } : {})}
             {...(onStartFrom ? { onStartFrom } : {})}
           />
+        ) : selectedId !== null ? (
+          <p role="alert" className="p-3 text-sm text-warning">
+            {targetText('resultMissing', { result: selectedId })}
+          </p>
         ) : null}
       </div>
     </div>
@@ -151,11 +154,10 @@ function ResultSection({ heading, children }: { heading: string; children: React
 }
 
 function useAuthorLabel(session: RunSessionStore, executionId: string): string {
-  return useStore(session, (s) => {
-    const nodeId = s.projection?.executions[executionId]?.nodeId;
-    if (!nodeId) return '';
-    return s.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
-  });
+  const nodeId = useRunDisplay(session, (s) => s.projection?.executions[executionId]?.nodeId);
+  return useStore(session, (s) =>
+    nodeId ? (s.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId) : '',
+  );
 }
 
 function ResultButton({
@@ -219,7 +221,7 @@ export function ResultReader({
   const headingId = useId();
   const id = item.artifactVersionId;
   const runId = useStore(session, (s) => s.runId);
-  const status = useStore(session, (s) => s.projection?.status ?? 'created');
+  const status = useRunDisplay(session, (s) => s.projection?.status ?? 'created');
   const text = useStore(session, (s) => s.artifactTexts[id]);
   const parentText = useStore(session, (s) =>
     item.parentVersionId ? s.artifactTexts[item.parentVersionId] : undefined,

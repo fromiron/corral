@@ -133,7 +133,10 @@ test('attachments survive settings; the owned plan and question lead to one comp
   ).toBe(1);
   expect(current().projection.budget.modelCalls).toBe(calls);
   await page.getByRole('button', { name: 'View run', exact: true }).click();
-  await page.getByTestId('compact-run').getByText('Executions', { exact: true }).click();
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('button', { name: 'Details', exact: true })
+    .click();
   for (const card of ['environment', 'context', 'connections', 'changes'])
     await expect(page.getByTestId(`status-${card}`)).toBeVisible();
   await page.getByTestId('status-context').locator(':scope > summary').click();

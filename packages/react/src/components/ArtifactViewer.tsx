@@ -17,6 +17,7 @@ import {
   KitCardHeader as CardHeader,
   KitCardTitle as CardTitle,
 } from '../design-kit/index.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
@@ -48,18 +49,18 @@ export function ArtifactViewer({
   const shownId = followed?.from === versionId ? followed.id : versionId;
   const open = onOpen ?? ((id: string) => setFollowed({ from: versionId, id }));
 
-  const projection = useStore(session, (s) => s.projection);
-  const artifact = useStore(session, (s) => s.projection?.artifacts[shownId]);
+  const projection = useRunDisplay(session, (s) => s.projection);
+  const artifact = useRunDisplay(session, (s) => s.projection?.artifacts[shownId]);
   const text = useStore(session, (s) => s.artifactTexts[shownId]);
   const parentId = artifact?.parentVersionId ?? null;
   const parentText = useStore(session, (s) => (parentId ? s.artifactTexts[parentId] : undefined));
-  const review = useStore(session, (s) => s.projection?.reviews[shownId]);
+  const review = useRunDisplay(session, (s) => s.projection?.reviews[shownId]);
   const lineage = projection ? artifactLineage(projection, shownId) : null;
   const inputs = lineage?.inputArtifactVersionIds;
   // The revised version is listed once, as the parent.
   const madeFrom = inputs?.filter((id) => id !== parentId);
   const definition = useStore(session, (s) => s.definition);
-  const author = useStore(session, (s) =>
+  const author = useRunDisplay(session, (s) =>
     artifact ? s.projection?.executions[artifact.authorExecutionId] : undefined,
   );
   const [comparingId, setComparingId] = useState<string | null>(null);

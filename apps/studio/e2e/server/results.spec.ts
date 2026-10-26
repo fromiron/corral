@@ -23,15 +23,23 @@ async function finishedRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
+  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('button', { name: 'Results', exact: true })
+    .click();
 }
 
-test('a finished run opens on its result, and a reload keeps the chosen version', async ({
+test('the Results view opens its result, and a reload keeps the chosen version', async ({
   page,
   corral,
 }) => {
   await corral.open('/');
   await finishedRun(page);
-  await expect(page.getByRole('tab', { name: 'Results' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/view=results/);
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   const results = page.getByRole('navigation', { name: 'Results' });
   // One agent, one Output: a single final result.

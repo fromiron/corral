@@ -92,7 +92,7 @@ test.describe('extension input during an SDK run', () => {
       await page.goto(
         `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
       );
-      const detail = page.getByTestId('compact-run');
+      const detail = page.getByTestId('run-monitor');
       await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
       await detail.getByRole('button', { name: 'Confirm', exact: true }).click();
       await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();

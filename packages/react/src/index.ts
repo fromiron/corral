@@ -44,6 +44,16 @@ export {
   type ModelPrices,
   type RunCostEstimate,
 } from './run/cost.ts';
+export { RunDisplayProvider, type RunDisplaySnapshot, useRunDisplay } from './run/display.tsx';
+export {
+  type ExecutionInterval,
+  type ExecutionSegment,
+  executionIntervals,
+  historicalStreams,
+  type ObservedCallDuration,
+  type RunHistory,
+  reconstructRunHistory,
+} from './run/history.ts';
 export { type RunCanvasLayout, runCanvasLayout } from './run/layout.ts';
 export { createRunRecovery, type RecoveryStorage, type RunRecovery } from './run/recovery.ts';
 export {
@@ -55,8 +65,12 @@ export {
 export {
   decisionRunStatus,
   type NodeRunStatus,
+  type NodeRunSummary,
   nodeExecutionCount,
   nodeRunStatus,
+  nodeRunSummary,
+  type ObservedRunRelation,
+  observedRunRelations,
 } from './run/selectors.ts';
 export {
   createRunSession,

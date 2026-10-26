@@ -2,17 +2,20 @@ import type { CorralDefinition } from '@corral/contracts';
 import {
   Background,
   Controls,
+  type Edge,
+  MarkerType,
   type Node,
   ReactFlow,
   ReactFlowProvider,
-  useReactFlow,
 } from '@xyflow/react';
-import { type RefObject, useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { StudioStoresProvider } from '../context.tsx';
 import { draftFromDefinition } from '../editor/model.ts';
 import { createEditorStore } from '../editor/store.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunCanvasLayout } from '../run/layout.ts';
+import { type ObservedRunRelation, observedRunRelations } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { flowEdges, flowNodes } from './CorralCanvas.tsx';
 import { type CanvasNodeData, nodeTypes } from './NodeViews.tsx';
@@ -37,7 +40,6 @@ export function RunCanvas({
 }) {
   const t = useTranslations('RunCanvas');
   const tc = useTranslations('Canvas');
-  const frame = useRef<HTMLDivElement>(null);
   // Node views read node settings from an editor store; this one is never edited.
   const editor = useMemo(
     () => createEditorStore({ ...draftFromDefinition(definition), layout: layout.nodes }),
@@ -53,24 +55,50 @@ export function RunCanvas({
       })),
     [definition.nodes, layout.nodes, selectedNodeId],
   );
-  const edges = useMemo(
-    () =>
-      flowEdges(definition, (kind) => tc(`linkLabel.${kind}`)).map((edge) => ({
+  const relationSignature = useRunDisplay(session, (s) =>
+    JSON.stringify(observedRunRelations(s.projection, definition)),
+  );
+  const edges = useMemo<Edge[]>(() => {
+    const observed = JSON.parse(relationSignature) as ObservedRunRelation[];
+    return [
+      ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`)).map((edge) => ({
         ...edge,
+        style: { ...edge.style, opacity: 0.4 },
         deletable: false,
         selectable: false,
       })),
-    [definition, tc],
-  );
+      ...observed.map((relation) => ({
+        id: `observed:${relation.kind}:${relation.source}:${relation.target}`,
+        source: relation.source,
+        sourceHandle: relation.kind,
+        target: relation.target,
+        targetHandle: relation.targetHandle,
+        label: t('observedRelation', {
+          kind: tc(`linkLabel.${relation.kind}`),
+          count: relation.count,
+          active: relation.activeCount,
+        }),
+        ariaLabel: t('observedRelation', {
+          kind: tc(`linkLabel.${relation.kind}`),
+          count: relation.count,
+          active: relation.activeCount,
+        }),
+        className: 'corral-observed-link',
+        style: {
+          stroke: relation.activeCount ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
+          strokeWidth: 2.5,
+        },
+        markerEnd: { type: MarkerType.ArrowClosed },
+        deletable: false,
+        selectable: false,
+        animated: false,
+      })),
+    ];
+  }, [definition, relationSignature, t, tc]);
   return (
     <StudioStoresProvider editor={editor} session={session} readOnly>
       <ReactFlowProvider>
-        <div
-          ref={frame}
-          className="relative h-full w-full"
-          role="application"
-          aria-label={t('label')}
-        >
+        <div className="relative h-full w-full" role="application" aria-label={t('label')}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -89,35 +117,12 @@ export function RunCanvas({
           >
             <Background />
             <Controls showInteractive={false} />
-            <FitOnResize frame={frame} />
           </ReactFlow>
           <p className="pointer-events-none absolute right-2 top-2 rounded bg-raised/90 px-2 py-0.5 text-2xs text-muted-foreground">
-            {t(`layout.${layout.source}`)} · {t('layoutNote')}
+            {t(`layout.${layout.source}`)} · {t('layoutNote')} · {t('relationsLegend')}
           </p>
         </div>
       </ReactFlowProvider>
     </StudioStoresProvider>
   );
-}
-
-/** Keeps the whole graph in view when its area changes size (window resize, layout switch). */
-function FitOnResize({ frame }: { frame: RefObject<HTMLDivElement | null> }) {
-  const { fitView } = useReactFlow();
-  useEffect(() => {
-    const el = frame.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    let last = '';
-    const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const size = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
-      if (size === last) return;
-      const first = last === '';
-      last = size;
-      // The first size is the initial fitView's job.
-      if (!first) void fitView({ padding: 0.08, maxZoom: 1 });
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [frame, fitView]);
-  return null;
 }

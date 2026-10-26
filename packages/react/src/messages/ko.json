@@ -156,7 +156,31 @@
       "failed": "실패",
       "executions": "{count, plural, one {실행 #회} other {실행 #회}}",
       "waiting": "결정 대기",
-      "decisions": "{count, plural, one {판단 #회} other {판단 #회}}"
+      "decisions": "{count, plural, one {판단 #회} other {판단 #회}}",
+      "model": "모델 응답 생성",
+      "tool": "도구 실행",
+      "finalizing": "마무리 중",
+      "cancelled": "취소됨",
+      "queued": "대기열",
+      "ready": "준비",
+      "waiting_children": "하위 작업 대기",
+      "waiting_message": "답변 대기",
+      "waiting_approval": "승인 대기",
+      "pausing": "정지 요청 중",
+      "paused": "일시정지",
+      "cancelling": "취소 중",
+      "stateCount": "{status} {count}개",
+      "previousFailures": "이전 실패 시도 {count}회",
+      "iterations": "반복 {count}회 관측",
+      "loopOutcome": {
+        "pending": "진행 중",
+        "pass": "통과",
+        "revise": "수정 요청",
+        "inconclusive": "판단 불가",
+        "cap_reached": "회차 한도 도달",
+        "cancelled": "취소됨"
+      },
+      "mixed": "여러 작업 상태"
     }
   },
   "Inspector": {
@@ -534,7 +558,8 @@
     "evidenceResults": "결과",
     "evidenceChecks": "검사",
     "uncertainWrite": "결과 모름",
-    "evidenceCheckEarlier": "이전 기준"
+    "evidenceCheckEarlier": "이전 기준",
+    "waitingExecutions": "실행 {count}개 대기 중"
   },
   "Timeline": {
     "heading": "타임라인",
@@ -846,7 +871,9 @@
       "saved": "저장된 팀의 배치",
       "auto": "자동 배치"
     },
-    "layoutNote": "위치일 뿐이며 실행 내용은 바꾸지 않습니다."
+    "layoutNote": "위치일 뿐이며 실행 내용은 바꾸지 않습니다.",
+    "relationsLegend": "옅은 선: 정의 연결 · 굵은 선: 관측된 호출",
+    "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개"
   },
   "Judgments": {
     "heading": "추론 강도 판정",
@@ -4213,5 +4240,39 @@
     "statTokens": "{tokens} 토큰",
     "statCache": "캐시 적중 {share}",
     "statCacheUnreported": "캐시 보고 없음"
+  },
+  "RunMonitor": {
+    "views": "실행 보기",
+    "graph": "그래프",
+    "events": "이벤트",
+    "details": "상세",
+    "closeDetails": "상세 닫기",
+    "overview": "개요",
+    "calls": "호출",
+    "usage": "사용량",
+    "chooseExecution": "실행을 선택하면 호출 기록을 볼 수 있습니다.",
+    "time": "시간축",
+    "cursor": "조회 시점",
+    "record": "기록 #{seq}",
+    "previous": "이전",
+    "next": "다음",
+    "latest": "최신으로",
+    "historical": "기록 #{seq} 조회 · #{visible}까지 복원 · 이후 기록 {newer}개. 현재 실행 제어는 사용할 수 없습니다.",
+    "historyLoading": "기록 #{seq}을 아직 읽을 수 없습니다. 연속된 #{visible}까지의 기록을 표시합니다.",
+    "historyGap": "기록 #{expected}이 누락되었습니다. 연속된 #{visible}까지만 복원할 수 있습니다.",
+    "readOnly": "과거 기록은 읽기 전용입니다. 현재 실행을 제어하려면 최신으로 돌아가세요.",
+    "currentEvidence": "현재 파일 작업·검증·복구 정보는 최신 상태에서 확인할 수 있습니다.",
+    "executionMissingAt": "실행 {executionId}은 이 시점에 존재하지 않습니다.",
+    "noIntervals": "이 시점에 관측된 실행 구간이 없습니다.",
+    "lifespanNote": "대기를 포함한 관측 구간입니다. 끝나지 않은 실행은 마지막 기록 시점까지만 표시합니다.",
+    "lifespan": "{start}부터 {end}까지 관측",
+    "milliseconds": "{value}ms",
+    "iteration": "반복 {number}회",
+    "attempt": "시도 {number}",
+    "lastObserved": "마지막 관측까지",
+    "model": "모델 전송~종료",
+    "tool": "도구 시작~종료",
+    "nonAgentNode": "이 노드는 별도의 에이전트 실행을 만들지 않습니다. 처리 결과는 그래프와 기록된 결과에서 확인할 수 있습니다.",
+    "workPlans": "작업 계획"
   }
 }

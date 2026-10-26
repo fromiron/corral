@@ -12,6 +12,7 @@ import {
   KitCardTitle,
   Select,
 } from '../design-kit/index.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
 
@@ -28,10 +29,18 @@ function kindOf(event: RunEvent): string {
   return event.type.slice(0, event.type.indexOf('.'));
 }
 
-export function Timeline({ session }: { session: RunSessionStore }) {
+export function Timeline({
+  session,
+  selectedSeq,
+  onSelectSeq,
+}: {
+  session: RunSessionStore;
+  selectedSeq?: number | undefined;
+  onSelectSeq?: (seq: number) => void;
+}) {
   const t = useTranslations('Timeline');
-  const events = useStore(session, (s) => s.events);
-  const executionViews = useStore(session, (s) => s.projection?.executions);
+  const events = useRunDisplay(session, (s) => s.events);
+  const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
   const definition = useStore(session, (s) => s.definition);
   const nodeLabel = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -60,7 +69,10 @@ export function Timeline({ session }: { session: RunSessionStore }) {
       ),
     [events, actor, kind, execution],
   );
-  const selected = events.find((e) => e.eventId === selectedId) ?? null;
+  const selected =
+    events.find((e) =>
+      selectedSeq !== undefined ? e.runSeq === selectedSeq : e.eventId === selectedId,
+    ) ?? null;
 
   const rows = useVirtualizer({
     count: shown.length,
@@ -135,7 +147,7 @@ export function Timeline({ session }: { session: RunSessionStore }) {
                 {rows.getVirtualItems().map((item) => {
                   const event = shown[item.index];
                   if (!event) return null;
-                  const isSelected = event.eventId === selectedId;
+                  const isSelected = event.eventId === selected?.eventId;
                   return (
                     <li
                       key={item.key}
@@ -149,7 +161,10 @@ export function Timeline({ session }: { session: RunSessionStore }) {
                         variant={isSelected ? 'secondary' : 'ghost'}
                         size="default"
                         aria-pressed={isSelected}
-                        onClick={() => setSelectedId(event.eventId)}
+                        onClick={() => {
+                          setSelectedId(event.eventId);
+                          onSelectSeq?.(event.runSeq);
+                        }}
                         className="w-full justify-start text-left [&>span:last-child]:contents [&>span:last-child>span]:contents"
                       >
                         <span className="w-12 shrink-0 font-mono text-muted-foreground">

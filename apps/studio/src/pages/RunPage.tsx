@@ -9,30 +9,44 @@ import {
   ExecutionTranscript,
   ExecutionTree,
   HarnessDetails,
+  historicalStreams,
   QuestionsPanel,
   ReinsPanel,
-  ResultReader,
   RunActions,
   RunCanvas,
   type RunCanvasLayout,
-  RunOutput,
+  RunDisplayProvider,
+  type RunDisplaySnapshot,
   RunReason,
   RunResults,
   type RunSessionStore,
+  reconstructRunHistory,
   runCanvasLayout,
   runResults,
   StatusBadge,
   TaskBoard,
   Timeline,
+  useRunDisplay,
   useSteerTarget,
   WorkPlanPanel,
 } from '@corral/react';
-import { Banner, BannerActions, BannerTitle, Button } from '@corral/react/design-kit';
-import { ArrowRight } from '@corral/react/icons';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  Button,
+  Slider,
+  TabItem,
+  TabPanel,
+  Tabs,
+  TabsList,
+} from '@corral/react/design-kit';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { useModelPrices } from '../prices.ts';
 import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
@@ -42,6 +56,7 @@ import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
+import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
@@ -57,7 +72,9 @@ export function RunPage() {
       key={panelKey(services, { kind: 'run', runId })}
       runId={runId}
       search={search}
-      setSearch={(patch) => void navigate({ search: (s) => ({ ...s, ...patch }) })}
+      setSearch={(patch, options) =>
+        void navigate({ search: (s) => ({ ...s, ...patch }), replace: options?.replace })
+      }
     />
   );
 }
@@ -71,15 +88,13 @@ export function RunDetail({
   search,
   setSearch,
   embedded = false,
-  compact = false,
   sessionId = null,
 }: {
   sessionId?: string | null;
   runId: string;
   search: RunDetailSearch;
-  setSearch: (patch: RunDetailSearch) => void;
+  setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded?: boolean;
-  compact?: boolean;
 }) {
   const t = useTranslations('RunPage');
   const { runFor, retainRun, transport, repository } = useServices();
@@ -111,21 +126,6 @@ export function RunDetail({
     };
   }, [transport, repository, runId]);
 
-  // whether the run had already ended when the page opened. Decided once, so a run
-  // that ends while it is watched never moves the page to its results.
-  const [openedEnded, setOpenedEnded] = useState<{ runId: string; ended: boolean } | null>(null);
-  useEffect(() => {
-    let live = true;
-    transport.getSnapshot(runId).then(
-      ({ projection }) =>
-        live && setOpenedEnded({ runId, ended: TERMINAL_RUN_STATUSES.has(projection.status) }),
-      () => live && setOpenedEnded({ runId, ended: false }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [transport, runId]);
-
   if (activeRunId !== runId || !definition) {
     return (
       <main className="flex flex-col items-start gap-3 p-6">
@@ -133,7 +133,9 @@ export function RunDetail({
         <p role="status" className="text-sm text-muted-foreground">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
-        {activeRunId === runId ? <RunActions session={session} /> : null}
+        {activeRunId === runId && search.atSeq === undefined ? (
+          <RunActions session={session} />
+        ) : null}
         {error ? (
           <Button
             variant="tertiary"
@@ -149,257 +151,17 @@ export function RunDetail({
       </main>
     );
   }
-  const opened = openedEnded?.runId === runId ? openedEnded.ended : null;
-  if (compact)
-    return (
-      <CompactRunWorkspace
-        key={runId}
-        sessionId={sessionId}
-        session={session}
-        definition={definition}
-        search={search}
-        setSearch={setSearch}
-      />
-    );
   return (
     <RunWorkspace
+      runId={runId}
       key={runId}
       session={session}
       definition={definition}
-      openedEnded={opened}
+      sessionId={sessionId}
       search={search}
       setSearch={setSearch}
       embedded={embedded}
     />
-  );
-}
-
-/** A session observes and controls its run here; the graph and full history keep their own page. */
-function CompactRunWorkspace({
-  session,
-  sessionId,
-  definition,
-  search,
-  setSearch,
-}: {
-  session: RunSessionStore;
-  sessionId: string | null;
-  definition: CorralDefinition;
-  search: RunDetailSearch;
-  setSearch: (patch: RunDetailSearch) => void;
-}) {
-  const t = useTranslations('RunPage');
-  const n = useTranslations('Navigation');
-  const navigate = useNavigate();
-  const projection = useStore(session, (state) => state.projection);
-  const savedTeam = useSavedTeam(projection?.corralId);
-  const target = useSteerTarget(session, search.execution ?? null);
-  const controls = useRef<HTMLDivElement>(null);
-  const response = useRef<HTMLDivElement>(null);
-  const openedResponseRun = useRef<string | null>(null);
-  const trigger = useRef<HTMLElement | null>(null);
-  const detailsLink = useRef<HTMLAnchorElement>(null);
-  const { previewUrl } = useServices();
-  useEffect(() => {
-    if (search.execution) {
-      controls.current?.focus({ preventScroll: true });
-      controls.current?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [search.execution]);
-  useEffect(() => {
-    if (!projection?.startedAt || openedResponseRun.current === projection.runId) return;
-    openedResponseRun.current = projection.runId;
-    // Navigation to this run may reveal an existing decision. Later events must not
-    // move focus out of the composer or an answer the person is already editing.
-    if (
-      search.execution ||
-      search.artifact ||
-      search.result ||
-      search.view === 'results' ||
-      !pendingInteractions(session.getState().events, projection).length
-    )
-      return;
-    response.current?.focus({ preventScroll: true });
-    response.current?.scrollIntoView({ block: 'nearest' });
-  }, [projection, session, search.execution, search.artifact, search.result, search.view]);
-  if (!projection) return null;
-  const version =
-    search.view === 'results'
-      ? (search.result ?? search.artifact)
-      : (search.artifact ?? search.result);
-  const results = runResults(projection);
-  const result =
-    search.view === 'results' || search.result
-      ? [...results.final, ...results.intermediate.flatMap((group) => group.versions)].find(
-          (item) => item.artifactVersionId === version,
-        )
-      : null;
-  const startFrom = savedTeam
-    ? (from: { runId: string; artifactVersionId: string }) =>
-        void navigate({
-          to: '/corrals/$corralId/edit',
-          params: { corralId: projection.corralId ?? '' },
-          search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
-        })
-    : null;
-  return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="compact-run">
-      <RunSummary session={session} definition={definition} compact />
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
-        <div
-          ref={response}
-          data-run-response={projection.runId}
-          tabIndex={-1}
-          className="rounded outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
-          <ApprovalPanel
-            session={session}
-            compact
-            showPlan={false}
-            onOpenArtifact={(artifact) => {
-              const selectable = [
-                ...results.final,
-                ...results.intermediate.flatMap((group) => group.versions),
-              ].some((item) => item.artifactVersionId === artifact);
-              setSearch(
-                selectable && !projection.reviews[artifact]
-                  ? { result: artifact, view: 'results', artifact: undefined }
-                  : { artifact, view: 'run', result: undefined },
-              );
-            }}
-          />
-        </div>
-        {result ? (
-          <div className="rounded-lg fill-group">
-            <div className="flex justify-end p-2">
-              <Button
-                variant="ghost"
-                size="compact"
-                onClick={() => setSearch({ artifact: undefined, result: undefined })}
-              >
-                {n('closeResult')}
-              </Button>
-            </div>
-            <ResultReader
-              key={result.artifactVersionId}
-              session={session}
-              item={result}
-              embedded
-              {...(previewUrl ? { previewUrl } : {})}
-              {...(startFrom ? { onStartFrom: startFrom } : {})}
-            />
-          </div>
-        ) : search.result ? (
-          <p role="alert" className="text-sm text-warning">
-            {t('resultMissing', { result: search.result })}
-          </p>
-        ) : !version ? (
-          <ResultChoices
-            results={results}
-            onOpen={(id) => setSearch({ result: id, view: 'results' })}
-          />
-        ) : version ? (
-          <ArtifactViewer
-            session={session}
-            versionId={version}
-            onOpen={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
-            {...(startFrom ? { onStartFrom: startFrom } : {})}
-            onClose={() => setSearch({ artifact: undefined, result: undefined })}
-          />
-        ) : null}
-        {sessionId && (result || version) ? (
-          <MessageBranch
-            runId={projection.runId}
-            artifactVersionId={result?.artifactVersionId ?? version!}
-            disabled={!TERMINAL_RUN_STATUSES.has(projection.status)}
-          />
-        ) : null}
-        <div
-          ref={controls}
-          tabIndex={-1}
-          hidden={!search.execution}
-          className="rounded-lg fill-group p-3 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
-          <div className="mb-3 flex justify-end">
-            <Button
-              variant="ghost"
-              size="compact"
-              onClick={() => {
-                setSearch({ execution: undefined });
-                (trigger.current?.isConnected ? trigger.current : detailsLink.current)?.focus();
-              }}
-            >
-              {n('closeControls')}
-            </Button>
-          </div>
-          {search.execution && !projection.executions[search.execution] ? (
-            <p role="alert" className="mb-3 text-xs text-warning">
-              {t('executionMissing', { executionId: search.execution })}
-            </p>
-          ) : null}
-          <ReinsPanel session={session} target={target} />
-          {sessionId && search.execution && target ? (
-            <ExecutionEvidence
-              session={session}
-              sessionId={sessionId}
-              executionId={target.executionId}
-              onOpenArtifact={(artifact) => setSearch({ artifact, view: 'run', result: undefined })}
-            />
-          ) : null}
-          {search.execution && target ? (
-            <details className="mt-4">
-              <summary className="cursor-pointer text-xs font-medium">{t('conversation')}</summary>
-              <div className="mt-2 flex h-64 flex-col">
-                <ExecutionTranscript
-                  session={session}
-                  executionId={target.executionId}
-                  onOpenArtifact={(artifact) =>
-                    setSearch({ artifact, view: 'run', result: undefined })
-                  }
-                />
-              </div>
-            </details>
-          ) : null}
-        </div>
-        <details className="rounded-lg fill-group p-2 text-sm">
-          <summary className="cursor-pointer text-xs font-medium">{t('executions')}</summary>
-          <div className="mt-3 flex flex-col gap-3">
-            <Button
-              variant="tertiary"
-              size="compact"
-              className="self-start"
-              render={
-                <Link
-                  ref={detailsLink}
-                  to="/runs/$runId"
-                  params={{ runId: projection.runId }}
-                  search={{ ...search, view: search.view ?? 'run' }}
-                />
-              }
-            >
-              {n('openRunDetails')}
-              <ArrowRight />
-            </Button>
-            <RunStatusCards
-              session={session}
-              sessionId={sessionId}
-              executionId={search.execution ?? null}
-            />
-            <WorkPlanPanel session={session} />
-            <ExecutionTree
-              session={session}
-              compact
-              selectedExecutionId={search.execution ?? null}
-              onSteer={(execution) => {
-                trigger.current =
-                  document.activeElement instanceof HTMLElement ? document.activeElement : null;
-                setSearch({ execution, view: 'run' });
-              }}
-            />
-          </div>
-        </details>
-      </div>
-    </div>
   );
 }
 
@@ -437,88 +199,243 @@ function ResultChoices({
   );
 }
 
+const NO_STREAMS = {};
+
 function RunWorkspace({
+  runId,
   session,
+  sessionId,
   definition,
-  openedEnded,
   search,
   setSearch,
   embedded,
 }: {
+  runId: string;
   session: RunSessionStore;
+  sessionId: string | null;
   definition: CorralDefinition;
-  /** Whether the run had ended when the page opened; null until known. */
-  openedEnded: boolean | null;
   search: RunDetailSearch;
-  setSearch: (patch: RunDetailSearch) => void;
+  setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded: boolean;
 }) {
   const t = useTranslations('RunPage');
-  const { execution, artifact, view: chosenView, result } = search;
+  const m = useTranslations('RunMonitor');
+  const { execution, artifact, result, atSeq } = search;
+  const historical = atSeq !== undefined;
+  const view = search.view ?? (result ? 'results' : 'run');
   const navigate = useNavigate();
   const Main = embedded ? 'div' : 'main';
   const { previewUrl } = useServices();
-  const projection = useStore(session, (s) => s.projection);
-  // a run that had ended when the page opened shows its results first. A chosen
-  // view, or something picked in the run view, is kept; results arriving later never move it.
-  const view: RunPageView | null =
-    chosenView ??
-    (execution || artifact ? 'run' : openedEnded === null ? null : openedEnded ? 'results' : 'run');
-  const chooseView = (next: RunPageView) => setSearch({ view: next });
-  const savedTeam = useSavedTeam(projection?.corralId);
-  const startFrom = savedTeam
-    ? (from: { runId: string; artifactVersionId: string }) =>
-        void navigate({
-          to: '/corrals/$corralId/edit',
-          params: { corralId: projection?.corralId ?? '' },
-          search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
-        })
-    : null;
+  const liveProjection = useStore(session, (s) => s.projection);
+  const events = useStore(session, (s) => s.events);
+  const history = useMemo(
+    () => (atSeq === undefined ? null : reconstructRunHistory(runId, events, atSeq)),
+    [runId, events, atSeq],
+  );
+  const completedStreams = useStore(
+    session,
+    useShallow((s) => (history ? historicalStreams(history.projection, s.streams) : NO_STREAMS)),
+  );
+  const display = useMemo<RunDisplaySnapshot | null>(
+    () =>
+      history
+        ? { projection: history.projection, events: history.events, streams: completedStreams }
+        : null,
+    [history, completedStreams],
+  );
+  const projection = display?.projection ?? liveProjection;
+  const head = events.at(-1)?.runSeq ?? 0;
+  const chooseSeq = (value: number | undefined) => setSearch({ atSeq: value }, { replace: true });
+  const savedTeam = useSavedTeam(liveProjection?.corralId);
+  const layout = useSavedLayout(definition, liveProjection?.corralId ?? null, savedTeam);
+  const prices = useModelPrices();
+  const target = useSteerTarget(session, execution ?? null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [panel, setPanel] = useState('canvas');
+  const [detailOpen, setDetailOpen] = useState(Boolean(execution || artifact));
+  const [monitor, setMonitor] = useState('graph');
+  const [detail, setDetail] = useState('overview');
+  const trigger = useRef<HTMLElement | null>(null);
+  const detailsButton = useRef<HTMLButtonElement>(null);
+  const response = useRef<HTMLDivElement>(null);
+  const openedResponseRun = useRef<string | null>(null);
   const hasOutput = useStore(session, (s) => s.outputText !== null);
   useEffect(() => {
-    if (hasOutput) markRunReviewed();
-  }, [hasOutput]);
-  const target = useSteerTarget(session, execution ?? null);
-  const layout = useSavedLayout(definition, projection?.corralId ?? null, savedTeam);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  // Below 768px one panel shows at a time; wider screens show them all.
-  const [panel, setPanel] = useState<NarrowPanel>('canvas');
-  const sideRef = useRef<HTMLElement>(null);
-  const waitingDecisions = useStore(
-    session,
-    (s) =>
-      Object.values(s.projection?.approvals ?? {}).filter((a) => a.status === 'pending').length,
-  );
-  // UX-03: the run view follows its own width (a side panel is narrow on any screen).
-  const shown = (name: NarrowPanel) => (panel === name ? '' : '@max-3xl:hidden');
-
-  const chooseExecution = (id: string) => {
-    setSelectedNodeId(null);
+    if (hasOutput && !historical) markRunReviewed();
+  }, [hasOutput, historical]);
+  useEffect(() => {
+    if (!execution && !artifact) return;
+    setDetailOpen(true);
     setPanel('side');
-    setSearch({ execution: id });
+  }, [execution, artifact]);
+  useEffect(() => {
+    if (historical || !projection?.startedAt || openedResponseRun.current === projection.runId)
+      return;
+    openedResponseRun.current = projection.runId;
+    // Only an existing decision at entry may move focus; later events leave editing alone.
+    if (
+      execution ||
+      artifact ||
+      result ||
+      view === 'results' ||
+      !pendingInteractions(session.getState().events, projection).length
+    )
+      return;
+    response.current?.focus({ preventScroll: true });
+    response.current?.scrollIntoView({ block: 'nearest' });
+  }, [projection, session, execution, artifact, result, view, historical]);
+  const rememberTrigger = () => {
+    trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+  const chooseExecution = (id: string) => {
+    rememberTrigger();
+    setSelectedNodeId(null);
+    setDetailOpen(true);
+    setPanel('side');
+    setSearch({ execution: id, artifact: undefined });
   };
   const openArtifact = (id: string) => {
+    rememberTrigger();
+    setDetailOpen(true);
+    setDetail('overview');
     setPanel('side');
-    setSearch({ artifact: id });
+    setSearch({ artifact: id, view: 'run', result: undefined });
   };
-  const unknownExecution =
-    execution && projection && !projection.executions[execution] ? execution : null;
+  const closeDetail = () => {
+    setSelectedNodeId(null);
+    setDetailOpen(false);
+    const returnTo = trigger.current?.closest('.run-tree') ? 'tree' : 'canvas';
+    setPanel(returnTo);
+    setSearch({ execution: undefined, artifact: undefined });
+    requestAnimationFrame(() =>
+      (trigger.current?.isConnected ? trigger.current : detailsButton.current)?.focus(),
+    );
+  };
+  const startFrom =
+    savedTeam && !historical
+      ? (from: { runId: string; artifactVersionId: string }) =>
+          void navigate({
+            to: '/corrals/$corralId/edit',
+            params: { corralId: projection?.corralId ?? '' },
+            search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
+          })
+      : null;
   const highlightedNode =
     selectedNodeId ?? (execution ? (projection?.executions[execution]?.nodeId ?? null) : null);
+  const historicalExecution = execution ? projection?.executions[execution] : null;
+  const selectedTarget = historical
+    ? historicalExecution
+      ? {
+          executionId: historicalExecution.executionId,
+          nodeLabel:
+            definition.nodes.find((node) => node.id === historicalExecution.nodeId)?.label ??
+            historicalExecution.nodeId,
+          finished: TERMINAL_EXECUTION_STATUSES.has(historicalExecution.status),
+        }
+      : null
+    : execution
+      ? target
+      : null;
+  const results = projection ? runResults(projection) : null;
+  const selectedResultId = result ?? results?.defaultId ?? undefined;
 
-  if (view === null) {
-    return (
-      <div className="@container flex h-full min-h-0 flex-col">
-        <RunSummary session={session} definition={definition} view="run" onView={chooseView} />
-      </div>
-    );
-  }
-
-  if (view === 'results') {
-    return (
-      <div className="@container flex h-full min-h-0 flex-col">
-        <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
-        <Main className="min-h-0 flex-1">
+  return (
+    <RunDisplayProvider snapshot={display}>
+      <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
+        <RunSummary
+          session={session}
+          definition={definition}
+          view={view}
+          readOnly={historical}
+          onView={(view) => setSearch({ view })}
+        />
+        <div className="shrink-0 border-b border-line p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-40 flex-1">
+              <Slider
+                size="compact"
+                label={m('cursor')}
+                min={0}
+                max={Math.max(1, head)}
+                step={1}
+                value={Math.min(atSeq ?? head, head)}
+                formatValue={(value) => m('record', { seq: value })}
+                disabled={head === 0}
+                onChange={(value) => chooseSeq(typeof value === 'number' ? value : value[0])}
+              />
+            </div>
+            <Button
+              variant="tertiary"
+              size="compact"
+              disabled={(atSeq ?? head) === 0}
+              onClick={() => chooseSeq(Math.max(0, (atSeq ?? head) - 1))}
+            >
+              {m('previous')}
+            </Button>
+            <Button
+              variant="tertiary"
+              size="compact"
+              disabled={!historical || atSeq >= head}
+              onClick={() => chooseSeq(Math.min(head, (atSeq ?? head) + 1))}
+            >
+              {m('next')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={!historical}
+              onClick={() => chooseSeq(undefined)}
+            >
+              {m('latest')}
+            </Button>
+          </div>
+          {historical ? (
+            <p
+              role="status"
+              data-testid="history-mode"
+              className="mt-2 text-xs text-muted-foreground"
+            >
+              {m('historical', {
+                seq: atSeq,
+                visible: projection?.lastSeq ?? 0,
+                newer: Math.max(0, head - atSeq),
+              })}
+            </p>
+          ) : null}
+          {history?.status === 'loading' ? (
+            <p role="status" className="mt-2 text-xs text-warning">
+              {m('historyLoading', { seq: atSeq ?? 0, visible: history.projection.lastSeq })}
+            </p>
+          ) : null}
+          {history?.gap ? (
+            <p role="alert" className="mt-2 text-xs text-warning">
+              {m('historyGap', {
+                expected: history.gap.expectedSeq,
+                visible: history.projection.lastSeq,
+              })}
+            </p>
+          ) : null}
+        </div>
+        <fieldset disabled={historical} hidden={historical} className="m-0 min-w-0 border-0 p-0">
+          <div
+            ref={response}
+            data-run-response={projection?.runId}
+            tabIndex={-1}
+            className="shrink-0 outline-none"
+          >
+            <ApprovalPanel
+              session={session}
+              compact
+              showPlan={false}
+              onOpenArtifact={openArtifact}
+              className="shrink-0 border-b border-line px-3 py-2"
+            />
+          </div>
+        </fieldset>
+        <Main
+          style={view !== 'results' ? { display: 'none' } : undefined}
+          className="min-h-0 flex-1 overflow-auto"
+        >
           <RunResults
             session={session}
             selectedId={result ?? null}
@@ -526,137 +443,247 @@ function RunWorkspace({
             {...(previewUrl ? { previewUrl } : {})}
             {...(startFrom ? { onStartFrom: startFrom } : {})}
           />
+          {sessionId && selectedResultId && projection?.artifacts[selectedResultId] ? (
+            <MessageBranch
+              runId={projection.runId}
+              artifactVersionId={selectedResultId}
+              disabled={historical || !TERMINAL_RUN_STATUSES.has(projection.status)}
+            />
+          ) : null}
         </Main>
-        {/* A waiting decision stays at the foot of what it is about: read, then decide (UX-03). */}
-        <ApprovalPanel
-          session={session}
-          compact
-          onOpenArtifact={(id) => setSearch({ view: 'results', result: id })}
-          className="shrink-0 border-t border-line px-3 py-2"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="@container flex h-full min-h-0 flex-col">
-      <RunSummary session={session} definition={definition} view={view} onView={chooseView} />
-      <NarrowViews panel={panel} onChoose={setPanel} />
-      {/* On a narrow run the answer lives in another view: point to it, never jump (#74). */}
-      {waitingDecisions && panel !== 'side' ? (
-        <Banner
-          data-testid="decision-waiting"
-          status="warning"
-          contrast="high"
-          size="compact"
-          variant="fixed"
-          role="note"
-          className="@3xl:hidden"
+        <Tabs
+          style={view === 'results' ? { display: 'none' } : undefined}
+          value={monitor}
+          onValueChange={(value) => {
+            setMonitor(value);
+            setPanel('canvas');
+          }}
+          className="flex min-h-0 flex-1 flex-col"
         >
-          <BannerTitle>{t('decisionWaiting', { count: waitingDecisions })}</BannerTitle>
-          <BannerActions>
+          <div className="flex flex-wrap items-center gap-2 border-b border-line p-2">
+            <TabsList aria-label={m('views')}>
+              <TabItem value="graph" label={m('graph')} onClick={() => setPanel('canvas')} />
+              <TabItem value="time" label={m('time')} onClick={() => setPanel('canvas')} />
+              <TabItem value="events" label={m('events')} onClick={() => setPanel('canvas')} />
+            </TabsList>
             <Button
-              variant="secondary"
+              variant="tertiary"
               size="compact"
+              aria-pressed={panel === 'tree'}
+              onClick={() => setPanel(panel === 'tree' ? 'canvas' : 'tree')}
+            >
+              {t('executions')}
+            </Button>
+            <Button
+              ref={detailsButton}
+              variant="tertiary"
+              size="compact"
+              aria-pressed={detailOpen && panel !== 'tree'}
               onClick={() => {
+                setDetailOpen(true);
                 setPanel('side');
-                requestAnimationFrame(() => {
-                  const card = sideRef.current?.querySelector<HTMLElement>(
-                    '[data-testid^="approval-"]',
-                  );
-                  card?.scrollIntoView({ block: 'nearest' });
-                  (card?.querySelector<HTMLElement>('button') ?? sideRef.current)?.focus();
-                });
               }}
             >
-              {t('openResponse')}
+              {m('details')}
             </Button>
-          </BannerActions>
-        </Banner>
-      ) : null}
-      <Main className="run-layout min-h-0 flex-1">
-        <aside
-          aria-labelledby="run-executions-heading"
-          className={`flex min-h-0 flex-col gap-2 overflow-auto border-r border-line p-3 [grid-area:tree] max-[1279px]:border-t ${shown('tree')}`}
-        >
-          <h2 id="run-executions-heading" className="text-sm font-semibold">
-            {t('executions')}
-          </h2>
-          <ExecutionTree
-            session={session}
-            onSteer={chooseExecution}
-            selectedExecutionId={execution ?? null}
-          />
-        </aside>
-        <div className={`relative min-h-0 [grid-area:canvas] ${shown('canvas')}`}>
-          {layout ? (
-            <RunCanvas
-              session={session}
-              definition={definition}
-              layout={layout}
-              selectedNodeId={highlightedNode}
-              onSelectNode={(id) => {
-                setSelectedNodeId(id);
-                if (id) setPanel('side');
-              }}
-            />
-          ) : null}
-        </div>
-        <aside
-          ref={sideRef}
-          tabIndex={-1}
-          className={`flex min-h-0 flex-col gap-4 overflow-auto border-l border-line p-3 outline-none [grid-area:side] ${shown('side')}`}
-        >
-          {unknownExecution ? (
-            <p role="alert" className="rounded border border-warning p-2 text-xs text-warning">
-              {t('executionMissing', { executionId: unknownExecution })}
-            </p>
-          ) : null}
-          {selectedNodeId && projection ? (
-            <NodeExecutions
-              projection={projection}
-              definition={definition}
-              nodeId={selectedNodeId}
-              selectedExecutionId={execution ?? null}
-              onChoose={chooseExecution}
-              onClose={() => setSelectedNodeId(null)}
-            />
-          ) : null}
-          <ApprovalPanel session={session} onOpenArtifact={openArtifact} />
-          {artifact ? (
-            <ArtifactViewer
-              session={session}
-              versionId={artifact}
-              onOpen={openArtifact}
-              {...(startFrom ? { onStartFrom: startFrom } : {})}
-              onClose={() => setSearch({ artifact: undefined })}
-            />
-          ) : null}
-          {target ? (
-            <section aria-label={t('conversation')} className="flex shrink-0 flex-col gap-1">
-              <h2 className="text-sm font-semibold">{t('conversation')}</h2>
-              <div className="flex h-[40vh] min-h-40 flex-col">
-                <ExecutionTranscript
-                  session={session}
-                  executionId={target.executionId}
-                  onOpenArtifact={openArtifact}
+          </div>
+          <Main className="run-layout min-h-0 flex-1" data-panel={panel} data-details={detailOpen}>
+            <aside
+              aria-label={t('executions')}
+              className="run-tree min-h-0 overflow-auto border-r border-line p-3"
+            >
+              <ExecutionTree
+                session={session}
+                onSteer={chooseExecution}
+                selectedExecutionId={execution ?? null}
+              />
+            </aside>
+            <div className="run-center relative min-h-0">
+              <TabPanel value="graph" keepMounted className="h-full min-h-0">
+                {layout ? (
+                  <RunCanvas
+                    session={session}
+                    definition={definition}
+                    layout={layout}
+                    selectedNodeId={highlightedNode}
+                    onSelectNode={(id) => {
+                      rememberTrigger();
+                      setSelectedNodeId(id);
+                      if (id) {
+                        setDetailOpen(true);
+                        setDetail('overview');
+                        setPanel('side');
+                        setSearch({ execution: undefined, artifact: undefined });
+                      }
+                    }}
+                  />
+                ) : null}
+              </TabPanel>
+              <TabPanel value="time" keepMounted className="h-full min-h-0">
+                <RunTimeChart
+                  events={display?.events ?? events}
+                  projection={projection}
+                  definition={definition}
+                  selected={execution}
+                  onSelect={chooseExecution}
                 />
+              </TabPanel>
+              <TabPanel value="events" keepMounted className="h-full overflow-auto p-3">
+                <Timeline session={session} selectedSeq={atSeq} onSelectSeq={chooseSeq} />
+              </TabPanel>
+            </div>
+            <aside
+              tabIndex={-1}
+              aria-label={m('details')}
+              className="run-side min-h-0 overflow-auto border-l border-line p-3 outline-none"
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-medium">{selectedTarget?.nodeLabel ?? m('details')}</h2>
+                <Button variant="ghost" size="compact" onClick={closeDetail}>
+                  {m('closeDetails')}
+                </Button>
               </div>
-            </section>
-          ) : null}
-          <ReinsPanel session={session} target={target} />
-        </aside>
-        <div
-          className={`flex min-h-0 flex-col border-t border-line [grid-area:dock] ${shown('dock')}`}
-        >
-          <RunDetails
-            session={session}
-            openArtifact={openArtifact}
-            openResult={(id) => setSearch({ view: 'results', result: id })}
-          />
-        </div>
-      </Main>
-    </div>
+              {execution && projection && !projection.executions[execution] ? (
+                <p role="alert">
+                  {historical
+                    ? m('executionMissingAt', { executionId: execution })
+                    : t('executionMissing', { executionId: execution })}
+                </p>
+              ) : null}
+              {selectedNodeId && projection ? (
+                <NodeExecutions
+                  projection={projection}
+                  definition={definition}
+                  nodeId={selectedNodeId}
+                  selectedExecutionId={execution ?? null}
+                  onChoose={chooseExecution}
+                  onClose={closeDetail}
+                />
+              ) : null}
+              <Tabs value={detail} onValueChange={setDetail}>
+                <div className="overflow-x-auto">
+                  <TabsList aria-label={m('details')}>
+                    <TabItem value="overview" label={m('overview')} />
+                    <TabItem value="calls" label={m('calls')} />
+                    <TabItem value="usage" label={m('usage')} />
+                    <TabItem value="reins" label="Reins" />
+                  </TabsList>
+                </div>
+                <TabPanel value="overview" keepMounted className="space-y-3 pt-3">
+                  {artifact ? (
+                    <ArtifactViewer
+                      session={session}
+                      versionId={artifact}
+                      onOpen={openArtifact}
+                      {...(startFrom ? { onStartFrom: startFrom } : {})}
+                      onClose={() => {
+                        setSearch({ artifact: undefined });
+                        (trigger.current?.isConnected
+                          ? trigger.current
+                          : detailsButton.current
+                        )?.focus();
+                      }}
+                    />
+                  ) : results ? (
+                    <ResultChoices
+                      results={results}
+                      onOpen={(id) => setSearch({ view: 'results', result: id })}
+                    />
+                  ) : null}
+                  {sessionId && artifact && projection?.artifacts[artifact] ? (
+                    <MessageBranch
+                      runId={projection.runId}
+                      artifactVersionId={artifact}
+                      disabled={historical || !TERMINAL_RUN_STATUSES.has(projection.status)}
+                    />
+                  ) : null}
+                  {!historical && sessionId && selectedTarget ? (
+                    <ExecutionEvidence
+                      session={session}
+                      sessionId={sessionId}
+                      executionId={selectedTarget.executionId}
+                      onOpenArtifact={openArtifact}
+                    />
+                  ) : null}
+                  {historical ? (
+                    <p className="text-xs text-muted-foreground">{m('currentEvidence')}</p>
+                  ) : null}
+                  <Accordion>
+                    {Object.keys(projection?.workPlans ?? {}).length > 0 ? (
+                      <AccordionItem value="plans">
+                        <AccordionTrigger>{m('workPlans')}</AccordionTrigger>
+                        <AccordionContent>
+                          <WorkPlanPanel session={session} />
+                        </AccordionContent>
+                      </AccordionItem>
+                    ) : null}
+                    {Object.keys(projection?.tasks ?? {}).length > 0 ? (
+                      <AccordionItem value="tasks">
+                        <AccordionTrigger>
+                          {t('tabs.tasks')} · {Object.keys(projection?.tasks ?? {}).length}
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="max-w-full overflow-x-auto">
+                            <TaskBoard session={session} onOpenArtifact={openArtifact} />
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ) : null}
+                    {Object.keys(projection?.questions ?? {}).length > 0 ? (
+                      <AccordionItem value="questions">
+                        <AccordionTrigger>
+                          {t('tabs.questions')} · {Object.keys(projection?.questions ?? {}).length}
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
+                        </AccordionContent>
+                      </AccordionItem>
+                    ) : null}
+                  </Accordion>
+                  {!historical && detailOpen && detail === 'overview' ? (
+                    <RunStatusCards
+                      session={session}
+                      sessionId={sessionId}
+                      executionId={execution ?? null}
+                    />
+                  ) : null}
+                </TabPanel>
+                <TabPanel value="calls" keepMounted className="space-y-3 pt-3">
+                  {selectedTarget ? (
+                    <div className="flex h-[50vh] min-h-40 flex-col">
+                      <ExecutionTranscript
+                        session={session}
+                        executionId={selectedTarget.executionId}
+                        onOpenArtifact={openArtifact}
+                      />
+                    </div>
+                  ) : (
+                    <p>{m('chooseExecution')}</p>
+                  )}
+                  <HarnessDetails session={session} />
+                </TabPanel>
+                <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
+                  <BudgetInspector session={session} prices={prices} />
+                  <EffortJudgments session={session} />
+                </TabPanel>
+                <TabPanel value="reins" keepMounted className="pt-3">
+                  {historical ? (
+                    <p className="text-xs text-muted-foreground">{m('readOnly')}</p>
+                  ) : null}
+                  <fieldset
+                    disabled={historical}
+                    hidden={historical}
+                    className="m-0 min-w-0 border-0 p-0"
+                  >
+                    <ReinsPanel session={session} target={execution ? target : null} />
+                  </fieldset>
+                </TabPanel>
+              </Tabs>
+            </aside>
+          </Main>
+        </Tabs>
+      </div>
+    </RunDisplayProvider>
   );
 }
 
@@ -726,28 +753,27 @@ function RunSummary({
   view = 'run',
   onView,
   compact = false,
+  readOnly = false,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
   view?: RunPageView;
   onView?: (view: RunPageView) => void;
   compact?: boolean;
+  readOnly?: boolean;
 }) {
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const savedTeam = useSavedTeam(projection?.corralId);
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   const working = [
-    ...new Set(
-      executions
-        .filter((e) => !TERMINAL_EXECUTION_STATUSES.has(e.status))
-        .map((e) => labelOf(e.nodeId)),
-    ),
+    ...new Set(executions.filter((e) => e.status === 'active').map((e) => labelOf(e.nodeId))),
   ];
+  const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
   const tasks = Object.values(projection.tasks);
   const inFlight = Object.values(projection.modelCalls).filter((c) => !c.finished).length;
   const loops = definition.nodes.flatMap((node) =>
@@ -810,6 +836,7 @@ function RunSummary({
                   ? null
                   : t('idle')}
             </span>
+            {waiting ? <span>{t('waitingExecutions', { count: waiting })}</span> : null}
             {loops.map((text) => (
               <span key={text}>{text}</span>
             ))}
@@ -832,7 +859,7 @@ function RunSummary({
         )}
       </div>
       <div className="max-h-28 w-[24rem] max-w-full overflow-auto">
-        <RunActions session={session} compact />
+        {readOnly ? null : <RunActions session={session} compact />}
       </div>
     </section>
   );
@@ -865,7 +892,9 @@ function NodeExecutions({
 }) {
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
-  const label = definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  const m = useTranslations('RunMonitor');
+  const node = definition.nodes.find((n) => n.id === nodeId);
+  const label = node?.label ?? nodeId;
   const ids = projection.nodeExecutions[nodeId] ?? [];
   return (
     <section
@@ -878,7 +907,11 @@ function NodeExecutions({
           {t('closeNode')}
         </Button>
       </div>
-      {ids.length === 0 ? <p className="text-muted-foreground">{t('noNodeExecutions')}</p> : null}
+      {ids.length === 0 ? (
+        <p className="text-muted-foreground">
+          {node && node.type !== 'agent' ? m('nonAgentNode') : t('noNodeExecutions')}
+        </p>
+      ) : null}
       <ul className="flex flex-col gap-1">
         {ids.map((id) => {
           const e = projection.executions[id];
@@ -909,185 +942,13 @@ function NodeExecutions({
 }
 
 type RunPageView = 'results' | 'run';
-const VIEWS: RunPageView[] = ['results', 'run'];
 
-/** Results or the run itself: two tabs in the summary bar, arrow keys move between. */
 function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPageView) => void }) {
   const t = useTranslations('RunPage.view');
-  const refs = useRef<Partial<Record<RunPageView, HTMLButtonElement | null>>>({});
-  const move = (event: KeyboardEvent, index: number) => {
-    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const next = VIEWS[(index + step + VIEWS.length) % VIEWS.length];
-    if (!next) return;
-    onView(next);
-    refs.current[next]?.focus();
-  };
+  const next = view === 'run' ? 'results' : 'run';
   return (
-    <div role="tablist" aria-label={t('label')} className="flex gap-0.5">
-      {VIEWS.map((name, index) => (
-        <Button
-          key={name}
-          variant={view === name ? 'secondary' : 'ghost'}
-          size="compact"
-          ref={(el) => {
-            refs.current[name] = el;
-          }}
-          role="tab"
-          aria-selected={view === name}
-          tabIndex={view === name ? 0 : -1}
-          onClick={() => onView(name)}
-          onKeyDown={(event) => move(event, index)}
-        >
-          {t(name)}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-const TABS = ['output', 'tasks', 'questions', 'activity', 'budget'] as const;
-type Tab = (typeof TABS)[number];
-
-/** The run's details as tabs (WAI-ARIA tabs). The Output tab opens once the run succeeds. */
-type NarrowPanel = 'canvas' | 'tree' | 'side' | 'dock';
-const NARROW_PANELS: NarrowPanel[] = ['canvas', 'tree', 'side', 'dock'];
-
-/** The panel switcher of a narrow Run page; hidden from 768px up. */
-function NarrowViews({
-  panel,
-  onChoose,
-}: {
-  panel: NarrowPanel;
-  onChoose: (panel: NarrowPanel) => void;
-}) {
-  const t = useTranslations('RunPage.views');
-  const refs = useRef<Partial<Record<NarrowPanel, HTMLButtonElement | null>>>({});
-  const move = (event: KeyboardEvent, index: number) => {
-    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const next = NARROW_PANELS[(index + step + NARROW_PANELS.length) % NARROW_PANELS.length];
-    if (!next) return;
-    onChoose(next);
-    refs.current[next]?.focus();
-  };
-  return (
-    <div
-      role="tablist"
-      aria-label={t('label')}
-      className="flex gap-1 overflow-x-auto border-b border-line px-2 py-1 @3xl:hidden"
-    >
-      {NARROW_PANELS.map((name, index) => (
-        <Button
-          key={name}
-          variant={panel === name ? 'secondary' : 'ghost'}
-          size="compact"
-          className="shrink-0"
-          ref={(el) => {
-            refs.current[name] = el;
-          }}
-          role="tab"
-          aria-selected={panel === name}
-          tabIndex={panel === name ? 0 : -1}
-          onClick={() => onChoose(name)}
-          onKeyDown={(event) => move(event, index)}
-        >
-          {t(name)}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-function RunDetails({
-  session,
-  openArtifact,
-  openResult,
-}: {
-  session: RunSessionStore;
-  openArtifact: (id: string) => void;
-  openResult: (id: string) => void;
-}) {
-  const t = useTranslations('RunPage.tabs');
-  const prices = useModelPrices();
-  const succeeded = useStore(session, (s) => s.projection?.status === 'succeeded');
-  const [chosen, setChosen] = useState<Tab | null>(null);
-  const tab: Tab = chosen ?? (succeeded ? 'output' : 'activity');
-  const refs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
-  const move = (event: KeyboardEvent, index: number) => {
-    const next =
-      event.key === 'ArrowRight'
-        ? (index + 1) % TABS.length
-        : event.key === 'ArrowLeft'
-          ? (index - 1 + TABS.length) % TABS.length
-          : event.key === 'Home'
-            ? 0
-            : event.key === 'End'
-              ? TABS.length - 1
-              : null;
-    if (next === null) return;
-    event.preventDefault();
-    const id = TABS[next] as Tab;
-    setChosen(id);
-    refs.current[id]?.focus();
-  };
-  return (
-    <>
-      <div
-        role="tablist"
-        aria-label={t('label')}
-        className="flex gap-0.5 border-b border-line px-2 py-1"
-      >
-        {TABS.map((id, index) => (
-          <Button
-            key={id}
-            variant={tab === id ? 'secondary' : 'ghost'}
-            size="compact"
-            ref={(el) => {
-              refs.current[id] = el;
-            }}
-            role="tab"
-            id={`run-tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`run-panel-${id}`}
-            tabIndex={tab === id ? 0 : -1}
-            onClick={() => setChosen(id)}
-            onKeyDown={(event) => move(event, index)}
-          >
-            {t(id)}
-          </Button>
-        ))}
-      </div>
-      <div
-        role="tabpanel"
-        id={`run-panel-${tab}`}
-        aria-labelledby={`run-tab-${tab}`}
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: WAI-ARIA tabs: a panel that scrolls text must be reachable by keyboard
-        tabIndex={0}
-        className="min-h-0 flex-1 overflow-auto p-3"
-      >
-        {tab === 'output' ? (
-          <RunOutput session={session} heading={false} onOpenResults={openResult} />
-        ) : null}
-        {tab === 'tasks' ? <TaskBoard session={session} onOpenArtifact={openArtifact} /> : null}
-        {tab === 'questions' ? (
-          <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
-        ) : null}
-        {tab === 'activity' ? (
-          <>
-            <HarnessDetails session={session} />
-            <Timeline session={session} />
-          </>
-        ) : null}
-        {tab === 'budget' ? (
-          <div className="flex flex-col gap-3">
-            <BudgetInspector session={session} prices={prices} />
-            <EffortJudgments session={session} />
-          </div>
-        ) : null}
-      </div>
-    </>
+    <Button variant="tertiary" size="compact" onClick={() => onView(next)}>
+      {t(next)}
+    </Button>
   );
 }

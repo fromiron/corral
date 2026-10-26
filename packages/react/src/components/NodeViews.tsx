@@ -1,4 +1,4 @@
-import { outputPortsOf } from '@corral/core';
+import { outputPortsOf, type RunProjection } from '@corral/core';
 import { Handle, type Node, type NodeProps, NodeResizer, Position } from '@xyflow/react';
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'use-intl';
@@ -6,7 +6,14 @@ import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
 import { Card } from '../design-kit/index.ts';
 import { findNode } from '../editor/model.ts';
-import { decisionRunStatus, nodeExecutionCount, nodeRunStatus } from '../run/selectors.ts';
+import { useRunDisplay } from '../run/display.tsx';
+import {
+  decisionRunStatus,
+  type NodeRunStatus,
+  type NodeRunSummary,
+  nodeExecutionCount,
+  nodeRunSummary,
+} from '../run/selectors.ts';
 
 // One view per node kind. Handle ids are the compiler's port names, so a drawn connection is
 // exactly the ControlEdge it creates. Call links use separate handles below/above agents.
@@ -29,27 +36,70 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
   const t = useTranslations('Canvas.nodeStatus');
   const { session } = useStudioStores();
   const node = useNode(nodeId);
-  const judged = node?.type === 'decision' || node?.type === 'output';
-  // Each node subscribes to its own status only, so stream updates do not re-render the canvas.
-  // Decision and Output nodes have no executions: they report decisions instead (UX-A4).
-  const summary = useStore(session, (s) => {
-    if (judged && node) {
-      const d = decisionRunStatus(s.projection, node);
-      return `${d.status}:${d.count}:decisions`;
+  // Primitive subscriptions keep unrelated committed events and token frames off the graph.
+  const serialized = useRunDisplay(session, (s) => {
+    if (node?.type === 'decision' || node?.type === 'output') {
+      return JSON.stringify({ ...decisionRunStatus(s.projection, node), unit: 'decisions' });
     }
-    return `${nodeRunStatus(s.projection, nodeId)}:${nodeExecutionCount(s.projection, nodeId)}:executions`;
+    if (node?.type === 'loop') {
+      const ids = s.projection?.loopIterations[nodeId] ?? [];
+      const last = ids.at(-1);
+      return JSON.stringify({
+        status: ids.length ? 'loop' : 'idle',
+        count: ids.length,
+        unit: 'iterations',
+        outcome: last ? s.projection?.iterations[last]?.outcome : null,
+      });
+    }
+    return JSON.stringify({
+      ...nodeRunSummary(s.projection, nodeId),
+      count: nodeExecutionCount(s.projection, nodeId),
+      unit: 'executions',
+    });
   });
-  const [status = 'idle', countText = '0', unit = 'executions'] = summary.split(':');
-  const count = Number(countText);
+  const {
+    status,
+    count,
+    unit,
+    counts = {},
+    previousFailures = 0,
+    outcome,
+  } = JSON.parse(serialized) as {
+    status: NodeRunStatus | 'loop';
+    count: number;
+    unit: 'executions' | 'decisions' | 'iterations';
+    counts?: NodeRunSummary['counts'];
+    previousFailures?: number;
+    outcome?: RunProjection['iterations'][string]['outcome'];
+  };
   if (status === 'idle') return null;
-  const symbol = { active: '◐', done: '✓', failed: '✕', waiting: '!' }[status] ?? '•';
+  const symbol = status === 'done' ? '✓' : status === 'failed' ? '✕' : '•';
+  const mixed = Object.entries(counts);
   return (
-    <span className="mt-1 inline-flex items-center gap-1 text-xs" data-run-status={status}>
+    <span
+      className="mt-1 inline-flex flex-wrap items-center gap-1 text-xs"
+      data-run-status={status}
+    >
       <span aria-hidden="true">{symbol}</span>
-      {t(status)}
-      {/* A node is not one execution: Loop rounds and calls each add one (product contract §4.3). */}
-      {count > (unit === 'executions' ? 1 : 0) ? (
+      {status === 'loop' ? t('iterations', { count }) : t(status)}
+      {unit !== 'iterations' && count > (unit === 'executions' ? 1 : 0) ? (
         <span className="text-muted-foreground">· {t(unit, { count })}</span>
+      ) : null}
+      {mixed.length > 1 ? (
+        <span className="text-muted-foreground">
+          ·{' '}
+          {mixed
+            .map(([state, n]) => t('stateCount', { status: t(state), count: n ?? 0 }))
+            .join(' · ')}
+        </span>
+      ) : null}
+      {previousFailures ? (
+        <span className="text-muted-foreground">
+          · {t('previousFailures', { count: previousFailures })}
+        </span>
+      ) : null}
+      {status === 'loop' ? (
+        <span className="text-muted-foreground">· {t(`loopOutcome.${outcome ?? 'pending'}`)}</span>
       ) : null}
     </span>
   );
@@ -204,12 +254,29 @@ const LOOP_PORTS = [
 
 export function LoopNodeView({ id, selected, isConnectable }: NodeProps<Node<CanvasNodeData>>) {
   const t = useTranslations();
-  const { editor, readOnly } = useStudioStores();
+  const { editor, session, readOnly } = useStudioStores();
   const node = useNode(id);
   const members = useStore(
     editor,
     (s) => s.draft.definition.nodes.filter((n) => 'loopId' in n && n.loopId === id).length,
   );
+  const patchedLimit = useRunDisplay(session, (s) => {
+    let revision = -1;
+    let limit: number | null = null;
+    for (const patch of Object.values(s.projection?.patches ?? {})) {
+      if (
+        patch.kind !== 'loop_limit' ||
+        patch.scope.nodeId !== id ||
+        patch.controlRevision <= revision
+      )
+        continue;
+      if (typeof patch.after.maxIterations === 'number') {
+        revision = patch.controlRevision;
+        limit = patch.after.maxIterations;
+      }
+    }
+    return limit;
+  });
   if (node?.type !== 'loop') return null;
   return (
     <>
@@ -231,7 +298,10 @@ export function LoopNodeView({ id, selected, isConnectable }: NodeProps<Node<Can
         </div>
         <div className="text-sm font-medium">{node.label}</div>
         <div className="text-xs text-muted-foreground">
-          {t('Canvas.loopMembers', { count: members, max: node.maxIterations })}
+          {t('Canvas.loopMembers', {
+            count: members,
+            max: readOnly ? (patchedLimit ?? node.maxIterations) : node.maxIterations,
+          })}
         </div>
         <RunOverlay nodeId={id} />
       </div>
