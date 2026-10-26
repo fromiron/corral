@@ -4,10 +4,11 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 43 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 44 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.
+- Source Tabs, TabsList, TabItem and TabPanel use the existing Base UI Tabs primitive and kit size, shape, surface, spring and fluid-hover helpers. Their component and prop types are exported directly, with no adapter or new dependency.
 - Source Dialog, Select and Dropdown own their popup surfaces, nested elevation, layout and motion. MenuItem, dropdown search/submenu helpers and popup helpers complete their graph.
 - `ui-provider.tsx`, exported as `DesignKitProvider`, supplies Motion's OS reduced-motion policy and the kit's shape, size and Lucide icon contexts. Corral wraps its app entry with this provider.
 - Sidebar integrations retain routing, resize, drawer and preference state. They pass `persist={false}` and `shortcut={null}` to avoid a second owner of application state.
@@ -27,6 +28,7 @@ All imports use package-relative paths instead of the original `@/` alias. TypeS
 - MenuItem accepts `labelContent` for existing JSX labels while retaining a text label for typeahead. The Menu bridge composes source rows with Base UI action/radio/checkbox/link behavior and assigns source row indices across groups and fragments.
 - Popup `data-slot` hooks remain available for contextual dismissal, focus and responsive integration. ScrollArea accepts `viewportTabIndex` for existing keyboard navigation.
 - ThinkingStepDetails accepts controlled `open`/`onOpenChange`, so the work log mounts an execution transcript only after its fold first opens. Its timing, layout and other parts remain the source's.
+- Tabs retains the source's default segmented appearance, spacing, selected/hover/focus layers, animation and keyboard behavior. Its only adaptations are relative import paths, Corral formatting/import order and a narrow lint explanation that preserves remeasurement when tab children change. No runtime or type-assertion changes were needed.
 - ChatMessage imports its text/body/action slots without the unused `File[]` thumbnail branch. Corral's existing authorized artifact preview remains responsible for attachments; no PDF package or external worker is introduced.
 
 ## Narrow API bridges
@@ -76,6 +78,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/sidebar.tsx` | `components/ui/sidebar.tsx` | `402bd8d5b593460bd00d116758fdc7d7491bd6109bfec5c4cfc173fa807fd469` | `c0efb309a5ce51ffd39a5fbdf1749b833fa16ebaf134ab2f4a7169c59e20ec6d` |
 | `components/ui/switch.tsx` | `components/ui/switch.tsx` | `7dc6ea276d9a3160bb831c81011dd5b1c32d458574370e447591adeff0387dc6` | `81042dff28be44a31707045d87915653d822335a38c78c7e42514c6f8a90334a` |
 | `components/ui/table.tsx` | `components/ui/table.tsx` | `06c8f0ff67776454b3d4b1ab85d2782606f8324c386baf2211e73db70eab785f` | `dc9a729696e6ca5845afe5807493c59da55cae78d00f5198e4ca6643253d9e08` |
+| `components/ui/tabs.tsx` | `components/ui/tabs.tsx` | `1e228ed1618ee913434488ae65e2eac6afd152db239cb8c20860029d5eb7ef67` | `82c12715a1ff3c86c3e0c91d070ccd809f1df57cba3bb190f5d5cd5df9be1593` |
 | `components/ui/thinking-steps.tsx` | `components/ui/thinking-steps.tsx` | `394e5188ff0e1b2d143d3268aae6a5632d29bf934213c273c8fe58ad50388ee3` | `9b341706508f5de0a5db61cc69182c7583b6b4c3a73cf4ec18d8febd6e4ed67e` |
 | `components/ui/tooltip.tsx` | `components/ui/tooltip.tsx` | `bd7e0fef5ebff19d31a20ed49dd08750608996b28fd42fb7808038932b17005b` | `262302c99f0552c3ae7a45f30030c4eac8f22078955c10abeb9d0e500e1f6d30` |
 | `lib/elevated.tsx` | `lib/elevated.tsx` | `96ffaa93dc22fc2e23b208d47c359d05a70c072c936c28f5a69f728d17fd11ec` | `fa96d671a249c20a560245668168fbad26fc07d17da5de294f9436757a921102` |

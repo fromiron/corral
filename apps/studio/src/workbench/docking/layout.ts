@@ -59,10 +59,9 @@ export const DEFAULT_PANELS: DockPanel[] = CONTEXT_VIEWS.map((view) => ({
 const contextPanels = (views: readonly DockContextView[]): DockPanel[] =>
   views.map((view) => ({ id: `context:${view}`, descriptor: { kind: 'context', view } }));
 /**
- * A new project starts with the conversation; other panes open from links, the group's
- * + menu, the palette or `/` when needed.
+ * The file workspace starts with its explorer; primary session screens live outside the dock.
  */
-export const INITIAL_PANELS: DockPanel[] = contextPanels(['chat']);
+export const INITIAL_PANELS: DockPanel[] = contextPanels(['files']);
 const PRESET_VIEWS: Record<DockPreset, readonly DockContextView[]> = {
   conversation: [],
   implementation: ['files', 'terminal', 'problems'],
@@ -186,7 +185,7 @@ export function createPresetLayout(
   preset: DockPreset,
   supplied: DockPanel[] = DEFAULT_PANELS,
 ): SerializedDockview {
-  const panels = supplied.length ? supplied : DEFAULT_PANELS;
+  const panels = supplied.length ? supplied : INITIAL_PANELS;
   if (new Set(panels.map((panel) => panel.id)).size !== panels.length)
     throw new Error('Duplicate dock panel identity');
   if (panels.filter((panel) => panel.descriptor.kind === 'document').length > MAX_DOCUMENTS)

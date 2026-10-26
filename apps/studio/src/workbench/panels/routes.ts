@@ -6,7 +6,8 @@ export interface RunDetailSearch {
   view?: 'results' | 'run' | undefined;
   result?: string | undefined;
 }
-export interface SessionSearch extends RunDetailSearch {
+export interface SessionSearch extends RunDetailSearch, ReviewSearch {
+  review?: true | undefined;
   message?: string | undefined;
   compose?: true | undefined;
   /** Old links only (`tab=run`); read into `panel`. */
@@ -36,6 +37,10 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
     const value = text(search[key]);
     if (value) out[key] = value;
+  }
+  if (out.panel === 'changes' && search.review === true) {
+    out.review = true;
+    Object.assign(out, validateReviewSearch(search));
   }
   if (
     search.compose === true &&
@@ -67,6 +72,13 @@ export function validateReviewSearch(search: Record<string, unknown>): ReviewSea
   };
 }
 
+/** Legacy review links select the same Changes view as in-session review. */
+export function reviewSessionSearch(search: ReviewSearch): SessionSearch {
+  return search.scope === 'git'
+    ? { panel: 'git' }
+    : { panel: 'changes', review: true, ...validateReviewSearch({ ...search }) };
+}
+
 export function validateEditorSearch(search: Record<string, unknown>): EditorSearch {
   return {
     ...(typeof search.fromRun === 'string' && typeof search.fromVersion === 'string'
@@ -85,6 +97,7 @@ export function resolveSessionSearch(url: SessionSearch, remembered: unknown): S
   const selection = validateSessionSearch({ ...url });
   const explicitTarget = Boolean(
     selection.compose ||
+      selection.review ||
       selection.run ||
       selection.view ||
       selection.artifact ||
@@ -95,10 +108,10 @@ export function resolveSessionSearch(url: SessionSearch, remembered: unknown): S
     remembered && typeof remembered === 'object' ? (remembered as Record<string, unknown>) : {},
   );
   delete saved.compose;
-  return {
+  return validateSessionSearch({
     ...(!explicitTarget ? saved : {}),
     ...selection,
-  };
+  });
 }
 
 export function patchSessionSearch(

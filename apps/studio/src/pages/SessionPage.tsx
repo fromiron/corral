@@ -143,7 +143,6 @@ import type { DockContextView } from '../workbench/docking/layout.ts';
 import { documentKey, documentStore } from '../workbench/documents/store.ts';
 import { editorCopyDirty, subscribeEditorCopies } from '../workbench/editorDraft.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
-import { GitPanel } from '../workbench/GitPanel.tsx';
 import { ImageAttachmentList, ImageAttachmentPicker } from '../workbench/ImageAttachments.tsx';
 import { LiveVoice } from '../workbench/LiveVoice.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
@@ -156,6 +155,7 @@ import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
+import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -177,7 +177,7 @@ import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx
 import { OverviewAccess, OverviewPanel } from '../workbench/widgets/OverviewWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { TeamDesign } from './EditorPage.tsx';
-import { useBinding, WORKSPACE_CHANGED, WorkingCopyPanel } from './FilesViews.tsx';
+import { useBinding, WORKSPACE_CHANGED } from './FilesViews.tsx';
 import { MeetingPage } from './MeetingPage.tsx';
 import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
@@ -261,20 +261,22 @@ function WorkSessionPage() {
     rememberView(remembered);
   }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
+  const router = useRouter();
   const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
   const panel = search.panel;
-  const [rememberedPanel, rememberPanel] = useRemembered<SessionPanel>(
-    `corral:session-panel:v1:${session.sessionId}`,
-    'changes',
+  const { binding } = useBinding(session.projectId);
+  const [fileViewerOpen, rememberFileViewer] = useRemembered<boolean>(
+    `corral:file-viewer:${session.projectId}`,
+    false,
   );
-  useEffect(() => {
-    if (panel) rememberPanel(panel);
-  }, [panel, rememberPanel]);
-  const reopenPanel = SESSION_PANELS.includes(rememberedPanel) ? rememberedPanel : 'changes';
-  const [panesHidden, setPanesHidden] = useState(false);
+  const [fileViewerVisited, setFileViewerVisited] = useState(false);
+  const toggleFileViewer = (open: boolean) => {
+    setFileViewerVisited(true);
+    rememberFileViewer(open);
+  };
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -337,7 +339,10 @@ function WorkSessionPage() {
   const liveRun =
     presentedRun && !TERMINAL_RUN_STATUSES.has(presentedRun.status) ? presentedRun : null;
   const presentationRunId = presentedRun?.runId ?? linkedRunIds.at(-1) ?? null;
-  const panelViews: Record<Exclude<SessionPanel, 'terminal' | 'tools'>, () => ReactNode> = {
+  const panelViews: Record<
+    Exclude<SessionPanel, 'terminal' | 'tools' | 'changes' | 'git'>,
+    () => ReactNode
+  > = {
     files: () => (
       <FilePanel
         projectId={session.projectId}
@@ -347,8 +352,6 @@ function WorkSessionPage() {
         onOpenDocument={(document, range) => dock.current?.openDocument(document, range) ?? false}
       />
     ),
-    changes: () => <ChangesPanel session={session} files={changes} />,
-    git: () => <GitPanel sessionId={session.sessionId} projectId={session.projectId} />,
     debug: () => <DebuggerPanel sessionId={session.sessionId} projectId={session.projectId} />,
     artifacts: () => (
       <ArtifactsPanel
@@ -360,7 +363,7 @@ function WorkSessionPage() {
     problems: () => <ProblemsPanel sessionId={session.sessionId} />,
     run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
   };
-  const renderContext = (view: DockContextView) => {
+  const renderContext = (view: DockContextView, requestedView: DockContextView = view) => {
     if (view === 'chat')
       return (
         <div className="flex h-full min-h-0 flex-col">
@@ -395,6 +398,53 @@ function WorkSessionPage() {
           />
         </div>
       );
+    if (view === 'changes' || view === 'git') {
+      const auxiliary =
+        requestedView === 'checks' || requestedView === 'problems' ? requestedView : null;
+      return (
+        <div key={session.sessionId} className="flex h-full min-h-0 flex-col">
+          <div hidden={Boolean(auxiliary)} className="min-h-0 flex-1">
+            <SessionChangesPanel
+              session={session}
+              reviewSearch={
+                search.review
+                  ? { scope: search.scope, runId: search.runId, file: search.file }
+                  : undefined
+              }
+              onReviewChange={(review) =>
+                setSearch({
+                  panel: 'changes',
+                  review: review ? true : undefined,
+                  scope: review?.scope,
+                  runId: review?.runId,
+                  file: review?.file,
+                })
+              }
+              onSessionChange={async () => {
+                refresh();
+                await router.invalidate();
+              }}
+            />
+          </div>
+          {auxiliary ? (
+            <div className="min-h-0 flex-1 overflow-auto p-3">{panelViews[auxiliary]()}</div>
+          ) : null}
+        </div>
+      );
+    }
+    if (view === 'run') {
+      const results = requestedView === 'artifacts';
+      return (
+        <div key={session.sessionId} className="flex h-full min-h-0 flex-col">
+          <div hidden={results} className="min-h-0 flex-1">
+            {panelViews.run()}
+          </div>
+          {results ? (
+            <div className="min-h-0 flex-1 overflow-auto p-3">{panelViews.artifacts()}</div>
+          ) : null}
+        </div>
+      );
+    }
     if (view === 'terminal')
       return (
         <TerminalPanel
@@ -422,10 +472,7 @@ function WorkSessionPage() {
       search.run ?? runs.at(-1)?.runId,
     );
     return (
-      <div
-        key={target ? panelKey(services, target) : view}
-        className={view === 'run' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col gap-3 p-3'}
-      >
+      <div key={target ? panelKey(services, target) : view} className="flex flex-col gap-3 p-3">
         {panelViews[view]()}
       </div>
     );
@@ -440,8 +487,8 @@ function WorkSessionPage() {
         changes={changes}
         panel={panel}
         onPanel={(value) => showPanel({ panel: value })}
-        panesHidden={panesHidden}
-        onPanesHidden={(hidden) => dock.current?.setPanesHidden(hidden, panel ?? reopenPanel)}
+        fileViewerOpen={fileViewerOpen}
+        onToggleFileViewer={toggleFileViewer}
         runs={runs}
         selectedRunId={presentationRunId}
         onSelectRun={(run) =>
@@ -479,69 +526,106 @@ function WorkSessionPage() {
           live={Boolean(liveRun)}
           runIds={sessionRunIds}
         >
-          <DockWorkbench
-            key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
-            ref={dock}
-            hostId={services.workspaceId}
-            projectId={session.projectId}
-            sessionId={session.sessionId}
-            selectedPanel={search.compose ? null : panel}
-            selectionKey={`${session.sessionId}:${viewKey}`}
-            documentOwner={documents}
-            renderContext={renderContext}
-            renderDocument={(descriptor, _panelId, selection) =>
-              documents ? (
-                <DockDocumentPanel
-                  owner={documents}
-                  target={descriptor.target}
-                  path={descriptor.path}
-                  viewId={descriptor.viewId}
-                  revealSelection={selection}
-                  onAttach={
-                    descriptor.target.sessionId === session.sessionId ? handleAttachment : undefined
-                  }
-                  onReference={
-                    descriptor.target.sessionId === session.sessionId ? handleReference : undefined
-                  }
+          <div className="flex h-full min-h-0 min-w-0 flex-1">
+            <div
+              className={`flex min-h-0 min-w-0 flex-1 flex-col ${fileViewerOpen ? 'max-lg:hidden' : ''}`}
+            >
+              <DockWorkbench
+                key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
+                ref={dock}
+                hostId={services.workspaceId}
+                projectId={session.projectId}
+                sessionId={session.sessionId}
+                selectedPanel={search.compose ? null : panel}
+                fileWorkAvailable={Boolean(binding)}
+                selectionKey={`${session.sessionId}:${viewKey}`}
+                documentOwner={documents}
+                renderContext={renderContext}
+                renderDocument={(descriptor, _panelId, selection) =>
+                  documents ? (
+                    <DockDocumentPanel
+                      owner={documents}
+                      target={descriptor.target}
+                      path={descriptor.path}
+                      viewId={descriptor.viewId}
+                      revealSelection={selection}
+                      onAttach={
+                        descriptor.target.sessionId === session.sessionId
+                          ? handleAttachment
+                          : undefined
+                      }
+                      onReference={
+                        descriptor.target.sessionId === session.sessionId
+                          ? handleReference
+                          : undefined
+                      }
+                    />
+                  ) : null
+                }
+                renderGraph={(descriptor) => <TeamDesign corralId={descriptor.corralId} />}
+                graphTitle={(corralId) =>
+                  `${editorCopyDirty(services.repository, session.projectId, corralId) ? '● ' : ''}${
+                    corrals.find((c) => c.corralId === corralId)?.name ?? tdock('team')
+                  }`
+                }
+                subscribeGraphs={subscribeGraphs}
+                onActiveContext={(view) => {
+                  const next =
+                    view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
+                  if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
+                }}
+                controls={
+                  active ? (
+                    <DockRunControls
+                      key={active.runId}
+                      runId={active.runId}
+                      request={session.entries
+                        .find((entry) => entry.runId === active.runId)
+                        ?.text.slice(0, 80)}
+                      viewingOther={presentationRunId !== active.runId}
+                      onOpen={(run) =>
+                        showPanel({
+                          panel: 'run',
+                          run,
+                          view: 'run',
+                          execution: undefined,
+                          artifact: undefined,
+                          result: undefined,
+                        })
+                      }
+                    />
+                  ) : null
+                }
+              />
+            </div>
+            {fileViewerOpen || fileViewerVisited ? (
+              <aside
+                hidden={!fileViewerOpen}
+                aria-label={tdock('fileViewer')}
+                className="min-h-0 w-96 max-w-full shrink-0 overflow-auto border-l border-line p-3 max-lg:w-full"
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-medium">{tdock('fileViewer')}</h2>
+                  <Button
+                    variant="ghost"
+                    size="icon-compact"
+                    aria-label={tdock('closeFileViewer')}
+                    onClick={() => toggleFileViewer(false)}
+                  >
+                    <X />
+                  </Button>
+                </div>
+                <FilePanel
+                  key={`${session.projectId}:${session.sessionId}:viewer`}
+                  projectId={session.projectId}
+                  sessionId={session.sessionId}
+                  readOnly
+                  onReference={handleReference}
+                  onAttach={handleAttachment}
                 />
-              ) : null
-            }
-            renderGraph={(descriptor) => <TeamDesign corralId={descriptor.corralId} />}
-            graphTitle={(corralId) =>
-              `${editorCopyDirty(services.repository, session.projectId, corralId) ? '● ' : ''}${
-                corrals.find((c) => c.corralId === corralId)?.name ?? tdock('team')
-              }`
-            }
-            subscribeGraphs={subscribeGraphs}
-            onPanesHiddenChange={setPanesHidden}
-            onActiveContext={(view) => {
-              const next =
-                view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
-              if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
-            }}
-            controls={
-              active ? (
-                <DockRunControls
-                  key={active.runId}
-                  runId={active.runId}
-                  request={session.entries
-                    .find((entry) => entry.runId === active.runId)
-                    ?.text.slice(0, 80)}
-                  viewingOther={presentationRunId !== active.runId}
-                  onOpen={(run) =>
-                    showPanel({
-                      panel: 'run',
-                      run,
-                      view: 'run',
-                      execution: undefined,
-                      artifact: undefined,
-                      result: undefined,
-                    })
-                  }
-                />
-              ) : null
-            }
-          />
+              </aside>
+            ) : null}
+          </div>
         </ChatWidgetProvider>
       </SourceNavigationContext.Provider>
     </>
@@ -587,8 +671,8 @@ function SessionActions({
   changes,
   panel,
   onPanel,
-  panesHidden,
-  onPanesHidden,
+  fileViewerOpen,
+  onToggleFileViewer,
   runs,
   selectedRunId,
   onSelectRun,
@@ -602,9 +686,8 @@ function SessionActions({
   changes: FileChangeView[] | null;
   panel: SessionPanel | undefined;
   onPanel: (panel: SessionPanel | undefined) => void;
-  /** Only the conversation is on screen; the toggle names what it will do (#71). */
-  panesHidden: boolean;
-  onPanesHidden: (hidden: boolean) => void;
+  fileViewerOpen: boolean;
+  onToggleFileViewer: (open: boolean) => void;
   runs: RunSummary[];
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
@@ -650,7 +733,7 @@ function SessionActions({
       group: panelGroup,
       shortcutId: 'view.panel',
       shortcut: shortcutLabel('view.panel'),
-      run: () => onPanesHidden(!panesHidden),
+      run: () => onToggleFileViewer(!fileViewerOpen),
     },
     // Every pane from the one catalog: its dock name, its `/` name and the words other screens
     // use for it (#70, #86).
@@ -774,15 +857,15 @@ function SessionActions({
         </Button>
       ) : null}
       <Tooltip
-        content={panesHidden ? tw('expandPanel') : tw('collapsePanel')}
+        content={tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer')}
         shortcut={shortcutLabel('view.panel')}
       >
         <Button
           variant="ghost"
           size="icon-compact"
-          aria-label={panesHidden ? tw('expandPanel') : tw('collapsePanel')}
-          aria-pressed={!panesHidden}
-          onClick={() => onPanesHidden(!panesHidden)}
+          aria-label={tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer')}
+          aria-pressed={fileViewerOpen}
+          onClick={() => onToggleFileViewer(!fileViewerOpen)}
         >
           <PanelRight />
         </Button>
@@ -1029,59 +1112,6 @@ function RunPanel({
         />
       </div>
     </div>
-  );
-}
-
-/** Changes: the working copy and its files for the whole session; the review screen for more. */
-function ChangesPanel({
-  session,
-  files,
-}: {
-  session: WorkSession;
-  files: FileChangeView[] | null;
-}) {
-  const tw = useTranslations('Workbench');
-  const tf = useTranslations('Files');
-  const { workspaces } = useServices();
-  if (!workspaces) return <p className="text-xs text-muted-foreground">{tw('serverOnly')}</p>;
-  return (
-    <>
-      <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
-      {files === null ? (
-        <p className="text-xs text-muted-foreground">{tw('noCopyChanges')}</p>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <p className="text-xs font-medium">{tw('changeCount', { count: files.length })}</p>
-          <ul className="flex flex-col text-xs">
-            {files.slice(0, 50).map((f) => (
-              <li key={f.path}>
-                <Link
-                  to="/sessions/$sessionId/review"
-                  params={{ sessionId: session.sessionId }}
-                  search={{ file: f.path }}
-                  className="flex items-baseline gap-2 rounded px-1.5 py-1 hover:bg-subtle"
-                >
-                  <span className="min-w-0 flex-1 break-all font-mono">{f.path}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {tf(`status.${f.status}`)}
-                    {f.additions !== null ? ` +${f.additions} −${f.deletions ?? 0}` : ''}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <Button
-            size="compact"
-            className="self-start"
-            render={
-              <Link to="/sessions/$sessionId/review" params={{ sessionId: session.sessionId }} />
-            }
-          >
-            {tw('expandReview')}
-          </Button>
-        </div>
-      )}
-    </>
   );
 }
 

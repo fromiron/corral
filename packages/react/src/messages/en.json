@@ -1677,6 +1677,8 @@
     "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending."
   },
   "Workbench": {
+    "reviewFeedback": "Review changes and request revisions",
+    "backToGit": "Back to Git changes",
     "sidebar": "Projects and sessions",
     "collapseSidebar": "Hide the sidebar",
     "expandSidebar": "Show the sidebar",
@@ -2004,7 +2006,7 @@
       "panel": "Panel",
       "settings": "Settings"
     },
-    "togglePanel": "Show or hide the side panel",
+    "togglePanel": "Toggle file viewer",
     "openPanel": "Open {panel}",
     "review": "Open the review screen",
     "rename": "Rename session",
@@ -3307,6 +3309,11 @@
     "sourceUnavailable": "This terminal source cannot be opened here."
   },
   "Docking": {
+    "fileViewer": "File viewer",
+    "openFileViewer": "Open file viewer",
+    "closeFileViewer": "Close file viewer",
+    "history": "Execution history",
+    "sessionViews": "Session views",
     "title": "Workbench layout",
     "preset": "Layout",
     "conversation": "Conversation",

@@ -34,7 +34,14 @@ async function fixture(
   props: Partial<
     Pick<
       DockWorkbenchProps,
-      'selectedPanel' | 'renderContext' | 'renderDocument' | 'renderGraph' | 'graphTitle'
+      | 'selectedPanel'
+      | 'renderContext'
+      | 'renderDocument'
+      | 'renderGraph'
+      | 'graphTitle'
+      | 'controls'
+      | 'onActiveContext'
+      | 'fileWorkAvailable'
     >
   > = {},
 ) {
@@ -69,21 +76,23 @@ async function fixture(
     container.remove();
   });
   const ref = createRef<DockWorkbenchHandle>();
-  await act(async () => {
-    root.render(
-      <DockWorkbench
-        ref={ref}
-        hostId="host"
-        projectId="project"
-        sessionId="session"
-        documentOwner={owner}
-        renderContext={(view) => <span>{view}</span>}
-        renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
-        {...props}
-      />,
-    );
-  });
-  return { ref, container, owner, closeView, key };
+  const renderSession = async (sessionId: string) =>
+    act(async () => {
+      root.render(
+        <DockWorkbench
+          ref={ref}
+          hostId="host"
+          projectId="project"
+          sessionId={sessionId}
+          documentOwner={owner}
+          renderContext={(view) => <span>{view}</span>}
+          renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
+          {...props}
+        />,
+      );
+    });
+  await renderSession('session');
+  return { ref, container, owner, closeView, key, renderSession };
 }
 
 /** Opens the pane actions menu of the group that shows `node`; its rows render in a portal. */
@@ -102,26 +111,141 @@ const activePane = (container: HTMLElement) =>
   container.querySelector('.dv-active-group [role="tab"][aria-selected="true"]')?.textContent;
 
 const contextTabs = (container: HTMLElement) =>
-  [...container.querySelectorAll<HTMLElement>('[role="tab"]')].map((tab) =>
+  [...container.querySelectorAll<HTMLElement>('.dv-tab[role="tab"]')].map((tab) =>
     tab.getAttribute('aria-label'),
   );
+const sessionTab = (container: HTMLElement, label: string) =>
+  [
+    ...container.querySelectorAll<HTMLButtonElement>('[aria-label="sessionViews"] [role="tab"]'),
+  ].find((tab) => tab.textContent?.startsWith(label));
 
-it('opens only the conversation when there is no saved layout', async () => {
+it('keeps conversation independent from the file workspace and reveals file work only when needed', async () => {
   const f = await fixture();
-  expect(contextTabs(f.container)).toEqual(['chat']);
-  expect(activePane(f.container)).toBe('chat');
+  expect(sessionTab(f.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
+  expect(sessionTab(f.container, 'history')?.getAttribute('aria-selected')).toBe('false');
+  expect(sessionTab(f.container, 'files')).toBeUndefined();
+  expect(sessionTab(f.container, 'changes')).toBeUndefined();
+  expect(contextTabs(f.container)).not.toContain('chat');
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).toBeNull();
+  await act(async () => f.ref.current?.openContext('files'));
+  expect(sessionTab(f.container, 'files')?.getAttribute('aria-selected')).toBe('true');
+  expect(sessionTab(f.container, 'changes')).toBeDefined();
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).not.toBeNull();
 });
 
-it.each(['files', 'run'] as const)(
+it.each(['files'] as const)(
   'opens an explicitly requested %s pane beside a new conversation',
   async (selectedPanel) => {
     const f = await fixture({ selectedPanel });
-    expect(contextTabs(f.container)).toEqual(['chat', selectedPanel]);
+    expect(contextTabs(f.container)).toEqual([selectedPanel]);
+    expect(sessionTab(f.container, 'files')?.getAttribute('aria-selected')).toBe('true');
     expect(activePane(f.container)).toBe(selectedPanel);
   },
 );
 
-it.each(['terminal', 'changes'] as const)(
+it('uses changes and history for their existing panel aliases without creating dock panes', async () => {
+  const f = await fixture({
+    fileWorkAvailable: true,
+    renderContext: (view, requestedView) => <span data-view={view}>{requestedView ?? view}</span>,
+  });
+  expect(sessionTab(f.container, 'files')).toBeDefined();
+  expect(sessionTab(f.container, 'changes')).toBeDefined();
+  for (const view of ['git', 'checks', 'problems', 'artifacts'] as const) {
+    await act(async () => f.ref.current?.openContext(view));
+    const primary = view === 'artifacts' ? 'history' : 'changes';
+    expect(sessionTab(f.container, primary)?.getAttribute('aria-selected')).toBe('true');
+    expect(
+      f.container.querySelector(`[data-view="${primary === 'history' ? 'run' : 'changes'}"]`)
+        ?.textContent,
+    ).toBe(view);
+    expect(contextTabs(f.container)).not.toContain(view);
+  }
+});
+
+it('uses the single top conversation tab without remounting the draft or open documents', async () => {
+  const onActiveContext = vi.fn();
+  const f = await fixture({
+    renderContext: (view) =>
+      view === 'chat' ? (
+        <textarea data-testid="draft" defaultValue="draft" />
+      ) : (
+        <span data-testid={view === 'run' ? 'history' : undefined}>{view}</span>
+      ),
+    controls: <button type="button">Run controls</button>,
+    onActiveContext,
+  });
+  const draft = f.container.querySelector<HTMLTextAreaElement>('[data-testid="draft"]');
+  if (!draft) throw new Error('Missing draft');
+  draft.value = 'keep my draft';
+  await act(async () => {
+    f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
+  });
+  const documentView = f.container.querySelector('[data-testid="document"]');
+  expect(sessionTab(f.container, 'files')?.getAttribute('aria-selected')).toBe('true');
+  expect(onActiveContext).toHaveBeenLastCalledWith('files');
+  await act(async () => sessionTab(f.container, 'chat')?.click());
+  expect(sessionTab(f.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
+  expect(f.container.querySelector('[data-testid="document"]')).toBe(documentView);
+  await act(async () => {
+    f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
+  });
+  const history = sessionTab(f.container, 'history');
+  expect(history).toBeDefined();
+  await act(async () => history?.click());
+  expect(sessionTab(f.container, 'history')?.getAttribute('aria-selected')).toBe('true');
+  expect(onActiveContext).toHaveBeenLastCalledWith('run');
+  expect(f.container.querySelectorAll('[data-testid="history"]')).toHaveLength(1);
+  expect(draft.value).toBe('keep my draft');
+  expect(f.container.querySelector('[data-testid="document"]')).toBe(documentView);
+  expect(
+    f.container.querySelector('.corral-dock-controls')?.closest('[role="tabpanel"]'),
+  ).toBeNull();
+  await act(async () => sessionTab(f.container, 'chat')?.click());
+  expect(sessionTab(f.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
+  expect(f.container.querySelector('[data-testid="draft"]')).toBe(draft);
+  expect(f.closeView).not.toHaveBeenCalled();
+  expect(f.owner.retainView).toHaveBeenCalledTimes(1);
+  await act(async () => sessionTab(f.container, 'history')?.click());
+  await f.renderSession('next_session');
+  expect(sessionTab(f.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
+  expect(f.container.querySelector('[data-testid="document"]')).toBe(documentView);
+});
+
+it('opens an explicit run in history and removes only its legacy dock pane on restore', async () => {
+  const original = await fixture({ selectedPanel: 'terminal' });
+  await act(async () => {
+    original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
+  });
+  const storageKey = layoutStorageKey('host', 'project') ?? '';
+  const saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}');
+  const legacyRun = createPresetLayout('conversation', DEFAULT_PANELS).panels['context:run'];
+  saved.layout.panels['context:run'] = legacyRun;
+  type Node = { type: string; data: Node[] | { id: string; views: string[] } };
+  const aux = (node: Node): Node | undefined =>
+    Array.isArray(node.data)
+      ? node.data.map(aux).find(Boolean)
+      : node.data.id === 'bottom'
+        ? node
+        : undefined;
+  const group = aux(saved.layout.grid.root);
+  if (!group || Array.isArray(group.data)) throw new Error('Missing saved auxiliary group');
+  group.data.views.push('context:run');
+  await disposals.pop()?.();
+  localStorage.setItem(storageKey, JSON.stringify(saved));
+  const restored = await fixture({ selectedPanel: 'run' });
+  expect(sessionTab(restored.container, 'history')?.getAttribute('aria-selected')).toBe('true');
+  expect(contextTabs(restored.container)).not.toContain('run');
+  expect(contextTabs(restored.container)).toContain('terminal');
+  expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
+  expect(activePane(restored.container)).toContain('file.ts');
+  await act(async () => sessionTab(restored.container, 'chat')?.click());
+  expect(sessionTab(restored.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
+  expect(activePane(restored.container)).toContain('file.ts');
+  expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
+  expect(restored.closeView).not.toHaveBeenCalled();
+});
+
+it.each(['terminal', 'tools'] as const)(
   'an explicit %s link reopens its closed pane even when the selected URL has not changed',
   async (selectedPanel) => {
     const f = await fixture({
@@ -212,7 +336,9 @@ it('keeps the previously saved side panes instead of replacing them with the new
   );
   const f = await fixture();
   expect(contextTabs(f.container)).toEqual(
-    panes.map((panel) => (panel.descriptor.kind === 'context' ? panel.descriptor.view : '')),
+    panes
+      .filter((panel) => panel.id === 'context:files')
+      .map((panel) => (panel.descriptor.kind === 'context' ? panel.descriptor.view : '')),
   );
 });
 
@@ -318,12 +444,17 @@ it('moving a document between presets reuses its rendered view and logical owner
   expect(retained[0]?.[1]).not.toBe(retained[1]?.[1]);
 });
 
-it('recreates a document group after the last central context tab is closed', async () => {
+it('recreates a document group after the last file workspace pane is closed', async () => {
   const f = await fixture();
-  await act(async () => f.ref.current?.openContext('chat'));
+  await act(async () => f.ref.current?.openContext('files'));
   await act(async () =>
-    f.container.querySelector<HTMLButtonElement>('button[aria-label="close: chat"]')?.click(),
+    f.container
+      .querySelector('[data-tab-panel-id="context:files"]')
+      ?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }),
+      ),
   );
+  expect(contextTabs(f.container)).toEqual([]);
   await act(async () => {
     expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(true);
   });
@@ -366,7 +497,7 @@ it('an explicit chat selection takes precedence over a restored active document'
   });
   await disposals.pop()?.();
   const restored = await fixture({ selectedPanel: null });
-  expect(activePane(restored.container)).toContain('chat');
+  expect(sessionTab(restored.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
   expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
   expect(restored.closeView).not.toHaveBeenCalled();
 });
@@ -444,7 +575,9 @@ it('a team tab behind another tab is not drawn: its canvas nodes override visibi
     document.querySelector('[data-testid="graph"]')?.closest<HTMLElement>('[data-graph-view]');
   expect(holder()?.hidden).toBe(false);
   await act(async () => f.ref.current?.openContext('chat'));
-  expect(holder()?.hidden).toBe(true);
+  await vi.waitFor(() =>
+    expect(holder()?.closest<HTMLElement>('.corral-dock-session-panel')?.hidden).toBe(true),
+  );
   await act(async () => {
     f.ref.current?.openGraph('corral_a');
   });

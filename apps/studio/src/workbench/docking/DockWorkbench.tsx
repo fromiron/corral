@@ -13,8 +13,12 @@ import {
   MenuSubTrigger,
   MenuTrigger,
   Select,
+  TabItem,
+  TabPanel,
+  Tabs,
+  TabsList,
 } from '@corral/react/design-kit';
-import { ArrowLeft, Ellipsis, Plus, X } from '@corral/react/icons';
+import { Ellipsis, Plus, X } from '@corral/react/icons';
 import {
   type DockviewApi,
   DockviewDefaultTab,
@@ -86,7 +90,8 @@ export interface DockWorkbenchProps {
   sessionId: string;
   selectedPanel?: SessionPanel | null;
   selectionKey?: string;
-  renderContext(view: DockContextView): ReactNode;
+  fileWorkAvailable?: boolean;
+  renderContext(view: DockContextView, requestedView?: DockContextView): ReactNode;
   renderDocument(
     descriptor: DockDocumentDescriptor,
     panelId: string,
@@ -105,6 +110,14 @@ export interface DockWorkbenchProps {
   onPanesHiddenChange?: (hidden: boolean) => void;
 }
 type PanelParams = { descriptor: DockPanelDescriptor };
+type PrimaryView = 'chat' | 'files' | 'changes' | 'run';
+function primaryViewFor(view: DockContextView): PrimaryView {
+  if (view === 'chat') return 'chat';
+  if (view === 'run' || view === 'artifacts') return 'run';
+  if (view === 'changes' || view === 'git' || view === 'checks' || view === 'problems')
+    return 'changes';
+  return 'files';
+}
 const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
 const presets = ['conversation', 'implementation', 'review'] as const;
 type GroupName = (typeof groupNames)[number];
@@ -142,7 +155,7 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
   return (
     <div
       // A team graph stacks its palette, canvas and inspector in a narrow tab, so it scrolls.
-      className={`corral-dock-content ${descriptor.kind === 'document' || (descriptor.kind === 'context' && descriptor.view === 'chat') ? 'corral-dock-content-fixed' : ''}`}
+      className={`corral-dock-content ${descriptor.kind === 'document' ? 'corral-dock-content-fixed' : ''}`}
       data-dock-panel-id={api.id}
     >
       {descriptor.kind === 'document' ? (
@@ -198,7 +211,10 @@ function DockTab(props: IDockviewPanelHeaderProps<PanelParams>) {
  * Each group's header carries the pane controls (#90 follow-up): open a pane in its own area,
  * arrange the active pane, and close it. Narrow screens use the one pane switcher instead.
  */
-function DockHeaderActions({ activePanel, group }: IDockviewHeaderActionsProps) {
+function DockHeaderActions({
+  activePanel,
+  group,
+}: Pick<IDockviewHeaderActionsProps, 'activePanel' | 'group'>) {
   const renderer = useContext(RendererContext);
   const t = useTranslations('Docking');
   if (!renderer || !activePanel) return null;
@@ -330,7 +346,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const host = useRef<HTMLDivElement>(null);
     const mutating = useRef(false);
     const narrow = useRef(false);
-    const panesHidden = useRef(false);
+    const fileWorkOpened = useRef(false);
     const lastSelection = useRef({
       sessionId: props.sessionId,
       selectedPanel: props.selectedPanel,
@@ -339,6 +355,12 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const retention = useRef(new Map<string, () => void>());
     const [panels, setPanels] = useState<{ id: string; title: string }[]>([]);
     const [active, setActive] = useState('');
+    const [sessionView, setSessionView] = useState<PrimaryView>('chat');
+    const [hasFileWork, setHasFileWork] = useState(false);
+    const [historyVisited, setHistoryVisited] = useState(false);
+    const [changesVisited, setChangesVisited] = useState(false);
+    const [historyView, setHistoryView] = useState<DockContextView>('run');
+    const [changesView, setChangesView] = useState<DockContextView>('changes');
     const [selection, setSelection] = useState<{ panelId: string; range: TextRange } | null>(null);
     const [preset, setPreset] = useState<DockPreset | null>('conversation');
     const [message, setMessage] = useState<string | null>(null);
@@ -392,21 +414,16 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           release();
           retention.current.delete(id);
         }
+      for (const group of api.groups)
+        if (group.model.header.hidden) group.model.header.hidden = false;
       setPanels(api.panels.map((panel) => ({ id: panel.id, title: title(panel) })));
       setActive(api.activePanel?.id ?? '');
-      const activeDescriptor = api.activePanel ? descriptorOf(api.activePanel) : null;
-      const onChat = activeDescriptor?.kind === 'context' && activeDescriptor.view === 'chat';
-      const hidden = narrow.current ? onChat : onChat && api.hasMaximizedGroup();
-      if (hidden !== panesHidden.current) {
-        panesHidden.current = hidden;
-        current.current.onPanesHiddenChange?.(hidden);
-      }
     }
     function saveLayout() {
       const api = apiRef.current;
       const { hostId, projectId } = current.current;
       const key = layoutStorageKey(hostId, projectId);
-      if (!api || !key || !hostId || mutating.current) return;
+      if (!api || !key || !hostId || mutating.current || !fileWorkOpened.current) return;
       try {
         localStorage.setItem(key, serializeLayout(api.toJSON(), hostId, projectId));
       } catch {
@@ -443,43 +460,65 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       );
     }
     function focus(panel: IDockviewPanel, notify = false) {
+      fileWorkOpened.current = true;
+      setHasFileWork(true);
+      setSessionView('files');
       panel.api.setActive();
       if (narrow.current) panel.api.maximize();
       // A pane chosen while the others are hidden is shown, not activated off screen.
       else if (apiRef.current?.hasMaximizedGroup() && !panel.api.isMaximized())
         apiRef.current.exitMaximizedGroup();
       const descriptor = descriptorOf(panel);
-      if (notify && descriptor.kind === 'context')
-        current.current.onActiveContext?.(descriptor.view);
+      if (notify || isEditorPanel(descriptor))
+        current.current.onActiveContext?.(
+          descriptor.kind === 'context' ? descriptor.view : 'files',
+        );
       refresh();
     }
     function openContext(view: DockContextView, notify = false) {
       const api = apiRef.current;
       if (!api) return;
+      const primary = primaryViewFor(view);
+      if (primary === 'chat') {
+        setSessionView('chat');
+        if (notify) current.current.onActiveContext?.('chat');
+        return;
+      }
+      if (primary === 'run') {
+        setHistoryVisited(true);
+        setHistoryView(view);
+        setSessionView('run');
+        if (notify) current.current.onActiveContext?.(view);
+        return;
+      }
+      fileWorkOpened.current = true;
+      setHasFileWork(true);
+      if (primary === 'changes') {
+        setChangesVisited(true);
+        setChangesView(view);
+        setSessionView('changes');
+        if (notify) current.current.onActiveContext?.(view);
+        saveLayout();
+        return;
+      }
+      // The Files route acknowledges an opened document without replacing it with its tree.
+      if (view === 'files' && !notify && api.activePanel) {
+        focus(api.activePanel);
+        saveLayout();
+        return;
+      }
       let panel = api.panels.find((item) => {
         const descriptor = descriptorOf(item);
         return descriptor.kind === 'context' && descriptor.view === view;
       });
       if (!panel) {
-        const home =
-          view === 'chat'
-            ? 'main1'
-            : ['terminal', 'tools', 'checks', 'problems'].includes(view)
-              ? 'bottom'
-              : 'aux';
+        const home = ['terminal', 'tools'].includes(view) ? 'bottom' : 'aux';
         let group = findGroup(api, home);
         // A pane whose area is not open gets that area back instead of replacing the tab in
         // front, which is usually the conversation (at most four areas).
-        if (!group && home !== 'main1' && api.groups.length < 4)
+        if (!group && api.groups.length < 4)
           group = api.addGroup({ id: home, direction: home === 'bottom' ? 'below' : 'right' });
-        group ??=
-          api.groups.find(
-            (item) =>
-              !item.panels.some((other) => {
-                const descriptor = descriptorOf(other);
-                return descriptor.kind === 'context' && descriptor.view === 'chat';
-              }),
-          ) ?? api.activeGroup;
+        group ??= api.activeGroup;
         panel = api.addPanel({
           id: `context:${view}`,
           component: 'workbench',
@@ -575,16 +614,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       return true;
     }
     function setPanesHidden(hidden: boolean, view: DockContextView = 'chat') {
-      const api = apiRef.current;
-      if (!api) return;
-      if (hidden) {
-        openContext('chat', true);
-        if (!narrow.current) api.getPanel('context:chat')?.api.maximize();
-      } else {
-        if (!narrow.current) api.exitMaximizedGroup();
-        openContext(view, true);
-      }
-      refresh();
+      openContext(hidden ? 'chat' : view, true);
     }
     useImperativeHandle(ref, () => ({
       openDocument,
@@ -631,18 +661,30 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     function applyPreset(value: DockPreset) {
       const api = apiRef.current;
       if (!api) return;
+      fileWorkOpened.current = true;
+      setHasFileWork(true);
       mutating.current = true;
       try {
-        // A preset brings in the panes it is for (Implementation: Files, Terminal, Problems).
-        api.fromJSON(createPresetLayout(value, presetPanels(value, records(api))), {
-          reuseExistingPanels: true,
-        });
+        // Presets arrange file work; checks and review stay in the Changes screen.
+        api.fromJSON(
+          createPresetLayout(
+            value,
+            presetPanels(value, records(api)).filter(
+              ({ descriptor }) =>
+                descriptor.kind !== 'context' || primaryViewFor(descriptor.view) === 'files',
+            ),
+          ),
+          {
+            reuseExistingPanels: true,
+          },
+        );
         setPreset(value);
       } finally {
         mutating.current = false;
       }
       if (narrow.current && api.activePanel) api.activePanel.api.maximize();
       refresh();
+      openContext(value === 'review' ? 'changes' : 'files');
       saveLayout();
     }
     function move(panelId: string, destination: GroupName) {
@@ -786,16 +828,35 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       }
       if (loaded?.layout) setPreset(null);
       if (loaded?.recovered) setMessage('layoutRecovered');
+      const previousActive = api.activePanel;
+      // Only relocated primary surfaces leave the old grid; document and tool groups stay.
+      for (const panel of [...api.panels]) {
+        const descriptor = descriptorOf(panel);
+        if (descriptor.kind === 'context' && primaryViewFor(descriptor.view) !== 'files')
+          api.removePanel(panel);
+        else if (loaded?.panels.length) {
+          fileWorkOpened.current = true;
+          setHasFileWork(true);
+        }
+      }
+      if (!api.panels.length)
+        api.addPanel({
+          id: 'context:files',
+          component: 'workbench',
+          params: { descriptor: { kind: 'context', view: 'files' } },
+          title: labels.current('files'),
+          renderer: 'always',
+        });
+      if (previousActive && api.getPanel(previousActive.id)) previousActive.api.setActive();
       mutating.current = false;
       refresh();
       const width = host.current?.getBoundingClientRect().width ?? 0;
       narrow.current = width > 0 && width <= NARROW;
       setCompact(narrow.current);
-      // On a phone the conversation comes first, even when a side pane was remembered.
-      if (narrow.current) openContext('chat', current.current.selectedPanel != null);
-      else if (current.current.selectedPanel !== undefined || !loaded?.layout)
-        openContext(current.current.selectedPanel ?? 'chat');
+      if (narrow.current && api.activePanel) api.activePanel.api.maximize();
+      openContext(current.current.selectedPanel ?? 'chat');
       setDockApi(api);
+      saveLayout();
     }
     function measure() {
       const api = apiRef.current;
@@ -821,7 +882,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         apiRef.current.exitMaximizedGroup();
       if (event.origin === 'user' && event.panel) {
         const descriptor = descriptorOf(event.panel);
-        if (descriptor.kind === 'context') current.current.onActiveContext?.(descriptor.view);
+        current.current.onActiveContext?.(
+          descriptor.kind === 'context' ? descriptor.view : 'files',
+        );
       }
     }
     const handlers = useRef({ refresh, saveLayout, allowDrop, measure, onActivePanel });
@@ -869,6 +932,11 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         selectedPanel: props.selectedPanel,
         selectionKey: props.selectionKey,
       };
+      if (previous.sessionId !== props.sessionId) {
+        setHistoryVisited(false);
+        setChangesVisited(false);
+        if (props.selectedPanel === undefined) setSessionView('chat');
+      }
       if (
         previous.sessionId === props.sessionId &&
         previous.selectedPanel === props.selectedPanel &&
@@ -886,19 +954,26 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       () => props.subscribeGraphs?.(() => actions.current.refresh()),
       [props.subscribeGraphs],
     );
-    const selected = apiRef.current?.getPanel(active);
-    const activeDescriptor = selected ? descriptorOf(selected) : null;
-    const activeView = activeDescriptor?.kind === 'context' ? activeDescriptor.view : null;
+    useEffect(() => {
+      current.current.onPanesHiddenChange?.(sessionView === 'chat');
+    }, [sessionView]);
+    const primaryTabs: PrimaryView[] = [
+      'chat',
+      ...(props.fileWorkAvailable || hasFileWork ? (['files', 'changes'] as const) : []),
+      'run',
+    ];
     // Opening a pane lists every pane once, under what it is for (#70 IA-04).
-    const paneOptions = PANE_CATALOG.map((entry) => ({
-      value: `context:${entry.view}`,
-      label: t(entry.view),
-      group: t(groupLabel[entry.group]),
-    }));
+    const paneOptions = PANE_CATALOG.filter((entry) => primaryViewFor(entry.view) === 'files').map(
+      (entry) => ({
+        value: `context:${entry.view}`,
+        label: t(entry.view),
+        group: t(groupLabel[entry.group]),
+      }),
+    );
     return (
       <RendererContext.Provider
         value={{
-          renderContext: props.renderContext,
+          renderContext: (view) => (hasFileWork ? props.renderContext(view) : null),
           renderDocument: props.renderDocument,
           renderGraph: props.renderGraph,
           selection,
@@ -911,10 +986,12 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             move,
             split,
             resize,
-            step: (direction) =>
-              direction === 'previous'
-                ? apiRef.current?.activatePrevious({ includePanel: true })
-                : apiRef.current?.activateNext({ includePanel: true }),
+            step: (direction) => {
+              setSessionView('files');
+              if (direction === 'previous')
+                apiRef.current?.activatePrevious({ includePanel: true });
+              else apiRef.current?.activateNext({ includePanel: true });
+            },
           },
         }}
       >
@@ -971,53 +1048,85 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             });
           }}
         >
-          {compact ? (
-            <div className="corral-dock-toolbar" data-testid="dock-toolbar">
-              {activeView !== 'chat' ? (
-                <Button size="compact" variant="ghost" onClick={() => openContext('chat', true)}>
-                  <ArrowLeft />
-                  {t('backToChat')}
-                </Button>
-              ) : null}
-              <Select
-                label={t('panes')}
-                placeholder={t('panes')}
-                size="sm"
-                value={activeView === 'chat' ? '' : active}
-                onValueChange={(id) => {
-                  const panel = apiRef.current?.getPanel(id);
-                  if (panel) focus(panel, true);
-                  else if (id.startsWith('context:'))
-                    openContext(id.slice('context:'.length) as DockContextView, true);
-                }}
-                options={[
-                  ...paneOptions,
-                  ...panels
-                    .filter(
-                      (panel) => panel.id.startsWith('document:') || panel.id.startsWith('graph:'),
-                    )
-                    .map((panel) => ({ value: panel.id, label: panel.title })),
-                ]}
-              />
+          <Tabs
+            value={sessionView}
+            onValueChange={(value) => {
+              if (value === 'files') {
+                openContext('files');
+                current.current.onActiveContext?.('files');
+              } else openContext(value === 'run' || value === 'changes' ? value : 'chat', true);
+            }}
+            className="corral-dock-tabs"
+          >
+            <div className="corral-dock-primary-tabs">
+              <TabsList aria-label={t('sessionViews')}>
+                {primaryTabs.map((view) => (
+                  <TabItem
+                    key={view}
+                    value={view}
+                    label={t(view === 'run' ? 'history' : view)}
+                    onClick={() => {
+                      if (sessionView === view && (view === 'changes' || view === 'run'))
+                        openContext(view, true);
+                    }}
+                  />
+                ))}
+              </TabsList>
             </div>
-          ) : null}
-          {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
-          {message ? (
-            <p role="status" className="px-3 py-1 text-xs text-muted-foreground">
-              {t(message)}
-            </p>
-          ) : null}
-          <div className="corral-dock-area">
-            <DockviewReact
-              components={components}
-              defaultTabComponent={DockTab}
-              rightHeaderActionsComponent={DockHeaderActions}
-              theme={theme}
-              onReady={onReady}
-              disableFloatingGroups
-              getTabContextMenuItems={() => []}
-            />
-          </div>
+            {compact && sessionView === 'files' ? (
+              <div className="corral-dock-toolbar" data-testid="dock-toolbar">
+                <Select
+                  label={t('panes')}
+                  placeholder={t('panes')}
+                  size="sm"
+                  value={active}
+                  onValueChange={(id) => {
+                    const panel = apiRef.current?.getPanel(id);
+                    if (panel) focus(panel, true);
+                    else if (id.startsWith('context:'))
+                      openContext(id.slice('context:'.length) as DockContextView, true);
+                  }}
+                  options={[
+                    ...paneOptions,
+                    ...panels
+                      .filter(
+                        (panel) =>
+                          panel.id.startsWith('document:') || panel.id.startsWith('graph:'),
+                      )
+                      .map((panel) => ({ value: panel.id, label: panel.title })),
+                  ]}
+                />
+              </div>
+            ) : null}
+            {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
+            {message ? (
+              <p role="status" className="px-3 py-1 text-xs text-muted-foreground">
+                {t(message)}
+              </p>
+            ) : null}
+            <TabPanel value="chat" keepMounted className="corral-dock-session-panel">
+              {props.renderContext('chat')}
+            </TabPanel>
+            <TabPanel value="files" keepMounted className="corral-dock-session-panel">
+              <div className="corral-dock-area">
+                <DockviewReact
+                  components={components}
+                  defaultTabComponent={DockTab}
+                  rightHeaderActionsComponent={DockHeaderActions}
+                  theme={theme}
+                  onReady={onReady}
+                  disableFloatingGroups
+                  getTabContextMenuItems={() => []}
+                />
+              </div>
+            </TabPanel>
+            <TabPanel value="changes" keepMounted className="corral-dock-session-panel">
+              {changesVisited ? props.renderContext('changes', changesView) : null}
+            </TabPanel>
+            <TabPanel value="run" keepMounted className="corral-dock-session-panel">
+              {historyVisited ? props.renderContext('run', historyView) : null}
+            </TabPanel>
+          </Tabs>
         </section>
         <DocumentCloseDialog
           path={closing?.path ?? null}

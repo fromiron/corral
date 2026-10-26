@@ -37,8 +37,10 @@ import {
 import { HunkActions } from '../workbench/HunkActions.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
+import type { ReviewSearch } from '../workbench/panels/routes.ts';
 import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
+import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
@@ -61,13 +63,38 @@ const scopeFromSearch = (search: { scope?: string; runId?: string }): ReviewScop
       : { kind: 'session' };
 
 export function ReviewPage() {
+  const { session } = reviewRoute.useLoaderData();
+  const search = reviewRoute.useSearch();
+  const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
+  return (
+    <ReviewContent
+      session={session}
+      search={search}
+      onSearch={(patch) => void navigate({ search: (current) => ({ ...current, ...patch }) })}
+    />
+  );
+}
+
+export function ReviewContent({
+  session,
+  search,
+  onSearch,
+  embedded = false,
+  onPrepareCopy,
+  onSessionChange,
+}: {
+  session: WorkSession;
+  search: ReviewSearch;
+  onSearch: (patch: Partial<ReviewSearch>) => void;
+  embedded?: boolean;
+  onPrepareCopy?: () => void;
+  onSessionChange?: () => void | Promise<void>;
+}) {
   const t = useTranslations('Files');
   const ts = useTranslations('Sessions');
   const tc = useTranslations('Context');
   const reviewedHint = useId();
-  const { session } = reviewRoute.useLoaderData();
-  const search = reviewRoute.useSearch();
-  const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
+  const navigate = useNavigate();
   const services = useServices();
   const { workspaces, transport, mode } = services;
   const mounted = useRef(false);
@@ -119,6 +146,11 @@ export function ReviewPage() {
   const refreshRuns = useCallback(() => setRunTick((tick) => tick + 1), []);
   const runActive = runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
   const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const changed = () => setVersion((value) => value + 1);
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, []);
   const { binding } = useBinding(session.projectId);
   const [loadedComments, setComments] = useState<{
     sessionId: string;
@@ -186,18 +218,16 @@ export function ReviewPage() {
   }, [workspaces, session.sessionId, scopeKey, version]);
 
   const selected = search.file ?? null;
-  const choose = (file: string) => void navigate({ search: (s) => ({ ...s, file }) });
+  const choose = (file: string) => onSearch({ file });
   const setScope = (value: string) => {
     const [kind, runId] = value.split(':');
-    void navigate({
-      search: (s) => ({
-        ...s,
-        scope: kind as 'session' | 'review' | 'run',
-        runId,
-        file: undefined,
-      }),
+    onSearch({
+      scope: kind as 'session' | 'review' | 'run',
+      runId,
+      file: undefined,
     });
   };
+  const Container = embedded ? 'div' : 'main';
 
   return (
     <WorkbenchLayout
@@ -207,16 +237,20 @@ export function ReviewPage() {
         sessionId: session.sessionId,
       })}
       main={
-        <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+        <Container className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
-            <Link
-              to="/sessions/$sessionId"
-              params={{ sessionId: session.sessionId }}
-              className="text-xs underline"
-            >
-              ← {session.title}
-            </Link>
-            <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
+            {!embedded ? (
+              <>
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: session.sessionId }}
+                  className="text-xs underline"
+                >
+                  ← {session.title}
+                </Link>
+                <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
+              </>
+            ) : null}
             {/* The options name what they compare; the label stays for assistive technology. */}
             <Select
               variant="chip"
@@ -295,12 +329,15 @@ export function ReviewPage() {
                 <Button
                   variant="tertiary"
                   size="compact"
+                  onClick={onPrepareCopy}
                   render={
-                    <Link
-                      to="/sessions/$sessionId"
-                      params={{ sessionId: session.sessionId }}
-                      search={{ panel: 'changes' }}
-                    />
+                    onPrepareCopy ? undefined : (
+                      <Link
+                        to="/sessions/$sessionId"
+                        params={{ sessionId: session.sessionId }}
+                        search={{ panel: 'changes' }}
+                      />
+                    )
                   }
                 >
                   {t('makeCopyThere')}
@@ -412,6 +449,7 @@ export function ReviewPage() {
                 onChange={async () => {
                   refreshRuns();
                   await reloadComments();
+                  await onSessionChange?.();
                 }}
               />
               {scope.kind === 'session' && changes?.from && changes.to ? (
@@ -435,7 +473,7 @@ export function ReviewPage() {
               <Operations sessionId={session.sessionId} />
             </aside>
           </div>
-        </main>
+        </Container>
       }
     />
   );

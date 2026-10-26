@@ -6,7 +6,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ProfileInfo } from '../workbench/useModels.ts';
-import { CommentsPanel, ReviewPage } from './ReviewPage.tsx';
+import { CommentsPanel, ReviewContent, ReviewPage } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({
   services: {},
@@ -79,6 +79,7 @@ async function mount(
     auto?: WorkSession['auto'];
     profiles?: ProfileInfo[] | null;
     page?: boolean;
+    onSessionChange?: () => void | Promise<void>;
   } = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -204,7 +205,17 @@ async function mount(
     await act(async () =>
       root.render(
         options.page ? (
-          <ReviewPage />
+          options.onSessionChange ? (
+            <ReviewContent
+              session={session}
+              search={{}}
+              onSearch={() => {}}
+              embedded
+              onSessionChange={options.onSessionChange}
+            />
+          ) : (
+            <ReviewPage />
+          )
         ) : (
           <CommentsPanel
             session={session}
@@ -502,4 +513,17 @@ it('ignores late Reins targets from the run just left', async () => {
   );
   if (!recipient) throw new Error('Missing review recipient');
   expect([...recipient.options].map((option) => option.value)).toEqual(['execution']);
+});
+
+it('notifies the embedded session owner after feedback is recorded, not on initial render', async () => {
+  const changed = vi.fn(async () => {});
+  const view = await mount({ page: true, onSessionChange: changed });
+  expect(changed).not.toHaveBeenCalled();
+  changed.mockImplementation(async () => {
+    expect(view.recordFeedback).toHaveBeenCalled();
+    expect(view.addSessionEntry).toHaveBeenCalled();
+    expect(view.comments()[0]?.state).toBe('submitted');
+  });
+  await view.clickSend();
+  expect(changed).toHaveBeenCalledTimes(1);
 });

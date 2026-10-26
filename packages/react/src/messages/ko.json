@@ -1677,6 +1677,8 @@
     "modelsUnavailable": "모델 연결 정보를 아직 확인하지 못했습니다. 보내기 전에 모델 설정을 확인하세요."
   },
   "Workbench": {
+    "reviewFeedback": "변경 검토 · 수정 요청",
+    "backToGit": "Git 변경으로 돌아가기",
     "sidebar": "프로젝트와 세션",
     "collapseSidebar": "사이드바 숨기기",
     "expandSidebar": "사이드바 보이기",
@@ -2004,7 +2006,7 @@
       "panel": "패널",
       "settings": "설정"
     },
-    "togglePanel": "사이드 패널 보이기/숨기기",
+    "togglePanel": "파일 뷰어 열기·닫기",
     "openPanel": "{panel} 열기",
     "review": "검토 화면 열기",
     "rename": "세션 이름 바꾸기",
@@ -3307,6 +3309,11 @@
     "sourceUnavailable": "이 터미널 출처를 현재 화면에서 열 수 없습니다."
   },
   "Docking": {
+    "fileViewer": "파일 뷰어",
+    "openFileViewer": "파일 뷰어 열기",
+    "closeFileViewer": "파일 뷰어 닫기",
+    "history": "실행 기록",
+    "sessionViews": "세션 보기",
     "title": "작업 공간 배치",
     "preset": "배치",
     "conversation": "대화",
