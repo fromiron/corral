@@ -25,10 +25,14 @@
 
 구현 중 추가한 주소. 모두 같은 세션·Host/Origin 검사를 거친다. `health`와 `POST /session`만 세션 없이 받는다.
 
+bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 브라우저·프로필에서도 반복 사용할 수 있다. 유효한 세션 cookie가 있으면 같은 링크를 다시 교환해도 세션과 CSRF token을 유지한다. cookie가 없거나 유효하지 않으면 새 세션을 발급한다. 잘못된 token은 기존 세션이 있어도 거절하며, 서버 재시작은 이전 링크와 세션을 모두 무효화한다.
+
+인증된 브라우저 프로필의 같은 호스트·포트에 접속하는 탭은 기존 세션 cookie를 공유한다. 새 탭·새로고침에 bootstrap 재교환을 요구하지 않는다. 같은 탭에서 bootstrap 링크의 fragment만 바뀌어도 인증 초기화를 다시 실행한다. cookie 이름은 실제 수신 포트를 포함해 같은 호스트의 다른 Corral 서버가 인증을 덮어쓰지 않게 한다. 다른 서버의 세션과 CSRF token은 받지 않는다. cookie 이름 분리는 포트 사이의 보안 격리를 뜻하지 않으며 기존 Host/Origin·CSRF 검사를 유지한다.
+
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
 | GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`). secret 없음 |
-| POST /session | `{token}` | 일회성 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 재사용은 401 |
+| POST /session | `{token}` | 서버 실행 중 유효한 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 잘못된 token은 401 |
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트), sessionId. `POST /runs`는 `sessionId?`를 받고 팀 프로젝트의 세션이 아니면 `TARGET_NOT_FOUND` |
 | GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록. 자격 증명·상태 없음 |

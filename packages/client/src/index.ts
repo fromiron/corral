@@ -593,7 +593,7 @@ export async function probeServer(options: HttpOptions): Promise<ServerHealth | 
   }
 }
 
-/** Trades the one-time bootstrap token for a session cookie. */
+/** Exchanges the running server's bootstrap token for a session cookie. */
 export async function openSession(options: HttpOptions, token: string): Promise<boolean> {
   const response = await new Http(options).request('/session', {
     method: 'POST',

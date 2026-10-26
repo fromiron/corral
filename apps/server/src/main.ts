@@ -48,7 +48,9 @@ const server = await startCorralServer({
     : {}),
 });
 
-console.log(`Corral is running. Open this link once to start a session:\n  ${server.bootstrapUrl}`);
+console.log(
+  `Corral is running. Open this link to start a session (reusable until this server stops):\n  ${server.bootstrapUrl}`,
+);
 const stop = async () => {
   await server.close();
   process.exit(0);

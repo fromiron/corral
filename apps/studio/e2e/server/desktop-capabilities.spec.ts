@@ -210,7 +210,7 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   role.harness = { profileId: profile.profileId, revision: profile.revision };
   const definitionPath = join(capability.root, 'native-integration.corral.json');
   writeFileSync(definitionPath, JSON.stringify(definition));
-  // The bootstrap link is single use; the signed-in page navigates on.
+  // The signed-in page reuses its session cookie.
   await page.goto(`${capability.server.url}/projects/default`);
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.locator('input[type="file"]').setInputFiles(definitionPath);

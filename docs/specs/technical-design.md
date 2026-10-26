@@ -374,7 +374,7 @@ DB는 로컬 디스크에 둔다. 네트워크 파일시스템의 WAL 지원을 
 | Method / path | 입력·결과 | 제약 |
 |---|---|---|
 | GET `/api/v1/health` | 버전·기능·process epoch | secret 없음 |
-| POST `/api/v1/session/bootstrap` | 일회성 local bootstrap token → 세션 | localhost/Origin 검증 |
+| POST `/api/v1/session` | [bootstrap 인증 계약](api-contract.md) | localhost/Origin 검증 |
 | GET/POST `/api/v1/corrals` | 목록/새 정의 | schema validation |
 | GET/PUT `/api/v1/corrals/:id` | 정의 저장·불러오기 | If-Match definition revision |
 | PUT `/api/v1/corrals/:id/layout` | 레이아웃 저장 | 독립 layout revision |
@@ -432,7 +432,7 @@ IME composing 동안 Enter는 전송·저장·노드 단축키를 실행하지 �
 
 모델 provider와 검색 API는 고정된 설정의 endpoint만 사용한다. 사용자 문서 본문이나 모델 응답에서 endpoint/key를 바꾸게 하지 않는다. model profile은 server side capability registry로 해석하고 client export에는 secret ref도 최소화한다.
 
-local bootstrap token은 최초 연결에서만 사용하고 로그/URL query에 장기 secret을 남기지 않는다. UI·API same-origin을 기본으로 하며 CORS wildcard는 금지한다. state-changing request는 session+CSRF+Origin 검증을 수행한다. DNS rebinding을 고려해 Host allowlist를 둔다.
+local bootstrap token의 수명과 교환은 [API 인증 계약](api-contract.md)을 따른다. 로그/URL query에 secret을 남기지 않는다. UI·API same-origin을 기본으로 하며 CORS wildcard는 금지한다. state-changing request는 session+CSRF+Origin 검증을 수행한다. DNS rebinding을 고려해 Host allowlist를 둔다.
 
 외부 문서 fetch는 HTTPS, URL canonicalization, 모든 A/AAAA 주소 검사, private/link-local/loopback/metadata 차단, 리다이렉트 hop마다 재검사, 실제 연결 주소 pinning, 응답 크기·압축 해제 크기·time limit, 허용 MIME을 적용한다. 사용자가 승인한 URL이어도 네트워크 안전 검증을 건너뛰지 않는다. [S24]
 

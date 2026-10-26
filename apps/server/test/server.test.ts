@@ -129,14 +129,14 @@ describe('local security boundary', () => {
     ).rejects.toThrow(/127\.0\.0\.1/);
   });
 
-  it('trades a one-time bootstrap token for an HttpOnly, SameSite=Strict session', async () => {
+  it('reuses bootstrap links without rotating an existing browser session or CSRF token', async () => {
     const server = await start();
     expect(server.bootstrapUrl).toBe(`${server.url}/#bootstrap=${TOKEN}`);
     const anonymous = await fetch(`${server.url}/api/v1/corrals`);
     expect(anonymous.status).toBe(401);
     expect((await anonymous.json()).error.code).toBe('SESSION_INVALID');
 
-    const { call, login } = await browser(server);
+    const { call, login, cookie: authenticatedCookie } = await browser(server);
     const cookie = login.headers.get('set-cookie') ?? '';
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=Strict/i);
@@ -145,10 +145,104 @@ describe('local security boundary', () => {
 
     const reused = await fetch(`${server.url}/api/v1/session`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: server.url },
+      headers: {
+        'content-type': 'application/json',
+        origin: server.url,
+        cookie: authenticatedCookie,
+      },
       body: JSON.stringify({ token: TOKEN }),
     });
-    expect(reused.status).toBe(401);
+    expect(reused.status).toBe(204);
+    expect(reused.headers.get('set-cookie')).toBe(cookie);
+    expect(reused.headers.get('x-corral-csrf')).toBe(login.headers.get('x-corral-csrf'));
+
+    const otherBrowser = await browser(server);
+    expect(otherBrowser.cookie).not.toBe(authenticatedCookie);
+    expect(otherBrowser.login.headers.get('x-corral-csrf')).not.toBe(
+      login.headers.get('x-corral-csrf'),
+    );
+    expect((await otherBrowser.call(`${server.url}/api/v1/corrals`)).status).toBe(200);
+    expect(
+      (
+        await call(`${server.url}/api/v1/run-modes`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key: 'tab', mode: 'mock' }),
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it('issues a fresh session for an invalid cookie with the current bootstrap link', async () => {
+    const server = await start();
+    const first = await browser(server);
+    const response = await fetch(`${server.url}/api/v1/session`, {
+      method: 'POST',
+      headers: {
+        origin: server.url,
+        'content-type': 'application/json',
+        cookie: `${first.cookie.split('=')[0]}=invalid-session`,
+      },
+      body: JSON.stringify({ token: TOKEN }),
+    });
+    expect(response.status).toBe(204);
+    const cookie = (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    expect(cookie).not.toBe(first.cookie);
+    expect((await fetch(`${server.url}/api/v1/session`, { headers: { cookie } })).status).toBe(200);
+    expect((await first.call(`${server.url}/api/v1/session`)).status).toBe(200);
+  });
+
+  it('rejects incorrect bootstrap tokens even with an authenticated cookie', async () => {
+    const server = await start();
+    const { cookie, call } = await browser(server);
+    for (const token of [undefined, null, 0, {}, TOKEN.slice(1), `x${TOKEN.slice(1)}`]) {
+      const response = await fetch(`${server.url}/api/v1/session`, {
+        method: 'POST',
+        headers: { cookie, origin: server.url, 'content-type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      expect(response.status).toBe(401);
+      expect(response.headers.get('set-cookie')).toBeNull();
+    }
+    expect((await call(`${server.url}/api/v1/session`)).status).toBe(200);
+  });
+
+  it('keeps authentication and CSRF separate for servers sharing a browser cookie jar', async () => {
+    const first = await start();
+    const second = await start();
+    const firstBrowser = await browser(first);
+    const secondBrowser = await browser(second);
+    const firstName = firstBrowser.cookie.split('=')[0];
+    const secondName = secondBrowser.cookie.split('=')[0];
+    expect(firstName).not.toBe(secondName);
+    const cookie = `${firstBrowser.cookie}; ${secondBrowser.cookie}`;
+
+    for (const [server, own, other] of [
+      [first, firstBrowser, secondBrowser],
+      [second, secondBrowser, firstBrowser],
+    ] as const) {
+      expect((await fetch(`${server.url}/api/v1/session`, { headers: { cookie } })).status).toBe(
+        200,
+      );
+      expect(
+        (await fetch(`${server.url}/api/v1/session`, { headers: { cookie: other.cookie } })).status,
+      ).toBe(401);
+      const foreignSession = `${own.cookie.split('=')[0]}=${other.cookie.split('=')[1]}`;
+      expect(
+        (await fetch(`${server.url}/api/v1/session`, { headers: { cookie: foreignSession } }))
+          .status,
+      ).toBe(401);
+      const headers = {
+        cookie,
+        origin: server.url,
+        'content-type': 'application/json',
+        'x-corral-csrf': own.login.headers.get('x-corral-csrf') ?? '',
+      };
+      const input = { method: 'PUT', headers, body: JSON.stringify({ key: 'tab', mode: 'mock' }) };
+      expect((await fetch(`${server.url}/api/v1/run-modes`, input)).status).toBe(200);
+      headers['x-corral-csrf'] = other.login.headers.get('x-corral-csrf') ?? '';
+      expect((await fetch(`${server.url}/api/v1/run-modes`, input)).status).toBe(403);
+    }
   });
 
   it('rejects other origins and hosts before doing anything', async () => {
