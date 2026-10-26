@@ -29,7 +29,15 @@ function kindOf(event: RunEvent): string {
   return event.type.slice(0, event.type.indexOf('.'));
 }
 
-export function Timeline({ session }: { session: RunSessionStore }) {
+export function Timeline({
+  session,
+  selectedSeq,
+  onSelectSeq,
+}: {
+  session: RunSessionStore;
+  selectedSeq?: number | undefined;
+  onSelectSeq?: (seq: number) => void;
+}) {
   const t = useTranslations('Timeline');
   const events = useRunDisplay(session, (s) => s.events);
   const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
@@ -61,7 +69,10 @@ export function Timeline({ session }: { session: RunSessionStore }) {
       ),
     [events, actor, kind, execution],
   );
-  const selected = events.find((e) => e.eventId === selectedId) ?? null;
+  const selected =
+    events.find((e) =>
+      selectedSeq !== undefined ? e.runSeq === selectedSeq : e.eventId === selectedId,
+    ) ?? null;
 
   const rows = useVirtualizer({
     count: shown.length,
@@ -136,7 +147,7 @@ export function Timeline({ session }: { session: RunSessionStore }) {
                 {rows.getVirtualItems().map((item) => {
                   const event = shown[item.index];
                   if (!event) return null;
-                  const isSelected = event.eventId === selectedId;
+                  const isSelected = event.eventId === selected?.eventId;
                   return (
                     <li
                       key={item.key}
@@ -150,7 +161,10 @@ export function Timeline({ session }: { session: RunSessionStore }) {
                         variant={isSelected ? 'secondary' : 'ghost'}
                         size="default"
                         aria-pressed={isSelected}
-                        onClick={() => setSelectedId(event.eventId)}
+                        onClick={() => {
+                          setSelectedId(event.eventId);
+                          onSelectSeq?.(event.runSeq);
+                        }}
                         className="w-full justify-start text-left [&>span:last-child]:contents [&>span:last-child>span]:contents"
                       >
                         <span className="w-12 shrink-0 font-mono text-muted-foreground">

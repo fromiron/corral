@@ -316,9 +316,9 @@ function ExecutionRow({
       aria-current={selected ? 'true' : undefined}
       className={`rounded-md border p-2 text-xs ${selected ? 'border-primary bg-raised ring-1 ring-primary/40' : 'border-transparent fill-group'}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex flex-col">
-          <span className="font-medium">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex min-w-0 flex-col">
+          <span className="break-all font-medium">
             {labelOf(execution.nodeId)}
             {compact ? '' : ` · ${id}`}
           </span>

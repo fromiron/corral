@@ -201,3 +201,43 @@ it('an explicit review target cannot inherit old run/result or review selections
     ),
   ).toEqual({ panel: 'files' });
 });
+
+it('persists exact historical sequences in both Run routes and isolates explicit cursors from remembered targets', () => {
+  for (const atSeq of [0, 7, '7']) {
+    expect(validateRunSearch({ atSeq })).toEqual({ atSeq: Number(atSeq) });
+    expect(validateSessionSearch({ run: 'run_history', atSeq, compose: true })).toEqual({
+      run: 'run_history',
+      atSeq: Number(atSeq),
+    });
+  }
+  expect(resolveSessionSearch({ atSeq: 0 }, { run: 'old', execution: 'old_exec' })).toEqual({
+    atSeq: 0,
+  });
+  for (const atSeq of [-1, 1.5, '1.5', '', 'no', Number.MAX_SAFE_INTEGER + 1]) {
+    expect(validateRunSearch({ atSeq })).toEqual({});
+  }
+  expect(patchSessionSearch({ run: 'a', atSeq: 3 }, { run: 'b', atSeq: undefined })).toEqual({
+    run: 'b',
+  });
+});
+
+it('switching Runs clears implicit old targets and cursor while preserving explicit historical links', () => {
+  const current = {
+    run: 'run_old',
+    atSeq: 9,
+    execution: 'exec_old',
+    artifact: 'art_old',
+    result: 'result_old',
+    view: 'results' as const,
+    panel: 'run' as const,
+  };
+  expect(patchSessionSearch(current, { run: 'run_new', view: 'run' })).toEqual({
+    panel: 'run',
+    run: 'run_new',
+    view: 'run',
+  });
+  expect(
+    patchSessionSearch(current, { run: 'run_new', atSeq: 4, execution: 'exec_new', view: 'run' }),
+  ).toEqual({ panel: 'run', run: 'run_new', atSeq: 4, execution: 'exec_new', view: 'run' });
+  expect(patchSessionSearch(current, { run: 'run_old', view: 'run' }).atSeq).toBe(9);
+});

@@ -4,11 +4,12 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 44 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 45 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.
 - Source Tabs, TabsList, TabItem and TabPanel use the existing Base UI Tabs primitive and kit size, shape, surface, spring and fluid-hover helpers. Their component and prop types are exported directly, with no adapter or new dependency.
+- Source Slider uses the existing Base UI Slider primitive, Motion and kit shape, size, font-weight and spring helpers. The supplied compact size omits step dots by default; the comfortable default pips variant renders each step.
 - Source Dialog, Select and Dropdown own their popup surfaces, nested elevation, layout and motion. MenuItem, dropdown search/submenu helpers and popup helpers complete their graph.
 - `ui-provider.tsx`, exported as `DesignKitProvider`, supplies Motion's OS reduced-motion policy and the kit's shape, size and Lucide icon contexts. Corral wraps its app entry with this provider.
 - Sidebar integrations retain routing, resize, drawer and preference state. They pass `persist={false}` and `shortcut={null}` to avoid a second owner of application state.
@@ -29,6 +30,7 @@ All imports use package-relative paths instead of the original `@/` alias. TypeS
 - Popup `data-slot` hooks remain available for contextual dismissal, focus and responsive integration. ScrollArea accepts `viewportTabIndex` for existing keyboard navigation.
 - ThinkingStepDetails accepts controlled `open`/`onOpenChange`, so the work log mounts an execution transcript only after its fold first opens. Its timing, layout and other parts remain the source's.
 - Tabs retains the source's default segmented appearance, spacing, selected/hover/focus layers, animation and keyboard behavior. Its only adaptations are relative import paths, Corral formatting/import order and a narrow lint explanation that preserves remeasurement when tab children change. No runtime or type-assertion changes were needed.
+- Slider retains the supplied styles, spacing, hover, spring timing, defaults and runtime branches. Its adaptations are relative imports, formatting, narrow lint explanations for the existing pointer/keyboard layering and spring synchronization, and erased tuple/index assertions for proven nonempty values, clamped step indices and ResizeObserver entries under `noUncheckedIndexedAccess`.
 - ChatMessage imports its text/body/action slots without the unused `File[]` thumbnail branch. Corral's existing authorized artifact preview remains responsible for attachments; no PDF package or external worker is introduced.
 
 ## Narrow API bridges
@@ -76,6 +78,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/sidebar-core.tsx` | `components/ui/sidebar-core.tsx` | `400b652251c76523e986a4cb63ccd24c1a6aec711272b2450130a36c6eba2ee1` | `5f2a8fb41a32244608c4a158e02af9b1e9601debe98a1ba23b964e4c47d8994c` |
 | `components/ui/sidebar-menu.tsx` | `components/ui/sidebar-menu.tsx` | `133ccab25657a153b4590e7808bffad03ff6ddb005c7e10d2b480c3ecde859d0` | `dd83e2cb06fa0f376bf7f1343f34eb97098f9cc6db47a8c97a425298c591898b` |
 | `components/ui/sidebar.tsx` | `components/ui/sidebar.tsx` | `402bd8d5b593460bd00d116758fdc7d7491bd6109bfec5c4cfc173fa807fd469` | `c0efb309a5ce51ffd39a5fbdf1749b833fa16ebaf134ab2f4a7169c59e20ec6d` |
+| `components/ui/slider.tsx` | `components/ui/slider.tsx` | `dfb34b8fa695fe20d4f0d9fdbd2f3f06c6a1cb8b7698c3cf24ca977f79293a13` | `3dd52acaea600a1dacfda70df2dbec3d254ae665d14b7f583a472d73a99987d6` |
 | `components/ui/switch.tsx` | `components/ui/switch.tsx` | `7dc6ea276d9a3160bb831c81011dd5b1c32d458574370e447591adeff0387dc6` | `81042dff28be44a31707045d87915653d822335a38c78c7e42514c6f8a90334a` |
 | `components/ui/table.tsx` | `components/ui/table.tsx` | `06c8f0ff67776454b3d4b1ab85d2782606f8324c386baf2211e73db70eab785f` | `dc9a729696e6ca5845afe5807493c59da55cae78d00f5198e4ca6643253d9e08` |
 | `components/ui/tabs.tsx` | `components/ui/tabs.tsx` | `1e228ed1618ee913434488ae65e2eac6afd152db239cb8c20860029d5eb7ef67` | `82c12715a1ff3c86c3e0c91d070ccd809f1df57cba3bb190f5d5cd5df9be1593` |
