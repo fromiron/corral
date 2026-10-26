@@ -19,20 +19,29 @@ import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
-import { latestResult, startFollowUp, steer, steerTargets } from '../sessionActions.ts';
+import { conversationRequest, newCommandId, steer, steerTargets } from '../sessionActions.ts';
+import {
+  autoChoiceFor,
+  autoNotReady,
+  autoReasoningUnsupported,
+  sessionRunMode,
+} from '../workbench/autoChoice.ts';
 import {
   type AttachmentCapture,
   appendComposerAttachment,
   beginAttachmentCapture,
 } from '../workbench/context/bridge.ts';
 import { HunkActions } from '../workbench/HunkActions.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
 import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
+import { useModelProfiles } from '../workbench/useModels.ts';
 import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
-import { WorkbenchLayout } from './Workbench.tsx';
+import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
 // Reviewing a session's file changes: a fixed comparison range, the files it
 // changed with where each change came from, the diff in the middle, and the agreed checks.
@@ -53,6 +62,7 @@ const scopeFromSearch = (search: { scope?: string; runId?: string }): ReviewScop
 
 export function ReviewPage() {
   const t = useTranslations('Files');
+  const ts = useTranslations('Sessions');
   const tc = useTranslations('Context');
   const reviewedHint = useId();
   const { session } = reviewRoute.useLoaderData();
@@ -100,10 +110,14 @@ export function ReviewPage() {
   // Runs and comments are held with the session they were read for: a late answer for the
   // session just left never lands here, and its drafts or active run never drive this one.
   const [loadedRuns, setRuns] = useState<{ sessionId: string; runs: RunSummary[] }>({
-    sessionId: session.sessionId,
+    sessionId: '',
     runs: [],
   });
   const runs = loadedRuns.sessionId === session.sessionId ? loadedRuns.runs : [];
+  const [runTick, setRunTick] = useState(0);
+  const [runsLost, setRunsLost] = useState(false);
+  const refreshRuns = useCallback(() => setRunTick((tick) => tick + 1), []);
+  const runActive = runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
   const [version, setVersion] = useState(0);
   const { binding } = useBinding(session.projectId);
   const [loadedComments, setComments] = useState<{
@@ -126,15 +140,26 @@ export function ReviewPage() {
   }, [reloadComments]);
 
   useEffect(() => {
+    void runTick;
     let live = true;
     const sessionId = session.sessionId;
-    void transport.listRuns().then((all) => {
-      if (live) setRuns({ sessionId, runs: all.filter((r) => r.sessionId === sessionId) });
-    });
+    void transport.listRuns().then(
+      (all) => {
+        if (!live) return;
+        setRuns({ sessionId, runs: all.filter((r) => r.sessionId === sessionId) });
+        setRunsLost(false);
+      },
+      () => live && setRunsLost(true),
+    );
     return () => {
       live = false;
     };
-  }, [transport, session.sessionId]);
+  }, [transport, session.sessionId, runTick]);
+  useEffect(() => {
+    if (!runActive && !runsLost) return;
+    const timer = setInterval(refreshRuns, 1500);
+    return () => clearInterval(timer);
+  }, [runActive, runsLost, refreshRuns]);
   useEffect(() => {
     void version;
     if (!workspaces) return;
@@ -242,6 +267,11 @@ export function ReviewPage() {
               {t('reviewedNote')}
             </span>
           </header>
+          {runsLost ? (
+            <p role="alert" className="p-3 text-sm text-danger">
+              {ts('connectionLost')}
+            </p>
+          ) : null}
           {noCopy ? (
             <section
               data-testid="review-empty"
@@ -349,7 +379,7 @@ export function ReviewPage() {
             <aside className="review-details flex min-w-0 flex-col gap-3 border-line p-3">
               {workspaces && mode === 'server' ? (
                 <LspProposals
-                  key={session.sessionId}
+                  key={`lsp:${session.sessionId}`}
                   api={workspaces}
                   sessionId={session.sessionId}
                   version={version}
@@ -373,15 +403,20 @@ export function ReviewPage() {
               ) : null}
 
               <CommentsPanel
+                key={`comments:${session.sessionId}`}
                 session={session}
                 runs={runs}
+                runsReady={loadedRuns.sessionId === session.sessionId && !runsLost}
                 comments={comments}
                 current={changes}
-                onChange={reloadComments}
+                onChange={async () => {
+                  refreshRuns();
+                  await reloadComments();
+                }}
               />
               {scope.kind === 'session' && changes?.from && changes.to ? (
                 <DecisionPanel
-                  key={session.sessionId}
+                  key={`decision:${session.sessionId}`}
                   sessionId={session.sessionId}
                   from={changes.from}
                   to={changes.to}
@@ -842,84 +877,152 @@ function Operations({ sessionId }: { sessionId: string }) {
   );
 }
 
+const pendingReviewCommands = createPendingSessionCommands(
+  typeof window !== 'undefined' && window.corralRemote ? window.localStorage : undefined,
+  typeof window !== 'undefined' ? window.corralRemote?.hostId : undefined,
+  'review',
+);
+
 /** Draft comments go out together, to the running execution or as a new run. */
-function CommentsPanel({
+export function CommentsPanel({
   session,
   runs,
+  runsReady = true,
   comments,
   current,
   onChange,
 }: {
   session: WorkSession;
   runs: RunSummary[];
+  runsReady?: boolean;
   comments: ReviewCommentView[];
   current: ChangeSetView | null;
   onChange: () => Promise<void>;
 }) {
   const t = useTranslations('Review');
+  const ts = useTranslations('Sessions');
+  const tc = useTranslations('Composer');
+  const td = useTranslations('Docking');
+  const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces } = services;
+  const profiles = useModelProfiles();
+  const [teamMode] = useRemembered<'none' | 'auto'>(
+    `corral:team-mode:${session.sessionId}`,
+    'none',
+  );
+  const [pending, setPending] = useState(
+    () => pendingReviewCommands.get(session.sessionId) ?? null,
+  );
   const active = runs.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
+  const activeRunId = active?.runId;
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
   const [target, setTarget] = useState('next');
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (!active) return setTargets([]);
-    void steerTargets(services, active.runId).then(setTargets);
-  }, [services, active]);
+    setTargets([]);
+    if (!activeRunId) return;
+    let live = true;
+    let revision = 0;
+    const reload = () => {
+      const read = ++revision;
+      void steerTargets(services, activeRunId).then(
+        (targets) => live && read === revision && setTargets(targets),
+        () => live && read === revision && setTargets([]),
+      );
+    };
+    reload();
+    const timer = setInterval(reload, 1500);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [services, activeRunId]);
   const drafts = comments.filter((c) => c.state === 'draft');
   const earlier = comments.filter(
     (c) => c.state !== 'draft' && (!current || c.from !== current.from || c.to !== current.to),
   );
   const steerTo = targets.find((x) => x.id === target);
+  const choice = autoChoiceFor(session.auto, profiles);
+  const mode = sessionRunMode(services.mode, services.live);
+  const modelBlocked = !pending && !active && autoNotReady(choice, profiles, mode);
+  const reasoningBlocked = !pending && !active && autoReasoningUnsupported(choice, profiles, mode);
+  const startBlocked = modelBlocked || reasoningBlocked || (!pending && !runsReady);
 
   const send = async () => {
-    if (!workspaces || drafts.length === 0) return;
+    if (!workspaces || busy || startBlocked || (!pending && drafts.length === 0)) return;
     setBusy(true);
     setNote(null);
     try {
-      const ids = drafts.map((c) => c.commentId);
-      const text = await workspaces.feedbackText(session.sessionId, ids);
+      const ids = pending ? pending.key.split('\0') : drafts.map((c) => c.commentId);
+      const text =
+        pending?.autoRequest?.brief ?? (await workspaces.feedbackText(session.sessionId, ids));
       let runId: string | null = null;
       let executionId: string | null = null;
       let sent = false;
       let detail: string | null = null;
       let commandId: string | null = null;
-      if (active && steerTo) {
+      const next = Boolean(pending) || !active;
+      if (next) {
+        const command = pending ?? { key: ids.join('\0'), commandId: newCommandId() };
+        // A lost answer keeps the original model, team, conversation and comment batch.
+        command.autoRequest ??= structuredClone(
+          conversationRequest(services, session, {
+            commandId: command.commandId,
+            brief: text,
+            choice,
+            team: teamMode,
+            throughRunId: runs.find((run) => TERMINAL_RUN_STATUSES.has(run.status))?.runId,
+          }),
+        );
+        pendingReviewCommands.set(session.sessionId, command);
+        setPending(command);
+        commandId = command.commandId;
+        const result = await services.startAuto(command.autoRequest);
+        runId = result.runId;
+        detail = result.receipt.error?.message ?? null;
+        sent = runId !== null;
+      } else if (active && steerTo) {
         ({ sent, detail, commandId } = await steer(services, active.runId, steerTo.id, text));
         runId = active.runId;
         executionId = steerTo.id;
-      } else if (!active) {
-        const latest = await latestResult(services, runs);
-        ({ runId, detail } = await startFollowUp(services, session, text, {
-          mode: 'mock',
-          startFrom: latest ? { runId: latest.runId, artifactVersionId: latest.id } : null,
-        }));
-        sent = runId !== null;
       } else {
         detail = 'choose an execution';
       }
       await workspaces.recordFeedback(session.sessionId, {
         commentIds: ids,
-        intent: steerTo ? 'steer' : 'next',
+        intent: next ? 'next' : 'steer',
         runId,
         executionId,
         text,
         sent,
         detail,
       });
-      await services.repository.addSessionEntry(session.sessionId, {
-        intent: steerTo ? 'steer' : 'next',
+      const recorded = await services.repository.addSessionEntry(session.sessionId, {
+        intent: next ? 'next' : 'steer',
         text,
-        state: sent ? (steerTo ? 'sent' : 'started') : 'refused',
+        state: sent ? (next ? 'started' : 'sent') : 'refused',
         runId,
         executionId,
         detail,
         commandId,
       });
+      if (!recorded.ok) throw new Error(recorded.message);
+      if (pendingReviewCommands.get(session.sessionId)?.commandId === commandId) {
+        pendingReviewCommands.delete(session.sessionId);
+        setPending(null);
+      }
       setNote(sent ? t('sent') : detail);
       await onChange();
+    } catch (failure) {
+      setNote(
+        pendingReviewCommands.get(session.sessionId)
+          ? t('sendUnconfirmed')
+          : failure instanceof Error
+            ? failure.message
+            : String(failure),
+      );
     } finally {
       setBusy(false);
     }
@@ -931,7 +1034,7 @@ function CommentsPanel({
         {t('commentsHeading')}
       </h3>
       <p className="text-xs text-muted-foreground">{t('draftCount', { count: drafts.length })}</p>
-      {drafts.length > 0 ? (
+      {drafts.length > 0 || pending ? (
         <>
           <ul className="flex flex-col gap-1 text-xs">
             {drafts.map((c) => (
@@ -945,6 +1048,7 @@ function CommentsPanel({
                 <Button
                   variant="ghost"
                   size="compact"
+                  disabled={busy || Boolean(pending)}
                   onClick={() =>
                     void workspaces
                       ?.setCommentState(session.sessionId, c.commentId, 'deleted')
@@ -960,10 +1064,11 @@ function CommentsPanel({
             <span aria-hidden="true">{t('sendTo')}</span>
             <Select
               label={t('sendTo')}
-              value={active ? target : 'next'}
+              value={active && !pending ? target : 'next'}
+              disabled={busy || Boolean(pending) || !runsReady}
               onValueChange={setTarget}
               options={[
-                ...(active ? [] : [{ value: 'next', label: t('sendNext') }]),
+                ...(active && !pending ? [] : [{ value: 'next', label: t('sendNext') }]),
                 ...targets.map((x) => ({ value: x.id, label: t('sendSteer', { label: x.label }) })),
               ]}
             />
@@ -972,13 +1077,46 @@ function CommentsPanel({
             variant="primary"
             size="compact"
             type="button"
-            disabled={busy || (Boolean(active) && !steerTo)}
+            disabled={busy || startBlocked || (!pending && Boolean(active) && !steerTo)}
             onClick={() => void send()}
             className="self-start"
           >
-            {t('sendReview')}
+            {t(pending ? 'retrySend' : 'sendReview')}
           </Button>
         </>
+      ) : null}
+      {!runsReady && !pending && drafts.length > 0 ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          {td('runLoading')}
+        </p>
+      ) : null}
+      {(modelBlocked || reasoningBlocked) && drafts.length > 0 ? (
+        <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+          <span>
+            {modelBlocked
+              ? profiles === null
+                ? t('modelsUnavailable')
+                : ts('autoNotReady', {
+                    model:
+                      profiles.find((profile) => profile.profileId === choice.modelProfile)
+                        ?.label ?? choice.modelProfile,
+                  })
+              : tc('reasoningUnsupportedHint')}
+          </span>
+          <Button
+            size="compact"
+            variant="tertiary"
+            render={
+              modelBlocked ? (
+                <Link {...navigation.link('models')} />
+              ) : (
+                <Link to="/sessions/$sessionId" params={{ sessionId: session.sessionId }} />
+              )
+            }
+          >
+            {modelBlocked ? tc('models.connect') : td('chat')}
+          </Button>
+        </div>
       ) : null}
       {note ? (
         <p role="status" className="text-xs">

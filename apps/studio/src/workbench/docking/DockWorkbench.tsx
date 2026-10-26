@@ -41,6 +41,7 @@ import { useTranslations } from 'use-intl';
 import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
+import { validateSessionSearch } from '../panels/routes.ts';
 import {
   addDocumentPanel,
   addGraphPanel,
@@ -922,6 +923,33 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           aria-label={t('title')}
           className="corral-dock-workbench"
           data-testid="dock-workbench"
+          onClickCapture={(event) => {
+            if (
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (
+              !(link instanceof HTMLAnchorElement) ||
+              link.hasAttribute('download') ||
+              (link.target && link.target !== '_self')
+            )
+              return;
+            const url = new URL(link.href);
+            if (
+              url.origin !== window.location.origin ||
+              url.pathname !== `/sessions/${encodeURIComponent(props.sessionId)}` ||
+              url.searchParams.has('settings')
+            )
+              return;
+            const panel = validateSessionSearch(Object.fromEntries(url.searchParams)).panel;
+            // An explicit link opens its pane even when the URL is already selected.
+            if (panel) openContext(panel);
+          }}
           onKeyDownCapture={(event) => {
             if (event.key !== 'Delete' && event.key !== 'Backspace') return;
             const tab = event.target;

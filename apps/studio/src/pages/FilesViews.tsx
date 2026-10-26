@@ -268,6 +268,9 @@ export function WorkingCopyPanel({
   }, [workspaces, sessionId]);
   useEffect(() => {
     void reload();
+    const changed = () => void reload();
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
   }, [reload]);
   if (!workspaces || worktree === undefined || binding === undefined) return null;
   const act = async (work: () => Promise<unknown>) => {

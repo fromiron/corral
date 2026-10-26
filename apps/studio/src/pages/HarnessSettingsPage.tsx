@@ -490,6 +490,26 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   ) : null}
                 </div>
               ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="tertiary"
+                  disabled={!canPreview}
+                  onClick={() =>
+                    selected &&
+                    projectId &&
+                    canPreview &&
+                    void work(async () =>
+                      setPreview(await api.preview(bindingOf(selected), projectId)),
+                    )
+                  }
+                >
+                  {t('preview')}
+                </Button>
+              </div>
+              {selected && !canPreview && projectId ? (
+                <p className="text-xs text-muted-foreground">{t('saveBeforePreview')}</p>
+              ) : null}
+              {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
               <section className="settings-row">
                 <div>
                   <h3>{t('name')}</h3>
@@ -866,25 +886,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 >
                   {t('save')}
                 </Button>
-                <Button
-                  variant="tertiary"
-                  disabled={!canPreview}
-                  onClick={() =>
-                    selected &&
-                    projectId &&
-                    canPreview &&
-                    void work(async () =>
-                      setPreview(await api.preview(bindingOf(selected), projectId)),
-                    )
-                  }
-                >
-                  {t('preview')}
-                </Button>
               </div>
-              {selected && !canPreview && projectId ? (
-                <p className="text-xs text-muted-foreground">{t('saveBeforePreview')}</p>
-              ) : null}
-              {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
             </fieldset>
           </>
         )}

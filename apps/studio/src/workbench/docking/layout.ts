@@ -59,17 +59,10 @@ export const DEFAULT_PANELS: DockPanel[] = CONTEXT_VIEWS.map((view) => ({
 const contextPanels = (views: readonly DockContextView[]): DockPanel[] =>
   views.map((view) => ({ id: `context:${view}`, descriptor: { kind: 'context', view } }));
 /**
- * A new project's dock opens with the conversation and the panes its replies link to. The
- * others open on demand from a group's + menu, the palette, `/` or the URL, so a first screen
- * is not a wall of empty tabs.
+ * A new project starts with the conversation; other panes open from links, the group's
+ * + menu, the palette or `/` when needed.
  */
-export const INITIAL_PANELS: DockPanel[] = contextPanels([
-  'chat',
-  'files',
-  'changes',
-  'artifacts',
-  'run',
-]);
+export const INITIAL_PANELS: DockPanel[] = contextPanels(['chat']);
 const PRESET_VIEWS: Record<DockPreset, readonly DockContextView[]> = {
   conversation: [],
   implementation: ['files', 'terminal', 'problems'],

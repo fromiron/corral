@@ -506,7 +506,34 @@ export function FilePanel({
                 className="min-w-0 flex-1"
               />
             </div>
-            <p className="text-xs text-muted-foreground">{ts('needsCopy')}</p>
+            <p className="text-xs text-muted-foreground">
+              {ts(hasCopy ? 'needsCopy' : 'needsCopyPreparation')}
+            </p>
+            {hasCopy && scopeKind === 'project' ? (
+              <Button
+                size="compact"
+                variant="tertiary"
+                className="self-start"
+                onClick={() => setSource('session')}
+              >
+                {ts('selectCopy')}
+              </Button>
+            ) : !hasCopy ? (
+              <Button
+                size="compact"
+                variant="tertiary"
+                className="self-start"
+                render={
+                  <Link
+                    to="/sessions/$sessionId"
+                    params={{ sessionId }}
+                    search={{ panel: 'changes' }}
+                  />
+                }
+              >
+                {ts('prepareCopy')}
+              </Button>
+            ) : null}
           </div>
         )
       ) : (

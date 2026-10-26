@@ -9,7 +9,7 @@ import {
   type DockWorkbenchHandle,
   type DockWorkbenchProps,
 } from './DockWorkbench.tsx';
-import { layoutStorageKey } from './layout.ts';
+import { createPresetLayout, DEFAULT_PANELS, layoutStorageKey, serializeLayout } from './layout.ts';
 
 Element.prototype.getAnimations ??= () => [];
 
@@ -32,7 +32,10 @@ afterEach(async () => {
 });
 async function fixture(
   props: Partial<
-    Pick<DockWorkbenchProps, 'selectedPanel' | 'renderDocument' | 'renderGraph' | 'graphTitle'>
+    Pick<
+      DockWorkbenchProps,
+      'selectedPanel' | 'renderContext' | 'renderDocument' | 'renderGraph' | 'graphTitle'
+    >
   > = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -97,6 +100,121 @@ async function paneActions(node: Element | null | undefined) {
 }
 const activePane = (container: HTMLElement) =>
   container.querySelector('.dv-active-group [role="tab"][aria-selected="true"]')?.textContent;
+
+const contextTabs = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>('[role="tab"]')].map((tab) =>
+    tab.getAttribute('aria-label'),
+  );
+
+it('opens only the conversation when there is no saved layout', async () => {
+  const f = await fixture();
+  expect(contextTabs(f.container)).toEqual(['chat']);
+  expect(activePane(f.container)).toBe('chat');
+});
+
+it.each(['files', 'run'] as const)(
+  'opens an explicitly requested %s pane beside a new conversation',
+  async (selectedPanel) => {
+    const f = await fixture({ selectedPanel });
+    expect(contextTabs(f.container)).toEqual(['chat', selectedPanel]);
+    expect(activePane(f.container)).toBe(selectedPanel);
+  },
+);
+
+it.each(['terminal', 'changes'] as const)(
+  'an explicit %s link reopens its closed pane even when the selected URL has not changed',
+  async (selectedPanel) => {
+    const f = await fixture({
+      selectedPanel,
+      renderContext: (view) =>
+        view === 'chat' ? (
+          <>
+            <a
+              href={`/sessions/session?panel=${selectedPanel}`}
+              onClick={(event) => event.preventDefault()}
+            >
+              Open controls
+            </a>
+            <a
+              data-keep-pane-closed
+              href={`/sessions/another?panel=${selectedPanel}`}
+              onClick={(event) => event.preventDefault()}
+            >
+              Other session
+            </a>
+            <a
+              data-keep-pane-closed
+              href={`/sessions/session?panel=${selectedPanel}&settings=models`}
+              onClick={(event) => event.preventDefault()}
+            >
+              Settings
+            </a>
+            <a
+              data-keep-pane-closed
+              href={`/sessions/session?panel=${selectedPanel}`}
+              target="_blank"
+              onClick={(event) => event.preventDefault()}
+              rel="noopener"
+            >
+              New tab
+            </a>
+            <a
+              data-keep-pane-closed
+              href={`https://example.invalid/sessions/session?panel=${selectedPanel}`}
+              onClick={(event) => event.preventDefault()}
+            >
+              Other host
+            </a>
+          </>
+        ) : (
+          <span>{view}</span>
+        ),
+    });
+    await act(async () =>
+      f.container
+        .querySelector<HTMLButtonElement>(`button[aria-label="close: ${selectedPanel}"]`)
+        ?.click(),
+    );
+    expect(contextTabs(f.container)).not.toContain(selectedPanel);
+    const link = f.container.querySelector<HTMLAnchorElement>(
+      `a[href="/sessions/session?panel=${selectedPanel}"]`,
+    );
+    expect(link).not.toBeNull();
+    await act(async () =>
+      link?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }),
+      ),
+    );
+    await act(async () => {
+      for (const otherLink of f.container.querySelectorAll<HTMLAnchorElement>(
+        '[data-keep-pane-closed]',
+      ))
+        otherLink.click();
+    });
+    expect(contextTabs(f.container)).not.toContain(selectedPanel);
+    await act(async () => link?.click());
+    expect(contextTabs(f.container)).toContain(selectedPanel);
+    expect(activePane(f.container)).toBe(selectedPanel);
+    expect(f.closeView).not.toHaveBeenCalled();
+  },
+);
+
+it('keeps the previously saved side panes instead of replacing them with the new default', async () => {
+  const panes = DEFAULT_PANELS.filter(
+    (panel) =>
+      panel.descriptor.kind === 'context' &&
+      ['chat', 'files', 'changes', 'artifacts', 'run'].includes(panel.descriptor.view),
+  );
+  const saved = createPresetLayout('conversation', panes);
+  localStorage.setItem(
+    layoutStorageKey('host', 'project') ?? '',
+    serializeLayout(saved, 'host', 'project'),
+  );
+  const f = await fixture();
+  expect(contextTabs(f.container)).toEqual(
+    panes.map((panel) => (panel.descriptor.kind === 'context' ? panel.descriptor.view : '')),
+  );
+});
 
 it('leaves a dirty document open until its close decision succeeds', async () => {
   const f = await fixture();

@@ -1,7 +1,6 @@
 import {
   ApiError,
   type AutoCancelResult,
-  type AutoRunStart,
   type FileChangeView,
   type VoiceTranscript,
   type VoiceTranscriptReceipt,
@@ -91,6 +90,7 @@ import { type AppCommand, useRegisterCommands, useRegisteredCommands } from '../
 import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { sessionRoute } from '../router.tsx';
+import { conversationRequest } from '../sessionActions.ts';
 import {
   PANE_CATALOG,
   panelKey,
@@ -2001,18 +2001,15 @@ export function Composer({
     requestPermissionMode?: PermissionMode,
   ) => {
     const controller = new AbortController();
-    const proposed: AutoRunStart = {
+    const proposed = conversationRequest(services, session, {
       ...(requestPermissionMode ? { permissionMode: requestPermissionMode } : {}),
       commandId,
-      sessionId: session.sessionId,
       brief,
       choice: autoChoice,
-      // chat is the conversation lead; the team decides whom it may delegate to.
-      team: team ? { corralId: team.corralId } : teamMode,
-      mode: runMode,
-      ...(lastEnded ? { conversation: { throughRunId: lastEnded.runId } } : {}),
+      team: teamMode,
+      ...(lastEnded ? { throughRunId: lastEnded.runId } : {}),
       ...(refs.length ? { references: refs } : {}),
-    };
+    });
     const command = pending.current;
     // A completed run may change `lastEnded` before its lost start receipt is recovered.
     let body = proposed;
