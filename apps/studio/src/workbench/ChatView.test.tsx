@@ -46,7 +46,7 @@ async function render(aside?: React.ReactNode) {
   return container;
 }
 
-it('[TC-RAIL-001-H] Overview floats over the conversation view without splitting it', async () => {
+it('Overview floats over the conversation view without splitting it', async () => {
   const plain = await render();
   const layout = (root: Element) =>
     [...(root.querySelector('[data-chat-view]')?.children ?? [])]
@@ -65,12 +65,12 @@ it('[TC-RAIL-001-H] Overview floats over the conversation view without splitting
   expect(widgets?.closest('[data-testid="chat-composer"]')).toBeNull();
 });
 
-it('[TC-RAIL-001-N] a conversation without Overview has no widgets', async () => {
+it('a conversation without Overview has no widgets', async () => {
   const container = await render();
   expect(container.querySelector('[data-testid="chat-overview"]')).toBeNull();
 });
 
-it('[TC-RAIL-001-N] the widgets sit in the right margin and hide when it is too narrow', () => {
+it('the widgets sit in the right margin and hide when it is too narrow', () => {
   const css = readFileSync(join(import.meta.dirname, '..', 'index.css'), 'utf8');
   const rule = (selector: string) =>
     css.match(

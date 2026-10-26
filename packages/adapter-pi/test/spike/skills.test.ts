@@ -6,7 +6,7 @@ import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-age
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type SpikeOptions, spikeSession } from './sdk-session.ts';
 
-// S5 (CR-018, plan §6 H1): Agent Skills reach the model through Corral, with no local folder
+// S5: Agent Skills reach the model through Corral, with no local folder
 // in what is sent or recorded.
 // - Pi lists skills only when a tool named `read` (or `bash`) is declared, so Corral offers a
 //   `read` that serves bound skill files under virtual `skills/<name>/…` paths.
@@ -77,7 +77,7 @@ const corralSections = (mandatory: Record<string, string>) => (pi: ExtensionAPI)
 };
 
 describe('S5: skills through Corral', () => {
-  it('[TC-HAR-005-H] lists the bound skill under a virtual path and the model reads it with Corral read', async () => {
+  it('lists the bound skill under a virtual path and the model reads it with Corral read', async () => {
     const reads: string[] = [];
     const run = await spikeSession({
       responses: [
@@ -105,7 +105,7 @@ describe('S5: skills through Corral', () => {
     }
   });
 
-  it('[TC-HAR-005-N] without a read tool Pi does not list skills at all', async () => {
+  it('without a read tool Pi does not list skills at all', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Hi.')],
       skillPaths: [join(root, 'bound/skills')],
@@ -116,7 +116,7 @@ describe('S5: skills through Corral', () => {
     expect(run.log.requests[0]?.systemPrompt).not.toContain('<available_skills>');
   });
 
-  it('[TC-HAR-005-H] a mandatory skill body stays in the request after compaction', async () => {
+  it('a mandatory skill body stays in the request after compaction', async () => {
     const run = await spikeSession({
       responses: Array.from({ length: 8 }, () => fauxAssistantMessage('Ok.')),
       extensions: [corralSections({ good: '<skill name="good">Use short sentences.</skill>' })],
@@ -137,7 +137,7 @@ describe('S5: skills through Corral', () => {
     expect(run.log.requests.length).toBeGreaterThan(3);
   });
 
-  it('[TC-HAR-005-N] Pi cannot expand /skill:name from a virtual path; Corral must expand it', async () => {
+  it('Pi cannot expand /skill:name from a virtual path; Corral must expand it', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Ok.')],
       skillPaths: [join(root, 'bound/skills')],

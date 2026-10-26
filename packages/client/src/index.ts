@@ -271,7 +271,7 @@ import type {
   WorkSession,
 } from '@corral/core';
 
-/** POST /api/v1/runs/auto (CR-024). */
+/** POST /api/v1/runs/auto. */
 export interface AutoRunStart {
   harness?: import('@corral/contracts').HarnessBindingRef;
   permissionMode?: import('@corral/contracts').PermissionMode;
@@ -283,9 +283,9 @@ export interface AutoRunStart {
   choice: AutoModelChoice;
   mode: 'mock' | 'live';
   startFrom?: StartFrom;
-  /** CR-054: the session's turns through this ended run. */
+  /** the session's turns through this ended run. */
   conversation?: ConversationSource;
-  /** CR-055: the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
+  /** the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
   team?: 'none' | 'auto' | { corralId: string };
   references?: RunReference[];
 }
@@ -301,7 +301,7 @@ export interface AutoCancelResult {
   cancellation: Receipt | null;
 }
 
-// Studio's side of the local server (C-015, ADR-016). Same contracts as the in-process
+// Studio's side of the local server. Same contracts as the in-process
 // runtime: the transport runs the shared RuntimeTransport suite against a real server.
 // Requests carry the session cookie (same origin); nothing here holds a credential.
 
@@ -401,7 +401,7 @@ export class VoiceApi {
   }
 }
 
-/** CR-049 meeting rounds; the in-browser runtime passes its MeetingService instead. */
+/** meeting rounds; the in-browser runtime passes its MeetingService instead. */
 export interface MeetingsClient {
   view(sessionId: string): Promise<MeetingView | null>;
   send(sessionId: string, request: MeetingRoundRequest): Promise<MeetingResult>;
@@ -708,7 +708,7 @@ export class HttpSseTransport implements RuntimeTransport {
     return this.http.json(`/runs/${encodeURIComponent(runId)}/snapshot`);
   }
 
-  /** A question about a result as its own run in a session (CR-011). */
+  /** A question about a result as its own run in a session. */
   async startExplain(request: {
     commandId: string;
     sessionId: string;
@@ -730,7 +730,7 @@ export class HttpSseTransport implements RuntimeTransport {
     return { runId: body.runId ?? null, receipt: body.receipt };
   }
 
-  /** A request in an auto session (CR-024): the runtime chooses the template and starts it. */
+  /** A request in an auto session: the runtime chooses the template and starts it. */
   async startAuto(
     request: AutoRunStart,
     signal?: AbortSignal,
@@ -770,7 +770,7 @@ export class HttpSseTransport implements RuntimeTransport {
     });
   }
 
-  /** Where an HTML result opens as a sandboxed document (CR-009); framed by Studio only. */
+  /** Where an HTML result opens as a sandboxed document; framed by Studio only. */
   previewUrl(runId: string, artifactVersionId: string): string {
     return `${this.http.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/artifact-versions/${encodeURIComponent(artifactVersionId)}/preview`;
   }
@@ -1297,7 +1297,7 @@ export class RestCorralRepository implements CorralRepository {
   }
 }
 
-// ── models (C-058) ───────────────────────────────────────────────────────────
+// ── models ───────────────────────────────────────────────────────────
 
 export interface LoginView {
   state: 'waiting' | 'exchanging' | 'failed';
@@ -1310,7 +1310,7 @@ export interface ProviderAuthView {
   name: string;
   signedIn: boolean;
   method: 'oauth' | 'api_key' | 'none' | null;
-  /** Ways this provider can be signed in to here (CR-005). */
+  /** Ways this provider can be signed in to here. */
   methods: { oauth: boolean; apiKey: boolean };
   /** host[:port] of an OpenAI-compatible endpoint; null for built-in providers. */
   endpoint: string | null;
@@ -1319,7 +1319,7 @@ export interface ProviderAuthView {
   subscription: boolean;
   expiresAt: string | null;
   login: LoginView | null;
-  /** Where the sign-in comes from: Corral's own, or the Codex CLI login read only (CR-004). */
+  /** Where the sign-in comes from: Corral's own, or the Codex CLI login read only. */
   source: 'corral' | 'codex-cli' | 'environment' | null;
   /** True only when borrowed login permissions are verified private; false includes unknown. */
   permissionsOk: boolean;
@@ -1351,14 +1351,14 @@ export interface ModelProfileView {
   subscriptionSupported: boolean | null;
 }
 
-/** A provider and its models, for the profile editor (CR-008). No credentials or status. */
+/** A provider and its models, for the profile editor. No credentials or status. */
 export interface CatalogProvider {
   providerId: string;
   name: string;
   /** An OpenAI-compatible endpoint from the workspace config. */
   endpoint: boolean;
   methods: { oauth: boolean; apiKey: boolean };
-  /** `cost`: list prices in USD per million tokens, for estimates (roadmap 15). */
+  /** `cost`: list prices in USD per million tokens, for estimates. */
   models: {
     id: string;
     name: string;
@@ -1389,7 +1389,7 @@ export interface EndpointConfig {
   }[];
 }
 
-/** `.corral/config.json`'s model keys, with the revision a save must start from (CR-008). */
+/** `.corral/config.json`'s model keys, with the revision a save must start from. */
 export interface ModelConfig {
   effectiveProfiles?: Record<string, ProfileContextResolution>;
   modelProfiles: ProfileConfig[];
@@ -1503,14 +1503,14 @@ export class ModelsApi {
     });
   }
 
-  /** Saves profiles and endpoints; refused with field-named errors, never values (CR-008). */
+  /** Saves profiles and endpoints; refused with field-named errors, never values. */
   saveConfig(
     change: Pick<ModelConfig, 'modelProfiles' | 'modelProviders' | 'revision'>,
   ): Promise<ModelConfig> {
     return this.http.json('/model-config', { method: 'PUT', body: JSON.stringify(change) });
   }
 
-  /** A team plan for a goal from one model request (CR-006); only a checked plan comes back. */
+  /** A team plan for a goal from one model request; only a checked plan comes back. */
   draftTeam(
     goal: string,
     options: { operationId?: string; signal?: AbortSignal } = {},
@@ -1525,7 +1525,7 @@ export class ModelsApi {
     });
   }
 
-  /** Stores an API key on the server (CR-005); the answer never contains it. */
+  /** Stores an API key on the server; the answer never contains it. */
   setApiKey(providerId: string, key: string, revision?: string): Promise<ProviderAuthView[]> {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/api-key`, {
       method: 'PUT',
@@ -1538,7 +1538,7 @@ export class ModelsApi {
   }
 }
 
-// ── work folders and file changes (CR-012) ──────────────────────────────────
+// ── work folders and file changes ──────────────────────────────────
 
 export interface HarnessPreview {
   snapshot: EffectiveHarnessSnapshot;
@@ -2015,7 +2015,7 @@ export interface FileChangeView {
   additions: number | null;
   deletions: number | null;
   binary: boolean;
-  /** `mixed`: Corral changed the file and something else changed it afterwards (CR-046 P17). */
+  /** `mixed`: Corral changed the file and something else changed it afterwards. */
   provenance: 'managed_agent' | 'mixed' | 'external_observed';
   beforeBlob: string | null;
   afterBlob: string | null;
@@ -2090,7 +2090,7 @@ export interface WorktreeCommandView {
   updated_at: string;
 }
 
-/** Folders, working copies, changes and checks on the local server (CR-012). */
+/** Folders, working copies, changes and checks on the local server. */
 export class WorkspacesApi {
   private readonly http: Http;
 
@@ -2190,7 +2190,7 @@ export class WorkspacesApi {
   listFiles(scope: FileBrowseScope, path = ''): Promise<FileListView> {
     return this.send(`${this.browsePath(scope)}/files?${new URLSearchParams({ path })}`);
   }
-  /** CR-016: files and folders whose path matches `query`, best first; names only. */
+  /** files and folders whose path matches `query`, best first; names only. */
   searchFiles(scope: FileBrowseScope, query: string, limit = 20): Promise<PathSearchView> {
     return this.send(
       `${this.browsePath(scope)}/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
@@ -2382,7 +2382,7 @@ export class WorkspacesApi {
       input,
     );
   }
-  /** Package scripts a person may start, and the session's tasks (CR-046 P15). */
+  /** Package scripts a person may start, and the session's tasks. */
   tasks(sessionId: string): Promise<{ candidates: TaskCandidates; tasks: UserTaskView[] }> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/tasks`);
   }
@@ -2581,7 +2581,7 @@ export class WorkspacesApi {
       'DELETE',
     );
   }
-  /** What removing the copy would lose (CR-046 P21-A); reads only. */
+  /** What removing the copy would lose; reads only. */
   removalPlan(sessionId: string): Promise<CopyRemovalPlan> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/removal`);
   }
@@ -2729,7 +2729,7 @@ export class WorkspacesApi {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/file-operations`);
   }
 
-  // CR-013: comments, decisions, applying, reverting, inbox.
+  // comments, decisions, applying, reverting, inbox.
   private s(sessionId: string) {
     return `/sessions/${encodeURIComponent(sessionId)}`;
   }
@@ -2803,7 +2803,7 @@ export class WorkspacesApi {
       'POST',
     );
   }
-  /** The linked folder as Git sees it: HEAD → working tree, read only (02-UX-Spec §4). */
+  /** The linked folder as Git sees it: HEAD → working tree, read only. */
   folderChanges(projectId: string): Promise<ChangeSetView & { staged: string[] }> {
     return this.send(`/projects/${encodeURIComponent(projectId)}/workspace/changes`);
   }

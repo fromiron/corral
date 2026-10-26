@@ -897,7 +897,7 @@ export class HarnessService {
   }
 
   /**
-   * CR-055 §7: the built-in work style a session turn uses when none was chosen, so the lead in
+   * the built-in work style a session turn uses when none was chosen, so the lead in
    * a trusted folder can run commands and previews. The person's and project's defaults still
    * layer over it and may restrict it; an archived copy means the person turned it off.
    */

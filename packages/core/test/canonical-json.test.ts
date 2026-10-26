@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/index.ts';
 
-// RFC 8785 (JSON Canonicalization Scheme) behaviour that definitionHash relies on (ADR-015).
+// RFC 8785 (JSON Canonicalization Scheme) behaviour that definitionHash relies on.
 describe('canonicalJson', () => {
   it('sorts object keys recursively and keeps array order', () => {
     expect(canonicalJson({ b: [3, { z: 1, a: 2 }], a: null })).toBe(

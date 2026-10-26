@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
 });
 
-it('[TC-WBD-017-H] [TC-WBD-017-N] local opt-in and exact target are enforced over HTTP', async () => {
+it('local opt-in and exact target are enforced over HTTP', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-copy-life-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);

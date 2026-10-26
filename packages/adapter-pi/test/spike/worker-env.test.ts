@@ -3,14 +3,14 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// S8 (CR-018, plan §6 H1): the SDK session works with the worker's stripped environment (no
+// S8: the SDK session works with the worker's stripped environment (no
 // HOME), loading a TypeScript extension through jiti. CORRAL_SPIKE_NODE can name another Node
 // binary, e.g. the desktop's bundled 24.19, for a manual run.
 
 const node = process.env.CORRAL_SPIKE_NODE ?? process.execPath;
 
 describe('S8: worker environment', () => {
-  it.skipIf(!existsSync(node))('[TC-HAR-001-H] runs without HOME and loads a TS extension', () => {
+  it.skipIf(!existsSync(node))('runs without HOME and loads a TS extension', () => {
     const out = execFileSync(node, [join(import.meta.dirname, 'worker-env.run.ts')], {
       cwd: join(import.meta.dirname, '../..'),
       env: { NODE_ENV: 'production', PATH: process.env.PATH ?? '' },

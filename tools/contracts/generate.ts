@@ -1,4 +1,4 @@
-// pnpm contracts:generate — writes JSON Schema generated from the Zod source (C-005).
+// pnpm contracts:generate — writes JSON Schema generated from the Zod source.
 // pnpm contracts:check — fails when the committed files are stale.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

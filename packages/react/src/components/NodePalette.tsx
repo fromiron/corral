@@ -22,7 +22,7 @@ export function NodePalette() {
     event.dataTransfer.setData(NODE_DRAG_TYPE, kind);
     event.dataTransfer.effectAllowed = 'move';
   };
-  // Keyboard and pointer-free alternative to dragging (Technical-Design §13.4).
+  // Keyboard and pointer-free alternative to dragging.
   // New nodes go to the right of what is already there, so they never land on a Loop area.
   const add = (kind: EditorNodeType) => {
     const boxes = Object.values(editor.getState().draft.layout);

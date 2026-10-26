@@ -11,11 +11,11 @@ import {
 } from '@corral/core';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph/web';
 
-// GraphRunner on LangGraph.js (ADR-004, C-014). The compiled plan becomes a static StateGraph:
+// GraphRunner on LangGraph.js. The compiled plan becomes a static StateGraph:
 // one graph node per step, with conditional edges to exactly the targets that step can reach.
 // No checkpointer, no interrupts and no retries: the Coordinator owns every durable fact, and
-// each graph node only asks it to act through the callbacks (Technical-Design §4.3).
-// `/web` keeps the runner usable in the browser runtime as well (ADR-016).
+// each graph node only asks it to act through the callbacks.
+// `/web` keeps the runner usable in the browser runtime as well.
 
 const State = Annotation.Root({
   /** Where the walk goes next; null once the run has ended. */

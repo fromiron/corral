@@ -6,7 +6,7 @@ import { runWorker } from './worker.ts';
 import { processPort } from './worker-process.ts';
 
 // Entry of a live model worker (child process). It has no credential store: the access token
-// for each request arrives with that request's permit from the host (ADR-019, C-052 rule 4).
+// for each request arrives with that request's permit from the host.
 // OAuth-only providers read that token from an in-memory store of this request's token only.
 const port = processPort();
 const bridge = process.env.CORRAL_MODEL_BRIDGE === '1' ? workerModelBridge(port) : null;

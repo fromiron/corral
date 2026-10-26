@@ -86,7 +86,7 @@ export interface NodeChange {
   reviewRecipe?: LoopNode['reviewRecipe'] | null;
   requireApproval?: boolean;
   inputBindings?: InputBinding[];
-  /** Lets the role change files in the session's working copy (CR-012): all file tools. */
+  /** Lets the role change files in the session's working copy: all file tools. */
   fileTools?: boolean;
   runCommand?: boolean;
   generateImage?: boolean;
@@ -280,7 +280,7 @@ export function moveNode(draft: EditorDraft, nodeId: string, position: Point): E
 }
 
 /**
- * Tidy up (roadmap 18): places every node by the control flow, Loops around their members.
+ * Tidy up: places every node by the control flow, Loops around their members.
  * Layout only; one step for undo.
  */
 export function arrangeDraft(draft: EditorDraft): EditorDraft {
@@ -530,7 +530,7 @@ export function removeLink(draft: EditorDraft, linkId: string): EditorDraft {
 
 // ── connections ──────────────────────────────────────────────────────────────
 
-/** The same rule while dragging a connection and after dropping it (Spec §4.2). */
+/** The same rule while dragging a connection and after dropping it. */
 export function checkConnection(
   draft: EditorDraft,
   request: ConnectionRequest,

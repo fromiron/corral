@@ -20,7 +20,7 @@ const TONE: Record<GuideStepState, string> = {
 };
 
 /**
- * What to look for in the demo team's run (C-064). Steps follow the committed projection of
+ * What to look for in the demo team's run. Steps follow the committed projection of
  * the run of this Corral; a run of another Corral in the same session does not count.
  */
 export function DemoGuide({

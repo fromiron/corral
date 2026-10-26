@@ -9,9 +9,9 @@ type Decision = RunProjection['decisions'][string];
 const LEVELS = ['low', 'medium', 'high', 'xhigh'] as const;
 
 /**
- * reasoning_effort judgments of a run, request by request (CR-003, C-071). They are
+ * reasoning_effort judgments of a run, request by request. They are
  * observations: the panel says so and never presents one as applied. Failures read as plainly
- * as answers (Spec §4.4).
+ * as answers.
  */
 export function EffortJudgments({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Judgments');

@@ -20,14 +20,14 @@ import {
   type WorkerTool,
 } from './protocol.ts';
 
-// Host side of the Pi worker (C-017). The adapter turns worker frames into AgentHost calls,
+// Host side of the Pi worker. The adapter turns worker frames into AgentHost calls,
 // in order, so request permits, observations and authorizations commit before tool invocation.
 // A tool's result may wait for another execution; that wait must not retain a dead worker.
 // A worker that breaks the protocol, speaks for another execution or exits early fails its
-// execution; it never completes one (Technical-Design §7.4).
+// execution; it never completes one.
 
 export interface PiAdapterOptions {
-  /** A fresh worker for one execution (ADR-017: spawned when needed). */
+  /** A fresh worker for one execution (spawned when needed). */
   spawn(input: AgentStartInput): Channel;
   spawnSdk?(input: AgentStartInput, resources: SdkResources): Channel;
   harness?(input: AgentStartInput): Promise<SdkResources>;
@@ -35,7 +35,7 @@ export interface PiAdapterOptions {
   credentials(model: ModelProfileSnapshot): Promise<string | null>;
   /** How long a cancelled worker may take to stop before it is terminated. */
   cancelGraceMs?: number;
-  /** The OpenAI-compatible endpoint behind this model, if it is one (CR-005); no keys in it. */
+  /** The OpenAI-compatible endpoint behind this model, if it is one; no keys in it. */
   endpoint?(model: ModelProfileSnapshot): EndpointSpec | null;
 }
 
@@ -582,7 +582,7 @@ class WorkerExecution {
                   role: this.input.role.id,
                   participant: this.input.meeting?.participantId ?? null,
                   profile: this.input.modelProfile,
-                  // Ultra candidates are gone (CR-056); null keeps the provider cache key unchanged.
+                  // Ultra candidates are gone; null keeps the provider cache key unchanged.
                   candidate: null,
                   harness: this.input.harness ?? null,
                 }),
@@ -679,7 +679,7 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   const tools: WorkerTool[] = [];
   if (role.allowedWorkTools.includes('search')) tools.push('search');
   if (role.allowedWorkTools.includes('read_document')) tools.push('read_document');
-  // CR-055: a final-reply role publishes its answer by replying, never through these tools.
+  // a final-reply role publishes its answer by replying, never through these tools.
   const replies = role.answer === 'final_reply';
   if (role.allowedWorkTools.includes('write_artifact') && !replies) tools.push('write_artifact');
   if (role.allowedWorkTools.includes('preview_file') && role.allowedWorkTools.includes('read_file'))

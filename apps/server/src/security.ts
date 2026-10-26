@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
-// Minimal local security boundary (C-055, Spec §10.2). A page on another site can reach a
+// Minimal local security boundary. A page on another site can reach a
 // loopback port, so nothing is trusted for being local: Host and Origin are checked, state
 // changes need the Studio origin, and every API call needs a session that only the person
 // holding the printed bootstrap link can open. No CORS: other origins get no readable answer.
@@ -11,12 +11,12 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy': [
     "default-src 'none'",
     "script-src 'self'",
-    // CR-014: Pierre's shadow-DOM theme and token colors need inline CSS, never inline JS.
+    // Pierre's shadow-DOM theme and token colors need inline CSS, never inline JS.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
-    // CR-042 worktree previews own isolated 127.0.0.2 listeners and opaque sandbox frames.
+    // worktree previews own isolated 127.0.0.2 listeners and opaque sandbox frames.
     // This grants framing, never API or network permission to a preview document.
     "frame-src 'self' http://127.0.0.2:*",
     "base-uri 'none'",
@@ -31,7 +31,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /**
- * An HTML result preview (CR-009): a sandboxed document with an opaque origin, no scripts,
+ * An HTML result preview: a sandboxed document with an opaque origin, no scripts,
  * forms or network, inline styles and data: images only. Only Studio may frame it.
  */
 export const PREVIEW_HEADERS: Record<string, string> = {

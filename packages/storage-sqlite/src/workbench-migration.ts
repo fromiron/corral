@@ -1,4 +1,4 @@
-/** CR-046: Run and human effects reserve the same canonical working copy. */
+/** Run and human effects reserve the same canonical working copy. */
 export const WORKBENCH_MIGRATION = {
   name: '0029_workbench_ownership',
   sql: `

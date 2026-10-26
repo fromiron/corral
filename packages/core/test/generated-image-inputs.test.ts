@@ -52,7 +52,7 @@ const artifact: ArtifactVersionView = {
 const artifacts = { [image.imageId]: artifact };
 const refs = [{ artifactVersionId: image.imageId }];
 
-it('[TC-ABS-010-H] delivers original generated pixels to a downstream vision model with identity intact', () => {
+it('delivers original generated pixels to a downstream vision model with identity intact', () => {
   const read = vi.fn(() => image);
   expect(
     generatedImageInputs('run_1', [...refs, ...refs], artifacts, { imageInput: true }, read),
@@ -63,7 +63,7 @@ it('[TC-ABS-010-H] delivers original generated pixels to a downstream vision mod
   ).toEqual([image]);
 });
 
-it('[TC-ABS-010-N] rejects unsupported, resized, replaced and oversized image inputs rather than prose fallback', () => {
+it('rejects unsupported, resized, replaced and oversized image inputs rather than prose fallback', () => {
   expect(() => generatedImageInputs('run_1', refs, artifacts, {}, () => image)).toThrow(
     /confirmed image support/,
   );
@@ -81,7 +81,7 @@ it('[TC-ABS-010-N] rejects unsupported, resized, replaced and oversized image in
     ).toThrow();
 });
 
-it('[TC-ABS-010-N] bounds all images supplied to one execution and leaves ordinary text references alone', () => {
+it('bounds all images supplied to one execution and leaves ordinary text references alone', () => {
   const existing = Array.from({ length: 3 }, (_, index) => ({
     ...image,
     imageId: `attached_${index}`,

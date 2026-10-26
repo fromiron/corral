@@ -34,7 +34,7 @@ const bom = createInventory(
 );
 const bomPath = join(output, 'sbom.spdx.json');
 writeFileSync(bomPath, `${JSON.stringify(bom, null, 2)}\n`);
-// SPDX 2.3's official vendored schema; use the same jsonschema dependency as spec:check.
+// SPDX 2.3's official vendored schema; validated with the jsonschema package from tools/requirements.txt.
 execFileSync(
   process.env.CORRAL_PYTHON ?? 'python3',
   [

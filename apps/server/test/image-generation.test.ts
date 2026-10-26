@@ -65,7 +65,7 @@ async function endpoint(
 
 describe('configured image generation and immutable bytes (ABS-10)', () => {
   it.each(['started', 'completed'] as const)(
-    '[TC-LLM-005-F] a ledger failure at %s cannot leave a confirmed generation or leak cleanup',
+    'a ledger failure at %s cannot leave a confirmed generation or leak cleanup',
     async (stage) => {
       const db = database(),
         attempts = new SqliteModelAttemptStore(db);
@@ -119,7 +119,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       }
     },
   );
-  it('[TC-LLM-005-F] received image usage survives cancellation before artifact adoption', async () => {
+  it('received image usage survives cancellation before artifact adoption', async () => {
     const db = database(),
       attempts = new SqliteModelAttemptStore(db);
     let received = false;
@@ -161,7 +161,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('[TC-ABS-010-H] Coordinator capability, effect, published artifact and private export include verified original bytes', async () => {
+  it('Coordinator capability, effect, published artifact and private export include verified original bytes', async () => {
     const db = database(),
       bytes = png(),
       started = new Gate(),
@@ -315,7 +315,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('[TC-ABS-010-H] sends the configured public API operation and preserves original bytes across duplicate/readback', async () => {
+  it('sends the configured public API operation and preserves original bytes across duplicate/readback', async () => {
     const db = database(),
       bytes = png();
     let calls = 0,
@@ -374,7 +374,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('[TC-ABS-010-H] edits send only Coordinator-provided original references to the supported multipart API', async () => {
+  it('edits send only Coordinator-provided original references to the supported multipart API', async () => {
     const db = database(),
       bytes = png();
     let submitted = '';
@@ -426,7 +426,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('[TC-ABS-010-N] missing explicit profile and insufficient reservation never call the provider', async () => {
+  it('missing explicit profile and insufficient reservation never call the provider', async () => {
     const db = database();
     try {
       const service = new ImageGenerationService(db, async () => null, now);
@@ -450,7 +450,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('[TC-ABS-010-N] unsupported output is not published and never silently retried after restart', async () => {
+  it('unsupported output is not published and never silently retried after restart', async () => {
     const db = database();
     let calls = 0;
     const http = await endpoint((_request, response) => {
@@ -476,7 +476,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('[TC-ABS-010-N] cancellation after dispatch keeps an unknown billed outcome without publishing or retrying', async () => {
+  it('cancellation after dispatch keeps an unknown billed outcome without publishing or retrying', async () => {
     const db = database(),
       dispatched = new Gate();
     let calls = 0,
@@ -522,7 +522,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('[TC-ABS-010-N] only original valid immutable PNG bytes can be stored', () => {
+  it('only original valid immutable PNG bytes can be stored', () => {
     const db = database();
     try {
       const store = new GeneratedMediaStore(db, now),

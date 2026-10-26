@@ -125,8 +125,8 @@ async function setup(text = JSON.stringify(document), failedParticipant = false)
   return { repository, transport, service, state, minutes, record, clock };
 }
 
-describe('CR-049 structured minutes and human decisions', () => {
-  it('[TC-MEET-002-H] records sourced dissent and candidates once, without executing them', async () => {
+describe('structured minutes and human decisions', () => {
+  it('records sourced dissent and candidates once, without executing them', async () => {
     const f = await setup();
     expect((await f.record()).ok).toBe(true);
     const first = await f.minutes();
@@ -138,7 +138,7 @@ describe('CR-049 structured minutes and human decisions', () => {
     expect(f.transport.startRun).not.toHaveBeenCalled();
   });
 
-  it('[TC-MEET-002-N] rejects claims or agreement attributed to a failed participant and preserves the error', async () => {
+  it('rejects claims or agreement attributed to a failed participant and preserves the error', async () => {
     const f = await setup(
       JSON.stringify({
         ...document,
@@ -156,7 +156,7 @@ describe('CR-049 structured minutes and human decisions', () => {
     expect((await f.state()).minutes).toHaveLength(1);
   });
 
-  it('[TC-MEET-002-F] malformed output is a visible failure, never guessed into a candidate', async () => {
+  it('malformed output is a visible failure, never guessed into a candidate', async () => {
     const f = await setup('Everyone approved. Execute now.');
     await f.record();
     const minutes = await f.minutes();
@@ -172,7 +172,7 @@ describe('CR-049 structured minutes and human decisions', () => {
     ).toMatchObject({ ok: false, error: 'invalid' });
   });
 
-  it('[TC-MEET-002-H] edits create new immutable versions and withdrawal is an idempotent human record', async () => {
+  it('edits create new immutable versions and withdrawal is an idempotent human record', async () => {
     const f = await setup();
     await f.record();
     const minutesId = (await f.minutes()).minutesId;
@@ -216,7 +216,7 @@ describe('CR-049 structured minutes and human decisions', () => {
     expect(f.transport.startRun).not.toHaveBeenCalled();
   });
 
-  it('[TC-MEET-002-N] old stored meetings remain valid, and non-secretary rounds cannot become minutes', async () => {
+  it('old stored meetings remain valid, and non-secretary rounds cannot become minutes', async () => {
     const f = await setup();
     const state = await f.state();
     expect(MeetingState.safeParse(state).success).toBe(true);
@@ -230,7 +230,7 @@ describe('CR-049 structured minutes and human decisions', () => {
     expect((await f.state()).minutes ?? []).toEqual([]);
   });
 
-  it('[TC-MEET-002-F] a storage failure does not acknowledge adoption or consume its command', async () => {
+  it('a storage failure does not acknowledge adoption or consume its command', async () => {
     const f = await setup();
     await f.record();
     const minutesId = (await f.minutes()).minutesId;
@@ -246,7 +246,7 @@ describe('CR-049 structured minutes and human decisions', () => {
     expect((await f.service.adopt('meeting', input)).ok).toBe(true);
     update.mockRestore();
   });
-  it('[TC-MEET-002-F] unavailable source records retry safely, while cancelled secretary output stays unadoptable', async () => {
+  it('unavailable source records retry safely, while cancelled secretary output stays unadoptable', async () => {
     const f = await setup();
     vi.mocked(f.transport.getSnapshot).mockRejectedValueOnce(new Error('temporarily offline'));
     expect(await f.record()).toMatchObject({ ok: false, error: 'storage_unavailable' });
@@ -268,7 +268,7 @@ describe('CR-049 structured minutes and human decisions', () => {
     expect((await g.state()).minutes ?? []).toHaveLength(0);
   });
 
-  it('[TC-MEET-002-N] concurrent retries create one version and stale replacements cannot fork it', async () => {
+  it('concurrent retries create one version and stale replacements cannot fork it', async () => {
     const f = await setup();
     await f.record();
     const source = (await f.state()).minutes?.[0];

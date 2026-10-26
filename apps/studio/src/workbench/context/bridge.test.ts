@@ -24,7 +24,7 @@ const image = {
   width: 1,
   height: 1,
 };
-it('[TC-WBD-007-H] merges a frozen capture into the latest draft without replacing later typing', () => {
+it('merges a frozen capture into the latest draft without replacing later typing', () => {
   writeComposerDraft('capture_typing', draft('before'));
   const capture = beginAttachmentCapture(target('capture_typing'));
   writeComposerDraft('capture_typing', draft('later typing'));
@@ -34,7 +34,7 @@ it('[TC-WBD-007-H] merges a frozen capture into the latest draft without replaci
     attachments: [item],
   });
 });
-it('[TC-WBD-007-F] refuses a capture begun before the destination draft was sent', () => {
+it('refuses a capture begun before the destination draft was sent', () => {
   const revision = writeComposerDraft('capture_sent', draft('send'));
   const capture = beginAttachmentCapture(target('capture_sent'));
   clearSentComposerDraft('capture_sent', revision);
@@ -49,7 +49,7 @@ it('[TC-WBD-007-F] refuses a capture begun before the destination draft was sent
   });
 });
 
-it('[TC-WBD-020-H] adds captured text and uploaded image metadata together without replacing the draft', () => {
+it('adds captured text and uploaded image metadata together without replacing the draft', () => {
   const sessionId = 'capture_preview';
   const existing = createTextAttachment('existing.txt', 'text/plain', 'existing source');
   const existingImage = { ...image, imageId: 'existing_image' };
@@ -96,7 +96,7 @@ it.each([
     image: { ...image, data: 'raw image bytes' },
     reason: 'unavailable',
   },
-])('[TC-WBD-020-N] writes neither attachment when $name is rejected', (value) => {
+])('writes neither attachment when $name is rejected', (value) => {
   const sessionId = `capture_rejected_${value.name}`;
   const before = {
     ...draft('Keep my request'),
@@ -138,7 +138,7 @@ it('queue consumption clears text attachments but retains next-only images', () 
   expect(readComposerDraft('capture_queue').attachments).toBeUndefined();
 });
 
-it('[TC-WBD-007-F] a review capture reports storage failure instead of navigating to a missing attachment', () => {
+it('a review capture reports storage failure instead of navigating to a missing attachment', () => {
   writeComposerDraft('capture_storage', draft('keep this'));
   const capture = beginAttachmentCapture(target('capture_storage'));
   const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {

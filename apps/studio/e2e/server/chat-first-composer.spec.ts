@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { requestBox, slash } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// CR-043/CR-055: use the real browser entry, server, adapter and Coordinator. Only the
+// Use the real browser entry, server, adapter and Coordinator. Only the
 // provider response is deterministic; no session, Corral or run is injected.
 test.use({ live: true, codexLogin: true, reasoningApi: true });
 
@@ -28,7 +28,7 @@ async function savedCorrals(page: Page): Promise<CorralSummary[]> {
   return response.json();
 }
 
-// CR-055: the team for the next turn is a chip in the composer; there are no request options.
+// the team for the next turn is a chip in the composer; there are no request options.
 const teamChip = (page: Page) =>
   page
     .getByRole('region', { name: 'Request', exact: true })
@@ -40,7 +40,7 @@ async function chooseTeam(page: Page, name: string) {
   await expect(teamChip(page)).toContainText(name);
 }
 
-test('[TC-UX-005-H] a default chat starts with no team, one conversation turn and keeps its answer after reload', async ({
+test('a default chat starts with no team, one conversation turn and keeps its answer after reload', async ({
   page,
   corral,
 }) => {
@@ -118,7 +118,7 @@ test('[TC-UX-005-H] a default chat starts with no team, one conversation turn an
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-UX-005-N] the auto team survives reload and gives the lead its roster for the next turn', async ({
+test('the auto team survives reload and gives the lead its roster for the next turn', async ({
   page,
   corral,
 }) => {
@@ -156,7 +156,7 @@ test('[TC-UX-005-N] the auto team survives reload and gives the lead its roster 
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-UX-005-H] a saved Corral is an optional choice that can be cleared back to a normal chat', async ({
+test('a saved Corral is an optional choice that can be cleared back to a normal chat', async ({
   page,
   corral,
 }) => {
@@ -203,10 +203,7 @@ test('[TC-UX-005-H] a saved Corral is an optional choice that can be cleared bac
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-UX-005-N] a request typed while the lead waits is queued, not started', async ({
-  page,
-  corral,
-}) => {
+test('a request typed while the lead waits is queued, not started', async ({ page, corral }) => {
   await startChat(page, corral);
   corral.fake?.setResponses([
     fauxAssistantMessage(

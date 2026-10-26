@@ -61,7 +61,7 @@ describe('compileDefinition: valid definition', () => {
     });
   });
 
-  it('[TC-CAN-003-N] capability links never put a callable agent into the control order', () => {
+  it('capability links never put a callable agent into the control order', () => {
     const result = compileDefinition(researchTeam);
     if (!result.ok) throw new Error('expected ok');
     expect(result.plan.order).not.toContain('helper');
@@ -71,7 +71,7 @@ describe('compileDefinition: valid definition', () => {
 });
 
 describe('compileDefinition: rejected definitions name the location', () => {
-  it('[TC-CAN-004-H] reports each structural problem with its code and location', () => {
+  it('reports each structural problem with its code and location', () => {
     const cases: [string, (d: any) => void, Partial<Diagnostic>][] = [
       [
         'edge into a loop member from outside the loop',
@@ -245,7 +245,7 @@ describe('compileDefinition: rejected definitions name the location', () => {
     );
   });
 
-  it('[TC-CAN-004-N] refuses imports it does not understand instead of ignoring them', () => {
+  it('refuses imports it does not understand instead of ignoring them', () => {
     const unknownField = team();
     unknownField.nodes[0].retries = 3;
     has(diagnosticsOf(unknownField), { code: 'SCHEMA_INVALID', nodeId: 'research' });

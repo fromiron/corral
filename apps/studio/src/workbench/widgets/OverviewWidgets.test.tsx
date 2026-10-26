@@ -114,7 +114,7 @@ const widgets = (container: HTMLElement) =>
     (node) => node.dataset.overviewWidget,
   );
 
-it('[TC-RAIL-001-H] shows the run in kit widgets whose details open in place', async () => {
+it('shows the run in kit widgets whose details open in place', async () => {
   const container = await render(model());
   expect(widgets(container)).toEqual(['context', 'usage', 'results', 'changes']);
   const usage = container.querySelector<HTMLElement>('[data-overview-widget="usage"]');
@@ -145,7 +145,7 @@ it('[TC-RAIL-001-H] shows the run in kit widgets whose details open in place', a
   expect(trigger?.getAttribute('aria-expanded')).toBe('true');
 });
 
-it('[TC-RAIL-001-N] names a run without limits and hides widgets with nothing to say', async () => {
+it('names a run without limits and hides widgets with nothing to say', async () => {
   const projection = emptyProjection('run_overview');
   projection.status = 'succeeded';
   projection.budget.spent = 120;
@@ -163,7 +163,7 @@ it('[TC-RAIL-001-N] names a run without limits and hides widgets with nothing to
   expect(container.textContent).not.toContain(' of 40');
 });
 
-it('[TC-RAIL-001-F] a run that cannot be read offers a retry for the same run', async () => {
+it('a run that cannot be read offers a retry for the same run', async () => {
   const retryRead = vi.fn();
   const container = await render(model({ readState: 'error', retryRead }));
   expect(widgets(container)).toEqual([]);
@@ -172,12 +172,12 @@ it('[TC-RAIL-001-F] a run that cannot be read offers a retry for the same run', 
   expect(retryRead).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-RAIL-001-N] without a run, Overview renders nothing so its column stays hidden', async () => {
+it('without a run, Overview renders nothing so its column stays hidden', async () => {
   const container = await render(model({ runId: null, chips: [], results: [], usage: null }));
   expect(container.innerHTML).toBe('');
 });
 
-it('[TC-LLM-007-N] the usage detail states reported input and cached input and names unreported calls', async () => {
+it('the usage detail states reported input and cached input and names unreported calls', async () => {
   const base = model();
   const container = await render(
     model({
@@ -199,7 +199,7 @@ it('[TC-LLM-007-N] the usage detail states reported input and cached input and n
   expect(detail).toContain('2 calls did not report cached input');
 });
 
-it('[TC-LLM-007-N] the usage detail never shows an unreported cache as zero', async () => {
+it('the usage detail never shows an unreported cache as zero', async () => {
   const base = model();
   const container = await render(
     model({

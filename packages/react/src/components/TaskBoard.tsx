@@ -17,7 +17,7 @@ import type { RunSessionStore } from '../run/session.ts';
 import { StatusBadge } from './StatusBadge.tsx';
 
 /**
- * Every Task of the run (C-025, Spec §7.1): one owner role each, its attempts, who started it,
+ * Every Task of the run: one owner role each, its attempts, who started it,
  * and the versions it submitted. Submitted versions are what moves on; drafts are not listed.
  */
 export function TaskBoard({

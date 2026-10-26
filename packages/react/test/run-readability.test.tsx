@@ -57,7 +57,7 @@ async function collaborationEvents() {
 }
 
 describe('event sentences (UX-A4)', () => {
-  it('[TC-OBS-001-H] describes what happened in words, naming the node, not the event type', async () => {
+  it('describes what happened in words, naming the node, not the event type', async () => {
     const { events, labelOf, definition } = await collaborationEvents();
     const text = (type: RunEvent['type']) => {
       const event = events.find((e) => e.type === type);
@@ -81,7 +81,7 @@ describe('event sentences (UX-A4)', () => {
     expect(text('tool.requested')).toMatch(/^Research called spawn_subagents$/);
   });
 
-  it('[TC-OBS-001-N] an event without a sentence still shows its type, never an empty row', async () => {
+  it('an event without a sentence still shows its type, never an empty row', async () => {
     const event = {
       type: 'future.event',
       runSeq: 1,
@@ -102,7 +102,7 @@ describe('run status reasons (UX-A4)', () => {
     return out;
   };
 
-  it('[TC-OBS-001-H] turns reason codes into sentences, with node labels', () => {
+  it('turns reason codes into sentences, with node labels', () => {
     expect(reason('validation_passed')).toBe('The Corral passed validation');
     expect(reason('output_finalized')).toBe('The final output was produced');
     expect(reason('approval_requested: user_action')).toBe('Waiting for your decision');
@@ -110,13 +110,13 @@ describe('run status reasons (UX-A4)', () => {
     expect(reason('final_output_rejected')).toBe('You rejected the final output');
   });
 
-  it('[TC-OBS-001-N] an unknown code is shown as it is', () => {
+  it('an unknown code is shown as it is', () => {
     expect(reason('something_new: x')).toBe('something_new: x');
   });
 });
 
 describe('budget meter (UX-A4)', () => {
-  it('[TC-OBS-004-H] shows output tokens and model calls as meters, with the full table folded away', () => {
+  it('shows output tokens and model calls as meters, with the full table folded away', () => {
     const { definition } = researchTeamDraft();
     const session = sessionStore({
       runId: 'r',
@@ -137,7 +137,7 @@ describe('budget meter (UX-A4)', () => {
     );
   });
 
-  it('[TC-OBS-004-H] shows the estimated cost at list prices, or says a subscription covers it (roadmap 15)', () => {
+  it('shows the estimated cost at list prices, or says a subscription covers it', () => {
     const { definition } = researchTeamDraft();
     const call = (profile: string) => ({
       modelCallId: `c_${profile}`,
@@ -194,7 +194,7 @@ describe('decision and output node status (UX-A4)', () => {
     outcome,
   });
 
-  it('[TC-OBS-001-H] a review decision counts the rounds it decided; approval and output wait for the person', () => {
+  it('a review decision counts the rounds it decided; approval and output wait for the person', () => {
     const p = projectionWith({
       iterations: { iter_1: iteration(1, 'revise'), iter_2: iteration(2, 'pass') },
       loopIterations: { review_loop: ['iter_1', 'iter_2'] },
@@ -220,7 +220,7 @@ describe('decision and output node status (UX-A4)', () => {
     expect(decisionRunStatus(p, node('output'))).toEqual({ status: 'waiting', count: 0 });
   });
 
-  it('[TC-OBS-001-N] nothing decided yet is idle, a rejection is failed, and a round in progress is not done', () => {
+  it('nothing decided yet is idle, a rejection is failed, and a round in progress is not done', () => {
     const p = projectionWith({
       iterations: { iter_1: iteration(1, null) },
       loopIterations: { review_loop: ['iter_1'] },

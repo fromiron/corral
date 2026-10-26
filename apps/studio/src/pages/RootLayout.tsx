@@ -260,7 +260,7 @@ function RootFrame() {
     setMobileOpen(false);
   }, [location.href]);
   useEffect(() => {
-    // The desktop window and its title bar buttons follow the page's theme (CR-017).
+    // The desktop window and its title bar buttons follow the page's theme.
     const update = () => {
       const dark = applyTheme(prefs.theme);
       void desktop?.theme(dark).catch(() => {});
@@ -448,7 +448,7 @@ function RootFrame() {
   );
 }
 
-/** The project Studio works in (CR-010); choosing one opens it, or the list of all. */
+/** The project Studio works in; choosing one opens it, or the list of all. */
 function ProjectSwitcher({
   projects,
   projectId,

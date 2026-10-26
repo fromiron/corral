@@ -18,8 +18,8 @@ beforeAll(() => {
   } as unknown as typeof ResizeObserver;
 });
 
-describe('canvas render budget (C-016, Spec §10.3)', () => {
-  it('[TC-UX-002-N] run updates that do not change a node status do not re-render the canvas', async () => {
+describe('canvas render budget', () => {
+  it('run updates that do not change a node status do not re-render the canvas', async () => {
     const editor = createEditorStore(researchTeamDraft());
     const session = sessionStore({ runId: 'run_budget', projection: projectionWith({}) });
     let commits = 0;

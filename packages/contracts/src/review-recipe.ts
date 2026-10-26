@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ContentHash, ResourcePath } from './harness.ts';
 import { Identifier } from './ids.ts';
 
-/** Immutable inside a saved Corral revision and the Run snapshot (CR-019). */
+/** Immutable inside a saved Corral revision and the Run snapshot. */
 export const ReviewRecipeRevision = z.strictObject({
   recipeId: Identifier,
   revision: z.int().min(1),

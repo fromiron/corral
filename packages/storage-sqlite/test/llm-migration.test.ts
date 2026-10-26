@@ -2,7 +2,7 @@ import { FakeClock, linearCorral } from '@corral/testkit';
 import { expect, it } from 'vitest';
 import { openDatabase, SqliteCorralRepository } from '../src/index.ts';
 
-it('[TC-LLM-005-F] unlimited migration creates one revision and preserves the original definition', async () => {
+it('unlimited migration creates one revision and preserves the original definition', async () => {
   const db = openDatabase(':memory:');
   try {
     const repository = new SqliteCorralRepository(db, {

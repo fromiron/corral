@@ -1,7 +1,7 @@
 import { DebugStart, ProjectToolConfig, RegisteredDebugConfiguration } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 
-describe('TC-WBD-023 debug contracts', () => {
+describe('debug contracts', () => {
   it('keeps old configuration unchanged and accepts only explicitly registered debug recipes', () => {
     const old = { checks: [], lspServers: [] };
     expect(ProjectToolConfig.parse(old)).toEqual(old);
@@ -223,7 +223,7 @@ async function fixture() {
     scope: { target, generation: 'debug_1' },
   };
 }
-it('[TC-WBD-023-H] starts explicitly once, pins breakpoints, deduplicates evaluation and preserves shared saves', async () => {
+it('starts explicitly once, pins breakpoints, deduplicates evaluation and preserves shared saves', async () => {
   const f = await fixture();
   expect(f.launch).not.toHaveBeenCalled();
   await f.service.startDevelopment('s1', { target: f.target, operationId: 'dev' });
@@ -301,7 +301,7 @@ it('[TC-WBD-023-H] starts explicitly once, pins breakpoints, deduplicates evalua
   f.restart();
   expect(f.service.debugCommand('s1', 'debug_1', 'stop').state).toBe('succeeded');
 });
-it('[TC-WBD-023-N] rejects late pause results, stale source maps, foreign scope and changed command identities', async () => {
+it('rejects late pause results, stale source maps, foreign scope and changed command identities', async () => {
   const f = await fixture(),
     started = await f.service.startDebug('s1', f.start);
   const query = {
@@ -371,7 +371,7 @@ it('[TC-WBD-023-N] rejects late pause results, stale source maps, foreign scope 
   expect((await evaluation).state).toBe('uncertain');
   expect((await f.service.debugState('s1')).session?.state).toBe('stopped');
 });
-it('[TC-WBD-023-F] preserves uncertain ownership across restart until explicit cleanup and refuses replay', async () => {
+it('preserves uncertain ownership across restart until explicit cleanup and refuses replay', async () => {
   const f = await fixture();
   const started = await f.service.startDebug('s1', f.start);
   f.connection.request.mockRejectedValueOnce(new Error('response lost'));

@@ -89,7 +89,7 @@ async function setup() {
   return { adapter, repository, source, bindings, before, definition };
 }
 
-describe('TC-ABS-13 subagents domain owner adapter', () => {
+describe('subagents domain owner adapter', () => {
   it('requires explicit local team, parent and model bindings before import', async () => {
     const { adapter, source, bindings } = await setup();
     await expect(adapter.preview(source, {})).rejects.toThrow(/Bind/);

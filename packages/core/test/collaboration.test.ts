@@ -67,8 +67,8 @@ async function run(
 const byNode = (p: RunProjection, nodeId: string) =>
   (p.nodeExecutions[nodeId] ?? []).map((id) => p.executions[id]);
 
-describe('delegation: spawn and await (C-022)', () => {
-  it('[TC-RUN-004-H] [TC-RUN-005-H] a parent runs two children at once and holds no model slot while it waits', async () => {
+describe('delegation: spawn and await', () => {
+  it('a parent runs two children at once and holds no model slot while it waits', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxModelConcurrency: 1 };
     const { transport } = runtime();
@@ -110,7 +110,7 @@ describe('delegation: spawn and await (C-022)', () => {
     ).toEqual(helpers.map((h) => h?.executionId).sort());
   });
 
-  it('[TC-RUN-005-N] never has more model requests open than the concurrency limit', async () => {
+  it('never has more model requests open than the concurrency limit', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxModelConcurrency: 1 };
     const { transport } = runtime({ turns: 2 });
@@ -126,7 +126,7 @@ describe('delegation: spawn and await (C-022)', () => {
     expect(most).toBe(1);
   });
 
-  it('[TC-RUN-004-N] refuses delegating to a node without a capability link, and records it', async () => {
+  it('refuses delegating to a node without a capability link, and records it', async () => {
     const definition = collaborationCorral();
     // The helper stays callable, but from the writer: the researcher has no link to it.
     definition.capabilityLinks = definition.capabilityLinks.map((l) =>
@@ -154,7 +154,7 @@ describe('delegation: spawn and await (C-022)', () => {
     expect(blocked?.type === 'tool.blocked' && blocked.payload.reason).toContain('helper');
   });
 
-  it('[TC-RACE-12] refuses a spawn batch that does not fit, whole, and the parent does not wait forever', async () => {
+  it('refuses a spawn batch that does not fit, whole, and the parent does not wait forever', async () => {
     const { transport } = runtime({}, { residentLimit: 2 });
     const { runId, events } = await run(transport);
     const final = await waitForProjection(transport, runId, settled);
@@ -169,7 +169,7 @@ describe('delegation: spawn and await (C-022)', () => {
     expect(Object.values(final.executions).some((e) => e.status.startsWith('waiting'))).toBe(false);
   });
 
-  it('[TC-COL-001-H] a failed child stays failed: its task is not reassigned', async () => {
+  it('a failed child stays failed: its task is not reassigned', async () => {
     const { transport } = runtime({
       script: async (input) =>
         input.nodeId === 'helper' ? { outcome: 'failed', error: 'helper broke' } : null,
@@ -187,8 +187,8 @@ describe('delegation: spawn and await (C-022)', () => {
   });
 });
 
-describe('questions answered by new responder tasks (C-023)', () => {
-  it('[TC-COL-002-H] the writer asks, a new responder task answers once, and the answer reaches the draft', async () => {
+describe('questions answered by new responder tasks', () => {
+  it('the writer asks, a new responder task answers once, and the answer reaches the draft', async () => {
     const { transport, started } = runtime();
     const { runId, events } = await run(transport);
     const final = await waitForProjection(transport, runId, settled);
@@ -218,7 +218,7 @@ describe('questions answered by new responder tasks (C-023)', () => {
     expect(draft).toContain(question?.answer?.body ?? 'missing');
   });
 
-  it('[TC-COL-004-H] [TC-COL-004-N] [TC-RACE-03] a timed-out question closes once, wakes the asker, and ignores a late reply', async () => {
+  it('a timed-out question closes once, wakes the asker, and ignores a late reply', async () => {
     const responderGate = new Gate();
     // A slow responder that answers anyway once it gets going: its answer arrives too late.
     const { transport, clock } = runtime({
@@ -257,7 +257,7 @@ describe('questions answered by new responder tasks (C-023)', () => {
     );
   });
 
-  it('[TC-COL-003-H] [TC-COL-003-N] a responder counts toward the spawn limit like any child', async () => {
+  it('a responder counts toward the spawn limit like any child', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxSpawns: 2 };
     const { transport } = runtime();
@@ -281,7 +281,7 @@ describe('questions answered by new responder tasks (C-023)', () => {
     });
   });
 
-  it('[TC-COL-003-N] an earlier responder uses up spawns: a later delegation over the limit is refused', async () => {
+  it('an earlier responder uses up spawns: a later delegation over the limit is refused', async () => {
     // Research asks first (one responder), then the writer delegates two helpers: 3 > 2.
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxSpawns: 2 };
@@ -315,7 +315,7 @@ describe('questions answered by new responder tasks (C-023)', () => {
     });
   });
 
-  it('[TC-COL-002-N] refuses a reply to a question this execution was not asked', async () => {
+  it('refuses a reply to a question this execution was not asked', async () => {
     const { transport } = runtime({
       script: async (input, host) => {
         if (input.nodeId !== 'write') return null;
@@ -337,8 +337,8 @@ describe('questions answered by new responder tasks (C-023)', () => {
   });
 });
 
-describe('artifacts across tasks (C-024)', () => {
-  it('[TC-ART-001-H] two helpers write the same output name without overwriting each other', async () => {
+describe('artifacts across tasks', () => {
+  it('two helpers write the same output name without overwriting each other', async () => {
     const { transport } = runtime();
     const { runId } = await run(transport);
     const final = await waitForProjection(transport, runId, settled);
@@ -353,7 +353,7 @@ describe('artifacts across tasks (C-024)', () => {
     );
   });
 
-  it('[TC-ART-001-N] only submitted versions move on; a draft that was never submitted does not', async () => {
+  it('only submitted versions move on; a draft that was never submitted does not', async () => {
     const { transport } = runtime({
       script: async (input, host) => {
         if (input.nodeId !== 'write') return null;

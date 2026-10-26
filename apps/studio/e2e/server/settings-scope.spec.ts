@@ -1,6 +1,6 @@
 import { expect, test } from './harness.ts';
 
-test('[TC-UX-004-N] project settings share an explicit empty state and keep their target on navigation', async ({
+test('project settings share an explicit empty state and keep their target on navigation', async ({
   page,
   corral,
 }) => {
@@ -30,7 +30,7 @@ test('[TC-UX-004-N] project settings share an explicit empty state and keep thei
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-UX-004-H] [TC-UX-004-N] defaults have independent routes and save only their explicit scope', async ({
+test('defaults have independent routes and save only their explicit scope', async ({
   page,
   corral,
 }) => {

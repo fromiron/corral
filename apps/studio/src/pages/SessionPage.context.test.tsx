@@ -166,7 +166,7 @@ async function mount(
     })),
   };
   const startExplain = vi.fn();
-  // CR-055: a Corral session's turn starts the conversation lead with the Corral as its team.
+  // a Corral session's turn starts the conversation lead with the Corral as its team.
   const startAuto = vi.fn(async (_request: unknown, _signal?: AbortSignal) => ({
     runId: 'started',
     receipt: { error: null },
@@ -221,7 +221,7 @@ async function mount(
   return { container, session, repository, transport, startAuto, startExplain, render, click };
 }
 
-it('[TC-WBD-007-H] queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
+it('queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
   const sessionId = 'queue_capture';
   writeComposerDraft(sessionId, {
     text: 'Keep my typed request',
@@ -285,7 +285,7 @@ it('[TC-WBD-007-H] queues a captured source, consumes its draft attachment, and 
   expect(readComposerDraft(sessionId)).toMatchObject({ attachments: [later], images: [image] });
 });
 
-it('[TC-WBD-007-F] retries an uncertain queued snapshot with the same command identity and includes provenance in changed request identity', async () => {
+it('retries an uncertain queued snapshot with the same command identity and includes provenance in changed request identity', async () => {
   const f = await mount('queue_retry', null, [queuedEntry(captured)]);
   f.startAuto.mockRejectedValue(new Error('response lost'));
   await f.click('Start now');
@@ -308,7 +308,7 @@ it('[TC-WBD-007-F] retries an uncertain queued snapshot with the same command id
   expect(edited.commandId).not.toBe(first.commandId);
 });
 
-it('[TC-WBD-007-N] an explain draft with captured context requires an explicit follow-up choice before sending', async () => {
+it('an explain draft with captured context requires an explicit follow-up choice before sending', async () => {
   const sessionId = 'context_explain';
   writeComposerDraft(sessionId, {
     text: 'Explain this capture',

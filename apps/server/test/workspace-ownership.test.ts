@@ -33,7 +33,7 @@ async function start(root: string, port = 0) {
 }
 
 it.each(['same', 'different'])(
-  '[TC-RUN-007-N] refuses a second owner on a %s port before recovery',
+  'refuses a second owner on a %s port before recovery',
   async (portChoice) => {
     const root = workspace();
     const owner = await start(root);
@@ -85,14 +85,14 @@ it.each(['same', 'different'])(
   },
 );
 
-it('[TC-RUN-007-N] releases ownership when listening fails', async () => {
+it('releases ownership when listening fails', async () => {
   const owner = await start(workspace());
   const root = workspace();
   await expect(start(root, Number(new URL(owner.url).port))).rejects.toThrow('EADDRINUSE');
   expect((await start(root)).coordinator.admitting).toBe(true);
 });
 
-it('[TC-RUN-007-H] recovers after the owning process is killed without replaying effects', async () => {
+it('recovers after the owning process is killed without replaying effects', async () => {
   const root = workspace();
   const child = spawn(
     process.execPath,

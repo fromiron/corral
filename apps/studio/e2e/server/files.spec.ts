@@ -6,7 +6,7 @@ import { panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Work folder → working copy → a run that writes through the broker → review and a check
-// (CR-012; WBTST-016). The team comes from a definition file that gives its role file tools.
+//. The team comes from a definition file that gives its role file tools.
 
 function gitRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'corral-e2e-repo-'));
@@ -79,7 +79,7 @@ function writerWithFiles(dir: string) {
   return path;
 }
 
-test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-003-N] [WBTST-016] a session works in its own copy, and its changes are reviewed and checked', async ({
+test('a session works in its own copy, and its changes are reviewed and checked', async ({
   page,
   corral,
 }) => {
@@ -108,7 +108,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     await page.getByRole('link', { name: 'Project home', exact: true }).click();
     await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
     await page.getByLabel('Purpose').fill('Keep notes in the repository');
-    // CR-055: this journey runs the imported team; the session's lead calls its writer, whose
+    // this journey runs the imported team; the session's lead calls its writer, whose
     // node is team_writer_role.
     await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
     await page.getByRole('option', { name: 'Writer with files', exact: true }).click();
@@ -162,7 +162,7 @@ test('[TC-HUNK-001-H] [TC-CKPT-001-H] [TC-CHAT-002-H] [TC-WBUI-003-H] [TC-WBUI-0
     // The linked folder itself was never written by the run.
     expect(existsSync(join(original, 'notes'))).toBe(false);
 
-    // CR-013: a comment on a line goes out as a request for changes, as a new run.
+    // a comment on a line goes out as a request for changes, as a new run.
     await page.getByRole('button', { name: 'Comment on line 1' }).first().click();
     const draft = page.getByRole('textbox', { name: 'Comment on line 1' });
     await draft.fill('Start with a title.');

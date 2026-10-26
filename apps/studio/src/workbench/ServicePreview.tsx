@@ -41,7 +41,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
   useEffect(() => {
     if (!workspaces || mode !== 'server') return;
     let live = true;
-    // A Run's command or a task a person started (CR-046 P15); a terminal's server is not owned.
+    // A Run's command or a task a person started; a terminal's server is not owned.
     const refresh = () =>
       void Promise.all([
         workspaces.commands(sessionId).catch(() => [] as WorktreeCommandView[]),

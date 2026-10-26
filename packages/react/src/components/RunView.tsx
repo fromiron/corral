@@ -24,7 +24,7 @@ export function RunView({
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   onStartFrom?: Parameters<typeof RunOutput>[0]['onStartFrom'];
-  /** List prices for the cost estimate (roadmap 15). */
+  /** List prices for the cost estimate. */
   prices?: ModelPrices | undefined;
 }) {
   const t = useTranslations('Run');
@@ -120,9 +120,9 @@ export function RunOutput({
 }: {
   session: RunSessionStore;
   heading?: boolean;
-  /** Offers "New run from this result" for the final output (CR-007). */
+  /** Offers "New run from this result" for the final output. */
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
-  /** Opens one final result in the Results view (CR-009). */
+  /** Opens one final result in the Results view. */
   onOpenResults?: (artifactVersionId: string) => void;
 }) {
   const t = useTranslations('Run');
@@ -228,7 +228,7 @@ export function ExecutionTree({
 
 /**
  * Executions as a call tree: children under the execution that started them, each Loop round
- * and attempt as its own row (a node is not one execution, C-016). A waiting execution names
+ * and attempt as its own row (a node is not one execution). A waiting execution names
  * what it waits for and links to those rows.
  */
 function ExecutionRows({

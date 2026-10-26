@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './harness.ts';
 
-// The Results view against the local server (CR-009, roadmap 21; WBTST-008/034).
+// The Results view against the local server.
 
 function handle(page: Page, nodeId: string, port: string) {
   return page.locator(
@@ -25,7 +25,7 @@ async function finishedRun(page: Page) {
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
 }
 
-test('[WBTST-008] a finished run opens on its result, and a reload keeps the chosen version', async ({
+test('a finished run opens on its result, and a reload keeps the chosen version', async ({
   page,
   corral,
 }) => {
@@ -51,7 +51,7 @@ test.describe('an HTML result', () => {
       '<!doctype html><html><head><style>h1 { color: rgb(200, 0, 0) }</style></head><body><h1>Generated page</h1><img alt="tracker" src="https://tracker.example/pixel.png"><script>window.parent.postMessage("script ran", "*"); document.body.dataset.ran = "yes";</script></body></html>',
   });
 
-  test('[WBTST-034] previews in a sandbox: styles apply, no script runs, nothing leaves', async ({
+  test('previews in a sandbox: styles apply, no script runs, nothing leaves', async ({
     page,
     corral,
   }) => {

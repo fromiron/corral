@@ -3,7 +3,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hashOf, spikeSession } from './sdk-session.ts';
 
-// S2 (CR-018, plan §6 H1): Corral approves a tool call with the input it will actually run with,
+// S2: Corral approves a tool call with the input it will actually run with,
 // after every other extension's tool_call handler, including handlers added at runtime and
 // calls one tool makes through another.
 
@@ -53,7 +53,7 @@ const callThenStop = (name: string, args: { [key: string]: string }) => [
 ];
 
 describe('S2: approval with the final input', () => {
-  it('[TC-HAR-002-H] approves the input another extension rewrote at runtime, and runs exactly that', async () => {
+  it('approves the input another extension rewrote at runtime, and runs exactly that', async () => {
     const ran: unknown[] = [];
     const run = await spikeSession({
       responses: callThenStop('echo', { path: 'a.txt' }),
@@ -69,7 +69,7 @@ describe('S2: approval with the final input', () => {
     expect(run.log.started[0]?.hash).toBe(hashOf({ path: 'a.txt' }));
   });
 
-  it('[TC-HAR-002-H] a call one tool makes through another is approved too, with its parent', async () => {
+  it('a call one tool makes through another is approved too, with its parent', async () => {
     const ran: unknown[] = [];
     const run = await spikeSession({
       responses: callThenStop('runner', { path: 'a.txt' }),
@@ -84,7 +84,7 @@ describe('S2: approval with the final input', () => {
     expect(ran).toEqual([{ path: 'b.txt' }]);
   });
 
-  it('[TC-HAR-002-N] a refusal stops the call, nested or not', async () => {
+  it('a refusal stops the call, nested or not', async () => {
     const ran: unknown[] = [];
     const run = await spikeSession({
       responses: [
@@ -107,7 +107,7 @@ describe('S2: approval with the final input', () => {
     expect(JSON.stringify(results[1])).toContain('not approved by Corral');
   });
 
-  it('[TC-HAR-002-N] a Corral handler that throws blocks the call (fail closed)', async () => {
+  it('a Corral handler that throws blocks the call (fail closed)', async () => {
     const ran: unknown[] = [];
     const run = await spikeSession({
       responses: callThenStop('echo', { path: 'x.txt' }),
@@ -123,7 +123,7 @@ describe('S2: approval with the final input', () => {
     expect((result as { isError?: boolean }).isError).toBe(true);
   });
 
-  it('[TC-HAR-002-N] Pi built-in tools stay off; only registered tools are declared', async () => {
+  it('Pi built-in tools stay off; only registered tools are declared', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Hi.')],
       extensions: [fileTools([])],

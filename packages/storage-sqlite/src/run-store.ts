@@ -10,7 +10,7 @@ import {
 } from '@corral/core';
 import type { Db } from './database.ts';
 
-/** RunStore over SQLite (C-011). Every method runs inside the caller's transaction. */
+/** RunStore over SQLite. Every method runs inside the caller's transaction. */
 export class SqliteRunStore implements RunStore {
   private readonly db: Db;
   private readonly sql;
@@ -23,8 +23,8 @@ export class SqliteRunStore implements RunStore {
     );
     this.sql = {
       insertRun: db.prepare(
-        // The run joins its session's project (CR-011), else its saved Corral's project as it
-        // is now (CR-010); inline definitions without a session go to the default project.
+        // The run joins its session's project, else its saved Corral's project as it
+        // is now; inline definitions without a session go to the default project.
         `INSERT INTO runs (id, corral_id, definition_hash, snapshot_json, status, last_seq,
            projection_json, started_at, project_id, session_id)
          VALUES (@id, @corralId, @definitionHash, @snapshot, @status, @lastSeq, @projection,

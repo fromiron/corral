@@ -23,7 +23,7 @@ it.each([
   ['memory', 'archived'],
   ['memory', 'removed'],
 ] as const)(
-  '[TC-ABS-013-N] %s import refuses a project %s after preview without writing documents',
+  '%s import refuses a project %s after preview without writing documents',
   async (kind, state) => {
     const store = new ProjectMaterials(temp());
     let projects = [
@@ -59,7 +59,7 @@ it.each([
   },
 );
 
-it('[TC-ABS-013-H] material vault apply and rollback append versions with explicit project binding', async () => {
+it('material vault apply and rollback append versions with explicit project binding', async () => {
   const root = temp();
   const store = new ProjectMaterials(root);
   const original = store.save('project_a', {
@@ -113,7 +113,7 @@ it('[TC-ABS-013-H] material vault apply and rollback append versions with explic
   expect(await restarted.restore(before, applied.revision, 'restore_a')).toEqual(restored);
 });
 
-it('[TC-ABS-009-H] explicit material snapshots survive edit, deletion and restart', () => {
+it('explicit material snapshots survive edit, deletion and restart', () => {
   const root = temp();
   const store = new ProjectMaterials(root);
   const first = store.save('project_a', {
@@ -131,7 +131,7 @@ it('[TC-ABS-009-H] explicit material snapshots survive edit, deletion and restar
   expect(() => store.attachment('project_b', first.id, 1)).toThrow();
 });
 
-it('[TC-ABS-009-H] actual clone refuses overwrite and stays separate from project trust', async () => {
+it('actual clone refuses overwrite and stays separate from project trust', async () => {
   const root = temp();
   const source = temp();
   execFileSync('git', ['init', '-q'], { cwd: source });
@@ -154,7 +154,7 @@ it('[TC-ABS-009-H] actual clone refuses overwrite and stays separate from projec
   expect(existsSync(join(destination, '.git'))).toBe(true);
 }, 30000);
 
-it('[TC-ABS-009-N] URL credentials are refused before any destination is created', () => {
+it('URL credentials are refused before any destination is created', () => {
   const root = temp();
   const store = new ProjectClones(root);
   const destination = join(root, 'checkout');
@@ -164,7 +164,7 @@ it('[TC-ABS-009-N] URL credentials are refused before any destination is created
   expect(existsSync(destination)).toBe(false);
 });
 
-it('[TC-ABS-009-H] an empty repository clones without creating an initial commit', async () => {
+it('an empty repository clones without creating an initial commit', async () => {
   const root = temp();
   const source = temp();
   execFileSync('git', ['init', '-q'], { cwd: source });
@@ -177,7 +177,7 @@ it('[TC-ABS-009-H] an empty repository clones without creating an initial commit
   ).toThrow();
 }, 30000);
 
-it('[TC-ABS-009-N] cancellation confirms process cleanup before removing only its partial directory', async () => {
+it('cancellation confirms process cleanup before removing only its partial directory', async () => {
   const root = temp();
   const source = temp();
   execFileSync('git', ['init', '-q'], { cwd: source });

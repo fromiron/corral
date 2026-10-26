@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
 });
 
-it('[TC-WBD-018-N] [TC-WBD-019-H] [TC-WBD-021-H] [TC-WBD-021-N] [TC-WBD-023-N] [TC-WBD-024-N] workbench HTTP endpoints preserve the managed-copy boundary', async () => {
+it('workbench HTTP endpoints preserve the managed-copy boundary', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-language-http-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);

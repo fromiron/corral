@@ -9,7 +9,7 @@ import type { SessionIntent } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
 import type { MentionItem } from './composerMenu.ts';
 
-// A session's unsent request, kept in this browser (UX-02): the text, what it is for (intent
+// A session's unsent request, kept in this browser: the text, what it is for (intent
 // and instruction target), and the exact references it carries. Older drafts were text only.
 
 const key = (sessionId: string) => `corral:session-draft:${sessionId}`;

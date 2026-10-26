@@ -30,7 +30,7 @@ function client(channel: Channel) {
   };
 }
 
-it('[TC-ABS-006-H] SDK children share host capacity and cannot release another worker permit', async () => {
+it('SDK children share host capacity and cannot release another worker permit', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corral-ipc-capacity-'));
   const held: HostProcessReservation[] = [];
   const workers: ReturnType<typeof client>[] = [];
@@ -82,7 +82,7 @@ it('[TC-ABS-006-H] SDK children share host capacity and cannot release another w
 }, 90000);
 
 it.skipIf(process.platform !== 'win32')(
-  '[TC-ABS-006-N] double crash retains an unreturned child permit despite worker exit',
+  'double crash retains an unreturned child permit despite worker exit',
   async () => {
     const directory = await mkdtemp(join(tmpdir(), 'corral-ipc-crash-'));
     const leases = join(directory, 'leases');

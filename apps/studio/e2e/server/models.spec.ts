@@ -27,7 +27,7 @@ async function agentToOutput(page: Page) {
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
 }
 
-test('[TC-SEC-002-H] signing in from Settings shows status and expiry, never the token', async ({
+test('signing in from Settings shows status and expiry, never the token', async ({
   page,
   corral,
 }) => {
@@ -97,13 +97,10 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   expect(corral.fake?.seen.tokens.every((token) => token === 'access-1-secret')).toBe(true);
 });
 
-test.describe('a borrowed Codex CLI login (CR-004)', () => {
+test.describe('a borrowed Codex CLI login', () => {
   test.use({ codexLogin: true });
 
-  test('[TC-SEC-002-H] is shown as the Codex login, read only, and live runs use it', async ({
-    page,
-    corral,
-  }) => {
+  test('is shown as the Codex login, read only, and live runs use it', async ({ page, corral }) => {
     corral.fake?.answerWith('Answer through the Codex login.');
     await corral.open('/');
     await openModels(page);
@@ -134,7 +131,7 @@ test.describe('a borrowed Codex CLI login (CR-004)', () => {
   });
 });
 
-test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, and can be removed (CR-005)', async ({
+test('an API key typed under Models runs live, is never shown, and can be removed', async ({
   page,
   corral,
 }) => {
@@ -169,13 +166,10 @@ test('[TC-SEC-002-H] an API key typed under Models runs live, is never shown, an
   expect(corral.errors).toEqual([]);
 });
 
-test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
+test.describe('a keyless OpenAI-compatible endpoint', () => {
   test.use({ compatibleEndpoint: true });
 
-  test('[TC-SEC-002-H] shows the endpoint and runs live without a key', async ({
-    page,
-    corral,
-  }) => {
+  test('shows the endpoint and runs live without a key', async ({ page, corral }) => {
     let calls = 0;
     corral.endpoint?.setReply((body) => {
       calls += 1;
@@ -210,7 +204,7 @@ test.describe('a keyless OpenAI-compatible endpoint (CR-005)', () => {
   });
 });
 
-test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it after review (CR-006)', async ({
+test('asks the signed-in model for a team draft once and opens it after review', async ({
   page,
   corral,
 }) => {
@@ -279,8 +273,8 @@ test('[TC-UX-003-H] asks the signed-in model for a team draft once and opens it 
   expect(corral.errors).toEqual([]);
 });
 
-test.describe('editing models on the Models page (CR-008)', () => {
-  test('[TC-SEC-002-H] [TC-SEC-002-N] an inline endpoint key stays out of config and retries after a partial save', async ({
+test.describe('editing models on the Models page', () => {
+  test('an inline endpoint key stays out of config and retries after a partial save', async ({
     page,
     corral,
   }) => {
@@ -346,7 +340,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
     expect(corral.errors.filter((e) => !e.includes('503'))).toEqual([]);
   });
 
-  test('[TC-SEC-002-H] saving an endpoint and local reasoning settings in either order preserves both', async ({
+  test('saving an endpoint and local reasoning settings in either order preserves both', async ({
     page,
     corral,
   }) => {
@@ -389,7 +383,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
     expect(corral.errors).toEqual([]);
   });
 
-  test('[TC-SEC-002-N] a refreshed loader cannot overwrite a concurrent model edit and keeps the local endpoint draft', async ({
+  test('a refreshed loader cannot overwrite a concurrent model edit and keeps the local endpoint draft', async ({
     page,
     corral,
   }) => {
@@ -430,7 +424,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
     expect(saved.modelProviders).toEqual([]);
   });
 
-  test('[TC-SEC-002-H] changes a profile’s model and adds a local endpoint, saved to the workspace', async ({
+  test('changes a profile’s model and adds a local endpoint, saved to the workspace', async ({
     page,
     corral,
   }) => {
@@ -463,7 +457,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
     expect(corral.errors).toEqual([]);
   });
 
-  test('[TC-SEC-002-N] an address off this computer over http is refused by field, and nothing changes', async ({
+  test('an address off this computer over http is refused by field, and nothing changes', async ({
     page,
     corral,
   }) => {
@@ -483,7 +477,7 @@ test.describe('editing models on the Models page (CR-008)', () => {
   });
 });
 
-test('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] profile context preview, explicit zero, round-trip and a concurrent reasoning save', async ({
+test('profile context preview, explicit zero, round-trip and a concurrent reasoning save', async ({
   page,
   corral,
 }) => {
@@ -524,10 +518,7 @@ test('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] profile context preview, explicit ze
   expect(JSON.stringify(saved.modelProfiles)).not.toContain('uid');
 });
 
-test('[TC-CONTEXT-001-H] endpoint renaming keeps original model metadata', async ({
-  page,
-  corral,
-}) => {
+test('endpoint renaming keeps original model metadata', async ({ page, corral }) => {
   await corral.open('/settings/models');
   await page.evaluate(async () => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -582,7 +573,7 @@ test('[TC-CONTEXT-001-H] endpoint renaming keeps original model metadata', async
   });
 });
 
-test('[TC-UX-006-N] slow OAuth status reads do not overlap or starve the completed login', async ({
+test('slow OAuth status reads do not overlap or starve the completed login', async ({
   page,
   corral,
 }) => {

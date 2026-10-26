@@ -125,7 +125,7 @@ async function mount() {
   return { api, owner, onStage, openDocument, render, click };
 }
 
-it('[TC-WBD-022-H,N] reviews conflict sides, opens the existing draft without overwriting and only stages a saved resolution', async () => {
+it('reviews conflict sides, opens the existing draft without overwriting and only stages a saved resolution', async () => {
   const f = await mount();
   await f.click('a.ts');
   expect(document.body.textContent).toContain('base → working');
@@ -165,7 +165,7 @@ it('[TC-WBD-022-H,N] reviews conflict sides, opens the existing draft without ov
   });
 });
 
-it('[TC-WBD-022-F] rejects changed disk content and late conflict reads from a replaced copy', async () => {
+it('rejects changed disk content and late conflict reads from a replaced copy', async () => {
   const f = await mount();
   await f.click('a.ts');
   f.api.gitConflict.mockResolvedValueOnce({ ...conflict, currentHash: '1'.repeat(64) });

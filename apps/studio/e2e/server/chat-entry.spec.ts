@@ -4,7 +4,7 @@ import { expect, test } from './harness.ts';
 test.describe('ordinary chat entry', () => {
   test.use({ live: true, codexLogin: true });
 
-  test('[TC-UX-005-H] a fresh project starts a conversation without creating a Corral', async ({
+  test('a fresh project starts a conversation without creating a Corral', async ({
     page,
     corral,
   }) => {
@@ -40,7 +40,7 @@ test.describe('ordinary chat entry', () => {
   });
 });
 
-test('[TC-UX-005-N] an explicit optional Corral choice and draft survive project navigation', async ({
+test('an explicit optional Corral choice and draft survive project navigation', async ({
   page,
   corral,
 }) => {
@@ -75,7 +75,7 @@ test('[TC-UX-005-N] an explicit optional Corral choice and draft survive project
 test.describe('model readiness guidance', () => {
   test.use({ live: true, compatibleEndpoint: true });
 
-  test('[TC-UX-005-H] a ready keyless compatible model completes connection guidance', async ({
+  test('a ready keyless compatible model completes connection guidance', async ({
     page,
     corral,
   }) => {
@@ -87,7 +87,7 @@ test.describe('model readiness guidance', () => {
   });
 });
 
-test('[TC-UX-005-N] a direct Corral library link still lets the user return to conversations', async ({
+test('a direct Corral library link still lets the user return to conversations', async ({
   page,
   corral,
 }) => {

@@ -1,6 +1,6 @@
 import { expect, test } from './harness.ts';
 
-test('[TC-ABS-008-H] save a disabled schedule, run through Auto, and reopen its persisted history', async ({
+test('save a disabled schedule, run through Auto, and reopen its persisted history', async ({
   page,
   corral,
 }) => {

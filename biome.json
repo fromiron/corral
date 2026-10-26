@@ -63,17 +63,17 @@
                 "patterns": [
                   {
                     "group": ["node:*"],
-                    "message": "contracts/core must stay runtime-neutral (ADR-014). Inject the capability instead."
+                    "message": "contracts/core must stay runtime-neutral. Inject the capability instead."
                   }
                 ],
                 "paths": {
-                  "react": "contracts/core must not depend on React (ADR-014).",
-                  "react-dom": "contracts/core must not depend on React (ADR-014).",
-                  "fs": "contracts/core must stay runtime-neutral (ADR-014).",
-                  "path": "contracts/core must stay runtime-neutral (ADR-014).",
-                  "crypto": "contracts/core must stay runtime-neutral (ADR-014).",
-                  "buffer": "contracts/core must stay runtime-neutral (ADR-014).",
-                  "child_process": "contracts/core must stay runtime-neutral (ADR-014)."
+                  "react": "contracts/core must not depend on React.",
+                  "react-dom": "contracts/core must not depend on React.",
+                  "fs": "contracts/core must stay runtime-neutral.",
+                  "path": "contracts/core must stay runtime-neutral.",
+                  "crypto": "contracts/core must stay runtime-neutral.",
+                  "buffer": "contracts/core must stay runtime-neutral.",
+                  "child_process": "contracts/core must stay runtime-neutral."
                 }
               }
             }

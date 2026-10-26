@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Identifier } from './ids.ts';
 
-// DecisionProvider contract, first question kind `reasoning_effort` v1 (CR-003, ADR-025).
+// DecisionProvider contract, first question kind `reasoning_effort` v1.
 // Observe only: an answer is recorded and never changes a request.
 
 /** Abstract effort levels, weakest first. Model-specific levels belong to a later apply CR. */

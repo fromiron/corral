@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 // No generic IPC, shell, filesystem, or event objects cross into the page. Menu commands
-// arrive as plain names only (CR-017).
+// arrive as plain names only.
 const COMMANDS = new Set([
   'palette',
   'help',

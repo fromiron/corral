@@ -34,7 +34,7 @@ vi.mock('../documents/CodeEditorView.tsx', () => ({
   ),
 }));
 
-it('[TC-WBD-007-N] dirty confirmation and retries keep the selected text and original capture ticket', async () => {
+it('dirty confirmation and retries keep the selected text and original capture ticket', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('crypto', { subtle: { digest: async () => new Uint8Array(32).buffer } });
   const target = { ...capture.target, bindingId: 'binding', copyGeneration: 1 };

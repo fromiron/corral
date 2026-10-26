@@ -59,7 +59,7 @@ function socket(url: string) {
   return { ...value, input: value as unknown as WebSocketRoute };
 }
 
-it('[TC-WBD-023-N] gates private preview HTTP/WebSocket traffic, redirects and late lease revocation', async () => {
+it('gates private preview HTTP/WebSocket traffic, redirects and late lease revocation', async () => {
   const f = fixture();
   let live = true;
   const close = await prepareDebugBrowser(
@@ -129,7 +129,7 @@ it('[TC-WBD-023-N] gates private preview HTTP/WebSocket traffic, redirects and l
   expect(f.browser.close).toHaveBeenCalledOnce();
 });
 
-it('[TC-WBD-023-F] cleans the created context on navigation failure without exposing a private URL', async () => {
+it('cleans the created context on navigation failure without exposing a private URL', async () => {
   const f = fixture();
   f.page.goto.mockRejectedValue(new Error(`${target.url} ${target.headers['x-corral-preview']}`));
   await expect(

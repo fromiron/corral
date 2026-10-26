@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import { VaultS3Transport } from '../src/vault/s3.ts';
 
-describe('[TC-ABS-013-H] S3 signed revision transport', () => {
+describe('S3 signed revision transport', () => {
   it('uses conditional writes and authoritative GET readback against a real HTTP server', async () => {
     let body: string | null = null;
     let revision = 0;

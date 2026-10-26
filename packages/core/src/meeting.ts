@@ -21,7 +21,7 @@ import { formatMeetingEvidence } from './meeting-evidence.ts';
 import type { CorralRepository, SessionResult, WorkSession } from './repository/index.ts';
 import { type RuntimeTransport, waitForProjection } from './transport.ts';
 
-// CR-049 C-174: chat messages ask for read-only replies through the Coordinator. Persisted
+// Chat messages ask for read-only replies through the Coordinator. Persisted
 // batch IDs remain stable for cancellation, replay and references from existing minutes.
 
 export interface MeetingServiceDeps {
@@ -198,7 +198,7 @@ export class MeetingService {
     });
   }
 
-  /** Reads the record and each answer's Run; never starts anything (CR-049 rule 15). */
+  /** Reads the record and each answer's Run; never starts anything. */
   async view(sessionId: string): Promise<MeetingView | null> {
     let session = await this.deps.repository.getSession(sessionId);
     if (!session?.meeting) return null;
@@ -306,7 +306,7 @@ export class MeetingService {
     });
   }
 
-  /** Stops every answer of a round; what already arrived stays (CR-049 rule 14). */
+  /** Stops every answer of a round; what already arrived stays. */
   stop(sessionId: string, roundId: string): Promise<MeetingResult> {
     return this.locked(sessionId, async () => {
       const session = await this.deps.repository.getSession(sessionId);
@@ -552,7 +552,7 @@ export class MeetingService {
       render: (afterOrder = -1, previousRunId?: string) =>
         [
           ...lines,
-          // CR-054: a continuation's earlier messages are already in its own context.
+          // a continuation's earlier messages are already in its own context.
           previousRunId ? 'Messages posted since your last reply:' : 'Conversation so far:',
           ...messages
             .filter(

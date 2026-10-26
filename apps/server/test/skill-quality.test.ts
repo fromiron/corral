@@ -122,7 +122,7 @@ async function fixture() {
   };
   return { service, harness, coordinator, request, profile, db, root, clock };
 }
-it('[TC-QEVAL-003-N] initialization failure records terminal evidence and archives its private profiles', async () => {
+it('initialization failure records terminal evidence and archives its private profiles', async () => {
   const f = await fixture();
   vi.spyOn(f.harness, 'sealEvaluationDefinition').mockImplementationOnce(() => {
     throw new Error('injected seal failure');
@@ -139,7 +139,7 @@ it('[TC-QEVAL-003-N] initialization failure records terminal evidence and archiv
   expect(f.service.start(f.request).status).toBe('failed');
   expect(f.service.get(f.request.operationId).runIds).toEqual([]);
 });
-it('[TC-QEVAL-003-N] a failed evidence callback cancels its owned run', async () => {
+it('a failed evidence callback cancels its owned run', async () => {
   const f = await fixture();
   let id = '';
   await expect(
@@ -164,7 +164,7 @@ it('[TC-QEVAL-003-N] a failed evidence callback cancels its owned run', async ()
   ).rejects.toThrow('evidence write failed');
   expect(f.coordinator.getSnapshot(id).projection.status).toBe('cancelled');
 });
-it('[TC-QEVAL-003-H] compares immutable revisions through the existing eval runtime without changing defaults', async () => {
+it('compares immutable revisions through the existing eval runtime without changing defaults', async () => {
   const f = await fixture();
   const first = f.service.start(f.request);
   expect(f.service.start(f.request).id).toBe(first.id);
@@ -189,7 +189,7 @@ it('[TC-QEVAL-003-H] compares immutable revisions through the existing eval runt
   expect(f.harness.store.getDefault('personal', 'default').binding?.revision).toBe(1);
   expect(() => f.service.start({ ...f.request, modelProfile: 'changed' })).toThrow(/operation/);
 });
-it('[TC-QEVAL-004-H] reviews all changes, adopts one new default revision, and rolls back without modifying old snapshots', async () => {
+it('reviews all changes, adopts one new default revision, and rolls back without modifying old snapshots', async () => {
   const f = await fixture();
   f.service.start(f.request);
   const done = await f.service.wait(f.request.operationId);
@@ -241,7 +241,7 @@ it('[TC-QEVAL-004-H] reviews all changes, adopts one new default revision, and r
     }),
   ).toEqual(restored);
 });
-it('[TC-QEVAL-003-N] cancelled or incomplete evidence cannot be adopted and duplicate cancellation never starts a run', async () => {
+it('cancelled or incomplete evidence cannot be adopted and duplicate cancellation never starts a run', async () => {
   const f = await fixture();
   f.service.start(f.request);
   f.service.cancel(f.request.operationId);
@@ -272,7 +272,7 @@ it('[TC-QEVAL-003-N] cancelled or incomplete evidence cannot be adopted and dupl
     }),
   ).toThrow(/completed/);
 });
-it('[TC-QEVAL-003-N] restart marks orphaned evaluation evidence interrupted and terminal evidence is immutable', async () => {
+it('restart marks orphaned evaluation evidence interrupted and terminal evidence is immutable', async () => {
   const f = await fixture();
   f.service.start(f.request);
   const complete = await f.service.wait(f.request.operationId);
@@ -295,7 +295,7 @@ it('[TC-QEVAL-003-N] restart marks orphaned evaluation evidence interrupted and 
       .run(JSON.stringify(orphan), 'orphan'),
   ).toThrow(/immutable/);
 });
-it('[TC-QEVAL-004-N] rollback preserves newer defaults and rejects revoked baseline trust', async () => {
+it('rollback preserves newer defaults and rejects revoked baseline trust', async () => {
   const f = await fixture();
   f.service.start(f.request);
   await f.service.wait(f.request.operationId);
@@ -323,7 +323,7 @@ it('[TC-QEVAL-004-N] rollback preserves newer defaults and rejects revoked basel
   expect(f.harness.store.getDefault('personal', 'default').binding).toBeNull();
   expect(f.service.get('evaluate').status).toBe('completed');
 });
-it('[TC-QEVAL-004-H] reviews license, references, scripts, permissions and binary changes without executing them', async () => {
+it('reviews license, references, scripts, permissions and binary changes without executing them', async () => {
   const f = await fixture();
   const copy = async (version: number) => {
     const source = join(f.root, `source-${version}`);
@@ -368,7 +368,7 @@ it('[TC-QEVAL-004-H] reviews license, references, scripts, permissions and binar
     after: { bytes: 2, text: null },
   });
 });
-it('[TC-QEVAL-004-N] user edits and trust revocation block stale adoption and rollback', async () => {
+it('user edits and trust revocation block stale adoption and rollback', async () => {
   const f = await fixture();
   f.service.start(f.request);
   await f.service.wait(f.request.operationId);

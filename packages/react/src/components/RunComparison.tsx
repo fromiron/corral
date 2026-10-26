@@ -33,7 +33,7 @@ export interface ComparedRun {
   output: string | null;
 }
 
-/** Two runs side by side (roadmap 16): the eval report's figures and the two outputs. */
+/** Two runs side by side: the eval report's figures and the two outputs. */
 export function RunComparison({
   a,
   b,

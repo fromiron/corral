@@ -133,7 +133,7 @@ async function setup() {
   };
 }
 
-it('[TC-WBD-018-H] explicitly starts once, synchronizes a dirty buffer and keeps save/shared mode available', async () => {
+it('explicitly starts once, synchronizes a dirty buffer and keeps save/shared mode available', async () => {
   const s = await setup();
   expect((await s.service.languageState('s1')).session).toBeNull();
   expect(s.launch).not.toHaveBeenCalled();
@@ -182,7 +182,7 @@ it('[TC-WBD-018-H] explicitly starts once, synchronizes a dirty buffer and keeps
   });
 });
 
-it('[TC-WBD-018-N] rejects stale scopes, unsafe documents and unsupported completion effects; late queries never apply', async () => {
+it('rejects stale scopes, unsafe documents and unsupported completion effects; late queries never apply', async () => {
   const s = await setup();
   await s.service.startLanguage('s1', s.start);
   const change = {
@@ -250,7 +250,7 @@ it('[TC-WBD-018-N] rejects stale scopes, unsafe documents and unsupported comple
   );
 });
 
-it('[TC-WBD-018-F] invalidates config/trust, stops before removal and retains failed state without automatic restart', async () => {
+it('invalidates config/trust, stops before removal and retains failed state without automatic restart', async () => {
   const s = await setup();
   await s.service.startLanguage('s1', s.start);
   s.callbacks.onFailure(new Error('server crashed'));
@@ -294,7 +294,7 @@ it('[TC-WBD-018-F] invalidates config/trust, stops before removal and retains fa
 });
 
 // Recovery uses the existing attested-session cleanup; a different boot proves the fixture process is gone.
-it('[TC-WBD-018-F] restores an uncertain passive owner after a host restart and requires explicit recovery', async () => {
+it('restores an uncertain passive owner after a host restart and requires explicit recovery', async () => {
   const s = await setup();
   await s.service.startLanguage('s1', s.start);
   s.restart();

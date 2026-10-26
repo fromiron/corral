@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
-// Where credentials live (ADR-019): the user's config directory, never the workspace, so a
+// Where credentials live: the user's config directory, never the workspace, so a
 // workspace can be shared, zipped or committed without carrying anyone's sign-in.
 
 export function userConfigDir(env: NodeJS.ProcessEnv = process.env): string {

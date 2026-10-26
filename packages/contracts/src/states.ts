@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// Frozen state sets (specs/constitution.md §3). Changing any list requires a Change Request.
+// Frozen state sets (docs/specs/constitution.md §3). Changing any list means changing that spec first.
 
 export const RunStatus = z.enum([
   'created',

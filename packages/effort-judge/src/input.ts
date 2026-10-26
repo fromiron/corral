@@ -1,7 +1,7 @@
 // The text the judge model sees, in the formats it was trained on (calibration.json
 // `inputFormat`). Derived from mixdog `src/runtime/effort-judge/judge-input.mjs` and
 // `judge-worker.mjs` (Apache-2.0; see ../NOTICE.md). Changes for Corral: TypeScript; Corral
-// keeps the observer excerpt path and applies full turn/tool-step inputs under CR-021.
+// keeps the observer excerpt path and applies full turn/tool-step inputs for reasoning application.
 import type { CompactTokenizer } from './tokenizer.ts';
 
 const FENCE = /```+[\s\S]*?(?:```+|$)/g;

@@ -109,7 +109,7 @@ async function fixture() {
   };
 }
 
-it('[TC-MEET-003-F] an uncertain start cannot newly execute a decision withdrawn before retry', async () => {
+it('an uncertain start cannot newly execute a decision withdrawn before retry', async () => {
   const f = await fixture();
   f.start.mockRejectedValueOnce(new Error('start never reached coordinator'));
   expect(await f.service.send(f.sourceId, f.request)).toMatchObject({
@@ -137,7 +137,7 @@ it('[TC-MEET-003-F] an uncertain start cannot newly execute a decision withdrawn
   expect(f.start).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-MEET-003-F] cancellation failure remains retryable after restart and never starts more work', async () => {
+it('cancellation failure remains retryable after restart and never starts more work', async () => {
   const f = await fixture();
   await f.service.send(f.sourceId, f.request);
   f.cancelStart.mockRejectedValueOnce(new Error('cancellation not recorded'));

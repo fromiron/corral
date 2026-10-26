@@ -7,7 +7,7 @@ import { ensurePrivateDirectory, protectPrivatePaths } from '../private-files.ts
 
 // pi-ai's CredentialStore on one file (0600, in a 0700 directory). Writes go through
 // `modify`, one provider at a time, and replace the file atomically. Nothing here logs or
-// returns a token except to pi-ai, which resolves request auth from it (ADR-019).
+// returns a token except to pi-ai, which resolves request auth from it.
 
 interface FileShape {
   version: 1;

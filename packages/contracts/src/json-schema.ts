@@ -6,7 +6,7 @@ import { CanvasLayout } from './layout.ts';
 import { Receipt } from './receipt.ts';
 import { ReviewArtifact } from './review.ts';
 
-// JSON Schema is generated from the Zod source (Implementation Plan §3.3). The files under
+// JSON Schema is generated from the Zod source. The files under
 // packages/contracts/generated are build output: regenerate with `pnpm contracts:generate`.
 
 const SOURCES = {

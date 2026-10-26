@@ -29,7 +29,7 @@ it('[DW-03] reading more than sixteen finished turns opens no event streams or c
   expect(history).not.toHaveBeenCalled();
 });
 
-it('[TC-WIDGET-001-H] PERF-01 shares in-flight reads within the same transport and history boundary', async () => {
+it('PERF-01 shares in-flight reads within the same transport and history boundary', async () => {
   const transport = {
     getSnapshot: vi.fn(async (id: string) => ({
       projection: { ...emptyProjection(id), status: 'succeeded' as const },
@@ -57,7 +57,7 @@ it('[TC-WIDGET-001-H] PERF-01 shares in-flight reads within the same transport a
   expect(transport.getSnapshot).toHaveBeenCalledTimes(4);
 });
 
-it('[TC-WIDGET-001-N] PERF-01 rereads late settlement facts after terminal status', async () => {
+it('PERF-01 rereads late settlement facts after terminal status', async () => {
   let lastSeq = 10;
   const transport = {
     getSnapshot: vi.fn(async (id: string) => ({
@@ -72,7 +72,7 @@ it('[TC-WIDGET-001-N] PERF-01 rereads late settlement facts after terminal statu
   expect((await readRunView(transport, history, 'run_late', false)).projection.lastSeq).toBe(12);
 });
 
-it('[TC-WIDGET-001-N] PLAN-04 retries failed reads and never caches an active run as final', async () => {
+it('PLAN-04 retries failed reads and never caches an active run as final', async () => {
   const transport = {
     getSnapshot: vi
       .fn()

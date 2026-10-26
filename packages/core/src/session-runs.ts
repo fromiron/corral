@@ -1,8 +1,8 @@
 import { type CorralDefinition, DEFAULT_LIMITS } from '@corral/contracts';
 
-// Runs a work session starts (CR-011). A follow-up uses the session's team with the person's
+// Runs a work session starts. A follow-up uses the session's team with the person's
 // words as the brief; a question about a result is a run of its own: one agent with no tools
-// that answers with its reply (CR-055), on the model profile the team's first role uses.
+// that answers with its reply, on the model profile the team's first role uses.
 
 const EXPLAIN_PROMPT = [
   'You answer a question about an earlier result of this work session.',
@@ -30,7 +30,7 @@ export function explainDefinition(input: {
         name: 'Explainer',
         prompt: EXPLAIN_PROMPT,
         modelProfile: input.modelProfile,
-        // CR-055: no tools; the explainer's reply is its answer, so it cannot loop on rewrites.
+        // no tools; the explainer's reply is its answer, so it cannot loop on rewrites.
         allowedWorkTools: [],
         allowedCollaborationTools: [],
         outputContract: 'text',

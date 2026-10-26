@@ -135,7 +135,7 @@ function setup() {
   };
 }
 
-describe('auto run regressions (CR-024)', () => {
+describe('auto run regressions', () => {
   it('keeps router model calls in the budget after an absolute limit patch and event replay', async () => {
     const s = setup();
     const started = await s.starter().start(request('cmd_calls'), { fileTools: false });
@@ -348,7 +348,7 @@ describe('auto run regressions (CR-024)', () => {
 });
 
 describe('durable cancellation before starting an auto run', () => {
-  it('[TC-AUTO-003-N] the final start boundary respects a saved cancellation and its session', () => {
+  it('the final start boundary respects a saved cancellation and its session', () => {
     const s = setup();
     const original = request('cmd_cancel_before_commit');
     const stopped = s.coordinator.cancelAutoStart(original.commandId, original.sessionId);
@@ -374,7 +374,7 @@ describe('durable cancellation before starting an auto run', () => {
     expect(s.coordinator.listRuns()).toHaveLength(0);
   });
 
-  it('[TC-AUTO-003-N] a failed cancellation write is not acknowledged as cancelled', () => {
+  it('a failed cancellation write is not acknowledged as cancelled', () => {
     const s = setup();
     s.store.putCommand = () => {
       throw new Error('test write failure');

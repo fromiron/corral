@@ -24,7 +24,7 @@ function observe(x: number, y: number, keyboard: boolean) {
   return window.eval(observationScript(x, y, keyboard));
 }
 
-it('[TC-WBD-020-H] observes the selected element and clips its bounds to the visible viewport', () => {
+it('observes the selected element and clips its bounds to the visible viewport', () => {
   document.body.innerHTML =
     '<main><button id="private-id" class="private-class" style="color: rgb(12, 34, 56)">Fix <span>this button</span></button><p>Unselected sibling</p></main>';
   const button = document.querySelector('button')!;
@@ -49,7 +49,7 @@ it('[TC-WBD-020-H] observes the selected element and clips its bounds to the vis
   }
 });
 
-it('[TC-WBD-020-N] excludes editable values and strips preview capabilities from observations', () => {
+it('excludes editable values and strips preview capabilities from observations', () => {
   document.body.innerHTML = `<section>Visible caption
     <input value="input-secret"><textarea>textarea-secret</textarea>
     <div contenteditable="true">editable-secret</div>

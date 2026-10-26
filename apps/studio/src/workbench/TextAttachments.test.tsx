@@ -8,7 +8,7 @@ import { TextAttachmentPicker } from './TextAttachments.tsx';
 vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
 afterEach(() => vi.unstubAllGlobals());
 
-it('[TC-WBD-007-N] a file upload with identical text preserves a captured source with different provenance', async () => {
+it('a file upload with identical text preserves a captured source with different provenance', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const text = 'same body';
   const captured = createTextAttachment('selection.txt', 'text/plain', text, {

@@ -9,7 +9,7 @@ import { Modal } from './CommandPalette.tsx';
 import { useServices } from './services.tsx';
 
 /**
- * Goal → team draft (CR-006). The person writes a goal, gets a plan from the local suggestion or
+ * Goal → team draft. The person writes a goal, gets a plan from the local suggestion or
  * one model request, edits it, and only "Open in editor" saves it. Tools and wiring come from
  * the pattern (draftFromPlan), never from the plan's text.
  */
@@ -18,7 +18,7 @@ export function TeamDraftDialog({
   projectId,
 }: {
   onClose: () => void;
-  /** The project the drafted Corral is saved in (CR-010). */
+  /** The project the drafted Corral is saved in. */
   projectId?: string;
 }) {
   const t = useTranslations('TeamDraft');

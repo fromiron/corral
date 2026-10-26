@@ -10,7 +10,7 @@ import { createRunRecovery } from '../../../packages/react/src/run/recovery.ts';
 import { createRunSession } from '../../../packages/react/src/run/session.ts';
 import { startCorralServer } from '../src/index.ts';
 
-it('[TC-ABS-014-H] real HTTP receipt lookup and persisted SSE prefix recover lost responses without another mutation', async () => {
+it('real HTTP receipt lookup and persisted SSE prefix recover lost responses without another mutation', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-remote-recovery-'));
   const gate = new Gate();
   const token = 'remote-recovery-test-bootstrap';
@@ -117,7 +117,7 @@ it('[TC-ABS-014-H] real HTTP receipt lookup and persisted SSE prefix recover los
   }
 }, 30000);
 
-it('[TC-ABS-014-H] Editor start after remount recovers a completed lost start without creating another Run', async () => {
+it('Editor start after remount recovers a completed lost start without creating another Run', async () => {
   const workspace = mkdtempSync(join(tmpdir(), 'corral-remote-editor-'));
   const token = 'remote-editor-test-bootstrap';
   const server = await startCorralServer({

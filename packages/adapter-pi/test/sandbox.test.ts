@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 import { sandboxChannel } from '../src/sandbox-channel.ts';
 
 it.skipIf(process.env.CORRAL_SANDBOX_PROBE !== '1')(
-  '[TC-SBX-002-H] [TC-SBX-002-N] actual worker IPC isolates host files, network and credentials; killing it reaps detached children',
+  'actual worker IPC isolates host files, network and credentials; killing it reaps detached children',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-sandbox-test-'));
     const privateFile = join(root, 'private');

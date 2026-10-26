@@ -244,7 +244,7 @@ describe('bounded review recipes (H6)', () => {
       },
     };
   }
-  it('[TC-HAR-014-N] cancellation during the last evidence read cannot publish a final output', async () => {
+  it('cancellation during the last evidence read cannot publish a final output', async () => {
     const s = checked(['pass'], true, true);
     const waiting = await waitForProjection(
       s.transport,
@@ -288,7 +288,7 @@ describe('bounded review recipes (H6)', () => {
     expect(final.output).toBeNull();
     expect(s.events().some((event) => event.type === 'output.finalized')).toBe(false);
   });
-  it('[TC-HAR-014-N] a tree changed during final approval cannot reuse an earlier passing check', async () => {
+  it('a tree changed during final approval cannot reuse an earlier passing check', async () => {
     const s = checked(['pass'], true, true);
     const waiting = await waitForProjection(
       s.transport,
@@ -321,7 +321,7 @@ describe('bounded review recipes (H6)', () => {
         .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'check_stale'),
     ).toBe(true);
   });
-  it('[TC-HAR-014-N] an over-reported last model response cannot bypass the recipe token cap', async () => {
+  it('an over-reported last model response cannot bypass the recipe token cap', async () => {
     const definition = fixture({ maxOutputTokens: 100 });
     definition.executionPolicy = { version: 2, budget: { maxOutputTokens: 10000 } };
     const s = runtime(definition, {
@@ -337,7 +337,7 @@ describe('bounded review recipes (H6)', () => {
         .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'token_limit'),
     ).toBe(true);
   });
-  it('[TC-HAR-014-H] automatically checks each submission and a failed check overrides a passing review', async () => {
+  it('automatically checks each submission and a failed check overrides a passing review', async () => {
     const s = checked(['fail', 'pass']);
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
     expect(final.status).toBe('succeeded');
@@ -363,7 +363,7 @@ describe('bounded review recipes (H6)', () => {
     ['error', 'check_error'],
     ['stale', 'check_stale'],
   ] as const)(
-    '[TC-HAR-014-N] %s checks stop without a passing review or generic approval',
+    '%s checks stop without a passing review or generic approval',
     async (result, reason) => {
       const s = checked([result]);
       const final = await waitForProjection(
@@ -380,7 +380,7 @@ describe('bounded review recipes (H6)', () => {
       ).toBe(true);
     },
   );
-  it('[TC-HAR-014-N] the same failed check against an unchanged tree stops even when the report prose changes', async () => {
+  it('the same failed check against an unchanged tree stops even when the report prose changes', async () => {
     const s = checked(['fail', 'fail'], false);
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
     expect(final.status).toBe('failed');
@@ -393,13 +393,13 @@ describe('bounded review recipes (H6)', () => {
         ),
     ).toBe(true);
   });
-  it('[TC-HAR-014-H] compiles the existing loop and validates the fixed criteria and evaluator', () => {
+  it('compiles the existing loop and validates the fixed criteria and evaluator', () => {
     expect(compileDefinition(fixture()).ok).toBe(true);
     expect(compileDefinition(fixture({ criteriaHash: 'a'.repeat(64) })).ok).toBe(false);
     expect(compileDefinition(fixture({ evaluatorRoleId: 'writer' })).ok).toBe(false);
     expect(compileDefinition(fixture({ candidateNodeId: 'output' })).ok).toBe(false);
   });
-  it('[TC-HAR-014-H] revises once then passes the exact new candidate under the pinned recipe', async () => {
+  it('revises once then passes the exact new candidate under the pinned recipe', async () => {
     const s = runtime();
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
     expect(final.status).toBe('succeeded');
@@ -418,7 +418,7 @@ describe('bounded review recipes (H6)', () => {
     { maxAttempts: 1, maxRepairs: 9, reason: 'attempt_limit', count: 1 },
     { maxAttempts: 5, maxRepairs: 1, reason: 'repair_limit', count: 2 },
   ])(
-    '[TC-HAR-014-N] includes the initial attempt and stops at $reason without requesting an extension',
+    'includes the initial attempt and stops at $reason without requesting an extension',
     async ({ reason, count, ...limits }) => {
       const s = runtime(fixture(limits), { review: () => 'revise' });
       const final = await waitForProjection(
@@ -436,7 +436,7 @@ describe('bounded review recipes (H6)', () => {
       expect(Object.values(final.approvals)).toHaveLength(0);
     },
   );
-  it('[TC-HAR-014-N] stops identical candidate repetition instead of trusting a changed verdict', async () => {
+  it('stops identical candidate repetition instead of trusting a changed verdict', async () => {
     const s = runtime(fixture(), { reply: () => 'Unchanged output' });
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
     expect(final.status).toBe('failed');
@@ -449,7 +449,7 @@ describe('bounded review recipes (H6)', () => {
     ).toBe(true);
     expect(final.nodeExecutions.review).toHaveLength(1);
   });
-  it('[TC-HAR-014-N] malformed review does not become pass through generic human approval', async () => {
+  it('malformed review does not become pass through generic human approval', async () => {
     const s = runtime(fixture(), { review: () => 'not JSON' });
     const final = await waitForProjection(
       s.transport,
@@ -465,7 +465,7 @@ describe('bounded review recipes (H6)', () => {
         ),
     ).toBe(true);
   });
-  it('[TC-HAR-014-N] recipe call allowance and deadline are enforced before another model request', async () => {
+  it('recipe call allowance and deadline are enforced before another model request', async () => {
     const limited = fixture({ maxModelCalls: 1 });
     limited.executionPolicy = { version: 2, budget: { maxModelCalls: 20 } };
     const s = runtime(limited);
@@ -499,7 +499,7 @@ describe('bounded review recipes (H6)', () => {
         .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'deadline'),
     ).toBe(true);
   });
-  it('[TC-HAR-014-N] criteria and loop patches cannot loosen the recipe', async () => {
+  it('criteria and loop patches cannot loosen the recipe', async () => {
     const entered = new Gate(),
       release = new Gate();
     const s = runtime(fixture({ maxAttempts: 2 }), {

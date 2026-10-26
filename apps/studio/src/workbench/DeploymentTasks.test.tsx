@@ -103,7 +103,7 @@ async function mount(overrides: Record<string, unknown> = {}) {
   return { container, button, render };
 }
 
-it('[TC-WBD-024-H] [TC-WBD-024-N] reviews source and credential references before an explicit start, then checks a separate result', async () => {
+it('reviews source and credential references before an explicit start, then checks a separate result', async () => {
   const f = await mount();
   expect(fixture.api.inspectDeployment).not.toHaveBeenCalled();
   expect(fixture.api.startDeployment).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ it('[TC-WBD-024-H] [TC-WBD-024-N] reviews source and credential references befor
   expect(f.container.textContent).toContain('result.succeeded');
 });
 
-it('[TC-WBD-024-F] keeps a lost start on the same operation and does not redeploy during receipt recovery', async () => {
+it('keeps a lost start on the same operation and does not redeploy during receipt recovery', async () => {
   const f = await mount();
   fixture.api.startDeployment = vi.fn(async () => {
     throw new Error('Connection lost');
@@ -142,7 +142,7 @@ it('[TC-WBD-024-F] keeps a lost start on the same operation and does not redeplo
   expect(start).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-024-N] ignores a late review after a session change and blocks unsaved buffers', async () => {
+it('ignores a late review after a session change and blocks unsaved buffers', async () => {
   const f = await mount();
   let resolve: (value: typeof plan) => void = () => {};
   fixture.api.inspectDeployment = vi.fn(
@@ -160,7 +160,7 @@ it('[TC-WBD-024-N] ignores a late review after a session change and blocks unsav
   expect(f.button('review')?.disabled).toBe(true);
 });
 
-it('[TC-WBD-024-N] rechecks unsaved buffers immediately before starting after a target lookup', async () => {
+it('rechecks unsaved buffers immediately before starting after a target lookup', async () => {
   const f = await mount();
   await act(async () => f.button('review')?.click());
   await act(async () => f.container.querySelector<HTMLElement>('[role=checkbox]')?.click());
@@ -177,7 +177,7 @@ it('[TC-WBD-024-N] rechecks unsaved buffers immediately before starting after a 
   expect(fixture.api.startDeployment).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-024-F] ending local verification preserves an unknown external result without offering an ineffective check', async () => {
+it('ending local verification preserves an unknown external result without offering an ineffective check', async () => {
   const f = await mount();
   fixture.api.stopDeployment = vi.fn(async (_session, operationId) => ({
     ...receipt,
@@ -196,7 +196,7 @@ it('[TC-WBD-024-F] ending local verification preserves an unknown external resul
   expect(fixture.api.startDeployment).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-024-N] a definitive admission refusal requires a fresh review instead of trapping recovery on an absent operation', async () => {
+it('a definitive admission refusal requires a fresh review instead of trapping recovery on an absent operation', async () => {
   const f = await mount();
   fixture.api.startDeployment = vi.fn(async () => {
     throw new ApiError(409, 'REVISION_CONFLICT', 'Source changed');
@@ -210,7 +210,7 @@ it('[TC-WBD-024-N] a definitive admission refusal requires a fresh review instea
   expect(fixture.api.startDeployment).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-024-N] a session without a working copy does not read deployments until a copy is created', async () => {
+it('a session without a working copy does not read deployments until a copy is created', async () => {
   let hasCopy = false;
   const f = await mount({
     worktree: async () =>

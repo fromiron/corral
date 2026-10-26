@@ -3,7 +3,7 @@ import { CommandError } from './errors.ts';
 import { Identifier } from './ids.ts';
 import { ReceiptStatus } from './states.ts';
 
-/** API-Contract §2. `accepted` means committed, never applied (specs/reins/spec.md §3). */
+/** See docs/specs/api-contract.md §2. `accepted` means committed, never applied (docs/specs/features/reins.md §3). */
 export const Receipt = z.strictObject({
   commandId: Identifier,
   runId: Identifier,

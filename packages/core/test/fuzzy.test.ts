@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { fuzzyScore, rankFuzzy } from '../src/fuzzy.ts';
 
-// CR-016: one ranking for `@` references, server path search and the command palette.
+// one ranking for `@` references, server path search and the command palette.
 
-describe('fuzzy match (CR-016)', () => {
+describe('fuzzy match', () => {
   it('matches letters in order, in any case, and refuses anything else', () => {
     expect(fuzzyScore('rdm', 'README.md')).not.toBeNull();
     expect(fuzzyScore('RDM', 'readme.md')).not.toBeNull();

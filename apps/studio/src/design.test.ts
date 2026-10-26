@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { cn } from '@corral/react/design-kit';
 import { describe, expect, it } from 'vitest';
 
-// Workbench polish guard (CR-015): one type scale,
+// Workbench polish guard: one type scale,
 // no references to tokens nobody defines, and one control vocabulary on the workbench.
 
 const root = join(import.meta.dirname, '..', '..', '..');

@@ -2,9 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // Korean UI (roadmap UX-A5).
 
-test('[TC-UX-001-H] choosing 한국어 switches the whole UI and survives a reload', async ({
-  page,
-}) => {
+test('choosing 한국어 switches the whole UI and survives a reload', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
     'aria-selected',

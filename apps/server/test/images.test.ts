@@ -5,7 +5,7 @@ import { PNG } from 'pngjs';
 import { expect, it } from 'vitest';
 import { ImageStore } from '../src/images.ts';
 
-it('[TC-IMAGE-001-H] [TC-IMAGE-001-N] image bytes are normalized, immutable and scoped to the owning session', () => {
+it('image bytes are normalized, immutable and scoped to the owning session', () => {
   const db = openDatabase(':memory:');
   try {
     db.prepare(

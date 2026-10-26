@@ -15,27 +15,23 @@ pnpm serve        # production Studio + 로컬 서버, 출력된 bootstrap 링�
 pnpm storybook    # 상태별 component와 접근성 검사
 ```
 
-`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 사용자가 [모델 설정](docs/Models.md)에서 완료한다. credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. Desktop 실행·패키징 절차는 [Desktop 안내](apps/desktop/README.md)를 따른다. 공개 배포나 모든 플랫폼·공급자의 검증 완료를 뜻하지 않는다.
+`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 사용자가 [모델 설정](docs/guides/models.md)에서 완료한다. credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. Desktop 실행·패키징 절차는 [Desktop 안내](apps/desktop/README.md)를 따른다. 공개 배포나 모든 플랫폼·공급자의 검증 완료를 뜻하지 않는다.
 
 ## 문서
 
-개발 에이전트는 [공통 작업 규칙](AGENTS.md)을 먼저 읽고 [문서 지도](docs/README.md)에서 작업 범위를 고른다. `CLAUDE.md`는 공통 규칙을 가져오기만 한다.
+개발 에이전트는 [공통 작업 규칙](AGENTS.md)을 먼저 읽고 [명세 지도](docs/specs/README.md)에서 작업 범위를 고른다. `CLAUDE.md`는 공통 규칙을 가져오기만 한다. 제품 동작의 정본은 `docs/specs/`다.
 
 | 질문 | 읽을 문서 |
 |---|---|
-| 현재 제품 계약과 기본 흐름은? | [제품](docs/current/product.md), [Workbench](docs/current/workbench.md) |
-| 상태·실행·권한을 누가 소유하는가? | [구조](docs/current/architecture.md), [실행과 안전](docs/current/execution-and-safety.md) |
-| 모델·추론·Skill·API를 바꾸려면? | [모델과 리소스](docs/current/models-and-resources.md), [API](docs/current/api.md) |
-| 구현된 기능과 남은 일은? | [상태표](docs/status.md), [활성 계획](docs/plans/README.md) |
-| 장기 제안과 실제 검사 결과는? | [제안 지도](docs/proposals/README.md), [검증 기록 안내](docs/evaluation/README.md) |
-
-현재 문서만 작업 트리에 유지한다. 완료·대체된 계획과 초기 패키지는 Git 이력에서 조회하며 기본 개발 지침으로 읽지 않는다.
+| 현재 제품 계약과 기본 흐름은? | [제품](docs/specs/product.md), [Workbench](docs/specs/workbench.md) |
+| 상태·실행·권한을 누가 소유하는가? | [구조](docs/specs/architecture.md), [실행과 안전](docs/specs/execution-and-safety.md) |
+| 모델·추론·Skill·API를 바꾸려면? | [모델과 리소스](docs/specs/models-and-resources.md), [API](docs/specs/api.md) |
+| 기능별 수용 기준은? | [features](docs/specs/features/) |
+| 모델 연결·출시·평가는? | [guides](docs/guides/) |
 
 ## 검증
 
 ```sh
-python -m pip install -r tools/requirements.txt
-pnpm spec:check
 pnpm contracts:check
 pnpm deps:check
 pnpm --filter @corral/studio exec playwright install --with-deps chromium firefox
@@ -46,7 +42,7 @@ pnpm test:performance
 pnpm release:gate
 ```
 
-위 명령은 실행 절차이지 이 commit에서의 통과 증거가 아니다. 일반 테스트·release gate는 유료 모델/검색을 호출하지 않는다. 실제 공급자 smoke에는 별도 opt-in과 상한이 필요하며, `release:check`는 같은 후보의 live 증거를 요구한다. [테스트 전략](docs/Test-Strategy.md), [출시 절차](docs/Release.md), [성능 측정](docs/Performance.md)을 참고한다.
+위 명령은 실행 절차이지 이 commit에서의 통과 증거가 아니다. 일반 테스트·release gate는 유료 모델/검색을 호출하지 않는다. 실제 공급자 smoke에는 별도 opt-in과 상한이 필요하며, `release:check`는 같은 후보의 live 증거를 요구한다. [출시 절차](docs/guides/release.md)를 참고한다.
 
 ## 구조와 라이선스
 

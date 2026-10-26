@@ -35,8 +35,8 @@ const serve =
     return body === undefined ? new Response('missing', { status: 404 }) : new Response(body);
   };
 
-describe('model install (C-072)', () => {
-  it('[TC-DEC-001-H] downloads each file, checks size and sha256, then stamps the release', async () => {
+describe('model install', () => {
+  it('downloads each file, checks size and sha256, then stamps the release', async () => {
     const dir = temp();
     const files = { 'model.onnx': 'weights', 'calibration.json': '{"temperature":1}' };
     expect(installState(dir, manifest(files))).toBe('missing');
@@ -46,7 +46,7 @@ describe('model install (C-072)', () => {
     expect(installState(dir, manifest(files, 'test-v2'))).toBe('stale');
   });
 
-  it('[TC-DEC-001-N] a wrong hash, a short or oversized body leaves no stamp and keeps a working file', async () => {
+  it('a wrong hash, a short or oversized body leaves no stamp and keeps a working file', async () => {
     const dir = temp();
     const good = { 'model.onnx': 'weights' };
     await installModel(dir, { manifest: manifest(good), fetchFn: serve(good) });
@@ -62,7 +62,7 @@ describe('model install (C-072)', () => {
     expect(installState(dir, manifest(good))).toBe('current');
   });
 
-  it('[TC-DEC-001-N] files that already match are not downloaded again; http URLs are refused', async () => {
+  it('files that already match are not downloaded again; http URLs are refused', async () => {
     const dir = temp();
     const files = { 'model.onnx': 'weights' };
     await installModel(dir, { manifest: manifest(files), fetchFn: serve(files) });

@@ -8,10 +8,10 @@ import {
   triggerAt,
 } from './composerMenu.ts';
 
-// CR-016: the composer's `/` commands and `@` references.
+// the composer's `/` commands and `@` references.
 
-describe('composer triggers (CR-016)', () => {
-  it('[TC-REF-020-H] opens commands only for `/` at the very start', () => {
+describe('composer triggers', () => {
+  it('opens commands only for `/` at the very start', () => {
     expect(triggerAt('/pa', 3)).toEqual({ kind: 'slash', query: 'pa', start: 0, end: 3 });
     expect(triggerAt('/', 1)).toEqual({ kind: 'slash', query: '', start: 0, end: 1 });
     expect(triggerAt('see a/b', 7)).toBeNull();
@@ -19,7 +19,7 @@ describe('composer triggers (CR-016)', () => {
     expect(triggerAt('/pause now', 10)).toBeNull();
   });
 
-  it('[TC-REF-021-H] opens references for `@` after a space or at the start', () => {
+  it('opens references for `@` after a space or at the start', () => {
     expect(triggerAt('look at @src/ap', 15)).toEqual({
       kind: 'mention',
       query: 'src/ap',
@@ -31,7 +31,7 @@ describe('composer triggers (CR-016)', () => {
     expect(triggerAt('@a done', 7)).toBeNull();
   });
 
-  it('[TC-REF-022-H] replaces the trigger with the chosen token and a space', () => {
+  it('replaces the trigger with the chosen token and a space', () => {
     const trigger = triggerAt('look at @ap and', 11);
     expect(trigger).not.toBeNull();
     if (!trigger) return;
@@ -41,7 +41,7 @@ describe('composer triggers (CR-016)', () => {
     });
   });
 
-  it('[TC-REF-023-H] quotes labels with spaces and marks folders and lines', () => {
+  it('quotes labels with spaces and marks folders and lines', () => {
     expect(mentionToken({ kind: 'file', label: 'src/app.ts' })).toBe('@src/app.ts');
     expect(mentionToken({ kind: 'file', label: 'my notes.md' })).toBe('@"my notes.md"');
     expect(mentionToken({ kind: 'folder', label: 'src' })).toBe('@src/');
@@ -53,7 +53,7 @@ describe('composer triggers (CR-016)', () => {
     );
   });
 
-  it('[TC-REF-024-H] sends only references whose token is still in the text, once each', () => {
+  it('sends only references whose token is still in the text, once each', () => {
     const file: MentionItem = {
       id: 'file:a',
       kind: 'file',

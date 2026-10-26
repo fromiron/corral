@@ -21,15 +21,12 @@ async function finishedRun(
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+$/);
-  // CR-009: a finished run opens on its results; these checks are about the run view.
+  // a finished run opens on its results; these checks are about the run view.
   await page.getByRole('tab', { name: 'Execution', exact: true }).click();
   return new URL(page.url()).pathname;
 }
 
-test('[TC-OBS-001-H] a reload keeps the chosen execution and the saved layout', async ({
-  page,
-  corral,
-}) => {
+test('a reload keeps the chosen execution and the saved layout', async ({ page, corral }) => {
   await finishedRun(page, corral);
   await expect(page.getByText('Layout from the saved team')).toBeVisible();
   const row = page.locator('li[data-execution-id]').filter({ hasText: 'Research Helper' }).first();
@@ -46,10 +43,7 @@ test('[TC-OBS-001-H] a reload keeps the chosen execution and the saved layout', 
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-OBS-001-N] a link to an execution the run does not have targets nothing', async ({
-  page,
-  corral,
-}) => {
+test('a link to an execution the run does not have targets nothing', async ({ page, corral }) => {
   const runPath = await finishedRun(page, corral);
   await corral.open(`${runPath}?execution=exec_9999`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');

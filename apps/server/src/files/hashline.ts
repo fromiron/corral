@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-// CR-042: v1 intentionally supports concrete line coordinates, not inferred blocks
+// v1 intentionally supports concrete line coordinates, not inferred blocks
 // or persistent registers. Every coordinate addresses the original read snapshot.
 // This module performs no IO; the broker must apply its plan under its write lease,
 // capability checks and operation journal, rechecking beforeSha256 at commit time.

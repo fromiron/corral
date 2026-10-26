@@ -102,7 +102,7 @@ async function mounted(content: React.ReactNode, check: (container: HTMLDivEleme
   }
 }
 
-it('[TC-WBD-006-N] external tab ownership skips view retain and a missing conversation reference does not disable saving', async () => {
+it('external tab ownership skips view retain and a missing conversation reference does not disable saving', async () => {
   const store = owner({ [key]: buffer() }, key);
   await mounted(
     <DocumentPanel owner={store} documentKey={key} viewId="dock-tab" manageView={false} />,
@@ -117,7 +117,7 @@ it('[TC-WBD-006-N] external tab ownership skips view retain and a missing conver
   );
 });
 
-it('[TC-WBD-006-F] restoring an old generation cannot show the current copy under the old document tab', async () => {
+it('restoring an old generation cannot show the current copy under the old document tab', async () => {
   const newTarget = { ...target, copyGeneration: 2 };
   const newerKey = documentKey(newTarget, 'note.txt');
   const store = owner(
@@ -141,7 +141,7 @@ it('[TC-WBD-006-F] restoring an old generation cannot show the current copy unde
   );
 });
 
-it('[TC-WBD-006-N] a retained file cannot reference the current copy until target readback completes', async () => {
+it('a retained file cannot reference the current copy until target readback completes', async () => {
   const store = owner({ [key]: { ...buffer(), dirty: false, text: 'saved' } }, key);
   let finish!: (key: string) => void;
   vi.mocked(store.open).mockImplementation(
@@ -172,7 +172,7 @@ it('[TC-WBD-006-N] a retained file cannot reference the current copy until targe
   }
 });
 
-it('[TC-WBD-006-H] a previewable file keeps its preview with its document tab, the one place it opens (#87)', async () => {
+it('a previewable file keeps its preview with its document tab, the one place it opens (#87)', async () => {
   const htmlKey = documentKey(target, 'index.html');
   const store = owner(
     { [htmlKey]: { ...buffer(), key: htmlKey, path: 'index.html', dirty: false } },

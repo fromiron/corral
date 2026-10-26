@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from './harness.ts';
 
 test.use({ agentReply: 'fixture output' });
-test('[TC-QEVAL-003-H] [TC-QEVAL-004-H] evaluate, review, retry a lost adoption response and roll back after reload', async ({
+test('evaluate, review, retry a lost adoption response and roll back after reload', async ({
   page,
   corral,
 }) => {

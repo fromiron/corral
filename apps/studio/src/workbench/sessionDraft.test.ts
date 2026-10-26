@@ -12,7 +12,7 @@ const result = {
 };
 
 describe('composer draft (UX-02)', () => {
-  it('[TC-CHAT-001-H] [TC-UX-02-H] keeps text, intent, target and references through storage', () => {
+  it('keeps text, intent, target and references through storage', () => {
     const draft = {
       text: 'Compare with @"draft v1"',
       intent: 'steer' as const,
@@ -38,7 +38,7 @@ describe('composer draft (UX-02)', () => {
     expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);
   });
 
-  it('[TC-ULTRA-005-F] reads a draft saved with an Ultra choice without it (CR-056)', () => {
+  it('reads a draft saved with an Ultra choice without it', () => {
     const saved = JSON.stringify({
       v: 2,
       text: 'Hello',
@@ -53,7 +53,7 @@ describe('composer draft (UX-02)', () => {
     expect(draft).not.toHaveProperty('ultra');
   });
 
-  it('[TC-UX-02-N] reads an older text-only draft as text', () => {
+  it('reads an older text-only draft as text', () => {
     expect(parseComposerDraft('Keep this purpose')).toEqual({
       text: 'Keep this purpose',
       intent: null,
@@ -66,7 +66,7 @@ describe('composer draft (UX-02)', () => {
     expect(parseComposerDraft('{ not json').text).toBe('{ not json');
   });
 
-  it('[TC-UX-02-F] drops references and intents it cannot trust', () => {
+  it('drops references and intents it cannot trust', () => {
     const stored = JSON.stringify({
       v: 2,
       text: 'x',

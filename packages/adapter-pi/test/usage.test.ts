@@ -6,8 +6,8 @@ import { normalizeUsage } from '../src/usage.ts';
 
 const cost = { input: 0.1, output: 0.2, cacheRead: 0.01, cacheWrite: 0, total: 0.31 };
 
-describe('usage normalization (C-020, OBS-004)', () => {
-  it('[TC-OBS-004-H] OpenAI Responses: cached input is part of input, reasoning part of output', () => {
+describe('usage normalization', () => {
+  it('OpenAI Responses: cached input is part of input, reasoning part of output', () => {
     // input_tokens 1200 (1000 cached), output_tokens 300 (120 reasoning), total 1500.
     const result = normalizeUsage({
       stopReason: 'stop',
@@ -42,7 +42,7 @@ describe('usage normalization (C-020, OBS-004)', () => {
     });
   });
 
-  it('[TC-OBS-004-N] an aborted or failed request with no reported usage is unknown, not zero', () => {
+  it('an aborted or failed request with no reported usage is unknown, not zero', () => {
     for (const stopReason of ['aborted', 'error'] as const) {
       const result = normalizeUsage({
         stopReason,

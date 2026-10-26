@@ -13,7 +13,7 @@ import {
 } from '../src/index.ts';
 
 const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
-it('[TC-CONTINUITY-001-H] [TC-CONTINUITY-001-N] a message branch uses only its past checkpoint and keeps later messages in the source', async () => {
+it('a message branch uses only its past checkpoint and keeps later messages in the source', async () => {
   const store = new InMemoryRunStore();
   const clock = new FakeClock(),
     started = new Gate(),

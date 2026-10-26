@@ -15,7 +15,7 @@ vi.mock('use-intl', () => ({
   useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
 }));
 
-it('[TC-WBD-007-F] stale sources open the unchanged read-only capture and replacement requires explicit confirmation', async () => {
+it('stale sources open the unchanged read-only capture and replacement requires explicit confirmation', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const provenance = {
     kind: 'hunk' as const,

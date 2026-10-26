@@ -113,7 +113,7 @@ async function setup() {
   };
 }
 
-it('[TC-AUTO-003-N] cancels the actual pending chooser and starts no run', async () => {
+it('cancels the actual pending chooser and starts no run', async () => {
   const s = await setup();
   const choice = s.holdChoice();
   const start = s.json('/runs/auto', s.request('cmd_pending'));
@@ -127,7 +127,7 @@ it('[TC-AUTO-003-N] cancels the actual pending chooser and starts no run', async
   expect(s.server.coordinator.listRuns()).toHaveLength(0);
 });
 
-it('[TC-AUTO-003-N] returns the committed start and cancels its live run through Reins', async () => {
+it('returns the committed start and cancels its live run through Reins', async () => {
   const s = await setup();
   s.fake.setResponses([fauxAssistantMessage('{"template":"single","reason":"Short."}')]);
   const started = await s.json('/runs/auto', s.request('cmd_committed'));
@@ -146,7 +146,7 @@ it('[TC-AUTO-003-N] returns the committed start and cancels its live run through
   expect(s.server.coordinator.listRuns()).toHaveLength(1);
 });
 
-it('[TC-AUTO-003-N] a concurrent resend cannot replace the actual chooser controller', async () => {
+it('a concurrent resend cannot replace the actual chooser controller', async () => {
   const s = await setup();
   const choice = s.holdChoice();
   const request = s.request('cmd_shared');
@@ -164,7 +164,7 @@ it('[TC-AUTO-003-N] a concurrent resend cannot replace the actual chooser contro
   expect(s.server.coordinator.listRuns()).toHaveLength(0);
 });
 
-it('[TC-AUTO-003-N] a different session cannot cancel another session pending choice', async () => {
+it('a different session cannot cancel another session pending choice', async () => {
   const s = await setup();
   const other = await s.json('/sessions', { projectId: 'default', title: 'Other' });
   const choice = s.holdChoice();
@@ -176,7 +176,7 @@ it('[TC-AUTO-003-N] a different session cannot cancel another session pending ch
   expect((await start).body.runId).toBeTruthy();
 });
 
-it('[TC-AUTO-003-N] a cancellation arriving before its POST fences that late request', async () => {
+it('a cancellation arriving before its POST fences that late request', async () => {
   const s = await setup();
   expect((await s.cancel('cmd_late')).body).toEqual({ start: null, cancellation: null });
   const late = await s.json('/runs/auto', s.request('cmd_late'));
@@ -186,7 +186,7 @@ it('[TC-AUTO-003-N] a cancellation arriving before its POST fences that late req
   expect(s.server.coordinator.listRuns()).toHaveLength(0);
 });
 
-it('[TC-AUTO-003-N] a different session cannot cancel a committed auto run', async () => {
+it('a different session cannot cancel a committed auto run', async () => {
   const s = await setup();
   s.fake.setResponses([fauxAssistantMessage('{"template":"single","reason":"Short."}')]);
   const started = await s.json('/runs/auto', s.request('cmd_committed_scope'));
@@ -196,7 +196,7 @@ it('[TC-AUTO-003-N] a different session cannot cancel a committed auto run', asy
   expect(s.server.coordinator.listRuns()[0]?.status).toBe('running');
 });
 
-it('[TC-AUTO-003-N] an already finished run still returns its original start without a new cancellation', async () => {
+it('an already finished run still returns its original start without a new cancellation', async () => {
   const s = await setup();
   s.fake.setResponses([fauxAssistantMessage('{"template":"single","reason":"Short."}')]);
   s.releaseWorker();
@@ -208,7 +208,7 @@ it('[TC-AUTO-003-N] an already finished run still returns its original start wit
   });
 });
 
-it('[TC-AUTO-003-N] a start receipt cannot masquerade as its cancellation receipt', async () => {
+it('a start receipt cannot masquerade as its cancellation receipt', async () => {
   const s = await setup();
   s.fake.setResponses([fauxAssistantMessage('{"template":"single","reason":"Short."}')]);
   await s.json('/runs/auto', s.request('cmd_distinct'));
@@ -216,7 +216,7 @@ it('[TC-AUTO-003-N] a start receipt cannot masquerade as its cancellation receip
   expect(s.server.coordinator.listRuns()[0]?.status).toBe('running');
 });
 
-it('[TC-AUTO-003-N] a reused control ID cannot return a pause receipt as cancellation', async () => {
+it('a reused control ID cannot return a pause receipt as cancellation', async () => {
   const s = await setup();
   s.fake.setResponses([fauxAssistantMessage('{"template":"single","reason":"Short."}')]);
   const started = await s.json('/runs/auto', s.request('cmd_control_collision'));
@@ -232,7 +232,7 @@ it('[TC-AUTO-003-N] a reused control ID cannot return a pause receipt as cancell
   expect(s.server.coordinator.listRuns()[0]?.status).not.toBe('cancelling');
 });
 
-it('[TC-AUTO-003-N] a pre-start cancellation survives the routing timeout', async () => {
+it('a pre-start cancellation survives the routing timeout', async () => {
   const s = await setup();
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   try {
@@ -253,7 +253,7 @@ it('[TC-AUTO-003-N] a pre-start cancellation survives the routing timeout', asyn
   expect(s.server.coordinator.listRuns()).toHaveLength(0);
 });
 
-it('[TC-AUTO-003-N] a pre-start cancellation survives restart and remains session scoped', async () => {
+it('a pre-start cancellation survives restart and remains session scoped', async () => {
   const s = await setup();
   expect((await s.cancel('cmd_restart')).status).toBe(200);
   await s.restart();
@@ -266,7 +266,7 @@ it('[TC-AUTO-003-N] a pre-start cancellation survives restart and remains sessio
   expect((await s.cancel('cmd_restart', other.body.session.sessionId)).status).toBe(404);
 });
 
-it('[TC-TEAM-001-F] cancels a committed conversation start like any auto start', async () => {
+it('cancels a committed conversation start like any auto start', async () => {
   const s = await setup();
   const started = await s.json('/runs/auto', { ...s.request('cmd_team'), team: 'none' });
   expect(started.status).toBe(201);

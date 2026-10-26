@@ -12,7 +12,7 @@ function keydown(
 }
 
 describe('isTextEditingEvent', () => {
-  it('[TC-CAN-005-N] treats IME composition as text editing, never as a canvas command', () => {
+  it('treats IME composition as text editing, never as a canvas command', () => {
     expect(isTextEditingEvent(keydown({ key: 'Enter', isComposing: true }))).toBe(true);
     expect(isTextEditingEvent(keydown({ key: 'z', ctrlKey: true, keyCode: 229 }))).toBe(true);
   });

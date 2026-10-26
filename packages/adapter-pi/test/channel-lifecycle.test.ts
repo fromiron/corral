@@ -9,7 +9,7 @@ import { hasOwnedProcessReservations } from '../src/processes/capacity.ts';
 
 afterEach(() => vi.restoreAllMocks());
 
-it('[TC-HAR-017-N] an error with a live PID waits for OS cleanup confirmation before returning capacity', async () => {
+it('an error with a live PID waits for OS cleanup confirmation before returning capacity', async () => {
   const child = Object.assign(new EventEmitter(), {
     pid: 4321,
     connected: true,
@@ -36,7 +36,7 @@ it('[TC-HAR-017-N] an error with a live PID waits for OS cleanup confirmation be
   expect(hasOwnedProcessReservations()).toBe(false);
 });
 
-it('[TC-ABS-006-N] an exited leader with unreadable group state retains host capacity', async () => {
+it('an exited leader with unreadable group state retains host capacity', async () => {
   const child = Object.assign(new EventEmitter(), {
     pid: 4322,
     connected: true,

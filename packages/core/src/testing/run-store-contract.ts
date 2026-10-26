@@ -6,11 +6,11 @@ import { applyEvent, emptyProjection, type RunProjection } from '../projection.t
 import type { RunStore, StoredRun } from '../store/run-store.ts';
 
 /**
- * Behaviour every RunStore must share (C-011). The in-memory store and the SQLite store run
+ * Behaviour every RunStore must share. The in-memory store and the SQLite store run
  * the same cases, so the coordinator's commit path means the same thing in both.
  */
 /**
- * `recordsProject`: the store records the project a run started in (CR-010; SQLite). Others
+ * `recordsProject`: the store records the project a run started in (SQLite). Others
  * report null and leave it to the Corral's project.
  */
 export function describeRunStoreContract(
@@ -54,7 +54,7 @@ export function describeRunStoreContract(
     events.reduce(applyEvent, emptyProjection(runId));
 
   describe(`RunStore contract: ${name}`, () => {
-    it('[TC-RACE-09] keeps nothing from a transaction that throws', () => {
+    it('keeps nothing from a transaction that throws', () => {
       const store = makeStore();
       const run = newRun();
       const first = [stateEvent(run.runId, 1, 'validating')];

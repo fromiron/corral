@@ -2,7 +2,7 @@ import { type ApiKeyAuth, createProvider, type Model, type Provider } from '@ear
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
 import { z } from 'zod';
 
-// CR-005: an OpenAI-compatible endpoint (Ollama, LM Studio, OpenRouter) as a pi-ai provider,
+// an OpenAI-compatible endpoint (Ollama, LM Studio, OpenRouter) as a pi-ai provider,
 // called through pi-ai's openai-completions client. The host and the model worker build the
 // same provider from the same non-secret definition; keys never travel in it.
 

@@ -24,7 +24,7 @@ const freePort = () =>
     });
   });
 
-it('[TC-WBD-011-H] a task started over HTTP is previewed through its owned port, then stopped', async () => {
+it('a task started over HTTP is previewed through its owned port, then stopped', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-task-http-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);

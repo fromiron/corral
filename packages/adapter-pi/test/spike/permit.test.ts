@@ -2,7 +2,7 @@ import { fauxAssistantMessage, fauxToolCall, Type } from '@earendil-works/pi-ai'
 import { afterEach, describe, expect, it } from 'vitest';
 import { MODEL_ID, PROVIDER, spikeSession } from './sdk-session.ts';
 
-// S1 (CR-018, plan §6 H1): every model request of a Pi SDK session gets a host permit first.
+// S1: every model request of a Pi SDK session gets a host permit first.
 
 let dispose: (() => void) | undefined;
 afterEach(() => {
@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe('S1: one permit per model request', () => {
-  it('[TC-HAR-001-H] a prompt, an automatic retry and a compaction each ask for a permit', async () => {
+  it('a prompt, an automatic retry and a compaction each ask for a permit', async () => {
     const run = await spikeSession({
       responses: [
         fauxAssistantMessage('', {
@@ -37,7 +37,7 @@ describe('S1: one permit per model request', () => {
     expect(run.faux.getPendingResponseCount()).toBe(0);
   });
 
-  it('[TC-HAR-001-H] a model call an extension tool makes through ctx.modelRegistry asks too', async () => {
+  it('a model call an extension tool makes through ctx.modelRegistry asks too', async () => {
     const run = await spikeSession({
       responses: [
         fauxAssistantMessage([fauxToolCall('ask_model', { question: 'two plus two' })], {
@@ -75,7 +75,7 @@ describe('S1: one permit per model request', () => {
     expect(run.log.dispatches).toEqual(run.log.permits);
   });
 
-  it('[TC-HAR-001-N] a refused permit ends the run without reaching the model', async () => {
+  it('a refused permit ends the run without reaching the model', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Should not be sent.')],
       permit: () => false,
@@ -88,7 +88,7 @@ describe('S1: one permit per model request', () => {
     expect(run.faux.getPendingResponseCount()).toBe(1);
   });
 
-  it('[TC-HAR-001-N] an extension cannot reach another provider: the runtime has no credentials', async () => {
+  it('an extension cannot reach another provider: the runtime has no credentials', async () => {
     const attempts: string[] = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (input: unknown) => {
@@ -144,7 +144,7 @@ describe('S1: one permit per model request', () => {
     }
   });
 
-  it('[TC-HAR-003-H] the Corral provider sees the final request, with sections extensions added', async () => {
+  it('the Corral provider sees the final request, with sections extensions added', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Hello.')],
       extensions: [

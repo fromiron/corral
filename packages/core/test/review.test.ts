@@ -93,8 +93,8 @@ const executionsOf = (p: RunProjection, nodeId: string) =>
 const submittedBy = (p: RunProjection, executionId: string | undefined) =>
   p.tasks[p.executions[executionId ?? '']?.taskId ?? '']?.submittedArtifactVersionIds[0];
 
-describe('review loop and approvals (C-026–C-029)', () => {
-  it('[TC-DESIGN-001-H] [TC-DESIGN-001-N] a real detailed report passes only its declared review scope', async () => {
+describe('review loop and approvals', () => {
+  it('a real detailed report passes only its declared review scope', async () => {
     for (const scope of ['targeted', 'release'] as const) {
       const fallback = new ScriptedAgentAdapter({ turns: 1 });
       const transport = new InProcessTransport(
@@ -166,7 +166,7 @@ describe('review loop and approvals (C-026–C-029)', () => {
       await waitForProjection(transport, runId, done);
     }
   });
-  it('[TC-RUN-003-H] [TC-ART-002-H] [TC-ART-002-N] round 2 reviews the new draft, then two approvals finalize the output', async () => {
+  it('round 2 reviews the new draft, then two approvals finalize the output', async () => {
     const transport = runtime();
     const { runId, events } = await start(transport);
 
@@ -212,7 +212,7 @@ describe('review loop and approvals (C-026–C-029)', () => {
     expect(final.output?.artifactVersionIds).toEqual([draft2]);
   });
 
-  it('[TC-ART-004-H] completion, a passing review and the final approval are separate facts', async () => {
+  it('completion, a passing review and the final approval are separate facts', async () => {
     const transport = runtime();
     const { runId } = await start(transport);
     await resolve(transport, runId, 'approve');
@@ -226,7 +226,7 @@ describe('review loop and approvals (C-026–C-029)', () => {
     expect(Object.values(final.reviews).at(-1)?.verdict).toBe('pass');
   });
 
-  it('[TC-DESIGN-001-N] [TC-ART-003-H] [TC-ART-003-N] a malformed or mismatched review is never a pass', async () => {
+  it('a malformed or mismatched review is never a pass', async () => {
     for (const bad of [
       () => 'not json at all',
       (draft: string, criteria: string) =>
@@ -289,7 +289,7 @@ describe('review loop and approvals (C-026–C-029)', () => {
     }
   });
 
-  it('[TC-RUN-003-N] at the Loop cap no third round starts without the person, and approval cannot pass the hard cap', async () => {
+  it('at the Loop cap no third round starts without the person, and approval cannot pass the hard cap', async () => {
     const alwaysRevise = { review: () => 'revise' as const };
     const transport = runtime(alwaysRevise);
     const { runId } = await start(transport);
@@ -312,7 +312,7 @@ describe('review loop and approvals (C-026–C-029)', () => {
     expect(limit?.type === 'limit.reached' && limit.payload.limitKind).toBe('loop_iterations');
   });
 
-  it('[TC-RNS-008-H] [TC-RNS-008-N] [TC-ART-004-N] an approval applies once and refuses a stale subject', async () => {
+  it('an approval applies once and refuses a stale subject', async () => {
     const transport = runtime();
     const { runId } = await start(transport);
     const atApproval = await waitForProjection(transport, runId, (p) => pending(p) !== null);

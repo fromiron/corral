@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import { CodeEditorView } from './CodeEditorView.tsx';
 import { loadMonaco } from './monaco.ts';
 
-it('[TC-WBD-003-N] imports and renders the editor boundary without loading the browser runtime', () => {
+it('imports and renders the editor boundary without loading the browser runtime', () => {
   expect(typeof loadMonaco).toBe('function');
   const html = renderToStaticMarkup(
     <CodeEditorView

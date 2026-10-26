@@ -2,7 +2,7 @@ import type { HarnessProfile } from '@corral/contracts';
 import { expect, it } from 'vitest';
 import { updateResourceSelection } from './selection.ts';
 
-it('[TC-MGR-001-N] replacing content preserves skill mode and optional hooks without changing other selections', () => {
+it('replacing content preserves skill mode and optional hooks without changing other selections', () => {
   for (const skillMode of ['auto', 'explicit', 'mandatory'] as const) {
     const previous = {
       resourceHash: 'a'.repeat(64),

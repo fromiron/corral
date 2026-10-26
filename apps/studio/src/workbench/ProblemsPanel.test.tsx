@@ -32,7 +32,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('[TC-WBD-011-H] [TC-WBD-011-F] gathers check and task locations, marks stale ones and opens the exact line', async () => {
+it('gathers check and task locations, marks stale ones and opens the exact line', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.workspaces = {
     worktree: vi.fn(async () => ({ bindingId: 'binding', copyGeneration: 2, missing: false })),
@@ -95,7 +95,7 @@ it('[TC-WBD-011-H] [TC-WBD-011-F] gathers check and task locations, marks stale 
   );
 });
 
-it('[TC-WBD-013-N] a task log is of unknown version and a check run under other settings is not current', async () => {
+it('a task log is of unknown version and a check run under other settings is not current', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.workspaces = {
     worktree: vi.fn(async () => ({ bindingId: 'binding', copyGeneration: 2, missing: false })),

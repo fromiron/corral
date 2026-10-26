@@ -13,7 +13,7 @@ import {
 } from '../src/processes/pty-session.ts';
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-004-H] [TC-WBD-004-N] actual PTY Git writes and leaderless job groups clean up together',
+  'actual PTY Git writes and leaderless job groups clean up together',
   async () => {
     const directory = await mkdtemp(join(tmpdir(), 'corral-pty-session-'));
     execFileSync('git', ['init', '--quiet', directory]);

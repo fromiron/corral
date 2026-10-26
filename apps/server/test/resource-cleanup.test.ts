@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { onceResourceCleanup } from '../src/resource-cleanup.ts';
 import { acquireWorkspaceOwnership } from '../src/workspace-ownership.ts';
 
-it('[TC-ABS-007-N] an incomplete cleanup retains the real workspace lock', async () => {
+it('an incomplete cleanup retains the real workspace lock', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-cleanup-lock-'));
   const unlock = acquireWorkspaceOwnership(root);
   try {
@@ -26,7 +26,7 @@ it('[TC-ABS-007-N] an incomplete cleanup retains the real workspace lock', async
   }
 });
 
-it('[TC-ABS-007-N] failed resource disposal remains failed on every shutdown attempt', async () => {
+it('failed resource disposal remains failed on every shutdown attempt', async () => {
   const resources = new AsyncDisposableStack();
   let attempts = 0;
   resources.defer(() => {
@@ -43,7 +43,7 @@ it('[TC-ABS-007-N] failed resource disposal remains failed on every shutdown att
   expect(attempts).toBe(1);
 });
 
-it('[TC-ABS-007-H] concurrent and repeated successful shutdown share one completion', async () => {
+it('concurrent and repeated successful shutdown share one completion', async () => {
   let attempts = 0;
   const close = onceResourceCleanup(async () => {
     attempts++;

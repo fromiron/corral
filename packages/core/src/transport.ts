@@ -11,7 +11,7 @@ import type { Coordinator, StartRunResult } from './coordinator.ts';
 import { applyEvent, type RunProjection } from './projection.ts';
 import type { RunSummary } from './store/run-store.ts';
 
-// The only way Studio talks to a runtime (ADR-016). HttpSseTransport (C-015) and the
+// The only way Studio talks to a runtime. HttpSseTransport and the
 // public demo implement the same contract.
 
 export interface TransportHandlers {

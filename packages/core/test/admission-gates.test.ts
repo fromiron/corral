@@ -21,7 +21,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// Admission gates and observers (CR-003, C-067, ADR-024, CRL-RUN-008).
+// Admission gates and observers.
 
 const terminal = (p: RunProjection) =>
   ['succeeded', 'failed', 'cancelled'].includes(p.status) && p.lastSeq > 0;
@@ -74,8 +74,8 @@ const withExtra = (stage: AdmissionStage, ...extra: Gate<never>[]): Partial<Admi
   [stage]: [...(DEFAULT_GATES[stage] as Gate<never>[]), ...extra],
 });
 
-describe('admission gates (C-067)', () => {
-  it('[TC-RUN-008-H] each stage runs its gates in registration order, at its own point of the request', async () => {
+describe('admission gates', () => {
+  it('each stage runs its gates in registration order, at its own point of the request', async () => {
     const calls: string[] = [];
     const stages: AdmissionStage[] = [
       'model.request',
@@ -109,7 +109,7 @@ describe('admission gates (C-067)', () => {
     expect(calls).toEqual([...request, ...request, ...tool, ...tool]);
   });
 
-  it('[TC-RUN-008-H] the default gates are named and versioned', () => {
+  it('the default gates are named and versioned', () => {
     const named = Object.entries(DEFAULT_GATES).map(([stage, list]) => [
       stage,
       (list as Gate<never>[]).map((g) => `${g.id}@${g.version}`),
@@ -123,7 +123,7 @@ describe('admission gates (C-067)', () => {
     });
   });
 
-  it('[TC-RUN-008-N] a tool gate that throws refuses the call with POLICY_ERROR, and nothing runs', async () => {
+  it('a tool gate that throws refuses the call with POLICY_ERROR, and nothing runs', async () => {
     const broken: Gate<never> = {
       id: 'broken',
       version: 1,
@@ -145,7 +145,7 @@ describe('admission gates (C-067)', () => {
     );
   });
 
-  it('[TC-RUN-008-N] a model gate that throws admits no request and ends the execution, not the process', async () => {
+  it('a model gate that throws admits no request and ends the execution, not the process', async () => {
     const broken: Gate<never> = {
       id: 'broken',
       version: 1,
@@ -161,7 +161,7 @@ describe('admission gates (C-067)', () => {
     expect(execution?.error).toContain('POLICY_ERROR');
   });
 
-  it('[TC-RUN-008-N] the first refusal stops the stage: later gates do not run', async () => {
+  it('the first refusal stops the stage: later gates do not run', async () => {
     const calls: string[] = [];
     const refuse: Gate<never> = {
       id: 'refuse_writes',
@@ -178,7 +178,7 @@ describe('admission gates (C-067)', () => {
     );
   });
 
-  it('[TC-RUN-008-N] a gate cannot change what it is shown; trying to is a policy error', async () => {
+  it('a gate cannot change what it is shown; trying to is a policy error', async () => {
     const meddling: Gate<never> = {
       id: 'meddling',
       version: 1,
@@ -197,10 +197,10 @@ describe('admission gates (C-067)', () => {
   });
 });
 
-describe('admission observers (C-067)', () => {
+describe('admission observers', () => {
   const lines = (events: RunEvent[]) => events.map((e) => canonicalJson(e));
 
-  it('[TC-RUN-008-N] observers that throw, reject or try to change state leave the event stream as it was', async () => {
+  it('observers that throw, reject or try to change state leave the event stream as it was', async () => {
     const baseline = lines((await runLinear()).events);
     const seen: string[] = [];
     const observers: AdmissionObserver[] = [
@@ -236,7 +236,7 @@ describe('admission observers (C-067)', () => {
     expect(seen).toEqual(['model.finished', 'model.finished']);
   });
 
-  it('[TC-RUN-008-H] an observer runs after the commit and sees the committed request', async () => {
+  it('an observer runs after the commit and sees the committed request', async () => {
     const seen: { type: string; prepared: boolean }[] = [];
     const observer: AdmissionObserver = {
       id: 'watch',

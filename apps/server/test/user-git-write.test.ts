@@ -114,7 +114,7 @@ const hook = (original: string, name: string, body: string) => {
   chmodSync(path, 0o755);
 };
 
-it('[TC-WBD-009-H] stages, unstages and commits the confirmed index, and a repeated request returns the same receipt', async () => {
+it('stages, unstages and commits the confirmed index, and a repeated request returns the same receipt', async () => {
   const s = await setup();
   writeFileSync(join(s.copy, 'a.txt'), 'two\n');
   writeFileSync(join(s.copy, 'b.txt'), 'bee changed\n');
@@ -172,7 +172,7 @@ it('[TC-WBD-009-H] stages, unstages and commits the confirmed index, and a repea
   expect(s.fixtureGit(s.original, 'rev-parse', 'HEAD')).toBe(before);
 });
 
-it('[TC-WBD-009-H] runs the repository hooks only when asked, and signs as configured', async () => {
+it('runs the repository hooks only when asked, and signs as configured', async () => {
   const s = await setup();
   const marker = join(s.root, 'hook-ran');
   hook(s.original, 'pre-commit', `echo ran >> "${marker}"`);
@@ -216,7 +216,7 @@ it('[TC-WBD-009-H] runs the repository hooks only when asked, and signs as confi
   expect(readFileSync(marker, 'utf8')).toBe('ran\n');
 });
 
-it('[TC-WBD-009-N] refuses a changed index, a changed payload, the original folder, an untrusted project and a missing signer', async () => {
+it('refuses a changed index, a changed payload, the original folder, an untrusted project and a missing signer', async () => {
   const s = await setup();
   writeFileSync(join(s.copy, 'a.txt'), 'two\n');
   writeFileSync(join(s.copy, 'b.txt'), 'bee two\n');
@@ -289,7 +289,7 @@ it('[TC-WBD-009-N] refuses a changed index, a changed payload, the original fold
   expect(s.head()).toBe(head);
 });
 
-it('[TC-WBD-009-N] has no write route for the original folder and refuses a target from another copy', async () => {
+it('has no write route for the original folder and refuses a target from another copy', async () => {
   const s = await setup();
   await expect(
     s.service.changeGit('s1', {
@@ -302,7 +302,7 @@ it('[TC-WBD-009-N] has no write route for the original folder and refuses a targ
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
 });
 
-it('[TC-WBD-009-F] a failing hook, a cancelled hook and a held index lock leave HEAD unchanged', async () => {
+it('a failing hook, a cancelled hook and a held index lock leave HEAD unchanged', async () => {
   const s = await setup();
   writeFileSync(join(s.copy, 'a.txt'), 'two\n');
   await s.service.changeGit('s1', {
@@ -349,7 +349,7 @@ it('[TC-WBD-009-F] a failing hook, a cancelled hook and a held index lock leave 
   rmSync(join(s.gitDir, 'index.lock'));
 });
 
-it('[TC-WBD-009-F] a commit whose receipt was not recorded is read back after a restart, without a second commit', async () => {
+it('a commit whose receipt was not recorded is read back after a restart, without a second commit', async () => {
   const s = await setup();
   writeFileSync(join(s.copy, 'a.txt'), 'two\n');
   await s.service.changeGit('s1', {

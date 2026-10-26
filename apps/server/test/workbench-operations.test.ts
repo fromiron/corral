@@ -35,7 +35,7 @@ function setup() {
   return { path, db, access, operations, request };
 }
 
-it('[TC-WBD-001-H] returns the original receipt and admits only one user writer', () => {
+it('returns the original receipt and admits only one user writer', () => {
   const s = setup();
   const first = s.operations.admit(s.request, s.path);
   expect(first.admitted).toBe(true);
@@ -60,7 +60,7 @@ it('[TC-WBD-001-H] returns the original receipt and admits only one user writer'
   ).not.toThrow();
 });
 
-it('[TC-WBD-001-N] rejects changed request identity and releases failed or cancelled effects only once', () => {
+it('rejects changed request identity and releases failed or cancelled effects only once', () => {
   const s = setup();
   s.operations.admit(s.request, s.path);
   for (const patch of [
@@ -76,7 +76,7 @@ it('[TC-WBD-001-N] rejects changed request identity and releases failed or cance
   expect(s.access.ownersAt(s.path)).toHaveLength(0);
 });
 
-it('[TC-WBD-001-F] admission and completion failures leave reservation and receipt atomic', () => {
+it('admission and completion failures leave reservation and receipt atomic', () => {
   const s = setup();
   s.db.exec(
     "CREATE TRIGGER fail_admission BEFORE INSERT ON workbench_operations BEGIN SELECT RAISE(ABORT, 'receipt disk failure'); END",
@@ -102,7 +102,7 @@ it('[TC-WBD-001-F] admission and completion failures leave reservation and recei
   expect(s.operations.hasPending()).toBe(true);
 });
 
-it('[TC-WBD-018-H] passive language ownership preserves saves and shared-mode exit but retains uncertain cleanup', () => {
+it('passive language ownership preserves saves and shared-mode exit but retains uncertain cleanup', () => {
   const s = setup();
   s.operations.admit({ ...s.request, operationId: 'language-1', kind: 'language' }, s.path);
   expect(s.access.get({ kind: 'user', id: 'language-1' })?.writer).toBe(0);

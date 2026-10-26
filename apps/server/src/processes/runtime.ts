@@ -22,7 +22,7 @@ export type CommandOwner = {
   attemptNo: number;
   effectId: string;
 };
-/** A development task a person started (CR-046 P15); its receipt is a workbench operation. */
+/** A development task a person started; its receipt is a workbench operation. */
 export type UserTaskOwner = {
   kind: 'user';
   hostId: string;

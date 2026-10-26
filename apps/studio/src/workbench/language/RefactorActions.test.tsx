@@ -171,7 +171,7 @@ async function fixture() {
   return { element, owner, copies, editScope, preview, click, rename };
 }
 
-it('[TC-WBD-021-H] a saved rename opens an immutable review and retry keeps the same request id', async () => {
+it('a saved rename opens an immutable review and retry keeps the same request id', async () => {
   const view = await fixture();
   view.preview.mockRejectedValueOnce(new Error('response lost'));
   await view.rename();
@@ -191,7 +191,7 @@ it('[TC-WBD-021-H] a saved rename opens an immutable review and retry keeps the 
   expect(view.owner.getState().documents.document?.text).toBe('const oldName = 1;');
 });
 
-it('[TC-WBD-021-N] a dirty source never requests edits and a late generation cannot open a review', async () => {
+it('a dirty source never requests edits and a late generation cannot open a review', async () => {
   const view = await fixture();
   const original = view.owner.getState().documents.document;
   if (!original) throw new Error('missing fixture document');

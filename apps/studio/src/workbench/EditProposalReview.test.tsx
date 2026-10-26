@@ -197,7 +197,7 @@ async function mount(initial: FileEditProposal | null = proposal) {
   };
 }
 
-it('[TC-WBD-021-H] protects changing drafts until explicit apply and refreshes only through the document owner', async () => {
+it('protects changing drafts until explicit apply and refreshes only through the document owner', async () => {
   const view = await mount();
   expect(document.body.textContent).toContain('before → after');
   await view.patch({ dirty: true, text: 'unsaved' });
@@ -218,7 +218,7 @@ it('[TC-WBD-021-H] protects changing drafts until explicit apply and refreshes o
   expect(document.body.textContent).toContain('EditProposals.outcomes.applied');
 });
 
-it('[TC-WBD-021-F] recovers a lost apply from history with the same operation and reviews an inverse without applying it', async () => {
+it('recovers a lost apply from history with the same operation and reviews an inverse without applying it', async () => {
   const view = await mount();
   view.api.applyFileEdits.mockImplementationOnce(async (_session, _id, input) => {
     view.setStored({ ...proposal, operationId: input.operationId });
@@ -250,7 +250,7 @@ it('[TC-WBD-021-F] recovers a lost apply from history with the same operation an
   expect(view.api.applyFileEdits).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-021-N] refuses an old language generation and discards a late proposal from another copy', async () => {
+it('refuses an old language generation and discards a late proposal from another copy', async () => {
   const language: FileEditProposal = {
     ...proposal,
     source: {

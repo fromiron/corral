@@ -40,8 +40,8 @@ async function login(ctx: Awaited<ReturnType<typeof setup>>, check = current) {
   await expect.poll(() => ctx.credentials.loginStatus(result.loginId).state).toBe('ready');
   return result;
 }
-describe('TC-HAR-016 MCP credentials', () => {
-  it('[TC-MGR-002-N] an old configuration cannot log out a newer binding that reused a legacy credential reference', async () => {
+describe('MCP credentials', () => {
+  it('an old configuration cannot log out a newer binding that reused a legacy credential reference', async () => {
     const ctx = await setup();
     const previous = { ...ctx.server, auth: { kind: 'bearer' as const, credentialRef: 'legacy' } };
     const next = { ...previous, url: `${previous.url}/changed` };

@@ -6,7 +6,7 @@ import type {
 } from '@corral/contracts';
 import { EFFORT_LEVELS } from '@corral/contracts';
 
-// `local-heuristic@1` (CR-003 D1): a documented rule baseline over the request's features. It
+// `local-heuristic@1`: a documented rule baseline over the request's features. It
 // makes no accuracy claim; it exists so judgments can be recorded and compared without a model.
 //
 //   start at medium

@@ -1,4 +1,4 @@
-// C-052 worker spike (ADR-017): 12 resident workers as child processes vs worker threads.
+// worker spike: 12 resident workers as child processes vs worker threads.
 import { fork } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { Worker } from 'node:worker_threads';

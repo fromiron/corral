@@ -41,7 +41,7 @@ import {
 
 export { type SessionSearch, validateSessionSearch } from './workbench/panels/routes.ts';
 
-// Routes from Spec §4.1.
+// Routes from product contract §4.1.
 
 const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
   component: RootLayout,
@@ -50,7 +50,7 @@ const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
   errorComponent: ErrorView,
 });
 
-// `?draft=1` opens "Draft a team from a goal" (CR-006).
+// `?draft=1` opens "Draft a team from a goal".
 const draftSearch = (
   search: Record<string, unknown>,
 ): { draft?: boolean; newSession?: boolean } => ({
@@ -58,7 +58,7 @@ const draftSearch = (
   ...(search.newSession === true || search.newSession === 'true' ? { newSession: true } : {}),
 });
 
-/** `/` is the project worked in last (CR-010); old links to it keep working. */
+/** `/` is the project worked in last; old links to it keep working. */
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
@@ -79,7 +79,7 @@ const schedulesRoute = createRoute({
   component: ScheduledPage,
 });
 
-/** One project's Corrals and runs (CR-010): what `/` showed before projects. */
+/** One project's Corrals and runs: what `/` showed before projects. */
 export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
@@ -90,7 +90,7 @@ export const workspaceRoute = createRoute({
       context.services.repository.list(),
       context.services.transport.listRuns(),
     ]);
-    // Every project's sessions: in-browser runs find their project through them (CR-011).
+    // Every project's sessions: in-browser runs find their project through them.
     const sessionLists = await Promise.all(
       projects.map((p) => context.services.repository.listSessions(p.projectId)),
     );
@@ -121,7 +121,7 @@ export const workspaceRoute = createRoute({
   component: WorkspacePage,
 });
 
-/** One work session (CR-011): its requests, runs, queue and the input box. */
+/** One work session: its requests, runs, queue and the input box. */
 export const sessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId',
@@ -142,7 +142,7 @@ export const sessionRoute = createRoute({
   component: SessionPage,
 });
 
-/** A session's file changes, checks and writes (CR-012). */
+/** A session's file changes, checks and writes. */
 export const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId/review',
@@ -204,8 +204,8 @@ export const demoRoute = createRoute({
 export const editorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/corrals/$corralId/edit',
-  // A version of an earlier run the next run starts from (CR-007), from the Run page.
-  // `fromSession`: opened from a session's menu, so the editor offers the way back (UX-10).
+  // A version of an earlier run the next run starts from, from the Run page.
+  // `fromSession`: opened from a session's menu, so the editor offers the way back.
   validateSearch: validateEditorSearch,
   loader: async ({ context, params }) => {
     const record = await context.services.repository.get(params.corralId);
@@ -218,7 +218,7 @@ export const editorRoute = createRoute({
 export const runRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/runs/$runId',
-  // `view` and `result` keep the Results view and its chosen version in the address (CR-009).
+  // `view` and `result` keep the Results view and its chosen version in the address.
   validateSearch: validateRunSearch,
   component: RunPage,
 });
@@ -332,7 +332,7 @@ export const modelSettingsRoute = createRoute({
   component: ModelSettingsPage,
 });
 
-/** Two runs side by side (roadmap 16). */
+/** Two runs side by side. */
 export const compareRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/compare',

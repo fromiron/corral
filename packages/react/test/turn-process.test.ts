@@ -3,7 +3,7 @@ import { emptyProjection, type RunProjection } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import { buildTurnProcess, turnSummary } from '../src/run/turn-process.ts';
 
-// CR-055: a chat turn's process is one flat list of one-line rows.
+// a chat turn's process is one flat list of one-line rows.
 
 let seq = 0;
 const at = (second: number) => `2026-10-25T00:00:${String(second).padStart(2, '0')}.000Z`;
@@ -30,8 +30,8 @@ function projection(status: RunProjection['status'], executions: [string, string
   return p;
 }
 
-describe('buildTurnProcess (CR-055)', () => {
-  it('[TC-TURN-001-H] lists thinking before tools and tools with their targets, without the answer', () => {
+describe('buildTurnProcess', () => {
+  it('lists thinking before tools and tools with their targets, without the answer', () => {
     seq = 0;
     const events = [
       event('run.started', {}, 0),
@@ -77,7 +77,7 @@ describe('buildTurnProcess (CR-055)', () => {
     expect(process.endedAt).toBe(at(9));
   });
 
-  it('[TC-TURN-001-N] a turn that only answered has no rows, and other agents are one row each', () => {
+  it('a turn that only answered has no rows, and other agents are one row each', () => {
     seq = 0;
     const answerOnly = buildTurnProcess(
       [
@@ -115,7 +115,7 @@ describe('buildTurnProcess (CR-055)', () => {
     ).toBe(1);
   });
 
-  it('[TC-TURN-001-F] a blocked tool keeps its row with the blocked status', () => {
+  it('a blocked tool keeps its row with the blocked status', () => {
     seq = 0;
     const process = buildTurnProcess(
       [

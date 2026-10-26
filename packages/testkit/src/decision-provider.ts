@@ -15,7 +15,7 @@ export interface ScriptedDecisionOptions {
   before?: (question: EffortQuestion, cancellation: DecisionCancellation) => Promise<void>;
 }
 
-/** Deterministic DecisionProvider for tests and the demo (CR-003 `scripted@1`). */
+/** Deterministic DecisionProvider for tests and the demo (`scripted@1`). */
 export class ScriptedDecisionProvider implements DecisionProvider {
   readonly id: string;
   readonly version: string;

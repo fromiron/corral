@@ -12,7 +12,7 @@ import { WorkspaceAccessStore } from '../src/files/workspace-access.ts';
 vi.setConfig({ testTimeout: 30_000 });
 
 it.each(['before', 'after'] as const)(
-  '[TC-WBD-001-N] reader queued %s writer pin records the writer input after the mutation lease ends',
+  'reader queued %s writer pin records the writer input after the mutation lease ends',
   async (timing) => {
     const root = mkdtempSync(join(tmpdir(), 'corral-reader-reservation-'));
     const original = join(root, 'original');

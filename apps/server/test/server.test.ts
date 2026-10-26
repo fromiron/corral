@@ -117,7 +117,7 @@ describeTransportContract('HTTP + SSE against the local server', async (agents) 
   };
 });
 
-describe('local security boundary (C-055)', () => {
+describe('local security boundary', () => {
   it('refuses to listen anywhere but the loopback interface', async () => {
     await expect(
       startCorralServer({
@@ -129,7 +129,7 @@ describe('local security boundary (C-055)', () => {
     ).rejects.toThrow(/127\.0\.0\.1/);
   });
 
-  it('[TC-SEC-002-H] trades a one-time bootstrap token for an HttpOnly, SameSite=Strict session', async () => {
+  it('trades a one-time bootstrap token for an HttpOnly, SameSite=Strict session', async () => {
     const server = await start();
     expect(server.bootstrapUrl).toBe(`${server.url}/#bootstrap=${TOKEN}`);
     const anonymous = await fetch(`${server.url}/api/v1/corrals`);
@@ -151,7 +151,7 @@ describe('local security boundary (C-055)', () => {
     expect(reused.status).toBe(401);
   });
 
-  it('[TC-SEC-002-N] rejects other origins and hosts before doing anything', async () => {
+  it('rejects other origins and hosts before doing anything', async () => {
     const server = await start();
     const { call, cookie } = await browser(server);
     const create = (origin: string) =>
@@ -185,7 +185,7 @@ describe('local security boundary (C-055)', () => {
     expect(noOrigin.status).toBe(403);
   });
 
-  it('[TC-SEC-002-N] requires the session CSRF token and rejects query secrets without echo', async () => {
+  it('requires the session CSRF token and rejects query secrets without echo', async () => {
     const server = await start();
     const { cookie } = await browser(server);
     const headers = { cookie, origin: server.url, 'content-type': 'application/json' };
@@ -209,7 +209,7 @@ describe('local security boundary (C-055)', () => {
     expect(await leaked.text()).not.toContain('private-sentinel');
   });
 
-  it('[TC-SEC-002-N] protects encoded and absolute-form API routes with the same session and CSRF checks', async () => {
+  it('protects encoded and absolute-form API routes with the same session and CSRF checks', async () => {
     const server = await start();
     const { cookie, login } = await browser(server);
     const headers = { origin: server.url, 'content-type': 'application/json' };
@@ -240,7 +240,7 @@ describe('local security boundary (C-055)', () => {
     }
   });
 
-  it('[TC-SEC-002-N] shares the mutation rate limit across canonical, encoded and absolute-form routes', async () => {
+  it('shares the mutation rate limit across canonical, encoded and absolute-form routes', async () => {
     const server = await start();
     const { cookie, login } = await browser(server);
     const headers = {
@@ -262,7 +262,7 @@ describe('local security boundary (C-055)', () => {
     }
   });
 
-  it('[TC-SEC-002-N] bounds mutation rate and body size, without reflecting malformed body values', async () => {
+  it('bounds mutation rate and body size, without reflecting malformed body values', async () => {
     const server = await start();
     const { call } = await browser(server);
     const oversized = await call(`${server.url}/api/v1/documents/import`, {
@@ -339,7 +339,7 @@ describe('local security boundary (C-055)', () => {
   });
 });
 
-describe('REST: Corrals and runs (C-015, C-057)', () => {
+describe('REST: Corrals and runs', () => {
   it('saves Corrals with separate revisions and refuses a stale save', async () => {
     const server = await start();
     const { call } = await browser(server);
@@ -407,7 +407,7 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
     expect(await order()).toEqual(await order());
   });
 
-  it('[TC-DEV-001-H] [TC-ABS-006-H] saved revisions stay exactly once while independent runs overlap', async () => {
+  it('saved revisions stay exactly once while independent runs overlap', async () => {
     const gate = new Gate();
     const server = await start({
       agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
@@ -458,7 +458,7 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
     );
   });
 
-  it('[TC-ABS-006-H] [TC-ABS-006-N] the HTTP entry refuses only a second writer to the same working copy', async () => {
+  it('the HTTP entry refuses only a second writer to the same working copy', async () => {
     const gate = new Gate();
     const server = await start({
       agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
@@ -545,7 +545,7 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
     }
   }, 30_000);
 
-  it('[TC-RACE-08] reports a queued steer as HTTP 202, not as applied', async () => {
+  it('reports a queued steer as HTTP 202, not as applied', async () => {
     const gates = [new Gate(), new Gate()];
     let reply = 0;
     const server = await start({
@@ -607,7 +607,7 @@ describe('REST: Corrals and runs (C-015, C-057)', () => {
   });
 });
 
-describe('SSE event stream (C-015)', () => {
+describe('SSE event stream', () => {
   async function finishedRun() {
     const server = await start();
     const { call, cookie } = await browser(server);
@@ -661,7 +661,7 @@ describe('SSE event stream (C-015)', () => {
     return out;
   }
 
-  it('[TC-OBS-002-H] streams committed events after the cursor with id = runSeq', async () => {
+  it('streams committed events after the cursor with id = runSeq', async () => {
     const { server, call, runId, final } = await finishedRun();
     const response = await call(`${server.url}/api/v1/runs/${runId}/events?after=3`);
     expect(response.headers.get('content-type')).toContain('text/event-stream');
@@ -732,7 +732,7 @@ describe('SSE event stream (C-015)', () => {
     expect(text).not.toContain('event: stream');
   });
 
-  it('[TC-OBS-002-N] flushes a bounded replay prefix so reconnect advances beyond 1 MiB', async () => {
+  it('flushes a bounded replay prefix so reconnect advances beyond 1 MiB', async () => {
     const gate = new Gate();
     const server = await start({
       agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
@@ -779,7 +779,7 @@ describe('SSE event stream (C-015)', () => {
     await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
   }, 30_000); // Over 1 MiB of events through SSE: room for a loaded CI runner (#25); assertions unchanged.
 
-  it('[TC-OBS-002-N] replays an accepted cancellation larger than the outgoing buffer', async () => {
+  it('replays an accepted cancellation larger than the outgoing buffer', async () => {
     const gate = new Gate();
     const server = await start({
       agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
@@ -827,7 +827,7 @@ describe('SSE event stream (C-015)', () => {
     );
   });
 
-  it('[TC-OBS-002-N] reconnects through a stored patch larger than the request and client frame limits', async () => {
+  it('reconnects through a stored patch larger than the request and client frame limits', async () => {
     const gate = new Gate();
     const server = await start({
       agents: new ScriptedAgentAdapter({ turns: 1, beforeReply: () => gate.wait() }),
@@ -945,7 +945,7 @@ describe('SSE event stream (C-015)', () => {
     await waitForProjection(transport, runId, (p) => p.status === 'cancelled');
   });
 
-  it('[WBTST-034] serves an HTML result as an isolated preview (CR-009)', async () => {
+  it('serves an HTML result as an isolated preview', async () => {
     const page =
       '<!doctype html><html><body><h1>Page</h1><img src="https://tracker.example/p.png"><script>alert(1)</script></body></html>';
     const server = await start({
@@ -1002,7 +1002,7 @@ describe('SSE event stream (C-015)', () => {
     ).toBe(404);
   });
 
-  it('[WBTST-034] does not preview a result that is not an HTML document', async () => {
+  it('does not preview a result that is not an HTML document', async () => {
     const { server, runId, final, cookie } = await finishedRun();
     const versionId = final.output?.artifactVersionIds[0] ?? '';
     const response = await fetch(
@@ -1029,7 +1029,7 @@ describe('SSE event stream (C-015)', () => {
   });
 });
 
-describe('registered input API and tool integration (C-043, C-044)', () => {
+describe('registered input API and tool integration', () => {
   it('imports text, searches and reads by ID through authorized Coordinator tools', async () => {
     let documentId = '';
     const seen: unknown[] = [];
@@ -1154,8 +1154,8 @@ describe('registered input API and tool integration (C-043, C-044)', () => {
   });
 });
 
-describe('workspace configuration (C-062)', () => {
-  it('starts with the Spec §9 defaults when there is no config file', async () => {
+describe('workspace configuration', () => {
+  it('starts with the product contract §9 defaults when there is no config file', async () => {
     const server = await start();
     expect(server.policy).toEqual(SPEC_HARD_CAPS);
   });
@@ -1170,15 +1170,15 @@ describe('workspace configuration (C-062)', () => {
     await expect(start({ workspace })).rejects.toThrow(/hardCaps\.maxModelCalls/);
   });
 
-  it('matches the Spec §9 table: defaults and hard caps', () => {
+  it('matches the product contract §9 table: defaults and hard caps', () => {
     const spec = readFileSync(
-      join(import.meta.dirname, '../../../docs/current/product-contract.md'),
+      join(import.meta.dirname, '../../../docs/specs/product-contract.md'),
       'utf-8',
     );
     const section = spec.slice(spec.indexOf('## 9.'), spec.indexOf('## 10.'));
     const row = (label: string) => {
       const line = section.split('\n').find((l) => l.startsWith(`| ${label}`));
-      if (!line) throw new Error(`Spec §9 has no row ${label}`);
+      if (!line) throw new Error(`product contract §9 has no row ${label}`);
       return line.split('|').map((cell) => cell.trim());
     };
     const number = (text: string) => Number((text.match(/[\d,]+/)?.[0] ?? '').replaceAll(',', ''));
@@ -1197,8 +1197,8 @@ describe('workspace configuration (C-062)', () => {
   });
 });
 
-describe('REST: projects (CR-010)', () => {
-  it('[WBTST-001] creates, renames and archives projects; Corrals and runs carry theirs', async () => {
+describe('REST: projects', () => {
+  it('creates, renames and archives projects; Corrals and runs carry theirs', async () => {
     const server = await start();
     const { call } = await browser(server);
     const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
@@ -1269,8 +1269,8 @@ describe('REST: projects (CR-010)', () => {
   });
 });
 
-describe('REST: work sessions (CR-011)', () => {
-  it('[WBTST-004] a follow-up and a question join the session; another project’s session is refused', async () => {
+describe('REST: work sessions', () => {
+  it('a follow-up and a question join the session; another project’s session is refused', async () => {
     const server = await start();
     const { call } = await browser(server);
     const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
@@ -1386,7 +1386,7 @@ describe('REST: work sessions (CR-011)', () => {
   });
 });
 
-describe('work folders and file changes (CR-012)', () => {
+describe('work folders and file changes', () => {
   function repo() {
     const dir = tempWorkspace();
     const run = (...args: string[]) =>
@@ -1402,7 +1402,7 @@ describe('work folders and file changes (CR-012)', () => {
     return dir;
   }
 
-  it('[WBTST-016] links, copies, lets a run write through the broker, and compares', async () => {
+  it('links, copies, lets a run write through the broker, and compares', async () => {
     const original = repo();
     let replies = 0;
     const server = await start({

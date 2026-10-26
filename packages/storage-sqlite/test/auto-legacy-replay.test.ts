@@ -20,7 +20,7 @@ import Database from 'better-sqlite3';
 import { expect, it } from 'vitest';
 import { MIGRATIONS, openDatabase, SqliteRunStore } from '../src/index.ts';
 
-it('[TC-AUTO-003-H] [TC-AUTO-003-N] replays an exact legacy auto command after migration and rejects changed requests', async () => {
+it('replays an exact legacy auto command after migration and rejects changed requests', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'corral-auto-legacy-'));
   const file = join(directory, 'workspace.db');
   let db = openDatabase(':memory:');

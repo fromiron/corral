@@ -86,7 +86,7 @@ async function submit(f: Awaited<ReturnType<typeof mount>>) {
   return f.createSession.mock.calls.at(-1)?.[0].meeting;
 }
 
-it('[TC-MEET-001-N] starts a general chat with distinct model names and optional blank roles', async () => {
+it('starts a general chat with distinct model names and optional blank roles', async () => {
   const f = await mount([
     { ...profile('gpt'), label: 'OpenAI · GPT' },
     { ...profile('deepseek'), label: 'Hive · DeepSeek' },
@@ -104,7 +104,7 @@ it('[TC-MEET-001-N] starts a general chat with distinct model names and optional
   ]);
 });
 
-it('[TC-MEET-001-N] development roles are explicit and stay editable', async () => {
+it('development roles are explicit and stay editable', async () => {
   const f = await mount([profile('connected')]);
   expect(f.button('applyDevelopmentRoles')).toBeDefined();
   await act(async () => f.button('applyDevelopmentRoles')!.click());
@@ -136,7 +136,7 @@ it('[TC-MEET-001-N] development roles are explicit and stay editable', async () 
   expect(meeting?.participants[2]?.prompt).toBe('template.tester.role');
 });
 
-it('[TC-MEET-001-N] changing models updates only automatic names', async () => {
+it('changing models updates only automatic names', async () => {
   const f = await mount([profile('first'), profile('second')]);
   const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input')];
   const models = [...f.container.querySelectorAll<HTMLSelectElement>('fieldset select')];
@@ -155,7 +155,7 @@ it('[TC-MEET-001-N] changing models updates only automatic names', async () => {
   expect(meeting?.participants.map((item) => item.name)).toEqual(['second', 'Partner', 'first']);
 });
 
-it('[TC-MEET-001-N] repeated long model labels fit the distinct participant name contract', async () => {
+it('repeated long model labels fit the distinct participant name contract', async () => {
   const f = await mount([
     { ...profile('connected'), label: 'Provider · very-long-model-name'.repeat(3) },
   ]);
@@ -166,7 +166,7 @@ it('[TC-MEET-001-N] repeated long model labels fit the distinct participant name
   expect(names.every((name) => name.length > 0 && name.length <= 40)).toBe(true);
 });
 
-it('[TC-MEET-001-N] live creation waits for real profiles and fills them when loading finishes', async () => {
+it('live creation waits for real profiles and fills them when loading finishes', async () => {
   const f = await mount(null);
   expect(f.button('create')?.disabled).toBe(true);
   expect(f.container.textContent).not.toContain('model-a');
@@ -189,7 +189,7 @@ it('[TC-MEET-001-N] live creation waits for real profiles and fills them when lo
   );
 });
 
-it('[TC-MEET-001-F] unavailable roles remain visible until the person removes them before creation', async () => {
+it('unavailable roles remain visible until the person removes them before creation', async () => {
   const f = await mount([profile('ready'), profile('offline', false)]);
   const model = f.container.querySelector<HTMLSelectElement>(
     'select[aria-label="participantModel3"]',

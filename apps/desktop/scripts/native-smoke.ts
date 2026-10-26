@@ -449,7 +449,7 @@ try {
   await waitForQuit(done);
   application = null;
   console.log(
-    'TC-ABS-007-H TC-ABS-004-H PASS: packaged window, UI request, isolated interactive preview, shortcut remap, remote-host form, persisted history/draft, tray, second-instance restore, restart; no host Node/pnpm.',
+    'PASS: packaged window, UI request, isolated interactive preview, shortcut remap, remote-host form, persisted history/draft, tray, second-instance restore, restart; no host Node/pnpm.',
   );
 } catch (error) {
   failedFlow = true;

@@ -37,7 +37,7 @@ function setup() {
   return { db, store: new FileEditProposals(db) };
 }
 
-it('[TC-WBD-021-H] stores immutable content and returns the same request with lightweight summaries', () => {
+it('stores immutable content and returns the same request with lightweight summaries', () => {
   const { db, store } = setup();
   const first = store.put(content, 'request_one', hash('request'));
   expect(first).toEqual({
@@ -73,7 +73,7 @@ it('[TC-WBD-021-H] stores immutable content and returns the same request with li
   ).toThrow(/immutable/);
 });
 
-it('[TC-WBD-021-N] refuses reused request identity, changed content and corrupt persisted content', () => {
+it('refuses reused request identity, changed content and corrupt persisted content', () => {
   const { db, store } = setup();
   store.put(content, 'request_one', hash('request'));
   expect(() => store.forRequest('session_one', 'request_one', hash('other'))).toThrow(/request/);
@@ -93,7 +93,7 @@ it('[TC-WBD-021-N] refuses reused request identity, changed content and corrupt 
   expect(() => store.get('session_one', content.proposalId)).toThrow(/content/);
 });
 
-it('[TC-WBD-021-F] keeps a proposal claimed by one operation and dismissal terminal', () => {
+it('keeps a proposal claimed by one operation and dismissal terminal', () => {
   const { db, store } = setup();
   store.put(content, 'request_one', hash('request'));
   const claimed = store.claim('session_one', content.proposalId, 'operation_one');

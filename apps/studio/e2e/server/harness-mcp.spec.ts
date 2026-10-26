@@ -7,7 +7,7 @@ import { oauthFixture } from '../../../server/test/fixtures/mcp-oauth.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
-test('[TC-HAR-016-H] reviews an MCP server, completes local OAuth and pins its role selection', async ({
+test('reviews an MCP server, completes local OAuth and pins its role selection', async ({
   page,
   corral,
 }) => {

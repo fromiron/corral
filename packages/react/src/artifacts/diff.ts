@@ -1,4 +1,4 @@
-// Line diff between two versions (C-030): longest common subsequence, then the edits in order.
+// Line diff between two versions: longest common subsequence, then the edits in order.
 // Versions are at most 1 MiB; this is for reading a revision, not for huge files.
 
 export interface DiffLine {
@@ -14,7 +14,7 @@ export function diffLines(before: string, after: string): DiffLine[] {
   const a = before.split('\n');
   const b = after.split('\n');
   if (a.length * b.length > MAX_CELLS) {
-    // Large files: Myers' O(ND) diff aligns them when the edits are few (02-UX-Spec §4).
+    // Large files: Myers' O(ND) diff aligns them when the edits are few.
     const aligned = myers(a, b, MAX_EDITS);
     if (aligned) return aligned;
     // Too many edits to align: show it as replaced rather than freeze the page.

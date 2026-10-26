@@ -79,7 +79,7 @@ async function fixture() {
   return { api, server, sessionId, original, hostId };
 }
 
-it('[TC-WBD-002-H] reads and saves through the actual client and recovers the same receipt after a duplicate request', async () => {
+it('reads and saves through the actual client and recovers the same receipt after a duplicate request', async () => {
   const { api, sessionId, original, hostId } = await fixture();
   const before = await api.readDocument(sessionId, 'source.txt');
   expect(before).toMatchObject({
@@ -124,7 +124,7 @@ it('[TC-WBD-002-H] reads and saves through the actual client and recovers the sa
   ).rejects.toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
 });
 
-it('[TC-WBD-002-N] rejects wrong targets and stale hashes without hiding typed refusal codes', async () => {
+it('rejects wrong targets and stale hashes without hiding typed refusal codes', async () => {
   const { api, sessionId } = await fixture();
   const before = await api.readDocument(sessionId, 'source.txt');
   const command: DocumentCommand = {
@@ -182,7 +182,7 @@ it('[TC-WBD-002-N] rejects wrong targets and stale hashes without hiding typed r
   ).rejects.toMatchObject({ status: 403, code: 'CAPABILITY_DENIED' });
 });
 
-it('[TC-WBD-002-H] allows JSON escaping overhead at the one MiB document boundary', async () => {
+it('allows JSON escaping overhead at the one MiB document boundary', async () => {
   const { api, sessionId } = await fixture();
   const empty = await api.readDocument(sessionId, 'new file.txt');
   expect(empty.content).toEqual({ kind: 'absent' });
@@ -205,7 +205,7 @@ it('[TC-WBD-002-H] allows JSON escaping overhead at the one MiB document boundar
   });
 });
 
-it('[TC-WBD-002-F] returns a bounded generic error without an internal filesystem path', async () => {
+it('returns a bounded generic error without an internal filesystem path', async () => {
   const { api, sessionId } = await fixture();
   vi.spyOn(WorkspaceService.prototype, 'readDocument').mockRejectedValue(
     new Error('EACCES /private/workspace/secret/file.txt'),

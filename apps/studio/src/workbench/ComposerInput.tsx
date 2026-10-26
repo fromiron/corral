@@ -1,4 +1,4 @@
-// The composer's text box with one menu for `/` commands and `@` references (CR-016), after
+// The composer's text box with one menu for `/` commands and `@` references, after
 // keyboard first, IME safe. The renderer only reads names; picking a file grants nothing.
 import { rankFuzzy } from '@corral/core';
 import { Kbd } from '@corral/react/design-kit';

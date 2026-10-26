@@ -14,9 +14,7 @@ async function openSession(page: Page, blank = false) {
   } else await startSession(page, 'Desktop workbench');
 }
 
-test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores its trigger', async ({
-  page,
-}) => {
+test('DW-08 narrow navigation contains focus and Escape restores its trigger', async ({ page }) => {
   await openSession(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const trigger = page.getByRole('button', { name: 'Show the sidebar', exact: true });
@@ -39,9 +37,7 @@ test('[TC-UX-001-H] DW-08 narrow navigation contains focus and Escape restores i
   await expect(trigger).toBeFocused();
 });
 
-test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and draft', async ({
-  page,
-}) => {
+test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({ page }) => {
   await openSession(page, true);
   const composer = page.getByTestId('chat-composer');
   const input = requestBox(page);
@@ -99,7 +95,7 @@ test('[TC-UX-004-H] DW-02/03 settings overlay keeps the same mounted work and dr
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('[TC-UX-001-H] DW-05 a file opens in a remembered preview and its line reference enters the draft', async ({
+test('DW-05 a file opens in a remembered preview and its line reference enters the draft', async ({
   page,
 }) => {
   const keyWarnings: string[] = [];

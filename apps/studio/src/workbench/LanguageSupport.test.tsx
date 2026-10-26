@@ -157,7 +157,7 @@ async function mount() {
   return { element, render, click, controller, patch, nextTarget, release };
 }
 
-it('[TC-WBD-018-H] reviews the command before explicit trust and starts or stops that copy', async () => {
+it('reviews the command before explicit trust and starts or stops that copy', async () => {
   const view = await mount();
   expect(view.controller.inspect).not.toHaveBeenCalled();
   expect(view.controller.start).not.toHaveBeenCalled();
@@ -184,7 +184,7 @@ it('[TC-WBD-018-H] reviews the command before explicit trust and starts or stops
   expect(view.controller.stop).toHaveBeenCalledWith(target);
 });
 
-it('[TC-WBD-018-N] a recreated copy never shows the previous command review or error', async () => {
+it('a recreated copy never shows the previous command review or error', async () => {
   const view = await mount();
   await view.click('Review command');
   await act(async () =>

@@ -185,7 +185,7 @@ export function admitImageRequest(
 }
 
 /**
- * What an unlimited run (CR-052) permits per call. Corral sets no cap of its own; the worker lowers
+ * What an unlimited run permits per call. Corral sets no cap of its own; the worker lowers
  * it to the model's catalog maximum, so this only has to exceed every model's output limit.
  */
 export const UNLIMITED_OUTPUT_TOKENS_PER_CALL = 1_000_000;

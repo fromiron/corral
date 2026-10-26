@@ -7,7 +7,6 @@
     "node": "^24.15.0"
   },
   "scripts": {
-    "spec:check": "node tools/spec-check/spec-check.ts",
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "pnpm -r --no-bail typecheck && tsc -p tools/tsconfig.json && tsc -p tests/live/tsconfig.json",

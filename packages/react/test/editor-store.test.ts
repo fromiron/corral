@@ -9,7 +9,7 @@ function withAgentAndOutput() {
 }
 
 describe('editor store history', () => {
-  it('[TC-CAN-005-H] one drag is one undo step', () => {
+  it('one drag is one undo step', () => {
     const { store, agent } = withAgentAndOutput();
     store.getState().beginBatch();
     for (let x = 10; x <= 200; x += 10) store.getState().moveNode(agent, { x, y: 5 });

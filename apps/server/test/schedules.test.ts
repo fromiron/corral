@@ -98,7 +98,7 @@ function setup() {
   };
 }
 
-describe('[TC-ABS-008-H] [TC-ABS-008-N] schedules', () => {
+describe('schedules', () => {
   it('claims one due occurrence across duplicate pollers and saves the normal session entry', async () => {
     const f = setup();
     const schedule = await f.service.create(draft);
@@ -227,7 +227,7 @@ describe('[TC-ABS-008-H] [TC-ABS-008-N] schedules', () => {
       ),
     ).toBe('2026-10-26T03:15:00.000Z');
   });
-  it('[TC-ABS-013-N] vault import needs explicit bindings, stays disabled and guards duplicate operations and rollback', async () => {
+  it('vault import needs explicit bindings, stays disabled and guards duplicate operations and rollback', async () => {
     const f = setup();
     const schedule = await f.service.create(draft);
     const vault = scheduleVaultAdapter(f.service);
@@ -248,7 +248,7 @@ describe('[TC-ABS-008-H] [TC-ABS-008-N] schedules', () => {
     expect(f.store.get(schedule.id)).toMatchObject({ enabled: true, revision: 3 });
     expect(f.start).not.toHaveBeenCalled();
   });
-  it('[TC-ABS-013-H] fresh owner recovers committed import and rollback receipts before the vault journal was updated', async () => {
+  it('fresh owner recovers committed import and rollback receipts before the vault journal was updated', async () => {
     const f = setup();
     const schedule = await f.service.create(draft);
     const adapter = scheduleVaultAdapter(f.service);

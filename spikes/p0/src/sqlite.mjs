@@ -1,4 +1,4 @@
-// C-052 SQLite spike: driver load, pragmas, atomic rollback, busy timeout across connections.
+// SQLite spike: driver load, pragmas, atomic rollback, busy timeout across connections.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

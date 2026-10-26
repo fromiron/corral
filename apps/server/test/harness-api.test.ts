@@ -12,7 +12,7 @@ import { oauthFixture } from './fixtures/mcp-oauth.ts';
 
 let server: CorralServer | undefined;
 let root: string;
-it('[TC-HAR-016-H] [TC-MGR-002-H] [TC-MGR-002-N] binds browser OAuth to reviewed settings and allows logout after trust revocation', async () => {
+it('binds browser OAuth to reviewed settings and allows logout after trust revocation', async () => {
   root = mkdtempSync(join(tmpdir(), 'corral-mcp-api-'));
   const source = join(root, 'source');
   execFileSync('git', ['init', '-q', source]);
@@ -84,7 +84,7 @@ it('[TC-HAR-016-H] [TC-MGR-002-H] [TC-MGR-002-N] binds browser OAuth to reviewed
     const status = await call(`${path}/auth`);
     expect(status.body).toMatchObject({ state: 'ready', kind: 'oauth' });
     expect(JSON.stringify(status.body)).not.toContain('fixture-access');
-    // TC-MGR-002-H: diagnostics use the real protocol without executing a tool or a model.
+    // diagnostics use the real protocol without executing a tool or a model.
     const probe = await call(`${path}/probe`, {
       operationId: 'probe-docs',
       configRevision: 1,
@@ -201,7 +201,7 @@ it('[TC-HAR-016-H] [TC-MGR-002-H] [TC-MGR-002-N] binds browser OAuth to reviewed
     await fixture.close();
   }
 });
-it('[TC-HAR-003-H] simulates a bound work style without claiming that its SDK resources were loaded', async () => {
+it('simulates a bound work style without claiming that its SDK resources were loaded', async () => {
   root = mkdtempSync(join(tmpdir(), 'corral-harness-simulation-'));
   const token = 'simulation-bootstrap-0123456789abcdef';
   server = await startCorralServer({
@@ -261,7 +261,7 @@ it('[TC-HAR-003-H] simulates a bound work style without claiming that its SDK re
   expect(events).not.toContain('model.request_recorded');
 });
 it.skipIf(process.platform !== 'linux')(
-  '[TC-HAR-017-N] server startup reaps the previous SDK owner before accepting work',
+  'server startup reaps the previous SDK owner before accepting work',
   async () => {
     root = mkdtempSync(join(tmpdir(), 'corral-server-recovery-'));
     const workspace = join(root, 'workspace');
@@ -296,7 +296,7 @@ afterEach(async () => {
 });
 
 it.each(['check', 'lsp'] as const)(
-  '[TC-HAR-012-H] [TC-HAR-012-N] project %s settings and trust use guarded immutable revisions and exact launch hashes',
+  'project %s settings and trust use guarded immutable revisions and exact launch hashes',
   async (kind) => {
     root = mkdtempSync(join(tmpdir(), 'corral-tools-api-'));
     const source = join(root, 'source');
@@ -405,7 +405,7 @@ it.each(['check', 'lsp'] as const)(
   },
 );
 
-it('[TC-HAR-004-H] [TC-HAR-004-N] resource API requires review and trust, pins revisions and protects local paths', async () => {
+it('resource API requires review and trust, pins revisions and protects local paths', async () => {
   root = mkdtempSync(join(tmpdir(), 'corral-harness-api-'));
   const source = join(root, 'source');
   const marker = join(root, 'executed');

@@ -8,7 +8,7 @@ import { SqliteProjectToolStore } from './project-tool-store.ts';
 import { SCHEDULE_MIGRATION } from './schedule-migration.ts';
 import { WORKBENCH_MIGRATION } from './workbench-migration.ts';
 
-// One SQLite file per workspace (C-011, C-062). Durable settings follow the C-052 spike:
+// One SQLite file per workspace. Durable settings follow the spike:
 // WAL, foreign keys, FULL sync. Schema changes are numbered migrations recorded in
 // `user_version`; a file from a newer build is refused, never "fixed" in place.
 
@@ -123,7 +123,7 @@ ${IMMUTABLE('imported_inputs')}
 `,
   },
   {
-    // CR-010: projects group Corrals and runs. Existing rows join the default project; no
+    // projects group Corrals and runs. Existing rows join the default project; no
     // row of an immutable table is touched, and no id changes.
     name: '0003_projects',
     sql: `
@@ -148,7 +148,7 @@ CREATE INDEX runs_by_project ON runs (project_id, started_at DESC);
 `,
   },
   {
-    // CR-011: work sessions continue a purpose over several runs. A run names its session in
+    // work sessions continue a purpose over several runs. A run names its session in
     // a new column; snapshots and events are untouched.
     name: '0004_sessions',
     sql: `
@@ -171,7 +171,7 @@ CREATE INDEX runs_by_session ON runs (session_id);
 `,
   },
   {
-    // CR-012: a project's linked folder, sessions' managed worktrees, snapshots (git trees),
+    // a project's linked folder, sessions' managed worktrees, snapshots (git trees),
     // every file write the broker made, and verification results.
     name: '0005_workspaces',
     sql: `
@@ -239,7 +239,7 @@ CREATE INDEX verifications_by_session ON verifications (session_id, started_at);
 `,
   },
   {
-    // CR-013: review comments fixed to two trees, review decisions, applying an approved
+    // review comments fixed to two trees, review decisions, applying an approved
     // change set to the linked folder and reverting it, file by file.
     name: '0006_review',
     sql: `
@@ -431,7 +431,7 @@ CREATE TABLE harness_management_receipts (
 `,
   },
   {
-    // CR-024: the model and reasoning an auto session uses; NULL until chosen.
+    // the model and reasoning an auto session uses; NULL until chosen.
     name: '0013_session_auto',
     sql: 'ALTER TABLE work_sessions ADD COLUMN auto_json TEXT;',
   },

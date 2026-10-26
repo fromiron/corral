@@ -13,8 +13,8 @@ const run = (overrides: Parameters<typeof projectionWith>[0]) =>
     ...overrides,
   });
 
-describe('compareRuns (roadmap 16)', () => {
-  it('[TC-OBS-004-H] lines up status, time, calls, tokens, rounds and models, and marks what differs', () => {
+describe('compareRuns', () => {
+  it('lines up status, time, calls, tokens, rounds and models, and marks what differs', () => {
     const a = run({
       runId: 'run_a',
       budget: { ...projectionWith({}).budget, spent: 1_200, modelCalls: 6 },
@@ -52,7 +52,7 @@ describe('compareRuns (roadmap 16)', () => {
     });
   });
 
-  it('[TC-OBS-004-N] an unfinished run has no elapsed time rather than a made-up one', () => {
+  it('an unfinished run has no elapsed time rather than a made-up one', () => {
     const a = run({ runId: 'run_a', status: 'running', endedAt: null });
     const b = run({ runId: 'run_b' });
     const elapsed = compareRuns(a, b).find((r) => r.key === 'elapsed');

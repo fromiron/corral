@@ -100,7 +100,7 @@ function fixture() {
   return { app, runtime, detached, listeners, streams };
 }
 
-it('[TC-WBD-004-N] validates the UTF-8 input cap and controller frame before dispatch', async () => {
+it('validates the UTF-8 input cap and controller frame before dispatch', async () => {
   const { app, runtime } = fixture();
   const url = '/api/v1/sessions/session/terminals/terminal/input';
   expect((await app.inject({ method: 'POST', url, payload: input })).statusCode).toBe(200);
@@ -114,7 +114,7 @@ it('[TC-WBD-004-N] validates the UTF-8 input cap and controller frame before dis
   expect(runtime.input).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-004-H] JSON-frames ANSI output and detaches a viewer without stopping its shell', async () => {
+it('JSON-frames ANSI output and detaches a viewer without stopping its shell', async () => {
   const { app, runtime, detached, listeners, streams } = fixture();
   const url = await app.listen({ host: '127.0.0.1', port: 0 });
   const response = await fetch(
@@ -153,7 +153,7 @@ it('[TC-WBD-004-H] JSON-frames ANSI output and detaches a viewer without stoppin
   expect(runtime.stop).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-004-N] does not attach an invalid cursor or another session', async () => {
+it('does not attach an invalid cursor or another session', async () => {
   const { app, runtime } = fixture();
   expect(
     (
@@ -170,7 +170,7 @@ it('[TC-WBD-004-N] does not attach an invalid cursor or another session', async 
   expect(runtime.get).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-004-N] applies the frame budget to malformed input as well as accepted keystrokes', async () => {
+it('applies the frame budget to malformed input as well as accepted keystrokes', async () => {
   const { app, runtime } = fixture();
   const url = '/api/v1/sessions/session/terminals/terminal/input';
   for (let frame = 0; frame < 120; frame++) {

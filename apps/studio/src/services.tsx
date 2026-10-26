@@ -41,7 +41,7 @@ import { createRunSessions } from './runSessions.ts';
 import { createDemoRuntime } from './runtime.ts';
 
 // App-wide services. Studio served by the local server talks to it (saved Corrals, persistent
-// runs); opened any other way it runs the in-browser runtime with simulated agents (ADR-016).
+// runs); opened any other way it runs the in-browser runtime with simulated agents.
 // Run pages and team editors keep separate views; the Coordinator owns active runs.
 
 export interface StudioServices {
@@ -62,21 +62,21 @@ export interface StudioServices {
   persistent: boolean;
   /** Server mode without a valid session: the bootstrap link must be opened again. */
   sessionMissing: boolean;
-  /** The server can run real models (C-058); null in the in-browser runtime. */
+  /** The server can run real models; null in the in-browser runtime. */
   models: ModelsApi | null;
   harnesses: HarnessApi | null;
   live: boolean;
-  /** A sandboxed address for HTML result previews (CR-009); the browser runtime has none. */
+  /** A sandboxed address for HTML result previews; the browser runtime has none. */
   previewUrl?: (runId: string, artifactVersionId: string) => string;
-  /** A question about a result, as its own run in a session (CR-011). */
+  /** A question about a result, as its own run in a session. */
   startExplain: (request: ExplainStart) => Promise<StartRunResult>;
-  /** A request in an auto session (CR-024): the runtime picks the template and starts it. */
+  /** A request in an auto session: the runtime picks the template and starts it. */
   startAuto: (request: AutoRunStart, signal?: AbortSignal) => Promise<AutoStartResult>;
   /** Server cancellation also reconciles a start whose HTTP response was lost. */
   cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
-  /** Work folders and file changes (CR-012); the browser demo has an in-memory one. */
+  /** Work folders and file changes; the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
-  /** CR-049 meeting rounds; the in-browser runtime runs the same service locally. */
+  /** meeting rounds; the in-browser runtime runs the same service locally. */
   meetings: MeetingsClient;
   meetingHandoffs?: MeetingHandoffsApi;
   /** User PTYs exist only on the authenticated host, never in the browser demo. */
@@ -203,7 +203,7 @@ export async function createStudioServices(): Promise<StudioServices> {
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
-    // CR-055: a saved Corral lends its roles to the conversation lead.
+    // a saved Corral lends its roles to the conversation lead.
     corral: async (corralId) => (await repository.get(corralId))?.definition ?? null,
   });
   const repository = createKeyValueCorralRepository(store, {
@@ -241,7 +241,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     editorSessions: new Map(),
     runModes: {},
     saveRunMode: async () => {},
-    // An in-memory example folder in the demo worker (02-UX-Spec §10).
+    // An in-memory example folder in the demo worker.
     workspaces,
     meetings: {
       view: (id) => meetings.view(id),

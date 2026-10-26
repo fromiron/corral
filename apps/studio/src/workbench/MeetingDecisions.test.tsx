@@ -128,7 +128,7 @@ async function mount(current = view) {
     [...container.querySelectorAll('button')].find((b) => b.textContent === text)!;
   return { container, adopt, withdraw, button, onChange };
 }
-it('[TC-MEET-002-H] shows dissent and failed participants, and adopts only the edited human selection', async () => {
+it('shows dissent and failed participants, and adopts only the edited human selection', async () => {
   const f = await mount();
   expect(f.container.textContent).toContain('rollout timing');
   expect(f.container.textContent).toContain('Tester');
@@ -157,7 +157,7 @@ it('[TC-MEET-002-H] shows dissent and failed participants, and adopts only the e
     }),
   );
 });
-it('[TC-MEET-002-N] withdrawn and superseded versions cannot hand off', async () => {
+it('withdrawn and superseded versions cannot hand off', async () => {
   const f = await mount({
     ...view,
     decisions: [decision, { ...decision, versionId: 'v2', supersedesVersionId: 'v1' }],
@@ -169,7 +169,7 @@ it('[TC-MEET-002-N] withdrawn and superseded versions cannot hand off', async ()
   expect(f.container.textContent).toContain('withdrawn');
   expect(f.container.textContent).not.toContain('handoff-action');
 });
-it('[TC-MEET-002-F] a lost adoption response reuses the command ID', async () => {
+it('a lost adoption response reuses the command ID', async () => {
   const f = await mount();
   f.adopt.mockRejectedValueOnce(new Error('offline'));
   await act(async () => f.button('editCandidate').click());
@@ -179,7 +179,7 @@ it('[TC-MEET-002-F] a lost adoption response reuses the command ID', async () =>
   expect(f.adopt.mock.calls[0]?.[1].commandId).toBe(f.adopt.mock.calls[1]?.[1].commandId);
 });
 
-it('[TC-MEET-002-H] revisions name the replaced version and withdrawal requires a human reason', async () => {
+it('revisions name the replaced version and withdrawal requires a human reason', async () => {
   const f = await mount({ ...view, decisions: [decision] } as MeetingView);
   await act(async () => f.button('revise').click());
   await act(async () => f.button('adopt').click());

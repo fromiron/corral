@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 import { prepareOwnedWindowsProcess } from '../src/processes/owned-process.ts';
 
 it.skipIf(process.platform !== 'win32')(
-  '[TC-ABS-001-N] a matching parent PID with a different creation identity cannot start a target',
+  'a matching parent PID with a different creation identity cannot start a target',
   async () => {
     const directory = await mkdtemp(join(tmpdir(), 'corral-owner-identity-'));
     const marker = join(directory, 'must-not-exist.txt');

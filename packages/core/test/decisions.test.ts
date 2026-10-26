@@ -21,7 +21,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// reasoning_effort judgments, observe only (CR-003, C-068/C-069, ADR-025).
+// reasoning_effort judgments, observe only.
 
 const terminal = (p: RunProjection) =>
   ['succeeded', 'failed', 'cancelled'].includes(p.status) && p.lastSeq > 0;
@@ -88,8 +88,8 @@ const observe = (...providers: ScriptedDecisionProvider[]): JudgmentConfig => ({
 
 const decisionEvents = (events: RunEvent[]) => events.filter((e) => e.type.startsWith('decision.'));
 
-describe('reasoning_effort contract (C-068)', () => {
-  it('[TC-DEC-001-H] a declaring provider gets one question per request and its answer is recorded with provider@version', async () => {
+describe('reasoning_effort contract', () => {
+  it('a declaring provider gets one question per request and its answer is recorded with provider@version', async () => {
     const provider = new ScriptedDecisionProvider({ id: 'scripted', version: '1' });
     const r = await run(observe(provider));
     const p = await finished(r);
@@ -124,7 +124,7 @@ describe('reasoning_effort contract (C-068)', () => {
     expect(p.decisions && Object.keys(p.decisions)).toHaveLength(2);
   });
 
-  it('[TC-DEC-001-N] the request text never reaches events: only its hash and features', async () => {
+  it('the request text never reaches events: only its hash and features', async () => {
     const r = await run(observe(new ScriptedDecisionProvider()));
     await finished(r);
     const requested = r.events.find((e) => e.type === 'decision.requested');
@@ -134,7 +134,7 @@ describe('reasoning_effort contract (C-068)', () => {
     for (const e of decisionEvents(r.events)) expect(canonicalJson(e)).not.toContain('vendors');
   });
 
-  it('[TC-DEC-001-N] a provider that does not declare the question is never asked', async () => {
+  it('a provider that does not declare the question is never asked', async () => {
     const provider = new ScriptedDecisionProvider({
       questions: [{ kind: 'reasoning_effort', version: 2 }],
     });
@@ -156,7 +156,7 @@ describe('reasoning_effort contract (C-068)', () => {
     ]);
   });
 
-  it('[TC-DEC-001-N] answers outside the contract fail as invalid_response, never repaired', async () => {
+  it('answers outside the contract fail as invalid_response, never repaired', async () => {
     for (const answer of [
       { answer: 'maximum', probabilities: null, evidenceLevel: 'rule' },
       {
@@ -177,7 +177,7 @@ describe('reasoning_effort contract (C-068)', () => {
     }
   });
 
-  it('[TC-DEC-001-N] a provider that throws fails as provider_error; an unknown provider is recorded as not installed', async () => {
+  it('a provider that throws fails as provider_error; an unknown provider is recorded as not installed', async () => {
     const throwing = new ScriptedDecisionProvider({
       answer: () => {
         throw new Error('boom');
@@ -201,7 +201,7 @@ describe('reasoning_effort contract (C-068)', () => {
   });
 });
 
-describe('observe only (C-069)', () => {
+describe('observe only', () => {
   // Judgments take sequence numbers, so runSeq and eventId shift; everything else must not.
   const withoutDecisions = (events: RunEvent[]) =>
     events
@@ -218,7 +218,7 @@ describe('observe only (C-069)', () => {
           : canonicalJson(e),
       );
 
-  it('[TC-DEC-002-H] observe leaves permits, reservations and every other event exactly as off', async () => {
+  it('observe leaves permits, reservations and every other event exactly as off', async () => {
     const off = await run({
       providers: [new ScriptedDecisionProvider()],
       settings: { reasoning_effort: { mode: 'off', providers: ['scripted'] } },
@@ -235,7 +235,7 @@ describe('observe only (C-069)', () => {
     ).toBe('off');
   });
 
-  it('[TC-DEC-002-N] a provider past its timeout fails as timeout and the run is unaffected', async () => {
+  it('a provider past its timeout fails as timeout and the run is unaffected', async () => {
     const never = new Gate();
     const provider = new ScriptedDecisionProvider({ timeoutMs: 500, before: () => never.wait() });
     const r = await run(observe(provider), { turns: 1 });
@@ -255,7 +255,7 @@ describe('observe only (C-069)', () => {
     expect(r.events.some((e) => e.type === 'decision.observed')).toBe(false);
   });
 
-  it('[TC-DEC-002-N] an answer that arrives after its request finished is recorded as late', async () => {
+  it('an answer that arrives after its request finished is recorded as late', async () => {
     const hold = new Gate();
     const agentGate = new Gate();
     const provider = new ScriptedDecisionProvider({ timeoutMs: 60_000, before: () => hold.wait() });
@@ -275,7 +275,7 @@ describe('observe only (C-069)', () => {
     });
   });
 
-  it('[TC-DEC-002-N] an answer after the run ended is not committed', async () => {
+  it('an answer after the run ended is not committed', async () => {
     const hold = new Gate();
     const provider = new ScriptedDecisionProvider({ timeoutMs: 60_000, before: () => hold.wait() });
     const r = await run(observe(provider), { turns: 1 });
@@ -287,7 +287,7 @@ describe('observe only (C-069)', () => {
     expect(r.events.some((e) => e.type === 'decision.observed')).toBe(false);
   });
 
-  it('[TC-DEC-002-N] a judgment the run ended before is shown as not collected, never as pending (#22)', async () => {
+  it('a judgment the run ended before is shown as not collected, never as pending (#22)', async () => {
     const hold = new Gate();
     const provider = new ScriptedDecisionProvider({ timeoutMs: 60_000, before: () => hold.wait() });
     const r = await run(observe(provider), { turns: 1 });
@@ -304,14 +304,14 @@ describe('observe only (C-069)', () => {
     expect(Object.values(reread.decisions ?? {}).map((d) => d.status)).toEqual(['not_collected']);
   });
 
-  it('[TC-DEC-002-H] a judgment that finished before the run ended keeps its answer (#22)', async () => {
+  it('a judgment that finished before the run ended keeps its answer (#22)', async () => {
     const provider = new ScriptedDecisionProvider();
     const r = await run(observe(provider), { turns: 1, beforeReply: () => drain() });
     const final = await finished(r);
     expect(Object.values(final.decisions ?? {}).map((d) => d.status)).toEqual(['observed']);
   });
 
-  it('[TC-DEC-002-N] cancelling the execution aborts its pending judgment as cancelled', async () => {
+  it('cancelling the execution aborts its pending judgment as cancelled', async () => {
     const hold = new Gate();
     let aborted = false;
     const provider = new ScriptedDecisionProvider({
@@ -341,7 +341,7 @@ describe('observe only (C-069)', () => {
     hold.open();
   });
 
-  it('[TC-DEC-002-N] reaching maxCalls stops judging, records the limit once and the run continues', async () => {
+  it('reaching maxCalls stops judging, records the limit once and the run continues', async () => {
     const provider = new ScriptedDecisionProvider();
     const r = await run(
       {
@@ -360,8 +360,8 @@ describe('observe only (C-069)', () => {
   });
 });
 
-describe('workspace judgment settings (C-068)', () => {
-  it('[TC-DEC-002-H] a workspace turns judgments on with one or two named providers', () => {
+describe('workspace judgment settings', () => {
+  it('a workspace turns judgments on with one or two named providers', () => {
     const parsed = parseWorkspaceConfig({
       schemaVersion: '0.1',
       decisions: {
@@ -382,7 +382,7 @@ describe('workspace judgment settings (C-068)', () => {
     });
   });
 
-  it('[TC-DEC-001-N] unknown modes, three providers or an apply mode are refused; no setting means off', () => {
+  it('unknown modes, three providers or an apply mode are refused; no setting means off', () => {
     for (const reasoning_effort of [
       { mode: 'apply', providers: ['local-heuristic'] },
       { mode: 'observe', providers: ['a', 'b', 'c'] },
@@ -402,7 +402,7 @@ describe('workspace judgment settings (C-068)', () => {
   });
 });
 
-describe('external providers (C-070)', () => {
+describe('external providers', () => {
   const liveModels = {
     resolve: (profile: string, mode: 'mock' | 'live') =>
       mode === 'mock'
@@ -444,7 +444,7 @@ describe('external providers (C-070)', () => {
     return events;
   }
 
-  it('[TC-DEC-003-H] an opted-in external provider runs only in a live run, behind an admitted decision effect', async () => {
+  it('an opted-in external provider runs only in a live run, behind an admitted decision effect', async () => {
     const external = new ScriptedDecisionProvider({ id: 'remote', privacy: 'external' });
     const events = await liveRun({
       providers: [external],
@@ -476,7 +476,7 @@ describe('external providers (C-070)', () => {
     for (const e of events) expect(canonicalJson(e)).not.toContain('vendors');
   });
 
-  it('[TC-DEC-003-N] external providers are refused in mock runs and in live runs without the opt-in', async () => {
+  it('external providers are refused in mock runs and in live runs without the opt-in', async () => {
     const external = new ScriptedDecisionProvider({ id: 'remote', privacy: 'external' });
     const mock = await run({
       providers: [external],

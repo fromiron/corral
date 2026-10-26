@@ -22,7 +22,7 @@ async function activate(page: Page, target: Locator) {
   await page.keyboard.press('Enter');
 }
 
-test('[TC-UX-001-H] keyboard alone adds, selects, moves, connects, deletes, undoes and steers a run', async ({
+test('keyboard alone adds, selects, moves, connects, deletes, undoes and steers a run', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -64,9 +64,7 @@ test('[TC-UX-001-H] keyboard alone adds, selects, moves, connects, deletes, undo
 });
 
 for (const instruction of ['일차 자료만 사용하고 확인하지 못한 내용은 구분해 주세요.']) {
-  test(`[TC-UX-001-N] IME composition Enter does not submit ${instruction.slice(0, 4)}`, async ({
-    page,
-  }) => {
+  test(`IME composition Enter does not submit ${instruction.slice(0, 4)}`, async ({ page }) => {
     await page.goto('/demo?template=starter&delay=3000');
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();

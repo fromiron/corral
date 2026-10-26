@@ -16,7 +16,7 @@ vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => async (task: () => Promise<void>) => task(),
 }));
 
-it('[TC-WBD-023-N] editing language tools preserves debugger and deployment configuration with the same revision guard', async () => {
+it('editing language tools preserves debugger and deployment configuration with the same revision guard', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const config = {
     projectId: 'project',

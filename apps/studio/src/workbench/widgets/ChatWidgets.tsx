@@ -111,7 +111,7 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
     </Popover>
   );
 }
-/** ContextInspector: what the presented run's last request held (CR-041 §4.2). */
+/** ContextInspector: what the presented run's last request held. */
 export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   const tc = useTranslations('Widgets.category');
@@ -467,7 +467,7 @@ export function RunLink({
   );
 }
 /** One announcement and a scoped entry to the existing approval/interaction host. */
-/** `summary` is the narrow-width way into the Overview widgets (CR-053). */
+/** `summary` is the narrow-width way into the Overview widgets. */
 export function ComposerDock({ summary }: { summary?: ReactNode }) {
   const model = useChatWidget();
   const t = useTranslations('Widgets');

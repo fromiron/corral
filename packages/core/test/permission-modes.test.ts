@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toolPermission } from '../src/tool-policy.ts';
 
 describe('permission presets (ABS-02)', () => {
-  it('[TC-ABS-002-H] Ask does not interrupt Corral result bookkeeping but preserves explicit asks', () => {
+  it('Ask does not interrupt Corral result bookkeeping but preserves explicit asks', () => {
     for (const name of ['write_artifact', 'submit_result']) {
       const descriptor = {
         name,
@@ -25,7 +25,7 @@ describe('permission presets (ABS-02)', () => {
       ).toBe('ask');
     }
   });
-  it('[TC-ABS-003-N] a scoped Hashline move grant covers both source and destination', () => {
+  it('a scoped Hashline move grant covers both source and destination', () => {
     const allow = {
       default: 'deny' as const,
       rules: [
@@ -63,7 +63,7 @@ describe('permission presets (ABS-02)', () => {
       'deny',
     );
   });
-  it('[TC-ABS-002-H] Ask asks for writes and commands while observation stays allowed', () => {
+  it('Ask asks for writes and commands while observation stays allowed', () => {
     expect(toolPermission(undefined, { name: 'write_file', args: {} }, undefined, 'ask')).toBe(
       'ask',
     );
@@ -74,7 +74,7 @@ describe('permission presets (ABS-02)', () => {
       'allow',
     );
   });
-  it('[TC-ABS-002-H] Accept edits admits managed file edits, but asks for processes', () => {
+  it('Accept edits admits managed file edits, but asks for processes', () => {
     expect(toolPermission(undefined, { name: 'edit', args: {} }, undefined, 'accept_edits')).toBe(
       'allow',
     );
@@ -82,7 +82,7 @@ describe('permission presets (ABS-02)', () => {
       toolPermission(undefined, { name: 'run_command', args: {} }, undefined, 'accept_edits'),
     ).toBe('ask');
   });
-  it('[TC-ABS-002-N] Auto never defeats existing deny or ask policies; absent mode stays legacy', () => {
+  it('Auto never defeats existing deny or ask policies; absent mode stays legacy', () => {
     expect(
       toolPermission(
         [{ default: 'deny', rules: [] }],

@@ -75,7 +75,7 @@ async function fixture(mode = 'full', onSpawn?: (identity: PtySessionIdentity) =
 }
 
 it.skipIf(process.platform !== 'linux').each(['full', 'incremental'])(
-  '[TC-WBD-018-H] keeps one %s-sync server for dirty documents and read-only queries',
+  'keeps one %s-sync server for dirty documents and read-only queries',
   async (mode) => {
     const { connection, document, received, started, identities } = await fixture(mode);
     expect(connection.capabilities).toMatchObject({
@@ -111,7 +111,7 @@ it.skipIf(process.platform !== 'linux').each(['full', 'incremental'])(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-021-H] proposes rename and resolved edits without executing unsupported actions',
+  'proposes rename and resolved edits without executing unsupported actions',
   async () => {
     const { connection, document, received } = await fixture();
     expect(connection.capabilities).toMatchObject({ rename: true, codeActions: true });
@@ -162,7 +162,7 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-018-N] exposes pull capabilities and rejects unsupported requests without a restart',
+  'exposes pull capabilities and rejects unsupported requests without a restart',
   async () => {
     const pull = await fixture('pull');
     await pull.connection.sync(pull.document);
@@ -193,7 +193,7 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-018-F] settles cancellation, timeout, close and crash without restarting or changing documents',
+  'settles cancellation, timeout, close and crash without restarting or changing documents',
   async () => {
     const fixtureResult = await fixture();
     const { connection, document, onWaiting } = fixtureResult;
@@ -241,7 +241,7 @@ it.skipIf(process.platform !== 'linux')(
   },
 );
 
-it('[TC-WBD-018-N] bounds each protocol frame while allowing split headers and many valid frames', async () => {
+it('bounds each protocol frame while allowing split headers and many valid frames', async () => {
   const stream = new BoundedLspFrames();
   let bytes = 0;
   stream.on('data', (chunk: Buffer) => {

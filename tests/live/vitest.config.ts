@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// Separate from `pnpm test`: these call real providers and run only by hand (CRL-DEV-004).
+// Separate from `pnpm test`: these call real providers and run only by hand.
 export default defineConfig({
   test: {
     name: 'live',

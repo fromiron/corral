@@ -8,8 +8,6 @@ const output = join(ROOT, 'test-results/release');
 mkdirSync(output, { recursive: true });
 const evidence: ReleaseEvidence = { candidate: candidateHash(), gates: {} };
 const commands = [
-  ['spec', ['pnpm', 'spec:check']],
-  ['traceability', ['node', 'tools/release/traceability.ts']],
   ['dependencies', ['pnpm', 'deps:check']],
   ['contracts', ['pnpm', 'contracts:check']],
   ['lint', ['pnpm', 'lint']],

@@ -13,7 +13,7 @@ import { candidateHash } from '../../tools/release/candidate.ts';
 
 // Existing GPT OAuth only, isolated local library, 4 cases / at most 16 model requests.
 it.skipIf(process.env.CORRAL_SKILL_LIVE !== '1')(
-  '[TC-QEVAL-003-H] [TC-QEVAL-004-H] real GPT Skill comparison, explicit adoption and rollback',
+  'real GPT Skill comparison, explicit adoption and rollback',
   async () => {
     const candidate = candidateHash();
     const workspace = mkdtempSync(join(tmpdir(), 'corral-skill-live-'));

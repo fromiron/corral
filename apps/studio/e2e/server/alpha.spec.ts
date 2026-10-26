@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 import { panelTab, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// CR-046 P16 Alpha acceptance: the development workbench end to end in the real app, with a real
+// Alpha acceptance: the development workbench end to end in the real app, with a real
 // Git repository, a local bare remote, a real node task and the scripted agent. No paid models.
 
 test.describe.configure({ timeout: 120_000 });
@@ -44,7 +44,7 @@ async function project(page: Page, corral: Harness, options: { check?: string } 
   git(corral.workspace, 'init', '-q', '--bare', '-b', 'main', remote);
   git(original, 'remote', 'add', 'origin', remote);
   git(original, 'push', '-q', 'origin', 'main');
-  // The author comes from the repository's own Git settings (D5).
+  // The author comes from the repository's own Git settings.
   git(original, 'config', 'user.name', 'Alpha Person');
   git(original, 'config', 'user.email', 'alpha@example.test');
   git(original, 'config', 'commit.gpgsign', 'false');
@@ -121,7 +121,7 @@ async function commitAndPush(page: Page, path: string, message: string, branch: 
   await gitPane.getByRole('button', { name: 'Push', exact: true }).click();
 }
 
-test('[TC-WBD-012-H] without a model: edit, task, preview, check, review, stage, commit and push from a session copy', async ({
+test('without a model: edit, task, preview, check, review, stage, commit and push from a session copy', async ({
   page,
   corral,
 }) => {
@@ -266,7 +266,7 @@ function writerTeam(path: string) {
   return path;
 }
 
-test('[TC-WBD-012-H] one deterministic agent request changes the copy, and the person commits and pushes it', async ({
+test('one deterministic agent request changes the copy, and the person commits and pushes it', async ({
   page,
   corral,
 }) => {
@@ -286,7 +286,7 @@ test('[TC-WBD-012-H] one deterministic agent request changes the copy, and the p
   const card = page.locator('[data-testid^="entry-"]').first();
   await expect(card.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
   const copy = copyOf(original, sessionId);
-  // CR-055: the session's lead calls the team's writer, whose node is team_writer_role.
+  // the session's lead calls the team's writer, whose node is team_writer_role.
   expect(readFileSync(join(copy, 'notes', 'team_writer_role.md'), 'utf8').length).toBeGreaterThan(
     0,
   );
@@ -303,7 +303,7 @@ test('[TC-WBD-012-H] one deterministic agent request changes the copy, and the p
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-WBD-012-N] [TC-WBD-012-F] a failed check, a disk conflict, the settings dialog, a bad branch name and a lost Git answer keep the work intact', async ({
+test('a failed check, a disk conflict, the settings dialog, a bad branch name and a lost Git answer keep the work intact', async ({
   page,
   corral,
 }) => {

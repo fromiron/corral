@@ -66,7 +66,7 @@ async function mount(corralId: string, record: CorralRecord | null) {
   return { repository, container };
 }
 
-it('[TC-MEET-003-N] an inline handoff run lays out its graph without fetching an unsaved Corral', async () => {
+it('an inline handoff run lays out its graph without fetching an unsaved Corral', async () => {
   const { repository, container } = await mount('inline_team', null);
   expect(repository.get).not.toHaveBeenCalled();
   expect(container.querySelector('[data-testid="layout"]')?.textContent).toContain(

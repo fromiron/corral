@@ -21,7 +21,7 @@ import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { applyBudgetEvent, type BudgetState, emptyBudget } from './budget.ts';
 import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.ts';
 
-// Read model rebuilt only from committed events (INV-14). The same reducer runs in the
+// Read model rebuilt only from committed events. The same reducer runs in the
 // coordinator and in every client, so a replayed log and a live view cannot drift.
 
 export interface ExecutionView {
@@ -39,7 +39,7 @@ export interface ExecutionView {
   criteriaVersionId: string | null;
   status: ExecutionStatus;
   activity: ExecutionActivity | null;
-  /** What a waiting execution waits for, with the ids to link to (OBS-001). */
+  /** What a waiting execution waits for, with the ids to link to. */
   waitingOn: WaitingOn | null;
   modelCallIds: string[];
   error: string | null;
@@ -117,7 +117,7 @@ export interface ToolCallView {
   resultRef?: string | null;
 }
 
-/** One reasoning_effort judgment of one request (CR-003). Observed, never applied. */
+/** One reasoning_effort judgment of one request. Observed, never applied. */
 export interface DecisionView {
   decisionId: string;
   provider: string;
@@ -206,7 +206,7 @@ export interface RunProjection {
   endedAt: string | null;
   /** The model each profile resolved to when the run started (run.started). */
   modelProfiles: Record<string, ModelProfileSnapshot>;
-  /** The earlier version this run's brief starts from (CR-007); null otherwise. */
+  /** The earlier version this run's brief starts from; null otherwise. */
   startedFrom: { runId: string; artifactVersionId: string } | null;
   runId: string;
   corralId: string | null;
@@ -233,14 +233,14 @@ export interface RunProjection {
   runtimeCheckpoints?: Record<string, EventPayload<'runtime.checkpoint_created'>>;
   compactions?: Record<string, EventPayload<'context.compaction_changed'>>;
   workPlans?: Record<string, EventPayload<'work_plan.updated'>>;
-  /** Reviews as recorded by the runtime (C-027), in order. */
+  /** Reviews as recorded by the runtime, in order. */
   reviews: Record<string, ReviewView>;
   /** Bumped by control changes (patches, P6); approvals and patches must name it. */
   controlRevision: number;
   patches: Record<string, PatchView>;
   currentCriteriaVersionId: string | null;
   limits: RunLimits | null;
-  /** An unlimited run (CR-052) or a meeting, where `limits` are not applied. */
+  /** An unlimited run or a meeting, where `limits` are not applied. */
   usageLimits?: 'none';
   budget: BudgetState;
   progress: ProgressState;
@@ -253,7 +253,7 @@ export interface RunProjection {
   /** Set when a backend restart ended the run (RUN-007). */
   interruptedBy: string | null;
   output: { nodeId: string; artifactVersionIds: string[] } | null;
-  /** Judgment settings fixed at run start; null when the runtime had none (CR-003). */
+  /** Judgment settings fixed at run start; null when the runtime had none. */
   decisionSettings: RunDecisionSettings | null;
   /** reasoning_effort judgments by decisionId, in commit order. */
   decisions: Record<string, DecisionView>;
@@ -316,7 +316,7 @@ export function emptyProjection(runId: string): RunProjection {
 
 /**
  * Applies the next committed event. Already-applied sequence numbers are ignored;
- * a skipped number throws, so the caller re-reads instead of guessing (OBS-002).
+ * a skipped number throws, so the caller re-reads instead of guessing.
  */
 export function applyEvent(projection: RunProjection, event: RunEvent): RunProjection {
   if (event.runSeq <= projection.lastSeq) return projection;

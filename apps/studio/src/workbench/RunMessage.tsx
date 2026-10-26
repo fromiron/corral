@@ -61,7 +61,7 @@ export function RunMessage({
     density: ChatDensity;
     open: boolean;
   } | null>(null);
-  // CR-055: a chat turn shows its process while it works and folds it when it ends.
+  // a chat turn shows its process while it works and folds it when it ends.
   const chosen =
     disclosure?.runId === runId && disclosure.density === chatDensity ? disclosure.open : null;
   const expanded = chosen ?? (chatDensity === 'detailed' || (sessionId !== null && live));
@@ -133,7 +133,7 @@ export function RunMessage({
       ? executions.filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
       : [];
   const summary = agentSummary(busy.map((execution) => execution.status));
-  // Failures and cancellations stay in view (CR-015-03). An ordinary success folds them.
+  // Failures and cancellations stay in view. An ordinary success folds them.
   const exposed = executions.filter(
     (execution) => execution.status === 'failed' || execution.status === 'cancelled',
   );
@@ -152,7 +152,7 @@ export function RunMessage({
       effect: call.effectId ? projection.effects[call.effectId]?.outcome : null,
     })),
   ).filter((row) => row.tone !== 'ok' && row.tone !== 'running');
-  // What a model is writing right now, shown in the conversation; never a fact (C-018).
+  // What a model is writing right now, shown in the conversation; never a fact.
   // A turn finishing here hands its last reply (if any) over to the result once the result's
   // text is read, so the answer never flashes "Loading…" in between. A failed read ends it.
   const handoff =
@@ -297,7 +297,7 @@ export function RunMessage({
           ) : null}
         </section>
       ) : null}
-      {/* CR-055: in a conversation, the turn's process is one flat list above its answer. */}
+      {/* in a conversation, the turn's process is one flat list above its answer. */}
       {sessionId && (!working || chatDensity !== 'results') ? (
         <TurnProcess
           events={state.events}
@@ -449,7 +449,7 @@ function ChatResult({
     `corral:chat-result:v1:${projection.runId}:${result.artifactVersionId}`,
     first,
   );
-  // Reading a result in the conversation is the checklist's last step (UX-09).
+  // Reading a result in the conversation is the checklist's last step.
   const inline = Boolean(sessionId && !partial && !result.media);
   useEffect(() => {
     if ((open === true || inline) && (text !== undefined || result.media)) markRunReviewed();
@@ -466,7 +466,7 @@ function ChatResult({
     view: 'results' as const,
     result: id,
   });
-  // CR-055: in a conversation the answer is always visible, without a version header.
+  // in a conversation the answer is always visible, without a version header.
   if (sessionId && !partial && !result.media && !review)
     return (
       <div className="min-w-0 space-y-2 text-sm leading-7 wrap-anywhere" data-testid="chat-result">

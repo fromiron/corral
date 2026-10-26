@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Identifier, SchemaVersion } from './ids.ts';
 
-// Screen-only state. Never part of definitionHash (CRL-CAN-002, INV-12).
+// Screen-only state. Never part of definitionHash.
 
 export const NodeLayout = z.strictObject({
   x: z.number(),

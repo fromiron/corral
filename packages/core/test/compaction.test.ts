@@ -8,7 +8,7 @@ import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/test
 import { expect, it, vi } from 'vitest';
 import { Coordinator } from '../src/index.ts';
 
-it('[TC-COMPACT-001-H] [TC-COMPACT-001-N] compaction is attempt-scoped, idempotent, and completed only with an owned settled compaction call', async () => {
+it('compaction is attempt-scoped, idempotent, and completed only with an owned settled compaction call', async () => {
   const ready = new Gate(),
     done = new Gate();
   const request = vi.fn();

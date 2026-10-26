@@ -67,7 +67,7 @@ async function mount(read: (sessionId: string, request: GitHunksRequest) => Prom
   return { element, onCommand, render, submit };
 }
 
-it('[TC-WBD-022-H] sends only checked hunks with the reviewed target and patch identity to the parent', async () => {
+it('sends only checked hunks with the reviewed target and patch identity to the parent', async () => {
   const read = vi.fn(async (_session: string, input: GitHunksRequest) => hunks(input));
   const view = await mount(read);
   expect(view.submit()?.disabled).toBe(true);
@@ -98,7 +98,7 @@ it('[TC-WBD-022-H] sends only checked hunks with the reviewed target and patch i
   expect(read).toHaveBeenCalledTimes(2);
 });
 
-it('[TC-WBD-022-N] discards late or mismatched snapshots and explains unsupported file actions', async () => {
+it('discards late or mismatched snapshots and explains unsupported file actions', async () => {
   let resolve!: (value: GitHunksView) => void;
   const read = vi.fn(
     async (_session: string, input: GitHunksRequest): Promise<GitHunksView> => ({

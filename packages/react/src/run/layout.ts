@@ -1,8 +1,8 @@
 import type { CorralDefinition, NodeLayout } from '@corral/contracts';
 
-// Where the Run graph draws each node (C-065). A run keeps its definition but not a layout, so
+// Where the Run graph draws each node. A run keeps its definition but not a layout, so
 // the Run page uses the Corral's saved layout when it places every node of the run, and arranges
-// the nodes itself otherwise. Positions never carry meaning (Spec §4.2), so either is honest as
+// the nodes itself otherwise. Positions never carry meaning, so either is honest as
 // long as the page says which one it shows.
 
 export interface RunCanvasLayout {
@@ -66,7 +66,7 @@ function columns(rank: Map<string, number>): string[][] {
 /**
  * Positions for every node: the control flow left to right, each Loop as a box around its
  * members, callable agents in a row underneath. Shared by the Run page and the editor's
- * "Tidy up" (roadmap 18).
+ * "Tidy up".
  */
 export function autoLayout(definition: CorralDefinition): Record<string, NodeLayout> {
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));

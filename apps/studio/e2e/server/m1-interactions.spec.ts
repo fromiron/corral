@@ -4,7 +4,7 @@ import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
 
-test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachments survive settings; the owned plan and question lead to one completed request', async ({
+test('attachments survive settings; the owned plan and question lead to one completed request', async ({
   page,
   corral,
 }) => {
@@ -14,7 +14,7 @@ test('[TC-IMAGE-001-H] [TC-STATUS-001-H] [TC-CHAT-001-H] [TC-CHAT-001-N] attachm
     if (!run) throw new Error('missing fixture run');
     return { runId: run.runId, ...corral.server.coordinator.getSnapshot(run.runId) };
   };
-  // CR-055: the session's conversation lead plans, asks, then replies; no auto choice is sent.
+  // the session's conversation lead plans, asks, then replies; no auto choice is sent.
   corral.fake?.setResponses([
     (context) => {
       expect(JSON.stringify(context.messages)).toContain(source);

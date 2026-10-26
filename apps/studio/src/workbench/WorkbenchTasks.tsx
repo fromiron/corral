@@ -10,7 +10,7 @@ const OUTPUT_LIMIT = 64 * 1024;
 const open = (task: UserTaskView) => task.state === 'running' || task.state === 'uncertain';
 
 /**
- * Package scripts of the session copy (CR-046 P15). Listing reads package.json only; a script runs
+ * Package scripts of the session copy. Listing reads package.json only; a script runs
  * when a person starts it, and holds the copy's writer until its process group is gone.
  */
 export function WorkbenchTasks({ sessionId, projectId }: { sessionId: string; projectId: string }) {

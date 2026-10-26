@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import { Coordinator, InProcessTransport, waitForProjection } from '../src/index.ts';
 
-it('[TC-RACE-04] [TC-RACE-10] a criteria patch keeps current round frozen and requires the next round before accepting old pass', async () => {
+it('a criteria patch keeps current round frozen and requires the next round before accepting old pass', async () => {
   const gate = new Gate();
   const coordinator = new Coordinator({
     clock: new FakeClock(),

@@ -64,7 +64,7 @@ const payload = (modelCallId: string) =>
     },
   });
 
-it('[TC-WIDGET-002-N] CTX-06 binds each request to its activated model snapshot, including inherited prompt patches', () => {
+it('CTX-06 binds each request to its activated model snapshot, including inherited prompt patches', () => {
   const events: RunEvent[] = [
     request('call_initial'),
     event('patch.committed', {
@@ -108,7 +108,7 @@ it('[TC-WIDGET-002-N] CTX-06 binds each request to its activated model snapshot,
   ]);
 });
 
-it('[TC-WIDGET-002-N] CTX-06 includes executions before their first request in the unmeasured count', () => {
+it('CTX-06 includes executions before their first request in the unmeasured count', () => {
   const calls = contextCalls(
     [request('call_initial'), payload('call_initial')],
     {
@@ -126,7 +126,7 @@ it('[TC-WIDGET-002-N] CTX-06 includes executions before their first request in t
   expect(result).toMatchObject({ kind: 'highest', percent: 40, unmeasuredExecutions: 1 });
 });
 
-it('[TC-WIDGET-002-N] CTX-04 does not report a complete window ratio before final payload reconciliation', () => {
+it('CTX-04 does not report a complete window ratio before final payload reconciliation', () => {
   const calls = contextCalls(
     [request('call_initial')],
     {

@@ -7,7 +7,7 @@ import type { RunSessionStore } from './session.ts';
 /**
  * Who the Reins steer: the execution the user chose; otherwise the latest one still working.
  * After the run ends the last execution stays shown read-only, so expired instructions remain
- * visible (Spec §4.4).
+ * visible.
  */
 export function useSteerTarget(
   session: RunSessionStore,

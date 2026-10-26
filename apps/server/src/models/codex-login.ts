@@ -11,7 +11,7 @@ import { privatePermissions } from '../private-files.ts';
 import type { VaultCredentialOwner } from './credential-store.ts';
 import { DEFAULT_PROFILES, type ProfileConfig } from './registry.ts';
 
-// CR-004: reuse the Codex CLI login, read only. Its access token works with pi-ai's
+// reuse the Codex CLI login, read only. Its access token works with pi-ai's
 // `openai-codex` provider (same OAuth client). Corral never refreshes it: a refresh may rotate
 // the refresh token and break Codex's own login. Corral never writes or deletes the file.
 
@@ -61,7 +61,7 @@ function loadCodexLogin(path: string): CodexLogin {
       credential: {
         type: 'oauth',
         access,
-        // Never handed on: refreshing is Codex's job (CR-004 §2).
+        // Never handed on: refreshing is Codex's job.
         refresh: '',
         expires,
         ...(typeof parsed.tokens?.account_id === 'string'
@@ -152,7 +152,7 @@ export class LayeredCredentialStore implements CredentialStore {
     return this.codex(providerId) ? 'codex-cli' : null;
   }
 
-  /** Permissions of the Codex file, when it is the source (CR-004 §5). */
+  /** Permissions of the Codex file, when it is the source. */
   codexPermissionsOk(): boolean {
     const login = readCodexLogin(this.codexPath);
     return login.state !== 'found' || login.permissionsOk;
@@ -179,7 +179,7 @@ export class LayeredCredentialStore implements CredentialStore {
   ): Promise<Credential | undefined> {
     const own = await this.own.read(providerId);
     const codex = own === undefined ? this.codex(providerId) : undefined;
-    // A borrowed Codex login is never refreshed or replaced here (CR-004 §2).
+    // A borrowed Codex login is never refreshed or replaced here.
     if (codex) return codex;
     const next = await this.own.modify(providerId, fn);
     this.ownCache.set(providerId, next !== undefined);
@@ -193,7 +193,7 @@ export class LayeredCredentialStore implements CredentialStore {
   }
 }
 
-/** CR-004 §4: the two default profiles, on the provider the available sign-in works with. */
+/** the two default profiles, on the provider the available sign-in works with. */
 export function defaultProfilesFor({
   ownOpenAI,
   codexLogin,

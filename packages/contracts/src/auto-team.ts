@@ -4,8 +4,8 @@ import { Identifier } from './ids.ts';
 import { ReasoningPolicy } from './reasoning.ts';
 import { TEAM_PATTERNS } from './team-plan.ts';
 
-// CR-024: a session without a chosen team runs in auto mode. A start model picks one of the
-// built-in templates, which have the CR-006 patterns' shapes; tools and limits come from the
+// a session without a chosen team runs in auto mode. A start model picks one of the
+// built-in templates, which have the team patterns' shapes; tools and limits come from the
 // template, never from the model's answer.
 
 export const AUTO_TEMPLATES = TEAM_PATTERNS;
@@ -14,14 +14,14 @@ export type AutoTemplate = z.infer<typeof AutoTemplate>;
 /** Changes whenever a template's roles, tools or wiring change. */
 export const AUTO_TEMPLATE_VERSION = 3;
 
-/** Levels the start model may pick from when it chooses the reasoning (CR-024 §7). */
+/** Levels the start model may pick from when it chooses the reasoning. */
 export const AUTO_ROUTE_LEVELS = ['low', 'medium', 'high'] as const;
 export const AutoRouteLevel = z.enum(AUTO_ROUTE_LEVELS);
 export type AutoRouteLevel = z.infer<typeof AutoRouteLevel>;
 
 /**
- * An auto session's reasoning: a CR-021 policy for every role, or `route`, where the start
- * model picks a level with the template. Roles always receive a CR-021 policy.
+ * An auto session's reasoning: a reasoning policy for every role, or `route`, where the start
+ * model picks a level with the template. Roles always receive a reasoning policy.
  */
 export const AutoReasoning = z.union([
   ReasoningPolicy,

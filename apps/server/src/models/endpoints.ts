@@ -7,7 +7,7 @@ import {
 import type { ModelProviderConfig } from '@corral/core';
 import type { ApiKeyAuth, MutableModels } from '@earendil-works/pi-ai';
 
-// CR-005: OpenAI-compatible endpoints from `.corral/config.json`. A key entered for one is
+// OpenAI-compatible endpoints from `.corral/config.json`. A key entered for one is
 // stored with the origin it was entered for, and used only while the workspace still names
 // that origin: a workspace file cannot redirect a stored key to another host.
 
@@ -82,7 +82,7 @@ function boundKeyAuth(endpoint: Endpoint): ApiKeyAuth {
 
 const registered = new WeakMap<MutableModels, Set<string>>();
 
-/** Endpoints that would take the name of a provider pi-ai has (CR-005, CR-008). */
+/** Endpoints that would take the name of a provider pi-ai has. */
 export function endpointClashes(models: MutableModels, endpoints: ReadonlyMap<string, Endpoint>) {
   const ours = registered.get(models) ?? new Set<string>();
   return [...endpoints.values()].flatMap((endpoint, index) =>

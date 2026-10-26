@@ -80,7 +80,7 @@ async function mount(plan: CopyRemovalPlan, remove = vi.fn(async () => null)) {
   return { dialog, confirm, remove, onRemoved };
 }
 
-it('[TC-WBD-016-H] shows what removing the copy would lose and removes exactly the generation shown', async () => {
+it('shows what removing the copy would lose and removes exactly the generation shown', async () => {
   fixture.documents = {
     a: {
       target: target('session'),
@@ -109,7 +109,7 @@ it('[TC-WBD-016-H] shows what removing the copy would lose and removes exactly t
   expect(view.onRemoved).toHaveBeenCalled();
 });
 
-it('[TC-WBD-016-N] a copy still held by a task or terminal cannot be removed from here, and a late removal says why', async () => {
+it('a copy still held by a task or terminal cannot be removed from here, and a late removal says why', async () => {
   fixture.documents = {};
   fixture.recoveries = [];
   const held = await mount({
@@ -129,7 +129,7 @@ it('[TC-WBD-016-N] a copy still held by a task or terminal cannot be removed fro
   expect(late.dialog()?.querySelector('[role="alert"]')?.textContent).toContain('made again');
 });
 
-it('[TC-WBD-016-F] Git state that could not be read is shown as unknown, not as clean', async () => {
+it('Git state that could not be read is shown as unknown, not as clean', async () => {
   fixture.documents = {};
   fixture.recoveries = [];
   const view = await mount({ ...empty, git: null });

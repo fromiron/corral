@@ -1,6 +1,6 @@
 import type { StopReason, Usage } from '@earendil-works/pi-ai';
 
-// Usage from pi-ai, as Corral records it (C-020, OBS-004). pi-ai already maps each provider's
+// Usage from pi-ai, as Corral records it. pi-ai already maps each provider's
 // fields; its `input` excludes cache reads and writes, so Corral's input is their sum and the
 // cached part is a subset of it, never counted twice. Reasoning is a subset of output.
 // A request that reported nothing is unknown, not zero. Pi's `cost` is computed from list

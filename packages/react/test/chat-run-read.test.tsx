@@ -16,7 +16,7 @@ function ReadState({ runId, live = false }: { runId: string; live?: boolean }) {
   return <p>{state.streamError ?? state.projection?.runId ?? 'Loading'}</p>;
 }
 
-it('[TC-WIDGET-001-N] a failed archived read is shown for that run instead of an endless loading state', async () => {
+it('a failed archived read is shown for that run instead of an endless loading state', async () => {
   const transport = {
     getSnapshot: vi.fn(async () => {
       throw new Error('Saved run temporarily unavailable');
@@ -32,7 +32,7 @@ it('[TC-WIDGET-001-N] a failed archived read is shown for that run instead of an
   await expect(screen.findByText('Saved run temporarily unavailable')).resolves.toBeVisible();
 });
 
-it('[TC-WIDGET-001-N] a live open failure is shown only for its requested target', async () => {
+it('a live open failure is shown only for its requested target', async () => {
   const transport = {
     getRunDefinition: vi.fn(async () => {
       throw new Error('Live run unavailable');
@@ -48,7 +48,7 @@ it('[TC-WIDGET-001-N] a live open failure is shown only for its requested target
   expect(screen.getByText('Error: Live run unavailable')).toBeVisible();
 });
 
-it('[TC-WIDGET-001-N] a late archived error never replaces a newer run', async () => {
+it('a late archived error never replaces a newer run', async () => {
   let rejectOld!: (error: Error) => void;
   const transport = {
     getSnapshot: vi.fn((runId: string) =>

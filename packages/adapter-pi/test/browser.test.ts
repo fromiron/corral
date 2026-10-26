@@ -15,7 +15,7 @@ import {
 } from '../src/browser-policy.ts';
 import { createCorralMcpTransport, createPreviewBrowserTransport } from '../src/mcp-transport.ts';
 
-it('[TC-ABS-004-N] preview attachment cannot turn user MCP config into an arbitrary origin capability', () => {
+it('preview attachment cannot turn user MCP config into an arbitrary origin capability', () => {
   const target = {
     url: 'http://127.0.0.2:51234/lease/index.html',
     origin: 'http://127.0.0.2:51234',
@@ -44,7 +44,7 @@ it('[TC-ABS-004-N] preview attachment cannot turn user MCP config into an arbitr
   ).toBe(false);
 });
 
-it('[TC-ABS-004-N] browser origins require the exact owned HTTP origin and an explicit WebSocket origin', () => {
+it('browser origins require the exact owned HTTP origin and an explicit WebSocket origin', () => {
   const policy = {
     origin: 'http://127.0.0.1:51234',
     webSocketOrigins: ['ws://127.0.0.1:51234'],
@@ -83,7 +83,7 @@ it('[TC-ABS-004-N] browser origins require the exact owned HTTP origin and an ex
     expect(() => assertOwnedBrowserOrigin(`${policy.origin}${path}`, scoped)).toThrow();
 });
 
-it('[TC-BROWSER-001-N] the local fixture policy refuses external origins, arbitrary code and file output', () => {
+it('the local fixture policy refuses external origins, arbitrary code and file output', () => {
   const config = {
     origin: 'http://127.0.0.1:51234',
     executablePath: '/fixture/chromium',
@@ -139,7 +139,7 @@ it('[TC-BROWSER-001-N] the local fixture policy refuses external origins, arbitr
 });
 
 it.skipIf(!process.env.CORRAL_BROWSER_EXECUTABLE)(
-  '[TC-ABS-004-H] [TC-ABS-004-N] the browser attaches to the same owned preview with HTTP/WS credentials and rejects expired leases',
+  'the browser attaches to the same owned preview with HTTP/WS credentials and rejects expired leases',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-preview-browser-'));
     const sockets = new Set<Duplex>();
@@ -255,7 +255,7 @@ it.skipIf(!process.env.CORRAL_BROWSER_EXECUTABLE)(
 );
 
 it.skipIf(!process.env.CORRAL_BROWSER_EXECUTABLE)(
-  '[TC-BROWSER-001-H] [TC-BROWSER-001-N] owned Playwright MCP verifies a local interaction, fails a false assertion and reaps the browser/server on cancellation',
+  'owned Playwright MCP verifies a local interaction, fails a false assertion and reaps the browser/server on cancellation',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-browser-fixture-'));
     const portServer = createServer();

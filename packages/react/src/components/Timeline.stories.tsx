@@ -62,7 +62,7 @@ export const TenThousandEvents: Story = {
   play: async ({ canvasElement, userEvent }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByTestId('timeline-count')).toHaveTextContent('10,000 events of 10,000');
-    // [TC-UX-002-N] Only the rows in view are in the DOM.
+    // Only the rows in view are in the DOM.
     const rows = () => canvas.getAllByTestId('timeline-row');
     expect(rows().length).toBeGreaterThan(5);
     expect(rows().length).toBeLessThan(60);

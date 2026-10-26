@@ -59,7 +59,7 @@ function setup() {
 }
 
 describe('P6 Reins boundaries', () => {
-  it('[TC-RNS-002-H] receipt reads skip history before their directive without losing delivery evidence', async () => {
+  it('receipt reads skip history before their directive without losing delivery evidence', async () => {
     const s = setup();
     const p = await waitForProjection(s.transport, s.runId, (p) => p.executionOrder.length === 1);
     const host = s.hosts[0];
@@ -87,7 +87,7 @@ describe('P6 Reins boundaries', () => {
         .map((e) => e.eventId),
     );
   });
-  it('[TC-RNS-002-H] [TC-SEC-004-H] [TC-SEC-004-N] prepared is attached, dispatch is delivered, terminal fences reject new effects', async () => {
+  it('prepared is attached, dispatch is delivered, terminal fences reject new effects', async () => {
     const s = setup();
     const p = await waitForProjection(s.transport, s.runId, (p) => p.executionOrder.length === 1);
     const executionId = p.executionOrder[0];
@@ -117,7 +117,7 @@ describe('P6 Reins boundaries', () => {
     await waitForProjection(s.transport, s.runId, (p) => p.status === 'cancelled');
     expect(s.coordinator.getReceipt(s.runId, 'cancel')?.status).toBe('applied');
   });
-  it('[TC-RNS-003-H] pause drains a request and queues the next boundary until resume', async () => {
+  it('pause drains a request and queues the next boundary until resume', async () => {
     const s = setup();
     await waitForProjection(s.transport, s.runId, (p) => p.executionOrder.length === 1);
     const host = s.hosts[0];
@@ -137,7 +137,7 @@ describe('P6 Reins boundaries', () => {
     expect(s.send('resume', { scope: 'run' }).status).toBe('applied');
     expect((await next).modelCallId).not.toBe(first.modelCallId);
   });
-  it('[TC-RNS-006-H] future patch commits revision, keeps the base immutable, and rejects stale controls', async () => {
+  it('future patch commits revision, keeps the base immutable, and rejects stale controls', async () => {
     const s = setup();
     await waitForProjection(s.transport, s.runId, (p) => p.executionOrder.length === 1);
     const payload = { kind: 'node_future', nodeId: 'writer', prompt: 'Use primary evidence' };
@@ -150,7 +150,7 @@ describe('P6 Reins boundaries', () => {
   });
 });
 
-it('[TC-RNS-006-N] [TC-RACE-15] node patches freeze active executions and apply only to a future activation of that node', async () => {
+it('node patches freeze active executions and apply only to a future activation of that node', async () => {
   const definition = linearCorral(['first', 'second']);
   const firstNode = definition.nodes.find((n) => n.id === 'first');
   const secondNode = definition.nodes.find((n) => n.id === 'second');
@@ -236,7 +236,7 @@ it('[TC-RNS-006-N] [TC-RACE-15] node patches freeze active executions and apply 
   expect(projection.executions[secondInput.executionId]?.configRevision).toBe(1);
 });
 
-it('[TC-RNS-009-H] [TC-RNS-009-N] patch allows only a future prompt or profile and cannot change graph or permissions', async () => {
+it('patch allows only a future prompt or profile and cannot change graph or permissions', async () => {
   const s = setup();
   await waitForProjection(s.transport, s.runId, (p) => p.executionOrder.length === 1);
   for (const forbidden of [
@@ -265,7 +265,7 @@ it('[TC-RNS-009-H] [TC-RNS-009-N] patch allows only a future prompt or profile a
   expect(s.coordinator.getSnapshot(s.runId).projection.controlRevision).toBe(1);
 });
 
-it('[TC-RACE-06] a parent waiting for children holds no request slot and does not delay pause at child boundaries', async () => {
+it('a parent waiting for children holds no request slot and does not delay pause at child boundaries', async () => {
   const reply = new Gate();
   const coordinator = new Coordinator({
     clock: new FakeClock(),

@@ -1,4 +1,4 @@
-/** CR-042 command effects survive host restart without being replayed. */
+/** command effects survive host restart without being replayed. */
 export const COMMAND_MIGRATION = {
   name: '0023_command_operations',
   sql: `CREATE TABLE command_operations (

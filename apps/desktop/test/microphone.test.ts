@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { studioMicrophoneRequest } from '../src/microphone-policy.ts';
 
-it('[TC-ABS-015-N] microphone eligibility excludes cameras, previews, frames and stale hosts', () => {
+it('microphone eligibility excludes cameras, previews, frames and stale hosts', () => {
   const origin = 'http://127.0.0.1:12345';
   const allowed = (url: string | undefined, main = true, media: string[] = ['audio']) =>
     studioMicrophoneRequest('media', url, origin, main, media);

@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { requestBox } from './workbench.ts';
 
-test('[TC-DKIT-001-H] the kit themes preserve project creation and explicit theme choice', async ({
-  page,
-}) => {
+test('the kit themes preserve project creation and explicit theme choice', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.addInitScript(() => {
     if (!localStorage.getItem('corral:workbench:v1'))
@@ -28,9 +26,7 @@ test('[TC-DKIT-001-H] the kit themes preserve project creation and explicit them
   );
 });
 
-test('[TC-DKIT-001-N] narrow forms retain names, keyboard focus and reduced motion', async ({
-  page,
-}) => {
+test('narrow forms retain names, keyboard focus and reduced motion', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   await page.goto('/projects');
@@ -60,7 +56,7 @@ test('[TC-DKIT-001-N] narrow forms retain names, keyboard focus and reduced moti
   );
 });
 
-test('[TC-DKIT-001-H] described select choices stay separated and readable without losing a draft', async ({
+test('described select choices stay separated and readable without losing a draft', async ({
   page,
 }, testInfo) => {
   await page.goto('/');

@@ -1,4 +1,4 @@
-// C-052 Pi spike (no network): tool hook order, blocked tools, per-request context injection,
+// Pi spike (no network): tool hook order, blocked tools, per-request context injection,
 // steering timing, per-call credentials, abort. Uses pi-ai's faux provider.
 import { Agent } from '@earendil-works/pi-agent-core';
 import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, Type } from '@earendil-works/pi-ai';

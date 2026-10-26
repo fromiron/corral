@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "C-052 technical spikes. Not part of the product build.",
+  "description": "technical spikes. Not part of the product build.",
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.2.0",
     "@earendil-works/pi-ai": "1.2.0",

@@ -36,7 +36,7 @@ const REVIEWED = new Set([
   'BlueOak-1.0.0',
   'CC0-1.0',
   '0BSD',
-  // type-fest via onnxruntime-node → global-agent → serialize-error (C-072). Either license is
+  // type-fest via onnxruntime-node → global-agent → serialize-error. Either license is
   // permissive; the MIT terms apply.
   '(MIT OR CC0-1.0)',
   // electron-builder's argparse / filename utilities, reviewed for the Linux build tool graph.
@@ -73,8 +73,6 @@ export function assertReviewedVersion(
     throw new Error(`Unreviewed prerelease: ${name}@${version}`);
 }
 export const GATES = [
-  'spec',
-  'traceability',
   'dependencies',
   'contracts',
   'lint',

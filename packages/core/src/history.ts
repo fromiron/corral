@@ -28,7 +28,7 @@ import { definitionHash } from './definition-hash.ts';
 import { applyEvent, emptyProjection } from './projection.ts';
 import type { RunStore } from './store/run-store.ts';
 
-/** The run record holding a session follow-up's copied turns (CR-054). */
+/** The run record holding a session follow-up's copied turns. */
 export const SESSION_CONVERSATION = 'session_conversation';
 
 const Snapshot = z.strictObject({

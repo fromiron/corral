@@ -141,7 +141,7 @@ async function fixture(mode = 'normal', onSpawn?: () => void) {
 
 const config = { type: 'pwa-node', request: 'attach', address: '127.0.0.1', port: 1234 };
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-023-H] initializes reverse child connections and installs breakpoints before configurationDone',
+  'initializes reverse child connections and installs breakpoints before configurationDone',
   async () => {
     const { connection, events, pid } = await fixture();
     await connection.attach(config);
@@ -167,7 +167,7 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-023-N] rejects oversized messages and unsupported reverse execution with confirmed cleanup',
+  'rejects oversized messages and unsupported reverse execution with confirmed cleanup',
   async () => {
     const large = await fixture();
     await large.connection.attach(config);
@@ -188,7 +188,7 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-023-F] cancels pending queries without replay and closes a pending query before releasing ownership',
+  'cancels pending queries without replay and closes a pending query before releasing ownership',
   async () => {
     const { connection, onWaiting, pid, failures } = await fixture();
     await connection.attach(config);

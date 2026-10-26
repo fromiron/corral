@@ -15,7 +15,7 @@ import { bundledManifest, installState } from './install.ts';
 import { type CompactTokenizer, loadCompactTokenizer } from './tokenizer.ts';
 
 // `local-model`: the mixdog effort judge (EmbeddingGemma 2 derived, ONNX, 4-bit) as a Corral
-// DecisionProvider (CR-003, CR-021). Observation and opt-in request preparation share one worker.
+// DecisionProvider. Observation and opt-in request preparation share one worker.
 
 const LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh'];
 const FORMATS: readonly InputFormat[] = ['pr', 'rp', 'rpq', 'rpc', 'pack'];
@@ -157,7 +157,7 @@ export class OnnxEffortProvider implements DecisionProvider {
   /**
    * 1.5 s per judgment once the model is loaded. Until then a judgment also waits for the load
    * (a few seconds after start), so it is not counted as a timeout: judgments are observed only
-   * and no request waits for them (CR-003).
+   * and no request waits for them.
    */
   get timeoutMs(): number {
     return this.ready ? 1_500 : 20_000;

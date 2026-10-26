@@ -9,7 +9,7 @@ import { memoryChannelPair } from '../src/channel.ts';
 import { modelBridgeChannel, workerModelBridge } from '../src/model-bridge.ts';
 import { LEGACY_PROTOCOL_VERSION } from '../src/protocol.ts';
 
-it('[TC-SBX-002-H] [TC-SBX-002-N] the host keeps credentials and permit limits, refuses changed payloads and replayed calls', async () => {
+it('the host keeps credentials and permit limits, refuses changed payloads and replayed calls', async () => {
   const { host, worker } = memoryChannelPair();
   const faux = createFauxCore({ provider: 'faux', models: [{ id: 'fixture', name: 'Fixture' }] });
   const model = faux.models[0];

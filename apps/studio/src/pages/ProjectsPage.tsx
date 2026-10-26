@@ -21,7 +21,7 @@ import { useServices } from '../services.tsx';
 import { createDemoExamples } from '../templates.ts';
 import { GitCloneFolder } from '../workbench/GitCloneFolder.tsx';
 
-/** /projects (CR-010): every project, a new one, and archived ones on request. */
+/** /projects: every project, a new one, and archived ones on request. */
 export function ProjectsPage() {
   const t = useTranslations('Projects');
   const tw = useTranslations('Workspace');
@@ -45,7 +45,7 @@ export function ProjectsPage() {
     const result = await repository.createProject({ name, description });
     if (!result.ok) return setError(t('failed', { message: result.message }));
     projectsChanged();
-    // 02-UX-Spec §1: start with a folder or from material alone. A folder that cannot be
+    // start with a folder or from material alone. A folder that cannot be
     // linked leaves the project made; the project page says why and offers to link again.
     if (workspaces && folder.trim())
       await workspaces.bind(result.project.projectId, folder.trim()).catch(() => undefined);

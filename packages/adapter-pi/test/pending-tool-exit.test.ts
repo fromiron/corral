@@ -89,9 +89,9 @@ const observe = {
 
 afterEach(() => vi.useRealTimers());
 
-describe('pending host tool does not retain an exited Pi worker (C-017)', () => {
+describe('pending host tool does not retain an exited Pi worker', () => {
   it.each(['ask', 'await_tasks'])(
-    '[TC-ABS-011-N] an unexpected exit settles before a pending %s call completes',
+    'an unexpected exit settles before a pending %s call completes',
     async (name) => {
       const f = await fixture();
       try {
@@ -119,7 +119,7 @@ describe('pending host tool does not retain an exited Pi worker (C-017)', () => 
   );
 
   it.each(['resolve', 'reject'] as const)(
-    '[TC-ABS-011-N] a late %s cannot send a result during exit queue draining',
+    'a late %s cannot send a result during exit queue draining',
     async (completion) => {
       const observed = deferred<void>();
       const f = await fixture({ observe: () => observed.promise });
@@ -145,7 +145,7 @@ describe('pending host tool does not retain an exited Pi worker (C-017)', () => 
     },
   );
 
-  it('[TC-ABS-011-N] records a worker cancellation while its host tool is pending', async () => {
+  it('records a worker cancellation while its host tool is pending', async () => {
     const f = await fixture();
     try {
       f.send({ type: 'execute_tool', requestId: 'req_1', toolCallId: 'tool_pending' });
@@ -170,7 +170,7 @@ describe('pending host tool does not retain an exited Pi worker (C-017)', () => 
     }
   });
 
-  it('[TC-ABS-011-N] confirmed forced exit is not mislabeled unconfirmed by a pending tool', async () => {
+  it('confirmed forced exit is not mislabeled unconfirmed by a pending tool', async () => {
     vi.useFakeTimers();
     const f = await fixture();
     try {
@@ -193,7 +193,7 @@ describe('pending host tool does not retain an exited Pi worker (C-017)', () => 
     }
   });
 
-  it('[TC-ABS-011-N] suppresses a late result after settlement is reported but before exit', async () => {
+  it('suppresses a late result after settlement is reported but before exit', async () => {
     const f = await fixture();
     try {
       f.send({ type: 'execute_tool', requestId: 'req_1', toolCallId: 'tool_pending' });
@@ -218,7 +218,7 @@ describe('pending host tool does not retain an exited Pi worker (C-017)', () => 
     }
   });
 
-  it('[TC-ABS-011-N] returns a sanitized failure for a rejected live tool promise', async () => {
+  it('returns a sanitized failure for a rejected live tool promise', async () => {
     const f = await fixture();
     try {
       f.send({ type: 'execute_tool', requestId: 'req_1', toolCallId: 'tool_pending' });
@@ -238,7 +238,7 @@ describe('pending host tool does not retain an exited Pi worker (C-017)', () => 
     }
   });
 
-  it('[TC-ABS-011-H] preserves observation and authorization order and returns one live result', async () => {
+  it('preserves observation and authorization order and returns one live result', async () => {
     const observed = deferred<void>();
     const authorized = deferred<void>();
     const calls: string[] = [];

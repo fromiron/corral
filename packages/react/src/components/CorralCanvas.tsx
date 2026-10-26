@@ -83,7 +83,7 @@ export function flowNodes(
   });
 }
 
-/** Control edges, and call links drawn apart from them (Spec §5.2). */
+/** Control edges, and call links drawn apart from them. */
 export function flowEdges(
   definition: Pick<EditorDraft['definition'], 'controlEdges' | 'capabilityLinks'>,
   linkLabel: (kind: CapabilityLink['kind']) => string,
@@ -159,7 +159,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
 
   /**
    * One deletion (Delete or Backspace) as one undo step: React Flow reports a node's connected
-   * edges separately, and one Undo must bring the node back with its links (roadmap 20).
+   * edges separately, and one Undo must bring the node back with its links.
    */
   const onDelete = useCallback(
     ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
@@ -210,7 +210,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
     [editor],
   );
 
-  // A refused drop explains itself instead of silently doing nothing (Spec §4.2).
+  // A refused drop explains itself instead of silently doing nothing.
   const onConnectEnd = useCallback(
     (_event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
       if (state.isValid !== false || !state.fromNode || !state.toNode || !state.fromHandle) return;

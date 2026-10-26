@@ -1,6 +1,6 @@
 import type { CompiledPlan, PlanStep, PlanTarget } from './compiler/index.ts';
 
-// GraphRunner port (Technical-Design §4.3, ADR-004). A runner only walks the compiled plan and
+// GraphRunner port. A runner only walks the compiled plan and
 // asks the Coordinator to act: it never owns Task state, budgets or artifacts. Each activation
 // is identified by (nodeId, iteration), which the Coordinator turns into an activation key so a
 // replayed or retried step cannot start a second Task.
@@ -24,7 +24,7 @@ export interface RunnerCallbacks {
   finalize(outputNodeId: string): Promise<void>;
   loopEntered(loopId: string, no: number): Promise<void>;
   /**
-   * A Loop asked for another round past its cap (Spec §5.3): `continue` runs one more round,
+   * A Loop asked for another round past its cap: `continue` runs one more round,
    * `stop` ends the walk with `cap_reached`. The Coordinator asks the person.
    */
   loopCapReached(loopId: string, rounds: number): Promise<'continue' | 'stop'>;
@@ -35,13 +35,13 @@ export type RunnerResult =
   | { kind: 'finished'; outputNodeId: string }
   | { kind: 'failed'; nodeId: string; reason: string }
   | { kind: 'rejected'; nodeId: string }
-  /** A Loop asked for another round past its cap; the Coordinator asks the user (Spec §5.3). */
+  /** A Loop asked for another round past its cap; the Coordinator asks the user. */
   | { kind: 'cap_reached'; loopId: string; iterations: number }
   /** A Decision took a branch that has no edge, such as review `inconclusive`. */
   | { kind: 'needs_user'; nodeId: string; branch: string }
   | { kind: 'stopped' };
 
-/** The part of AbortSignal a runner reads; core stays free of DOM and Node globals (ADR-014). */
+/** The part of AbortSignal a runner reads; core stays free of DOM and Node globals. */
 export interface StopSignal {
   readonly aborted: boolean;
 }
@@ -59,7 +59,7 @@ const TERMINAL_BRANCHES: Record<string, (nodeId: string) => RunnerResult> = {
 export type StepResult = { next: PlanTarget } | { end: RunnerResult };
 
 /**
- * The meaning of one plan step (Spec §5.3). Every runner executes steps through this, so they
+ * The meaning of one plan step. Every runner executes steps through this, so they
  * may differ in how they walk the graph but never in what a step does. `rounds` holds the
  * current round of each Loop and is updated in place.
  */

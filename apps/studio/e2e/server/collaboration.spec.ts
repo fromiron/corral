@@ -3,7 +3,7 @@ import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
 
-test('[TC-RUN-004-H] [TC-COL-002-H] one run shows two delegated helpers and a question answered by a new responder', async ({
+test('one run shows two delegated helpers and a question answered by a new responder', async ({
   page,
   corral,
 }) => {
@@ -23,7 +23,7 @@ test('[TC-RUN-004-H] [TC-COL-002-H] one run shows two delegated helpers and a qu
 
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  // CR-009: a finished run opens on its results; these checks are about the run view.
+  // a finished run opens on its results; these checks are about the run view.
   await page.getByRole('tab', { name: 'Execution', exact: true }).click();
 
   // Two helper executions nested under Research in the call tree.

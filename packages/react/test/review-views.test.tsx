@@ -43,8 +43,8 @@ const wrap = (ui: React.ReactNode) =>
     </IntlProvider>,
   );
 
-describe('line diff (C-030)', () => {
-  it('[02-UX-Spec §4] aligns a large file with few changes instead of replacing it whole', () => {
+describe('line diff', () => {
+  it('aligns a large file with few changes instead of replacing it whole', () => {
     const before = Array.from({ length: 4000 }, (_, i) => `line ${i}`);
     const after = before.map((line, i) => (i % 10 === 0 ? `changed ${i}` : line));
     const lines = diffLines(before.join('\n'), after.join('\n'));
@@ -66,8 +66,8 @@ describe('line diff (C-030)', () => {
   });
 });
 
-describe('approvals and reviews in Studio (C-029, C-030)', () => {
-  it('[TC-ART-004-H] approves the exact version shown, and the run moves on', async () => {
+describe('approvals and reviews in Studio', () => {
+  it('approves the exact version shown, and the run moves on', async () => {
     const { session, projection } = await teamAwaitingApproval();
     const approval = Object.values(projection.approvals).find((a) => a.status === 'pending');
     if (!approval) throw new Error('approval fixture');
@@ -98,7 +98,7 @@ describe('approvals and reviews in Studio (C-029, C-030)', () => {
     await until(session, (p) => Object.values(p.approvals).some((a) => a.kind === 'final_output'));
   });
 
-  it('[TC-OBS-001-H] follows draft@1 → review@1 → draft@2, with the diff and the review verdict', async () => {
+  it('follows draft@1 → review@1 → draft@2, with the diff and the review verdict', async () => {
     const { session, projection } = await teamAwaitingApproval();
     const drafts = Object.values(projection.artifacts).filter((a) => a.name === 'draft');
     const [draft1, draft2] = drafts.sort((a, b) => a.version - b.version);
@@ -134,8 +134,8 @@ describe('approvals and reviews in Studio (C-029, C-030)', () => {
   });
 });
 
-describe('Reins artifact input paths (C-036)', () => {
-  it('[TC-RNS-010-N] does not link a later accepted instruction to an older request result', async () => {
+describe('Reins artifact input paths', () => {
+  it('does not link a later accepted instruction to an older request result', async () => {
     const { session, projection } = await teamAwaitingApproval();
     const artifact = Object.values(projection.artifacts).find((a) => a.modelCallId);
     if (!artifact) throw new Error('artifact fixture');
@@ -172,7 +172,7 @@ describe('Reins artifact input paths (C-036)', () => {
     ).toHaveTextContent('None recorded');
   });
 
-  it('[TC-RNS-010-H] separates request directives from directives carried through an input artifact', async () => {
+  it('separates request directives from directives carried through an input artifact', async () => {
     const { session, projection } = await teamAwaitingApproval();
     const drafts = Object.values(projection.artifacts)
       .filter((a) => a.name === 'draft')

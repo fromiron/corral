@@ -145,7 +145,7 @@ function setup() {
   };
 }
 
-it('[TC-WBD-004-H] advances replay only after xterm applies output and preserves the model across detach', async () => {
+it('advances replay only after xterm applies output and preserves the model across detach', async () => {
   const f = setup();
   await f.store.refresh('session');
   const detach = await f.store.mount('terminal', f.container, 'Terminal');
@@ -168,7 +168,7 @@ it('[TC-WBD-004-H] advances replay only after xterm applies output and preserves
   f.store.dispose();
 });
 
-it('[TC-WBD-004-N] [TC-WBD-026-N] serializes input and coalesced resize, then drops queued input after a lost acknowledgement', async () => {
+it('serializes input and coalesced resize, then drops queued input after a lost acknowledgement', async () => {
   const f = setup();
   const gate = new Gate();
   f.client.input.mockImplementationOnce(async () => {
@@ -203,7 +203,7 @@ it('[TC-WBD-004-N] [TC-WBD-026-N] serializes input and coalesced resize, then dr
   f.store.dispose();
 });
 
-it('[TC-WBD-004-F] refuses fresh replay after overflow and rejects oversized paste without sending a partial command', async () => {
+it('refuses fresh replay after overflow and rejects oversized paste without sending a partial command', async () => {
   const f = setup();
   f.setCurrent({ ...terminal(), replayAvailable: false, lastSequence: 40 });
   await f.store.refresh('session');
@@ -215,7 +215,7 @@ it('[TC-WBD-004-F] refuses fresh replay after overflow and rejects oversized pas
   f.store.dispose();
 });
 
-it('[TC-WBD-004-H] preserves Unicode across bounded frames and uses one sequence for input and the latest resize', async () => {
+it('preserves Unicode across bounded frames and uses one sequence for input and the latest resize', async () => {
   const f = setup();
   const gate = new Gate();
   f.client.input.mockImplementationOnce(async (_session, _id, frame) => {
@@ -251,7 +251,7 @@ it('[TC-WBD-004-H] preserves Unicode across bounded frames and uses one sequence
   f.store.dispose();
 });
 
-it('[TC-WBD-004-N] an older detached pane cannot remove the host from its newer mount', async () => {
+it('an older detached pane cannot remove the host from its newer mount', async () => {
   const f = setup();
   await f.store.refresh('session');
   const first = await f.store.mount('terminal', f.container, 'Terminal');
@@ -263,7 +263,7 @@ it('[TC-WBD-004-N] an older detached pane cannot remove the host from its newer 
   f.store.dispose();
 });
 
-it('[TC-WBD-004-N] closes an ended stream only after its final output has been applied', async () => {
+it('closes an ended stream only after its final output has been applied', async () => {
   const f = setup();
   await f.store.refresh('session');
   await f.store.mount('terminal', f.container, 'Terminal');
@@ -283,7 +283,7 @@ it('[TC-WBD-004-N] closes an ended stream only after its final output has been a
   f.store.dispose();
 });
 
-it('[TC-WBD-004-N] retries creation only after an explicit missing receipt check and keeps its original identity', async () => {
+it('retries creation only after an explicit missing receipt check and keeps its original identity', async () => {
   const f = setup();
   f.client.create.mockRejectedValueOnce(new Error('ack lost'));
   f.client.read.mockRejectedValueOnce(new ApiError(404, 'TARGET_NOT_FOUND', 'missing'));
@@ -300,7 +300,7 @@ it('[TC-WBD-004-N] retries creation only after an explicit missing receipt check
   f.store.dispose();
 });
 
-it('[TC-WBD-007-H] captures only the explicit selection after its pending output is applied', async () => {
+it('captures only the explicit selection after its pending output is applied', async () => {
   const f = setup();
   await f.store.refresh('session');
   await f.store.mount('terminal', f.container, 'Terminal');
@@ -344,7 +344,7 @@ it('[TC-WBD-007-H] captures only the explicit selection after its pending output
   f.store.dispose();
 });
 
-it('[TC-WBD-007-N] does not reinterpret an old range after output or another target changes', async () => {
+it('does not reinterpret an old range after output or another target changes', async () => {
   const f = setup();
   await f.store.refresh('session');
   await f.store.mount('terminal', f.container, 'Terminal');
@@ -360,7 +360,7 @@ it('[TC-WBD-007-N] does not reinterpret an old range after output or another tar
   f.store.dispose();
 });
 
-it('[TC-WBD-007-N] keeps only selection availability in state and refuses an oversized selection without truncating', async () => {
+it('keeps only selection availability in state and refuses an oversized selection without truncating', async () => {
   const f = setup();
   await f.store.refresh('session');
   await f.store.mount('terminal', f.container, 'Terminal');

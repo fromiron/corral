@@ -12,7 +12,7 @@ import { workerModelBridge } from '../../../packages/adapter-pi/src/model-bridge
 import { endpointsFrom, registerEndpoints } from '../src/models/endpoints.ts';
 import { ModelRegistry } from '../src/models/registry.ts';
 
-it('[TC-LLM-004-N] an execution broker uses its reported input anchor and does not share it with another execution', async () => {
+it('an execution broker uses its reported input anchor and does not share it with another execution', async () => {
   const credentials = new InMemoryCredentialStore();
   const models = createModels({
     credentials,
@@ -96,7 +96,7 @@ it('[TC-LLM-004-N] an execution broker uses its reported input anchor and does n
   }
 });
 
-it('[TC-LLM-001-F] a frozen endpoint snapshot cannot silently resolve a changed destination', async () => {
+it('a frozen endpoint snapshot cannot silently resolve a changed destination', async () => {
   const credentials = new InMemoryCredentialStore();
   const models = createModels({
     credentials,
@@ -135,7 +135,7 @@ it('[TC-LLM-001-F] a frozen endpoint snapshot cannot silently resolve a changed 
   expect(await registry.credentials(fresh.snapshot)).toBeNull();
 });
 
-it('[TC-LLM-002-H] auxiliary retry attempts retain one logical request and distinct physical identities', async () => {
+it('auxiliary retry attempts retain one logical request and distinct physical identities', async () => {
   const credentials = new InMemoryCredentialStore();
   const models = createModels({
     credentials,
@@ -213,7 +213,7 @@ it('[TC-LLM-002-H] auxiliary retry attempts retain one logical request and disti
   }
 });
 
-it('[TC-LLM-001-H] host worker transport retains endpoint-bound credential metadata', async () => {
+it('host worker transport retains endpoint-bound credential metadata', async () => {
   const credentials = new InMemoryCredentialStore();
   const { ENDPOINT_ORIGIN } = await import('../src/models/endpoints.ts');
   await credentials.modify('fixture', async () => ({

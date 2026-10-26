@@ -3,7 +3,7 @@ import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/test
 import { expect, it, vi } from 'vitest';
 import { actionCopy, actionRequired, effectAttention } from './selectors.ts';
 
-it('[TC-WIDGET-001-N] confirmed user cancellation is not an unresolved external effect', async () => {
+it('confirmed user cancellation is not an unresolved external effect', async () => {
   const entered = new Gate();
   const stopped = new Gate();
   const coordinator = new Coordinator({
@@ -57,7 +57,7 @@ it('[TC-WIDGET-001-N] confirmed user cancellation is not an unresolved external 
   ).toMatchObject({ visible: false, count: 0, hasFailure: false });
 });
 
-it('[TC-WIDGET-001-N] cancellation does not hide unknown billing, real failure or unconfirmed termination', () => {
+it('cancellation does not hide unknown billing, real failure or unconfirmed termination', () => {
   const projection = emptyProjection('run_cancelled');
   projection.status = 'cancelled';
   projection.budget.imageUnknownOutstandingMicros = 125000;
@@ -82,7 +82,7 @@ it('[TC-WIDGET-001-N] cancellation does not hide unknown billing, real failure o
   expect(effectAttention(projection).failedEffects).toBe(1);
 });
 
-it('[TC-WIDGET-001-N] the attention banner names why an outcome is unclear', () => {
+it('the attention banner names why an outcome is unclear', () => {
   const projection = emptyProjection('run_unclear');
   projection.status = 'succeeded';
   const copy = () =>

@@ -54,7 +54,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
   }
 
   describe(`GraphRunner contract: ${name}`, () => {
-    it('[TC-CAN-001-H] runs a linear plan in the drawn order and finalizes the output', async () => {
+    it('runs a linear plan in the drawn order and finalizes the output', async () => {
       const { log, callbacks } = recorder();
       const result = await makeRunner().run(
         planOf(linearCorral(['research', 'writer'])),
@@ -88,7 +88,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
     });
 
-    it('[TC-RUN-003-N] stops at the Loop cap instead of starting another round', async () => {
+    it('stops at the Loop cap instead of starting another round', async () => {
       const { log, callbacks } = recorder({ review_decision: ['revise', 'revise', 'revise'] });
       const result = await makeRunner().run(planOf(researchTeam), callbacks);
       expect(log.filter((line) => line.startsWith('activate write'))).toEqual([
@@ -102,7 +102,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       expect(result).toEqual({ kind: 'cap_reached', loopId: 'review_loop', iterations: 2 });
     });
 
-    it('[TC-RUN-003-H] runs one more round past the cap only when told to continue', async () => {
+    it('runs one more round past the cap only when told to continue', async () => {
       const { log, callbacks } = recorder(
         { review_decision: ['revise', 'revise', 'pass'], approval: ['approve'] },
         undefined,

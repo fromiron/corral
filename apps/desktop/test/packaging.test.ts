@@ -19,13 +19,13 @@ import {
   runtimeTarget,
 } from '../scripts/packaging.ts';
 
-it('[TC-WBD-004-H] keeps the PTY native dependency on the server Node side', () => {
+it('keeps the PTY native dependency on the server Node side', () => {
   const require = createRequire(new URL('../../server/package.json', import.meta.url));
   expect(require('node-pty/package.json').version).toBe('1.1.0');
   expect(typeof require('node-pty').spawn).toBe('function');
 });
 
-it('[TC-ABS-007-N] rejects a junction into staging even when its initial target is inside staging', () => {
+it('rejects a junction into staging even when its initial target is inside staging', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-runtime-links-'));
   try {
     mkdirSync(join(root, 'packages/core'), { recursive: true });
@@ -41,7 +41,7 @@ it('[TC-ABS-007-N] rejects a junction into staging even when its initial target 
   }
 });
 
-it('[TC-ABS-007-H] physical dependencies still resolve after relocation with the build directory unavailable', () => {
+it('physical dependencies still resolve after relocation with the build directory unavailable', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-runtime-move-'));
   try {
     const source = join(root, 'staging');
@@ -66,7 +66,7 @@ it('[TC-ABS-007-H] physical dependencies still resolve after relocation with the
   }
 });
 
-it('[TC-ABS-007-H] launches Windows native and JS pnpm without a command shell', () => {
+it('launches Windows native and JS pnpm without a command shell', () => {
   expect(packageManagerCommand('C:/pnpm path/pnpm.exe', 'node.exe')).toEqual({
     executable: 'C:/pnpm path/pnpm.exe',
     args: [],
@@ -78,7 +78,7 @@ it('[TC-ABS-007-H] launches Windows native and JS pnpm without a command shell',
   expect(() => packageManagerCommand('pnpm.cmd', 'node.exe')).toThrow('shell wrapper');
 });
 
-it('[TC-ABS-007-H] bundles the native runtime for the build host only', () => {
+it('bundles the native runtime for the build host only', () => {
   expect(runtimeTarget('win32', 'x64')).toEqual({
     platform: 'win32',
     arch: 'x64',
@@ -102,7 +102,7 @@ it('[TC-ABS-007-H] bundles the native runtime for the build host only', () => {
   ).not.toThrow();
 });
 
-it('[TC-ABS-007-H] discovers the license in Windows and Unix Node distributions', () => {
+it('discovers the license in Windows and Unix Node distributions', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-node-license-'));
   try {
     mkdirSync(join(root, 'bin'));

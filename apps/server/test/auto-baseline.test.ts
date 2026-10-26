@@ -10,7 +10,7 @@ import { startCorralServer } from '../src/index.ts';
 import { FAKE_PROFILES, fakeOpenAI, fauxAssistantMessage, fauxToolCall } from '../src/testing.ts';
 
 it.each(['edit', 'create', 'remove'] as const)(
-  '[TC-AUTO-003-N] pins the file baseline and tools after %s while choosing, once for resends',
+  'pins the file baseline and tools after %s while choosing, once for resends',
   async (change) => {
     const root = mkdtempSync(join(tmpdir(), 'corral-auto-baseline-'));
     const workspace = join(root, 'workspace');

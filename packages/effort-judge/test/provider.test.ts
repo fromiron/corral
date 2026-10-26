@@ -42,8 +42,8 @@ const question = (excerpt = 'ab ab'): EffortQuestion => ({
 });
 const never = { aborted: false, onCancel: () => () => {} };
 
-describe('local-model provider (C-072)', () => {
-  it('[TC-DEC-001-H] turns calibrated logits into probabilities and picks the level by expected cost', async () => {
+describe('local-model provider', () => {
+  it('turns calibrated logits into probabilities and picks the level by expected cost', async () => {
     const seen: number[][] = [];
     const provider = new OnnxEffortProvider({
       dir: installed(),
@@ -70,7 +70,7 @@ describe('local-model provider (C-072)', () => {
     expect(seen[0]?.length).toBeLessThanOrEqual(16);
   });
 
-  it('[TC-DEC-001-H] allows for loading the model on the first judgment, then holds judgments to 1.5 s', async () => {
+  it('allows for loading the model on the first judgment, then holds judgments to 1.5 s', async () => {
     let finishLoad!: () => void;
     const loading = new Promise<void>((resolve) => {
       finishLoad = resolve;
@@ -92,7 +92,7 @@ describe('local-model provider (C-072)', () => {
     expect(provider.timeoutMs).toBe(1_500);
   });
 
-  it('[TC-DEC-001-N] a failed load goes back to allowing for the next load', async () => {
+  it('a failed load goes back to allowing for the next load', async () => {
     const provider = new OnnxEffortProvider({
       dir: installed(),
       release: 'effort-judge-v6',
@@ -105,14 +105,14 @@ describe('local-model provider (C-072)', () => {
     expect(provider.timeoutMs).toBe(20_000);
   });
 
-  it('[TC-DEC-001-N] an under-call costs more than an over-call', () => {
+  it('an under-call costs more than an over-call', () => {
     // Even odds between easy and hard: never answer easy.
     expect(chooseLevel([0.5, 0, 0.5, 0])).not.toBe(0);
     expect(chooseLevel([0.97, 0.02, 0.01, 0])).toBe(0);
     expect(chooseLevel([0, 0, 0.1, 0.9])).toBe(3);
   });
 
-  it('[TC-DEC-001-N] not installed, a stale release or an unsupported platform is unavailable with a reason', () => {
+  it('not installed, a stale release or an unsupported platform is unavailable with a reason', () => {
     const missing = new OnnxEffortProvider({
       dir: join(tmpdir(), 'corral-judge-none'),
       release: 'effort-judge-v6',
@@ -128,7 +128,7 @@ describe('local-model provider (C-072)', () => {
     expect(mac.available()).toMatch(/no onnxruntime build/);
   });
 
-  it('[TC-DEC-001-N] a session that fails to load or run rejects, so the judgment fails as provider_error', async () => {
+  it('a session that fails to load or run rejects, so the judgment fails as provider_error', async () => {
     const provider = new OnnxEffortProvider({
       dir: installed(),
       release: 'effort-judge-v6',
@@ -140,7 +140,7 @@ describe('local-model provider (C-072)', () => {
   });
 });
 
-it('[TC-RSN-002-H] sends a v6 tool step through the step formatter', async () => {
+it('sends a v6 tool step through the step formatter', async () => {
   const dir = installed();
   writeFileSync(
     join(dir, 'calibration.json'),
@@ -173,7 +173,7 @@ it('[TC-RSN-002-H] sends a v6 tool step through the step formatter', async () =>
   await provider.close();
 });
 
-it('[TC-RSN-002-N] a timed-out inference keeps its slot until the real work ends', async () => {
+it('a timed-out inference keeps its slot until the real work ends', async () => {
   const { vi } = await import('vitest');
   vi.useFakeTimers();
   let finish!: (value: number[]) => void;

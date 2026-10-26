@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// CR-006: a team drafted from a goal. It is a small plan, not a Corral definition: tools,
+// a team drafted from a goal. It is a small plan, not a Corral definition: tools,
 // connections and limits come from the pattern when the plan becomes a definition, so neither
 // a model's answer nor pasted text can grant a permission through it.
 
@@ -9,7 +9,7 @@ export type TeamPattern = (typeof TEAM_PATTERNS)[number];
 
 export const TEAM_SLOTS = {
   single: ['worker'],
-  // The first step feeds the review Loop: a Loop is never the entry (Spec §5.3).
+  // The first step feeds the review Loop: a Loop is never the entry.
   write_review: ['planner', 'writer', 'reviewer'],
   research_write_review: ['researcher', 'writer', 'reviewer'],
 } as const satisfies Record<TeamPattern, readonly string[]>;

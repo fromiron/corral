@@ -5,7 +5,7 @@ import { fauxAssistantMessage } from '@earendil-works/pi-ai';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CORRAL_EXTENSION, spikeSession } from './sdk-session.ts';
 
-// S4 (CR-018, plan §6 H1): a Corral session loads only the resources bound to the role.
+// S4: a Corral session loads only the resources bound to the role.
 // Pi's own discovery (personal ~/.pi/agent and ~/.agents, project .pi/ and .agents/, context
 // files such as AGENTS.md) must load nothing, even when those places are full of resources.
 
@@ -75,7 +75,7 @@ afterEach(() => {
 });
 
 describe('S4: only bound resources load', () => {
-  it('[TC-HAR-004-H] loads the bound extension and skill, and Corral last', async () => {
+  it('loads the bound extension and skill, and Corral last', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Hello.')],
       cwd: join(root, 'work'),
@@ -93,7 +93,7 @@ describe('S4: only bound resources load', () => {
     expect(run.session.getActiveToolNames()).toEqual(['bound_tool']);
   });
 
-  it('[TC-HAR-004-N] nothing from the personal or project folders reaches the run', async () => {
+  it('nothing from the personal or project folders reaches the run', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Hello.')],
       cwd: join(root, 'work'),

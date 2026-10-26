@@ -110,7 +110,7 @@ it('cancels only a package-owned diagnostic probe and blocks its next launch aft
   }
 });
 
-it('[TC-MGR-002-N] terminal probe failures and unconfirmed cleanup remain terminal across retries', async () => {
+it('terminal probe failures and unconfirmed cleanup remain terminal across retries', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-probe-state-'));
   const db = openDatabase(':memory:'),
     clock = new FakeClock();

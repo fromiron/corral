@@ -117,7 +117,7 @@ async function decisionProviders(dataHome: string) {
 }
 
 describe('the server entry point registers the local judge model (#21)', () => {
-  it('[TC-DEC-001-H] an installed model is available to `pnpm serve`, with its release', async () => {
+  it('an installed model is available to `pnpm serve`, with its release', async () => {
     const dataHome = temp();
     const modelDir = defaultModelDir(modelEnv(dataHome), process.platform, dataHome);
     mkdirSync(modelDir, { recursive: true });
@@ -132,7 +132,7 @@ describe('the server entry point registers the local judge model (#21)', () => {
     });
   }, 30_000);
 
-  it('[TC-DEC-001-N] without an installed model it is plainly unavailable, and the server still runs', async () => {
+  it('without an installed model it is plainly unavailable, and the server still runs', async () => {
     const providers = await decisionProviders(temp());
     expect(providers.find((p) => p.id === 'local-model')).toMatchObject({ available: false });
     expect(providers.find((p) => p.id === 'local-heuristic')).toMatchObject({ available: true });

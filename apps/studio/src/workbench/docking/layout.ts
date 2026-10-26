@@ -30,7 +30,7 @@ export type DockDocumentDescriptor = z.infer<typeof DocumentDescriptor>;
 const documentViewKey = (descriptor: DockDocumentDescriptor) =>
   canonicalJson([descriptor.target, descriptor.path, descriptor.viewId]);
 /**
- * A saved team's graph (CR-046 P18): a view of the team's existing working copy, never a file
+ * A saved team's graph: a view of the team's existing working copy, never a file
  * document. One tab per team; the draft, undo and revisions stay with the working copy.
  */
 const GraphDescriptor = z.object({

@@ -22,14 +22,14 @@ function setup() {
   return { db, path };
 }
 
-it('[TC-WBD-001-N] run admission cannot reuse its identity for a different copy generation', () => {
+it('run admission cannot reuse its identity for a different copy generation', () => {
   const { db, path } = setup();
   const runs = new RunAccessStore(db);
   runs.acquire('run_one', 'session_one', path, true, 1);
   expect(() => runs.acquire('run_one', 'session_one', path, true, 2)).toThrow(/changed/);
 });
 
-it('[TC-WBD-001-H] run and user owners share one writer while other copies and pinned readers remain available', () => {
+it('run and user owners share one writer while other copies and pinned readers remain available', () => {
   const { db, path } = setup();
   const other = setup().path;
   const access = new WorkspaceAccessStore(db);
@@ -59,7 +59,7 @@ it('[TC-WBD-001-H] run and user owners share one writer while other copies and p
   expect(runs.get('same_id')?.state).toBe('active');
 });
 
-it('[TC-WBD-001-F] recovery retains uncertain ownership against a new generation and late completion', () => {
+it('recovery retains uncertain ownership against a new generation and late completion', () => {
   const { db, path } = setup();
   const access = new WorkspaceAccessStore(db);
   const human = { kind: 'user', id: 'human_one' } as const;
@@ -82,7 +82,7 @@ it('[TC-WBD-001-F] recovery retains uncertain ownership against a new generation
   expect(() => recovered.pin(human, 'input_tree')).toThrow(/no longer active/);
 });
 
-it('[TC-WBD-001-F] admission and release join an enclosing receipt transaction', () => {
+it('admission and release join an enclosing receipt transaction', () => {
   const { db, path } = setup();
   const access = new WorkspaceAccessStore(db);
   const human = { kind: 'user', id: 'human_one' } as const;
@@ -108,7 +108,7 @@ it('[TC-WBD-001-F] admission and release join an enclosing receipt transaction',
 });
 
 it.each(['before', 'after'] as const)(
-  '[TC-WBD-001-N] a reader admitted %s writer pin retains its input after writer release',
+  'a reader admitted %s writer pin retains its input after writer release',
   (timing) => {
     const { db, path } = setup();
     const access = new WorkspaceAccessStore(db);

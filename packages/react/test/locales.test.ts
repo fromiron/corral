@@ -82,11 +82,11 @@ const enLeaves = leaves(en as Tree);
 const koLeaves = leaves(ko as Tree);
 
 describe('Korean messages (UX-A5)', () => {
-  it('[TC-UX-001-H] has every English key and no other', () => {
+  it('has every English key and no other', () => {
     expect([...koLeaves.keys()].sort()).toEqual([...enLeaves.keys()].sort());
   });
 
-  it('[TC-UX-001-H] uses the same arguments as English in every message', () => {
+  it('uses the same arguments as English in every message', () => {
     const mismatched = [...enLeaves].filter(
       ([key, message]) =>
         argumentsOf(message).join() !== argumentsOf(koLeaves.get(key) ?? '').join(),
@@ -94,7 +94,7 @@ describe('Korean messages (UX-A5)', () => {
     expect(mismatched.map(([key]) => key)).toEqual([]);
   });
 
-  it('[TC-UX-001-N] every Korean message formats without an ICU error and is not left in English', () => {
+  it('every Korean message formats without an ICU error and is not left in English', () => {
     const errors: string[] = [];
     const t = createTranslator({
       locale: 'ko',
@@ -108,7 +108,7 @@ describe('Korean messages (UX-A5)', () => {
     // Text that should be translated: anything with a lowercase English word of 4+ letters
     // outside placeholders, except product terms and technical tokens.
     // models.dev names the catalog source; translating its domain would hide attribution.
-    // `auto` is the team selector's name for Corral's automatic team (CR-055).
+    // `auto` is the team selector's name for Corral's automatic team.
     const allowed =
       /\b(auto|Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter|codex|chmod|auth|models\.dev)\b/g;
     const untranslated = [...koLeaves].filter(([, message]) =>

@@ -10,7 +10,7 @@ import {
 import { expect, it } from 'vitest';
 import { liveRuntime } from './harness.ts';
 
-// CR-054: session turns reach the model as user/assistant messages between the stable system
+// session turns reach the model as user/assistant messages between the stable system
 // prefix and the current assignment, so each follow-up's request extends the previous one.
 
 const LONG_ANSWER = `Fibonacci: ${'each number is the sum of the two before it. '.repeat(20)}`;
@@ -20,7 +20,7 @@ const textOf = (message: Context['messages'][number]) =>
     ? message.content
     : message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('');
 
-it('[TC-LLM-007-H] turns precede the assignment and later follow-ups reuse them as a cached prefix', async () => {
+it('turns precede the assignment and later follow-ups reuse them as a cached prefix', async () => {
   const firstRequests: Context['messages'][] = [];
   const respond: FauxResponseStep = (context) => {
     const assignment = context.messages.find(

@@ -34,7 +34,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-/** Lets every pending continuation run (no timers in core, ADR-014). */
+/** Lets every pending continuation run (no timers in core). */
 async function drain() {
   for (let i = 0; i < 100; i++) await Promise.resolve();
 }
@@ -90,7 +90,7 @@ class FailingStore implements RunStore {
   appendEvents: RunStore['appendEvents'] = (runId, events) =>
     this.inner.appendEvents(runId, events);
   saveProjection: RunStore['saveProjection'] = (runId, projection) => {
-    // Fails after the events were appended in the same transaction (TC-RACE-09).
+    // Fails after the events were appended in the same transaction.
     if (this.failWhen?.(projection)) throw new Error('disk I/O error');
     this.inner.saveProjection(runId, projection);
   };
@@ -129,7 +129,7 @@ function coordinator(
 }
 
 describe('Coordinator over a RunStore: commit before effect', () => {
-  it('[TC-RUN-001-N] [TC-RACE-09] a failed commit rolls back and starts no agent', async () => {
+  it('a failed commit rolls back and starts no agent', async () => {
     const store = new FailingStore();
     // Fail the transaction that admits the first agent: events are appended, then the
     // projection write throws.
@@ -151,7 +151,7 @@ describe('Coordinator over a RunStore: commit before effect', () => {
     expect(second.runId).toBeNull();
   });
 
-  it('[TC-RUN-001-H] stores events, projection and command record together', async () => {
+  it('stores events, projection and command record together', async () => {
     const store = new InMemoryRunStore();
     const { transport } = coordinator({ store });
     const { runId } = await transport.startRun(start(linearCorral(['research', 'writer'])));
@@ -196,7 +196,7 @@ describe('Coordinator over a RunStore: restart', () => {
     return { store: store.inner, runId: id, executionId, steered };
   }
 
-  it('[TC-RUN-007-H] [TC-RACE-10] marks the unfinished run interrupted and does not re-run it', async () => {
+  it('marks the unfinished run interrupted and does not re-run it', async () => {
     const { store, runId } = await crashMidRequest();
     const restarted = coordinator({
       store,
@@ -231,7 +231,7 @@ describe('Coordinator over a RunStore: restart', () => {
     expect(events.reduce(applyEvent, emptyProjection(runId))).toEqual(projection);
   });
 
-  it('[TC-RUN-007-N] never calls the agent again for an effect admitted before the restart', async () => {
+  it('never calls the agent again for an effect admitted before the restart', async () => {
     const { store } = await crashMidRequest();
     const restarted = coordinator({
       store,
@@ -242,7 +242,7 @@ describe('Coordinator over a RunStore: restart', () => {
     expect((restarted.agents as CountingAdapter).started).toHaveLength(0);
   });
 
-  it('[TC-RACE-08] a command committed before the restart returns the same receipt', async () => {
+  it('a command committed before the restart returns the same receipt', async () => {
     const { store, runId, executionId, steered } = await crashMidRequest();
     const restarted = coordinator({
       store,
@@ -268,7 +268,7 @@ describe('Coordinator over a RunStore: restart', () => {
 });
 
 describe('Coordinator: concurrent runs, pinned snapshot', () => {
-  it('[TC-ABS-006-N] an unconfirmed worker retains its host model slot', async () => {
+  it('an unconfirmed worker retains its host model slot', async () => {
     const entered = new Gate(),
       finish = new Gate();
     let starts = 0;
@@ -315,7 +315,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     });
     await waitForProjection(transport, second.runId ?? '', settled);
   });
-  it('[TC-ABS-006-N] file restore reserves the canonical target while unrelated sessions run', async () => {
+  it('file restore reserves the canonical target while unrelated sessions run', async () => {
     const entered = new Gate();
     const finish = new Gate();
     const { instance, transport } = coordinator({
@@ -353,7 +353,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     expect(after.runId).not.toBeNull();
     await waitForProjection(transport, after.runId ?? '', settled);
   });
-  it('[TC-ABS-006-H] [TC-ABS-006-N] host model slots stay bounded across runs and wake the next run', async () => {
+  it('host model slots stay bounded across runs and wake the next run', async () => {
     const hold = new Gate();
     const observed: string[] = [];
     const agents = new ScriptedAgentAdapter({
@@ -380,7 +380,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     expect(observed).toEqual([first.runId, second.runId]);
   });
 
-  it('[TC-ABS-006-H] [TC-ABS-006-N] worker starts only after its file snapshot has been pinned', async () => {
+  it('worker starts only after its file snapshot has been pinned', async () => {
     const ready = new Gate();
     const released: string[] = [];
     const { transport, agents } = coordinator({
@@ -403,7 +403,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     expect(released).toContain(runId);
   });
 
-  it('[TC-ABS-006-H] [TC-ABS-006-N] cancelling a queued host request neither cancels nor starves other runs', async () => {
+  it('cancelling a queued host request neither cancels nor starves other runs', async () => {
     const hold = new Gate();
     const observed: string[] = [];
     const agents = new ScriptedAgentAdapter({
@@ -439,7 +439,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     expect(observed).toEqual([first.runId, last.runId]);
   });
 
-  it('[TC-ABS-006-H] [TC-ABS-006-N] admits independent runs without replacing the first run', async () => {
+  it('admits independent runs without replacing the first run', async () => {
     const gate = new Gate();
     const { transport, agents } = coordinator({ gates: [gate] });
     const first = await transport.startRun(start(linearCorral(['research'])));
@@ -456,7 +456,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     expect(third.receipt.status).toBe('applied');
   });
 
-  it('[TC-CAN-002-N] runs from a saved revision keep their snapshot when the Corral changes', async () => {
+  it('runs from a saved revision keep their snapshot when the Corral changes', async () => {
     const saved = new Map<string, CorralDefinition>();
     const definition = linearCorral(['writer'], 'saved');
     saved.set('saved@1', definition);
@@ -490,7 +490,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     expect(missing.receipt.error?.code).toBe('TARGET_NOT_FOUND');
   });
 
-  it('[TC-DEV-001-H] a resent start returns the stored receipt even if the revision is gone', async () => {
+  it('a resent start returns the stored receipt even if the revision is gone', async () => {
     const saved = new Map<string, CorralDefinition>([['saved@1', linearCorral(['w'], 'saved')]]);
     const { transport } = coordinator({
       corrals: { getDefinition: (id, revision) => saved.get(`${id}@${revision}`) ?? null },
@@ -526,7 +526,7 @@ describe('Coordinator: activations', () => {
     }
   }
 
-  it('a duplicate activation of the same step creates no second Task (C-013)', async () => {
+  it('a duplicate activation of the same step creates no second Task', async () => {
     const { transport, agents } = coordinator({ runner: new ReplayingRunner() });
     const { runId } = await transport.startRun(start(linearCorral(['research'])));
     const final = await waitForProjection(transport, runId ?? '', settled);
@@ -535,7 +535,7 @@ describe('Coordinator: activations', () => {
     expect((agents as CountingAdapter).started).toHaveLength(1);
   });
 
-  it('a runner cannot finish a run by itself: only finalized output ends it (C-014)', async () => {
+  it('a runner cannot finish a run by itself: only finalized output ends it', async () => {
     const lying: GraphRunner = { run: async () => ({ kind: 'finished', outputNodeId: 'output' }) };
     const { transport } = coordinator({ runner: lying });
     const { runId } = await transport.startRun(start(linearCorral(['research'])));
@@ -545,7 +545,7 @@ describe('Coordinator: activations', () => {
     expect(final.statusReason).toContain('runner_finished_without_output');
   });
 
-  it('[TC-RUN-002-H] [TC-RUN-002-N] each Loop round of a node is a separate execution', async () => {
+  it('each Loop round of a node is a separate execution', async () => {
     const script: Record<string, string[]> = {
       review_decision: ['revise', 'pass'],
       approval: ['approve'],

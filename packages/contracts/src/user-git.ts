@@ -49,7 +49,7 @@ export interface GitStatus {
   entries: GitStatusEntry[];
   truncated: boolean;
   filtersDisabled: boolean;
-  /** Local branch names (at most 200) and configured remotes (CR-046 P14). */
+  /** Local branch names (at most 200) and configured remotes. */
   branches?: string[];
   remotes?: string[];
 }
@@ -159,7 +159,7 @@ export interface GitOperation extends WorkbenchOperation {
   result: GitWriteResult | null;
 }
 
-/** Git config keys a commit may read from the person's own configuration (D5). */
+/** Git config keys a commit may read from the person's own configuration. */
 export const GIT_IDENTITY_KEYS = [
   'user.name',
   'user.email',

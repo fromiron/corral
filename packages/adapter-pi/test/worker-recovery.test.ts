@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest';
 import { processChannel, recoverSdkWorkers, sdkProcessChannel } from '../src/index.ts';
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-HAR-016-N] failed child cleanup reports unconfirmed exit instead of leaving the host waiting',
+  'failed child cleanup reports unconfirmed exit instead of leaving the host waiting',
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-mcp-invalid-'));
     const channel = sdkProcessChannel(join(import.meta.dirname, 'fixtures/mcp-owner.ts'), {
@@ -43,7 +43,7 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-HAR-016-N] killing an SDK owner reaps separately grouped MCP processes before reporting exit',
+  'killing an SDK owner reaps separately grouped MCP processes before reporting exit',
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-sdk-mcp-'));
     const channel = sdkProcessChannel(join(import.meta.dirname, 'fixtures/mcp-owner.ts'), {
@@ -83,7 +83,7 @@ it.skipIf(process.platform !== 'linux')(
 import { recordWorkerLease } from '../src/worker-leases.ts';
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-HAR-016-N] recovery discovers child registries created while owners are stopping',
+  'recovery discovers child registries created while owners are stopping',
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-late-registry-'));
     const spawn = () =>
@@ -135,7 +135,7 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 it.skipIf(process.platform !== 'linux').each([true, false])(
-  '[TC-HAR-016-N] checks ownership after the recorded leader exits (matching marker=%s)',
+  'checks ownership after the recorded leader exits (matching marker=%s)',
   async (matching) => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-mcp-recovery-'));
     const owner = randomUUID();
@@ -182,7 +182,7 @@ it.skipIf(process.platform !== 'linux').each([true, false])(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-HAR-017-N] recovers an owned SDK process before new worker capacity is available',
+  'recovers an owned SDK process before new worker capacity is available',
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-worker-recovery-'));
     const channel = processChannel(join(import.meta.dirname, 'fixtures/orphan-worker.ts'), {
@@ -203,7 +203,7 @@ it.skipIf(process.platform !== 'linux')(
   },
 );
 it.skipIf(process.platform !== 'linux')(
-  '[TC-HAR-017-N] a reused PID record never kills a different process',
+  'a reused PID record never kills a different process',
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-worker-recovery-'));
     const channel = processChannel(join(import.meta.dirname, 'fixtures/orphan-worker.ts'), {

@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { probeMcp } from '../src/mcp-probe.ts';
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-MGR-002-N] cancelling a real stdio probe reaps its owned server and child before returning',
+  'cancelling a real stdio probe reaps its owned server and child before returning',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-probe-test-'));
     const script = join(root, 'server.mjs'),

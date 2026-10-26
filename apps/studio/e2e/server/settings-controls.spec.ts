@@ -11,7 +11,7 @@ async function controlHeight(field: Locator) {
 }
 
 for (const colorScheme of ['light', 'dark'] as const) {
-  test(`[TC-UX-007-H] settings controls preserve keyboard editing and reflow in ${colorScheme}`, async ({
+  test(`settings controls preserve keyboard editing and reflow in ${colorScheme}`, async ({
     page,
     corral,
   }) => {
@@ -81,10 +81,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
 test.describe('touch settings controls', () => {
   test.use({ hasTouch: true, deviceScaleFactor: 1.5, viewport: { width: 390, height: 844 } });
-  test('[TC-UX-007-H] standalone settings keep touch inputs and actions aligned', async ({
-    page,
-    corral,
-  }) => {
+  test('standalone settings keep touch inputs and actions aligned', async ({ page, corral }) => {
     await corral.open('/settings/models');
     const panel = page.getByRole('region', { name: 'Import model settings' });
     for (const control of [
@@ -102,7 +99,7 @@ test.describe('touch settings controls', () => {
   });
 });
 
-test('[TC-UX-007-N] API key reveal controls keep a gap and the input height in both settings forms', async ({
+test('API key reveal controls keep a gap and the input height in both settings forms', async ({
   page,
   corral,
 }) => {

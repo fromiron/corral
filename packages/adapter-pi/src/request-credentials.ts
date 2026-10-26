@@ -1,8 +1,8 @@
 import type { Credential, CredentialStore } from '@earendil-works/pi-ai';
 
-// CR-004: pi-ai applies a per-request API key only to providers with API-key auth. An OAuth-only
+// pi-ai applies a per-request API key only to providers with API-key auth. An OAuth-only
 // provider (`openai-codex`, which a Codex CLI login signs in to) reads its credential from a
-// store instead. The worker has no credential store (ADR-019), so this one holds just the token
+// store instead. The worker has no credential store, so this one holds just the token
 // that came with the current request, in memory, and never refreshes it: the host does that.
 
 const VALID_MS = 60 * 60 * 1000;

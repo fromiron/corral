@@ -53,14 +53,14 @@ function setup() {
   };
   return { source, worker, text, resources, snapshot };
 }
-it('[TC-HAR-004-H] loads a verified execution copy, which later edits of the installed resource cannot change', () => {
+it('loads a verified execution copy, which later edits of the installed resource cannot change', () => {
   const s = setup();
   const locked = lockResources(s.resources, s.snapshot, s.worker);
   writeFileSync(join(s.source, 'extension.ts'), 'changed after locking');
   expect(locked.extensions[0]?.path.startsWith(s.worker)).toBe(true);
   expect(readFileSync(locked.extensions[0]!.path, 'utf8')).toBe(s.text);
 });
-it('[TC-HAR-004-N] changed content, a forged manifest or a symlink cannot reach the loader', () => {
+it('changed content, a forged manifest or a symlink cannot reach the loader', () => {
   const s = setup();
   writeFileSync(join(s.source, 'extension.ts'), 'changed');
   expect(() => lockResources(s.resources, s.snapshot, s.worker)).toThrow();
@@ -71,7 +71,7 @@ it('[TC-HAR-004-N] changed content, a forged manifest or a symlink cannot reach 
   expect(() => lockResources(s.resources, s.snapshot, s.worker)).toThrow();
 });
 
-it('[TC-BPACK-001-H] [TC-BPACK-001-N] a shared pack hash does not authorize an unbound sibling skill', () => {
+it('a shared pack hash does not authorize an unbound sibling skill', () => {
   const s = setup();
   const files = ['bound', 'sibling'].map((name) => {
     const path = `skills/${name}/SKILL.md`;

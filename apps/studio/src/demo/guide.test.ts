@@ -54,7 +54,7 @@ const team: Exec[] = [
 ];
 
 describe('demo guide', () => {
-  it('[TC-DEV-005-H] starts with the run and follows committed facts in order', () => {
+  it('starts with the run and follows committed facts in order', () => {
     expect(states(null)).toEqual({
       start: 'current',
       delegate: 'pending',
@@ -74,7 +74,7 @@ describe('demo guide', () => {
     });
   });
 
-  it('[TC-DEV-005-H] offers the running round 2 Writer as the steer target until an instruction is delivered', () => {
+  it('offers the running round 2 Writer as the steer target until an instruction is delivered', () => {
     const p = projection('running', [...team, { id: 'w2', node: 'write', round: 2 }]);
     const steer = guideSteps(p).find((s) => s.id === 'steer');
     expect(steer).toMatchObject({ state: 'current', steerTarget: 'w2' });
@@ -92,7 +92,7 @@ describe('demo guide', () => {
     expect(states(p)).toMatchObject({ revise: 'done', steer: 'done', finish: 'current' });
   });
 
-  it('[TC-DEV-005-N] an instruction that was only accepted, or went to round 1, does not complete the steer step', () => {
+  it('an instruction that was only accepted, or went to round 1, does not complete the steer step', () => {
     const p = projection('running', [...team, { id: 'w2', node: 'write', round: 2 }]);
     p.directives.d1 = {
       directiveId: 'd1',
@@ -114,7 +114,7 @@ describe('demo guide', () => {
     expect(states(p).steer).toBe('current');
   });
 
-  it('[TC-DEV-005-N] skipping the optional steer does not block the finish step', () => {
+  it('skipping the optional steer does not block the finish step', () => {
     const p = projection('awaiting_user', [
       ...team,
       { id: 'w2', node: 'write', round: 2, status: 'succeeded' },
@@ -122,7 +122,7 @@ describe('demo guide', () => {
     expect(states(p)).toMatchObject({ steer: 'missed', finish: 'current' });
   });
 
-  it('[TC-DEV-005-N] a run that ends without success marks every unfinished step missed', () => {
+  it('a run that ends without success marks every unfinished step missed', () => {
     for (const status of ['cancelled', 'failed', 'interrupted'] as const) {
       expect(states(projection(status, team.slice(0, 1)))).toEqual({
         start: 'done',
@@ -135,7 +135,7 @@ describe('demo guide', () => {
     }
   });
 
-  it('[TC-DEV-005-N] one helper is not yet a delegation to two', () => {
+  it('one helper is not yet a delegation to two', () => {
     expect(states(projection('running', team.slice(0, 2))).delegate).toBe('current');
   });
 });

@@ -102,7 +102,7 @@ function render(current: TerminalView, pendingCreate = false, loading = false) {
   );
 }
 
-it('[TC-WBD-004-N] a missing terminal replay still exposes explicit stop outside the terminal', () => {
+it('a missing terminal replay still exposes explicit stop outside the terminal', () => {
   const html = render({ ...terminal, replayAvailable: false, state: 'uncertain' });
   expect(html).toContain('Output replay is unavailable');
   expect(html).toContain('Stop terminal');
@@ -110,21 +110,21 @@ it('[TC-WBD-004-N] a missing terminal replay still exposes explicit stop outside
   expect(html).not.toContain('Take control');
 });
 
-it('[TC-WBD-004-N] unresolved creation exposes receipt recovery and prevents a new terminal', () => {
+it('unresolved creation exposes receipt recovery and prevents a new terminal', () => {
   const html = render(terminal, true);
   expect(html).toContain('Check creation result');
   expect(html).toMatch(/<button[^>]*disabled[^>]*>New terminal<\/button>/);
   expect(html).not.toContain('Retry original creation request');
 });
 
-it('[TC-WBD-004-N] another controller is read-only until an explicit takeover', () => {
+it('another controller is read-only until an explicit takeover', () => {
   const html = render(terminal);
   expect(html).toContain('Another view controls input');
   expect(html).toContain('Take over input');
   expect(html).not.toContain('Release input');
 });
 
-it('[TC-WBD-004-N] the terminal escape action focuses a control outside its input', async () => {
+it('the terminal escape action focuses a control outside its input', async () => {
   render(terminal, false, true);
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
@@ -156,7 +156,7 @@ it('[TC-WBD-004-N] the terminal escape action focuses a control outside its inpu
   }
 });
 
-it('[TC-WBD-006-H] reopening the terminal pane restores only the selection for its workspace, project and session', () => {
+it('reopening the terminal pane restores only the selection for its workspace, project and session', () => {
   render(terminal);
   const session = fixture.state.sessions.session;
   const first = fixture.state.terminals.terminal;
@@ -186,7 +186,7 @@ it('[TC-WBD-006-H] reopening the terminal pane restores only the selection for i
   }
 });
 
-it('[TC-WBD-007-H] attaches only the explicit selected text with its captured source target', async () => {
+it('attaches only the explicit selected text with its captured source target', async () => {
   render(terminal);
   const value = fixture.state.terminals.terminal;
   assert(value);

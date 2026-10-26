@@ -19,7 +19,7 @@ import {
   meetingAnswerDefinition,
 } from '../src/index.ts';
 
-// CR-049 chat correction: user messages carry the conversation; legacy request IDs and
+// chat correction: user messages carry the conversation; legacy request IDs and
 // reply batches still preserve cancellation, replay and saved answer references.
 
 const CONFIG: MeetingConfig = {
@@ -207,8 +207,8 @@ async function fixture(
 const brief = (input: AgentStartInput) =>
   input.inputs.find((item) => item.name === 'brief')?.text ?? '';
 
-describe('CR-049 meeting messages', () => {
-  it('[TC-LLM-005-H] each participant reuses its own completed context and receives only newly posted messages', async () => {
+describe('meeting messages', () => {
+  it('each participant reuses its own completed context and receives only newly posted messages', async () => {
     const f = await fixture({ persistent: true });
     await f.send('first_context', 'ORIGINAL_MEETING_INPUT');
     await expect
@@ -233,14 +233,14 @@ describe('CR-049 meeting messages', () => {
       expect(JSON.stringify(input.resumeContext)).toContain('ORIGINAL_MEETING_INPUT');
       expect(brief(input)).toContain('FOLLOW_UP_ONLY');
       expect(brief(input)).not.toContain('ORIGINAL_MEETING_INPUT');
-      // CR-054: a continuation names its content as new, not as the whole conversation.
+      // a continuation names its content as new, not as the whole conversation.
       expect(brief(input)).toContain('Messages posted since your last reply:');
       expect(brief(input)).not.toContain('Conversation so far:');
       expect(JSON.stringify(input.resumeContext)).toContain(`${input.role.name} answers`);
       expect(brief(input)).not.toContain(`${input.role.name} answers`);
     }
   });
-  it('[TC-MEET-001-H] neutral participants carry dinner suggestions into ordinary follow-up questions', async () => {
+  it('neutral participants carry dinner suggestions into ordinary follow-up questions', async () => {
     const f = await fixture({
       config: {
         ...CONFIG,
@@ -264,7 +264,7 @@ describe('CR-049 meeting messages', () => {
     expect((await f.meetings.view(f.sessionId))!.minutes).toEqual([]);
   });
 
-  it('[TC-MEET-001-H] independent replies share a snapshot and command replay does not duplicate their starts', async () => {
+  it('independent replies share a snapshot and command replay does not duplicate their starts', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -305,7 +305,7 @@ describe('CR-049 meeting messages', () => {
     );
   });
 
-  it('[TC-MEET-001-H] shuffles each message once and keeps the saved order on replay and reopen', async () => {
+  it('shuffles each message once and keeps the saved order on replay and reopen', async () => {
     const random = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(0.999);
     const f = await fixture({ random });
     await f.send('c1', 'First');
@@ -329,7 +329,7 @@ describe('CR-049 meeting messages', () => {
     expect(random).toHaveBeenCalledTimes(4);
   });
 
-  it('[TC-MEET-001-N] only the speaking participant receives its role instructions', async () => {
+  it('only the speaking participant receives its role instructions', async () => {
     const f = await fixture();
     await f.send('c1', 'How are you?');
     await f.meetings.idle(f.sessionId);
@@ -343,7 +343,7 @@ describe('CR-049 meeting messages', () => {
     }
   });
 
-  it('[TC-MEET-001-F] stopping the independent batch cancels every started reply', async () => {
+  it('stopping the independent batch cancels every started reply', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -360,7 +360,7 @@ describe('CR-049 meeting messages', () => {
     expect(after.active).toBe(false);
   });
 
-  it('[TC-MEET-001-F] reopening pending speakers after restart never calls them automatically', async () => {
+  it('reopening pending speakers after restart never calls them automatically', async () => {
     const f = await fixture();
     await f.send('c1', 'Saved conversation');
     await f.meetings.idle(f.sessionId);
@@ -396,7 +396,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(3);
   });
 
-  it('[TC-MEET-001-H] @mentions narrow a round, and the secretary is called on its own', async () => {
+  it('@mentions narrow a round, and the secretary is called on its own', async () => {
     const f = await fixture();
     await f.send('c1', '@builder how long would it take?');
     await f.meetings.idle(f.sessionId);
@@ -419,7 +419,7 @@ describe('CR-049 meeting messages', () => {
     });
   });
 
-  it('[TC-MEET-001-H] legacy reply requests preserve context without a two-reply product limit', async () => {
+  it('legacy reply requests preserve context without a two-reply product limit', async () => {
     const f = await fixture();
     expect(await f.rebut('r0')).toMatchObject({ ok: false, error: 'invalid' });
     await f.send('c1', 'Monolith or services?', ['architect', 'builder']);
@@ -453,7 +453,7 @@ describe('CR-049 meeting messages', () => {
     expect(view.rebuttal?.rebuttalNo).toBe(4);
   });
 
-  it('[TC-MEET-001-H] agent mentions call the named participant, including a previous speaker, once per posted answer', async () => {
+  it('agent mentions call the named participant, including a previous speaker, once per posted answer', async () => {
     let architectReplies = 0;
     const f = await fixture({
       reply: (input) =>
@@ -479,7 +479,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(3);
   });
 
-  it('[TC-MEET-001-N] a posted mention follows the independent batch as a separate sequential response', async () => {
+  it('a posted mention follows the independent batch as a separate sequential response', async () => {
     const f = await fixture({
       reply: (input) =>
         input.role.name === 'Architect' ? '@Tester please weigh in.' : 'My opinion.',
@@ -496,7 +496,7 @@ describe('CR-049 meeting messages', () => {
     expect(brief(f.seen[3]!)).toContain('My opinion.');
   });
 
-  it('[TC-MEET-001-H] a formatted mention still addresses the named participant', async () => {
+  it('a formatted mention still addresses the named participant', async () => {
     const f = await fixture({
       reply: (input) => (input.role.name === 'Architect' ? '**@Tester**, do you agree?' : 'Yes.'),
     });
@@ -505,7 +505,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Tester']);
   });
 
-  it('[TC-MEET-001-N] plain names, quoted tags, code and self tags do not call participants or the secretary', async () => {
+  it('plain names, quoted tags, code and self tags do not call participants or the secretary', async () => {
     const f = await fixture({
       reply: () => 'Tester could help. @Architect @비서 @Unknown\n> @Tester quoted\n`@Builder`',
     });
@@ -514,7 +514,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(1);
   });
 
-  it('[TC-MEET-001-F] multiple human messages post immediately and replace unstarted replies after the current speaker finishes', async () => {
+  it('multiple human messages post immediately and replace unstarted replies after the current speaker finishes', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -548,7 +548,7 @@ describe('CR-049 meeting messages', () => {
     expect(brief(f.seen[3]!)).toContain('I heard you.');
   });
 
-  it('[TC-MEET-001-F] a new human message supersedes late agent mentions and stop cancels pending replies too', async () => {
+  it('a new human message supersedes late agent mentions and stop cancels pending replies too', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -564,7 +564,7 @@ describe('CR-049 meeting messages', () => {
     expect((await f.meetings.view(f.sessionId))!.rounds.every((round) => !round.active)).toBe(true);
   });
 
-  it('[TC-MEET-001-F] a late mention yields to newer human input, and a stale stop cannot cancel that input', async () => {
+  it('a late mention yields to newer human input, and a stale stop cannot cancel that input', async () => {
     let release!: () => void;
     let releaseBuilder!: () => void;
     const architect = new Promise<void>((resolve) => {
@@ -596,7 +596,7 @@ describe('CR-049 meeting messages', () => {
     expect((await f.meetings.view(f.sessionId))!.rounds[1]!.answers[0]!.status).toBe('answered');
   });
 
-  it('[TC-MEET-001-F] stopping a round cancels every answer, keeps what arrived, and a late answer stays out', async () => {
+  it('stopping a round cancels every answer, keeps what arrived, and a late answer stays out', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -629,7 +629,7 @@ describe('CR-049 meeting messages', () => {
     expect(round.answers.find((a) => a.participantId === 'builder')?.text).toBeNull();
   });
 
-  it('[TC-MEET-001-F] a failed participant shows as failed, the rest answer, and nothing retries', async () => {
+  it('a failed participant shows as failed, the rest answer, and nothing retries', async () => {
     const f = await fixture({
       onStart: (input) => {
         if (input.role.name === 'Builder') throw new Error('provider unavailable');
@@ -642,7 +642,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(3);
   });
 
-  it('[TC-MEET-001-F] reopening only reads; a waiting message left by a restart needs the person to send it', async () => {
+  it('reopening only reads; a waiting message left by a restart needs the person to send it', async () => {
     const f = await fixture();
     await f.send('c1', 'first');
     await f.meetings.idle(f.sessionId);
@@ -668,7 +668,7 @@ describe('CR-049 meeting messages', () => {
     expect(after.queued).toBeNull();
   });
 
-  it('[TC-MEET-001-F] the same message command again returns the same round without new answers', async () => {
+  it('the same message command again returns the same round without new answers', async () => {
     const f = await fixture();
     const first = await f.send('c1', 'question');
     await f.meetings.idle(f.sessionId);
@@ -685,7 +685,7 @@ describe('CR-049 meeting messages', () => {
     });
   });
 
-  it('[TC-MEET-001-N] a meeting origin cannot lift limits from a Run with tools or from another session', async () => {
+  it('a meeting origin cannot lift limits from a Run with tools or from another session', async () => {
     const f = await fixture();
     const definition = meetingAnswerDefinition(CONFIG, 'builder', 'round_x', 'brief');
     const start = (
@@ -714,7 +714,7 @@ describe('CR-049 meeting messages', () => {
     expect((await start('fine', {})).runId).toBeTruthy();
   });
 
-  it('[TC-MEET-001-N] retries cannot change the participants, mode, or command kind', async () => {
+  it('retries cannot change the participants, mode, or command kind', async () => {
     const f = await fixture();
     await f.send('c1', 'question', ['architect']);
     await f.meetings.idle(f.sessionId);
@@ -737,7 +737,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(2);
   });
 
-  it('[TC-MEET-001-H] typed mentions match multiword participant names and do not treat email addresses as mentions', async () => {
+  it('typed mentions match multiword participant names and do not treat email addresses as mentions', async () => {
     const f = await fixture({
       config: {
         ...CONFIG,
@@ -764,7 +764,7 @@ describe('CR-049 meeting messages', () => {
     });
   });
 
-  it('[TC-MEET-001-H] a waiting message can be edited without starting it, and stale edits cannot replace a later message', async () => {
+  it('a waiting message can be edited without starting it, and stale edits cannot replace a later message', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -813,7 +813,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(4);
   });
 
-  it('[TC-MEET-001-F] a failed answer-record save cancels dispatched runs and reports the storage failure', async () => {
+  it('a failed answer-record save cancels dispatched runs and reports the storage failure', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -844,7 +844,7 @@ describe('CR-049 meeting messages', () => {
     }
   });
 
-  it('[TC-MEET-001-F] an unavailable snapshot cannot start another round while the participant may still be running', async () => {
+  it('an unavailable snapshot cannot start another round while the participant may still be running', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -865,7 +865,7 @@ describe('CR-049 meeting messages', () => {
     await f.meetings.idle(f.sessionId);
   });
 
-  it('[TC-MEET-001-H] /반론 remains ordinary message text and does not require a prior discussion', async () => {
+  it('/반론 remains ordinary message text and does not require a prior discussion', async () => {
     const f = await fixture();
     expect(await f.send('r1', '/반론 @Builder 이 의견은 어때?')).toMatchObject({ ok: true });
     await f.meetings.idle(f.sessionId);
@@ -877,7 +877,7 @@ describe('CR-049 meeting messages', () => {
     });
   });
 
-  it('[TC-MEET-001-N] selected evidence is captured in every participant input and immutable for retries', async () => {
+  it('selected evidence is captured in every participant input and immutable for retries', async () => {
     const f = await fixture();
     const attachment = createTextAttachment(
       'chosen.txt',
@@ -909,7 +909,7 @@ describe('CR-049 meeting messages', () => {
     expect(f.seen).toHaveLength(3);
   });
 
-  it('[TC-MEET-001-H] total saved rounds have no meeting usage cap', async () => {
+  it('total saved rounds have no meeting usage cap', async () => {
     const f = await fixture();
     const session = (await f.repository.getSession(f.sessionId))!;
     const rounds: MeetingRound[] = Array.from({ length: 1000 }, (_, index) => ({
@@ -946,7 +946,7 @@ describe('CR-049 meeting messages', () => {
   });
 });
 
-it('[TC-LLM-005-H] independent participants start together with the same posted-message snapshot', async () => {
+it('independent participants start together with the same posted-message snapshot', async () => {
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -964,7 +964,7 @@ it('[TC-LLM-005-H] independent participants start together with the same posted-
   }
 });
 
-it('[TC-LLM-005-F] a parallel answer completing before the first participant still schedules its mention once', async () => {
+it('a parallel answer completing before the first participant still schedules its mention once', async () => {
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;

@@ -66,8 +66,8 @@ async function setup() {
   return { runId, store, permit, projection, events, observe, cancel };
 }
 
-describe('late usage accounting (C-037, C-039, OBS-004)', () => {
-  it('[TC-RACE-14] stores unknown then full late usage once without changing cancelled state or progress', async () => {
+describe('late usage accounting', () => {
+  it('stores unknown then full late usage once without changing cancelled state or progress', async () => {
     const s = await setup();
     await s.cancel();
     const before = s.projection();
@@ -109,7 +109,7 @@ describe('late usage accounting (C-037, C-039, OBS-004)', () => {
       late: { inputTokens: 100, outputTokens: null },
     },
   ])(
-    '[TC-RACE-14] fills missing categories without replacing confirmed counts or response text: $initial',
+    'fills missing categories without replacing confirmed counts or response text: $initial',
     async ({ initial, late }) => {
       const s = await setup();
       await s.observe(initial, null, 'original response');

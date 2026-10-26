@@ -4,7 +4,7 @@ import { linearCorral } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
 import { createRunSessions } from '../../../apps/studio/src/runSessions.ts';
 
-it('[TC-ABS-006-H] [TC-ABS-006-N] run views retain independent SSE and cancel targets across navigation', async () => {
+it('run views retain independent SSE and cancel targets across navigation', async () => {
   const subscriptions = new Map<string, TransportHandlers>();
   const unsubscribed: string[] = [];
   const sendCommand = vi.fn(async (command) => ({
@@ -57,7 +57,7 @@ it('[TC-ABS-006-H] [TC-ABS-006-N] run views retain independent SSE and cancel ta
   expect(otherHost.runFor('a')).not.toBe(a);
 });
 
-it('[TC-WBD-005-H] moving the last run view in one commit preserves its stream and pending receipt', async () => {
+it('moving the last run view in one commit preserves its stream and pending receipt', async () => {
   const unsubscribe = vi.fn();
   let finish = (_receipt: Receipt) => {};
   let command: RunCommand | undefined;

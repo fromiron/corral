@@ -3,12 +3,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from './harness.ts';
 
-// CR-055 §6: the composer no longer attaches project instructions or memory to a request;
+// the composer no longer attaches project instructions or memory to a request;
 // they stay versioned project records.
-test('[TC-ABS-009-H] clone and link through Projects; save versioned instructions', async ({
-  page,
-  corral,
-}) => {
+test('clone and link through Projects; save versioned instructions', async ({ page, corral }) => {
   test.setTimeout(60000);
   const source = join(corral.workspace, 'source-repo');
   const destination = join(corral.workspace, 'cloned-repo');

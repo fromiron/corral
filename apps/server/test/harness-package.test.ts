@@ -10,7 +10,7 @@ import { HarnessService } from '../src/harness/service.ts';
 
 // Explicit registry opt-in; models are local fake providers, never paid calls.
 it.skipIf(process.env.CORRAL_HARNESS_NETWORK !== '1')(
-  '[TC-HAR-005-H] the original Ponytail package affects only the role bound to its immutable revision',
+  'the original Ponytail package affects only the role bound to its immutable revision',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-ponytail-e2e-'));
     const db = openDatabase(':memory:');

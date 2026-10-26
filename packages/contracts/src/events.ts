@@ -56,7 +56,7 @@ const IsoTime = z.iso.datetime();
 const Count = z.int().min(0);
 const Ids = z.array(Identifier);
 
-/** Structured wait reason (Technical-Design §6.2); never free text only. */
+/** Structured wait reason; never free text only. */
 export const WaitingOn = z.strictObject({
   kind: z.enum(['children', 'message', 'approval', 'user']),
   targetIds: Ids,
@@ -88,7 +88,7 @@ export const ModelProfileSnapshot = z.strictObject({
 });
 export type ModelProfileSnapshot = z.infer<typeof ModelProfileSnapshot>;
 
-/** Provider-specific counts stay raw; normalized fields are null when not reported (INV-15). */
+/** Provider-specific counts stay raw; normalized fields are null when not reported. */
 export const NormalizedUsage = z.strictObject({
   inputTokens: Count.nullable(),
   outputTokens: Count.nullable(),
@@ -113,17 +113,17 @@ export const RunStarted = event(
     limits: RunLimits,
     usageLimits: z.literal('none').optional(),
     criteriaVersionId: Identifier.optional(),
-    /** Judgment settings fixed for the run (CR-003). Absent when the runtime has none. */
+    /** Judgment settings fixed for the run. Absent when the runtime has none. */
     decisions: RunDecisionSettings.optional(),
     reasoningApply: ReasoningApplySettings.optional(),
-    /** The earlier version whose text this run's brief starts from (CR-007). */
+    /** The earlier version whose text this run's brief starts from. */
     startedFrom: StartFrom.optional(),
-    /** The session turns this run carries as conversation (CR-054). */
+    /** The session turns this run carries as conversation. */
     conversation: ContinuedConversation.optional(),
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
-    /** The auto choice the definition came from (CR-024). */
+    /** The auto choice the definition came from. */
     autoRoute: AutoRoute.optional(),
-    /** CR-049: the meeting answer this Run is; such Runs have no Corral usage limits. */
+    /** the meeting answer this Run is; such Runs have no Corral usage limits. */
     meeting: MeetingRunOrigin.optional(),
   }),
 );
@@ -604,7 +604,7 @@ export const ObservationLate = event(
   }),
 );
 
-// ── decisions (CR-003, observe only) ─────────────────────────────────────────
+// ── decisions (observe only) ─────────────────────────────────────────
 const decisionHead = {
   decisionId: Identifier,
   questionKind: DecisionQuestionKind,
@@ -842,7 +842,7 @@ export const RUN_EVENT_TYPES: readonly RunEventType[] = RunEvent.options.map(
   (option) => option.shape.type.value,
 );
 
-/** Transient text delta (ADR-011). Never persisted, never part of the projection. */
+/** Transient text delta. Never persisted, never part of the projection. */
 export interface StreamFrame {
   runId: string;
   modelCallId: string;

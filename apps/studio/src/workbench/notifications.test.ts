@@ -15,7 +15,7 @@ const session: { sessionId: string; projectId: string; archivedAt: string | null
   archivedAt: null,
 };
 
-it('[TC-DESK-010-H] inbox targets exclude private text and detect equal-count replacements without duplicates', () => {
+it('inbox targets exclude private text and detect equal-count replacements without duplicates', () => {
   const first = inboxNotificationTargets([decision, decision]);
   expect(first).toEqual([{ kind: 'decision', sessionId: 'session_a', runId: 'run_a' }]);
   expect(inboxNotificationTargets([decision], first)).toEqual([]);
@@ -24,7 +24,7 @@ it('[TC-DESK-010-H] inbox targets exclude private text and detect equal-count re
   ]);
 });
 
-it('[TC-DESK-010-H] a live notification opens its exact run or review, never the latest run', async () => {
+it('a live notification opens its exact run or review, never the latest run', async () => {
   const source = { getSession: vi.fn(async () => session), inbox: vi.fn(async () => [decision]) };
   expect(await notificationDestination(decision, source)).toBe(
     '/sessions/session_a?panel=run&view=run&run=run_a',
@@ -34,7 +34,7 @@ it('[TC-DESK-010-H] a live notification opens its exact run or review, never the
   expect(await notificationDestination(review, source)).toBe('/sessions/session_a/review');
 });
 
-it('[TC-DESK-010-N] deleted, archived, resolved or mismatched notification targets cannot navigate', async () => {
+it('deleted, archived, resolved or mismatched notification targets cannot navigate', async () => {
   const source = {
     getSession: vi.fn(async (): Promise<typeof session | null> => session),
     inbox: vi.fn(async (): Promise<InboxItemView[]> => [decision]),

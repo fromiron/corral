@@ -126,7 +126,7 @@ async function setup() {
   };
 }
 
-it('[TC-WBD-010-H] attaches the detached copy to a new branch, switches, fetches, fast-forwards and pushes', async () => {
+it('attaches the detached copy to a new branch, switches, fetches, fast-forwards and pushes', async () => {
   const s = await setup();
   const detached = await s.status();
   expect(detached.head.detached).toBe(true);
@@ -166,7 +166,7 @@ it('[TC-WBD-010-H] attaches the detached copy to a new branch, switches, fetches
   expect(s.git(s.copy, 'rev-parse', 'HEAD')).toBe(s.git(s.remote, 'rev-parse', 'refs/heads/main'));
 });
 
-it('[TC-WBD-010-N] refuses non-fast-forward, bad names, a branch checked out elsewhere, an unknown remote and a dirty switch', async () => {
+it('refuses non-fast-forward, bad names, a branch checked out elsewhere, an unknown remote and a dirty switch', async () => {
   const s = await setup();
   expect(await s.run({ kind: 'branch', name: 'bad..name' })).toMatchObject({
     state: 'failed',
@@ -221,7 +221,7 @@ it('[TC-WBD-010-N] refuses non-fast-forward, bad names, a branch checked out els
   expect((await s.status()).head.branch).toBe('fresh');
 });
 
-it('[TC-WBD-010-F] a push whose receipt was not recorded is read back from the remote after a restart', async () => {
+it('a push whose receipt was not recorded is read back from the remote after a restart', async () => {
   const s = await setup();
   await s.run({ kind: 'branch', name: 'once' });
   await s.commitFile('b.txt', 'bee\n');
@@ -246,7 +246,7 @@ it('[TC-WBD-010-F] a push whose receipt was not recorded is read back from the r
   expect(s.git(s.remote, 'rev-parse', 'refs/heads/once')).toBe(s.git(s.copy, 'rev-parse', 'HEAD'));
 });
 
-it('[TC-WBD-010-F] an active terminal writer blocks a switch', async () => {
+it('an active terminal writer blocks a switch', async () => {
   const s = await setup();
   await s.run({ kind: 'branch', name: 'busy' });
   s.git(s.original, 'branch', 'free', 'refs/remotes/origin/main');

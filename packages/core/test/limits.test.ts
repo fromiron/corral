@@ -31,8 +31,8 @@ const waiting = (id: string, kind: 'children' | 'message', targetIds: string[]):
     },
   }) as ExecutionView;
 
-describe('waits and finite run limits (C-038)', () => {
-  it('[TC-LLM-005-H] new file ranges and changed results count as progress, repeated evidence does not', () => {
+describe('waits and finite run limits', () => {
+  it('new file ranges and changed results count as progress, repeated evidence does not', () => {
     const p = emptyProjection('run');
     let progress = { ...emptyProgress(), turns: 6 };
     progress = applyProgressEvent(
@@ -64,7 +64,7 @@ describe('waits and finite run limits (C-038)', () => {
       ).turns,
     ).toBe(6);
   });
-  it('[TC-ABS-011-H] an addressed parent answer advances collaboration; unrelated messages and timeouts do not', () => {
+  it('an addressed parent answer advances collaboration; unrelated messages and timeouts do not', () => {
     const p = emptyProjection('run');
     p.questions.child_question = {
       questionId: 'child_question',
@@ -105,7 +105,7 @@ describe('waits and finite run limits (C-038)', () => {
       ).turns,
     ).toBe(6);
   });
-  it('[TC-RUN-005-N] wait cycles resolve question IDs to responder executions', () => {
+  it('wait cycles resolve question IDs to responder executions', () => {
     const p = emptyProjection('run');
     p.executions = { a: waiting('a', 'message', ['question']), b: waiting('b', 'children', ['c']) };
     p.questions.question = {
@@ -121,7 +121,7 @@ describe('waits and finite run limits (C-038)', () => {
     expect(createsWaitCycle(p, 'c', ['a'])).toBe(false);
   });
 
-  it('[TC-RNS-003-N] question logical timeout stops during pause while a wall timer continues', () => {
+  it('question logical timeout stops during pause while a wall timer continues', () => {
     const clock = new FakeClock();
     let logicalExpired = 0;
     let wallExpired = 0;
@@ -144,7 +144,7 @@ describe('waits and finite run limits (C-038)', () => {
     expect(logicalExpired).toBe(1);
   });
 
-  it('[TC-RUN-006-N] cancelled logical deadlines never fire or resume', () => {
+  it('cancelled logical deadlines never fire or resume', () => {
     const clock = new FakeClock();
     let expired = false;
     const timer = new LogicalDeadline(clock, clock, 1_000, () => {
@@ -156,7 +156,7 @@ describe('waits and finite run limits (C-038)', () => {
     expect(expired).toBe(false);
   });
 
-  it('[TC-RUN-006-H] six message-only turns require user input and real submitted progress resets them', () => {
+  it('six message-only turns require user input and real submitted progress resets them', () => {
     const p = emptyProjection('run');
     let progress = emptyProgress();
     for (let i = 0; i < 6; i++) {
@@ -193,7 +193,7 @@ describe('waits and finite run limits (C-038)', () => {
     expect(progress.turns).toBe(0);
   });
 
-  it('[TC-RUN-006-N] rewording the same unmet review criterion does not claim progress', () => {
+  it('rewording the same unmet review criterion does not claim progress', () => {
     const p = emptyProjection('run');
     const review = (reason: string) =>
       event('review.recorded', {

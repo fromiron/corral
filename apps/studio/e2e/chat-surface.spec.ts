@@ -17,7 +17,7 @@ async function completedConversation(page: Page) {
   await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
 }
 
-test('[TC-WIDGET-001-H] SURFACE-02 narrow summary stays accessible and opening details selects its area', async ({
+test('SURFACE-02 narrow summary stays accessible and opening details selects its area', async ({
   page,
 }) => {
   await completedConversation(page);
@@ -40,9 +40,7 @@ test('[TC-WIDGET-001-H] SURFACE-02 narrow summary stays accessible and opening d
   await expect(requestBox(page)).toBeVisible();
 });
 
-test('[TC-WIDGET-001-H] RESULT-03 default execution panel offers its actual results', async ({
-  page,
-}) => {
+test('RESULT-03 default execution panel offers its actual results', async ({ page }) => {
   await completedConversation(page);
   await panelTab(page, 'Execution');
   const compact = page.getByTestId('compact-run');
@@ -53,9 +51,7 @@ test('[TC-WIDGET-001-H] RESULT-03 default execution panel offers its actual resu
   await expect(compact.getByTestId('result-body')).toBeVisible();
 });
 
-test('[TC-WIDGET-001-H] ACTION-01 opens one scoped response host and keeps later typing focus', async ({
-  page,
-}) => {
+test('ACTION-01 opens one scoped response host and keeps later typing focus', async ({ page }) => {
   await page.goto('/?delay=50');
   await teamFromTemplate(page, 'Research team');
   await startSession(page, 'Review this request');

@@ -47,8 +47,8 @@ function run(): RunProjection {
   return projection;
 }
 
-describe('overview usage widget (CR-053)', () => {
-  it('[TC-RAIL-001-H] states output tokens and calls against their limits with a per-call chart', () => {
+describe('overview usage widget', () => {
+  it('states output tokens and calls against their limits with a per-call chart', () => {
     expect(usageSummary(run(), limits)).toEqual({
       spent: 930,
       reserved: 0,
@@ -58,12 +58,12 @@ describe('overview usage widget (CR-053)', () => {
       callLimit: 40,
       // Finished calls with reported output, oldest first; a call still streaming is not a bar.
       perCall: [194, 63],
-      // CR-054: input of the finished calls; none of them reported cached input.
+      // input of the finished calls; none of them reported cached input.
       input: { tokens: 300, cached: null, cacheShare: null, cacheUnreported: 3 },
     });
   });
 
-  it('[TC-LLM-007-N] totals reported cached input and names calls that did not report it', () => {
+  it('totals reported cached input and names calls that did not report it', () => {
     const projection = run();
     projection.modelCalls = {
       a: call('a', 10, true, { inputTokens: 2_000, cachedInputTokens: 1_500 }),
@@ -83,7 +83,7 @@ describe('overview usage widget (CR-053)', () => {
     expect(usageSummary(projection, limits)?.input).toBeNull();
   });
 
-  it('[TC-RAIL-001-N] names unconfirmed usage and a run without limits, never as zero', () => {
+  it('names unconfirmed usage and a run without limits, never as zero', () => {
     const projection = run();
     projection.budget.unknownOutstanding = 256;
     projection.usageLimits = 'none';
@@ -96,7 +96,7 @@ describe('overview usage widget (CR-053)', () => {
     expect(usageSummary(empty, limits)).toBeNull();
   });
 
-  it('[TC-RAIL-001-N] keeps the per-call chart to the latest twelve calls', () => {
+  it('keeps the per-call chart to the latest twelve calls', () => {
     const projection = run();
     projection.modelCalls = Object.fromEntries(
       Array.from({ length: 15 }, (_, index) => [`c${index}`, call(`c${index}`, index + 1)]),
@@ -107,14 +107,14 @@ describe('overview usage widget (CR-053)', () => {
   });
 });
 
-describe('overview widget order (CR-053)', () => {
+describe('overview widget order', () => {
   const base = {
     chips: [] as ('context' | 'agents' | 'changes' | 'environment')[],
     usage: null as ReturnType<typeof usageSummary>,
     results: [] as { id: string; label: string }[],
   };
 
-  it('[TC-RAIL-001-H] stacks context, usage, results, changes, agents and environment in order', () => {
+  it('stacks context, usage, results, changes, agents and environment in order', () => {
     expect(
       overviewWidgets({
         chips: ['environment', 'changes', 'agents', 'context'],
@@ -124,7 +124,7 @@ describe('overview widget order (CR-053)', () => {
     ).toEqual(['context', 'usage', 'results', 'changes', 'agents', 'environment']);
   });
 
-  it('[TC-RAIL-001-N] hides a widget with nothing to say', () => {
+  it('hides a widget with nothing to say', () => {
     expect(overviewWidgets(base)).toEqual([]);
     const idle = emptyProjection('run_idle');
     expect(overviewWidgets({ ...base, usage: usageSummary(idle, limits) })).toEqual([]);
@@ -134,8 +134,8 @@ describe('overview widget order (CR-053)', () => {
   });
 });
 
-describe('session statistics (CR-055)', () => {
-  it('[TC-TURN-001-N] totals turns, steps and tokens, and names calls without a cache report', () => {
+describe('session statistics', () => {
+  it('totals turns, steps and tokens, and names calls without a cache report', () => {
     const one = run();
     one.modelCalls = {
       a: call('a', 10, true, { inputTokens: 1_000, cachedInputTokens: 900 }),

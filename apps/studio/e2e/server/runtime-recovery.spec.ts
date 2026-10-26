@@ -4,10 +4,7 @@ import { expect, test } from './harness.ts';
 
 test.describe('runtime continuation', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-CONTINUITY-001-H] [TC-RESUME-001-H] continues a failed Run after reload and preserves the source', async ({
-    page,
-    corral,
-  }) => {
+  test('continues a failed Run after reload and preserves the source', async ({ page, corral }) => {
     corral.fake!.setResponses([
       fauxAssistantMessage('Stopped before an output.', {
         stopReason: 'error',

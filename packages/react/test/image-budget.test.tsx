@@ -7,7 +7,7 @@ import { BudgetInspector } from '../src/components/BudgetInspector.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
 
-it('[TC-ABS-010-H] shows image microdollars separately from tokens and labels held estimates as unconfirmed', () => {
+it('shows image microdollars separately from tokens and labels held estimates as unconfirmed', () => {
   const projection = emptyProjection('run_image');
   projection.budget = {
     ...projection.budget,
@@ -44,7 +44,7 @@ it('[TC-ABS-010-H] shows image microdollars separately from tokens and labels he
   expect(screen.getByTestId('budget-call-image_call')).toHaveTextContent('$0.30 held');
 });
 
-it('[TC-ABS-010-N] leaves image rows absent for runs with no image ledger', () => {
+it('leaves image rows absent for runs with no image ledger', () => {
   render(
     <IntlProvider locale="en" messages={messages}>
       <BudgetInspector

@@ -42,7 +42,7 @@ const target = {
   copyGeneration: 1,
 };
 
-it('[TC-WBD-020-H] preview captures retain frozen bytes while checking only the live lease and exact copy', async () => {
+it('preview captures retain frozen bytes while checking only the live lease and exact copy', async () => {
   const source: TextAttachmentProvenance = {
     kind: 'preview',
     target,
@@ -93,7 +93,7 @@ it('[TC-WBD-020-H] preview captures retain frozen bytes while checking only the 
   expect(item.text).toBe('frozen page observation');
 });
 
-it('[TC-WBD-007-N] inspection uses an exact target and dirty buffer bytes, never an old generation as a substitute', async () => {
+it('inspection uses an exact target and dirty buffer bytes, never an old generation as a substitute', async () => {
   vi.stubGlobal('crypto', webcrypto);
   const entry = {
     target,
@@ -129,7 +129,7 @@ it('[TC-WBD-007-N] inspection uses an exact target and dirty buffer bytes, never
   expect(item.text).toBe('draft');
 });
 
-it('[TC-WBD-007-H] immutable hunk and check reads retain exact source identity and displayed output', async () => {
+it('immutable hunk and check reads retain exact source identity and displayed output', async () => {
   const from = 'a'.repeat(40),
     to = 'b'.repeat(40),
     patchHash = 'c'.repeat(64),
@@ -208,7 +208,7 @@ it('[TC-WBD-007-H] immutable hunk and check reads retain exact source identity a
   ).toBe('unavailable');
 });
 
-it('[TC-WBD-013-F] a frozen hunk or check can still be read while it no longer applies to the copy', async () => {
+it('a frozen hunk or check can still be read while it no longer applies to the copy', async () => {
   const from = 'a'.repeat(40),
     to = 'b'.repeat(40),
     later = 'c'.repeat(40),

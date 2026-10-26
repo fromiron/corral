@@ -1,5 +1,5 @@
 /**
- * RFC 8785 JSON Canonicalization Scheme (ADR-015).
+ * RFC 8785 JSON Canonicalization Scheme.
  * Keys are sorted by UTF-16 code units; numbers and strings use ECMAScript JSON serialization.
  * Anything that is not plain JSON data is rejected instead of being silently dropped.
  */

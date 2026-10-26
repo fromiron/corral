@@ -20,7 +20,7 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 
-// H1 spike harness (CR-018, plan §6 H1). A Pi SDK session wired the way ADR-027 proposes:
+// H1 spike harness. A Pi SDK session wired the way the design proposes:
 // - a ModelRuntime with no credentials, and one "corral" provider whose streamSimple asks a
 //   host for a permit before every request and only then calls the real stream (faux here);
 // - in-memory settings (cache warming off) and session;
@@ -213,7 +213,7 @@ export async function spikeSession(options: SpikeOptions) {
     additionalSkillPaths: options.skillPaths ?? [],
     extensionFactories: [...(options.extensions ?? []), corral],
     // The SDK applies no project trust: without these, a project's .pi/SYSTEM.md and
-    // .pi/APPEND_SYSTEM.md reach the request even with every other discovery switched off (S4).
+    // .pi/APPEND_SYSTEM.md reach the request even with every other discovery switched off.
     systemPromptOverride: () => options.systemPrompt ?? 'You are one role of a Corral team.',
     appendSystemPromptOverride: () => options.appendSystemPrompt ?? [],
     ...(options.skillsOverride ? { skillsOverride: options.skillsOverride } : {}),

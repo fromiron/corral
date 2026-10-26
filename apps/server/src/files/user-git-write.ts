@@ -13,7 +13,7 @@ import { spawnOwnedProcess } from '../processes/owned-process.ts';
 import { GitError, git, gitText } from './git.ts';
 import { killProcessGroup, processGroupGone } from './process-group.ts';
 
-// User Git writes (CR-046 P13, D5). Separate from the snapshot helper in git.ts, which keeps
+// User Git writes. Separate from the snapshot helper in git.ts, which keeps
 // hooks off for every internal call: here the repository's own hooks run when the person asks,
 // identity and signing come only from the allowed config keys, and each Git process is an owned
 // process group so cancellation and timeouts confirm cleanup.

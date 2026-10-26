@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { publicRemotePreview } from '../src/remote-host-preview-policy.ts';
 import { remoteSshArgs } from '../src/remote-hosts.ts';
 
-it('[TC-ABS-014-N] only a live remote static lease can authorize its keyed iframe and assets', () => {
+it('only a live remote static lease can authorize its keyed iframe and assets', () => {
   const origin = 'http://127.0.0.2:4123';
   const prefix = `/${'a'.repeat(43)}/`;
   const lease = {
@@ -27,7 +27,7 @@ it('[TC-ABS-014-N] only a live remote static lease can authorize its keyed ifram
   expect(publicRemotePreview({ ...lease, kind: 'service' }, 'session_one', lease.url)).toBe(false);
 });
 
-it('[TC-ABS-014-H] preview forwards preserve the remote isolated origin and never bind wildcard', () => {
+it('preview forwards preserve the remote isolated origin and never bind wildcard', () => {
   const host = {
     id: 'host_00000000-0000-0000-0000-000000000000',
     name: 'Remote',

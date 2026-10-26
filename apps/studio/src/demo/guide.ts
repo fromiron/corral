@@ -1,7 +1,7 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { ExecutionView, RunProjection } from '@corral/core';
 
-// The demo guide (C-064) reads committed run facts only. A click in the UI never completes a
+// The demo guide reads committed run facts only. A click in the UI never completes a
 // step, and a run that ends early leaves the remaining steps missed, not done (AGENTS 5).
 
 export type GuideStepId = 'start' | 'delegate' | 'ask' | 'revise' | 'steer' | 'finish';

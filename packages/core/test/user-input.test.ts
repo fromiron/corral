@@ -83,7 +83,7 @@ async function setup() {
   return { coordinator, store, clock, done, events, waiting, command, event, input };
 }
 
-it('[TC-INPUT-001-H] [TC-INPUT-001-N] user input is private and a matching answer resolves once, including after its reminder deadline', async () => {
+it('user input is private and a matching answer resolves once, including after its reminder deadline', async () => {
   const s = await setup();
   try {
     expect(JSON.stringify(s.events())).not.toContain('Private delivery');
@@ -120,7 +120,7 @@ it('[TC-INPUT-001-H] [TC-INPUT-001-N] user input is private and a matching answe
   }
 });
 
-it('[TC-INPUT-001-N] answering does not undo a user pause, and cancellation closes the owned question', async () => {
+it('answering does not undo a user pause, and cancellation closes the owned question', async () => {
   const s = await setup();
   s.coordinator.submit({
     schemaVersion: '0.1',

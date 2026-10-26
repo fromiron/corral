@@ -20,7 +20,7 @@ const commands: Command[] = [
 ];
 
 describe('command ranking (UX-A5)', () => {
-  it('[TC-UX-001-H] matches words in any order, prefers title starts, and keeps all commands for an empty query', () => {
+  it('matches words in any order, prefers title starts, and keeps all commands for an empty query', () => {
     expect(rankCommands('', commands).map((c) => c.id)).toEqual([
       'new',
       'tpl-team',
@@ -32,7 +32,7 @@ describe('command ranking (UX-A5)', () => {
     expect(rankCommands('succ', commands).map((c) => c.id)).toEqual(['run-1']);
   });
 
-  it('[TC-UX-001-N] is case and accent insensitive and returns nothing for an unmatched word', () => {
+  it('is case and accent insensitive and returns nothing for an unmatched word', () => {
     expect(rankCommands('MODEL', commands).map((c) => c.id)).toEqual(['models']);
     expect(rankCommands('modèl', commands).map((c) => c.id)).toEqual(['models']);
     expect(rankCommands('xyz', commands)).toEqual([]);

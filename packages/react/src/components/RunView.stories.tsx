@@ -58,7 +58,7 @@ export const WaitingReasons: Story = {
     onSteer: () => {},
   },
   play: async ({ canvasElement }) => {
-    // [TC-UX-001-H] Waiting has explicit text, independent of its status color.
+    // Waiting has explicit text, independent of its status color.
     expect(within(canvasElement).getAllByTestId('waiting-on')).toHaveLength(waits.length);
   },
 };

@@ -53,7 +53,7 @@ export interface EditorState {
   addNode(type: EditorNodeType, position: Point): string;
   duplicateNode(nodeId: string): string;
   moveNode(nodeId: string, position: Point): void;
-  /** Tidy up (roadmap 18): arrange every node by the flow, as one undo step. */
+  /** Tidy up: arrange every node by the flow, as one undo step. */
   arrange(): void;
   resizeNode(nodeId: string, box: { x?: number; y?: number; width: number; height: number }): void;
   setViewport(viewport: EditorDraft['viewport']): void;

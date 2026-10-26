@@ -10,7 +10,7 @@ import {
   TableRow,
 } from '../design-kit/index.ts';
 
-// Model output as Markdown, never as HTML (Spec §10.2, C-025). Raw HTML in the text is
+// Model output as Markdown, never as HTML. Raw HTML in the text is
 // dropped within Markdown; complete HTML documents stay readable as escaped source. Links
 // keep safe schemes, and remote images are named instead of loaded to prevent tracking.
 
@@ -21,7 +21,7 @@ function safeUrl(url: string): string {
   return cleaned && SAFE_SCHEMES.test(cleaned) ? cleaned : '';
 }
 
-/** `reader` is the Results view's larger type (CR-009); `compact` fits side panels. */
+/** `reader` is the Results view's larger type; `compact` fits side panels. */
 export function SafeMarkdown({
   text,
   size = 'compact',

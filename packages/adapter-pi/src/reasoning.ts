@@ -61,7 +61,7 @@ export function assertReasoningCapabilities(
     throw new Error('model reasoning capabilities changed since run start');
 }
 
-/** An omitted role setting deliberately preserves the pre-CR-021 serializer behavior. */
+/** An omitted role setting deliberately preserves the earlier serializer behavior. */
 export function reasoningRequest(
   model: Model<Api>,
   options: SimpleStreamOptions | undefined,
@@ -85,7 +85,7 @@ export function reasoningRequest(
 /** Verify the final payload after extension hooks, before the provider can send it. */
 /**
  * The output cap a request carries: the Coordinator's permit, lowered to the model's catalog
- * maximum. An unlimited run (CR-052) permits more than any model allows, so this is its real cap.
+ * maximum. An unlimited run permits more than any model allows, so this is its real cap.
  */
 export function requestOutputCap(
   model: { maxTokens?: number; contextWindow?: number; api?: string },

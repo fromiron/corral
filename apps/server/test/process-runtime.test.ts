@@ -63,8 +63,8 @@ afterEach(async () => {
   for (const path of folders.splice(0)) await rm(path, { recursive: true, force: true });
 });
 
-describe('[TC-ABS-001-H] [TC-ABS-001-N] owned command runtime (real OS processes)', () => {
-  it('[TC-ABS-004-N] an unconfirmed connection times out without sending request bytes', async () => {
+describe('owned command runtime (real OS processes)', () => {
+  it('an unconfirmed connection times out without sending request bytes', async () => {
     let received = 0;
     const server = createServer((socket) =>
       socket.on('data', (bytes) => {
@@ -82,7 +82,7 @@ describe('[TC-ABS-001-H] [TC-ABS-001-N] owned command runtime (real OS processes
     }
   }, 15000);
   it.skipIf(process.platform !== 'linux')(
-    '[TC-ABS-004-N] waits for the service to accept the connected socket before attesting it',
+    'waits for the service to accept the connected socket before attesting it',
     async () => {
       const directory = await folder();
       const runtime = new CommandRuntime();

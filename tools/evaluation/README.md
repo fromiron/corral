@@ -7,7 +7,7 @@ node tools/evaluation/personal-harness.ts /tmp/corral-personal-harness-report.js
 pnpm exec vitest run packages/cli/test/harness-comparison.test.ts
 ```
 
-기본·필수 스킬·결정적 검사·검토 및 수정·Pi 코딩 도구를 실제 SDK와 로컬 고정 응답 provider로 실행한다. 각 calibration/holdout 실행은 같은 Git commit의 새 작업 사본을 사용한다. 유료 모델 호출은 없으며 품질 향상 주장이 아닌 실행·계측 검증이다. 결과에 소스 commit과 작업 트리 변경 여부를 기록한다. [검증 결과](../../docs/evaluation/Personal-Harness-Local-Fixture-Results.md).
+기본·필수 스킬·결정적 검사·검토 및 수정·Pi 코딩 도구를 실제 SDK와 로컬 고정 응답 provider로 실행한다. 각 calibration/holdout 실행은 같은 Git commit의 새 작업 사본을 사용한다. 유료 모델 호출은 없으며 품질 향상 주장이 아닌 실행·계측 검증이다. 결과에 소스 commit과 작업 트리 변경 여부를 기록한다.
 
 ## 편집 도구 비교
 

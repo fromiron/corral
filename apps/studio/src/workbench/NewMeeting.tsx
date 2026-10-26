@@ -27,7 +27,7 @@ interface Draft {
   modelProfile: string;
 }
 
-/** CR-049: opens a group chat; nothing runs until the person sends a message. */
+/** opens a group chat; nothing runs until the person sends a message. */
 export function StartMeeting({ projectId }: { projectId: string }) {
   const t = useTranslations('Meetings');
   const [open, setOpen] = useState(false);

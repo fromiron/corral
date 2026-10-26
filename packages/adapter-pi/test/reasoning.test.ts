@@ -18,7 +18,7 @@ const fixed = (level: 'low' | 'high' | 'max' | 'off' | 'minimal'): ReasoningReso
   preparationId: 'prep',
 });
 describe('permit reasoning at the provider boundary', () => {
-  it('[TC-RSN-003-H] overrides SDK thinking, keeps max and verifies aliases', () => {
+  it('overrides SDK thinking, keeps max and verifies aliases', () => {
     for (const level of ['low', 'high', 'max'] as const) {
       expect(reasoningRequest(model, { reasoning: 'medium' }, fixed(level)).options.reasoning).toBe(
         level,
@@ -35,7 +35,7 @@ describe('permit reasoning at the provider boundary', () => {
       'none',
     );
   });
-  it('[TC-RSN-003-N] explicit provider default is omitted without mutating the catalog', () => {
+  it('explicit provider default is omitted without mutating the catalog', () => {
     const resolution: ReasoningResolution = {
       requested: { mode: 'provider_default' },
       resolved: null,
@@ -59,7 +59,7 @@ describe('permit reasoning at the provider boundary', () => {
   });
 });
 
-it('[TC-RSN-001-N] the pinned capability excludes Sol off and detects changed serializer metadata', async () => {
+it('the pinned capability excludes Sol off and detects changed serializer metadata', async () => {
   const { modelReasoningCapabilities, assertReasoningCapabilities } = await import(
     '../src/reasoning.ts'
   );
@@ -81,7 +81,7 @@ it('[TC-RSN-001-N] the pinned capability excludes Sol off and detects changed se
     expect(() => assertReasoningCapabilities(changed, capability)).toThrow('changed');
 });
 
-it('[TC-RSN-003-N] the actual Pi serializer agrees on off, provider default and non-reasoning models', async () => {
+it('the actual Pi serializer agrees on off, provider default and non-reasoning models', async () => {
   const token = `test.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'test-account' } })).toString('base64')}.test`;
   const defaultPolicy: ReasoningResolution = {
     requested: { mode: 'provider_default' },

@@ -183,7 +183,7 @@ import { Checks } from './ReviewPage.tsx';
 import { RunDetail } from './RunPage.tsx';
 import { useRemembered } from './Workbench.tsx';
 
-// A work session (CR-011, roadmap 23–24): what was asked, the runs it started, the queue, and
+// A work session: what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.
 
 const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
@@ -193,7 +193,7 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
   const { transport } = useServices();
   const [all, setAll] = useState<RunSummary[]>([]);
   const [tick, setTick] = useState(0);
-  // Unreachable server: run states are unknown, not finished (02-UX-Spec §8).
+  // Unreachable server: run states are unknown, not finished.
   const [lost, setLost] = useState(false);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
   useEffect(() => {
@@ -230,7 +230,7 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
  * Context panes follow the session URL; document tabs keep their explicit workspace target.
  * Stores own editing and execution state independently of dock placement.
  */
-/** CR-049: a meeting has its own chat; every other session keeps the work view. */
+/** a meeting has its own chat; every other session keeps the work view. */
 export function SessionPage() {
   const { session } = sessionRoute.useLoaderData();
   return session.meeting ? (
@@ -1124,7 +1124,7 @@ function ArtifactsPanel({
       const found: Item[] = [];
       for (const runId of key ? key.split(',') : []) {
         const snapshot = await transport.getSnapshot(runId).catch((failure: unknown) => {
-          // CR-056: a run the server no longer opens (it used Ultra) has no results to list.
+          // a run the server no longer opens (it used Ultra) has no results to list.
           if (failure instanceof ApiError && failure.code === 'TARGET_NOT_FOUND') return null;
           throw failure;
         });
@@ -1267,7 +1267,7 @@ function EntryCard({
   });
   // A plain follow-up needs no label; queue, instruction and question say what they were.
   const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
-  // CR-024: what an auto request ran with; not a team the person chose.
+  // what an auto request ran with; not a team the person chose.
   const auto = entry.auto
     ? [
         `${t(`autoTemplate.${entry.auto.template}`)}${entry.auto.source === 'fallback' ? ` (${t('autoFallback')})` : ''}`,
@@ -1282,7 +1282,7 @@ function EntryCard({
               : entry.auto.modelProfile
                 ? tq('legacy')
                 : null,
-        // CR-024 §7: the level the start model picked for this request.
+        // the level the start model picked for this request.
         entry.auto.reasoning
           ? `${t('reasoningPicked', { level: tq(`level.${entry.auto.reasoning}`) })}${entry.auto.reasoningSource ? ` (${t(`reasoningSource.${entry.auto.reasoningSource}`)})` : ''}`
           : null,
@@ -1415,7 +1415,7 @@ function useRunChecks(sessionId: string, runs: RunSummary[]) {
 }
 
 /**
- * A run in the session (02-UX-Spec §3): one line with its state, the agent's own words kept
+ * A run in the session: one line with its state, the agent's own words kept
  * apart from facts, and what can be done next. Details open in the side panel.
  */
 function RunCard({
@@ -1440,7 +1440,7 @@ function RunCard({
       className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-8'}`}
     >
       <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        {/* CR-055: a working or finished turn speaks through its process and answer. */}
+        {/* a working or finished turn speaks through its process and answer. */}
         {nested && (run.status === 'succeeded' || run.status === 'running') ? (
           <span className="sr-only">
             <StatusBadge status={run.status} />
@@ -1486,9 +1486,9 @@ function RunCard({
   );
 }
 
-/** Where an instruction is now, from the run's own record of it (02-UX-Spec §7). */
+/** Where an instruction is now, from the run's own record of it. */
 /**
- * Whom an instruction was for, when it applies, and where it is now (UX-08), from the run's
+ * Whom an instruction was for, when it applies, and where it is now, from the run's
  * own record. It stays readable after the composer moves on to another execution.
  */
 function DeliveryStatus({
@@ -1635,7 +1635,7 @@ export function Composer({
   const [lock, setLock] = useState<IntentLock | null>(
     restored.text && restored.intent ? { intent: restored.intent, target: restored.target } : null,
   );
-  // CR-024: sessions are live wherever live is possible; simulation stays in the demo and
+  // sessions are live wherever live is possible; simulation stays in the demo and
   // the team editor.
   const runMode = sessionRunMode(mode, live);
   const [busy, setBusy] = useState(false);
@@ -1708,7 +1708,7 @@ export function Composer({
   );
   const isAuto = session.corralId === null;
   const missingTeam = !isAuto && !team;
-  // CR-055: without a saved Corral, the lead works alone or leads the auto roster.
+  // without a saved Corral, the lead works alone or leads the auto roster.
   const [teamMode, setTeamMode] = useRemembered<'none' | 'auto'>(
     `corral:team-mode:${session.sessionId}`,
     'none',
@@ -1723,7 +1723,7 @@ export function Composer({
     runs.find((run) => run.runId === selectedRunId && !TERMINAL_RUN_STATUSES.has(run.status)) ??
     null;
   const latest = useLatestResult(runs);
-  // CR-054: a follow-up carries the session's turns through the newest ended run.
+  // a follow-up carries the session's turns through the newest ended run.
   const lastEnded = runs.findLast((run) => TERMINAL_RUN_STATUSES.has(run.status)) ?? null;
   const searchMentions = useMentionSearch({
     projectId: session.projectId,
@@ -1732,7 +1732,7 @@ export function Composer({
     team,
   });
   // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
-  // the first receipt instead of starting a second run (02-UX-Spec §6).
+  // the first receipt instead of starting a second run.
   const pending = useRef(pendingSessionCommands.get(session.sessionId) ?? null);
   const commandFor = (key: string) => {
     if (pending.current?.key !== key) {
@@ -1753,7 +1753,7 @@ export function Composer({
   // (none while a decision waits).
   const allowed: SessionIntent[] = active
     ? [...(ownActive && targets.length > 0 ? ['steer' as const] : []), 'queue']
-    : // CR-055: a question about an earlier answer is an ordinary message to the conversation.
+    : // a question about an earlier answer is an ordinary message to the conversation.
       ['next'];
 
   // Executions that can still take an instruction, named by their node.
@@ -1786,7 +1786,7 @@ export function Composer({
       live = false;
     };
   }, [transport, ownActive, targetTick]);
-  // An execution may end while the person types: the list follows it (02-UX-Spec §6).
+  // An execution may end while the person types: the list follows it.
   useEffect(() => {
     if (!ownActive) return;
     const timer = setInterval(() => setTargetTick((n) => n + 1), 1500);
@@ -1903,7 +1903,7 @@ export function Composer({
   }, [session.sessionId]);
 
   // References restored from a draft are checked once: a result version, run or role that is
-  // gone is marked, never swapped for another with the same name (UX-02).
+  // gone is marked, never swapped for another with the same name.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only the restored references
   useEffect(() => {
     if (!restored.references.length) return;
@@ -1987,13 +1987,13 @@ export function Composer({
     cancelled?: boolean;
     cancelError?: string;
   }> => {
-    // CR-055: every chat turn is the conversation lead; a saved Corral lends it its roles.
+    // every chat turn is the conversation lead; a saved Corral lends it its roles.
     // A deleted Corral is never replaced by another way of working.
     if (missingTeam) return { runId: null, detail: t('selectedTeamMissing') };
     return startAuto(brief, commandId, refs, requestPermissionMode);
   };
 
-  /** CR-024: with no team chosen, the runtime picks a template for this request. */
+  /** with no team chosen, the runtime picks a template for this request. */
   const startAuto = async (
     brief: string,
     commandId: string,
@@ -2007,7 +2007,7 @@ export function Composer({
       sessionId: session.sessionId,
       brief,
       choice: autoChoice,
-      // CR-055: chat is the conversation lead; the team decides whom it may delegate to.
+      // chat is the conversation lead; the team decides whom it may delegate to.
       team: team ? { corralId: team.corralId } : teamMode,
       mode: runMode,
       ...(lastEnded ? { conversation: { throughRunId: lastEnded.runId } } : {}),
@@ -2077,7 +2077,7 @@ export function Composer({
     }
   };
 
-  /** Saves the auto model and reasoning with the session (CR-024). */
+  /** Saves the auto model and reasoning with the session. */
   const updateAuto = async (auto: AutoModelChoice) => {
     if (autoSaving.current || busy) return;
     autoSaving.current = true;
@@ -2306,7 +2306,7 @@ export function Composer({
         if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
-        // An auto session asks with its own model (CR-024).
+        // An auto session asks with its own model.
         const profile = team
           ? (corral?.definition.roles[0]?.modelProfile ?? 'model-a')
           : autoChoice.modelProfile;
@@ -2352,7 +2352,7 @@ export function Composer({
         return;
       }
       // The answer was lost: the request may or may not have arrived. The text stays, and a
-      // retry reuses the same command ID, so the runtime returns the first receipt (UX-04).
+      // retry reuses the same command ID, so the runtime returns the first receipt.
       setRefusal({
         message: failure instanceof Error ? failure.message : String(failure),
         network: true,
@@ -2514,7 +2514,7 @@ export function Composer({
     .filter((value, index, all) => value.trim() && all.lastIndexOf(value) === index)
     .reverse();
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // An IME composition's Enter confirms the text; it never sends (WB-UX-005).
+    // An IME composition's Enter confirms the text; it never sends.
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (isSendKey(event, prefs.sendKey)) {
       event.preventDefault();
@@ -2551,7 +2551,7 @@ export function Composer({
     runMode === 'live' && (intent === 'next' || intent === 'explain') && profiles
       ? roles.filter((r) => !profiles.some((p) => p.profileId === r.profileId && p.available))
       : [];
-  // CR-024: an auto request on a disconnected model is stopped, never simulated instead.
+  // an auto request on a disconnected model is stopped, never simulated instead.
   const autoBlocked =
     isAuto &&
     (intent === 'next' || intent === 'explain') &&
@@ -3227,7 +3227,7 @@ function useLatestResult(runs: RunSummary[]) {
 }
 
 /**
- * What the next run would start with (02-UX-Spec §5.5): team, models, file work, limits and
+ * What the next run would start with: team, models, file work, limits and
  * mode, read from the saved team and the working copy, never guessed.
  */
 function PreRunSummary({
@@ -3329,12 +3329,12 @@ function AutoPreRunSummary({
     };
   }, [workspaces, session.sessionId, workspaceRevision]);
   const modeLabel = mode === 'live' ? t('modeLive') : t('modeMock');
-  // Auto roles get file tools only with a working copy (CR-024).
+  // Auto roles get file tools only with a working copy.
   const files = intent === 'next' && copy ? t('filesCopy') : null;
   return <span data-testid="pre-run">{[files, modeLabel].filter(Boolean).join(' · ')}</span>;
 }
 
-/** Each role of the team, the model profile it uses, and whether that model is ready (UX-06). */
+/** Each role of the team, the model profile it uses, and whether that model is ready. */
 function ModelAssignments({
   roles,
   profiles,

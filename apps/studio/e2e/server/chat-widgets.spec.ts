@@ -61,7 +61,7 @@ async function send(page: Page, text: string) {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
 }
 
-test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse and an answer use the primary session flow', async ({
+test('live plans, context, manual collapse and an answer use the primary session flow', async ({
   page,
   corral,
 }) => {
@@ -222,7 +222,7 @@ test('[TC-WIDGET-001-H] [TC-WIDGET-002-H] live plans, context, manual collapse a
 test.describe('serialized provider context', () => {
   test.use({ compatibleEndpoint: true, codexLogin: false, reasoningApi: false });
 
-  test('[TC-WIDGET-002-H] the real provider payload reaches the context percentage and composition through a local endpoint', async ({
+  test('the real provider payload reaches the context percentage and composition through a local endpoint', async ({
     page,
     corral,
   }) => {
@@ -230,7 +230,7 @@ test.describe('serialized provider context', () => {
     if (!corral.endpoint) throw new Error('The local compatible endpoint is required');
     corral.endpoint.setReply(() => {
       request += 1;
-      // CR-055: no auto choice request; the lead plans, asks, then replies.
+      // no auto choice request; the lead plans, asks, then replies.
       if (request === 1)
         return {
           toolCall: {
@@ -310,7 +310,7 @@ test.describe('serialized provider context', () => {
   });
 });
 
-test('[TC-WIDGET-001-N] opening an earlier result preserves the draft and keeps the active Run separate', async ({
+test('opening an earlier result preserves the draft and keeps the active Run separate', async ({
   page,
   corral,
 }) => {
@@ -359,7 +359,7 @@ test('[TC-WIDGET-001-N] opening an earlier result preserves the draft and keeps 
   }
 });
 
-test('[TC-WIDGET-001-H] a finished checklist does not finish its run, and only automatic disclosure collapses on success', async ({
+test('a finished checklist does not finish its run, and only automatic disclosure collapses on success', async ({
   page,
   corral,
 }) => {

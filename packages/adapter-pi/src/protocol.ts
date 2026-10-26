@@ -30,7 +30,7 @@ import {
 import { z } from 'zod';
 import { EndpointSpec } from './endpoint.ts';
 
-// Host ↔ worker frames (Technical-Design §7.4, C-017). Every frame names the protocol version
+// Host ↔ worker frames. Every frame names the protocol version
 // and the execution the worker is bound to; the host checks both and drops the worker on any
 // mismatch. Nothing the model writes decides which execution or permission a frame belongs to.
 // Frames can carry an access token (`permit.apiKey`): they are never logged or stored.
@@ -164,7 +164,7 @@ export const StartFrame = z.strictObject({
     provider: Identifier,
     modelId: z.string().min(1).max(200),
     auth: z.enum(['oauth', 'api_key', 'mock']).optional(),
-    /** An OpenAI-compatible endpoint's non-secret definition (CR-005); absent for pi-ai's own. */
+    /** An OpenAI-compatible endpoint's non-secret definition; absent for pi-ai's own. */
     endpoint: EndpointSpec.optional(),
   }),
   role: z.strictObject({
@@ -172,7 +172,7 @@ export const StartFrame = z.strictObject({
     prompt: z.string().min(1),
     outputContract: z.string().min(1),
     imageProfile: Identifier.optional(),
-    /** CR-055: the last reply without a tool call is the result. */
+    /** the last reply without a tool call is the result. */
     answer: z.literal('final_reply').optional(),
   }),
   inputs: z.array(
@@ -190,7 +190,7 @@ export const StartFrame = z.strictObject({
     .strictObject({ reserveTokens: z.int().min(0), keepRecentTokens: z.int().min(0) })
     .optional(),
   resumeContext: RuntimeCheckpointState.optional(),
-  /** CR-054: the session's earlier requests and answers, sent before this assignment. */
+  /** the session's earlier requests and answers, sent before this assignment. */
   conversation: SessionConversation.optional(),
   images: z.array(ImageInput).max(3).optional(),
   teamPlanOwner: z.boolean().optional(),

@@ -6,7 +6,7 @@ import { expect, it } from 'vitest';
 import { decodeContextCheckpoint, encodeContextCheckpoint } from '../src/context-checkpoint.ts';
 
 const hash = (value: unknown) => bytesToHex(sha256(utf8ToBytes(canonicalJson(value))));
-it('[TC-LLM-004-F] immutable message chunks deduplicate growing checkpoints and reject missing or changed sources', () => {
+it('immutable message chunks deduplicate growing checkpoints and reject missing or changed sources', () => {
   const context = { messages: [{ role: 'user', content: 'source '.repeat(10000), timestamp: 1 }] };
   const state: RuntimeCheckpointState = {
     version: 1,

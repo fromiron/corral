@@ -35,7 +35,7 @@ describe('definitionHash', () => {
     );
   });
 
-  it('[TC-CAN-002-H] ignores key order and layout moves, but changes with the prompt', () => {
+  it('ignores key order and layout moves, but changes with the prompt', () => {
     const definition = parse(researchTeam);
     const reordered = parse(reverseKeys(definition));
     const layout = clone(researchLayout);

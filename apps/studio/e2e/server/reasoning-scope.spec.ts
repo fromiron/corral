@@ -16,7 +16,7 @@ async function importTeam(page: Page, id: string) {
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
 }
 
-test('[TC-RSN-004-N] another team never inherits the previous run or its canvas status', async ({
+test('another team never inherits the previous run or its canvas status', async ({
   page,
   corral,
 }) => {
@@ -34,7 +34,7 @@ test('[TC-RSN-004-N] another team never inherits the previous run or its canvas 
 
 test.describe('explicit live selection', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-RSN-004-H] remembers live for this editor after reload, but not another team', async ({
+  test('remembers live for this editor after reload, but not another team', async ({
     page,
     corral,
   }) => {
@@ -55,7 +55,7 @@ test.describe('explicit live selection', () => {
   });
 });
 
-test('[TC-RSN-001-H] role reasoning survives save, reload and undo', async ({ page, corral }) => {
+test('role reasoning survives save, reload and undo', async ({ page, corral }) => {
   await corral.open('/');
   await importTeam(page, 'reasoning-editor');
   await page.getByRole('group', { name: 'agent: writer', exact: true }).click();
@@ -101,7 +101,7 @@ test('[TC-RSN-001-H] role reasoning survives save, reload and undo', async ({ pa
 
 test.describe('ordered explicit mode choices', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-RSN-004-N] a delayed older live choice cannot overwrite the latest mock choice', async ({
+  test('a delayed older live choice cannot overwrite the latest mock choice', async ({
     page,
     corral,
   }) => {

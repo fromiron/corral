@@ -81,7 +81,7 @@ export interface ProgressState {
   submittedHashes: string[];
   reviewSignatures: string[];
   evidenceHashes?: string[];
-  /** CR-055: artifacts written since the last submission; a new version of one is no progress. */
+  /** artifacts written since the last submission; a new version of one is no progress. */
   writtenArtifacts?: string[];
 }
 

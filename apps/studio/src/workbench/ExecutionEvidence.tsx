@@ -14,7 +14,7 @@ type Loaded = {
 };
 
 /**
- * What one execution left (CR-046 P18): the files its broker writes touched, the results it
+ * What one execution left: the files its broker writes touched, the results it
  * authored and the checks it ran, each leading to where that is reviewed. Only records that name
  * this run and execution are shown; a write whose outcome is unknown says so.
  */

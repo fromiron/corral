@@ -79,7 +79,7 @@ const settled = (p: RunProjection) =>
   ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(p.status);
 
 describe('SQLite database', () => {
-  it('[TC-UX-007-N] migrates old session titles without guessing and keeps pending automatic titles across restart', async () => {
+  it('migrates old session titles without guessing and keeps pending automatic titles across restart', async () => {
     const file = tempFile();
     const old = trackDatabase(new Database(file));
     for (const migration of MIGRATIONS.slice(0, 27)) {
@@ -181,7 +181,7 @@ describe('SQLite Corral repository', () => {
     viewport: { x: 0, y: 0, zoom: 1 },
   });
 
-  it('[TC-CAN-002-N] keeps every saved definition revision for runs to start from', async () => {
+  it('keeps every saved definition revision for runs to start from', async () => {
     const repo = repository(openDatabase(':memory:'));
     const created = await repo.save({
       definition: CorralDefinition.parse(researchTeam),
@@ -222,7 +222,7 @@ describe('SQLite Corral repository', () => {
 });
 
 describe('Coordinator over a SQLite file', () => {
-  it('[TC-RUN-007-H] [TC-RUN-007-N] a new process marks the run interrupted and calls no agent', async () => {
+  it('a new process marks the run interrupted and calls no agent', async () => {
     const file = tempFile();
     const gate = new Gate();
     const dbA = openDatabase(file);
@@ -275,7 +275,7 @@ describe('Coordinator over a SQLite file', () => {
     expect(first.admitting).toBe(false);
   });
 
-  it('[TC-RUN-007-H] rebuilds a P5 cached projection from events without changing persisted history', async () => {
+  it('rebuilds a P5 cached projection from events without changing persisted history', async () => {
     const file = tempFile();
     const db = openDatabase(file);
     const store = new SqliteRunStore(db);
@@ -344,7 +344,7 @@ describe('Coordinator over a SQLite file', () => {
 });
 
 describe('read-only history', () => {
-  it('[TC-RUN-007-H] opens records without migration or modifying a running run', async () => {
+  it('opens records without migration or modifying a running run', async () => {
     const { openReadOnlyDatabase } = await import('../src/database.ts');
     const file = tempFile();
     const writable = openDatabase(file);
@@ -359,7 +359,7 @@ describe('read-only history', () => {
   });
 });
 
-describe('projects in SQLite (CR-010)', () => {
+describe('projects in SQLite', () => {
   // One agent: runs end on their own, with no person to approve anything.
   const layout = () => ({ nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } });
 
@@ -407,7 +407,7 @@ describe('projects in SQLite (CR-010)', () => {
     expect(projectOf(second)).toBe('default');
   });
 
-  it('[WBTST-036] an older file gains the default project; runs and events keep their ids', async () => {
+  it('an older file gains the default project; runs and events keep their ids', async () => {
     // A finished run and a saved Corral, copied into a file at schema 2 (before projects).
     const source = openDatabase(':memory:');
     const repo = repository(source);
@@ -461,7 +461,7 @@ describe('projects in SQLite (CR-010)', () => {
     expect(before.length).toBeGreaterThan(0);
   });
 
-  it('[TC-AUTO-001-H] a session saved before auto mode opens as auto with no model chosen', async () => {
+  it('a session saved before auto mode opens as auto with no model chosen', async () => {
     const path = tempFile();
     const old = trackDatabase(new Database(path));
     const before = MIGRATIONS.findIndex((migration) => migration.name === '0013_session_auto');

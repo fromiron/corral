@@ -3,7 +3,7 @@ import type { Db } from '@corral/storage-sqlite';
 import { checkGitEnvironment, git } from './git.ts';
 
 /**
- * CR-056: Ultra (CR-031, CR-048) is removed. Candidate copies its runs left stay until their
+ * Ultra is removed. Candidate copies its runs left stay until their
  * session's working copy is removed, and then go with it. Nothing creates new ones.
  */
 export async function removeLegacyCandidateCopies(

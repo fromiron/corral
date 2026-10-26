@@ -1,7 +1,7 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, test } from './harness.ts';
 
-test('[TC-ABS-014-H] Editor Run retries its lost start after a full renderer reload without a second Run', async ({
+test('Editor Run retries its lost start after a full renderer reload without a second Run', async ({
   page,
   corral,
 }, testInfo) => {

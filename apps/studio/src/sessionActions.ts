@@ -2,7 +2,7 @@ import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/cont
 import type { RunSummary, WorkSession } from '@corral/core';
 import type { StudioServices } from './services.tsx';
 
-// What a session sends (CR-011, CR-013): a follow-up run with its team, or an instruction to a
+// What a session sends: a follow-up run with its team, or an instruction to a
 // running execution. Shared by the session's input box and the review page.
 
 export const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;

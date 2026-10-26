@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { expect, test } from './harness.ts';
 
-test('[TC-CONTINUITY-001-H] [TC-CHAT-002-H] [TC-CHAT-002-N] a long conversation restores the request anchor without mounting the whole history', async ({
+test('a long conversation restores the request anchor without mounting the whole history', async ({
   page,
   corral,
 }) => {

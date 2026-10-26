@@ -25,7 +25,7 @@ function receipt(command: RunCommand): Receipt {
   };
 }
 
-it('[TC-ABS-014-H] reopening recovers the authoritative receipt without resending a lost command', async () => {
+it('reopening recovers the authoritative receipt without resending a lost command', async () => {
   const disk = storage();
   const journal = createRunRecovery(disk, 'host_one');
   let committed: Receipt | null = null;
@@ -57,7 +57,7 @@ it('[TC-ABS-014-H] reopening recovers the authoritative receipt without resendin
   restored.getState().dispose();
 });
 
-it('[TC-ABS-014-N] an unreceived command waits for explicit retry with the same ID and excludes other hosts', async () => {
+it('an unreceived command waits for explicit retry with the same ID and excludes other hosts', async () => {
   const disk = storage();
   let offline = true;
   const sent: RunCommand[] = [];
@@ -103,7 +103,7 @@ it('[TC-ABS-014-N] an unreceived command waits for explicit retry with the same 
   restored.getState().dispose();
 });
 
-it('[TC-ABS-014-N] unavailable durable storage prevents sending a command that could not be recovered', async () => {
+it('unavailable durable storage prevents sending a command that could not be recovered', async () => {
   const disk = storage();
   disk.setItem = () => {
     throw new Error('quota');

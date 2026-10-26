@@ -38,7 +38,7 @@ function runtime(beforeReply?: () => Promise<void>) {
 }
 
 describe('CLI command/query parity', () => {
-  it('[TC-DX-001-N] rejects concurrent startup without corrupting the owner and permits history queries', async () => {
+  it('rejects concurrent startup without corrupting the owner and permits history queries', async () => {
     const cwd = workspace();
     const definition = linearCorral(['writer']);
     const outputNode = definition.nodes.find((node) => node.type === 'output');
@@ -108,7 +108,7 @@ describe('CLI command/query parity', () => {
     }
   });
 
-  it('[TC-DX-001-H] validates without starting a server and runs mock to terminal', async () => {
+  it('validates without starting a server and runs mock to terminal', async () => {
     const cwd = workspace();
     const path = join(cwd, 'workflow.json');
     writeFileSync(path, JSON.stringify(linearCorral(['writer'])));
@@ -141,7 +141,7 @@ describe('CLI command/query parity', () => {
   // https://nodejs.org/api/child_process.html#subprocesskillsignal
   // The AbortSignal -> Coordinator settlement test below runs on every platform.
   it.skipIf(process.platform === 'win32')(
-    '[TC-DX-001-N] the executable handles POSIX SIGINT and persists cancellation before exiting',
+    'the executable handles POSIX SIGINT and persists cancellation before exiting',
     async () => {
       const cwd = workspace();
       const definition = linearCorral(['writer']);
@@ -187,7 +187,7 @@ describe('CLI command/query parity', () => {
     15_000,
   );
 
-  it('[TC-DX-001-N] reports invalid input without echoing a path or raw user input', async () => {
+  it('reports invalid input without echoing a path or raw user input', async () => {
     const cwd = workspace();
     const path = join(cwd, 'private-file.json');
     writeFileSync(path, '{secret-user-body');
@@ -203,7 +203,7 @@ describe('CLI command/query parity', () => {
     expect(output.join('')).not.toContain('secret-user-body');
   });
 
-  it('[TC-DX-001-H] terminal approval resolves the same approvalId without automatic approval', async () => {
+  it('terminal approval resolves the same approvalId without automatic approval', async () => {
     const transport = runtime();
     const definition = linearCorral(['writer']);
     const output = definition.nodes.find((n) => n.type === 'output');
@@ -239,7 +239,7 @@ describe('CLI command/query parity', () => {
     ).toBe('approved');
   });
 
-  it('[TC-DX-001-N] SIGINT semantics cancel the whole run and await backend settlement', async () => {
+  it('SIGINT semantics cancel the whole run and await backend settlement', async () => {
     const gate = new Gate();
     const transport = runtime(() => gate.wait());
     const { runId } = await transport.startRun({
@@ -262,7 +262,7 @@ describe('CLI command/query parity', () => {
     expect((await done).status).toBe('cancelled');
   });
 
-  it('[TC-DEC-001-N] judge status reports where the model is and whether it is installed, without downloading', async () => {
+  it('judge status reports where the model is and whether it is installed, without downloading', async () => {
     const dir = workspace();
     const output: string[] = [];
     const io = {
@@ -281,8 +281,8 @@ describe('CLI command/query parity', () => {
   });
 });
 
-describe('judgments in inspect (C-071)', () => {
-  it('[TC-DEC-004-H] inspect --judgments lists each request with its provider and level', async () => {
+describe('judgments in inspect', () => {
+  it('inspect --judgments lists each request with its provider and level', async () => {
     const cwd = workspace();
     mkdirSync(join(cwd, '.corral'), { recursive: true });
     writeFileSync(
@@ -314,7 +314,7 @@ describe('judgments in inspect (C-071)', () => {
 });
 
 describe('judgments the run ended before (#22)', () => {
-  it('[TC-DEC-004-N] inspect says "not collected", not "pending"', async () => {
+  it('inspect says "not collected", not "pending"', async () => {
     const { judgmentReport } = await import('../src/index.ts');
     const projection = {
       runId: 'run_1',
@@ -347,7 +347,7 @@ describe('judgments the run ended before (#22)', () => {
 });
 
 describe('headless exec and eval (roadmap Core-③)', () => {
-  it('[TC-ULTRA-005-H] exec has no Ultra options any more (CR-056)', async () => {
+  it('exec has no Ultra options any more', async () => {
     const cwd = workspace();
     const brief = join(cwd, 'brief.txt');
     writeFileSync(brief, 'Hello');
@@ -374,7 +374,7 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     signal: new AbortController().signal,
   });
 
-  it('[TC-DX-001-N] exec does not start a run after interruption', async () => {
+  it('exec does not start a run after interruption', async () => {
     const transport = runtime();
     const start = vi.spyOn(transport, 'startRun');
     const controller = new AbortController();
@@ -385,7 +385,7 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect(start).not.toHaveBeenCalled();
   });
 
-  it('[TC-DX-001-N] exec settles cancellation when interruption arrives while starting a run', async () => {
+  it('exec settles cancellation when interruption arrives while starting a run', async () => {
     const transport = runtime();
     const controller = new AbortController();
     const start = transport.startRun.bind(transport);
@@ -401,7 +401,7 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect((await transport.getSnapshot(result.runId)).projection.status).toBe('cancelled');
   });
 
-  it('[TC-DX-001-H] exec runs one Corral without Studio and reports the result as JSON', async () => {
+  it('exec runs one Corral without Studio and reports the result as JSON', async () => {
     const cwd = workspace();
     const path = join(cwd, 'one.corral.json');
     writeFileSync(path, JSON.stringify(linearCorral(['writer'])));
@@ -416,7 +416,7 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect(typeof result.wallMs).toBe('number');
   });
 
-  it('[TC-DX-001-N] exec never approves for a person: a run that needs a decision is cancelled with exit 3', async () => {
+  it('exec never approves for a person: a run that needs a decision is cancelled with exit 3', async () => {
     const cwd = workspace();
     const definition = linearCorral(['writer']);
     const output = definition.nodes.find((n) => n.type === 'output');
@@ -432,7 +432,7 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect(run?.status).toBe('cancelled');
   });
 
-  it('[TC-DX-001-H] eval runs every variant on every brief and summarises calls, tokens and time', async () => {
+  it('eval runs every variant on every brief and summarises calls, tokens and time', async () => {
     const cwd = workspace();
     writeFileSync(join(cwd, 'single.corral.json'), JSON.stringify(linearCorral(['writer'])));
     writeFileSync(join(cwd, 'team.corral.json'), JSON.stringify(collaborationCorral()));
@@ -467,7 +467,7 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect(lines.join('\n')).toMatch(/\| team \|/);
   });
 
-  it('[TC-DX-001-N] an invalid suite is refused before any run starts', async () => {
+  it('an invalid suite is refused before any run starts', async () => {
     const cwd = workspace();
     writeFileSync(join(cwd, 'single.corral.json'), JSON.stringify(linearCorral(['writer'])));
     writeFileSync(
@@ -488,7 +488,7 @@ describe('headless exec and eval (roadmap Core-③)', () => {
   });
 });
 
-it('[TC-INPUT-001-H] [TC-INPUT-001-N] headless questions return needs_input and only a schema-bound answer continues the run', async () => {
+it('headless questions return needs_input and only a schema-bound answer continues the run', async () => {
   const question = {
     key: 'format',
     questions: [{ id: 'format', kind: 'text', prompt: 'Private format question' }],

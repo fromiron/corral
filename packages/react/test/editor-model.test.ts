@@ -54,7 +54,7 @@ describe('editor model: drawing a definition', () => {
     for (const id of ids) expect(id).toMatch(/^[A-Za-z][A-Za-z0-9_.:-]*$/);
   });
 
-  it('[TC-CAN-001-H] an empty canvas with Agent → Output compiles and is runnable', () => {
+  it('an empty canvas with Agent → Output compiles and is runnable', () => {
     let draft = emptyDraft();
     const a = add(draft, 'agent');
     const o = add(a.draft, 'output', 300);
@@ -171,7 +171,7 @@ describe('editor model: connection rules come from the compiler port table', () 
     expect(checkConnection(draft, connection as never)).toEqual({ ok: false, reason });
   });
 
-  it('[TC-CAN-003-H] a delegate link is a separate kind of connection that grants the call', () => {
+  it('a delegate link is a separate kind of connection that grants the call', () => {
     const { draft, ids } = sample();
     const linked = ok(
       connectCapability(draft, ids.a as string, ids.callable as string, 'delegate'),
@@ -193,7 +193,7 @@ describe('editor model: connection rules come from the compiler port table', () 
 });
 
 describe('editor model: layout versus definition', () => {
-  it('[TC-CAN-002-H] moving nodes or the Loop area changes the layout, not the definition', () => {
+  it('moving nodes or the Loop area changes the layout, not the definition', () => {
     const draft = draftFromDefinition(team(), layout());
     const before = definitionHash(draftToDefinition(draft));
     const movedNode = moveNode(draft, 'research', { x: 999, y: 10 });
@@ -215,7 +215,7 @@ describe('editor model: layout versus definition', () => {
     expect(JSON.parse(exported.layout)).toEqual({ ...layout(), layoutRevision: 3 });
   });
 
-  it('[TC-CAN-005-N] a duplicated node gets new IDs that collide with nothing', () => {
+  it('a duplicated node gets new IDs that collide with nothing', () => {
     const draft = draftFromDefinition(team(), layout());
     const copy = duplicateNode(draft, 'write');
     const definition = draftToDefinition(copy.draft);
@@ -251,7 +251,7 @@ describe('editor model: layout versus definition', () => {
 });
 
 describe('editor model: import and export', () => {
-  it('[TC-CAN-004-N] refuses files it does not understand', () => {
+  it('refuses files it does not understand', () => {
     expect(importDocuments('not json').ok).toBe(false);
     const unknownField = { ...team(), owner: 'someone' };
     expect(importDocuments(JSON.stringify(unknownField)).ok).toBe(false);
@@ -273,8 +273,8 @@ describe('editor model: import and export', () => {
   });
 });
 
-describe('arranging the canvas (roadmap 18)', () => {
-  it('[TC-CAN-002-H] places every node without overlaps, Loop members inside their Loop, in flow order', () => {
+describe('arranging the canvas', () => {
+  it('places every node without overlaps, Loop members inside their Loop, in flow order', () => {
     const scrambled = draftFromDefinition(team(), {
       ...layout(),
       nodes: Object.fromEntries(team().nodes.map((n) => [n.id, { x: 5, y: 5 }])),
@@ -307,14 +307,14 @@ describe('arranging the canvas (roadmap 18)', () => {
     expect(definitionHash(arranged.definition)).toBe(definitionHash(scrambled.definition));
   });
 
-  it('[TC-CAN-002-N] an empty canvas stays as it is', () => {
+  it('an empty canvas stays as it is', () => {
     const empty = emptyDraft();
     expect(arrangeDraft(empty)).toBe(empty);
   });
 });
 
-describe('file tools switch (CR-012)', () => {
-  it('[TC-HAR-014-H] stores a pinned review recipe in the definition without changing an earlier draft', () => {
+describe('file tools switch', () => {
+  it('stores a pinned review recipe in the definition without changing an earlier draft', () => {
     const draft = draftFromDefinition(team(), layout());
     const recipe = {
       recipeId: 'quality',
@@ -344,7 +344,7 @@ describe('file tools switch (CR-012)', () => {
       'reviewRecipe',
     );
   });
-  it('[TC-HAR-004-H] pins and removes a role harness without retaining a null field', () => {
+  it('pins and removes a role harness without retaining a null field', () => {
     const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
     const binding = { profileId: 'writer', revision: 2 };
     const on = updateNode(added.draft, added.nodeId, { harness: binding });
@@ -388,7 +388,7 @@ describe('file tools switch (CR-012)', () => {
     expect(shellOff.definition.roles[0]?.allowedWorkTools).toEqual(['write_artifact']);
     expect(shellOff.definition.roles[0]?.editingMode).toBe('pi');
   });
-  it('[TC-ABS-010-H] persists image permission and profile independently of file and shell access', () => {
+  it('persists image permission and profile independently of file and shell access', () => {
     const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
     const enabled = updateNode(added.draft, added.nodeId, {
       generateImage: true,
@@ -406,7 +406,7 @@ describe('file tools switch (CR-012)', () => {
     expect(cleared.definition.roles[0]).not.toHaveProperty('imageProfile');
     expect(added.draft.definition.roles[0]).not.toHaveProperty('imageProfile');
   });
-  it('[TC-ABS-004-H] keeps file, service and interaction preview permissions independent', () => {
+  it('keeps file, service and interaction preview permissions independent', () => {
     const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
     const enabled = updateNode(added.draft, added.nodeId, {
       previewFile: true,

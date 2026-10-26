@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { requestReasoningInput } from '../src/reasoning-input.ts';
 
 describe('private judge request input', () => {
-  it('[TC-RSN-002-H] uses tool results and ordinary text, never hidden thinking', () => {
+  it('uses tool results and ordinary text, never hidden thinking', () => {
     const context = {
       messages: [
         { role: 'user', content: 'Fix the parser', timestamp: 1 },
@@ -41,7 +41,7 @@ describe('private judge request input', () => {
   });
 });
 
-it('[TC-RSN-002-N] truncates supplementary Unicode by code points within the private IPC bounds', () => {
+it('truncates supplementary Unicode by code points within the private IPC bounds', () => {
   const emoji = '😀';
   const context = {
     messages: [

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 
-// Git as a bounded child process (CR-012): argv only, never a shell string. Hooks, fsmonitor,
+// Git as a bounded child process: argv only, never a shell string. Hooks, fsmonitor,
 // pagers and external diff helpers are switched off; prompts never wait for input. Repository
 // filters may still run on `add` (clean filters), which is why worktrees and checks need the
 // person to trust the repository first.

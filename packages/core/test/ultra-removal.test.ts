@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Coordinator, InMemoryRunStore, type RunProjection, type StoredRun } from '../src/index.ts';
 import ultraRuns from './fixtures/ultra-runs.json' with { type: 'json' };
 
-// CR-056: Ultra is removed and its records are no longer read. These runs were written by the
+// Ultra is removed and its records are no longer read. These runs were written by the
 // Ultra code before its removal (a version 2 tournament that applied its winner, and a version 1
 // comparison waiting for a person's choice), with the projections the old reducer saved. A store
 // holding them must still start.
@@ -40,8 +40,8 @@ function seeded() {
   return { store, coordinator };
 }
 
-describe('stored Ultra records (CR-056)', () => {
-  it('[TC-ULTRA-005-N] a store with Ultra runs starts; the unfinished one is interrupted', () => {
+describe('stored Ultra records', () => {
+  it('a store with Ultra runs starts; the unfinished one is interrupted', () => {
     // The event schema no longer reads them, so clients are never sent these runs.
     for (const record of [recorded.tournament, recorded.comparison])
       expect(record.events.some((event) => !RunEvent.safeParse(event).success)).toBe(true);
@@ -56,7 +56,7 @@ describe('stored Ultra records (CR-056)', () => {
     for (const event of added) expect(RunEvent.safeParse(event).success).toBe(true);
   });
 
-  it('[TC-ULTRA-005-H] no command or start path accepts Ultra any more', () => {
+  it('no command or start path accepts Ultra any more', () => {
     const { coordinator, store } = seeded();
     const runId = runIdOf(recorded.comparison);
     const before = store.readEvents(runId, 0).length;
@@ -86,7 +86,7 @@ describe('stored Ultra records (CR-056)', () => {
     expect(started.receipt.error?.code).toBe('SCHEMA_INVALID');
   });
 
-  it('[TC-ULTRA-005-F] repeating the whole request of an Ultra run is refused', () => {
+  it('repeating the whole request of an Ultra run is refused', () => {
     const { coordinator } = seeded();
     expect(() =>
       coordinator.branchPreview({

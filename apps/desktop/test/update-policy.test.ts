@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { compatibleUpdate, updateChannel } from '../src/update-policy.ts';
 
-it('[TC-ABS-007-N] updater requires an explicit HTTPS feed and Windows publisher', () => {
+it('updater requires an explicit HTTPS feed and Windows publisher', () => {
   expect(() => updateChannel({ url: 'http://example.com', channel: 'latest' }, 'win32')).toThrow();
   expect(() =>
     updateChannel({ url: 'https://user:secret@example.com', channel: 'latest' }, 'win32'),
@@ -15,7 +15,7 @@ it('[TC-ABS-007-N] updater requires an explicit HTTPS feed and Windows publisher
   ).toBe('stable');
 });
 
-it('[TC-ABS-007-N] schema-unknown releases and insecure downloads cannot reach installation', () => {
+it('schema-unknown releases and insecure downloads cannot reach installation', () => {
   const info = {
     corralSchemaVersions: ['0.1'],
     corralStorage: { minVersion: 5, maxVersion: 8 },

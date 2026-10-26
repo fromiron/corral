@@ -14,7 +14,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 const command = { id: 'check', name: 'Check', argv: ['node', 'check.mjs'], timeoutMs: 1000 };
-it('[TC-HAR-012-N] fingerprints scripts, lockfiles, executable contents and config revision while allowing a relocated frozen copy', async () => {
+it('fingerprints scripts, lockfiles, executable contents and config revision while allowing a relocated frozen copy', async () => {
   const root = temp();
   const copy = temp();
   for (const dir of [root, copy]) {
@@ -37,7 +37,7 @@ it('[TC-HAR-012-N] fingerprints scripts, lockfiles, executable contents and conf
   writeFileSync(binary, 'two');
   expect((await launchFingerprint(root, 1, binCommand)).fingerprint).not.toBe(before.fingerprint);
 });
-it('[TC-HAR-012-N] refuses a package manifest linked outside the worktree', async () => {
+it('refuses a package manifest linked outside the worktree', async () => {
   const root = temp(),
     outside = temp();
   writeFileSync(join(outside, 'secret.json'), '{}');

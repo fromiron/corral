@@ -1,6 +1,6 @@
 # Design kit source
 
-The user supplied the local `design_kit` project and explicitly authorized copying it into Corral on 2026-10-23 (CR-050). The copied kit determines component appearance and interaction. Corral keeps its product behavior, data boundaries and accessibility; it does not keep a second visual system.
+The user supplied the local `design_kit` project and explicitly authorized copying it into Corral on 2026-10-23. The copied kit determines component appearance and interaction. Corral keeps its product behavior, data boundaries and accessibility; it does not keep a second visual system.
 
 ## Canonical entry and source graph
 
@@ -44,7 +44,7 @@ The following needs have no matching source contract:
 
 The source dependency versions are Base UI 1.9.0 and Motion 14.1.0, alongside Corral's React 19, Tailwind 4 and Lucide. The [Motion npm metadata](https://registry.npmjs.org/motion/14.1.0) declares MIT and React/React DOM 18 or 19 support. The [official MotionConfig contract](https://motion.dev/docs/react-motion-config) documents `reducedMotion="user"`. No alternate icon families, Next.js or PDF dependencies are imported. Dependency records and notices are maintained separately.
 
-The imported source and bridges pass the React package typecheck. Browser results and the bounded integrated checks belong in the CR-050 validation evidence, not in these source fingerprints.
+The imported source and bridges pass the React package typecheck. Browser results and the bounded integrated checks are separate from these source fingerprints.
 
 ## Source fingerprints
 

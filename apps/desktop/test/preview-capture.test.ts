@@ -111,7 +111,7 @@ async function setup() {
   return { previews, target, resolve, wc, choose, ready };
 }
 
-it('[TC-WBD-020-H] captures only the native selection and opted-in console/image, revalidating its lease', async () => {
+it('captures only the native selection and opted-in console/image, revalidating its lease', async () => {
   const f = await setup();
   f.wc.emit('console-message', { level: 'info', message: 'before selection mode' });
   const pending = f.previews.capture('session', 'lease', { screenshot: true, console: true });
@@ -140,7 +140,7 @@ it('[TC-WBD-020-H] captures only the native selection and opted-in console/image
   expect(f.wc.listenerCount('context-menu')).toBe(0);
 });
 
-it('[TC-WBD-020-N] discards a selected result if its lease changes while the DOM read is pending', async () => {
+it('discards a selected result if its lease changes while the DOM read is pending', async () => {
   const f = await setup();
   let finish!: (value: unknown) => void;
   const element = await f.wc.executeJavaScriptInIsolatedWorld();
@@ -161,7 +161,7 @@ it('[TC-WBD-020-N] discards a selected result if its lease changes while the DOM
   expect(f.wc.capturePage).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-020-F] escape, navigation, explicit cancellation and deadline end capture without closing the page', async () => {
+it('escape, navigation, explicit cancellation and deadline end capture without closing the page', async () => {
   const f = await setup();
   for (const action of [
     () =>

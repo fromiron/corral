@@ -65,7 +65,7 @@ export interface ChatWidgetModel {
   tools: { id: string; name: string; tone: string }[];
   results: { id: string; label: string }[];
   environment: 'simulated' | 'restricted' | null;
-  /** Output tokens, calls and their limits for the Usage widget (CR-053). */
+  /** Output tokens, calls and their limits for the Usage widget. */
   usage: UsageSummary | null;
   /** The list-price estimate, or why there is none; null before the run is read. */
   cost: RunCostEstimate | null;

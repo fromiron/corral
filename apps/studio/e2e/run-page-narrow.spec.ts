@@ -11,13 +11,11 @@ async function finishedRun(page: import('@playwright/test').Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
-  // CR-009: a finished run opens on its results; these checks are about the run view.
+  // a finished run opens on its results; these checks are about the run view.
   await page.getByRole('tab', { name: 'Execution', exact: true }).click();
 }
 
-test('[TC-UX-001-H] a narrow Run page shows one panel at a time and never scrolls sideways', async ({
-  page,
-}) => {
+test('a narrow Run page shows one panel at a time and never scrolls sideways', async ({ page }) => {
   await finishedRun(page);
   const views = page.getByRole('tablist', { name: 'Run view' });
   await expect(views).toBeVisible();

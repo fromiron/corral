@@ -20,19 +20,19 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// CR-055: session chat is one lead that answers with its final reply.
+// session chat is one lead that answers with its final reply.
 
 const choice = { modelProfile: 'model-a' };
 
-describe('conversation agent (CR-055)', () => {
-  it('[TC-LLM-008-H] the conversation lead answers with its final reply and has no output tools', () => {
+describe('conversation agent', () => {
+  it('the conversation lead answers with its final reply and has no output tools', () => {
     const definition = conversationDefinition({
       id: 'conversation_chat',
       brief: '하이',
       choice,
       fileTools: false,
     });
-    // The lead, and the helper it may call on request (TC-TEAM-001-H).
+    // The lead, and the helper it may call on request.
     expect(definition.roles.map((role) => role.name)).toEqual(['Assistant', 'Helper']);
     const [lead] = definition.roles;
     expect(lead).toMatchObject({ answer: 'final_reply', outputContract: 'text' });
@@ -52,7 +52,7 @@ describe('conversation agent (CR-055)', () => {
     );
   });
 
-  it('[TC-LLM-008-H] team none starts the conversation lead without asking a chooser', async () => {
+  it('team none starts the conversation lead without asking a chooser', async () => {
     let routed = 0;
     const started: Parameters<Parameters<typeof createAutoStarter>[0]['startRun']>[0][] = [];
     const starter = createAutoStarter({
@@ -97,7 +97,7 @@ describe('conversation agent (CR-055)', () => {
     expect(started[0]?.autoRoute).toBeUndefined();
   });
 
-  it('[TC-LLM-008-N] a question about a result has no tools and answers with its final reply', () => {
+  it('a question about a result has no tools and answers with its final reply', () => {
     const [role] = explainDefinition({
       id: 'explain',
       question: 'Why?',
@@ -111,7 +111,7 @@ describe('conversation agent (CR-055)', () => {
   });
 });
 
-describe('progress guard (CR-055)', () => {
+describe('progress guard', () => {
   const version = (
     seq: number,
     artifactId: string,
@@ -137,7 +137,7 @@ describe('progress guard (CR-055)', () => {
     }) as unknown as RunEvent;
   const projection = { artifacts: {}, questions: {} } as Parameters<typeof applyProgressEvent>[2];
 
-  it('[TC-LLM-008-N] rewriting the same unsubmitted artifact is not progress', () => {
+  it('rewriting the same unsubmitted artifact is not progress', () => {
     let state = emptyProgress();
     state = applyProgressEvent(state, reply(1), projection);
     state = applyProgressEvent(state, version(2, 'art_answer', 'hash_1'), projection);
@@ -156,7 +156,7 @@ describe('progress guard (CR-055)', () => {
     expect(state.turns).toBe(0);
   });
 
-  it('[TC-LLM-008-N] after a submission, the next version of the artifact is progress again', () => {
+  it('after a submission, the next version of the artifact is progress again', () => {
     let state = applyProgressEvent(emptyProgress(), version(1, 'art_answer', 'hash_1'), projection);
     state = applyProgressEvent(state, reply(2), projection);
     state = applyProgressEvent(
@@ -176,8 +176,8 @@ describe('progress guard (CR-055)', () => {
   });
 });
 
-describe('explicit subagents (CR-055)', () => {
-  it('[TC-TEAM-001-H] the conversation lead can delegate to a helper only when asked', () => {
+describe('explicit subagents', () => {
+  it('the conversation lead can delegate to a helper only when asked', () => {
     const definition = conversationDefinition({
       id: 'conversation_helpers',
       brief: 'Use two subagents to compare these options.',
@@ -198,7 +198,7 @@ describe('explicit subagents (CR-055)', () => {
     );
   });
 
-  it('[TC-TEAM-001-F] a resent conversation start returns its run after the run ended', async () => {
+  it('a resent conversation start returns its run after the run ended', async () => {
     const coordinator = new Coordinator({
       clock: new FakeClock(),
       ids: new SequentialIdFactory(),
@@ -233,7 +233,7 @@ describe('explicit subagents (CR-055)', () => {
     expect(coordinator.listRuns()).toHaveLength(1);
   });
 
-  it('[TC-TEAM-001-F] delegated helpers answer with final replies that reach the lead', async () => {
+  it('delegated helpers answer with final replies that reach the lead', async () => {
     const coordinator = new Coordinator({
       clock: new FakeClock(),
       ids: new SequentialIdFactory(),
@@ -266,7 +266,7 @@ describe('explicit subagents (CR-055)', () => {
   });
 });
 
-describe('team selector (CR-055)', () => {
+describe('team selector', () => {
   const accepted = (commandId: string) => ({
     runId: 'run_team',
     receipt: {
@@ -281,7 +281,7 @@ describe('team selector (CR-055)', () => {
   });
   type Started = Parameters<Parameters<typeof createAutoStarter>[0]['startRun']>[0];
 
-  it('[TC-TEAM-001-H] auto gives the lead a roster of named delegates without a chooser', async () => {
+  it('auto gives the lead a roster of named delegates without a chooser', async () => {
     let routed = 0;
     const started: Started[] = [];
     const starter = createAutoStarter({
@@ -321,7 +321,7 @@ describe('team selector (CR-055)', () => {
     expect(lead?.prompt).not.toContain('only when the person explicitly asks');
   });
 
-  it('[TC-TEAM-001-H] a chosen Corral lends its roles to the lead with its flow as guidance', async () => {
+  it('a chosen Corral lends its roles to the lead with its flow as guidance', async () => {
     const corral = linearCorral(['research', 'write']);
     const started: Started[] = [];
     const starter = createAutoStarter({
@@ -352,7 +352,7 @@ describe('team selector (CR-055)', () => {
     expect(definition.controlEdges.every((edge) => !edge.source.startsWith('team_'))).toBe(true);
   });
 
-  it('[TC-TEAM-001-N] a saved team’s other models are prepared before the start', async () => {
+  it('a saved team’s other models are prepared before the start', async () => {
     const corral = linearCorral(['review']);
     corral.roles = corral.roles.map((role) => ({ ...role, modelProfile: 'model-b' }));
     const asked: (readonly string[] | undefined)[] = [];
@@ -390,7 +390,7 @@ describe('team selector (CR-055)', () => {
     expect(Object.keys(models ?? {})).toEqual(['model-a', 'model-b']);
   });
 
-  it('[TC-TEAM-001-N] a missing Corral is refused, never replaced by another team', async () => {
+  it('a missing Corral is refused, never replaced by another team', async () => {
     const started: Started[] = [];
     const starter = createAutoStarter({
       corral: () => null,
@@ -416,7 +416,7 @@ describe('team selector (CR-055)', () => {
   });
 });
 
-describe('session tools by default (CR-055 §7)', () => {
+describe('session tools by default', () => {
   const binding = { profileId: 'session-default', revision: 1 };
   const capture = () => {
     const started: Parameters<Parameters<typeof createAutoStarter>[0]['startRun']>[0][] = [];
@@ -454,7 +454,7 @@ describe('session tools by default (CR-055 §7)', () => {
     team,
   });
 
-  it('[TC-TEAM-002-H] in a trusted folder the lead and its writers get command and preview tools', async () => {
+  it('in a trusted folder the lead and its writers get command and preview tools', async () => {
     const { starter, started } = capture();
     await starter.start(request('none'), { fileTools: true });
     const [lead, helper] = started[0]?.definition.roles ?? [];
@@ -476,7 +476,7 @@ describe('session tools by default (CR-055 §7)', () => {
     );
   });
 
-  it('[TC-TEAM-002-N] without a trusted folder no work style is bound and no command tool is offered', async () => {
+  it('without a trusted folder no work style is bound and no command tool is offered', async () => {
     const { starter, started, asked } = capture();
     await starter.start(request('none'), { fileTools: false });
     const [lead] = started[0]?.definition.roles ?? [];
@@ -500,7 +500,7 @@ describe('session tools by default (CR-055 §7)', () => {
     expect(asked).toEqual([]);
   });
 
-  it('[TC-TEAM-002-F] a final reply is published even when the loaded work style lists no output tools', async () => {
+  it('a final reply is published even when the loaded work style lists no output tools', async () => {
     const snapshot: EffectiveHarnessSnapshot = {
       binding,
       snapshotHash: 'a'.repeat(64),
@@ -574,8 +574,8 @@ describe('session tools by default (CR-055 §7)', () => {
   });
 });
 
-describe('cancelling a delegating turn (CR-055)', () => {
-  it('[TC-TEAM-001-F] cancelling the run settles the lead’s wait as cancelled, not failed', async () => {
+describe('cancelling a delegating turn', () => {
+  it('cancelling the run settles the lead’s wait as cancelled, not failed', async () => {
     const childStarted = new Gate();
     const release = new Gate();
     const coordinator = new Coordinator({

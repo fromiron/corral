@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 import { expect, it } from 'vitest';
 import { MIGRATIONS, openDatabase } from '../src/index.ts';
 
-it('[TC-WBD-001-H] upgrades legacy copy ownership without losing uncertain reservations or its rollback backup', () => {
+it('upgrades legacy copy ownership without losing uncertain reservations or its rollback backup', () => {
   const directory = mkdtempSync(join(tmpdir(), 'corral-workbench-migration-'));
   const file = join(directory, 'workspace.db');
   const backup = join(directory, 'before-upgrade.db');

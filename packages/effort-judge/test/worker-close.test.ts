@@ -22,7 +22,7 @@ vi.mock('node:worker_threads', () => ({
   },
 }));
 
-it('[TC-RSN-002-N] repeated close waits for the same actual worker exit', async () => {
+it('repeated close waits for the same actual worker exit', async () => {
   const { workerSession } = await import('../src/provider.ts');
   const session = await workerSession('fixture');
   const first = session.close!();

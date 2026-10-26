@@ -97,7 +97,7 @@ function setup(options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number 
   };
 }
 
-it('[TC-WBD-004-N] duplicate create keeps one writer and cancellation during preparation prevents spawn', async () => {
+it('duplicate create keeps one writer and cancellation during preparation prevents spawn', async () => {
   const prepare = new Gate();
   const s = setup({ prepare });
   const first = await s.runtime.create('session', s.request);
@@ -115,7 +115,7 @@ it('[TC-WBD-004-N] duplicate create keeps one writer and cancellation during pre
   expect(s.access.ownersAt(s.path)).toEqual([]);
 });
 
-it('[TC-WBD-004-H] output keeps complete chunks and resize order; controller frames acknowledge once', async () => {
+it('output keeps complete chunks and resize order; controller frames acknowledge once', async () => {
   const s = setup();
   await s.runtime.create('session', s.request);
   await s.spawned.wait();
@@ -165,7 +165,7 @@ it('[TC-WBD-004-H] output keeps complete chunks and resize order; controller fra
   );
 });
 
-it('[TC-WBD-004-F] prefix overflow preserves live output but refuses arbitrary tail replay', async () => {
+it('prefix overflow preserves live output but refuses arbitrary tail replay', async () => {
   const s = setup({ historyBytes: 68 });
   await s.runtime.create('session', s.request);
   await s.spawned.wait();
@@ -198,7 +198,7 @@ it('[TC-WBD-004-F] prefix overflow preserves live output but refuses arbitrary t
   continued.close();
 });
 
-it('[TC-WBD-004-F] leader exit retains writer until descendants are confirmed gone', async () => {
+it('leader exit retains writer until descendants are confirmed gone', async () => {
   const cleanup = new Gate();
   const s = setup({ cleanup });
   await s.runtime.create('session', s.request);
@@ -211,7 +211,7 @@ it('[TC-WBD-004-F] leader exit retains writer until descendants are confirmed go
   expect(s.access.ownersAt(s.path)).toHaveLength(0);
 });
 
-it('[TC-WBD-004-F] restarted uncertain receipt never respawns and needs explicit cleanup', async () => {
+it('restarted uncertain receipt never respawns and needs explicit cleanup', async () => {
   const s = setup();
   await s.runtime.create('session', s.request);
   await s.spawned.wait();
@@ -225,7 +225,7 @@ it('[TC-WBD-004-F] restarted uncertain receipt never respawns and needs explicit
   await restarted.close();
 });
 
-it('[TC-WBD-004-F] ambiguous input invalidates the controller and explicit takeover never replays it', async () => {
+it('ambiguous input invalidates the controller and explicit takeover never replays it', async () => {
   const s = setup();
   await s.runtime.create('session', s.request);
   await s.spawned.wait();
@@ -263,7 +263,7 @@ it('[TC-WBD-004-F] ambiguous input invalidates the controller and explicit takeo
   expect(s.child.write).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-004-N] the PTY reservation consumes the same twelfth host process slot', async () => {
+it('the PTY reservation consumes the same twelfth host process slot', async () => {
   const s = setup();
   const permits = Array.from({ length: 11 }, () => reserveHostProcessGroup());
   try {
@@ -278,7 +278,7 @@ it('[TC-WBD-004-N] the PTY reservation consumes the same twelfth host process sl
   }
 });
 
-it('[TC-WBD-004-F] restoring an existing owner above the cap keeps new admission blocked after another exit', async () => {
+it('restoring an existing owner above the cap keeps new admission blocked after another exit', async () => {
   const s = setup();
   await s.runtime.create('session', s.request);
   await s.spawned.wait();

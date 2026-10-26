@@ -18,8 +18,8 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// CR-016: `@` references travel with the start request. They point at things; they never grant
-// a tool or a path. A result is copied at the version that was chosen, like CR-007's startFrom.
+// `@` references travel with the start request. They point at things; they never grant
+// a tool or a path. A result is copied at the version that was chosen, like startFrom.
 
 function setup(maxArtifactBytes = SPEC_HARD_CAPS.maxArtifactBytes) {
   const starts: AgentStartInput[] = [];
@@ -58,8 +58,8 @@ async function run(s: ReturnType<typeof setup>, commandId: string, references?: 
 const brief = (s: ReturnType<typeof setup>, index: number) =>
   s.starts[index]?.inputs.find((i) => i.name === 'brief')?.text ?? '';
 
-describe('references in a start request (CR-016)', () => {
-  it('[TC-IMAGE-001-H] [TC-IMAGE-001-N] image references require ownership and model support, and only private history contains their body', async () => {
+describe('references in a start request', () => {
+  it('image references require ownership and model support, and only private history contains their body', async () => {
     const image = {
       kind: 'image_attachment' as const,
       imageId: 'image_fixture',
@@ -129,7 +129,7 @@ describe('references in a start request (CR-016)', () => {
     if (archived.visibility === 'private')
       expect(archived.artifacts[image.imageId]).toContain('AQID');
   });
-  it('[TC-REF-001-H] lists files, folders, runs and roles as pointers after the brief', async () => {
+  it('lists files, folders, runs and roles as pointers after the brief', async () => {
     const s = setup();
     const first = await run(s, 'cmd_first');
     const runA = first.result.runId ?? '';
@@ -152,7 +152,7 @@ describe('references in a start request (CR-016)', () => {
     expect(text).toContain('do not grant access');
   });
 
-  it('[TC-REF-002-H] copies a referenced result at the chosen version', async () => {
+  it('copies a referenced result at the chosen version', async () => {
     const s = setup();
     const first = await run(s, 'cmd_first');
     const runA = first.result.runId ?? '';
@@ -163,7 +163,7 @@ describe('references in a start request (CR-016)', () => {
     expect(s.starts[1]?.inputs.every((i) => i.artifactVersionId !== versionId)).toBe(true);
   });
 
-  it('[TC-REF-003-F] refuses a result, run or role that does not exist, and starts nothing', async () => {
+  it('refuses a result, run or role that does not exist, and starts nothing', async () => {
     const s = setup();
     for (const [id, reference] of [
       ['cmd_a', { kind: 'result', runId: 'run_nope', artifactVersionId: 'av_nope' }],
@@ -177,7 +177,7 @@ describe('references in a start request (CR-016)', () => {
     expect(s.coordinator.listRuns()).toEqual([]);
   });
 
-  it('[TC-REF-004-F] refuses results larger than the artifact cap together', async () => {
+  it('refuses results larger than the artifact cap together', async () => {
     const s = setup(64);
     const first = await run(s, 'cmd_first');
     const runA = first.result.runId ?? '';
@@ -189,7 +189,7 @@ describe('references in a start request (CR-016)', () => {
     expect(many.result.receipt.error?.code).toBe('LIMIT_REACHED');
   });
 
-  it('[TC-REF-005-F] the request schema rejects absolute or escaping paths and too many references', () => {
+  it('the request schema rejects absolute or escaping paths and too many references', () => {
     const base = {
       schemaVersion: '0.1',
       commandId: 'cmd_x',
@@ -211,7 +211,7 @@ describe('references in a start request (CR-016)', () => {
     ).toBe(false);
   });
 
-  it('[TC-REF-006-D] the same command with the same references returns the first receipt', async () => {
+  it('the same command with the same references returns the first receipt', async () => {
     const s = setup();
     const refs: RunReference[] = [{ kind: 'folder', path: 'docs' }];
     const a = await run(s, 'cmd_same', refs);
@@ -227,7 +227,7 @@ describe('references in a start request (CR-016)', () => {
   });
 });
 
-it('[TC-CHAT-001-H] [TC-CHAT-001-N] text attachments are immutable private input, never file permission, and invalid bodies do not start', async () => {
+it('text attachments are immutable private input, never file permission, and invalid bodies do not start', async () => {
   const text = 'Private attachment 한국어';
   const attachment = {
     kind: 'text_attachment' as const,
@@ -259,7 +259,7 @@ it('[TC-CHAT-001-H] [TC-CHAT-001-N] text attachments are immutable private input
   expect(s.coordinator.listRuns()).toHaveLength(1);
 });
 
-it('[TC-WBD-007-H] [TC-WBD-007-N] captures source metadata in private input and keeps identical text from different sources distinct', async () => {
+it('captures source metadata in private input and keeps identical text from different sources distinct', async () => {
   const source = {
     kind: 'code' as const,
     target: {

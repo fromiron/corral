@@ -11,7 +11,7 @@ function stored<T>(key: string, fallback: T): T {
   }
 }
 
-/** A view preference kept in this browser; never a fact about a run (02-UX-Spec §9). */
+/** A view preference kept in this browser; never a fact about a run. */
 export function useRemembered<T>(key: string, fallback: T): [T, (value: T) => void] {
   const [state, setValue] = useState(() => ({ key, value: stored(key, fallback) }));
   const value = state.key === key ? state.value : stored(key, fallback);

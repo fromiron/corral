@@ -25,9 +25,9 @@ type Source = {
 };
 
 /**
- * Locations reported by checks and tasks, inside the session copy only (CR-046 P15). A check
+ * Locations reported by checks and tasks, inside the session copy only. A check
  * result keeps the tree and command it ran with, so a result from either one earlier is marked;
- * a task's output has no version (CR-046 P17).
+ * a task's output has no version.
  */
 export function ProblemsPanel({ sessionId }: { sessionId: string }) {
   const t = useTranslations('Problems');

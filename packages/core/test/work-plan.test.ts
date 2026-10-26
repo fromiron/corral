@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import { Coordinator, InMemoryRunStore } from '../src/index.ts';
 
 it.each([false, true])(
-  '[TC-COMPACT-001-H] [TC-PLAN-001-H] [TC-PLAN-001-N] plans enforce ownership, revisions, one active step and required evidence without completing the task (team=%s)',
+  'plans enforce ownership, revisions, one active step and required evidence without completing the task (team=%s)',
   async (team) => {
     const started = new Gate(),
       done = new Gate(),

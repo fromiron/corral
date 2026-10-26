@@ -30,7 +30,7 @@ function setup() {
   return { session, sendCommand };
 }
 
-describe('future settings preview (C-035)', () => {
+describe('future settings preview', () => {
   it('shows spent usage and current → proposed before submitting the reviewed revision', () => {
     const { sendCommand } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));

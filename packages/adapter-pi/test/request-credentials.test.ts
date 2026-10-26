@@ -8,7 +8,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { requestCredentials } from '../src/request-credentials.ts';
 
-// CR-004: an OAuth-only provider (pi-ai's `openai-codex`) ignores a per-request API key and
+// an OAuth-only provider (pi-ai's `openai-codex`) ignores a per-request API key and
 // reads its credential from a store. The worker keeps only the current request's token.
 
 function oauthOnly(credentials?: ReturnType<typeof requestCredentials>['store']) {
@@ -61,8 +61,8 @@ const ask = async (setup: ReturnType<typeof oauthOnly>, apiKey: string) => {
   return result;
 };
 
-describe('request credentials in the worker (CR-004)', () => {
-  it('[TC-SEC-002-H] an OAuth-only provider gets the request’s token, and it is never refreshed', async () => {
+describe('request credentials in the worker', () => {
+  it('an OAuth-only provider gets the request’s token, and it is never refreshed', async () => {
     const { store, use } = requestCredentials();
     const setup = oauthOnly(store);
     use('oauth-only', 'token-1');
@@ -73,7 +73,7 @@ describe('request credentials in the worker (CR-004)', () => {
     expect(setup.refreshes()).toBe(0);
   });
 
-  it('[TC-SEC-002-N] without it the provider is not configured; the store keeps nothing else', async () => {
+  it('without it the provider is not configured; the store keeps nothing else', async () => {
     const bare = oauthOnly();
     expect((await ask(bare, 'token-1')).errorMessage).toMatch(/not configured/);
     const { store } = requestCredentials();

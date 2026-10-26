@@ -30,7 +30,7 @@ import type {
 } from './runtime-checkpoints.ts';
 import type { SessionConversation } from './session-continuity.ts';
 
-// Injectable runtime ports (Implementation Plan §4, CRL-DEV-002). Types only.
+// Injectable runtime ports. Types only.
 
 export interface Clock {
   /** Wall time in ISO-8601 UTC, for records. */
@@ -68,7 +68,7 @@ export interface Scheduler {
   after(ms: number, fn: () => void): () => void;
 }
 
-// Agent adapter port (Technical-Design §7.2). Workers never decide domain state;
+// Agent adapter port. Workers never decide domain state;
 // every effect goes through the host, which is backed by the Coordinator.
 
 export interface ResolvedInput {
@@ -80,7 +80,7 @@ export interface ResolvedInput {
   text: string;
 }
 
-/** Why this execution exists (Spec §7.2, Technical-Design §8). */
+/** Why this execution exists. */
 export type Assignment =
   | { kind: 'scheduled' }
   | { kind: 'delegated'; brief: string; parentExecutionId: string }
@@ -99,7 +99,7 @@ export interface AgentStartInput {
   /** Host-owned provenance for a conversational response, never inferred from the role. */
   meeting?: MeetingRunOrigin;
   resumeContext?: RuntimeCheckpointState;
-  /** CR-054: the session's earlier requests and answers, for an execution given the brief. */
+  /** the session's earlier requests and answers, for an execution given the brief. */
   conversation?: SessionConversation;
   images?: ImageInput[];
   taskBrief?: TaskBrief;
@@ -190,7 +190,7 @@ export type ToolAuthorization =
   | { ok: true; toolCallId: string }
   | { ok: false; toolCallId: string; error: CommandError };
 
-/** A piece of model output while it streams. Transient: never stored (ADR-011). */
+/** A piece of model output while it streams. Transient: never stored. */
 export interface TextDelta {
   modelCallId: string;
   chunkIndex: number;
@@ -223,7 +223,7 @@ export interface AgentHost {
   modelRequestDispatched?(modelCallId: string): Promise<void>;
   /** Authorizes and runs a tool in one step, for agents without a separate tool phase. */
   invokeTool(proposal: ToolProposal): Promise<ToolOutcome>;
-  /** Records the request and decides on it; nothing runs (Technical-Design §7.3). */
+  /** Records the request and decides on it; nothing runs. */
   authorizeTool(proposal: ToolProposal): Promise<ToolAuthorization>;
   /** Runs an authorized call, at most once. Only this records `tool.started`. */
   executeTool(toolCallId: string): Promise<ToolOutcome>;
@@ -250,7 +250,7 @@ export interface AgentAdapter {
   start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle>;
 }
 
-// ── decision providers (CR-003, ADR-025) ───────────────────────────────────
+// ── decision providers ───────────────────────────────────
 
 /** The question a provider gets for one model request. The excerpt never reaches events. */
 export interface EffortQuestion {

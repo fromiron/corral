@@ -1,5 +1,5 @@
 // Worker thread that owns the ONNX session, so a ~0.1 s CPU-bound judgment never blocks the
-// Coordinator's event loop (C-072). Derived from mixdog `judge-worker.mjs` (Apache-2.0; see
+// Coordinator's event loop. Derived from mixdog `judge-worker.mjs` (Apache-2.0; see
 // ../NOTICE.md). Changes for Corral: tokenizing happens in the caller; this worker only runs
 // the model on token ids and returns raw logits.
 import { createRequire } from 'node:module';

@@ -5,7 +5,7 @@ import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
 
-// Canonical definition of a Corral (Technical-Design §4.1). Layout lives in CanvasLayout.
+// Canonical definition of a Corral. Layout lives in CanvasLayout.
 
 export const InputBindingKind = z.enum([
   'run_input',
@@ -32,7 +32,7 @@ export const ItemRef = z.strictObject({
 });
 export type ItemRef = z.infer<typeof ItemRef>;
 
-// File tools (CR-012) work only inside a session's managed worktree.
+// File tools work only inside a session's managed worktree.
 export const WorkTool = z.enum([
   'search',
   'read_document',
@@ -86,7 +86,7 @@ export const AgentRole = z.strictObject({
   outputContract: OutputContract,
   harness: HarnessBindingRef.optional(),
   /**
-   * CR-055: the agent's last reply without a tool call is its result. It is offered neither
+   * the agent's last reply without a tool call is its result. It is offered neither
    * write_artifact nor submit_result; the Coordinator records and submits that reply.
    */
   answer: z.literal('final_reply').optional(),
@@ -193,7 +193,7 @@ export const RunLimits = z.strictObject({
 });
 export type RunLimits = z.infer<typeof RunLimits>;
 
-/** Starting limits from Spec §9; hard caps are enforced by the installation policy. */
+/** Starting limits from product contract §9; hard caps are enforced by the installation policy. */
 export const DEFAULT_LIMITS: RunLimits = {
   maxDelegationDepth: 2,
   maxModelConcurrency: 6,
@@ -207,7 +207,7 @@ export const DEFAULT_LIMITS: RunLimits = {
   runDeadlineMs: 3600000,
 };
 
-/** What a run works on: the brief and the completion criteria (Spec §5.1). */
+/** What a run works on: the brief and the completion criteria. */
 export const RunInput = z.strictObject({
   images: ImageAttachments.optional(),
   taskScope: z.enum(['work', 'review_only']).optional(),
@@ -228,7 +228,7 @@ export const TaskBrief = z.strictObject({
   verificationScope: z.enum(['targeted', 'release']),
   canModifyFiles: z.boolean(),
   limits: RunLimits,
-  /** An unlimited run (CR-052): `limits` are not applied. */
+  /** An unlimited run: `limits` are not applied. */
   usageLimits: z.literal('none').optional(),
   sourceRefs: z
     .array(z.strictObject({ name: z.string().min(1), artifactVersionId: Identifier.nullable() }))

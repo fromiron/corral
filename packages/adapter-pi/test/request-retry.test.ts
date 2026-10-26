@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { providerFailure } from '../src/ported/dsh/retry.ts';
 import { managedRetryStream } from '../src/request-retry.ts';
 
-it('[TC-LLM-003-N] identifies Hive exhausted balance as quota and preserves safe metadata', () => {
+it('identifies Hive exhausted balance as quota and preserves safe metadata', () => {
   expect(
     providerFailure('Organization has been paused due to account balance', {
       status: 405,
@@ -12,7 +12,7 @@ it('[TC-LLM-003-N] identifies Hive exhausted balance as quota and preserves safe
   ).toEqual({ code: 'QUOTA', status: 405, retryAfterMs: 2000, requestId: 'req-1' });
 });
 
-it('[TC-LLM-003-F] retries only explicit transient errors before content and accounts each failed attempt', async () => {
+it('retries only explicit transient errors before content and accounts each failed attempt', async () => {
   const opened: number[] = [],
     waits: number[] = [],
     failed: string[] = [];
@@ -47,7 +47,7 @@ it('[TC-LLM-003-F] retries only explicit transient errors before content and acc
   expect(failed).toHaveLength(2);
 });
 it.each(['insufficient_quota HTTP 429', 'HTTP 401', 'response lost'])(
-  '[TC-LLM-003-N] does not repeat %s',
+  'does not repeat %s',
   async (errorMessage) => {
     let calls = 0;
     const result = managedRetryStream({

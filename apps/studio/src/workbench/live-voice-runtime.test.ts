@@ -78,7 +78,7 @@ function setup() {
 }
 afterEach(() => vi.useRealTimers());
 
-it('[TC-ABS-015-H] only final transcripts use a stable command ID and pinned execution, never partial/replayed events', async () => {
+it('only final transcripts use a stable command ID and pinned execution, never partial/replayed events', async () => {
   const test = setup();
   await test.runtime.start('primary', 'gpt-realtime');
   test.runtime.providerEvent({
@@ -110,7 +110,7 @@ it('[TC-ABS-015-H] only final transcripts use a stable command ID and pinned exe
   expect(test.submit).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-ABS-015-N] lost command answers retry the same ID; explicit queue choice is distinct and deduplicated', async () => {
+it('lost command answers retry the same ID; explicit queue choice is distinct and deduplicated', async () => {
   const test = setup();
   test.submit.mockRejectedValueOnce(new Error('network lost'));
   await test.runtime.start('primary', 'gpt-realtime');
@@ -137,7 +137,7 @@ it('[TC-ABS-015-N] lost command answers retry the same ID; explicit queue choice
   await test.runtime.stop();
 });
 
-it('[TC-ABS-015-N] stops late microphone grant and late provider answer after user ends connecting', async () => {
+it('stops late microphone grant and late provider answer after user ends connecting', async () => {
   const test = setup();
   let grant!: (value: MediaStream) => void;
   test.environment.media.mockImplementationOnce(
@@ -169,7 +169,7 @@ it('[TC-ABS-015-N] stops late microphone grant and late provider answer after us
   expect(next.peer.setRemoteDescription).not.toHaveBeenCalled();
 });
 
-it('[TC-ABS-015-H] reports provider usage once per response and clears the microphone on permission revocation', async () => {
+it('reports provider usage once per response and clears the microphone on permission revocation', async () => {
   const test = setup();
   await test.runtime.start('primary', 'gpt-realtime');
   const event = {

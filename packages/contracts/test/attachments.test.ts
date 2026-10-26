@@ -54,7 +54,7 @@ const attachment = {
   text: 'one',
 };
 
-it('[TC-WBD-007-H] uses actual code/terminal and read-only hunk/check identities without inventing a copy generation', () => {
+it('uses actual code/terminal and read-only hunk/check identities without inventing a copy generation', () => {
   for (const provenance of [code, terminal, hunk, check])
     expect(TextAttachmentProvenance.parse(provenance)).toEqual(provenance);
   const other = { ...attachment, provenance: { ...code, path: 'src/b.ts' } };
@@ -71,7 +71,7 @@ it('[TC-WBD-007-H] uses actual code/terminal and read-only hunk/check identities
   ).toBe(false);
 });
 
-it('[TC-WBD-007-N] refuses reversed ranges, traversal, invalid snapshot hashes and fabricated authority fields', () => {
+it('refuses reversed ranges, traversal, invalid snapshot hashes and fabricated authority fields', () => {
   for (const provenance of [
     { ...code, range: { ...code.range, startColumn: 5 } },
     { ...code, path: '../a.ts' },
@@ -85,7 +85,7 @@ it('[TC-WBD-007-N] refuses reversed ranges, traversal, invalid snapshot hashes a
     expect(TextAttachmentProvenance.safeParse(provenance).success).toBe(false);
 });
 
-it('[TC-WBD-020-H] [TC-WBD-020-N] retains preview identity without claiming a source revision or carrying authentication', () => {
+it('retains preview identity without claiming a source revision or carrying authentication', () => {
   const source = {
     kind: 'preview',
     target,

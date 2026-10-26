@@ -63,7 +63,7 @@ const importAgent = (text = source, mappings = { Read: 'read_file', Glob: 'list_
     suffix: 'a1',
   });
 
-describe('TC-ABS-11 Markdown agent import', () => {
+describe('Markdown agent import', () => {
   it('reviews a real parent question channel so a child can ask and continue its task', () => {
     const imported = importAgent();
     expect(imported.definition.capabilityLinks.at(-1)).toMatchObject({

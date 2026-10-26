@@ -3,7 +3,7 @@ import { HttpSseTransport } from '../src/index.ts';
 import { createStartRecovery } from '../src/recovery.ts';
 
 it.each(['auto', 'explain'] as const)(
-  '[TC-ABS-014-N] %s recovers a lost start response when a retry supplies a fresh ID',
+  '%s recovers a lost start response when a retry supplies a fresh ID',
   async (kind) => {
     const values = new Map<string, string>();
     const storage = {
@@ -57,7 +57,7 @@ it.each(['auto', 'explain'] as const)(
   },
 );
 
-it('[TC-ABS-014-N] cancelling a fresh-ID retry targets the original pending Auto start', async () => {
+it('cancelling a fresh-ID retry targets the original pending Auto start', async () => {
   const values = new Map<string, string>();
   const starts = createStartRecovery(
     {
@@ -107,7 +107,7 @@ it('[TC-ABS-014-N] cancelling a fresh-ID retry targets the original pending Auto
   }
 });
 
-it('[TC-ABS-014-H] an explicit retry recovers only the exact unresolved saved request in this host', () => {
+it('an explicit retry recovers only the exact unresolved saved request in this host', () => {
   const values = new Map<string, string>();
   const storage = {
     getItem: (key: string) => values.get(key) ?? null,

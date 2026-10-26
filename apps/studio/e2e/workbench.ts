@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
 // Shared user-facing steps: start a chat directly, or explicitly choose a saved Corral.
-// The team for the next turn is chosen from the composer's team chip (CR-055).
+// The team for the next turn is chosen from the composer's team chip.
 
 /** On a project page: makes a Corral from a template and comes back to the project. */
 export async function teamFromTemplate(page: Page, name = 'Single agent') {
@@ -22,7 +22,7 @@ export async function startSession(page: Page, purpose: string) {
   if (!(await page.getByRole('textbox', { name: 'Purpose' }).isVisible()))
     await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
   await page.getByRole('textbox', { name: 'Purpose' }).fill(purpose);
-  // CR-024: without a choice a session starts in auto mode; this helper keeps the first team.
+  // without a choice a session starts in auto mode; this helper keeps the first team.
   await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
   await page.getByRole('option').nth(1).click();
   await page.getByRole('button', { name: 'Start chat' }).click();
@@ -33,7 +33,7 @@ export async function startSession(page: Page, purpose: string) {
 export const requestBox = (page: Page) =>
   page.getByRole('combobox', { name: 'Request', exact: true });
 
-/** Chooses the team for the next turn from the composer's team chip (CR-055). */
+/** Chooses the team for the next turn from the composer's team chip. */
 export async function selectSessionTeam(page: Page, name: string) {
   const picker = page
     .getByRole('region', { name: 'Request', exact: true })

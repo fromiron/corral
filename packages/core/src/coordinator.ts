@@ -163,7 +163,7 @@ import {
 } from './store/run-store.ts';
 import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
 
-// The single place domain state is decided (ADR-003, C-012/C-013). A command is validated and
+// The single place domain state is decided. A command is validated and
 // turned into events; the events, the projection they produce, the command record and artifact
 // bodies are written in one RunStore transaction; only after that commit are effects (agent
 // work) dispatched. If a commit fails, admission closes: nothing new starts while facts cannot
@@ -230,7 +230,7 @@ export interface ExternalTools {
 }
 
 /**
- * Files in a session's managed worktree (CR-012). The runtime that has worktrees provides it;
+ * Files in a session's managed worktree. The runtime that has worktrees provides it;
  * a run may use file tools only when `available` says its session has one.
  */
 export interface FileTools {
@@ -347,15 +347,15 @@ export interface CoordinatorDeps {
   /** Names this backend process in `run.interrupted` when it recovers older runs. */
   sessionId?: string;
   corrals?: DefinitionSource;
-  /** Installation hard caps (C-062). Defaults to Spec §9. */
+  /** Installation hard caps. Defaults to product contract §9. */
   policy?: InstallationPolicy;
-  /** Model profiles per run mode (C-058). Defaults to simulated agents only. */
+  /** Model profiles per run mode. Defaults to simulated agents only. */
   models?: ModelResolver;
   /** Deadlines such as question timeouts. Without it, nothing times out. */
   timers?: Scheduler;
-  /** Admission gates and observers (ADR-024). Defaults to today's checks, no observers. */
+  /** Admission gates and observers. Defaults to today's checks, no observers. */
   admission?: AdmissionConfig;
-  /** reasoning_effort judgment providers and workspace settings (CR-003). Observe only. */
+  /** reasoning_effort judgment providers and workspace settings. Observe only. */
   judgments?: JudgmentConfig;
 }
 
@@ -427,7 +427,7 @@ interface RecipeRun {
   failureSignature?: string;
 }
 interface LiveRun {
-  /** An unlimited run (CR-052): `limits` are not applied; only a person's cancel stops it. */
+  /** An unlimited run: `limits` are not applied; only a person's cancel stops it. */
   usageLimits?: 'none';
   recipes: Map<string, RecipeRun>;
   runId: string;
@@ -436,13 +436,13 @@ interface LiveRun {
   projection: RunProjection;
   /** Set when the run must not take another step (storage closed). */
   stop: { aborted: boolean };
-  /** One promise per activation key: a replayed step joins the first one (C-013). */
+  /** One promise per activation key: a replayed step joins the first one. */
   activations: Map<string, Promise<StepOutcome>>;
   handles: Map<string, AgentHandle>;
   /** The open round of each Loop node. */
   rounds: Map<string, { no: number; iterationId: string }>;
   /**
-   * Model concurrency (Spec §9, CRL-RUN-005): a slot is held only while a model request is
+   * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
    */
   slots: { free: number; waiters: (() => void)[]; held: Map<string, string> };
@@ -455,7 +455,7 @@ interface LiveRun {
   /** Executions whose cancel the Coordinator asked for: they settle as cancelled. */
   cancelRequested: Set<string>;
   closingExecutions: Set<string>;
-  /** Pending approvals and how to continue once the person decides (C-029). */
+  /** Pending approvals and how to continue once the person decides. */
   approvals: Map<string, (decision: 'approve' | 'reject') => void>;
   toolApprovals: Map<
     string,
@@ -472,7 +472,7 @@ interface LiveRun {
   uiNoticeCount: number;
   /** The inputs each execution was started with: what a reviewer actually reviewed. */
   inputsByExecution: Map<string, ResolvedInput[]>;
-  /** What each execution was started with, for judgments of its requests (CR-003). */
+  /** What each execution was started with, for judgments of its requests. */
   startInputs: Map<string, AgentStartInput>;
   reasoningCalls: number;
   reasoningProvider: DecisionProvider | undefined;
@@ -691,7 +691,7 @@ export class Coordinator {
     );
   }
 
-  // ── run creation (C-057) ──────────────────────────────────────────────────
+  // ── run creation ──────────────────────────────────────────────────
 
   /** File recovery owns the idle installation until its durable result is recorded. */
   async withFileRestore<T>(work: () => Promise<T>, sessionId?: string): Promise<T> {
@@ -1051,7 +1051,7 @@ export class Coordinator {
       source = this.store.getRun(point.sourceRunId);
     if (point.requestStart) {
       if (!source) throw new ToolRefusal('TARGET_NOT_FOUND', 'source request unavailable');
-      // CR-056: a run that recorded the removed Ultra is not opened, so it cannot run again.
+      // a run that recorded the removed Ultra is not opened, so it cannot run again.
       const route = source.snapshot.autoRoute;
       if (route && ('qualityPreset' in route || 'ultra' in route))
         throw new ToolRefusal(
@@ -1510,7 +1510,7 @@ export class Coordinator {
     const meeting = 'meeting' in request ? request.meeting : undefined;
     let meetingContext: RuntimeCheckpointState | undefined;
     if (meeting) {
-      // CR-049: only a read-only, single-answer Run in its own meeting is exempt from limits.
+      // only a read-only, single-answer Run in its own meeting is exempt from limits.
       const parsed = CorralDefinition.safeParse(resolved.definition);
       if (
         !parsed.success ||
@@ -1551,7 +1551,7 @@ export class Coordinator {
       ? this.startFromVersion(resolved.definition, request.startFrom)
       : resolved;
     if ('error' in seeded) return refuse(seeded.error);
-    // CR-054: a resumed, branched or meeting context already carries its own history.
+    // a resumed, branched or meeting context already carries its own history.
     const conversation =
       request.conversation && !recovery && !branch && !meeting
         ? this.sessionConversation(request.sessionId, request.conversation.throughRunId)
@@ -2135,7 +2135,7 @@ export class Coordinator {
   }
 
   /**
-   * CR-007: the brief of a run that starts from an earlier version, read from that run's own
+   * the brief of a run that starts from an earlier version, read from that run's own
    * record. The text is copied, so the new run never refers to the old run's versions.
    */
   private startFromVersion(
@@ -2168,7 +2168,7 @@ export class Coordinator {
   }
 
   /**
-   * CR-054: the session's ended runs through `throughRunId`, in start order, as request/answer
+   * the session's ended runs through `throughRunId`, in start order, as request/answer
    * turns read from this Coordinator's records. Older turns give way to the artifact cap.
    */
   private sessionConversation(
@@ -2264,9 +2264,9 @@ export class Coordinator {
   }
 
   /**
-   * CR-016: what the person pointed at with `@`, listed after the brief. Files, folders, runs
+   * what the person pointed at with `@`, listed after the brief. Files, folders, runs
    * and roles are pointers; they grant nothing. Results are copied at the chosen version, within
-   * one artifact cap for all of them together, like CR-007.
+   * one artifact cap for all of them together, like a start-from version.
    */
   private withReferences(
     definition: unknown,
@@ -3402,7 +3402,7 @@ export class Coordinator {
   }
 
   /**
-   * Why a run on this model and reasoning would be refused now (CR-024), so an auto request
+   * Why a run on this model and reasoning would be refused now, so an auto request
    * asks no model for a choice that could not start.
    */
   startRefusal(
@@ -3423,7 +3423,7 @@ export class Coordinator {
         code: 'CAPABILITY_DENIED',
         message: 'this model has no confirmed image input support',
       };
-    // Choosing per request (CR-024 §7) starts from medium, so the model must support it.
+    // Choosing per request starts from medium, so the model must support it.
     if (reasoning?.mode === 'route')
       return resolution.snapshot.auth === 'mock' ||
         resolution.snapshot.reasoning?.levels.includes('medium')
@@ -3440,7 +3440,7 @@ export class Coordinator {
     return error ? { code: 'CAPABILITY_DENIED', message: error } : null;
   }
 
-  /** The reasoning levels a profile supports; null when unknown or simulated (CR-024 §7). */
+  /** The reasoning levels a profile supports; null when unknown or simulated. */
   reasoningLevels(profile: string, mode: 'mock' | 'live'): readonly ReasoningLevel[] | null {
     const resolution = this.models.resolve(profile, mode);
     return resolution.ok ? (resolution.snapshot.reasoning?.levels ?? null) : null;
@@ -3633,7 +3633,7 @@ export class Coordinator {
     return events;
   }
 
-  /** What observers may do: record decision facts while the run is open (ADR-024). */
+  /** What observers may do: record decision facts while the run is open. */
   private observerContext(run: LiveRun): ObserverContext {
     const open = () =>
       this.live.get(run.runId) === run && !TERMINAL_RUN_STATUSES.has(run.projection.status);
@@ -3993,7 +3993,7 @@ export class Coordinator {
               loopNodeId: loopId,
               iterationId,
               no,
-              // What the previous round hands to this one, fixed now (C-026).
+              // What the previous round hands to this one, fixed now.
               pinnedCarryInputs: this.carriedInto(run, loop.members, loopId),
               criteriaVersionId: run.criteriaVersionId,
             },
@@ -4340,7 +4340,7 @@ export class Coordinator {
       run.snapshot.resumedFrom?.contextRef ??
       run.snapshot.branchedFrom?.contextRef ??
       (run.snapshot.meeting?.contextSource ? 'meeting_context' : undefined);
-    // CR-054: the session's turns go with the brief to the run's own scheduled agents.
+    // the session's turns go with the brief to the run's own scheduled agents.
     const conversation =
       run.snapshot.conversation &&
       !contextRef &&
@@ -4645,7 +4645,7 @@ export class Coordinator {
       const source = binding.sourceNodeId ?? '';
       let versionId: string | undefined;
       if (binding.kind === 'task_output') {
-        // Inside a Loop, a producer in the same round is read from this round (C-026).
+        // Inside a Loop, a producer in the same round is read from this round.
         const sameRound = iterationId !== null && this.loopOf(run, source) !== null;
         versionId = this.submittedOutputOf(run, source, sameRound ? iterationId : undefined)[0];
       }
@@ -5077,7 +5077,7 @@ export class Coordinator {
     if (versions.length === 0) throw new Error('output has no submitted version');
     let approvalId: string | null = null;
     if (output.requireApproval) {
-      // Final approval binds the exact draft, its latest review and the criteria (Technical-Design §9.3).
+      // Final approval binds the exact draft, its latest review and the criteria.
       const review = this.latestReview(run);
       const requested = this.requestApproval(run, 'final_output', [
         ...versions,
@@ -5112,7 +5112,7 @@ export class Coordinator {
     ]);
   }
 
-  // ── reviews and approvals (C-027–C-029) ───────────────────────────────────
+  // ── reviews and approvals ───────────────────────────────────
 
   /** The built-in decisions: review verdicts, the person's approvals, and simple rules. */
   private async decide(run: LiveRun, nodeId: string, mode: DecisionNode['mode']): Promise<string> {
@@ -5206,7 +5206,7 @@ export class Coordinator {
       : 'reject';
   }
 
-  /** Validates a submitted review against what its reviewer was given (CRL-ART-003). */
+  /** Validates a submitted review against what its reviewer was given. */
   private recordReview(run: LiveRun, reviewVersionId: string) {
     const author = run.projection.artifacts[reviewVersionId]?.authorExecutionId ?? '';
     const reviewed = (run.inputsByExecution.get(author) ?? []).flatMap((i) =>
@@ -5525,7 +5525,7 @@ export class Coordinator {
     return 'stop';
   }
 
-  /** The person's answer to a pending approval: once, for the exact subject (CRL-RNS-008). */
+  /** The person's answer to a pending approval: once, for the exact subject. */
   private resolveApproval(command: ResolveApprovalCommand, payloadHash: string): Receipt {
     const { runId } = command;
     const { approvalId, decision, subjectVersionId } = command.payload;
@@ -6438,7 +6438,7 @@ export class Coordinator {
       NonNullable<ContextCheckpointV2['sources']>[number]
     >();
     let preparing = false;
-    // Tool calls the Coordinator authorized itself to publish a plain-text answer (CR-049/055).
+    // Tool calls the Coordinator authorized itself to publish a plain-text answer.
     const hostAnswerCalls = new Set<string>();
     const toolView = (proposal: ToolProposal, automatic = false): ToolGateView => ({
       ...this.toolView(run, input, proposal),
@@ -6498,7 +6498,7 @@ export class Coordinator {
       // A caller cannot change the approved object while awaiting execution.
       proposal = JSON.parse(canonicalJson(proposal)) as ToolProposal;
       const questionId = proposal.name === 'reply' ? proposal.args.questionId : null;
-      // Checks a pause cannot change run before the safe boundary (Technical-Design §5.4).
+      // Checks a pause cannot change run before the safe boundary.
       const early =
         parentRefusal(proposal) ??
         toolRefusal(runGates(this.gates['tool.pre_boundary'], toolView(proposal, automatic)));
@@ -6620,7 +6620,7 @@ export class Coordinator {
               } satisfies EventDraft,
             ]
           : []),
-        // A reply after the question closed is kept as an audit fact only (Technical-Design §8.3).
+        // A reply after the question closed is kept as an audit fact only.
         ...(late
           ? [
               {
@@ -7954,7 +7954,7 @@ export class Coordinator {
         this.maybePaused(run);
       },
 
-      // CR-049/055: a meeting answer or a final-reply role's last reply needs no extra model
+      // a meeting answer or a final-reply role's last reply needs no extra model
       // call; the runtime's tool requests retain provenance.
       submitFinalAnswer: async (settlement) => {
         const callId = settlement.finalTextModelCallId;
@@ -8143,7 +8143,7 @@ export class Coordinator {
         (a) => a.authorExecutionId === executionId,
       );
       // The same node's output in the previous Loop round is the version this one revises,
-      // so draft@1 → draft@2 is one artifact (C-030). Parallel helpers stay separate.
+      // so draft@1 → draft@2 is one artifact. Parallel helpers stay separate.
       const previous = existing.length === 0 ? this.previousRoundOutput(run, input) : null;
       const artifactId =
         existing[0]?.artifactId ?? previous?.artifactId ?? this.ids.next('artifact');
@@ -8222,7 +8222,7 @@ export class Coordinator {
     );
   }
 
-  // ── collaboration tools (C-022–C-024) ─────────────────────────────────────
+  // ── collaboration tools ─────────────────────────────────────
 
   /** Starts children of the caller in one commit, then each child's agent. */
   private async spawnTool(
@@ -8810,7 +8810,7 @@ export class Coordinator {
     };
   }
 
-  /** Returns a version's text and records who read it (C-024). */
+  /** Returns a version's text and records who read it. */
   private async readTool(
     run: LiveRun,
     input: AgentStartInput,
@@ -9585,7 +9585,7 @@ function autoCancellationHash(sessionId: string | undefined): string {
   return hashOf({ type: 'cancel_auto_start', sessionId: sessionId ?? null });
 }
 
-/** The text CR-007 appends to a brief that starts from an earlier version. */
+/** The text appended to a brief that starts from an earlier version. */
 function startPointText(
   version: { name: string; version: number },
   runId: string,

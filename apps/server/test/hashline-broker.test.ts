@@ -92,7 +92,7 @@ async function setup(io?: ConstructorParameters<typeof WorkspaceService>[0]['io'
 // Windows Git worktree creation uses real subprocesses and can exceed the default
 // five seconds when the independent integration suites run concurrently.
 describe('Hashline managed file broker', { timeout: 30_000 }, () => {
-  it('[TC-ABS-003-H] runs read→PUT/CUT→MV→REM through managed file journals and preserves original bytes', async () => {
+  it('runs read→PUT/CUT→MV→REM through managed file journals and preserves original bytes', async () => {
     const s = await setup();
     const before = await s.read();
     expect(before.text).toContain('1:one');
@@ -113,7 +113,7 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     ]);
   });
 
-  it('[TC-ABS-003-N] refuses foreign executions, stale full hashes and cancelled edits before writes', async () => {
+  it('refuses foreign executions, stale full hashes and cancelled edits before writes', async () => {
     const s = await setup();
     const read = await s.read();
     const original = readFileSync(join(s.root, 'a.txt'));
@@ -130,7 +130,7 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     expect(s.db.prepare('SELECT count(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
   });
 
-  it('[TC-ABS-003-N] partial reads never authorize unseen rows and errors do not grant evidence', async () => {
+  it('partial reads never authorize unseen rows and errors do not grant evidence', async () => {
     const s = await setup();
     const read = await s.read('a.txt', { offset: 1, limit: 1 });
     expect(read.text).not.toContain('2:two');
@@ -147,7 +147,7 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
   });
 
-  it('[TC-ABS-003-N] a new attempt cannot inherit earlier read evidence even with the same execution ID', async () => {
+  it('a new attempt cannot inherit earlier read evidence even with the same execution ID', async () => {
     const s = await setup();
     const read = await s.read();
     s.db
@@ -164,7 +164,7 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toContain('new attempt');
   });
 
-  it('[TC-ABS-003-N] destination collision and mixed move/write leave both paths intact', async () => {
+  it('destination collision and mixed move/write leave both paths intact', async () => {
     const s = await setup();
     const read = await s.read();
     const original = readFileSync(join(s.root, 'a.txt'));
@@ -177,7 +177,7 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     expect(existsSync(join(s.root, 'next.txt'))).toBe(false);
   });
 
-  it('[TC-ABS-003-N] failed atomic preparation preserves file bytes and records failure', async () => {
+  it('failed atomic preparation preserves file bytes and records failure', async () => {
     const s = await setup({
       writeFile: async () => {
         throw new Error('simulated disk error');
@@ -190,7 +190,7 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     expect(s.db.prepare('SELECT state FROM file_operations').all()).toEqual([{ state: 'failed' }]);
   });
 
-  it('[TC-ABS-003-N] an attempt change during write preparation blocks the final mutation', async () => {
+  it('an attempt change during write preparation blocks the final mutation', async () => {
     let onPrepared: (() => void) | undefined;
     const s = await setup({
       writeFile: async (path, bytes, options) => {
@@ -214,7 +214,7 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     expect(s.db.prepare('SELECT state FROM file_operations').all()).toEqual([{ state: 'failed' }]);
   });
 
-  it('[TC-ABS-003-H] existing Pi read→oldText/newText remains available', async () => {
+  it('existing Pi read→oldText/newText remains available', async () => {
     const s = await setup();
     await s.call('read_file', { path: 'a.txt' });
     await s.call('edit', { path: 'a.txt', edits: [{ oldText: 'two', newText: 'TWO' }] });

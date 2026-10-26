@@ -2,7 +2,7 @@ import { openDatabase } from '@corral/storage-sqlite';
 import { expect, it } from 'vitest';
 import { SessionSearch } from '../src/session-search.ts';
 
-it('[TC-CONTINUITY-001-H] [TC-CONTINUITY-001-N] searches private multilingual entries literally and rebuilds without reviving archived or removed sessions', () => {
+it('searches private multilingual entries literally and rebuilds without reviving archived or removed sessions', () => {
   const db = openDatabase(':memory:');
   try {
     const entries = [

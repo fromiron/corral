@@ -14,8 +14,8 @@ import {
   SPEC_HARD_CAPS,
 } from '../src/index.ts';
 
-describe('workspace config and installation policy (C-062)', () => {
-  it('an empty config yields the Spec §9 hard caps', () => {
+describe('workspace config and installation policy', () => {
+  it('an empty config yields the product contract §9 hard caps', () => {
     const config = parseWorkspaceConfig({ schemaVersion: '0.1' });
     expect(config.ok).toBe(true);
     if (!config.ok) return;
@@ -31,7 +31,7 @@ describe('workspace config and installation policy (C-062)', () => {
     if (!raised.ok) expect(raised.errors.join(' ')).toContain('hardCaps.maxModelCalls');
   });
 
-  it('[TC-SEC-002-N] refuses unknown keys and any credential in the config file', () => {
+  it('refuses unknown keys and any credential in the config file', () => {
     const unknown = parseWorkspaceConfig({ schemaVersion: '0.1', extra: true });
     expect(unknown.ok).toBe(false);
     for (const secret of [
@@ -51,7 +51,7 @@ describe('workspace config and installation policy (C-062)', () => {
     }
   });
 
-  it('[TC-SEC-002-H] accepts OpenAI-compatible endpoints: https anywhere, http on this computer only (CR-005)', () => {
+  it('accepts OpenAI-compatible endpoints: https anywhere, http on this computer only', () => {
     const config = (baseUrl: string, extra: Record<string, unknown> = {}) =>
       parseWorkspaceConfig({
         schemaVersion: '0.1',
@@ -80,7 +80,7 @@ describe('workspace config and installation policy (C-062)', () => {
     expect(config('https://x.test/v1', { access: 'api_key' }).ok).toBe(true);
   });
 
-  it('[TC-SEC-002-N] refuses plain http off this computer, credentials in the address and unknown access (CR-005)', () => {
+  it('refuses plain http off this computer, credentials in the address and unknown access', () => {
     const errors = (provider: Record<string, unknown>) => {
       const result = parseWorkspaceConfig({
         schemaVersion: '0.1',

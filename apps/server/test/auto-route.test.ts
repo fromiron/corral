@@ -106,7 +106,7 @@ async function accountingSetup(maxModelConcurrency = 6) {
   return { registry, models, attempts, store, coordinator, starter, request, settled, events };
 }
 
-it('[TC-LLM-002-H] chooser reservations use every physical retry allowance and reported usage', async () => {
+it('chooser reservations use every physical retry allowance and reported usage', async () => {
   const f = await accountingSetup();
   const allowances: number[] = [];
   const spy = vi.spyOn(f.models, 'streamSimple').mockImplementation((model, context, options) => {
@@ -160,7 +160,7 @@ it('[TC-LLM-002-H] chooser reservations use every physical retry allowance and r
 });
 
 it.each([false, true])(
-  '[TC-LLM-002-N] chooser distinguishes missing terminal usage from explicit zero (%s)',
+  'chooser distinguishes missing terminal usage from explicit zero (%s)',
   async (reported) => {
     const f = await accountingSetup();
     vi.spyOn(f.models, 'streamSimple').mockImplementation((model, context, options) => {
@@ -189,7 +189,7 @@ it.each([false, true])(
   },
 );
 
-it('[TC-LLM-002-F] late chooser usage settles the original reservation once without changing the completed response', async () => {
+it('late chooser usage settles the original reservation once without changing the completed response', async () => {
   const f = await accountingSetup();
   vi.useFakeTimers();
   const delayed = createAssistantMessageEventStream();
@@ -225,7 +225,7 @@ it('[TC-LLM-002-F] late chooser usage settles the original reservation once with
   expect(f.coordinator.getRunSnapshot(result.runId!)?.autoRoute).toEqual(result.autoRoute);
 });
 
-it('[TC-LLM-002-F] a chooser can wait for a slot and still use its full response timeout', async () => {
+it('a chooser can wait for a slot and still use its full response timeout', async () => {
   const f = await accountingSetup(1);
   const release = await f.coordinator.acquireAuxiliaryModelSlot({
     aborted: false,
@@ -266,7 +266,7 @@ it('[TC-LLM-002-F] a chooser can wait for a slot and still use its full response
   }
 });
 
-it('[TC-AUTO-003-N] cancelling a chooser after a long slot wait starts no provider or Run', async () => {
+it('cancelling a chooser after a long slot wait starts no provider or Run', async () => {
   const f = await accountingSetup(1);
   const release = await f.coordinator.acquireAuxiliaryModelSlot({
     aborted: false,
@@ -292,7 +292,7 @@ it('[TC-AUTO-003-N] cancelling a chooser after a long slot wait starts no provid
   }
 });
 
-it('[TC-LLM-002-F] chooser retry backoff does not consume either attempt response timeout', async () => {
+it('chooser retry backoff does not consume either attempt response timeout', async () => {
   const f = await accountingSetup();
   vi.useFakeTimers();
   let calls = 0;
@@ -354,7 +354,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('the auto chooser at the provider boundary (CR-024)', () => {
+describe('the auto chooser at the provider boundary', () => {
   it.each([
     [{ mode: 'fixed', level: 'low' }, 'low'],
     [{ mode: 'fixed', level: 'max' }, 'max'],

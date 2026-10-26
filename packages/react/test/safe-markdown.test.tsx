@@ -11,9 +11,9 @@ const show = (text: string) =>
     </IntlProvider>,
   ).container;
 
-describe('SafeMarkdown (C-025, Spec §10.2)', () => {
+describe('SafeMarkdown', () => {
   it.each(['<!DOCTYPE html>\n<html lang="en">', '  <html>'])(
-    '[TC-OBS-001-H] keeps an HTML document readable as source without executing it (%s)',
+    'keeps an HTML document readable as source without executing it (%s)',
     (opening) => {
       const text = `${opening}<head><style>body { display: none }</style></head><body><h1>Generated page</h1><img src="https://tracker.example/pixel.png" onerror="alert(1)"><script>alert(2)</script></body></html>`;
       const view = show(text);
@@ -22,7 +22,7 @@ describe('SafeMarkdown (C-025, Spec §10.2)', () => {
     },
   );
 
-  it('[CR-009] renders Markdown tables, still without raw HTML in cells', () => {
+  it('renders Markdown tables, still without raw HTML in cells', () => {
     const view = show('| a | b |\n|---|---|\n| 1 | <b onclick="x()">2</b> |');
     expect(view.querySelectorAll('table th')).toHaveLength(2);
     expect(view.querySelectorAll('table td')).toHaveLength(2);

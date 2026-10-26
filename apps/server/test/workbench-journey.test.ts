@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-025-H] [TC-WBD-025-N] [TC-WBD-025-F] preserves checked source through multi-file edits, commit, local push and explicit deployment readback',
+  'preserves checked source through multi-file edits, commit, local push and explicit deployment readback',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-workbench-journey-'));
     cleanups.push(async () => rmSync(root, { recursive: true, force: true }));

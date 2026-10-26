@@ -126,7 +126,7 @@ async function mount(workspaces: object, sessionId = 'session') {
   return { container, root, render, click, choose };
 }
 
-it('[TC-WBD-008-H] staged and unstaged rows for one exact path select different read-only sides', async () => {
+it('staged and unstaged rows for one exact path select different read-only sides', async () => {
   const gitStatus = vi.fn(async () => status());
   const gitDiff = vi.fn(async (_scope, input) => diff(input));
   const f = await mount({ gitStatus, gitDiff });
@@ -153,7 +153,7 @@ it('[TC-WBD-008-H] staged and unstaged rows for one exact path select different 
   expect(f.container.textContent).toContain('untracked contents');
 });
 
-it('[TC-WBD-008-N] an index conflict requests explicit refresh without silently changing the captured target', async () => {
+it('an index conflict requests explicit refresh without silently changing the captured target', async () => {
   const gitStatus = vi.fn(async () => status());
   const gitDiff = vi.fn(async () => {
     throw new ApiError(409, 'REVISION_CONFLICT', 'index changed');
@@ -165,7 +165,7 @@ it('[TC-WBD-008-N] an index conflict requests explicit refresh without silently 
   expect(gitDiff).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-008-H] a missing session copy can explicitly switch to an unborn project without creating a copy', async () => {
+it('a missing session copy can explicitly switch to an unborn project without creating a copy', async () => {
   const project: GitStatus = {
     ...status(),
     target: { kind: 'project', hostId: 'host', projectId: 'project', bindingId: 'binding' },
@@ -203,7 +203,7 @@ it('[TC-WBD-008-H] a missing session copy can explicitly switch to an unborn pro
   expect(createWorktree).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-008-F] a late diff cannot cross a session target change', async () => {
+it('a late diff cannot cross a session target change', async () => {
   let release!: (value: GitDiff) => void;
   const pending = new Promise<GitDiff>((resolve) => {
     release = resolve;
@@ -237,7 +237,7 @@ const control = (container: HTMLElement, label: string) =>
     (element) => element.getAttribute('aria-label') === label || element.textContent === label,
   );
 
-it('[TC-WBD-009-H] a trusted copy stages a row and commits the confirmed staged list with one receipt each', async () => {
+it('a trusted copy stages a row and commits the confirmed staged list with one receipt each', async () => {
   sessionStorage.clear();
   const gitStatus = vi.fn(async () => status());
   const gitChange = vi.fn(
@@ -285,7 +285,7 @@ it('[TC-WBD-009-H] a trusted copy stages a row and commits the confirmed staged 
   });
 });
 
-it('[TC-WBD-009-N] the linked original and an untrusted copy offer no Git writes', async () => {
+it('the linked original and an untrusted copy offer no Git writes', async () => {
   sessionStorage.clear();
   const gitStatus = vi.fn(async () => status());
   const f = await mount({ gitStatus, binding: vi.fn(async () => ({ trusted: false })) });
@@ -293,7 +293,7 @@ it('[TC-WBD-009-N] the linked original and an untrusted copy offer no Git writes
   expect(f.container.querySelector('textarea')).toBeNull();
 });
 
-it('[TC-WBD-009-F] an unconfirmed operation is read back by its own ID after reopening, never resent', async () => {
+it('an unconfirmed operation is read back by its own ID after reopening, never resent', async () => {
   sessionStorage.clear();
   sessionStorage.setItem(
     'corral:git-operation:v1:session',
@@ -331,7 +331,7 @@ function branchStatus(): GitStatus {
   };
 }
 
-it('[TC-WBD-010-H] the branch section creates a branch, fetches and pushes the current branch', async () => {
+it('the branch section creates a branch, fetches and pushes the current branch', async () => {
   sessionStorage.clear();
   documents.value = {};
   const gitStatus = vi.fn(async () => branchStatus());
@@ -371,7 +371,7 @@ it('[TC-WBD-010-H] the branch section creates a branch, fetches and pushes the c
   expect(f.container.textContent).not.toMatch(/force|reset|clean/i);
 });
 
-it('[TC-WBD-022-F] reopens an uncertain advanced operation by the same ID and explicitly reconciles it without resending', async () => {
+it('reopens an uncertain advanced operation by the same ID and explicitly reconciles it without resending', async () => {
   sessionStorage.clear();
   documents.value = {};
   const { kind: _kind, ...copy } = target;
@@ -416,7 +416,7 @@ it('[TC-WBD-022-F] reopens an uncertain advanced operation by the same ID and ex
   expect(sessionStorage.getItem('corral:git-operation:v1:session')).toBeNull();
 });
 
-it('[TC-WBD-010-F] a switch is not sent while this copy has an unsaved document', async () => {
+it('a switch is not sent while this copy has an unsaved document', async () => {
   sessionStorage.clear();
   documents.value = {
     doc: { target: { sessionId: 'session' }, path: 'a.ts', dirty: true },

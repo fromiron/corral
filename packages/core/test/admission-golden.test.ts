@@ -32,7 +32,7 @@ import researchTeam from './fixtures/research-team.before-criteria-input.corral.
   type: 'json',
 };
 
-// Golden event streams for the admission refactor (CR-003, C-067, ADR-024). They were recorded
+// Golden event streams for the admission refactor. They were recorded
 // from the Coordinator *before* its checks moved into gates, and the default gate set must
 // reproduce them byte for byte. Each scenario passes through an admission point: model request
 // admission (budget, no progress), tool authorization (role allowlist, limits), the closed
@@ -41,7 +41,7 @@ import researchTeam from './fixtures/research-team.before-criteria-input.corral.
 // Re-recording is deliberate:
 //   CORRAL_UPDATE_GOLDEN=1 pnpm exec vitest run --project core admission-golden -u
 // Without CORRAL_UPDATE_GOLDEN a missing file fails instead of being written. Core stays
-// runtime-neutral (ADR-014), so files are read through Vite and written by Vitest snapshots.
+// runtime-neutral, so files are read through Vite and written by Vitest snapshots.
 
 declare global {
   interface ImportMeta {
@@ -320,14 +320,14 @@ const SCENARIOS: Record<string, () => Promise<RunEvent[]>> = {
   },
 };
 
-/** The test runner's environment, without typing core against Node (ADR-014). */
+/** The test runner's environment, without typing core against Node. */
 const env = (name: string) =>
   (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env[name];
 
 const lines = (events: RunEvent[]) => events.map((e) => canonicalJson(e));
 
-describe('admission golden event streams (C-067, ADR-024)', () => {
-  it('[TC-LLM-005-F] original golden records remain readable without rewriting their events', () => {
+describe('admission golden event streams', () => {
+  it('original golden records remain readable without rewriting their events', () => {
     for (const text of Object.values(LEGACY_RECORDED)) {
       const events = text
         .trim()
@@ -338,7 +338,7 @@ describe('admission golden event streams (C-067, ADR-024)', () => {
     }
   });
   for (const [name, scenario] of Object.entries(SCENARIOS)) {
-    it(`[TC-RUN-008-H] ${name} keeps its recorded event stream`, async () => {
+    it(`${name} keeps its recorded event stream`, async () => {
       const first = lines(await scenario());
       // The scenario must be deterministic before it can pin anything.
       expect(lines(await scenario())).toEqual(first);

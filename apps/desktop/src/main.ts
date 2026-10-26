@@ -59,7 +59,7 @@ interface SavedState {
   x?: number;
   y?: number;
   maximized: boolean;
-  /** The page's last theme, so the window opens in it (CR-017). */
+  /** The page's last theme, so the window opens in it. */
   dark?: boolean;
   recent: string[];
   closeToTray: boolean;
@@ -605,7 +605,7 @@ async function openWorkspaceAt(path: string) {
   }
 }
 
-/** Asks the page to run one of its own commands (CR-017); the page decides what it does. */
+/** Asks the page to run one of its own commands; the page decides what it does. */
 const command = (id: DesktopCommand) => () => {
   if (window && !window.isDestroyed() && status === 'ready')
     window.webContents.send('desktop:command', id);
@@ -840,7 +840,7 @@ else {
       minWidth: 800,
       minHeight: 600,
       title: 'Corral',
-      // CR-017: the page draws the title bar; the system draws the window buttons over it.
+      // the page draws the title bar; the system draws the window buttons over it.
       ...(process.platform === 'darwin'
         ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 18 } }
         : {
@@ -877,7 +877,7 @@ else {
         capturingShortcut || input.isComposing || (input.control && input.alt),
       );
     });
-    // Text fields get cut, copy, paste and spelling; links get "copy link" (CR-017).
+    // Text fields get cut, copy, paste and spelling; links get "copy link".
     contents.on('context-menu', (_event, params) => {
       const ko = korean();
       const items: MenuItemConstructorOptions[] = [

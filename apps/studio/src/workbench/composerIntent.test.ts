@@ -14,7 +14,7 @@ const base = {
 };
 
 describe('composer intent (UX-01)', () => {
-  it('[TC-UX-01-H] follows the run while the box is empty', () => {
+  it('follows the run while the box is empty', () => {
     expect(resolveIntent({ ...base, allowed: ['steer', 'queue'] })).toEqual({
       intent: 'steer',
       target: 'exec_research',
@@ -27,7 +27,7 @@ describe('composer intent (UX-01)', () => {
     });
   });
 
-  it('[TC-UX-01-H] keeps the locked execution when it is still running', () => {
+  it('keeps the locked execution when it is still running', () => {
     expect(resolveIntent({ ...base, lock: { intent: 'steer', target: 'exec_writer' } })).toEqual({
       intent: 'steer',
       target: 'exec_writer',
@@ -35,7 +35,7 @@ describe('composer intent (UX-01)', () => {
     });
   });
 
-  it('[TC-UX-01-F] never hands a locked instruction to another execution', () => {
+  it('never hands a locked instruction to another execution', () => {
     expect(
       resolveIntent({
         ...base,
@@ -45,7 +45,7 @@ describe('composer intent (UX-01)', () => {
     ).toEqual({ intent: 'steer', target: 'exec_research', blocked: 'target' });
   });
 
-  it('[TC-UX-01-F] never turns a locked instruction into a queued task when a decision waits', () => {
+  it('never turns a locked instruction into a queued task when a decision waits', () => {
     expect(
       resolveIntent({
         ...base,
@@ -56,7 +56,7 @@ describe('composer intent (UX-01)', () => {
     ).toEqual({ intent: 'steer', target: 'exec_research', blocked: 'target' });
   });
 
-  it('[TC-UX-01-F] blocks a locked instruction once the run has ended', () => {
+  it('blocks a locked instruction once the run has ended', () => {
     expect(
       resolveIntent({
         ...base,
@@ -68,7 +68,7 @@ describe('composer intent (UX-01)', () => {
     ).toEqual({ intent: 'steer', target: 'exec_research', blocked: 'run' });
   });
 
-  it('[TC-UX-01-F] blocks a locked follow-up while another run works, instead of queueing it', () => {
+  it('blocks a locked follow-up while another run works, instead of queueing it', () => {
     expect(
       resolveIntent({
         ...base,

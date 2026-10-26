@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // Command palette, shortcut help and the workspace template gallery (roadmap UX-A5).
 
-test('[TC-UX-001-H] Ctrl+K opens the command palette; typing filters and Enter runs the command', async ({
+test('Ctrl+K opens the command palette; typing filters and Enter runs the command', async ({
   page,
 }) => {
   await page.goto('/');
@@ -23,13 +23,13 @@ test('[TC-UX-001-H] Ctrl+K opens the command palette; typing filters and Enter r
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
 });
 
-test('[TC-UX-001-N] the palette closes with Escape, and an IME composition Enter does not run a command', async ({
+test('the palette closes with Escape, and an IME composition Enter does not run a command', async ({
   page,
 }) => {
   await page.goto('/');
   const opener = page.getByRole('button', { name: 'Start chat', exact: true });
   await opener.focus();
-  // CR-010: `/` opens the current project; the page must stay exactly where it is.
+  // `/` opens the current project; the page must stay exactly where it is.
   const before = page.url();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });

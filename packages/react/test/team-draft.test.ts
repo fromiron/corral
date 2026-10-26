@@ -5,7 +5,7 @@ import en from '../src/messages/en.json' with { type: 'json' };
 import ko from '../src/messages/ko.json' with { type: 'json' };
 import { draftFromPlan, planFromGoal, type TeamWording } from '../src/team/draft.ts';
 
-// CR-006: a goal becomes a small team plan; the plan becomes a Corral the compiler accepts.
+// a goal becomes a small team plan; the plan becomes a Corral the compiler accepts.
 
 const wording = (messages: typeof en): TeamWording => messages.TeamDraft.wording;
 
@@ -24,8 +24,8 @@ const plan = (overrides: Partial<TeamPlan> = {}): TeamPlan => ({
   ...overrides,
 });
 
-describe('TeamPlan contract (CR-006)', () => {
-  it('[TC-UX-003-H] accepts each pattern with exactly its roles', () => {
+describe('TeamPlan contract', () => {
+  it('accepts each pattern with exactly its roles', () => {
     expect(TeamPlan.safeParse(plan()).success).toBe(true);
     expect(
       TeamPlan.safeParse(
@@ -39,7 +39,7 @@ describe('TeamPlan contract (CR-006)', () => {
     ).toBe(true);
   });
 
-  it('[TC-UX-003-N] refuses roles that do not fit the pattern, oversized text and extra fields', () => {
+  it('refuses roles that do not fit the pattern, oversized text and extra fields', () => {
     const bad = [
       plan({ pattern: 'single' }),
       plan({ roles: plan().roles.slice(0, 2) }),
@@ -57,8 +57,8 @@ describe('TeamPlan contract (CR-006)', () => {
   });
 });
 
-describe('draftFromPlan (CR-006)', () => {
-  it('[TC-UX-003-H] every pattern compiles, with the plan’s names, duties, criteria and rounds', () => {
+describe('draftFromPlan', () => {
+  it('every pattern compiles, with the plan’s names, duties, criteria and rounds', () => {
     const patterns: TeamPlan[] = [
       plan(),
       plan({
@@ -97,7 +97,7 @@ describe('draftFromPlan (CR-006)', () => {
     expect(full.nodes.find((n) => n.type === 'output')).toMatchObject({ requireApproval: true });
   });
 
-  it('[TC-UX-003-N] tool permissions come from the pattern, never from the plan text', () => {
+  it('tool permissions come from the pattern, never from the plan text', () => {
     const sneaky = plan({
       roles: plan().roles.map((r) => ({
         ...r,
@@ -112,8 +112,8 @@ describe('draftFromPlan (CR-006)', () => {
   });
 });
 
-describe('planFromGoal, the local suggestion (CR-006)', () => {
-  it('[TC-UX-003-H] picks the team shape from the goal’s words, in English and Korean', () => {
+describe('planFromGoal, the local suggestion', () => {
+  it('picks the team shape from the goal’s words, in English and Korean', () => {
     const shape = (goal: string, messages = en) =>
       planFromGoal(goal, wording(messages))?.pattern ?? null;
     expect(shape('Compare SQLite and PostgreSQL for an internal tool')).toBe(
@@ -134,7 +134,7 @@ describe('planFromGoal, the local suggestion (CR-006)', () => {
     ]);
   });
 
-  it('[TC-UX-003-N] an empty goal gives no plan; a long goal is cut to fit', () => {
+  it('an empty goal gives no plan; a long goal is cut to fit', () => {
     expect(planFromGoal('   ', wording(en))).toBeNull();
     const long = planFromGoal(`Write ${'very '.repeat(600)}long`, wording(en));
     expect(long && TeamPlan.safeParse(long).success).toBe(true);

@@ -21,8 +21,8 @@ export interface TransportHarness {
 }
 
 /**
- * Behaviour every RuntimeTransport must share (C-053, ADR-016): the in-process runtime and
- * HttpSseTransport against the local server (C-015) run the same cases.
+ * Behaviour every RuntimeTransport must share: the in-process runtime and
+ * HttpSseTransport against the local server run the same cases.
  */
 export function describeTransportContract(
   name: string,
@@ -157,7 +157,7 @@ export function describeTransportContract(
       expect(await transport.getRunDefinition('run_missing')).toBeNull();
     });
 
-    it('[TC-RACE-08] a resent command returns the same receipt without a second effect', async () => {
+    it('a resent command returns the same receipt without a second effect', async () => {
       const { transport, gates, start } = await steeredRun();
       const { runId, executionId } = await firstRequestInFlight(transport, start);
       const first = await transport.sendCommand(steerCommand(runId, executionId));
@@ -173,7 +173,7 @@ export function describeTransportContract(
       expect(projection.directiveOrder).toHaveLength(1);
     });
 
-    it('[TC-OBS-002-N] snapshot plus subscription neither drops nor repeats events', async () => {
+    it('snapshot plus subscription neither drops nor repeats events', async () => {
       const { transport, gates, start } = await steeredRun();
       const { runId } = await firstRequestInFlight(transport, start);
       const snapshot = await transport.getSnapshot(runId);

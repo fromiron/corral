@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 
 // An OpenAI-compatible chat completions server on 127.0.0.1, like Ollama or LM Studio
-// (CR-005). It answers every request with `reply` as one streamed message and records the
+//. It answers every request with `reply` as one streamed message and records the
 // Authorization header of each request, so tests can see which key (if any) was sent.
 
 export interface CompatibleEndpoint {

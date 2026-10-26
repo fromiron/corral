@@ -1,4 +1,4 @@
-/** A location a check or task reported, inside the session copy (CR-046 P15). */
+/** A location a check or task reported, inside the session copy. */
 export interface Problem {
   path: string;
   line: number;

@@ -1,11 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
 
-// The Results view (CR-009, roadmap 21; proposal WBTST-008/009/027) on the in-browser demo
+// The Results view on the in-browser demo
 // team. Demo runs live in the page's worker, so the Run page is reached through the app's link.
 
 const results = (page: Page) => page.getByRole('navigation', { name: 'Results' });
 
-test('[WBTST-009] a cancelled run keeps what it made as a partial result', async ({ page }) => {
+test('a cancelled run keeps what it made as a partial result', async ({ page }) => {
   await page.goto('/demo?delay=150');
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();

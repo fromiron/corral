@@ -16,7 +16,7 @@ import type { AdmissionObserver, ObserverContext, ObserverDraft } from '../admis
 import { canonicalJson } from '../canonical-json.ts';
 import type { RunProjection } from '../projection.ts';
 
-// reasoning_effort judgments, observe only (CR-003, ADR-025). A judgment starts after a model
+// reasoning_effort judgments, observe only. A judgment starts after a model
 // request is committed, uses only that request's committed facts, and is recorded as
 // decision.* events. It never changes a permit, a reservation or what the worker sends.
 
@@ -31,7 +31,7 @@ export interface JudgmentConfig {
       providers: readonly string[];
       /** Judgment calls per run; default the run's model request limit, at most 100. */
       maxCalls?: number;
-      /** External providers are refused unless the workspace opted in (CR-003 §3.5). */
+      /** External providers are refused unless the workspace opted in. */
       allowExternal?: boolean;
     };
   };
@@ -82,7 +82,7 @@ export function resolveDecisionSettings(
 /** Code points, as the judge models count them. */
 const head = (text: string, n: number) => Array.from(text).slice(0, n).join('');
 
-/** Features and excerpt of one committed request (CR-003 §3.5). */
+/** Features and excerpt of one committed request. */
 export function effortInput(
   projection: RunProjection,
   input: AgentStartInput,
@@ -237,7 +237,7 @@ function judge(provider: DecisionProvider, question: EffortQuestion, context: Ob
   ]);
   if (!recorded) return;
   // An external provider receives the excerpt: that send is an effect, admitted only while the
-  // run is running and recorded before anything leaves (CR-003 §3.5).
+  // run is running and recorded before anything leaves.
   let effectId: string | null = null;
   if (provider.privacy === 'external') {
     if (context.status() !== 'running') {

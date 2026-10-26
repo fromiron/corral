@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { parseProblems } from './problems.ts';
 
-it('[TC-WBD-011-H] reads tsc, vitest and path:line:col locations from check and task output', () => {
+it('reads tsc, vitest and path:line:col locations from check and task output', () => {
   const text = [
     'src/app.ts(12,5): error TS2322: Type string is not assignable to type number.',
     ' FAIL  test/sum.test.ts > adds',
@@ -34,7 +34,7 @@ it('[TC-WBD-011-H] reads tsc, vitest and path:line:col locations from check and 
   ]);
 });
 
-it('[TC-WBD-011-N] keeps only locations inside the copy, once each', () => {
+it('keeps only locations inside the copy, once each', () => {
   const text = [
     '/etc/passwd:1:1: error not ours',
     '../outside/file.ts:2:3: error not ours',

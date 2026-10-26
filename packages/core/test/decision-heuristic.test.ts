@@ -34,8 +34,8 @@ const never = { aborted: false, onCancel: () => () => {} };
 const judge = async (f: EffortFeatures, excerpt?: string) =>
   DecisionAnswer.parse(await new LocalHeuristicProvider().decide(question(f, excerpt), never));
 
-describe('local-heuristic@1 (C-069)', () => {
-  it('[TC-DEC-001-H] declares reasoning_effort v1, runs locally and answers by rule without probabilities', async () => {
+describe('local-heuristic@1', () => {
+  it('declares reasoning_effort v1, runs locally and answers by rule without probabilities', async () => {
     const provider = new LocalHeuristicProvider();
     expect(provider.questions).toEqual([{ kind: 'reasoning_effort', version: 1 }]);
     expect(provider.privacy).toBe('local');
@@ -44,7 +44,7 @@ describe('local-heuristic@1 (C-069)', () => {
     expect(answer).toEqual({ answer: 'medium', probabilities: null, evidenceLevel: 'rule' });
   });
 
-  it('[TC-DEC-001-H] short answers and helper parts are light; revisions and large inputs are heavy', async () => {
+  it('short answers and helper parts are light; revisions and large inputs are heavy', async () => {
     expect((await judge(features({ assignment: 'question' }), 'Which source?')).answer).toBe('low');
     expect((await judge(features({ assignment: 'delegated' }), 'Find part 1.')).answer).toBe('low');
     expect((await judge(features({ round: 2, lastReviewVerdict: 'revise' }))).answer).toBe('high');
@@ -52,7 +52,7 @@ describe('local-heuristic@1 (C-069)', () => {
     expect((await judge(features({ inputChars: 40_000, inputArtifacts: 5 }))).answer).toBe('xhigh');
   });
 
-  it('[TC-DEC-001-N] the same features always give the same answer, and the answer is one of the candidates', async () => {
+  it('the same features always give the same answer, and the answer is one of the candidates', async () => {
     for (const f of [
       features(),
       features({ directives: 3, requestNo: 6 }),

@@ -118,8 +118,8 @@ async function liveRun(context: Awaited<ReturnType<typeof start>>) {
   return { transport, ...result };
 }
 
-describe('model sign-in and profiles (C-058, ADR-019)', () => {
-  it('[TC-SEC-002-H] signs in through the provider flow and shows status, never tokens', async () => {
+describe('model sign-in and profiles', () => {
+  it('signs in through the provider flow and shows status, never tokens', async () => {
     const fake = makeFake();
     const context = await start(fake);
     const before = await context.json('/model-auth');
@@ -163,7 +163,7 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
     expect(context.responses.join('\n')).not.toMatch(/secret/);
   });
 
-  it('[TC-SEC-002-N] a failed sign-in says so plainly, without the provider response body', async () => {
+  it('a failed sign-in says so plainly, without the provider response body', async () => {
     const context = await start(makeFake());
     await context.json('/model-auth/openai/login', { method: 'POST' });
     await context.json('/model-auth/openai/login/callback', {
@@ -307,7 +307,7 @@ describe('model sign-in and profiles (C-058, ADR-019)', () => {
   });
 });
 
-describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
+describe('API keys and OpenAI-compatible endpoints', () => {
   const setKey = (json: Awaited<ReturnType<typeof start>>['json'], provider: string, key: string) =>
     json(`/model-auth/${provider}/api-key`, { method: 'PUT', body: JSON.stringify({ key }) });
 
@@ -340,7 +340,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     });
   }
 
-  it('[TC-SEC-002-H] an API key entered in Settings is used for live runs and never shown', async () => {
+  it('an API key entered in Settings is used for live runs and never shown', async () => {
     const fake = makeFake();
     fake.respond();
     const context = await start(fake);
@@ -359,7 +359,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     expect((await finish(context)).status).toBe('refused');
   });
 
-  it('[TC-SEC-002-N] refuses an empty or oversized key, a provider no profile uses, and Anthropic subscription sign-in', async () => {
+  it('refuses an empty or oversized key, a provider no profile uses, and Anthropic subscription sign-in', async () => {
     const context = await start(makeFake(), [
       ...FAKE_PROFILES,
       { id: 'claude', provider: 'anthropic', model: 'claude-test' },
@@ -377,7 +377,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     expect(anthropic).toMatchObject({ methods: { oauth: false, apiKey: true } });
   });
 
-  it('[TC-SEC-002-H] a keyless local endpoint runs without a key; a keyed one gets the entered key', async () => {
+  it('a keyless local endpoint runs without a key; a keyed one gets the entered key', async () => {
     const endpoint = await startCompatibleEndpoint();
     try {
       scriptEndpoint(endpoint);
@@ -417,7 +417,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     }
   });
 
-  it('[TC-SEC-002-N] a key stays with the address it was entered for: a config pointing elsewhere does not get it', async () => {
+  it('a key stays with the address it was entered for: a config pointing elsewhere does not get it', async () => {
     const first = await startCompatibleEndpoint();
     const second = await startCompatibleEndpoint();
     try {
@@ -452,7 +452,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     }
   });
 
-  it('[TC-SEC-002-N] an endpoint may not take the name of a built-in provider', async () => {
+  it('an endpoint may not take the name of a built-in provider', async () => {
     const clash = endpointConfig('https://x.test/v1', 'api_key');
     const provider = { ...clash.modelProviders[0], id: 'openai' };
     await expect(start(makeFake(), FAKE_PROFILES, { modelProviders: [provider] })).rejects.toThrow(
@@ -460,7 +460,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
     );
   });
 
-  it('[TC-SEC-002-H] [TC-SEC-002-N] a registered endpoint needs no profile to save a key and refuses a stale config revision', async () => {
+  it('a registered endpoint needs no profile to save a key and refuses a stale config revision', async () => {
     const fake = makeFake();
     const context = await start(
       fake,
@@ -489,7 +489,7 @@ describe('API keys and OpenAI-compatible endpoints (CR-005)', () => {
   });
 });
 
-describe('team drafts from a goal (CR-006)', () => {
+describe('team drafts from a goal', () => {
   const PLAN = {
     name: 'Help desk vendors',
     pattern: 'research_write_review',
@@ -506,7 +506,7 @@ describe('team drafts from a goal (CR-006)', () => {
   const draft = (json: Awaited<ReturnType<typeof start>>['json'], goal: string) =>
     json('/team-drafts', { method: 'POST', body: JSON.stringify({ goal }) });
 
-  it('[TC-UX-003-H] asks the first profile’s model once, with an output cap, and returns the checked plan', async () => {
+  it('asks the first profile’s model once, with an output cap, and returns the checked plan', async () => {
     const fake = makeFake();
     const context = await start(fake);
     await signIn(context.json);
@@ -523,7 +523,7 @@ describe('team drafts from a goal (CR-006)', () => {
     expect(context.responses.join('\n')).not.toContain('secret');
   });
 
-  it('[TC-UX-003-N] an answer that does not fit is refused without its text; no sign-in, no live models and long goals are refused', async () => {
+  it('an answer that does not fit is refused without its text; no sign-in, no live models and long goals are refused', async () => {
     const fake = makeFake();
     const context = await start(fake);
     expect((await draft(context.json, 'Compare vendors.')).status).toBe(403);
@@ -570,8 +570,8 @@ describe('team drafts from a goal (CR-006)', () => {
   });
 });
 
-describe('editing profiles and endpoints from the Models page (CR-008)', () => {
-  it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] validates resolved profile policies before writing and returns the same saved effective values', async () => {
+describe('editing profiles and endpoints from the Models page', () => {
+  it('validates resolved profile policies before writing and returns the same saved effective values', async () => {
     const context = await start(makeFake());
     const current = (await context.json('/model-config')).body;
     const path = join(context.workspace, '.corral', 'config.json');
@@ -619,7 +619,7 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
       keepRecentTokens: 0,
     });
   });
-  it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] resolves profile aliases separately and never borrows another provider catalog limit', async () => {
+  it('resolves profile aliases separately and never borrows another provider catalog limit', async () => {
     const context = await start(makeFake());
     const current = (await context.json('/model-config')).body;
     const profiles = [
@@ -669,7 +669,7 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
   const configOf = (workspace: string) =>
     JSON.parse(readFileSync(join(workspace, '.corral', 'config.json'), 'utf-8'));
 
-  it('[TC-SEC-002-H] lists the catalog without credentials, and saving changes only the two model keys', async () => {
+  it('lists the catalog without credentials, and saving changes only the two model keys', async () => {
     const fake = makeFake();
     fake.respond();
     const context = await start(fake, FAKE_PROFILES, { hardCaps: { maxModelCalls: 50 } });
@@ -682,7 +682,7 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     const openai = catalog.find((p) => p.providerId === 'openai');
     expect(openai?.models.map((m) => m.id)).toContain('gpt-test-b');
     expect(openai?.methods).toEqual({ oauth: true, apiKey: true });
-    // List prices per million tokens, for the run cost estimate (roadmap 15).
+    // List prices per million tokens, for the run cost estimate.
     expect(openai?.models[0]).toMatchObject({
       cost: {
         input: expect.any(Number),
@@ -741,7 +741,7 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     expect(context.responses.join('\n')).not.toContain('secret');
   });
 
-  it('[TC-SEC-002-N] refuses an unknown provider, a built-in name, plain http elsewhere, a key and a stale revision; the file stays', async () => {
+  it('refuses an unknown provider, a built-in name, plain http elsewhere, a key and a stale revision; the file stays', async () => {
     const context = await start(makeFake());
     const { revision } = (await context.json('/model-config')).body;
     const before = readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf-8');
@@ -781,7 +781,7 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
     expect(readFileSync(join(context.workspace, '.corral', 'config.json'), 'utf-8')).toBe(before);
   });
 
-  it('[TC-SEC-002-N] reads externally changed model fields and revision from the same file snapshot', async () => {
+  it('reads externally changed model fields and revision from the same file snapshot', async () => {
     const context = await start(makeFake());
     const before = (await context.json('/model-config')).body;
     const path = join(context.workspace, '.corral', 'config.json');
@@ -804,7 +804,7 @@ describe('editing profiles and endpoints from the Models page (CR-008)', () => {
   });
 });
 
-describe('auto sessions (CR-024)', () => {
+describe('auto sessions', () => {
   async function autoSession(context: Awaited<ReturnType<typeof start>>) {
     const created = await context.json('/sessions', {
       method: 'POST',
@@ -819,7 +819,7 @@ describe('auto sessions (CR-024)', () => {
       body: JSON.stringify({ schemaVersion: '0.1', mode: 'live', ...body }),
     });
 
-  it('[TC-AUTO-003-H] asks the chosen model once with a cap, starts the chosen template, and a resend asks nothing', async () => {
+  it('asks the chosen model once with a cap, starts the chosen template, and a resend asks nothing', async () => {
     const fake = makeFake();
     const context = await start(fake);
     await signIn(context.json);
@@ -830,7 +830,7 @@ describe('auto sessions (CR-024)', () => {
     const body = {
       commandId: 'cmd_auto_live',
       sessionId,
-      brief: 'What does CR-024 change?',
+      brief: 'What does the auto router change?',
       choice: { modelProfile: 'model-b' },
     };
     const started = await autoStart(context, body);
@@ -843,7 +843,7 @@ describe('auto sessions (CR-024)', () => {
     });
     expect(fake.seen.hostRequests).toHaveLength(1);
     expect(fake.seen.hostRequests[0]?.maxTokens).toBe(16384);
-    expect(fake.seen.hostRequests[0]?.text).toContain('What does CR-024 change?');
+    expect(fake.seen.hostRequests[0]?.text).toContain('What does the auto router change?');
     const transport = new HttpSseTransport({ baseUrl: context.server.url, fetch: context.call });
     const done = await waitForProjection(
       transport,
@@ -858,7 +858,7 @@ describe('auto sessions (CR-024)', () => {
       method: 'POST',
       body: JSON.stringify({
         intent: 'next',
-        text: 'What does CR-024 change?',
+        text: 'What does the auto router change?',
         state: 'started',
         runId: started.body.runId,
         commandId: 'cmd_auto_live',
@@ -875,7 +875,7 @@ describe('auto sessions (CR-024)', () => {
     expect(fake.seen.hostRequests).toHaveLength(1);
   });
 
-  it('[TC-AUTO-005-H] the start model picks the reasoning level and every role runs it', async () => {
+  it('the start model picks the reasoning level and every role runs it', async () => {
     const fake = makeFake({ reasoningApi: true });
     const context = await start(fake);
     await signIn(context.json);
@@ -909,7 +909,7 @@ describe('auto sessions (CR-024)', () => {
     expect(entry.status).toBeLessThan(300);
   });
 
-  it('[TC-AUTO-005-N] a model with no reasoning levels cannot choose per request; no model is asked', async () => {
+  it('a model with no reasoning levels cannot choose per request; no model is asked', async () => {
     const fake = makeFake();
     const context = await start(fake);
     await signIn(context.json);
@@ -925,7 +925,7 @@ describe('auto sessions (CR-024)', () => {
     expect(fake.seen.hostRequests).toHaveLength(0);
   });
 
-  it('[TC-AUTO-003-N] an unusable answer falls back to single; no sign-in or a missing session asks no model', async () => {
+  it('an unusable answer falls back to single; no sign-in or a missing session asks no model', async () => {
     const fake = makeFake();
     const context = await start(fake);
     const sessionId = await autoSession(context);

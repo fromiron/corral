@@ -435,7 +435,7 @@ function readInput(path: string, maximumBytes = 2 * 1024 * 1024): string {
 }
 
 /**
- * `corral judge install|status` (C-072): the local effort judge model lives in the OS's standard
+ * `corral judge install|status`: the local effort judge model lives in the OS's standard
  * per-user data directory. Installing downloads ≈185 MB from the release in the bundled
  * manifest and checks every file's size and sha256.
  */
@@ -469,7 +469,7 @@ async function judge(action: string | undefined, modelDir: string | undefined, i
   return 0;
 }
 
-/** `inspect --judgments`: each request's effort judgments side by side (CR-003, C-071). */
+/** `inspect --judgments`: each request's effort judgments side by side. */
 export function judgmentReport(projection: RunProjection): string {
   const settings = projection.decisionSettings?.reasoning_effort;
   const applied = Object.values(projection.modelCalls ?? {}).filter((call) => call.reasoning);

@@ -3,7 +3,7 @@ import { expect, test } from './harness.ts';
 
 test.use({ replyDelayMs: 1000 });
 
-test('[TC-RACE-08] a lost command response recovers its receipt without submitting another directive', async ({
+test('a lost command response recovers its receipt without submitting another directive', async ({
   page,
   corral,
 }) => {

@@ -122,7 +122,7 @@ async function setup() {
   return { service, db, copy, original, target, git, status, selection };
 }
 
-it('[TC-WBD-022-H] admits selected hunks under shared development, deduplicates them and refuses exclusive or foreign writers', async () => {
+it('admits selected hunks under shared development, deduplicates them and refuses exclusive or foreign writers', async () => {
   const s = await setup();
   writeFileSync(join(s.copy, 'hunks.txt'), both);
   const command = await s.selection('stage_selected');
@@ -162,7 +162,7 @@ it('[TC-WBD-022-H] admits selected hunks under shared development, deduplicates 
   expect(s.git(s.original, 'status', '--porcelain')).toBe('');
 });
 
-it('[TC-WBD-022-H] records a real merge conflict, exposes three sides and continues after an ordinary save and stage', async () => {
+it('records a real merge conflict, exposes three sides and continues after an ordinary save and stage', async () => {
   const s = await setup();
   const initial = await s.service.gitSequence('s1');
   const topic = initial.localBranches.find((branch) => branch.name === 'topic');
@@ -248,7 +248,7 @@ it('[TC-WBD-022-H] records a real merge conflict, exposes three sides and contin
   expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('main\n');
 });
 
-it('[TC-WBD-022-F] keeps a lost hunk receipt uncertain without replay, reconciles its index and refuses an external sequence', async () => {
+it('keeps a lost hunk receipt uncertain without replay, reconciles its index and refuses an external sequence', async () => {
   const s = await setup();
   writeFileSync(join(s.copy, 'hunks.txt'), both);
   const command = await s.selection('lost_hunk_receipt');

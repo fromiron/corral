@@ -6,7 +6,7 @@ import { ScriptedAgentAdapter } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
-it('[TC-MEET-003-N] public starts cannot consume a draft handoff identity with a different request', async () => {
+it('public starts cannot consume a draft handoff identity with a different request', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-handoff-boundary-'));
   const token = 'test-bootstrap-token-0123456789abcdef';
   const content = {

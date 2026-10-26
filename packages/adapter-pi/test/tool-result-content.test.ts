@@ -13,7 +13,7 @@ const image: ImageInput = {
   sha256: 'a'.repeat(64),
   data: 'AQID',
 };
-it('[TC-ABS-010-H] renders authorized image reads as actual Pi image parts without base64 prose or details', () => {
+it('renders authorized image reads as actual Pi image parts without base64 prose or details', () => {
   const result = corralToolResultContent('read_artifact', {
     artifactVersionId: 'artv_image',
     images: [image],
@@ -24,7 +24,7 @@ it('[TC-ABS-010-H] renders authorized image reads as actual Pi image parts witho
   );
   expect(JSON.stringify(result.details)).not.toContain('AQID');
 });
-it('[TC-ABS-010-N] malformed image input is a failure rather than a text-only successful read', () => {
+it('malformed image input is a failure rather than a text-only successful read', () => {
   expect(() =>
     corralToolResultContent('read_artifact', { images: [{ ...image, bytes: 1024 * 1024 + 1 }] }),
   ).toThrow();

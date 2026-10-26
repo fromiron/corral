@@ -20,7 +20,7 @@ const temp = () => {
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
-describe('[TC-ABS-013-N] model owner crash checkpoints', () => {
+describe('model owner crash checkpoints', () => {
   it('keeps credential checkpoint fingerprints private to one installation', async () => {
     const directory = temp();
     const first = new FileCredentialStore(directory);

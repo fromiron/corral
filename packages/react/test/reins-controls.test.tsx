@@ -25,7 +25,7 @@ function renderRun() {
   return { session, sendCommand };
 }
 
-describe('run controls (C-032, C-033)', () => {
+describe('run controls', () => {
   it('keeps an unconfirmed command visible and retries its exact ID', () => {
     const { session } = renderRun();
     const retryCommand = vi.fn(async () => ({ status: 'applied' }) as never);
@@ -68,7 +68,7 @@ describe('run controls (C-032, C-033)', () => {
       }),
     );
   });
-  it('[TC-WBD-015-N] a cancel confirmation opened for one run never cancels the next run the view follows', () => {
+  it('a cancel confirmation opened for one run never cancels the next run the view follows', () => {
     const sendCommand = vi.fn(async () => ({ status: 'queued' }) as never);
     const session = createRunSession({} as never);
     session.setState({

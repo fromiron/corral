@@ -175,7 +175,7 @@ async function render(status: 'running' | 'succeeded' = 'running') {
   return { container, projection, events, sendCommand };
 }
 
-it('[TC-WBD-007-H] changes only display density while keeping results and required attention outside folds', async () => {
+it('changes only display density while keeping results and required attention outside folds', async () => {
   const f = await render();
   expect(f.container.querySelector('[data-testid="live-text"]')).not.toBeNull();
   await act(async () => preferences.setState({ chatDensity: 'results' }));
@@ -195,7 +195,7 @@ it('[TC-WBD-007-H] changes only display density while keeping results and requir
     expect(fixture.store?.getState().projection).toBe(f.projection);
     expect(fixture.store?.getState().events).toBe(f.events);
   }
-  // CR-055: the turn's process is the kit's ThinkingSteps with one flat row per step.
+  // the turn's process is the kit's ThinkingSteps with one flat row per step.
   const log = f.container.querySelector<HTMLElement>('[data-testid="turn-process"]');
   if (!log) throw new Error('turn process missing');
   expect(log.tagName).not.toBe('DETAILS');
@@ -217,7 +217,7 @@ it('[TC-WBD-007-H] changes only display density while keeping results and requir
   ).toBe(true);
 });
 
-it('[TC-WBD-007-F] changing the display preference keeps message and composer nodes and their draft', async () => {
+it('changing the display preference keeps message and composer nodes and their draft', async () => {
   const f = await render();
   const row = f.container.querySelector('[data-chat-item="entry"]');
   const composer = f.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Draft"]');
@@ -243,7 +243,7 @@ it('[TC-WBD-007-F] changing the display preference keeps message and composer no
   expect(f.sendCommand).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-007-N] the live reply stays in place between model calls until the run ends', async () => {
+it('the live reply stays in place between model calls until the run ends', async () => {
   const f = await render();
   const live = () => f.container.querySelector<HTMLElement>('[data-testid="live-text"]');
   const block = live();
@@ -291,7 +291,7 @@ function succeeded(projection: RunProjection): RunProjection {
   };
 }
 
-it('[TC-WBD-007-N] on success the live reply stays until the result text is read, without a loading flash', async () => {
+it('on success the live reply stays until the result text is read, without a loading flash', async () => {
   const f = await render();
   let finish = () => {};
   await act(async () =>
@@ -320,7 +320,7 @@ it('[TC-WBD-007-N] on success the live reply stays until the result text is read
   );
 });
 
-it('[TC-WBD-007-F] a result that cannot be read ends the hand-off and shows the error', async () => {
+it('a result that cannot be read ends the hand-off and shows the error', async () => {
   const f = await render();
   await act(async () =>
     fixture.store?.setState({
@@ -334,7 +334,7 @@ it('[TC-WBD-007-F] a result that cannot be read ends the hand-off and shows the 
   expect(f.container.querySelector('[role="alert"]')).not.toBeNull();
 });
 
-it('[TC-TURN-001-H] the turn process sits above the reply, open while working and folded when done', async () => {
+it('the turn process sits above the reply, open while working and folded when done', async () => {
   const f = await render();
   const before = (a: Element | null, b: Element | null) =>
     Boolean(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -366,7 +366,7 @@ it('[TC-TURN-001-H] the turn process sits above the reply, open while working an
   expect(log()).toBeNull();
 });
 
-it('[TC-WBD-007-N] a turn that finishes without streamed text shows its result only once read', async () => {
+it('a turn that finishes without streamed text shows its result only once read', async () => {
   const f = await render();
   let finish = () => {};
   await act(async () =>
@@ -391,7 +391,7 @@ it('[TC-WBD-007-N] a turn that finishes without streamed text shows its result o
   );
 });
 
-it('[TC-WBD-007-N] a turn opened after it finished still shows that its result is loading', async () => {
+it('a turn opened after it finished still shows that its result is loading', async () => {
   const f = await render('succeeded');
   await act(async () =>
     fixture.store?.setState({
@@ -406,7 +406,7 @@ it('[TC-WBD-007-N] a turn opened after it finished still shows that its result i
   );
 });
 
-it('[TC-TEAM-001-H] a delegate’s streaming text stays out of the lead’s answer', async () => {
+it('a delegate’s streaming text stays out of the lead’s answer', async () => {
   const f = await render();
   await act(async () =>
     fixture.store?.setState({

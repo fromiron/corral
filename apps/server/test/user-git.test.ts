@@ -90,7 +90,7 @@ function basis(status: Omit<GitStatus, 'target'>) {
   return { head: status.head.oid, indexHash: status.indexHash };
 }
 
-it('[TC-WBD-008-H] separates staged and unstaged bytes and preserves raw renamed/untracked paths', async () => {
+it('separates staged and unstaged bytes and preserves raw renamed/untracked paths', async () => {
   const path = '함께 수정.txt';
   const originalPath = '이전 이름.txt';
   const renamedPath = ' 새 이름\n줄.txt ';
@@ -155,7 +155,7 @@ it('[TC-WBD-008-H] separates staged and unstaged bytes and preserves raw renamed
   expect(readFileSync(join(f.root, path), 'utf8')).toBe(working);
 });
 
-it('[TC-WBD-008-N] observes unborn, detached and shallow branches without inventing upstream counts', async () => {
+it('observes unborn, detached and shallow branches without inventing upstream counts', async () => {
   const f = setup();
   const empty = await readUserGitStatus(f.root);
   expect(empty).toMatchObject({
@@ -230,7 +230,7 @@ it('[TC-WBD-008-N] observes unborn, detached and shallow branches without invent
   });
 });
 
-it('[TC-WBD-008-F] disables executable Git helpers while preserving index bytes, mtime and snapshot refs', async () => {
+it('disables executable Git helpers while preserving index bytes, mtime and snapshot refs', async () => {
   const f = setup({
     '.gitattributes':
       'clean.txt filter=cleantrap diff=difftrap\nprocess.txt filter=processtrap\nbinary.bin diff=difftrap\n',
@@ -295,7 +295,7 @@ it('[TC-WBD-008-F] disables executable Git helpers while preserving index bytes,
   expect(readFileSync(join(f.root, 'clean.txt'), 'utf8')).toBe('after clean\n');
 });
 
-it('[TC-WBD-008-F] rejects an old HEAD/index and an index changed while reading the disk side', async () => {
+it('rejects an old HEAD/index and an index changed while reading the disk side', async () => {
   const f = setup({ 'a.txt': 'base\n' });
   const old = await readUserGitStatus(f.root);
   writeFileSync(join(f.root, 'a.txt'), 'new index\n');
@@ -352,7 +352,7 @@ it('[TC-WBD-008-F] rejects an old HEAD/index and an index changed while reading 
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
 });
 
-it('[TC-WBD-008-F] rejects index changes during status rather than returning a mixed observation', async () => {
+it('rejects index changes during status rather than returning a mixed observation', async () => {
   const f = setup({ 'a.txt': 'base\n' });
   writeFileSync(join(f.root, 'a.txt'), 'disk\n');
   const execute = gitModule.git;
@@ -370,7 +370,7 @@ it('[TC-WBD-008-F] rejects index changes during status rather than returning a m
   expect(git(f.root, 'show', ':a.txt').toString()).toBe('disk\n');
 });
 
-it('[TC-WBD-008-H] reads each linked copy index and reports symlink/gitlink comparisons as unsupported', async () => {
+it('reads each linked copy index and reports symlink/gitlink comparisons as unsupported', async () => {
   const f = setup({ 'a.txt': 'original\n' });
   const first = join(f.directory, 'first-copy');
   const second = join(f.directory, 'second-copy');
@@ -443,7 +443,7 @@ it('[TC-WBD-008-H] reads each linked copy index and reports symlink/gitlink comp
   expect(reader).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-008-N] marks a bounded file list and refuses lossy path decoding', async () => {
+it('marks a bounded file list and refuses lossy path decoding', async () => {
   const f = setup();
   for (let i = 0; i < 2001; i += 1)
     writeFileSync(join(f.root, `file-${String(i).padStart(4, '0')}.txt`), 'untracked\n');

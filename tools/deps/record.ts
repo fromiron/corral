@@ -1,4 +1,4 @@
-// pnpm deps:record — writes docs/dependency-lock.json (C-002, CRL-DX-002, AGENTS rule 8).
+// pnpm deps:record — writes docs/dependency-lock.json.
 // For every direct, non-workspace dependency: exact version, license, registry integrity,
 // publish date, engines and peer ranges, and the workspace packages that use it.
 import { execFileSync } from 'node:child_process';

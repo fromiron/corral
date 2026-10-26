@@ -21,8 +21,8 @@ const network = (overrides: Partial<Network> = {}): Network => ({
   ...overrides,
 });
 
-describe('registered HTTPS input boundary (C-043)', () => {
-  it('[TC-SEC-003-N] blocks private, special, mapped and transition addresses', () => {
+describe('registered HTTPS input boundary', () => {
+  it('blocks private, special, mapped and transition addresses', () => {
     for (const address of [
       '127.0.0.1',
       '10.0.0.1',
@@ -44,7 +44,7 @@ describe('registered HTTPS input boundary (C-043)', () => {
     for (const address of ['8.8.8.8', '93.184.216.34', '2606:4700:4700::1111'])
       expect(publicAddress(address)).toBe(true);
   });
-  it('[TC-SEC-003-H] pins checked DNS to the connection and accepts bounded UTF-8 text', async () => {
+  it('pins checked DNS to the connection and accepts bounded UTF-8 text', async () => {
     let lookups = 0;
     let pin = '';
     const result = await readHttps('https://source.example/doc', {

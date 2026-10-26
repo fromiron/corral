@@ -7,7 +7,7 @@ import { PreviewService } from '../src/preview/service.ts';
 import { CommandRuntime } from '../src/processes/runtime.ts';
 
 it.skipIf(!['win32', 'linux'].includes(process.platform))(
-  '[TC-ABS-004-H] immediate preview_app waits for the owned service to bind and finish HTTP initialization',
+  'immediate preview_app waits for the owned service to bind and finish HTTP initialization',
   async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), 'corral-preview-readiness-')));
     const reservation = createServer();

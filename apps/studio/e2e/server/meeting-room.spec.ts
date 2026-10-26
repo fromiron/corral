@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 import { requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// CR-049: only model replies are simulated. Creation, conversation, decisions and handoffs
+// only model replies are simulated. Creation, conversation, decisions and handoffs
 // use the production Studio, HTTP API, persisted session and Coordinator.
 test.use({
   agentReply: {
@@ -121,7 +121,7 @@ async function adoptDecision(page: Page, id: string) {
   await expect.poll(async () => (await meeting(page, id)).decisions?.length).toBe(1);
 }
 
-test('[TC-MEET-001-H] role and secretary selection survive reopening without more calls', async ({
+test('role and secretary selection survive reopening without more calls', async ({
   page,
   corral,
 }) => {
@@ -212,7 +212,7 @@ test.describe('general chat', () => {
       },
     },
   });
-  test('[TC-MEET-001-H] default participants continue an everyday conversation before any requested minutes', async ({
+  test('default participants continue an everyday conversation before any requested minutes', async ({
     page,
     corral,
   }) => {
@@ -278,7 +278,7 @@ test.describe('active meeting', () => {
   test.afterEach(() => {
     replies.open();
   });
-  test('[TC-MEET-001-N] [TC-MEET-001-F] posts several messages during a reply and stops active and pending speakers', async ({
+  test('posts several messages during a reply and stops active and pending speakers', async ({
     page,
     corral,
   }) => {
@@ -325,10 +325,7 @@ test.describe('agent mentions', () => {
           : 'Soup sounds good to me.',
     },
   });
-  test('[TC-MEET-001-H] an agent tag gets a reply without another human message', async ({
-    page,
-    corral,
-  }) => {
+  test('an agent tag gets a reply without another human message', async ({ page, corral }) => {
     await corral.open('/');
     const id = await createMeeting(page, corral);
     await send(page, '@Architect suggest dinner and ask Builder');
@@ -349,7 +346,7 @@ test.describe('agent mentions', () => {
   });
 });
 
-test('[TC-MEET-002-H] [TC-MEET-002-N] minutes retain dissent and only a human adopts or withdraws a decision', async ({
+test('minutes retain dissent and only a human adopts or withdraws a decision', async ({
   page,
   corral,
 }) => {
@@ -387,7 +384,7 @@ test('[TC-MEET-002-H] [TC-MEET-002-N] minutes retain dissent and only a human ad
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-MEET-003-H] [TC-MEET-003-N] handoffs preserve existing input and start work only when requested', async ({
+test('handoffs preserve existing input and start work only when requested', async ({
   page,
   corral,
 }) => {

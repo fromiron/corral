@@ -7,11 +7,11 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { expect, test } from './harness.ts';
 
-// 02-UX-Spec §11 measurement, run once on request (not part of the regular suite):
+// Workbench measurement, run once on request (not part of the regular suite):
 //   CORRAL_WORKBENCH_PERF=1 pnpm exec playwright test --project=server e2e/server/workbench-measure.spec.ts
 // Targets (§11): warm session switch p95 ≤ 300 ms; choosing a changed file p95 ≤ 500 ms for a
 // 200 KB text file among 300 changes. Plus no serious axe findings on the workbench screens.
-// Local steps only; no model call is involved. Results are printed for docs/Performance.md.
+// Local steps only; no model call is involved. Results are printed to the console.
 
 test.skip(!process.env.CORRAL_WORKBENCH_PERF, 'measurement run: set CORRAL_WORKBENCH_PERF=1');
 

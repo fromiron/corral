@@ -12,7 +12,7 @@ const layoutNodes = () => clone((researchLayout as unknown as CanvasLayout).node
 const viewport = { x: 0, y: 0, zoom: 1 };
 
 /**
- * Behaviour every CorralRepository must share (C-009, C-011): the browser store and the
+ * Behaviour every CorralRepository must share: the browser store and the
  * server's SQLite store. Corral ids come from the repository (`corral_…`).
  */
 export function describeCorralRepositoryContract(
@@ -20,7 +20,7 @@ export function describeCorralRepositoryContract(
   makeRepository: () => CorralRepository,
 ) {
   describe(`CorralRepository contract: ${name}`, () => {
-    it('[TC-CAN-002-H] saving a layout move bumps only the layout revision', async () => {
+    it('saving a layout move bumps only the layout revision', async () => {
       const repo = makeRepository();
       const created = await repo.save({
         definition: team(),
@@ -122,7 +122,7 @@ export function describeCorralRepositoryContract(
       });
       expect(result.ok).toBe(true);
     });
-    describe('projects (CR-010)', () => {
+    describe('projects', () => {
       const create = (repo: CorralRepository, projectId?: string) =>
         repo.save({
           definition: team(),
@@ -131,7 +131,7 @@ export function describeCorralRepositoryContract(
           ...(projectId ? { projectId } : {}),
         });
 
-      it('[WBTST-001] starts with the default project, and new Corrals belong to it', async () => {
+      it('starts with the default project, and new Corrals belong to it', async () => {
         const repo = makeRepository();
         const projects = await repo.listProjects();
         expect(projects.map((p) => [p.projectId, p.name, p.archivedAt])).toEqual([
@@ -143,7 +143,7 @@ export function describeCorralRepositoryContract(
         expect((await repo.list())[0]?.projectId).toBe(DEFAULT_PROJECT_ID);
       });
 
-      it('[WBTST-001] creates projects without a folder, told apart by id even with one name', async () => {
+      it('creates projects without a folder, told apart by id even with one name', async () => {
         const repo = makeRepository();
         const a = await repo.createProject({ name: '  Docs  ', description: 'Writing' });
         const b = await repo.createProject({ name: 'Docs' });
@@ -238,8 +238,8 @@ export function describeCorralRepositoryContract(
         });
       });
     });
-    describe('work sessions (CR-011)', () => {
-      it('[TC-UX-007-H] an opted-in title is finalized once with the first request and persists', async () => {
+    describe('work sessions', () => {
+      it('an opted-in title is finalized once with the first request and persists', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({
           projectId: 'default',
@@ -280,7 +280,7 @@ export function describeCorralRepositoryContract(
         );
       });
 
-      it('[TC-UX-007-N] explicit, renamed and legacy titles survive later requests even when named New session', async () => {
+      it('explicit, renamed and legacy titles survive later requests even when named New session', async () => {
         const repo = makeRepository();
         for (const autoTitle of [false, true]) {
           const made = await repo.createSession({
@@ -305,7 +305,7 @@ export function describeCorralRepositoryContract(
         }
       });
 
-      it('[TC-UX-007-N] invalid requests do not consume automatic naming; queued Unicode text is bounded without splitting characters', async () => {
+      it('invalid requests do not consume automatic naming; queued Unicode text is bounded without splitting characters', async () => {
         const repo = makeRepository();
         const made = await repo.createSession({
           projectId: 'default',
@@ -336,7 +336,7 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(id))?.title).toBe('🙂'.repeat(60));
       });
 
-      it('[WBTST-003] creates sessions from a purpose alone, pins, archives, and keeps entries', async () => {
+      it('creates sessions from a purpose alone, pins, archives, and keeps entries', async () => {
         const repo = makeRepository();
         const project = await repo.createProject({ name: 'P' });
         if (!project.ok) throw new Error(project.message);
@@ -404,7 +404,7 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(b.session.sessionId))?.entries).toHaveLength(1);
       });
 
-      it('[TC-AUTO-001-H] new sessions are auto; the auto model and reasoning save with a revision; a team keeps its team', async () => {
+      it('new sessions are auto; the auto model and reasoning save with a revision; a team keeps its team', async () => {
         const repo = makeRepository();
         const auto = await repo.createSession({ projectId: 'default', title: 'Quick question' });
         if (!auto.ok) throw new Error(auto.message);
@@ -440,7 +440,7 @@ export function describeCorralRepositoryContract(
         expect(team.ok && team.session).toMatchObject({ corralId: 'corral_x', auto: null });
       });
 
-      it('[TC-MEET-001-H] [TC-MEET-001-N] a meeting keeps its participants and rounds; a work session never becomes one', async () => {
+      it('a meeting keeps its participants and rounds; a work session never becomes one', async () => {
         const repo = makeRepository();
         const config = {
           version: 1 as const,
@@ -504,7 +504,7 @@ export function describeCorralRepositoryContract(
         ).toMatchObject({ ok: false, error: 'invalid' });
       });
 
-      it('[TC-AUTO-001-N] a stale revision or a malformed auto choice saves nothing', async () => {
+      it('a stale revision or a malformed auto choice saves nothing', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'S' });
         if (!created.ok) throw new Error(created.message);
@@ -525,7 +525,7 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(id))?.auto).toEqual({ modelProfile: 'model-a' });
       });
 
-      it('[TC-CHAT-001-H] [TC-CHAT-001-N] [TC-AUTO-005-H] an auto session can let the start model choose the reasoning', async () => {
+      it('an auto session can let the start model choose the reasoning', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'S' });
         if (!created.ok) throw new Error(created.message);
@@ -566,7 +566,7 @@ export function describeCorralRepositoryContract(
         });
       });
 
-      it('[TC-WBD-007-H] [TC-WBD-007-F] a queued text snapshot keeps its source through duplicate acceptance and start', async () => {
+      it('a queued text snapshot keeps its source through duplicate acceptance and start', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({
           projectId: 'default',
@@ -641,7 +641,7 @@ export function describeCorralRepositoryContract(
         ).toMatchObject({ ok: false });
       });
 
-      it('[TC-AUTO-005-H] a queued auto request keeps its routing explanation and reasoning when started', async () => {
+      it('a queued auto request keeps its routing explanation and reasoning when started', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'Auto queue' });
         if (!created.ok) throw new Error(created.message);

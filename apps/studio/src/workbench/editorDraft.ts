@@ -85,7 +85,7 @@ export function editorCopyDirty(
 /**
  * A team editor opened by its route asks before the person leaves with unsaved changes. Docked in
  * a session it keeps the same working copy whatever pane or address the session moves to, so it
- * never asks (CR-046 P18); reloading the page still warns.
+ * never asks; reloading the page still warns.
  */
 export const blocksLeaving = (unsaved: boolean, docked: boolean) => unsaved && !docked;
 

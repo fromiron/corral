@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // API-Contract §3. Added in implementation: TARGET_NOT_FOUND (unknown target),
 // COMMAND_NOT_SUPPORTED (valid command whose runtime support arrives in a later phase) and
-// RUN_ALREADY_ACTIVE (a workspace runs one Run at a time, Spec §6.2, C-057) and
+// RUN_ALREADY_ACTIVE (a workspace runs one Run at a time) and
 // REVISION_CONFLICT (a Corral save based on an older definition revision, PUT /corrals/:id).
 export const ErrorCode = z.enum([
   'SCHEMA_INVALID',
@@ -23,9 +23,9 @@ export const ErrorCode = z.enum([
   'STORAGE_UNAVAILABLE',
   'SESSION_INVALID',
   'ORIGIN_REJECTED',
-  /** An admission gate failed; the call is refused, never let through (ADR-024). */
+  /** An admission gate failed; the call is refused, never let through. */
   'POLICY_ERROR',
-  /** A model request outside a Run failed, or its answer did not fit the contract (CR-006). */
+  /** A model request outside a Run failed, or its answer did not fit the contract. */
   'MODEL_UNAVAILABLE',
   'REQUEST_OUTCOME_UNKNOWN',
 ]);

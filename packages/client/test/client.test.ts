@@ -20,7 +20,7 @@ const sse = (...events: RunEvent[]) =>
 afterEach(() => vi.useRealTimers());
 
 describe('HTTP boundaries and replay', () => {
-  it('[TC-SEC-002-N] acquires CSRF before mutation and excludes session bootstrap', async () => {
+  it('acquires CSRF before mutation and excludes session bootstrap', async () => {
     const requests: { path: string; headers: Headers }[] = [];
     const fetcher: typeof fetch = async (input, init) => {
       const path = String(input);
@@ -44,7 +44,7 @@ describe('HTTP boundaries and replay', () => {
     expect(requests[2]?.headers.get('x-corral-csrf')).toBe('csrf-test');
   });
 
-  it('[TC-OBS-002-H] reconnects at committed cursor, discards duplicate events and retrieves lost events', async () => {
+  it('reconnects at committed cursor, discards duplicate events and retrieves lost events', async () => {
     vi.useFakeTimers();
     const cursors: string[] = [];
     const received: number[] = [];
@@ -65,7 +65,7 @@ describe('HTTP boundaries and replay', () => {
     expect(errors).toEqual([]);
   });
 
-  it('[TC-OBS-002-H] reads coalesced replay frames larger than the individual frame bound', async () => {
+  it('reads coalesced replay frames larger than the individual frame bound', async () => {
     vi.useFakeTimers();
     const received: number[] = [];
     const events = Array.from({ length: 4000 }, (_, index) => event(index + 1));
@@ -76,7 +76,7 @@ describe('HTTP boundaries and replay', () => {
     expect(received).toHaveLength(4000);
   });
 
-  it('[TC-OBS-002-H] accepts CRLF split across network chunks', async () => {
+  it('accepts CRLF split across network chunks', async () => {
     vi.useFakeTimers();
     const encoder = new TextEncoder();
     const chunks = ['event: domain\r', `\ndata: ${JSON.stringify(event(1))}\r`, '\n\r', '\n'];
@@ -99,7 +99,7 @@ describe('HTTP boundaries and replay', () => {
     expect(received).toEqual([1]);
   });
 
-  it('[TC-OBS-002-N] replays an interrupted large domain frame from its unadvanced cursor', async () => {
+  it('replays an interrupted large domain frame from its unadvanced cursor', async () => {
     vi.useFakeTimers();
     const large = {
       ...event(1),
@@ -127,7 +127,7 @@ describe('HTTP boundaries and replay', () => {
     ['domain', '{"type":"invalid"}'],
     ['stream', '가'.repeat(800_000)],
     ['domain', 'not json'],
-  ])('[TC-OBS-002-N] stops on an invalid %s frame without retrying', async (kind, data) => {
+  ])('stops on an invalid %s frame without retrying', async (kind, data) => {
     vi.useFakeTimers();
     const fetcher = vi
       .fn<typeof fetch>()
@@ -146,7 +146,7 @@ describe('HTTP boundaries and replay', () => {
     expect(errors).toHaveLength(1);
   });
 
-  it('[TC-OBS-002-N] retains the size bound for an unfinished comment or header', async () => {
+  it('retains the size bound for an unfinished comment or header', async () => {
     vi.useFakeTimers();
     const fetcher = vi
       .fn<typeof fetch>()
@@ -163,7 +163,7 @@ describe('HTTP boundaries and replay', () => {
     expect(errors).toHaveLength(1);
   });
 
-  it('[TC-OBS-002-N] cancellation stops retrying a disconnected stream', async () => {
+  it('cancellation stops retrying a disconnected stream', async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('offline'));
     const transport = new HttpSseTransport({ baseUrl: '', fetch: fetcher });

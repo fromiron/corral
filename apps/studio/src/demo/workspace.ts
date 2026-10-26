@@ -24,8 +24,8 @@ import {
 } from '@corral/core';
 import { diffLines } from '@corral/react/diff';
 
-// The browser demo's work folder (02-UX-Spec §10): the same flow as the local server's
-// (CR-012, CR-013) on files kept in memory, so the demo shows multi-file changes, review,
+// The browser demo's work folder: the same flow as the local server's
+// on files kept in memory, so the demo shows multi-file changes, review,
 // decisions, applying and reverting without a server. A page reload starts it again, as it
 // does demo runs. Checks run commands, which a browser cannot: they say so.
 
@@ -366,7 +366,7 @@ export class DemoWorkspace implements FileTools {
     return { files: files.slice(0, 500), truncated: files.length > 500 };
   }
 
-  /** CR-016: the same ranking as the local server's `@` search, over the example folder. */
+  /** the same ranking as the local server's `@` search, over the example folder. */
   searchFiles(scope: FileBrowseScope, query: string, limit = 20) {
     const paths = [...this.browseFiles(scope).keys()];
     const folders = new Set<string>();
@@ -533,7 +533,7 @@ export class DemoWorkspace implements FileTools {
     }
   }
 
-  // ── review, decisions, applying (CR-013) ────────────────────────────────────
+  // ── review, decisions, applying ────────────────────────────────────
 
   listComments(sessionId: string): ReviewCommentView[] {
     return this.comments
@@ -730,7 +730,7 @@ export class DemoWorkspace implements FileTools {
     return view;
   }
 
-  /** What needs a person in these sessions, by the same rules as the server (CR-013). */
+  /** What needs a person in these sessions, by the same rules as the server. */
   inboxFacts(sessions: { sessionId: string; title: string }[]): InboxItemView[] {
     const items: InboxItemView[] = [];
     for (const s of sessions) {

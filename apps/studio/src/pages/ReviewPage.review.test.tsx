@@ -54,7 +54,7 @@ async function render(decision: ReviewDecisionView) {
   return container;
 }
 
-it('[TC-WBD-013-H] an approval of this exact comparison is current and can be applied', async () => {
+it('an approval of this exact comparison is current and can be applied', async () => {
   const view = await render(approved(base));
   expect(view.querySelector('[data-testid="decision"]')?.textContent).toBe(
     'Review.decisionState.approved',
@@ -62,7 +62,7 @@ it('[TC-WBD-013-H] an approval of this exact comparison is current and can be ap
   expect(view.textContent).toContain('Review.integrateHeading');
 });
 
-it('[TC-WBD-013-N] an approval of another comparison with the same result is not this review', async () => {
+it('an approval of another comparison with the same result is not this review', async () => {
   const view = await render(approved(other));
   expect(view.querySelector('[data-testid="decision"]')?.textContent).toContain(
     'Review.staleDecision',

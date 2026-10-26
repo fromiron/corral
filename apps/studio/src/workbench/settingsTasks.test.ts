@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSettingsTasks } from './settingsTasks.ts';
 
-describe('[TC-UX-006-N] settings operation ownership', () => {
+describe('settings operation ownership', () => {
   it('locks the submitted target through settlement while other targets remain independent', async () => {
     const tasks = createSettingsTasks();
     let finish!: () => void;

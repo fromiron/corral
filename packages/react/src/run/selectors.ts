@@ -12,7 +12,7 @@ export function nodeRunStatus(projection: RunProjection | null, nodeId: string):
   return 'active';
 }
 
-/** How many executions one design node has had in this run (Spec §4.3). */
+/** How many executions one design node has had in this run. */
 export function nodeExecutionCount(projection: RunProjection | null, nodeId: string): number {
   return projection?.nodeExecutions[nodeId]?.length ?? 0;
 }

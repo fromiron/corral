@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import { requestBox, selectSessionTeam } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// Workbench UX review (docs/plans/Workbench-UX-Review-Plan.md): pinpoint checks of the fixes
+// Workbench UX review: pinpoint checks of the fixes
 // that need the local server's persistent runs.
 
 async function session(page: Page, corral: Harness) {
@@ -17,11 +17,11 @@ async function session(page: Page, corral: Harness) {
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  // CR-055: these checks run the imported team; the session conversation starts it.
+  // these checks run the imported team; the session conversation starts it.
   await selectSessionTeam(page, linearCorral(['writer']).name);
 }
 
-test('[TC-UX-02-H] a referenced result keeps its exact version through a reload', async ({
+test('a referenced result keeps its exact version through a reload', async ({
   page,
   corral,
 }, testInfo) => {
@@ -90,7 +90,7 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
   await sendAcrossSettings('Keep this newer unsent draft');
   await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
   const second = corral.server.coordinator.listRuns().find((r) => r.runId !== first?.runId);
-  // The reference reached the run as that exact version: its text is in the new brief (CR-016).
+  // The reference reached the run as that exact version: its text is in the new brief.
   const text = corral.server.coordinator.getArtifactText(first?.runId as string, version as string);
   const brief = corral.server.coordinator.getRunSnapshot(second?.runId as string)?.definition.input
     .brief;
@@ -102,13 +102,13 @@ test('[TC-UX-02-H] a referenced result keeps its exact version through a reload'
 
 test.describe('live models', () => {
   test.use({ live: true });
-  test('[TC-UX-04-H] a role whose model is not connected stops the request before it is sent', async ({
+  test('a role whose model is not connected stops the request before it is sent', async ({
     page,
     corral,
   }) => {
     await session(page, corral);
     await requestBox(page).fill('Use the live model');
-    // CR-024: with live models possible, a session runs live; it offers no simulated way out.
+    // with live models possible, a session runs live; it offers no simulated way out.
     await expect(page.getByRole('combobox', { name: 'Run mode' })).toHaveCount(0);
     await expect(page.getByTestId('models-not-ready')).toContainText('model-a');
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();

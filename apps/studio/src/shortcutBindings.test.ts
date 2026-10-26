@@ -23,7 +23,7 @@ const press = (change = {}) =>
     ...change,
   }) as KeyboardEvent;
 
-it('[TC-ABS-007-H] saves keybindings per surface and uses the same chord for labels and dispatch', () => {
+it('saves keybindings per surface and uses the same chord for labels and dispatch', () => {
   storage();
   writeShortcutBindings({ palette: { mod: true, shift: true, key: 'k' } });
   expect(readShortcutBindings().palette?.shift).toBe(true);
@@ -38,7 +38,7 @@ it('[TC-ABS-007-H] saves keybindings per surface and uses the same chord for lab
   expect(shortcutLabel('palette')).toBe('Ctrl+K');
 });
 
-it('[TC-ABS-007-N] rejects conflicting, editing, OS/browser and corrupt saved shortcuts', () => {
+it('rejects conflicting, editing, OS/browser and corrupt saved shortcuts', () => {
   const values = storage();
   expect(bindingError('palette', { mod: true, key: 'b' }, effectiveShortcuts(), false)).toBe(
     'conflict',

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { previewRequestAllowed, validatePreviewTarget } from '../src/preview-policy.ts';
 
-it('[TC-ABS-004-H] native preview confines HTTP and WebSocket requests to its authority', () => {
+it('native preview confines HTTP and WebSocket requests to its authority', () => {
   const target = validatePreviewTarget({
     url: 'http://127.0.0.2:4321/app/',
     origin: 'http://127.0.0.2:4321',
@@ -21,7 +21,7 @@ it('[TC-ABS-004-H] native preview confines HTTP and WebSocket requests to its au
     expect(previewRequestAllowed(target, url)).toBe(false);
 });
 
-it('[TC-ABS-004-N] malformed authority and static-prefix escapes are refused', () => {
+it('malformed authority and static-prefix escapes are refused', () => {
   const target = {
     url: 'http://127.0.0.2:4321/key/index.html',
     origin: 'http://127.0.0.2:4321',

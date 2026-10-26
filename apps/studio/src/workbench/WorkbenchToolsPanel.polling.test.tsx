@@ -36,7 +36,7 @@ vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0 }),
 }));
 
-it('[TC-WBD-004-N] keeps one preview poller through tools-pane rerenders and releases it on unmount', async () => {
+it('keeps one preview poller through tools-pane rerenders and releases it on unmount', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');

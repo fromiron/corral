@@ -100,7 +100,7 @@ describe('Coordinator: linear mock run', () => {
     for (const event of events) expect(RunEvent.safeParse(event).success).toBe(true);
   });
 
-  it('[TC-OBS-002-H] replaying the event log rebuilds the same projection', async () => {
+  it('replaying the event log rebuilds the same projection', async () => {
     const transport = setup();
     const { runId } = await transport.startRun(startRequest(['research', 'writer']));
     const events = await collectEvents(transport, runId ?? '');
@@ -110,7 +110,7 @@ describe('Coordinator: linear mock run', () => {
     expect(replayed).toEqual(projection);
   });
 
-  it('[TC-RACE-07] a subscriber starting from a snapshot sees each later event once, in order', async () => {
+  it('a subscriber starting from a snapshot sees each later event once, in order', async () => {
     const gate = new Gate();
     const transport = setup({ gates: [gate] });
     const { runId } = await transport.startRun(startRequest(['research', 'writer']));
@@ -143,7 +143,7 @@ describe('Coordinator: linear mock run', () => {
     expect(receipt.error?.code).toBe('GRAPH_INVALID');
   });
 
-  it('[TC-DEV-001-H] starting a run twice with the same commandId returns the same run', async () => {
+  it('starting a run twice with the same commandId returns the same run', async () => {
     const transport = setup();
     const first = await transport.startRun(startRequest(['research']));
     const again = await transport.startRun(startRequest(['research']));
@@ -179,7 +179,7 @@ describe('Coordinator: steering', () => {
     return { transport, runId: id, executionId: executionOf(projection, 'writer') ?? '' };
   }
 
-  it('[TC-RNS-001-N] [TC-RACE-01] a steer accepted during request 1 reaches request 2 only', async () => {
+  it('a steer accepted during request 1 reaches request 2 only', async () => {
     const gates = [new Gate(), new Gate()];
     const { transport, runId, executionId } = await runningWriter(2, gates);
 
@@ -202,7 +202,7 @@ describe('Coordinator: steering', () => {
     expect(directDirectivesForArtifact(final, artifact)).toEqual([directiveId]);
   });
 
-  it('[TC-RNS-002-N] the steer receipt reports queued, not applied, until delivery', async () => {
+  it('the steer receipt reports queued, not applied, until delivery', async () => {
     const gates = [new Gate(), new Gate()];
     const { transport, runId, executionId } = await runningWriter(2, gates);
 
@@ -217,7 +217,7 @@ describe('Coordinator: steering', () => {
     expect((await transport.getReceipt(runId, receipt.commandId))?.status).toBe('applied');
   });
 
-  it('[TC-RACE-13] a steer whose target finishes before another request expires', async () => {
+  it('a steer whose target finishes before another request expires', async () => {
     const gates = [new Gate()];
     const { transport, runId, executionId } = await runningWriter(1, gates);
 
@@ -231,7 +231,7 @@ describe('Coordinator: steering', () => {
     expect(directDirectivesForArtifact(final, artifact)).toEqual([]);
   });
 
-  it('[TC-DEV-001-N] reusing a commandId with another payload is a conflict with no effect', async () => {
+  it('reusing a commandId with another payload is a conflict with no effect', async () => {
     const gates = [new Gate(), new Gate()];
     const { transport, runId, executionId } = await runningWriter(2, gates);
 

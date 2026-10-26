@@ -12,7 +12,7 @@ vi.mock('../../services.tsx', () => ({
 }));
 afterEach(() => vi.unstubAllGlobals());
 
-it('[TC-WBD-011-N] a save held by a running task offers to stop that task, then leaves saving to the person', async () => {
+it('a save held by a running task offers to stop that task, then leaves saving to the person', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const running = { operationId: 'task_1', script: 'dev', state: 'running' };
   let tasks = [running, { operationId: 'task_0', script: 'build', state: 'succeeded' }];

@@ -2,7 +2,7 @@ import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
-test('[TC-UX-006-H] [TC-UX-006-N] direct settings overlay preserves work, history and nested focus', async ({
+test('direct settings overlay preserves work, history and nested focus', async ({
   page,
   corral,
 }) => {
@@ -38,7 +38,7 @@ test('[TC-UX-006-H] [TC-UX-006-N] direct settings overlay preserves work, histor
   await expect(page).toHaveURL(/\/projects\/default#kept$/);
 });
 
-test('[TC-UX-006-N] closing a pending save keeps its target and does not overwrite another project', async ({
+test('closing a pending save keeps its target and does not overwrite another project', async ({
   page,
   corral,
 }) => {
@@ -134,7 +134,7 @@ test('[TC-UX-006-N] closing a pending save keeps its target and does not overwri
 
 test.describe('active work and credentials', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-UX-006-H] connected sidebar keeps project navigation without a normal-state badge', async ({
+  test('connected sidebar keeps project navigation without a normal-state badge', async ({
     page,
     corral,
   }) => {
@@ -157,7 +157,7 @@ test.describe('active work and credentials', () => {
     await expect(page.getByRole('form', { name: 'New project', exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('sidebar-connected.png') });
   });
-  test('[TC-UX-006-N] streaming keeps one subscription and approval cannot steal settings focus', async ({
+  test('streaming keeps one subscription and approval cannot steal settings focus', async ({
     page,
     corral,
   }) => {
@@ -248,7 +248,7 @@ test.describe('active work and credentials', () => {
 
 test.describe('settings layout and keyboard', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-UX-006-H] keyboard, light/dark, narrow reflow and explicit empty project scope', async ({
+  test('keyboard, light/dark, narrow reflow and explicit empty project scope', async ({
     page,
     corral,
   }) => {
@@ -330,7 +330,7 @@ test.describe('settings layout and keyboard', () => {
   });
 });
 
-test('[TC-UX-006-N] a late profile save cannot erase another profile lost-response receipt', async ({
+test('a late profile save cannot erase another profile lost-response receipt', async ({
   page,
   corral,
 }) => {

@@ -260,7 +260,7 @@ export class McpCredentials {
   }
   async delete(projectId: string, server: HttpServer) {
     const { key, binding } = this.identity(projectId, server);
-    // Older configurations may share a pre-CR-022 reference with a different endpoint.
+    // Older configurations may share a older reference with a different endpoint.
     if (existsSync(join(this.directory, `${key}.json`)) && !this.load(key, binding)) return;
     if (
       [...this.logins.values()].some(

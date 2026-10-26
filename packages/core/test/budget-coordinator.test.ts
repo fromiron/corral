@@ -101,8 +101,8 @@ const observe = (host: AgentHost, id: string, outputTokens: number | null) =>
     usage: { inputTokens: null, outputTokens },
   });
 
-describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
-  it('[TC-RACE-05] three concurrent admissions share the output reservation and cannot overspend it', async () => {
+describe('Coordinator budget and deadline integration', () => {
+  it('three concurrent admissions share the output reservation and cannot overspend it', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxOutputTokens: 5_000 };
     const s = await setup(definition);
@@ -127,7 +127,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(s.events.filter((e) => e.type === 'budget.reserved')).toHaveLength(2);
   });
 
-  it('[TC-RUN-006-N] a queued permit rechecks the model call limit after the previous request releases its slot', async () => {
+  it('a queued permit rechecks the model call limit after the previous request releases its slot', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxModelConcurrency: 1, maxModelCalls: 1 };
     const s = await setup(definition);
@@ -149,7 +149,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(s.projection().budget.modelCalls).toBe(1);
   });
 
-  it('[TC-RACE-06] workers queued for a model slot pause and resume within the concurrency limit', async () => {
+  it('workers queued for a model slot pause and resume within the concurrency limit', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxModelConcurrency: 1 };
     const s = await setup(definition);
@@ -186,7 +186,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(paused.budget.modelCalls).toBe(1);
   });
 
-  it('[TC-RNS-004-H] cancelling a worker queued for a model slot rejects its request without consuming a slot', async () => {
+  it('cancelling a worker queued for a model slot rejects its request without consuming a slot', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxModelConcurrency: 1 };
     const s = await setup(definition);
@@ -264,7 +264,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(afterChildCancel).toBe('cancelled');
   });
 
-  it('[TC-RNS-007-H] [TC-RNS-007-N] explicit budget changes preserve reservations independently of legacy installation defaults', async () => {
+  it('explicit budget changes preserve reservations independently of legacy installation defaults', async () => {
     const definition = linearCorral(['writer']);
     definition.limits = { ...definition.limits, maxOutputTokens: 200, maxOutputTokensPerCall: 100 };
     const s = await setup(definition, 500);
@@ -301,7 +301,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(s.coordinator.getRunSnapshot(s.runId)?.definition.limits.maxOutputTokens).toBe(200);
   });
 
-  it('[TC-RACE-02] [TC-RACE-14] cancellation retains unknown output and late usage settles without reviving the task', async () => {
+  it('cancellation retains unknown output and late usage settles without reviving the task', async () => {
     const s = await setup();
     const host = s.host();
     const first = await host.prepareModelRequest();
@@ -324,7 +324,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     ).toHaveLength(1);
   });
 
-  it('[TC-RUN-006-N] the wall deadline closes admission and cleans up even during user pause', async () => {
+  it('the wall deadline closes admission and cleans up even during user pause', async () => {
     const definition = linearCorral(['writer']);
     definition.limits = { ...definition.limits, runDeadlineMs: 1_000 };
     const s = await setup(definition);
@@ -338,7 +338,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     await expect(s.host().prepareModelRequest()).rejects.toThrow();
   });
 
-  it('[TC-RUN-006-N] each model request times out before the wall deadline and keeps unknown usage', async () => {
+  it('each model request times out before the wall deadline and keeps unknown usage', async () => {
     const definition = linearCorral(['writer']);
     definition.limits = { ...definition.limits, modelTimeoutMs: 1_000 };
     const s = await setup(definition);
@@ -355,7 +355,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     await expect(s.host().prepareModelRequest()).rejects.toThrow();
   });
 
-  it('[TC-RNS-008-N] the ten-second cleanup deadline fails unconfirmed termination without false confirmation', async () => {
+  it('the ten-second cleanup deadline fails unconfirmed termination without false confirmation', async () => {
     const s = await setup(linearCorral(['writer']), SPEC_HARD_CAPS.maxOutputTokens, false);
     await s.host().prepareModelRequest();
     s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
@@ -371,7 +371,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     expect(s.events.some((e) => e.type === 'cancel.confirmed')).toBe(false);
   });
 
-  it('[TC-RUN-006-H] message-only turns reach user intervention before a seventh request', async () => {
+  it('message-only turns reach user intervention before a seventh request', async () => {
     const s = await setup();
     const host = s.host();
     for (let turn = 0; turn < 6; turn++) {
@@ -405,7 +405,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     await drain();
   });
 
-  it('[TC-RNS-003-N] a paused question consumes only its remaining logical timeout after resume', async () => {
+  it('a paused question consumes only its remaining logical timeout after resume', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, questionTimeoutMs: 1_000 };
     const researcher = definition.roles.find((role) => role.id === 'researcher');
@@ -449,7 +449,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     await drain();
   });
 
-  it('[TC-RACE-04] concurrent workers wait through one no-progress intervention instead of failing each other', async () => {
+  it('concurrent workers wait through one no-progress intervention instead of failing each other', async () => {
     const s = await setup(collaborationCorral());
     await s.host().invokeTool({
       name: 'spawn_subagents',
@@ -493,7 +493,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     await drain();
   });
 
-  it('[TC-RACE-04] pause accepted between a request boundary and admission parks that request', async () => {
+  it('pause accepted between a request boundary and admission parks that request', async () => {
     const s = await setup();
     let result: 'pending' | 'permitted' | 'failed' = 'pending';
     const pending = s
@@ -519,7 +519,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     await drain();
   });
 
-  it('[TC-RACE-04] [TC-RACE-16] [TC-COL-001-N] seeded commands preserve admission, ownership, budget and replay invariants', async () => {
+  it('seeded commands preserve admission, ownership, budget and replay invariants', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(
@@ -631,7 +631,7 @@ describe('Coordinator budget and deadline integration (C-037–C-039)', () => {
     );
   });
 
-  it('[TC-DEV-002-H] [TC-DEV-002-N] the coordinator uses injected time, IDs, storage and effects without external calls', async () => {
+  it('the coordinator uses injected time, IDs, storage and effects without external calls', async () => {
     const realClock = vi.spyOn(Date, 'now').mockImplementation(() => {
       throw new Error('real clock forbidden');
     });

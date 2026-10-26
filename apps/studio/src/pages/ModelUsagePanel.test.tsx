@@ -9,7 +9,7 @@ import { ModelUsagePanel } from './ModelUsagePanel.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-it('[TC-LLM-002-H] loads bounded history on demand and distinguishes subscription, unknown and reported zero cost', async () => {
+it('loads bounded history on demand and distinguishes subscription, unknown and reported zero cost', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const row = (
     id: string,

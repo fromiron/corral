@@ -4,7 +4,7 @@ import { expect, test } from './harness.ts';
 
 test.use({ live: true, reasoningApi: true });
 
-test('[TC-ABS-005-H] Settings imports selected models and keeps reasoning capability', async ({
+test('Settings imports selected models and keeps reasoning capability', async ({
   page,
   corral,
 }) => {
@@ -33,7 +33,7 @@ test('[TC-ABS-005-H] Settings imports selected models and keeps reasoning capabi
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-ABS-005-N] unsupported configuration stays unselectable without leaking keys', async ({
+test('unsupported configuration stays unselectable without leaking keys', async ({
   page,
   corral,
 }) => {

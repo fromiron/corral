@@ -254,7 +254,7 @@ export function resumedMessages(
 }
 
 /**
- * CR-054: the session's earlier turns as text-only user/assistant messages. They are rendered
+ * the session's earlier turns as text-only user/assistant messages. They are rendered
  * the same way in every follow-up, so a later request's prefix repeats an earlier one's.
  */
 export function conversationMessages(

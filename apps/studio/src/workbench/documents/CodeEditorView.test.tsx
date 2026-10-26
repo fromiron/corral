@@ -15,7 +15,7 @@ vi.mock('../theme-colors.ts', () => ({
     Object.fromEntries(names.map((name) => [name, '#171717'])),
 }));
 
-it('[TC-WBD-023-H] gutter and F9 share an explicit line action while debug decorations preserve the model', async () => {
+it('gutter and F9 share an explicit line action while debug decorations preserve the model', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   let mouse:
     | ((event: {

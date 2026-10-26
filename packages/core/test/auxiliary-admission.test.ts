@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 import { SPEC_HARD_CAPS } from '../src/config.ts';
 import { Coordinator } from '../src/coordinator.ts';
 
-it('[TC-LLM-002-H] [TC-LLM-002-F] auxiliary admission is bounded, cancellable and released once', async () => {
+it('auxiliary admission is bounded, cancellable and released once', async () => {
   const coordinator = new Coordinator({
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),
@@ -34,7 +34,7 @@ it('[TC-LLM-002-H] [TC-LLM-002-F] auxiliary admission is bounded, cancellable an
   next();
 });
 
-it('[TC-LLM-002-N] a worker cooling down does not occupy the only host slot', async () => {
+it('a worker cooling down does not occupy the only host slot', async () => {
   const clock = new FakeClock(),
     entered = new Gate();
   let cooling = true,

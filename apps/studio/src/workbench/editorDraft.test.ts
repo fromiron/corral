@@ -71,7 +71,7 @@ it('isolates repository/project owners and discards only the confirmed copy', as
   expect(hasUnsavedEditorCopy(repository)).toBe(false);
 });
 
-it('[TC-WBD-014-N] a docked team keeps its draft through moves in the app and saves only from its own view', () => {
+it('a docked team keeps its draft through moves in the app and saves only from its own view', () => {
   // A route editor asks before leaving; a docked one keeps the same working copy, so it never asks.
   expect(blocksLeaving(true, false)).toBe(true);
   expect(blocksLeaving(true, true)).toBe(false);
@@ -84,7 +84,7 @@ it('[TC-WBD-014-N] a docked team keeps its draft through moves in the app and sa
   expect(ownsSaveShortcut(true, null, 'inside' as unknown as Element)).toBe(false);
 });
 
-it('[TC-WBD-014-H] tab titles follow a team draft becoming dirty and clean again', async () => {
+it('tab titles follow a team draft becoming dirty and clean again', async () => {
   const { repository, record } = await setup();
   const listener = vi.fn();
   const stop = subscribeEditorCopies(repository, listener);

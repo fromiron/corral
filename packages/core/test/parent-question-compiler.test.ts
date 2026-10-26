@@ -16,8 +16,8 @@ function definition() {
   return draft;
 }
 
-describe('TC-ABS-011 parent question compilation', () => {
-  it('[TC-ABS-011-H] adds an explicit parent route without a reverse callable edge or added depth', () => {
+describe('parent question compilation', () => {
+  it('adds an explicit parent route without a reverse callable edge or added depth', () => {
     const compiled = compileDefinition(definition());
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
@@ -31,7 +31,7 @@ describe('TC-ABS-011 parent question compilation', () => {
     expect(compiled.plan.order).not.toContain('helper');
   });
 
-  it('[TC-ABS-011-N] preserves legacy plans when the opt-in is absent', () => {
+  it('preserves legacy plans when the opt-in is absent', () => {
     const compiled = compileDefinition(researchTeam);
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
@@ -43,7 +43,7 @@ describe('TC-ABS-011 parent question compilation', () => {
     });
   });
 
-  it('[TC-ABS-011-N] rejects parent delivery on question links and missing participant tool permission', () => {
+  it('rejects parent delivery on question links and missing participant tool permission', () => {
     const onQuestion = definition();
     Object.assign(onQuestion.capabilityLinks.find((link) => link.kind === 'question') ?? {}, {
       parentQuestions: true,

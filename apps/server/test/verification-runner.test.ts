@@ -73,7 +73,7 @@ function cancellation() {
 
 describe('owned verification runner', { timeout: 25000 }, () => {
   it.skipIf(process.platform !== 'linux').each([false, true])(
-    '[TC-SBX-001-N] namespace cleanup owns detached descendants (cancel=%s)',
+    'namespace cleanup owns detached descendants (cancel=%s)',
     async (cancelled) => {
       const f = fixture(
         `import {spawn} from 'node:child_process'; spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'}).unref(); console.log('READY'); ${cancelled ? 'setInterval(()=>{},1000);' : ''}`,
@@ -98,7 +98,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     },
   );
   it.skipIf(process.platform !== 'linux')(
-    '[TC-SBX-001-N] sandbox exec failures are inconclusive even after the namespace started',
+    'sandbox exec failures are inconclusive even after the namespace started',
     async () => {
       const f = fixture('');
       const report = await new VerificationRunner({ clock: f.clock, timers: systemTimers }).run(
@@ -118,7 +118,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     },
   );
   it.skipIf(process.platform !== 'linux')(
-    '[TC-SBX-001-N] isolated snapshot checkout and status never execute repository filters on the host',
+    'isolated snapshot checkout and status never execute repository filters on the host',
     async () => {
       const f = fixture(
         "import fs from 'node:fs'; if(fs.readFileSync('a.txt','utf8') !== 'original') process.exit(1);",
@@ -137,7 +137,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
       expect(report, report.output.text).toMatchObject({ verdict: 'pass', targetUnchanged: true });
     },
   );
-  it('[TC-SBX-001-N] exit zero without sandbox attestation is inconclusive', async () => {
+  it('exit zero without sandbox attestation is inconclusive', async () => {
     const f = fixture('');
     const report = await new VerificationRunner({
       clock: f.clock,
@@ -149,7 +149,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     expect(report.isolation).toBeUndefined();
   });
   it.skipIf(process.platform !== 'linux')(
-    '[TC-SBX-001-N] isolated checks cannot read the host, Git administration or inherited secrets',
+    'isolated checks cannot read the host, Git administration or inherited secrets',
     async () => {
       const f = fixture('');
       vi.stubEnv('CORRAL_CHECK_SECRET', 'fixture-secret');
@@ -188,7 +188,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
       expect(readFileSync(privateFile, 'utf8')).toBe('host-only');
     },
   );
-  it('[TC-SBX-001-N] a failed sandbox launch never falls back to the registered host command', async () => {
+  it('a failed sandbox launch never falls back to the registered host command', async () => {
     const f = fixture('');
     const launched: string[] = [];
     const report = await new VerificationRunner({
@@ -202,7 +202,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     expect(report).toMatchObject({ state: 'error', verdict: 'inconclusive' });
     expect(launched).toEqual(process.platform === 'linux' ? ['/usr/bin/bwrap'] : []);
   });
-  it('[TC-HAR-013-N] a check that changes its own candidate cannot establish a pass', async () => {
+  it('a check that changes its own candidate cannot establish a pass', async () => {
     const f = fixture(
       "import fs from 'node:fs'; fs.writeFileSync('a.txt','changed during verification');",
     );
@@ -217,7 +217,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     });
     expect(readFileSync(join(f.root, 'a.txt'), 'utf8')).toBe('original');
   });
-  it('[TC-HAR-012-N] a cancelled duplicate cannot remove a directory owned by a different invocation', async () => {
+  it('a cancelled duplicate cannot remove a directory owned by a different invocation', async () => {
     const f = fixture('');
     const existing = join(f.input.copyRoot, f.input.verificationId);
     mkdirSync(existing, { recursive: true });
@@ -230,7 +230,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     );
     expect(readFileSync(join(existing, 'keep.txt'), 'utf8')).toBe('keep');
   });
-  it('[TC-HAR-012-H] executes the captured tree in a separate copy, preserving owner and injected duration', async () => {
+  it('executes the captured tree in a separate copy, preserving owner and injected duration', async () => {
     const f = fixture(`import fs from 'node:fs'; console.log(fs.readFileSync('a.txt','utf8'));`);
     writeFileSync(join(f.root, 'a.txt'), 'changed after capture');
     const updates: string[] = [];
@@ -258,7 +258,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     expect(existsSync(join(f.input.copyRoot, f.input.verificationId))).toBe(false);
   });
 
-  it('[TC-HAR-013-N] spawn failure is recorded once and never becomes an ordinary failed check', async () => {
+  it('spawn failure is recorded once and never becomes an ordinary failed check', async () => {
     const f = fixture('');
     f.input.command.argv = ['/nonexistent/corral-test-command'];
     const updates: string[] = [];
@@ -276,7 +276,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     expect(report.output.text).not.toContain('/nonexistent');
   });
 
-  it('[TC-HAR-012-N] cancellation stops the process group, closes once and never reports a pass', async () => {
+  it('cancellation stops the process group, closes once and never reports a pass', async () => {
     const f = fixture(
       `import {spawn} from 'node:child_process'; const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'], {stdio:'ignore'}); console.log('READY:'+child.pid); setInterval(()=>{},1000);`,
     );
@@ -315,7 +315,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     expect(['gone', 'Z']).toContain(state);
   });
 
-  it('[TC-HAR-013-N] times out with an inconclusive verdict and skips an already cancelled invocation', async () => {
+  it('times out with an inconclusive verdict and skips an already cancelled invocation', async () => {
     const f = fixture('setInterval(()=>{},1000);');
     f.input.command.timeoutMs = 1000;
     const runner = new VerificationRunner({ clock: f.clock, timers: systemTimers });
@@ -333,7 +333,7 @@ describe('owned verification runner', { timeout: 25000 }, () => {
     expect(existsSync(join(f.input.copyRoot, 'check_2'))).toBe(false);
   });
 
-  it('[TC-HAR-013-N] bounds and redacts fragmented output without losing the head and tail', async () => {
+  it('bounds and redacts fragmented output without losing the head and tail', async () => {
     const f = fixture(
       `process.stdout.write('first\\nAuthorization: Bear'); setTimeout(()=> {process.stdout.write('er sk-sensitivecredential1234\\n'+process.cwd()+'\\n'+'x'.repeat(200000)+'\\nlast\\n');},20);`,
     );

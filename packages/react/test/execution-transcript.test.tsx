@@ -73,7 +73,7 @@ async function collaborationRun(options: { steerWriter?: string } = {}) {
 }
 
 describe('buildTranscript (UX-A3)', () => {
-  it('[TC-OBS-001-H] puts one execution’s requests, replies, tools, question and versions in order', async () => {
+  it('puts one execution’s requests, replies, tools, question and versions in order', async () => {
     const { state, writer } = await collaborationRun();
     const entries = buildTranscript(state.events, state.projection, state.streams, writer);
     const kinds = entries.map((e) => e.kind);
@@ -95,7 +95,7 @@ describe('buildTranscript (UX-A3)', () => {
     );
   });
 
-  it('[TC-OBS-001-N] another execution’s facts never appear, and an unknown execution has no entries', async () => {
+  it('another execution’s facts never appear, and an unknown execution has no entries', async () => {
     const { state, writer } = await collaborationRun();
     const entries = buildTranscript(state.events, state.projection, state.streams, writer);
     expect(entries.every((e) => !('text' in e) || !String(e.text).includes('from research'))).toBe(
@@ -106,7 +106,7 @@ describe('buildTranscript (UX-A3)', () => {
 });
 
 describe('ExecutionTranscript (UX-A3)', () => {
-  it('[TC-OBS-001-N] completed tool-only replies do not look like pending model requests', async () => {
+  it('completed tool-only replies do not look like pending model requests', async () => {
     const { session, writer } = await collaborationRun();
     session.setState((state) => ({
       streams: Object.fromEntries(
@@ -121,7 +121,7 @@ describe('ExecutionTranscript (UX-A3)', () => {
     expect(screen.queryByText(messages.Transcript.waiting)).not.toBeInTheDocument();
     expect(screen.getAllByText('Response complete · no text')).toHaveLength(2);
   });
-  it('[TC-TURN-001-H] numbers compact raw replies by request order, not event sequence', async () => {
+  it('numbers compact raw replies by request order, not event sequence', async () => {
     const { session, writer } = await collaborationRun();
     render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -134,7 +134,7 @@ describe('ExecutionTranscript (UX-A3)', () => {
     // The writer made two requests; event sequence numbers would be far larger.
     expect([...new Set(numbers)].sort()).toEqual([1, 2]);
   });
-  it('[TC-RNS-010-H] shows the person’s instruction with where it went, and the reply that followed it', async () => {
+  it('shows the person’s instruction with where it went, and the reply that followed it', async () => {
     const { session, writer } = await collaborationRun({ steerWriter: 'Cite the vendor docs.' });
     render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -151,7 +151,7 @@ describe('ExecutionTranscript (UX-A3)', () => {
     expect(log.textContent).toContain('Asked Source Responder');
   });
 
-  it('[TC-RNS-010-N] an instruction is shown on the request it reached, not on an earlier one', async () => {
+  it('an instruction is shown on the request it reached, not on an earlier one', async () => {
     const { state, writer } = await collaborationRun({ steerWriter: 'Cite the vendor docs.' });
     const entries = buildTranscript(state.events, state.projection, state.streams, writer);
     const requests = entries.filter((e) => e.kind === 'request');

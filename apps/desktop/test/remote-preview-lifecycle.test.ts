@@ -99,7 +99,7 @@ function setup() {
   };
 }
 
-it('[TC-ABS-014-H] renewal uses a 20-second monotonic deadline and preserves target headers', async () => {
+it('renewal uses a 20-second monotonic deadline and preserves target headers', async () => {
   const state = setup();
   try {
     const first = await state.previews.open('session_one', 'preview_one');
@@ -115,7 +115,7 @@ it('[TC-ABS-014-H] renewal uses a 20-second monotonic deadline and preserves tar
   }
 });
 
-it('[TC-ABS-014-N] a failed forward releases its delegation and a retry requests a fresh one', async () => {
+it('a failed forward releases its delegation and a retry requests a fresh one', async () => {
   const state = setup();
   testState.connect.mockRejectedValueOnce(new Error('port occupied'));
   try {
@@ -133,7 +133,7 @@ it('[TC-ABS-014-N] a failed forward releases its delegation and a retry requests
   }
 });
 
-it('[TC-ABS-014-N] revoked leases close their own window and stop polling the inactive session', async () => {
+it('revoked leases close their own window and stop polling the inactive session', async () => {
   const state = setup();
   try {
     await state.previews.open('session_one', 'preview_one');

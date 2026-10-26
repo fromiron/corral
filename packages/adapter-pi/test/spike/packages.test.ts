@@ -17,9 +17,9 @@ import { DefaultPackageManager, SettingsManager } from '@earendil-works/pi-codin
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spikeSession } from './sdk-session.ts';
 
-// S6 (CR-018, plan §6 H1): installing Pi packages with Pi's own package manager into a
+// S6: installing Pi packages with Pi's own package manager into a
 // Corral-owned agent folder. Needs the npm registry, so it runs only with
-// CORRAL_SPIKE_NETWORK=1 (never in CI). Results go to docs/spikes/HAR-pi-sdk-spikes.md.
+// CORRAL_SPIKE_NETWORK=1 (never in CI).
 
 const network = process.env.CORRAL_SPIKE_NETWORK === '1';
 const PONYTAIL = 'npm:@dietrichgebert/ponytail@5.3.2';

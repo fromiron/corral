@@ -3,10 +3,7 @@ import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
 
-test('[TC-COMPOSER-001-H] attachment inputs survive their menu, the draft and a reload', async ({
-  page,
-  corral,
-}) => {
+test('attachment inputs survive their menu, the draft and a reload', async ({ page, corral }) => {
   await corral.open('/');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await requestBox(page).fill('Keep my draft');
@@ -20,14 +17,14 @@ test('[TC-COMPOSER-001-H] attachment inputs survive their menu, the draft and a 
   });
   await expect(page.getByRole('button', { name: 'Remove notes.txt', exact: true })).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Keep my draft');
-  // CR-055 §6: the composer has no request options, so no templates to insert.
+  // the composer has no request options, so no templates to insert.
   await expect(page.getByRole('button', { name: 'Request options', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('button', { name: 'Remove notes.txt', exact: true })).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Keep my draft');
 });
 
-test('[TC-COMPOSER-001-N] independent choices preserve effort and block conflicting saves or unsupported new requests', async ({
+test('independent choices preserve effort and block conflicting saves or unsupported new requests', async ({
   page,
   corral,
 }) => {

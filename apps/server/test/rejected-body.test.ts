@@ -93,7 +93,7 @@ function upload(url: string, length?: number) {
 }
 
 describe('bounded oversized-body refusal over real HTTP', () => {
-  it('[TC-SEC-002-N] finishes receiving a bounded upload before sending its readable 413', async () => {
+  it('finishes receiving a bounded upload before sending its readable 413', async () => {
     const endpoint = await server();
     const body = 'x'.repeat(1200);
     const client = upload(endpoint.url, body.length);
@@ -107,7 +107,7 @@ describe('bounded oversized-body refusal over real HTTP', () => {
   });
 
   it.each([false, true])(
-    '[TC-SEC-002-N] delivers repeated near-limit refusals without resetting the client, chunked=%s',
+    'delivers repeated near-limit refusals without resetting the client, chunked=%s',
     async (chunked) => {
       const endpoint = await server(2 * 1024 * 1024);
       const body = JSON.stringify({ text: 'x'.repeat(2 * 1024 * 1024) });
@@ -123,7 +123,7 @@ describe('bounded oversized-body refusal over real HTTP', () => {
     },
   );
 
-  it('[TC-SEC-002-N] closes excessive rejected input after the bounded discard budget', async () => {
+  it('closes excessive rejected input after the bounded discard budget', async () => {
     const endpoint = await server(1024);
     const client = upload(endpoint.url, 4096);
     client.request.write('x'.repeat(3072));
@@ -132,7 +132,7 @@ describe('bounded oversized-body refusal over real HTTP', () => {
     expect(endpoint.handled()).toBe(0);
   });
 
-  it('[TC-SEC-002-N] uses only the remaining request time for a stalled upload', async () => {
+  it('uses only the remaining request time for a stalled upload', async () => {
     const endpoint = await server(1024, 1000, 950);
     const client = upload(endpoint.url, 1200);
     client.request.write('x');
@@ -143,7 +143,7 @@ describe('bounded oversized-body refusal over real HTTP', () => {
     expect(endpoint.handled()).toBe(0);
   });
 
-  it('[TC-SEC-002-N] releases the rejected request when its client aborts', async () => {
+  it('releases the rejected request when its client aborts', async () => {
     const endpoint = await server();
     const client = upload(endpoint.url, 1200);
     client.request.write('x');

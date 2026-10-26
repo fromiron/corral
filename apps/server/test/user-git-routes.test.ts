@@ -113,7 +113,7 @@ async function fixture() {
   };
 }
 
-it('[TC-WBD-008-H] discovers the original and two copies and reads each real index and worktree separately', async () => {
+it('discovers the original and two copies and reads each real index and worktree separately', async () => {
   const s = await fixture();
   const places = [
     { path: s.original, prefix: s.prefix, label: 'original' },
@@ -166,7 +166,7 @@ it('[TC-WBD-008-H] discovers the original and two copies and reads each real ind
   expect(new Set(targets.map((target) => JSON.stringify(target))).size).toBe(3);
 });
 
-it('[TC-WBD-008-N] refuses foreign target identities and a stale index without reading another copy', async () => {
+it('refuses foreign target identities and a stale index without reading another copy', async () => {
   const s = await fixture();
   const copy = s.copies[0];
   assert(copy);
@@ -197,7 +197,7 @@ it('[TC-WBD-008-N] refuses foreign target identities and a stale index without r
   expect(readFileSync(join(copy.path, 'a.txt'), 'utf8')).toBe('new staged content\n');
 });
 
-it('[TC-WBD-008-F] rejects malformed queries and traversal while preserving an encoded Unicode/newline path', async () => {
+it('rejects malformed queries and traversal while preserving an encoded Unicode/newline path', async () => {
   const s = await fixture();
   const path = "공백 이름\n'quoted'.txt";
   writeFileSync(join(s.original, path), 'untracked UTF-8\n');
@@ -234,7 +234,7 @@ it('[TC-WBD-008-F] rejects malformed queries and traversal while preserving an e
   expect((await s.request(`${s.prefix}/status?unknown=true`)).status).toBe(400);
 });
 
-it('[TC-WBD-008-F] refuses parent repository discovery after the bound original loses its Git root', async () => {
+it('refuses parent repository discovery after the bound original loses its Git root', async () => {
   const s = await fixture();
   git(s.root, 'init', '-q');
   writeFileSync(join(s.root, 'parent.txt'), 'parent repository must stay separate\n');
@@ -246,7 +246,7 @@ it('[TC-WBD-008-F] refuses parent repository discovery after the bound original 
   expect(await response.json()).toMatchObject({ error: { code: 'REVISION_CONFLICT' } });
 });
 
-it('[TC-WBD-009-H] [TC-WBD-009-N] stages through the client with a readable receipt, only in the addressed copy', async () => {
+it('stages through the client with a readable receipt, only in the addressed copy', async () => {
   const f = await fixture();
   const [a, b] = f.copies;
   assert(a && b);
@@ -286,7 +286,7 @@ it('[TC-WBD-009-H] [TC-WBD-009-N] stages through the client with a readable rece
   expect((await post(`${f.prefix}/operations`, command)).status).toBe(404);
 });
 
-it('[TC-WBD-022-H] [TC-WBD-022-N] reviews and stages one real index hunk through the scoped HTTP boundary', async () => {
+it('reviews and stages one real index hunk through the scoped HTTP boundary', async () => {
   const f = await fixture();
   const [a, b] = f.copies;
   assert(a && b);

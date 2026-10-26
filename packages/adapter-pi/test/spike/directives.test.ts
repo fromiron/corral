@@ -3,8 +3,8 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { afterEach, describe, expect, it } from 'vitest';
 import { spikeSession } from './sdk-session.ts';
 
-// S3 (CR-018, plan §6 H1): a Reins directive reaches the model as a Pi steer message, and the
-// Corral provider can tell which directives each request carries (C-052 rule 3), because each
+// S3: a Reins directive reaches the model as a Pi steer message, and the
+// Corral provider can tell which directives each request carries, because each
 // directive text carries its id.
 
 let dispose: (() => void) | undefined;
@@ -42,7 +42,7 @@ function directiveDuringTool(directive: { id: string; text: string }) {
 }
 
 describe('S3: directives as steer messages', () => {
-  it('[TC-HAR-003-H] a directive sent during a tool enters the next request and stays after it', async () => {
+  it('a directive sent during a tool enters the next request and stays after it', async () => {
     const seen: string[][] = [];
     const run = await spikeSession({
       responses: [

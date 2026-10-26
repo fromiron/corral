@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 
-// The Run page (C-065, C-066) on the in-browser demo team. Demo runs live in the page's worker,
+// The Run page on the in-browser demo team. Demo runs live in the page's worker,
 // so these tests reach the Run page through the app's own link instead of reloading.
 
 const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
@@ -23,13 +23,13 @@ async function finishedTeamRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
-  // CR-009: a finished run opens on its results; these checks are about the run view.
+  // a finished run opens on its results; these checks are about the run view.
   await page.getByRole('tab', { name: 'Execution', exact: true }).click();
 }
 
 const graph = (page: Page) => page.getByRole('application', { name: 'Run graph' });
 
-test('[TC-OBS-001-H] the Run page shows the graph with execution counts, and a node leads to its executions', async ({
+test('the Run page shows the graph with execution counts, and a node leads to its executions', async ({
   page,
 }) => {
   await finishedTeamRun(page);
@@ -74,9 +74,7 @@ test('[TC-OBS-001-H] the Run page shows the graph with execution counts, and a n
   await expect(writer).not.toHaveClass(/selected/);
 });
 
-test('[TC-OBS-001-N] the Run graph cannot be edited: dragging and Delete change nothing', async ({
-  page,
-}) => {
+test('the Run graph cannot be edited: dragging and Delete change nothing', async ({ page }) => {
   await finishedTeamRun(page);
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
   // A node's place in the graph is its own transform; dragging may pan the view, not move it.
@@ -94,9 +92,7 @@ test('[TC-OBS-001-N] the Run graph cannot be edited: dragging and Delete change 
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
 });
 
-test('[TC-DEC-004-H] the Budget tab lists each request’s effort judgment as observe only', async ({
-  page,
-}) => {
+test('the Budget tab lists each request’s effort judgment as observe only', async ({ page }) => {
   await finishedTeamRun(page);
   const tabs = page.getByRole('tablist', { name: 'Run details' });
   await tabs.getByRole('tab', { name: 'Budget' }).click();

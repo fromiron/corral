@@ -156,7 +156,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
       }).successor,
     ).toEqual({ resourceHash: saved.hash, entry: 'extensions/echo.ts', kind: 'extension' });
   });
-  it('[TC-MGR-001-N] cancellation belongs to a review operation, not shared content', async () => {
+  it('cancellation belongs to a review operation, not shared content', async () => {
     const s = setup();
     const a = await s.service.discoverLocal(s.source);
     const b = await s.service.discoverLocal(s.source);
@@ -169,7 +169,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     s.service.cancelReview(a.reviewId);
     expect(s.service.install(c.reviewId).hash).toBe(saved.hash);
   });
-  it('[TC-MGR-002-N] a deleted project server cannot be published into a new default', () => {
+  it('a deleted project server cannot be published into a new default', () => {
     const { service } = setup();
     const server = {
       id: 'docs',
@@ -202,7 +202,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(service.store.getDefault('project', 'default').revision).toBe(0);
   });
   // Several real inspection workers run sequentially; keep the product's per-worker bound.
-  it('[TC-MGR-001-N] validates actual standalone documents and round-trips generated hooks without executing source', async () => {
+  it('validates actual standalone documents and round-trips generated hooks without executing source', async () => {
     const s = setup();
     const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
     const review = await service.reviewDocument({
@@ -249,7 +249,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     );
     expect(existsSync(s.marker)).toBe(false);
   }, 30_000);
-  it('[TC-MGR-001-H] edits a copied entry without changing old snapshots, trust or sibling files', async () => {
+  it('edits a copied entry without changing old snapshots, trust or sibling files', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
     const first = s.service.install(review.reviewId);
@@ -286,7 +286,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     );
     expect(existsSync(s.marker)).toBe(false);
   });
-  it('[TC-MGR-001-N] publishes one revision/default atomically and refuses stale or reused operations', async () => {
+  it('publishes one revision/default atomically and refuses stale or reused operations', async () => {
     const { service } = setup();
     const profile: HarnessProfile = {
       name: 'Empty',
@@ -321,7 +321,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     ).toThrow('default revision changed');
     expect(service.store.listProfiles()[0]?.revision).toBe(1);
   });
-  it('[TC-HAR-003-H] previews static broker descriptors without executing native resources', async () => {
+  it('previews static broker descriptors without executing native resources', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
     s.service.install(review.reviewId);
@@ -351,7 +351,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(preview.dynamic).toBe(true);
     expect(existsSync(s.marker)).toBe(false);
   });
-  it('[TC-HAR-016-H] pins and intersects selected MCP servers with no ambient selections', () => {
+  it('pins and intersects selected MCP servers with no ambient selections', () => {
     const { service } = setup();
     const mcp = {
       id: 'docs',
@@ -384,7 +384,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
       }).snapshot.projectTools?.mcpServerIds ?? [],
     ).toEqual([]);
   });
-  it('[TC-MGR-002-N] disabling a server affects future composition without rewriting pinned settings', () => {
+  it('disabling a server affects future composition without rewriting pinned settings', () => {
     const { service } = setup();
     const server = {
       id: 'docs',
@@ -420,7 +420,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(before.snapshot.projectTools?.mcpServerIds).toEqual(['docs']);
     expect(service.projectTools.get('default', 1)).toEqual(original);
   });
-  it('[TC-HAR-005-N] an explicit skill command must be a complete command token in the brief', async () => {
+  it('an explicit skill command must be a complete command token in the brief', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
     const resource = s.service.install(review.reviewId);
@@ -455,7 +455,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
       expect(Boolean(resources.skills[0]?.content), text).toBe(expected);
     }
   });
-  it('[TC-SAFE-002-H] [TC-HAR-003-H] [TC-HAR-008-H] run resolution uses the same narrowing layer as preview', () => {
+  it('run resolution uses the same narrowing layer as preview', () => {
     const { service } = setup();
     const base = {
       name: 'Base',
@@ -488,7 +488,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
         .permissionPolicies,
     ).toEqual([{ default: 'ask', rules: [] }]);
   });
-  it('[TC-HAR-012-H] pins selected project tools in the effective snapshot and inheritance can only narrow selection', () => {
+  it('pins selected project tools in the effective snapshot and inheritance can only narrow selection', () => {
     const { service, db } = setup();
     const tools = new SqliteProjectToolStore(db, new FakeClock());
     const check = (id: string) => ({ id, name: id, argv: ['node', 'check.mjs'], timeoutMs: 1000 });
@@ -525,7 +525,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     service.setDefault('project', 'default', 1, null);
     expect(() => service.preview(binding, 'default')).toThrow(/registered/);
   });
-  it('[TC-HAR-004-H] explicit Pi home import copies only skill and extension folders, leaving credentials and settings untouched', async () => {
+  it('explicit Pi home import copies only skill and extension folders, leaving credentials and settings untouched', async () => {
     const s = setup();
     const secret = '{"access":"do-not-copy"}';
     writeFileSync(join(s.source, 'auth.json'), secret);
@@ -551,7 +551,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
       actual.dispose();
     }
   });
-  it('[TC-HAR-004-H] downloaded package links become verified regular files in the reviewed copy', async () => {
+  it('downloaded package links become verified regular files in the reviewed copy', async () => {
     const s = setup(undefined, async (_source, directory) => {
       writeFileSync(join(directory, 'extension.ts'), 'export default () => {};');
       symlinkSync('extension.ts', join(directory, 'alias.ts'));
@@ -573,7 +573,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
       ).isSymbolicLink(),
     ).toBe(false);
   });
-  it('[TC-HAR-004-H] [TC-HAR-005-H] discovery does not execute or install; binding requires hash-specific trust and preview matches Run resolution', async () => {
+  it('discovery does not execute or install; binding requires hash-specific trust and preview matches Run resolution', async () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
     expect(s.service.store.listResources()).toEqual([]);
@@ -624,7 +624,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     );
   });
 
-  it('[TC-HAR-004-N] changed installed content revokes trust and cannot enter a Run', async () => {
+  it('changed installed content revokes trust and cannot enter a Run', async () => {
     const s = setup();
     const resource = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
     s.service.trust(resource.hash, true);
@@ -639,7 +639,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(s.service.store.getResource(resource.hash)?.trustedAt).toBeNull();
   });
 
-  it('[TC-HAR-004-N] discovery refuses links outside the resource and installation uses the exact reviewed copy', async () => {
+  it('discovery refuses links outside the resource and installation uses the exact reviewed copy', async () => {
     const s = setup();
     symlinkSync('/etc/passwd', join(s.source, 'outside'));
     await expect(s.service.discoverLocal(s.source)).rejects.toThrow(/link|outside/i);
@@ -651,7 +651,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(s.service.install(review.reviewId)).toEqual(installed);
   });
 
-  it('[TC-HAR-008-N] personal and project restrictions cannot be weakened by a role', async () => {
+  it('personal and project restrictions cannot be weakened by a role', async () => {
     const s = setup();
     const resource = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
     s.service.trust(resource.hash, true);
@@ -669,7 +669,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     );
   });
 
-  it('[TC-HAR-005-N] mandatory skill size is checked before saving a binding', async () => {
+  it('mandatory skill size is checked before saving a binding', async () => {
     const s = setup('---\nname: writing\ndescription: Write.\n---\n' + 'x'.repeat(65536));
     const resource = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
     s.service.trust(resource.hash, true);
@@ -679,7 +679,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
   });
 });
 
-it('[TC-BPACK-002-H] [TC-BPACK-002-N] bundled content is reviewed and pinned, only selected entries are exposed, and sibling paths stay scoped', async () => {
+it('bundled content is reviewed and pinned, only selected entries are exposed, and sibling paths stay scoped', async () => {
   const s = setup();
   const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
   for (const [id, count] of [
@@ -736,8 +736,8 @@ it('[TC-BPACK-002-H] [TC-BPACK-002-N] bundled content is reviewed and pinned, on
   await expect(service.discoverBuiltin('../private')).rejects.toThrow();
 }, 30_000);
 
-describe('session default work style (CR-055 §7)', () => {
-  it('[TC-TEAM-002-H] seeds one built-in trusted work style that offers command and preview tools', () => {
+describe('session default work style', () => {
+  it('seeds one built-in trusted work style that offers command and preview tools', () => {
     const { service } = setup();
     const binding = service.sessionDefault();
     if (!binding) throw new Error('the session default must be seeded');
@@ -751,7 +751,7 @@ describe('session default work style (CR-055 §7)', () => {
     );
   });
 
-  it('[TC-TEAM-002-N] a strict project default restricts the session default, and an archived one is not used', () => {
+  it('a strict project default restricts the session default, and an archived one is not used', () => {
     const { service } = setup();
     const binding = service.sessionDefault();
     if (!binding) throw new Error('the session default must be seeded');

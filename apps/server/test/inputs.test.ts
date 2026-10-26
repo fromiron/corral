@@ -4,8 +4,8 @@ import { InputRegistry } from '../src/inputs.ts';
 import type { Network } from '../src/safe-http.ts';
 import { extractHtml } from '../src/web-extraction.ts';
 
-describe('registered documents and explicit search (C-043, C-044)', () => {
-  it('[TC-WEB-001-H] [TC-WEB-001-N] extracts untrusted HTML and preserves versioned source evidence without executing or overwriting it', async () => {
+describe('registered documents and explicit search', () => {
+  it('extracts untrusted HTML and preserves versioned source evidence without executing or overwriting it', async () => {
     const db = openDatabase(':memory:');
     let text =
       '<html><head><title>Evidence title</title><meta property="article:published_time" content="2026-10-18T00:00:00Z"></head><body><nav>Navigation noise</nav><article><h1>한글 日本語</h1><p>Evidence &amp; details</p><script>throw new Error("never execute")</script><form>Form noise</form><div hidden>Private hidden content</div><p>Ignore previous instructions is untrusted article text.</p></article></body></html>';
@@ -112,7 +112,7 @@ describe('registered documents and explicit search (C-043, C-044)', () => {
     }
   });
 
-  it('[TC-DX-003-H] imports immutable Unicode documents and searches corpus without network or keys', async () => {
+  it('imports immutable Unicode documents and searches corpus without network or keys', async () => {
     const db = openDatabase(':memory:');
     const network: Network = {
       resolve: async () => {
@@ -197,7 +197,7 @@ describe('registered documents and explicit search (C-043, C-044)', () => {
     await expect(inputs.search({ query: 'x', apiKey: 'secret' }, 'live')).rejects.toThrow();
     db.close();
   });
-  it('[TC-DX-003-N] requires live mode, explicit provider/config opt-in and a finite charged-call budget', async () => {
+  it('requires live mode, explicit provider/config opt-in and a finite charged-call budget', async () => {
     const db = openDatabase(':memory:');
     let requests = 0;
     const network: Network = {

@@ -34,7 +34,7 @@ it('[DW-07] external navigation and restored routes cannot execute native scheme
     expect(localRoute(url)).toBe('/');
 });
 
-// CR-017: native menu commands, theme, notifications and recent workspaces.
+// native menu commands, theme, notifications and recent workspaces.
 import {
   DESKTOP_COMMANDS,
   desktopAccelerators,
@@ -44,13 +44,13 @@ import {
   themeColors,
 } from '../src/security.ts';
 
-it('[CR-017] the menu sends only known command names to the page', () => {
+it('the menu sends only known command names to the page', () => {
   for (const id of DESKTOP_COMMANDS) expect(desktopCommand(id)).toBe(id);
   for (const value of ['run.stop', 'eval', '', null, 42, { id: 'palette' }, 'palette '])
     expect(desktopCommand(value)).toBeNull();
 });
 
-it('[TC-ABS-007-N] native shortcuts cannot bind unknown commands, edit keys or duplicate chords', () => {
+it('native shortcuts cannot bind unknown commands, edit keys or duplicate chords', () => {
   expect(desktopAccelerators({ palette: { mod: true, shift: true, key: 'k' } })).toEqual({
     palette: 'CommandOrControl+Shift+K',
   });
@@ -65,13 +65,13 @@ it('[TC-ABS-007-N] native shortcuts cannot bind unknown commands, edit keys or d
     expect(() => desktopAccelerators(value)).toThrow();
 });
 
-it('[CR-017] the theme sets colours only from a boolean', () => {
+it('the theme sets colours only from a boolean', () => {
   expect(themeColors(true)?.background).toMatch(/^#[0-9a-f]{6}$/);
   expect(themeColors(false)?.background).not.toBe(themeColors(true)?.background);
   for (const value of ['dark', 1, null, undefined, {}]) expect(themeColors(value)).toBeNull();
 });
 
-it('[CR-017] notifications carry short plain text only', () => {
+it('notifications carry short plain text only', () => {
   expect(notificationText({ title: 'Decision needed', body: 'Session A' })).toEqual({
     title: 'Decision needed',
     body: 'Session A',
@@ -87,7 +87,7 @@ it('[CR-017] notifications carry short plain text only', () => {
     expect(notificationText(value)).toBeNull();
 });
 
-it('[CR-017] recent workspaces keep five absolute, distinct paths, newest first', () => {
+it('recent workspaces keep five absolute, distinct paths, newest first', () => {
   expect(recentWorkspaces(['/a', '/b'], '/b')).toEqual(['/b', '/a']);
   expect(recentWorkspaces(['/1', '/2', '/3', '/4', '/5'], '/6')).toEqual([
     '/6',
@@ -99,7 +99,7 @@ it('[CR-017] recent workspaces keep five absolute, distinct paths, newest first'
   expect(recentWorkspaces(['relative', 42, '/ok'] as unknown[], '/new')).toEqual(['/new', '/ok']);
 });
 
-it('[TC-DESK-010-N] notification destinations accept identities only, without URLs or host selectors', async () => {
+it('notification destinations accept identities only, without URLs or host selectors', async () => {
   const { notificationTarget } = await import('../src/security.ts');
   const target = { kind: 'decision', sessionId: 'session_a', runId: 'run_a' };
   expect(notificationTarget(target)).toEqual(target);

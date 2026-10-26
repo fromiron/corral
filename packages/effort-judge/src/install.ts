@@ -1,4 +1,4 @@
-// Installs the effort-judge model named in model-manifest.json (C-072). Every file is
+// Installs the effort-judge model named in model-manifest.json. Every file is
 // downloaded with its exact size, checked against its sha256 and renamed into place, so a
 // broken or partial download never replaces a working file; files that already match are kept.
 // install.json records the installed release.

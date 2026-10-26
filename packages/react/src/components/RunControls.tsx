@@ -29,7 +29,7 @@ export function RunControls({
   beforeStart?: () => Promise<SavedRevision | null>;
   /** The runtime can call real models; the person chooses per run (default: simulated). */
   liveAvailable?: boolean;
-  /** The earlier version the next run starts from (CR-007), with a label for it. */
+  /** The earlier version the next run starts from, with a label for it. */
   startFrom?: (StartFrom & { label: string }) | null;
   onClearStartFrom?: () => void;
   harnessOverrides?: HarnessOverrides;

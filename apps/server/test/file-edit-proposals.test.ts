@@ -80,7 +80,7 @@ async function setup(io?: ConstructorParameters<typeof WorkspaceService>[0]['io'
   };
 }
 
-it('[TC-WBD-021-H] previews immutable bytes, applies a shared batch once and explicitly previews its inverse', async () => {
+it('previews immutable bytes, applies a shared batch once and explicitly previews its inverse', async () => {
   const s = await setup();
   const before = readFileSync(join(s.path, 'a.ts'), 'utf8');
   const now = s.clock.nowIso.bind(s.clock);
@@ -126,7 +126,7 @@ it('[TC-WBD-021-H] previews immutable bytes, applies a shared batch once and exp
   });
 });
 
-it('[TC-WBD-021-N] preflights every file and rejects stale targets or incomplete replacement searches without touching other files', async () => {
+it('preflights every file and rejects stale targets or incomplete replacement searches without touching other files', async () => {
   const s = await setup();
   const proposal = (await s.service.previewFileEdits('s1', s.preview)).proposals[0]!;
   writeFileSync(join(s.path, 'b.ts'), 'external Old\n');
@@ -151,7 +151,7 @@ it('[TC-WBD-021-N] preflights every file and rejects stale targets or incomplete
   ).rejects.toMatchObject({ code: 'LIMIT_REACHED' });
 });
 
-it('[TC-WBD-021-F] retains partial and uncertain outcomes, never replays after restart, and never rolls back external edits', async () => {
+it('retains partial and uncertain outcomes, never replays after restart, and never rolls back external edits', async () => {
   let writes = 0;
   const s = await setup({
     rename: async (from, to) => {

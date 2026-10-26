@@ -1,8 +1,8 @@
 import type { FileChangeView } from '@corral/client';
 import { useState } from 'react';
 
-// What a person marks while reading a review (CR-046 P17), kept in this browser per session
-// (a view state, 02-UX-Spec §9). Reading is about a file's content and holds while the content is
+// What a person marks while reading a review, kept in this browser per session
+// (a view state). Reading is about a file's content and holds while the content is
 // the same. Reviewing a change is about one comparison: it holds only for the same host, path and
 // pair of contents, so reading the final file under A→B never reviews C→B. Neither is an
 // approval; that is a ReviewService decision, and applying or staging are separate actions again.

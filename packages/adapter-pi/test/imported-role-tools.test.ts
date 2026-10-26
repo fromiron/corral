@@ -9,7 +9,7 @@ import {
 import { expect, it } from 'vitest';
 import { liveRuntime } from './harness.ts';
 
-it('[TC-ABS-011-H] a Markdown Edit callable exposes real Hashline schemas when delegated through Pi', async () => {
+it('a Markdown Edit callable exposes real Hashline schemas when delegated through Pi', async () => {
   const parent = linearCorral(['writer']);
   for (const role of parent.roles)
     role.allowedWorkTools = ['write_artifact', 'read_file', 'write_file'];

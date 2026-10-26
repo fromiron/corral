@@ -2,9 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // Roadmap 16: two runs of a Corral side by side, picked from the workspace's run list.
 
-test('[TC-OBS-004-H][TC-WBUI-003-H][TC-WBUI-003-N] compares runs with readable narrow figures and accessible identities', async ({
-  page,
-}) => {
+test('compares runs with readable narrow figures and accessible identities', async ({ page }) => {
   await page.goto('/?delay=50');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page

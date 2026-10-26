@@ -533,7 +533,7 @@ export function toolRows(
 
 export type WidgetChip = 'context' | 'environment' | 'agents' | 'changes';
 
-/** What the Usage widget states about a run (CR-053). Limits are null when none apply. */
+/** What the Usage widget states about a run. Limits are null when none apply. */
 export interface UsageSummary {
   spent: number;
   reserved: number;
@@ -543,7 +543,7 @@ export interface UsageSummary {
   callLimit: number | null;
   /** Output tokens of the latest finished calls with reported usage, oldest first. */
   perCall: number[];
-  /** CR-054: reported input of finished calls; null when none reported it. */
+  /** reported input of finished calls; null when none reported it. */
   input: UsageInput | null;
 }
 
@@ -610,7 +610,7 @@ function usageInput(projection: RunProjection): UsageInput | null {
   };
 }
 
-/** CR-055: the session's statistics under the composer, from each turn's Coordinator usage. */
+/** the session's statistics under the composer, from each turn's Coordinator usage. */
 export interface SessionStats {
   turns: number;
   steps: number;

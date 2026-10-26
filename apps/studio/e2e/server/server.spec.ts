@@ -17,7 +17,7 @@ async function agentToOutput(page: Page) {
   await expect(page.getByText('Ready to run.')).toBeVisible();
 }
 
-test('[TC-CAN-001-H] a run on the local server saves first, finishes, and survives a reload', async ({
+test('a run on the local server saves first, finishes, and survives a reload', async ({
   page,
   corral,
 }) => {
@@ -77,7 +77,7 @@ test('[TC-CAN-001-H] a run on the local server saves first, finishes, and surviv
 
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
-  // CR-009: a finished run opens on its results; these checks are about the run view.
+  // a finished run opens on its results; these checks are about the run view.
   await page.getByRole('tab', { name: 'Execution', exact: true }).click();
   await page.reload();
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
@@ -87,10 +87,7 @@ test('[TC-CAN-001-H] a run on the local server saves first, finishes, and surviv
 test.describe('slow replies', () => {
   test.use({ replyDelayMs: 2000 });
 
-  test('[TC-RNS-001-H] a steer sent over HTTP reaches the next request', async ({
-    page,
-    corral,
-  }) => {
+  test('a steer sent over HTTP reaches the next request', async ({ page, corral }) => {
     await corral.open('/');
     await agentToOutput(page);
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
@@ -107,7 +104,7 @@ test.describe('slow replies', () => {
     expect(corral.errors).toEqual([]);
   });
 
-  test('[TC-RUN-007-H] a run cut off by a server restart shows as interrupted, not re-run', async ({
+  test('a run cut off by a server restart shows as interrupted, not re-run', async ({
     page,
     corral,
   }) => {
@@ -129,7 +126,7 @@ test.describe('slow replies', () => {
   });
 });
 
-test('[TC-SEC-002-H] Studio works under the strict CSP, and a tab without a session says so', async ({
+test('Studio works under the strict CSP, and a tab without a session says so', async ({
   page,
   corral,
 }) => {

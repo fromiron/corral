@@ -17,7 +17,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// C-012 model-based check. Random interleavings of steering commands (new, resent,
+// model-based check. Random interleavings of steering commands (new, resent,
 // conflicting, aimed at a finished execution) and agent progress. The seed is fixed so a
 // failure reproduces exactly; fast-check prints the shrunk counterexample.
 const SEED = 20261015;
@@ -40,8 +40,8 @@ async function drain() {
   for (let i = 0; i < 50; i++) await Promise.resolve();
 }
 
-describe('Coordinator model-based property (C-012)', () => {
-  it('[TC-DEV-001-H] [TC-RACE-08] resends, conflicts and late steers never break the run log', async () => {
+describe('Coordinator model-based property', () => {
+  it('resends, conflicts and late steers never break the run log', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(action, { minLength: 1, maxLength: 25 }), async (actions) => {
         const gates = Array.from({ length: 8 }, () => new Gate());

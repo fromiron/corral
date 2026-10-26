@@ -15,7 +15,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
 }));
 
-it('[TC-WBD-005-N] a run panel reads its own state instead of the graph editor that last ran it', () => {
+it('a run panel reads its own state instead of the graph editor that last ran it', () => {
   const transport = {} as RuntimeTransport;
   const base = createRunSession(transport).getState();
   const graph = createStore(() => ({ ...base, runId: 'run_a', streamError: 'graph-local-state' }));

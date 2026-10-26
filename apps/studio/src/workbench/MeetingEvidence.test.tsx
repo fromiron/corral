@@ -86,7 +86,7 @@ async function mount(read = async (): Promise<string | null> => body) {
   return { transport, onChange, onLoading, container, render, unmount, click };
 }
 
-it('[TC-MEET-001-H] reads no source until selected and freezes only one chosen artifact', async () => {
+it('reads no source until selected and freezes only one chosen artifact', async () => {
   const f = await mount();
   expect(f.transport.listRuns).not.toHaveBeenCalled();
   expect(f.transport.getSnapshot).not.toHaveBeenCalled();
@@ -110,7 +110,7 @@ it('[TC-MEET-001-H] reads no source until selected and freezes only one chosen a
   ]);
 });
 
-it('[TC-MEET-001-F] a missing result preserves selected evidence and exposes an error', async () => {
+it('a missing result preserves selected evidence and exposes an error', async () => {
   const f = await mount(async () => null);
   const existing = createTextAttachment('keep.txt', 'text/plain', 'Kept.');
   await f.render([existing]);
@@ -122,7 +122,7 @@ it('[TC-MEET-001-F] a missing result preserves selected evidence and exposes an 
   expect(f.container.textContent).toContain('keep.txt');
 });
 
-it('[TC-MEET-001-N] a late capture after leaving the meeting cannot change another draft', async () => {
+it('a late capture after leaving the meeting cannot change another draft', async () => {
   let finish!: (text: string) => void;
   const pending = new Promise<string>((resolve) => {
     finish = resolve;

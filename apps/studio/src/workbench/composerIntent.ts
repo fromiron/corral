@@ -1,6 +1,6 @@
 import type { SessionIntent } from '@corral/core';
 
-// UX-01 (CR-011 "never silently changed"): what a request is, and for which execution, is fixed
+// "Never silently changed": what a request is, and for which execution, is fixed
 // once the person starts typing. If the run moves on and that is no longer possible, sending is
 // blocked with the reason instead of quietly picking another execution or another intent.
 

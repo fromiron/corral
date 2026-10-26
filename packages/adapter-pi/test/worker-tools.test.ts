@@ -21,7 +21,7 @@ const start = {
   askTo: [],
 } satisfies Parameters<typeof systemPrompt>[0];
 
-it('[TC-MEET-001-H] a marked meeting response is a conversation instead of a work report', () => {
+it('a marked meeting response is a conversation instead of a work report', () => {
   const input = {
     ...start,
     meeting: { sessionId: 'session_chat', roundId: 'message_1', participantId: 'participant_1' },
@@ -46,7 +46,7 @@ it('[TC-MEET-001-H] a marked meeting response is a conversation instead of a wor
   expect(ordinary).not.toContain('Your display name in this shared conversation');
 });
 
-it('[TC-MEET-002-H] a secretary keeps its explicit structured format without a work submission prompt', () => {
+it('a secretary keeps its explicit structured format without a work submission prompt', () => {
   const prompt = systemPrompt({
     ...start,
     meeting: { sessionId: 'session_chat', roundId: 'message_2', participantId: 'secretary' },
@@ -63,7 +63,7 @@ it('[TC-MEET-002-H] a secretary keeps its explicit structured format without a w
   expect(prompt).not.toContain('When your work is complete, call write_artifact');
 });
 
-it('[TC-ABS-010-H] supplies the configured image profile and structured generator schema to the model', () => {
+it('supplies the configured image profile and structured generator schema to the model', () => {
   const prompt = systemPrompt({
     ...start,
     role: { ...start.role, imageProfile: 'images_default' },
@@ -79,7 +79,7 @@ it('[TC-ABS-010-H] supplies the configured image profile and structured generato
   });
 });
 
-it('[TC-WIDGET-001-N] requires plans for multistep work only when update_plan is available', () => {
+it('requires plans for multistep work only when update_plan is available', () => {
   const unavailable = systemPrompt(start);
   expect(unavailable).not.toContain('call update_plan');
   const available = systemPrompt({ ...start, tools: [...start.tools, 'update_plan'] });
@@ -90,7 +90,7 @@ it('[TC-WIDGET-001-N] requires plans for multistep work only when update_plan is
   );
 });
 
-it('[TC-IMAGE-001-N] an image removed or replaced with base64 prose is not image delivery', () => {
+it('an image removed or replaced with base64 prose is not image delivery', () => {
   const images = [{ data: 'AQID', mime: 'image/png' as const }];
   expect(() =>
     assertImagePayload(
@@ -128,7 +128,7 @@ it('[TC-IMAGE-001-N] an image removed or replaced with base64 prose is not image
   expect(() => assertImagePayload({ messages: [] }, images)).toThrow(/image/);
 });
 
-it('[TC-ART-003-N] tells reviewers what both evidenceRefs arrays can contain', () => {
+it('tells reviewers what both evidenceRefs arrays can contain', () => {
   const prompt = systemPrompt(start);
   expect(prompt).toContain('For both evidenceRefs arrays');
   expect(prompt).toContain('evidence identifiers actually supplied in the inputs or tool results');
@@ -140,7 +140,7 @@ it('[TC-ART-003-N] tells reviewers what both evidenceRefs arrays can contain', (
   expect(userPrompt(start)).toContain('"criteriaVersionId":"crit_actual"');
 });
 
-it('[TC-ART-003-N] keeps prose and URLs invalid while allowing provided artifact and source IDs', () => {
+it('keeps prose and URLs invalid while allowing provided artifact and source IDs', () => {
   const review = {
     targetArtifactVersionId: 'artv_actual',
     criteriaVersionId: 'crit_actual',
@@ -153,7 +153,7 @@ it('[TC-ART-003-N] keeps prose and URLs invalid while allowing provided artifact
     expect(ReviewArtifact.safeParse({ ...review, evidenceRefs: [reference] }).success).toBe(false);
 });
 
-it('[TC-PROMPT-001-H] [TC-PROMPT-001-N] preserves the output contract and refuses an oversized protected prompt instead of truncating it', () => {
+it('preserves the output contract and refuses an oversized protected prompt instead of truncating it', () => {
   expect(userPrompt(start)).toContain('artv_actual');
   expect(userPrompt(start)).toContain('crit_actual');
   const sections = promptSections(start);
@@ -168,7 +168,7 @@ it('[TC-PROMPT-001-H] [TC-PROMPT-001-N] preserves the output contract and refuse
   ).toThrow(/prompt.*limit/i);
 });
 
-it('[TC-LLM-004-H] current criteria and artifact revisions do not rewrite the stable system prefix', () => {
+it('current criteria and artifact revisions do not rewrite the stable system prefix', () => {
   const changed = {
     ...start,
     criteriaVersionId: 'crit_next',
@@ -181,7 +181,7 @@ it('[TC-LLM-004-H] current criteria and artifact revisions do not rewrite the st
   expect(userPrompt(changed)).toContain('isolated item 2 of 3');
 });
 
-it('[TC-PROMPT-001-H] identifies the configured model separately from the role, without credentials or endpoint details', () => {
+it('identifies the configured model separately from the role, without credentials or endpoint details', () => {
   const input = {
     ...start,
     model: {
@@ -200,7 +200,7 @@ it('[TC-PROMPT-001-H] identifies the configured model separately from the role, 
   expect(identity.text).not.toContain('private-endpoint.test');
 });
 
-it('[TC-LLM-005-N] model instructions do not present legacy defaults or numeric sentinels as active budgets', async () => {
+it('model instructions do not present legacy defaults or numeric sentinels as active budgets', async () => {
   const { DEFAULT_LIMITS } = await import('@corral/contracts');
   const brief = {
     version: 1 as const,

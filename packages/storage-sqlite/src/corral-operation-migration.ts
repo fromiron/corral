@@ -1,4 +1,4 @@
-/** CR-042. Commit an import receipt in the same transaction as its Corral revision. */
+/** Commit an import receipt in the same transaction as its Corral revision. */
 export const CORRAL_OPERATION_MIGRATION = {
   name: '0026_corral_operations',
   sql: `

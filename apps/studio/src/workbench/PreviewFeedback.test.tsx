@@ -126,7 +126,7 @@ async function mount() {
     });
   return { upload, click, element, copy };
 }
-it('[TC-WBD-020-H] reviews a frozen observation before uploading and atomically attaches image and text metadata', async () => {
+it('reviews a frozen observation before uploading and atomically attaches image and text metadata', async () => {
   const f = await mount();
   await f.click('Capture preview feedback');
   expect(fixture.capture).toHaveBeenCalledWith('session', lease.leaseId, {
@@ -149,7 +149,7 @@ it('[TC-WBD-020-H] reviews a frozen observation before uploading and atomically 
   });
   expect(JSON.stringify(draft)).not.toContain(observation.screenshot!.data);
 });
-it('[TC-WBD-020-F] rejects a capture after its destination draft was sent', async () => {
+it('rejects a capture after its destination draft was sent', async () => {
   const f = await mount();
   let resolve!: (value: PreviewObservation) => void;
   fixture.capture.mockImplementationOnce(
@@ -174,7 +174,7 @@ it('[TC-WBD-020-F] rejects a capture after its destination draft was sent', asyn
   expect(f.upload).not.toHaveBeenCalled();
   expect(readComposerDraft('session').attachments).toBeUndefined();
 });
-it('[TC-WBD-020-N] cancelling review aborts a pending upload and cannot attach its late result', async () => {
+it('cancelling review aborts a pending upload and cannot attach its late result', async () => {
   const f = await mount();
   await f.click('Capture preview feedback');
   let resolve!: (value: ImageAttachment) => void;

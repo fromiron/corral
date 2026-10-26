@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { RunSleepBlocker, runRoute } from '../src/lifecycle.ts';
 import { recentWorkspaces } from '../src/security.ts';
 
-it('[TC-ABS-007-H] simultaneous runs share a blocker and terminal runs release it', () => {
+it('simultaneous runs share a blocker and terminal runs release it', () => {
   const power = { start: vi.fn(() => 17), stop: vi.fn() };
   const blocker = new RunSleepBlocker(power);
   const run = { runId: 'run1', sessionId: 's1', status: 'running' };
@@ -15,7 +15,7 @@ it('[TC-ABS-007-H] simultaneous runs share a blocker and terminal runs release i
   expect(power.stop).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-ABS-007-N] waiting policy and disabling awake release ownership', () => {
+it('waiting policy and disabling awake release ownership', () => {
   const power = { start: vi.fn(() => 18), stop: vi.fn() };
   const blocker = new RunSleepBlocker(power);
   const runs = [{ runId: 'r', sessionId: null, status: 'awaiting_user' }];
@@ -27,14 +27,14 @@ it('[TC-ABS-007-N] waiting policy and disabling awake release ownership', () => 
   expect(power.stop).toHaveBeenCalledWith(18);
 });
 
-it('[TC-ABS-007-H] tray navigation fixes both session and run identity', () => {
+it('tray navigation fixes both session and run identity', () => {
   expect(runRoute({ runId: 'run_1', sessionId: 'session_2', status: 'paused' })).toBe(
     '/sessions/session_2?panel=run&view=run&run=run_1',
   );
   expect(runRoute({ runId: 'run_1', sessionId: null, status: 'paused' })).toBe('/runs/run_1');
 });
 
-it('[TC-ABS-007-H] Windows recent folders are preserved across app restart', () => {
+it('Windows recent folders are preserved across app restart', () => {
   expect(recentWorkspaces(['C:\\Toys\\one', 'D:\\two', 'relative'], 'D:\\two')).toEqual([
     'D:\\two',
     'C:\\Toys\\one',

@@ -140,7 +140,7 @@ async function mount(copy = initial) {
   };
   return { store, render, click, button };
 }
-it('[TC-WBD-023-H] requires reviewed trust before launching and distinguishes owned stop from task disconnect', async () => {
+it('requires reviewed trust before launching and distinguishes owned stop from task disconnect', async () => {
   const f = await mount();
   expect(f.store.start).not.toHaveBeenCalled();
   await f.click('review');
@@ -174,7 +174,7 @@ it('[TC-WBD-023-H] requires reviewed trust before launching and distinguishes ow
     expect.objectContaining({ kind: 'disconnect' }),
   );
 });
-it('[TC-WBD-023-F] clears an old paused view and never evaluates text until explicit submission', async () => {
+it('clears an old paused view and never evaluates text until explicit submission', async () => {
   const f = await mount({ ...initial, state: { ...state, session } });
   const input = document.querySelector<HTMLInputElement>('input[aria-label="expression"]');
   expect(input).not.toBeNull();

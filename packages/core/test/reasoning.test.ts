@@ -42,15 +42,15 @@ function setup() {
   return { coordinator, permits, transport: new InProcessTransport(coordinator) };
 }
 
-describe('role reasoning (CR-021)', () => {
-  it('[TC-RSN-001-H] preserves absent policy and accepts a fixed policy', () => {
+describe('role reasoning', () => {
+  it('preserves absent policy and accepts a fixed policy', () => {
     const role = definition().roles[0]!;
     expect(AgentRole.parse(role)).not.toHaveProperty('reasoning');
     expect(
       AgentRole.safeParse({ ...role, reasoning: { mode: 'fixed', level: 'high' } }).success,
     ).toBe(true);
   });
-  it('[TC-RSN-001-H] carries a role setting to the request permit', async () => {
+  it('carries a role setting to the request permit', async () => {
     const s = setup();
     const team = definition();
     Object.assign(team.roles[0]!, { reasoning: { mode: 'fixed', level: 'high' } });
@@ -68,7 +68,7 @@ describe('role reasoning (CR-021)', () => {
       reasoning: { requested: { mode: 'fixed', level: 'high' }, resolved: 'high', source: 'fixed' },
     });
   });
-  it('[TC-RSN-001-N] refuses auto without explicit workspace apply', () => {
+  it('refuses auto without explicit workspace apply', () => {
     const s = setup();
     const team = definition();
     Object.assign(team.roles[0]!, { reasoning: { mode: 'auto' } });
@@ -83,7 +83,7 @@ describe('role reasoning (CR-021)', () => {
   });
 });
 
-it('[TC-RSN-001-H] a run-only model and effort override leaves the saved role unchanged', async () => {
+it('a run-only model and effort override leaves the saved role unchanged', async () => {
   const s = setup();
   const team = definition();
   team.roles[0]!.reasoning = { mode: 'fixed', level: 'low' };

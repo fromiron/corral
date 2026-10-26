@@ -49,7 +49,7 @@ const task = (state: string) => ({
   updatedAt: 'x',
 });
 
-it('[TC-WBD-011-H] [TC-WBD-011-N] lists scripts without running them and starts one only on request', async () => {
+it('lists scripts without running them and starts one only on request', async () => {
   let tasks: ReturnType<typeof task>[] = [];
   const startTask = vi.fn(async () => {
     tasks = [task('running')];

@@ -18,12 +18,12 @@ import { builtinModels, getBuiltinModels } from '@earendil-works/pi-ai/providers
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { candidateHash } from '../../tools/release/candidate.ts';
 
-// C-020 live smoke (manual opt-in, never in CI): real OpenAI requests with the sign-in stored
+// live smoke (manual opt-in, never in CI): real OpenAI requests with the sign-in stored
 // by Studio (Settings → Models). Run with:
 //   CORRAL_LIVE=1 pnpm test:live
 // Each profile makes one short run (at most 3 requests, 256 output tokens each), plus one
 // aborted request. Results are recorded by hand in the P3 evidence; no output is asserted for
-// quality, only for runtime behaviour (CRL-DEV-004).
+// quality, only for runtime behaviour.
 
 const enabled = process.env.CORRAL_LIVE === '1';
 const candidate = enabled ? candidateHash() : '';
@@ -58,7 +58,7 @@ function report(label: string, value: unknown) {
   console.log(`[live] ${label}: ${JSON.stringify(value)}`);
 }
 
-describe.skipIf(!enabled)('OpenAI sign-in live smoke (C-020)', () => {
+describe.skipIf(!enabled)('OpenAI sign-in live smoke', () => {
   beforeAll(async () => {
     if (DEFAULT_PROFILES.length * 3 + 1 > 10)
       throw new Error('Live smoke exceeds its 10 model-call cap');

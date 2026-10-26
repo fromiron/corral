@@ -70,7 +70,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   preferences.setState(parsePreferences(null));
 });
-it('[TC-WBD-007-H] persists presentation density and defaults old or invalid preferences to basic', () => {
+it('persists presentation density and defaults old or invalid preferences to basic', () => {
   expect(parsePreferences('{"version":1}').chatDensity).toBe('basic');
   expect(parsePreferences('{"version":1,"chatDensity":"unknown"}').chatDensity).toBe('basic');
   const values = new Map<string, string>();

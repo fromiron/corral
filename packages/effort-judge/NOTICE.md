@@ -10,7 +10,7 @@ licensed under the Apache License 2.0 (`LICENSE-Apache-2.0.txt`).
 Statement of changes (Apache-2.0 section 4(b)): ported to TypeScript; tokenizing moved out of the
 worker thread (the worker only runs the model); the bounded download and `installState` are
 written inline instead of Mixdog's shared helpers and only HTTPS manifests are accepted; Corral
-keeps observe-only excerpts and adds CR-021 turn/tool-step inputs, bounded inference, cancellation, and Coordinator permit application. The shared expected-cost rule now lives in `../contracts/src/reasoning-cost.ts`. Step formatting follows Mixdog commit `81558aa4230744e504972e01cb248ec9369e35bc`.
+keeps observe-only excerpts and adds turn/tool-step inputs, bounded inference, cancellation, and Coordinator permit application. The shared expected-cost rule now lives in `../contracts/src/reasoning-cost.ts`. Step formatting follows Mixdog commit `81558aa4230744e504972e01cb248ec9369e35bc`.
 
 ## The effort judge model (downloaded, not part of this package)
 

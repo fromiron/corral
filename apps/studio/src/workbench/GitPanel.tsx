@@ -74,7 +74,7 @@ const FAILURE_KEYS = {
 
 /**
  * User Git observations are separate from Corral's internal snapshot comparisons. In a trusted
- * session copy the same view stages, unstages and commits with a receipt (CR-046 P13).
+ * session copy the same view stages, unstages and commits with a receipt.
  */
 export function GitPanel({ sessionId, projectId }: { sessionId: string; projectId: string }) {
   const t = useTranslations('Git');

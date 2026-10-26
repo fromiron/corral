@@ -12,7 +12,7 @@ const artifact = {
   contentHash: digest.sha256,
 } as ArtifactVersionView;
 
-it('[TC-MEET-001-H] explicitly captures one result version with its immutable source and plain text', async () => {
+it('explicitly captures one result version with its immutable source and plain text', async () => {
   const transport = { getArtifactText: vi.fn(async () => body) };
   const captured = await captureMeetingResult(transport, 'run_1', artifact);
   expect(transport.getArtifactText).toHaveBeenCalledExactlyOnceWith('run_1', 'artifact_1');
@@ -22,7 +22,7 @@ it('[TC-MEET-001-H] explicitly captures one result version with its immutable so
   expect(captured.text).toContain(body);
 });
 
-it('[TC-MEET-001-N] refuses oversized or binary results before reading their bodies', async () => {
+it('refuses oversized or binary results before reading their bodies', async () => {
   const transport = { getArtifactText: vi.fn(async () => body) };
   await expect(
     captureMeetingResult(transport, 'run_1', {
@@ -39,7 +39,7 @@ it('[TC-MEET-001-N] refuses oversized or binary results before reading their bod
   expect(transport.getArtifactText).not.toHaveBeenCalled();
 });
 
-it('[TC-MEET-001-F] refuses missing and changed result bodies instead of silently capturing them', async () => {
+it('refuses missing and changed result bodies instead of silently capturing them', async () => {
   const getArtifactText = vi.fn(async (): Promise<string | null> => null);
   await expect(captureMeetingResult({ getArtifactText }, 'run_1', artifact)).rejects.toThrow();
   getArtifactText.mockResolvedValue('replacement');

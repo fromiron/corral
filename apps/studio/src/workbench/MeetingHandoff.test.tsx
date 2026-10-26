@@ -139,7 +139,7 @@ async function mount(links = false, savedReceipt = receipt, source = false) {
     });
   return { api, container, button, select };
 }
-it('[TC-MEET-003-N] handoff excludes meetings, other projects and archived targets and preserves unsent input', async () => {
+it('handoff excludes meetings, other projects and archived targets and preserves unsent input', async () => {
   writeDraft('work', 'Keep this request');
   const f = await mount();
   await act(async () => f.button('open').click());
@@ -159,7 +159,7 @@ it('[TC-MEET-003-N] handoff excludes meetings, other projects and archived targe
   );
   expect(readDraft('work')).toBe('Keep this request');
 });
-it('[TC-MEET-003-F] lost response reads its receipt first and retries only the original command', async () => {
+it('lost response reads its receipt first and retries only the original command', async () => {
   const f = await mount();
   f.api.send.mockRejectedValueOnce(new Error('connection lost'));
   f.api.receipt.mockRejectedValueOnce(new Error('offline'));
@@ -171,13 +171,13 @@ it('[TC-MEET-003-F] lost response reads its receipt first and retries only the o
   expect(f.api.receipt).toHaveBeenCalledTimes(2);
   expect(f.api.send.mock.calls[1]![1]).toEqual(first);
 });
-it('[TC-MEET-003-H] a work session links back to its source meeting and decision', async () => {
+it('a work session links back to its source meeting and decision', async () => {
   const f = await mount(true);
   expect(f.container.querySelector('a')?.getAttribute('href')).toContain('meeting');
   expect(f.container.textContent).toContain('v1');
 });
 
-it('[TC-MEET-003-N] starting a saved handoff checks its receipt and keeps the target draft', async () => {
+it('starting a saved handoff checks its receipt and keeps the target draft', async () => {
   writeDraft('work', 'Still editing');
   const f = await mount(true);
   f.api.receipt.mockResolvedValue({ handoff: receipt });
@@ -190,7 +190,7 @@ it('[TC-MEET-003-N] starting a saved handoff checks its receipt and keeps the ta
   );
   expect(readDraft('work')).toBe('Still editing');
 });
-it('[TC-MEET-003-F] a pending start cannot overtake input added to the target after the first attempt', async () => {
+it('a pending start cannot overtake input added to the target after the first attempt', async () => {
   const f = await mount();
   f.api.send.mockRejectedValueOnce(new Error('connection lost'));
   f.api.receipt.mockRejectedValueOnce(new Error('offline'));
@@ -204,7 +204,7 @@ it('[TC-MEET-003-F] a pending start cannot overtake input added to the target af
   expect(readDraft('work')).toBe('New input since the uncertain start');
 });
 
-it('[TC-MEET-003-F] a definite rejection with no receipt unlocks the handoff settings', async () => {
+it('a definite rejection with no receipt unlocks the handoff settings', async () => {
   const f = await mount();
   f.api.send.mockRejectedValueOnce(new ApiError(400, 'SCHEMA_INVALID', 'Invalid handoff fields'));
   await act(async () => f.button('open').click());
@@ -217,7 +217,7 @@ it('[TC-MEET-003-F] a definite rejection with no receipt unlocks the handoff set
 });
 
 it.each(['paused', 'awaiting_user'])(
-  '[TC-MEET-003-N] %s handoff runs still expose cancellation',
+  '%s handoff runs still expose cancellation',
   async (status) => {
     const f = await mount(true, {
       ...receipt,
@@ -230,7 +230,7 @@ it.each(['paused', 'awaiting_user'])(
   },
 );
 
-it('[TC-ULTRA-005-H] an auto handoff sends only the chosen model, never an Ultra choice', async () => {
+it('an auto handoff sends only the chosen model, never an Ultra choice', async () => {
   const f = await mount();
   await act(async () => f.button('open').click());
   expect(f.container.querySelector('select[aria-label="qualityPreset"]')).toBeNull();
@@ -244,7 +244,7 @@ it('[TC-ULTRA-005-H] an auto handoff sends only the chosen model, never an Ultra
   );
 });
 
-it('[TC-MEET-003-F] a failed result without an artifact can be explicitly discussed again', async () => {
+it('a failed result without an artifact can be explicitly discussed again', async () => {
   const f = await mount(
     true,
     {
@@ -262,7 +262,7 @@ it('[TC-MEET-003-F] a failed result without an artifact can be explicitly discus
     expect.objectContaining({ mode: 'mock', commandId: expect.stringMatching(/^cmd_/) }),
   );
 });
-it('[TC-MEET-003-F] reopening an uncertain handoff shows its frozen target instead of new-request defaults', async () => {
+it('reopening an uncertain handoff shows its frozen target instead of new-request defaults', async () => {
   const first = await mount();
   first.api.send.mockRejectedValueOnce(new Error('connection lost'));
   first.api.receipt.mockRejectedValueOnce(new Error('offline'));

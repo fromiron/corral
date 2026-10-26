@@ -57,8 +57,8 @@ async function liveRun(
   return { runId, events, frames };
 }
 
-describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
-  it('[TC-STATUS-001-H] runs a live step: the model writes and submits through Corral tools', async () => {
+describe('Pi adapter under the Coordinator', () => {
+  it('runs a live step: the model writes and submits through Corral tools', async () => {
     const { transport, credentialCalls } = liveRuntime(writeThenSubmit('Final answer.'));
     const { runId, events } = await liveRun(transport, (d) => {
       d.limits = { ...d.limits, maxModelCalls: 2 };
@@ -81,7 +81,7 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     });
   });
 
-  it('[TC-RNS-001-H] [TC-RACE-01] a steer sent during request 1 reaches request 2 only', async () => {
+  it('a steer sent during request 1 reaches request 2 only', async () => {
     const gate = new Gate();
     const seen: boolean[] = [];
     const sawDirective = (context: { messages: unknown[] }) =>
@@ -133,7 +133,7 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     expect(final.directives[directiveId]?.status).toBe('delivered');
   });
 
-  it('[TC-SEC-001-N] a call the host refuses is blocked and never starts, though Pi saw it', async () => {
+  it('a call the host refuses is blocked and never starts, though Pi saw it', async () => {
     const { transport } = liveRuntime([
       // An offered tool, but naming a version this execution never wrote.
       fauxAssistantMessage([fauxToolCall('submit_result', { artifactVersionIds: ['artv_9999'] })], {
@@ -185,7 +185,7 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     expect(offered[0]).not.toContain('edit');
   });
 
-  it('[TC-SEC-003-H] exposes registered document and search tools only when allowed', async () => {
+  it('exposes registered document and search tools only when allowed', async () => {
     const offered: string[][] = [];
     const { transport } = liveRuntime([
       (context) => {
@@ -200,7 +200,7 @@ describe('Pi adapter under the Coordinator (C-017–C-019)', () => {
     expect(offered).toEqual([['search', 'read_document', 'submit_result']]);
   });
 
-  it('[TC-SEC-001-H] the model sees only Corral tools: no shell or code tool exists', async () => {
+  it('the model sees only Corral tools: no shell or code tool exists', async () => {
     const offered: string[][] = [];
     const { transport } = liveRuntime([
       (context) => {
@@ -273,8 +273,8 @@ const tick = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 
-describe('worker lifecycle and protocol checks (C-017)', () => {
-  it('[TC-MEET-001-H] forwards only host meeting provenance into the worker start frame', async () => {
+describe('worker lifecycle and protocol checks', () => {
+  it('forwards only host meeting provenance into the worker start frame', async () => {
     const { adapter, worker, received } = scriptedWorker();
     const input = startInput();
     input.meeting = {
@@ -291,7 +291,7 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
     await handle.waitForSettlement();
   });
 
-  it('[TC-ABS-004-N] file previews require read permission and app/browser tools require a trusted harness', async () => {
+  it('file previews require read permission and app/browser tools require a trusted harness', async () => {
     for (const readable of [false, true]) {
       const { adapter, worker, received } = scriptedWorker();
       const input = startInput();
@@ -309,7 +309,7 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
     }
   });
 
-  it('[TC-ABS-010-H] offers image generation only with role permission and a configured profile', async () => {
+  it('offers image generation only with role permission and a configured profile', async () => {
     for (const enabled of [false, true]) {
       const { adapter, worker, received } = scriptedWorker();
       const input = startInput();
@@ -326,7 +326,7 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
     }
   });
 
-  it('[TC-SEC-002-N] never persists a provider error containing request text or credentials', async () => {
+  it('never persists a provider error containing request text or credentials', async () => {
     const { adapter, worker } = scriptedWorker();
     const handle = await adapter.start(startInput(), recordingHost().host);
     worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
@@ -345,7 +345,7 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
     expect(JSON.stringify(result)).not.toMatch(/opaque-provider-secret|private-user-text|\/home\//);
   });
 
-  it('[TC-RNS-004-N] a settled frame does not confirm worker termination before exit', async () => {
+  it('a settled frame does not confirm worker termination before exit', async () => {
     let receive!: (frame: unknown) => void;
     let exit!: (code: number | null) => void;
     const channel: Channel = {
@@ -378,7 +378,7 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
     await expect(handle.waitForSettlement()).resolves.toMatchObject({ outcome: 'cancelled' });
   });
 
-  it('[TC-RNS-002-H] observes dispatch separately from preparing a request', async () => {
+  it('observes dispatch separately from preparing a request', async () => {
     const { adapter, worker } = scriptedWorker();
     const dispatched: string[] = [];
     const { host, calls } = recordingHost({
@@ -475,7 +475,7 @@ describe('worker lifecycle and protocol checks (C-017)', () => {
   });
 });
 
-describe('collaboration tools through Pi (C-025)', () => {
+describe('collaboration tools through Pi', () => {
   /** One faux model playing every role, choosing its next move from the transcript. */
   const team = (context: { messages: unknown[] }) => {
     const messages = context.messages as {
@@ -535,7 +535,7 @@ describe('collaboration tools through Pi (C-025)', () => {
     }
   };
 
-  it('[TC-RUN-004-H] [TC-COL-002-H] a live team delegates, asks and answers through Pi tools', async () => {
+  it('a live team delegates, asks and answers through Pi tools', async () => {
     const { transport } = liveRuntime(Array.from({ length: 60 }, () => team));
     const { runId, events } = await liveRun(transport, (d) => {
       const collab = collaborationCorral();
@@ -557,7 +557,7 @@ describe('collaboration tools through Pi (C-025)', () => {
   });
 });
 
-describe('reviews through Pi (C-027)', () => {
+describe('reviews through Pi', () => {
   it('tells a reviewer the exact target and criteria its review must name', async () => {
     const prompts: string[] = [];
     const { transport } = liveRuntime([
@@ -575,7 +575,7 @@ describe('reviews through Pi (C-027)', () => {
     expect(prompts[0]).toContain('crit_0001');
   });
 
-  it('[TC-ART-003-H] tells a reviewer which criterion ids are valid, so its issues pass the schema (#20)', async () => {
+  it('tells a reviewer which criterion ids are valid, so its issues pass the schema (#20)', async () => {
     const prompts: string[] = [];
     const { transport } = liveRuntime([
       (context) => {
@@ -591,7 +591,7 @@ describe('reviews through Pi (C-027)', () => {
   });
 });
 
-it('[TC-RSN-003-N] a directive delivered while legacy preparation waits is present in its permitted context', async () => {
+it('a directive delivered while legacy preparation waits is present in its permitted context', async () => {
   const { createFauxCore } = await import('@earendil-works/pi-ai');
   const { runWorker } = await import('../src/worker.ts');
   const faux = createFauxCore({});
@@ -638,7 +638,7 @@ it('[TC-RSN-003-N] a directive delivered while legacy preparation waits is prese
   expect(seen.split(directive.text)).toHaveLength(2);
 });
 
-it('[TC-INPUT-001-H] the core worker waits for the person and sends the answer into the next model turn', async () => {
+it('the core worker waits for the person and sends the answer into the next model turn', async () => {
   const { transport } = liveRuntime([
     fauxAssistantMessage(
       [
@@ -685,7 +685,7 @@ it('[TC-INPUT-001-H] the core worker waits for the person and sends the answer i
   expect(final.status, JSON.stringify(final.executions)).toBe('succeeded');
 });
 
-it('[TC-LLM-004-F] Core recovers a provider overflow once through managed compaction', async () => {
+it('Core recovers a provider overflow once through managed compaction', async () => {
   const { transport } = liveRuntime([
     {
       ...fauxAssistantMessage(''),

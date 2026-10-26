@@ -153,7 +153,7 @@ async function mount(editing = false) {
     });
   return { api, entry, owner, open, element, render, query, search, clickResult, edits };
 }
-it('[TC-WBD-019-H] searches saved content and opens the existing document with the exact range', async () => {
+it('searches saved content and opens the existing document with the exact range', async () => {
   const f = await mount();
   await f.query('greet');
   await f.search();
@@ -171,7 +171,7 @@ it('[TC-WBD-019-H] searches saved content and opens the existing document with t
     match.range,
   );
 });
-it('[TC-WBD-019-F] cancels requests and prevents late search or open responses from crossing query and copy changes', async () => {
+it('cancels requests and prevents late search or open responses from crossing query and copy changes', async () => {
   const f = await mount();
   let resolve!: (result: ContentSearchResult) => void;
   f.api.searchContents.mockImplementationOnce(
@@ -211,7 +211,7 @@ it('[TC-WBD-019-F] cancels requests and prevents late search or open responses f
   await act(async () => finishRead(file));
   expect(f.open).not.toHaveBeenCalled();
 });
-it('[TC-WBD-019-N] rejects stale disk results and preserves unsaved drafts without jumping to disk coordinates', async () => {
+it('rejects stale disk results and preserves unsaved drafts without jumping to disk coordinates', async () => {
   const f = await mount();
   await f.query('greet');
   await f.search();
@@ -230,7 +230,7 @@ it('[TC-WBD-019-N] rejects stale disk results and preserves unsaved drafts witho
   expect(f.open).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-021-H] previews literal replacement before applying and refuses affected unsaved drafts', async () => {
+it('previews literal replacement before applying and refuses affected unsaved drafts', async () => {
   const f = await mount(true);
   await f.query('greet');
   await f.search();

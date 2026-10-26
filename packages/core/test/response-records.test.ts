@@ -13,7 +13,7 @@ import {
 } from '../src/index.ts';
 
 describe('durable model and document responses', () => {
-  it('[TC-OBS-002-H] recovers completed text without replaying transient frames', async () => {
+  it('recovers completed text without replaying transient frames', async () => {
     const store = new InMemoryRunStore();
     const transport = new InProcessTransport(
       new Coordinator({
@@ -39,7 +39,7 @@ describe('durable model and document responses', () => {
     expect(Object.values(final.modelCalls)[0]?.responseRef).toBe(ref);
   });
 
-  it('[TC-SEC-003-H] freezes the fetched response and links only subsequent requests to it', async () => {
+  it('freezes the fetched response and links only subsequent requests to it', async () => {
     const definition = linearCorral(['writer']);
     const role = definition.roles[0];
     if (!role) throw new Error('missing writer');

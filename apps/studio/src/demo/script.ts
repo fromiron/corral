@@ -1,9 +1,9 @@
 import type { AgentStartInput, DeliveredDirective, RequestPermit } from '@corral/contracts';
 
-// Simulated replies for the demo team (C-063). They are fixed text, marked as simulated, and
+// Simulated replies for the demo team. They are fixed text, marked as simulated, and
 // built only from what the runtime handed the execution: its inputs, its assignment, the
 // collaboration results (notes) and the directives delivered to its requests. A directive
-// shows up from the request it was delivered in onward, never before (Spec §8.2).
+// shows up from the request it was delivered in onward, never before.
 
 /** Model requests per simulated execution; the last one carries the submitted text. */
 export const DEMO_TURNS = 2;
@@ -111,7 +111,7 @@ export async function publishDemoPlan(
   }
 }
 
-/** The person's own request. A later run's brief also carries the prior artifact (CR-007); that tail stays model input and is not the answer. */
+/** The person's own request. A later run's brief also carries the prior artifact; that tail stays model input and is not the answer. */
 function workerAnswer(input: AgentStartInput): string {
   const raw = input.inputs.find((i) => i.name === 'brief')?.text ?? '';
   const at = raw.indexOf(START_FROM);

@@ -64,7 +64,7 @@ export function linearCorral(agentIds: string[], id = 'linear'): CorralDefinitio
 
 /**
  * Research → Writer → Output, where Research may delegate to a callable Helper and the
- * Writer may ask a callable Responder (Spec §6 without the review Loop, which is P5).
+ * Writer may ask a callable Responder (product contract §6 without the review Loop, which is P5).
  */
 export function collaborationCorral(id = 'collab'): CorralDefinition {
   const role = (

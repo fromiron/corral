@@ -14,7 +14,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// CR-007: a new Run starts from a version of an earlier Run. The text is copied into the new
+// a new Run starts from a version of an earlier Run. The text is copied into the new
 // Run's brief; the new Run never refers to the old one's versions; run.started says where from.
 
 function setup(maxArtifactBytes = SPEC_HARD_CAPS.maxArtifactBytes, store = new InMemoryRunStore()) {
@@ -54,8 +54,8 @@ async function finishedRun(
   return { result, projection };
 }
 
-describe('a new Run from an earlier version (CR-007)', () => {
-  it('[TC-ART-005-H] copies the version text into the new brief and records where it came from', async () => {
+describe('a new Run from an earlier version', () => {
+  it('copies the version text into the new brief and records where it came from', async () => {
     const s = setup();
     const first = await finishedRun(s, 'cmd_first');
     const runA = first.result.runId ?? '';
@@ -80,7 +80,7 @@ describe('a new Run from an earlier version (CR-007)', () => {
     expect(s.coordinator.getSnapshot(runA).seq).toBe(eventsBefore);
   });
 
-  it('[TC-ART-005-N] refuses an unknown run, a version of another run and an oversized text, and starts nothing', async () => {
+  it('refuses an unknown run, a version of another run and an oversized text, and starts nothing', async () => {
     const s = setup();
     const a = await finishedRun(s, 'cmd_a');
     const b = await finishedRun(s, 'cmd_b');

@@ -63,7 +63,7 @@ async function setup() {
   return { service, input, original, options, db, worktree };
 }
 
-describe('[TC-ABS-001-H] [TC-ABS-001-N] primary working copy command broker', () => {
+describe('primary working copy command broker', () => {
   it('returns an owned service lease, permits the same run to edit, and confirms cleanup on run stop', async () => {
     const s = await setup();
     const input = {

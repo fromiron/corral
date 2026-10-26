@@ -123,7 +123,7 @@ const sdkHost = {
   finishNativeTool: async () => {},
 };
 
-it('[TC-ABS-011-N] preserves the legacy question responder schema without parent-question opt-in', () => {
+it('preserves the legacy question responder schema without parent-question opt-in', () => {
   const schema = parametersOf('reply', {
     delegateTo: [],
     askTo: [],
@@ -137,7 +137,7 @@ it('[TC-ABS-011-N] preserves the legacy question responder schema without parent
 });
 
 it.each([false, true])(
-  '[TC-ABS-011-H] offers parent reply and delivers the question as agent data without contextPolicy (SDK=%s)',
+  'offers parent reply and delivers the question as agent data without contextPolicy (SDK=%s)',
   async (sdk) => {
     const proposals: { name: string; args: Record<string, unknown> }[] = [];
     let observedInbox = false;
@@ -200,7 +200,7 @@ it.each([false, true])(
 );
 
 it.each([false, true])(
-  '[TC-ABS-011-N] a refused child reply does not finish a question responder or change its explicit target (SDK=%s)',
+  'a refused child reply does not finish a question responder or change its explicit target (SDK=%s)',
   async (sdk) => {
     const answered: string[] = [];
     const runtime = adapter([
@@ -251,7 +251,7 @@ it.each([
   { sdk: false, mode: 'parallel', parentQuestion: true },
   { sdk: true, mode: 'parallel', parentQuestion: true },
 ] as const)(
-  '[TC-ABS-011-H] imported children ask their existing parent and resume through Coordinator (SDK=$sdk, mode=$mode, question responder=$parentQuestion)',
+  'imported children ask their existing parent and resume through Coordinator (SDK=$sdk, mode=$mode, question responder=$parentQuestion)',
   async ({ sdk, mode, parentQuestion }) => {
     const definition = linearCorral([parentQuestion ? 'requester' : 'writer']);
     const requesterRole = definition.roles[0];
@@ -406,7 +406,7 @@ it.each([
 );
 
 it.each([false, true])(
-  '[TC-ABS-011-N] a question responder parent preserves an explicit child ID and continues until its own reply (SDK=%s)',
+  'a question responder parent preserves an explicit child ID and continues until its own reply (SDK=%s)',
   async (sdk) => {
     const answered: string[] = [];
     const runtime = adapter([

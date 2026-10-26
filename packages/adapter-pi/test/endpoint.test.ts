@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { inspectContext, reconcileContextUsage } from '../src/context-usage.ts';
 import { type EndpointSpec, endpointProvider, KEYLESS_PLACEHOLDER } from '../src/endpoint.ts';
 
-// CR-005: OpenAI-compatible endpoints (Ollama, LM Studio, OpenRouter) through pi-ai's
+// OpenAI-compatible endpoints (Ollama, LM Studio, OpenRouter) through pi-ai's
 // openai-completions client, against a local fake server.
 
 const closers: (() => Promise<void>)[] = [];
@@ -37,8 +37,8 @@ const ask = (models: ReturnType<typeof createModels>, apiKey?: string) => {
     .result();
 };
 
-describe('OpenAI-compatible endpoints (CR-005)', () => {
-  it('[TC-WIDGET-002-H] measures the real Pi provider payload without adding provider usage', async () => {
+describe('OpenAI-compatible endpoints', () => {
+  it('measures the real Pi provider payload without adding provider usage', async () => {
     const server = await endpoint();
     server.setReply(() => 'Measured.');
     const models = createModels();
@@ -80,7 +80,7 @@ describe('OpenAI-compatible endpoints (CR-005)', () => {
     expect(JSON.stringify(recorded)).not.toContain('한국어');
   });
 
-  it('[TC-SEC-002-H] a keyless local endpoint answers with only the placeholder key; a keyed one gets the request key', async () => {
+  it('a keyless local endpoint answers with only the placeholder key; a keyed one gets the request key', async () => {
     const server = await endpoint();
     server.setReply(() => 'Hello from the endpoint.');
     const keyless = createModels();
@@ -99,7 +99,7 @@ describe('OpenAI-compatible endpoints (CR-005)', () => {
     expect(server.authorizations.at(-1)).toBe('Bearer request-key');
   });
 
-  it('[TC-SEC-002-N] a keyed endpoint without a key is not configured and sends nothing', async () => {
+  it('a keyed endpoint without a key is not configured and sends nothing', async () => {
     const server = await endpoint();
     const keyed = createModels();
     keyed.setProvider(endpointProvider('local', spec(server.baseUrl, false)));

@@ -21,7 +21,7 @@ function setup() {
 }
 
 describe('immutable harness revisions (H3)', () => {
-  it('[TC-HAR-004-H] stores a new revision without changing a bound old revision, including after reopening the repository', () => {
+  it('stores a new revision without changing a bound old revision, including after reopening the repository', () => {
     const { db, store } = setup();
     const first = store.saveProfile('writing', 0, profile);
     const second = store.saveProfile('writing', 1, { ...profile, name: 'Revised writing' });
@@ -32,7 +32,7 @@ describe('immutable harness revisions (H3)', () => {
     expect(reopened.listProfiles()).toEqual([second]);
   });
 
-  it('[TC-HAR-004-N] stale saves and direct SQL mutation cannot overwrite a revision', () => {
+  it('stale saves and direct SQL mutation cannot overwrite a revision', () => {
     const { db, store } = setup();
     store.saveProfile('writing', 0, profile);
     expect(() => store.saveProfile('writing', 0, profile)).toThrow(/revision/i);
@@ -43,7 +43,7 @@ describe('immutable harness revisions (H3)', () => {
     expect(store.getProfile({ profileId: 'writing', revision: 1 })?.name).toBe('Writing');
   });
 
-  it('[TC-HAR-004-H] defaults point to exact revisions and are independently guarded against stale changes', () => {
+  it('defaults point to exact revisions and are independently guarded against stale changes', () => {
     const { store } = setup();
     store.saveProfile('writing', 0, profile);
     const binding = { profileId: 'writing', revision: 1 };

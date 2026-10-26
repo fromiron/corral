@@ -7,7 +7,7 @@ import { BudgetInspector } from '../src/components/BudgetInspector.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { createRunSession } from '../src/run/session.ts';
 
-describe('BudgetInspector (C-061)', () => {
+describe('BudgetInspector', () => {
   it('keeps confirmed, reserved and unknown usage distinct; unavailable cost is never zero', () => {
     const session = createRunSession({} as never);
     const p = emptyProjection('run_budget');
@@ -42,7 +42,7 @@ describe('BudgetInspector (C-061)', () => {
     expect(screen.queryByText('$0')).not.toBeInTheDocument();
   });
 
-  it('[TC-LLM-005-N] an unlimited run shows usage without an allowance and never counts unknown usage as zero', () => {
+  it('an unlimited run shows usage without an allowance and never counts unknown usage as zero', () => {
     const session = createRunSession({} as never);
     const p = emptyProjection('run_unlimited');
     p.usageLimits = 'none';

@@ -17,7 +17,7 @@ import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
-// Work folders and working copies in Studio (CR-012), on the local server or the demo's
+// Work folders and working copies in Studio, on the local server or the demo's
 // in-memory example folder.
 
 export { WORKSPACE_CHANGED };
@@ -385,7 +385,7 @@ export function WorkingCopyPanel({
   );
 }
 
-/** What needs a person in this project (CR-013, WB-OBS-002); it empties as things are handled. */
+/** What needs a person in this project; it empties as things are handled. */
 export function InboxSection({ projectId }: { projectId: string }) {
   const t = useTranslations('Review');
   const tr = useTranslations('Recipe');

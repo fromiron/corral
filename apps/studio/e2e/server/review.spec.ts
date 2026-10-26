@@ -3,7 +3,7 @@ import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
 
-test('[TC-RUN-003-H] [TC-ART-004-H] [TC-OBS-001-H] a review loop revises the draft, and two approvals of exact versions finish the run', async ({
+test('a review loop revises the draft, and two approvals of exact versions finish the run', async ({
   page,
   corral,
 }) => {

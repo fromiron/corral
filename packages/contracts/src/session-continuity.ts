@@ -62,10 +62,10 @@ export const BranchedFrom = z.strictObject({
 });
 export type BranchedFrom = z.infer<typeof BranchedFrom>;
 
-/** CR-054: a session follow-up continues the conversation through this ended run. */
+/** a session follow-up continues the conversation through this ended run. */
 export const ConversationSource = z.strictObject({ throughRunId: Identifier });
 export type ConversationSource = z.infer<typeof ConversationSource>;
-/** One earlier request and its answer, copied from the Coordinator's own records (CR-054). */
+/** One earlier request and its answer, copied from the Coordinator's own records. */
 export const ConversationTurn = z.strictObject({
   runId: Identifier,
   request: z.string(),
@@ -81,7 +81,7 @@ export const SessionConversation = z.strictObject({
   omittedTurns: z.int().min(0),
 });
 export type SessionConversation = z.infer<typeof SessionConversation>;
-/** Where a run's copied conversation came from; its text is the run's own record (CR-054). */
+/** Where a run's copied conversation came from; its text is the run's own record. */
 export const ContinuedConversation = z.strictObject({
   throughRunId: Identifier,
   turns: z.array(z.strictObject({ runId: Identifier, artifactVersionId: Identifier.nullable() })),

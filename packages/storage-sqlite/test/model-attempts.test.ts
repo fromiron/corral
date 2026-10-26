@@ -27,7 +27,7 @@ const attempt = (id: string): ModelAttempt => ({
     costUsd: null,
   },
 });
-it('[TC-LLM-002-F] attempt history is idempotent, preserves identity and pages without repeating a reconciled row', () => {
+it('attempt history is idempotent, preserves identity and pages without repeating a reconciled row', () => {
   const db = openDatabase(':memory:');
   try {
     const store = new SqliteModelAttemptStore(db);
@@ -52,7 +52,7 @@ it('[TC-LLM-002-F] attempt history is idempotent, preserves identity and pages w
   }
 });
 
-it('[TC-LLM-002-F] restart records unfinished attempts as unknown and keeps settled usage', () => {
+it('restart records unfinished attempts as unknown and keeps settled usage', () => {
   const db = openDatabase(':memory:');
   try {
     const store = new SqliteModelAttemptStore(db);

@@ -6,7 +6,7 @@ import { linearCorral } from '@corral/testkit';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
-test('[TC-HAR-012-H] selects a registered check, approves its SDK call and reads the owned verification report', async ({
+test('selects a registered check, approves its SDK call and reads the owned verification report', async ({
   page,
   corral,
 }) => {

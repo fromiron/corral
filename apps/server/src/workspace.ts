@@ -8,7 +8,7 @@ import {
   type WorkspaceConfig,
 } from '@corral/core';
 
-// Workspace layout (C-062, v0.2 supplement §2.3):
+// Workspace layout:
 //   <workspace>/.corral/corral.db     SQLite (WAL)
 //   <workspace>/.corral/config.json   hard caps and model profile names, never credentials
 // Messages name paths relative to the workspace so they can be shown or logged.
@@ -63,7 +63,7 @@ export function readWorkspaceConfig(root: string) {
   };
 }
 
-/** The config file's content hash; `none` when there is no file (CR-008 save guard). */
+/** The config file's content hash; `none` when there is no file (save guard). */
 export function configRevision(root: string): string {
   const path = join(root, CONFIG);
   return existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : 'none';
@@ -73,7 +73,7 @@ export type ModelConfigChange = { modelProfiles: unknown[]; modelProviders: unkn
 
 /**
  * Replaces `modelProfiles` and `modelProviders` in `.corral/config.json`, keeping every other
- * key (CR-008). Checked like a config read; written to a temporary file and renamed into place.
+ * key. Checked like a config read; written to a temporary file and renamed into place.
  * Errors name fields, never values.
  */
 export function writeModelConfig(

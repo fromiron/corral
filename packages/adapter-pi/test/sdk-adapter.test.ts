@@ -203,7 +203,7 @@ function runtime(
 }
 
 describe('SDK worker through the product adapter (H2)', () => {
-  it('[TC-ABS-010-H] preserves generated image tool results as pixels in the next model context', async () => {
+  it('preserves generated image tool results as pixels in the next model context', async () => {
     const data =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZxkAAAAASUVORK5CYII=';
     const bytes = Buffer.from(data, 'base64');
@@ -389,7 +389,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(names).not.toContain('edit_hashline');
     expect(names).not.toContain('run_command');
   });
-  it('[TC-CONTEXT-001-H] applies profile limits to Pi settings and stream models without changing the catalog', async () => {
+  it('applies profile limits to Pi settings and stream models without changing the catalog', async () => {
     const spy = vi.spyOn(SettingsManager, 'inMemory');
     try {
       const run = runtime([fauxAssistantMessage('Done.')]);
@@ -425,7 +425,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     }
   });
   it.each([true, false])(
-    '[TC-HAR-001-H] a %s accepted submission ends without a confirmation request',
+    'a %s accepted submission ends without a confirmation request',
     async (accepted) => {
       const run = runtime(
         [
@@ -454,7 +454,7 @@ describe('SDK worker through the product adapter (H2)', () => {
   // startup, two bounded RPC phases and confirmed cleanup need an outer budget
   // greater than either individual five-second protocol deadline.
   it.each([false, true])(
-    '[TC-BROWSER-001-N] [TC-HAR-016-H] [TC-MGR-002-H] MCP native calls preserve error results (%s)',
+    'MCP native calls preserve error results (%s)',
     async (isError) => {
       const cwd = mkdtempSync(join(tmpdir(), 'corral-mcp-copy-'));
       scratch.push(cwd);
@@ -585,7 +585,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     20000,
   );
 
-  it('[TC-HAR-017-H] uses Pi codemode to invoke a Corral tool through the owned nested approval', async () => {
+  it('uses Pi codemode to invoke a Corral tool through the owned nested approval', async () => {
     const proposals: unknown[] = [];
     const run = runtime(
       [
@@ -617,7 +617,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     ]);
     expect(JSON.stringify(run.reports)).toContain('extension:pi-codemode@1.3.0');
   });
-  it('[TC-HAR-017-H] maps nested Pi calls to the owning Corral native call', async () => {
+  it('maps nested Pi calls to the owning Corral native call', async () => {
     const proposals: { name: string; parentToolCallId?: string }[] = [];
     const run = runtime(
       [
@@ -641,7 +641,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     ]);
   });
   it.each(['session_start', 'before_agent_start'] as const)(
-    '[TC-HAR-016-H] wraps tools registered during %s and reports them before use',
+    'wraps tools registered during %s and reports them before use',
     async (event) => {
       const updates: unknown[] = [],
         began: unknown[] = [];
@@ -674,7 +674,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     },
   );
   it.each(['before_agent_start', 'context', 'tool_call', 'tool_result'] as const)(
-    '[TC-HAR-006-N] stops after a required %s hook fails',
+    'stops after a required %s hook fails',
     async (event) => {
       const executeTool = vi.fn(async (toolCallId: string) => ({
         ok: true as const,
@@ -701,7 +701,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       expect(JSON.stringify(run.frames)).not.toContain('private hook failure');
     },
   );
-  it('[TC-HAR-015-H] exposes item delegation and carries item identity into the actual SDK prompt', async () => {
+  it('exposes item delegation and carries item identity into the actual SDK prompt', async () => {
     const proposals: unknown[] = [];
     const run = runtime(
       [
@@ -741,7 +741,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     });
     expect(proposals).toHaveLength(1);
   });
-  it('[TC-HAR-010-H] advertises selected LSP queries only to a role with worktree read permission', async () => {
+  it('advertises selected LSP queries only to a role with worktree read permission', async () => {
     for (const readable of [false, true]) {
       const executeTool = vi.fn(async (toolCallId: string) => ({
         ok: true as const,
@@ -793,7 +793,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       expect(executeTool).toHaveBeenCalledTimes(readable ? 1 : 0);
     }
   });
-  it('[TC-HAR-012-H] exposes only selected registered check IDs and returns the owned report through the host', async () => {
+  it('exposes only selected registered check IDs and returns the owned report through the host', async () => {
     const proposals: { name: string; args: Record<string, unknown> }[] = [];
     const run = runtime(
       [
@@ -845,7 +845,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       }),
     );
   });
-  it('[TC-HAR-010-H] exposes authorized Pi coding tools and returns their standard result text', async () => {
+  it('exposes authorized Pi coding tools and returns their standard result text', async () => {
     const proposals: { name: string; args: Record<string, unknown> }[] = [];
     const run = runtime(
       [
@@ -909,7 +909,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       }),
     );
   });
-  it('[TC-HAR-007-H] records extension command origins and resolves a package-qualified startup command', async () => {
+  it('records extension command origins and resolves a package-qualified startup command', async () => {
     let seen = '';
     const run = runtime(
       [
@@ -944,7 +944,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     );
     expect(JSON.stringify(run.reports)).not.toContain(run.directory);
   });
-  it('[TC-HAR-006-N] a required extension session-start error fails before any provider request', async () => {
+  it('a required extension session-start error fails before any provider request', async () => {
     const run = runtime(
       [fauxAssistantMessage('Must not run.')],
       `export default pi => pi.on('session_start',()=>{ throw new Error('private startup detail'); });`,
@@ -959,7 +959,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       code: 'extension_load_failed',
     });
   });
-  it('[TC-HAR-007-H] bridges extension dialogs and notifications without a model request during startup', async () => {
+  it('bridges extension dialogs and notifications without a model request during startup', async () => {
     const requests: unknown[] = [];
     const notices: unknown[] = [];
     const run = runtime(
@@ -999,7 +999,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     ]);
     expect(run.requests).toHaveLength(1);
   });
-  it('[TC-HAR-007-N] a dialog AbortSignal reaches the host while its reply is pending', async () => {
+  it('a dialog AbortSignal reaches the host while its reply is pending', async () => {
     const cancelled = vi.fn();
     const run = runtime(
       [fauxAssistantMessage('Done.')],
@@ -1024,7 +1024,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     });
     expect(cancelled).toHaveBeenCalledTimes(1);
   });
-  it('[TC-HAR-001-H] keeps the SDK proxy identity while dispatching the actual provider identity', async () => {
+  it('keeps the SDK proxy identity while dispatching the actual provider identity', async () => {
     let seen = '';
     let originMatches = false;
     const run = runtime(
@@ -1046,7 +1046,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(seen).toContain('SDK provider: corral');
     expect(originMatches).toBe(true);
   });
-  it('[TC-HAR-005-N] an extension cannot strip mandatory instructions from the final context', async () => {
+  it('an extension cannot strip mandatory instructions from the final context', async () => {
     let seen = '';
     const run = runtime(
       [
@@ -1063,7 +1063,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(seen).toContain('Always cite sources.');
   });
 
-  it('[TC-COMPACT-001-H] [TC-COMPACT-001-N] [TC-HAR-001-H] automatic threshold compaction uses permits and mandatory skills remain in the following turn', async () => {
+  it('automatic threshold compaction uses permits and mandatory skills remain in the following turn', async () => {
     const protectedText =
       'Coordinator state: private plan, unanswered question, exact criterion and resource hash.';
     const protectedValue = {
@@ -1105,7 +1105,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(run.calls.filter((call) => call.startsWith('observe'))).toHaveLength(seen.length);
   });
   it.each(['success', 'error', 'cancel'])(
-    '[TC-COMPACT-001-H] [TC-COMPACT-001-N] queued manual compaction resumes at an idle boundary and preserves context on failure (mode=%s)',
+    'queued manual compaction resumes at an idle boundary and preserves context on failure (mode=%s)',
     async (mode) => {
       const fail = mode === 'error';
       const entered = new Gate(),
@@ -1177,7 +1177,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       expect(turns).toBe(mode === 'cancel' ? 2 : 3);
     },
   );
-  it('[TC-HAR-005-H] lists auto skills virtually and formats broker reads with Pi offset and limit behavior', async () => {
+  it('lists auto skills virtually and formats broker reads with Pi offset and limit behavior', async () => {
     let observed = '';
     const run = runtime(
       [
@@ -1216,7 +1216,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(observed).not.toContain('three');
   });
 
-  it('[TC-HAR-005-H] expands an explicit skill command in Corral without exposing a local path', async () => {
+  it('expands an explicit skill command in Corral without exposing a local path', async () => {
     let seen = '';
     const run = runtime(
       [
@@ -1237,7 +1237,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(seen).not.toContain(run.directory);
     expect(seen).not.toContain('/skill:writing');
   });
-  it('[TC-HAR-003-N] resource preparation errors never disclose a local path or body', async () => {
+  it('resource preparation errors never disclose a local path or body', async () => {
     const run = runtime([]);
     const spawn = vi.fn();
     const adapter = new PiAgentAdapter({
@@ -1253,7 +1253,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     );
     expect(spawn).not.toHaveBeenCalled();
   });
-  it('[TC-HAR-009-N] refuses a binding without a resolved snapshot before spawning or looking up credentials', async () => {
+  it('refuses a binding without a resolved snapshot before spawning or looking up credentials', async () => {
     const spawn = vi.fn();
     const credentials = vi.fn();
     const adapter = new PiAgentAdapter({ spawn, credentials });
@@ -1264,7 +1264,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(credentials).not.toHaveBeenCalled();
   });
 
-  it('[TC-HAR-001-H] [TC-HAR-003-H] records and permits the real context for each request and retry', async () => {
+  it('records and permits the real context for each request and retry', async () => {
     const run = runtime([
       fauxAssistantMessage('', {
         stopReason: 'error',
@@ -1294,7 +1294,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(JSON.stringify(run.frames)).not.toContain(ACCESS_TOKEN);
   });
 
-  it('[TC-HAR-002-H] authorizes final extension arguments, then starts and settles the unmanaged effect', async () => {
+  it('authorizes final extension arguments, then starts and settles the unmanaged effect', async () => {
     const order: string[] = [];
     const run = runtime(
       [
@@ -1327,7 +1327,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(order).toEqual(['authorized', 'started', 'finished']);
   });
 
-  it('[TC-HAR-001-N] a refused permit makes no provider request', async () => {
+  it('a refused permit makes no provider request', async () => {
     let dispatched = 0;
     const run = runtime(
       [
@@ -1350,7 +1350,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(run.credentials).not.toHaveBeenCalled();
   });
 
-  it('[TC-HAR-001-N] cancellation between permit and dispatch never contacts the provider', async () => {
+  it('cancellation between permit and dispatch never contacts the provider', async () => {
     let dispatched = 0;
     const run = runtime(
       [
@@ -1373,7 +1373,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(run.calls.filter((c) => c.startsWith('observe'))).toEqual(['observe call_1']);
   });
 
-  it('[TC-HAR-002-N] validates arguments again after extension hooks, before host authorization', async () => {
+  it('validates arguments again after extension hooks, before host authorization', async () => {
     const authorize = vi.fn(async () => ({ ok: true as const, toolCallId: 'tool_1' }));
     const run = runtime(
       [
@@ -1390,7 +1390,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(authorize).not.toHaveBeenCalled();
   });
 
-  it('[TC-HAR-003-H] steers an in-flight execution and reports only directives in the actual request', async () => {
+  it('steers an in-flight execution and reports only directives in the actual request', async () => {
     const entered = new Gate();
     const release = new Gate();
     const run = runtime([
@@ -1411,7 +1411,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(run.requests).toMatchObject([{ directiveIds: [] }, { directiveIds: ['directive_1'] }]);
   });
 
-  it('[TC-HAR-001-H] nested model calls made by an extension use their own permits and observations', async () => {
+  it('nested model calls made by an extension use their own permits and observations', async () => {
     const run = runtime(
       [
         fauxAssistantMessage([fauxToolCall('echo', {})], { stopReason: 'toolUse' }),
@@ -1439,7 +1439,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     ]);
   });
 
-  it('[TC-HAR-006-N] a required extension that fails to load fails without a model request or fallback', async () => {
+  it('a required extension that fails to load fails without a model request or fallback', async () => {
     const run = runtime(
       [fauxAssistantMessage('Must not run')],
       'throw new Error("private path/body");',
@@ -1452,7 +1452,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(JSON.stringify(run.reports)).not.toContain('private path/body');
   });
 
-  it('[TC-HAR-002-N] a denied native tool never starts', async () => {
+  it('a denied native tool never starts', async () => {
     const begin = vi.fn();
     const run = runtime(
       [
@@ -1473,7 +1473,7 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(begin).not.toHaveBeenCalled();
   });
 
-  it('[TC-HAR-006-H] cancellation ends the SDK execution and fences a late answer', async () => {
+  it('cancellation ends the SDK execution and fences a late answer', async () => {
     const gate = new Gate();
     const entered = new Gate();
     const run = runtime([
@@ -1491,7 +1491,7 @@ describe('SDK worker through the product adapter (H2)', () => {
   });
 });
 
-it('[TC-RSN-003-N] a steer absorbed by reprepare does not trigger an extra SDK turn', async () => {
+it('a steer absorbed by reprepare does not trigger an extra SDK turn', async () => {
   const entered = new Gate(),
     release = new Gate();
   const directive = { directiveId: 'during_prepare', text: 'Include only the accepted scope.' };
@@ -1530,7 +1530,7 @@ it('[TC-RSN-003-N] a steer absorbed by reprepare does not trigger an extra SDK t
   expect(requests).toBe(1);
 });
 
-it('[TC-INPUT-001-H] the SDK exposes the same user question schema and resumes only after its host answer', async () => {
+it('the SDK exposes the same user question schema and resumes only after its host answer', async () => {
   const asked = new Gate(),
     answered = new Gate();
   let name = '';
@@ -1578,7 +1578,7 @@ it('[TC-INPUT-001-H] the SDK exposes the same user question schema and resumes o
   expect(run.requests).toHaveLength(2);
 });
 
-it('[TC-PROMPT-001-N] context hooks cannot replace the protected Corral role and output contract', async () => {
+it('context hooks cannot replace the protected Corral role and output contract', async () => {
   let seen = '';
   const run = runtime(
     [
@@ -1599,7 +1599,7 @@ it('[TC-PROMPT-001-N] context hooks cannot replace the protected Corral role and
   });
 });
 
-it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] core worker applies context policy and old IPC versions are rejected', async () => {
+it('core worker applies context policy and old IPC versions are rejected', async () => {
   const faux = createFauxCore({});
   faux.setResponses([fauxAssistantMessage('Done.')]);
   const catalog = faux.getModel();
@@ -1648,7 +1648,7 @@ it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] core worker applies context policy and
   expect(PROTOCOL_VERSION).not.toBe(LEGACY_PROTOCOL_VERSION);
 });
 
-it('[TC-LLM-004-H] compaction preserves the summary without reinserting the original large input', async () => {
+it('compaction preserves the summary without reinserting the original large input', async () => {
   const original = 'ORIGINAL_ATTACHMENT_AUDIT '.repeat(3500);
   let summaries = 0;
   const seen: { purpose: string; original: boolean; chars: number; summary: boolean }[] = [];
@@ -1694,7 +1694,7 @@ it('[TC-LLM-004-H] compaction preserves the summary without reinserting the orig
 });
 
 it.each([false, true])(
-  '[TC-LLM-004-H] Core manual compaction applies only the current revision (changed=%s)',
+  'Core manual compaction applies only the current revision (changed=%s)',
   async (changed) => {
     const gate = new Gate();
     const started = new Gate();
@@ -1807,7 +1807,7 @@ it.each([false, true])(
   },
 );
 
-it('[TC-LLM-004-H] SDK compacts an oversized first user message before its first task request', async () => {
+it('SDK compacts an oversized first user message before its first task request', async () => {
   const original = 'ORIGINAL_FIRST_MESSAGE '.repeat(4200);
   const seen: { purpose: string; original: boolean; summary: boolean }[] = [];
   const responses: FauxResponseStep[] = Array.from({ length: 6 }, () => (context) => {
@@ -1847,7 +1847,7 @@ it('[TC-LLM-004-H] SDK compacts an oversized first user message before its first
 });
 
 it.each([true, false])(
-  '[TC-LLM-004-F] SDK provider overflow uses one validated Corral compaction (valid=%s)',
+  'SDK provider overflow uses one validated Corral compaction (valid=%s)',
   async (valid) => {
     const seen: string[] = [];
     const responses: FauxResponseStep[] = Array.from({ length: 5 }, () => () => {
@@ -1878,7 +1878,7 @@ it.each([true, false])(
   },
 );
 
-it('[TC-LLM-004-N] explicitly selecting an already mandatory skill does not inject its body twice', async () => {
+it('explicitly selecting an already mandatory skill does not inject its body twice', async () => {
   let text = '';
   const body = 'MANDATORY_SOURCE_BODY_73';
   const run = runtime(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateSettingsSearch, workHref } from './navigation.ts';
 
-describe('[TC-UX-004-N] settings navigation boundaries', () => {
+describe('settings navigation boundaries', () => {
   it('preserves an exact work destination and run selection through settings categories', () => {
     const returnTo = '/sessions/session_a?panel=run&run=run_old&execution=execution_a#result';
     expect(
@@ -30,7 +30,7 @@ describe('[TC-UX-004-N] settings navigation boundaries', () => {
   });
 });
 
-describe('[TC-UX-006-N] contextual settings navigation', () => {
+describe('contextual settings navigation', () => {
   it('validates settings independently of work selection and strips only settings navigation values', async () => {
     const { validateSettingsOverlay, withoutSettings, settingsOnlyTransition } = await import(
       './navigation.ts'

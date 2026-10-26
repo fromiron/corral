@@ -1,7 +1,7 @@
 import { useTranslations } from 'use-intl';
 import { KitBadge } from '../design-kit/index.ts';
 
-// Status is never conveyed by colour alone (Spec §10.3): every badge has a dot and text.
+// Status is never conveyed by colour alone: every badge has a dot and text.
 
 type Tone = 'neutral' | 'active' | 'success' | 'warning' | 'danger';
 

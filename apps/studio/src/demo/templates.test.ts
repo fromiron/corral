@@ -19,7 +19,7 @@ import { demoTemplate } from './templates.ts';
 const HANGUL = /[ㄱ-ㆎ가-힣]/;
 
 describe('demo templates', () => {
-  it('[TC-DEV-005-H] the default research team compiles and shows delegation, a question, a review Loop and approval', () => {
+  it('the default research team compiles and shows delegation, a question, a review Loop and approval', () => {
     const template = demoTemplate(undefined);
     expect(template.id).toBe('research-team');
     const { definition, layout } = template;
@@ -40,7 +40,7 @@ describe('demo templates', () => {
     expect(JSON.stringify(definition)).not.toMatch(HANGUL);
   });
 
-  it('[TC-DEV-005-H] the starter template keeps the single Agent → Output demo', () => {
+  it('the starter template keeps the single Agent → Output demo', () => {
     const { id, definition } = demoTemplate('starter');
     expect(id).toBe('starter');
     expect(definition.name).toBe('Demo Corral');
@@ -48,7 +48,7 @@ describe('demo templates', () => {
     expect(compileDefinition(definition).ok).toBe(true);
   });
 
-  it('[TC-DEV-005-N] an unknown template name opens the default template', () => {
+  it('an unknown template name opens the default template', () => {
     expect(demoTemplate('bogus').id).toBe('research-team');
   });
 });
@@ -95,13 +95,13 @@ describe('demo replies', () => {
     demoReply = createDemoReply();
   });
 
-  it('[TC-DEV-005-H] say they are simulated and use the brief', () => {
+  it('say they are simulated and use the brief', () => {
     const text = demoReply(2, startInput('research'), permit(), []);
     expect(text).toMatch(/simulated/i);
     expect(text).toContain('Compare two tools.');
   });
 
-  it('[TC-DEV-005-H] write collaboration results as prose, not raw tool notes', () => {
+  it('write collaboration results as prose, not raw tool notes', () => {
     const text = demoReply(2, startInput('write', { round: 1 }), permit(), [
       'answer: The vendor documentation supports the main claim.',
     ]);
@@ -115,7 +115,7 @@ describe('demo replies', () => {
     expect(research).toContain('artv_0003');
   });
 
-  it('[TC-DEV-005-H] a responder answers in its only request', () => {
+  it('a responder answers in its only request', () => {
     // The adapter gives a question one request, so that request carries the answer.
     const text = demoReply(
       1,
@@ -136,7 +136,7 @@ describe('demo replies', () => {
     expect(text).not.toContain('planning the answer');
   });
 
-  it('[TC-DEV-005-H] a revised draft answers the review it was given', () => {
+  it('a revised draft answers the review it was given', () => {
     const first = demoReply(2, startInput('write', { round: 1 }), permit(), []);
     const second = demoReply(
       2,
@@ -159,7 +159,7 @@ describe('demo replies', () => {
     expect(second).toContain('artv_0008');
   });
 
-  it('[TC-DEV-005-N] shows a directive from the request it was delivered in, and only for that execution', () => {
+  it('shows a directive from the request it was delivered in, and only for that execution', () => {
     const input = startInput('write', { round: 2, executionId: 'exec_0007' });
     const directive = { directiveId: 'dir_0001', text: 'Lead with the cost difference.' };
     expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);

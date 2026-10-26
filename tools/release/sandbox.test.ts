@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { ROOT } from './candidate.ts';
 
-test('[TC-SBX-001-H] [TC-SBX-001-N] Linux isolation rejects host access and cleans up owned descendants', {
+test('Linux isolation rejects host access and cleans up owned descendants', {
   skip: process.env.CORRAL_SANDBOX_PROBE !== '1',
 }, () => {
   const result = execFileSync(process.execPath, ['tools/sandbox/probe.ts'], {

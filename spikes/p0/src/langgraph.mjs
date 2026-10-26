@@ -1,4 +1,4 @@
-// C-052 LangGraph spike: static control flow whose nodes only ask the Coordinator to act.
+// LangGraph spike: static control flow whose nodes only ask the Coordinator to act.
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 
 // Fake Coordinator: activation keys make node re-entry idempotent (Technical-Design §4.2).
@@ -46,7 +46,7 @@ const graph = new StateGraph(State)
   }, { next_iteration: 'next_iteration', done: END })
   .addEdge('next_iteration', 'write');
 
-const app = graph.compile(); // no checkpointer: the Coordinator owns durable state (ADR-004)
+const app = graph.compile(); // no checkpointer: the Coordinator owns durable state
 const result = {};
 const final = await app.invoke({ runId: 'run_1' });
 result.requests = coordinator.requests;

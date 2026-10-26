@@ -25,7 +25,7 @@ import type { InstallationPolicy } from '../config.ts';
 import { createsWaitCycle, NO_PROGRESS_TURNS, noProgressReached } from '../limits.ts';
 import type { RunProjection } from '../projection.ts';
 
-// Admission gates and observers (CR-003, ADR-024, Technical-Design §5.4).
+// Admission gates and observers.
 //
 // A gate is a synchronous, read-only check at one admission point. Gates of a stage run in
 // registration order and the first refusal stops the stage; a gate that throws refuses the call
@@ -59,14 +59,14 @@ export type GateDecision =
       message: string;
       limit?: LimitHit;
     }
-  /** Only the person can let this request through (no progress, Spec §9). */
+  /** Only the person can let this request through (no progress, product contract §9). */
   | { kind: 'require_approval'; approval: 'user_action'; limit: LimitHit };
 
 export interface ModelGateView {
   projection: RunProjection;
   limits: RunLimits;
   input: AgentStartInput;
-  /** An unlimited run (CR-052), where the default usage gates do not apply. */
+  /** An unlimited run, where the default usage gates do not apply. */
   usageLimits?: 'none';
 }
 
@@ -76,7 +76,7 @@ export interface ToolGateView extends ModelGateView {
   currentEffectId?: string;
   reservedSpawns?: number;
   pendingChildContinuation?: boolean;
-  /** CR-049/055: the Coordinator itself publishes a plain-text answer for this execution. */
+  /** the Coordinator itself publishes a plain-text answer for this execution. */
   hostAnswer?: boolean;
   harnessRead?: boolean;
   descriptor?: import('@corral/contracts').ToolDescriptor;
@@ -91,7 +91,7 @@ export interface ToolGateView extends ModelGateView {
   };
   /** Whether search/read_document have a backend in this runtime. */
   externalTools: boolean;
-  /** Whether this run's session has a managed worktree for file tools (CR-012). */
+  /** Whether this run's session has a managed worktree for file tools. */
   fileTools: boolean;
   /** The execution answering an open question, if the question is open. */
   responderOf(questionId: string): string | undefined;
@@ -125,7 +125,7 @@ export interface ObserverView {
   event: RunEvent;
 }
 
-/** Events an observer may commit, fenced by the Coordinator (CR-003). */
+/** Events an observer may commit, fenced by the Coordinator. */
 export type ObserverDraft = {
   type:
     | 'decision.requested'
@@ -264,7 +264,7 @@ export function notifyObservers(
 const noProgress: Gate<ModelGateView> = {
   id: 'no_progress',
   version: 1,
-  // CR-055: every run, limited or not, waits for the person after six replies without progress.
+  // every run, limited or not, waits for the person after six replies without progress.
   check: ({ projection }) =>
     noProgressReached(projection.progress)
       ? {
@@ -297,7 +297,7 @@ const budget: Gate<ModelGateView> = {
   },
 };
 
-/** A reply to a question that has already closed (Technical-Design §8.3). */
+/** A reply to a question that has already closed. */
 const questionOpen: Gate<ToolGateView> = {
   id: 'question_open',
   version: 1,
@@ -317,8 +317,7 @@ const refuse = (code: ErrorCode, message: string, limit?: LimitHit): Refusal =>
 const denied = (message: string) => refuse('CAPABILITY_DENIED', message);
 
 /**
- * Which tools a role may use and whether the call is well formed and in scope (CRL-SEC-001,
- * CRL-COL-002/003). Unknown tools, shell or code tools included, are refused: role allowlists
+ * Which tools a role may use and whether the call is well formed and in scope . Unknown tools, shell or code tools included, are refused: role allowlists
  * name only Corral tools.
  */
 const roleAllowlist: Gate<ToolGateView> = {
@@ -371,7 +370,7 @@ const roleAllowlist: Gate<ToolGateView> = {
       ].includes(proposal.name)
     )
       return denied('this tool needs an actual harness execution');
-    // CR-055: publishing a final reply is the Coordinator's act, not a tool the work style offers.
+    // publishing a final reply is the Coordinator's act, not a tool the work style offers.
     const hostPublishes =
       view.hostAnswer === true &&
       input.role.answer === 'final_reply' &&
@@ -753,14 +752,14 @@ const roleAllowlist: Gate<ToolGateView> = {
   },
 };
 
-/** Run-wide and installation limits on what a call may start or write (Spec §9). */
+/** Run-wide and installation limits on what a call may start or write. */
 const limits: Gate<ToolGateView> = {
   id: 'limits',
   version: 1,
   check: (view) => {
     const { input, proposal, projection: p, limits, policy, parentQuestionTarget } = view;
     const { args } = proposal;
-    // Children and responders share one budget of dynamic executions (Spec §7.2).
+    // Children and responders share one budget of dynamic executions.
     const capacity = (count: number): GateDecision => {
       const spawned = Object.values(p.executions).filter(
         (e) => e.parentExecutionId !== null,
@@ -782,7 +781,7 @@ const limits: Gate<ToolGateView> = {
           { kind: 'spawns', used: spawned, max: limits.maxSpawns },
         );
       }
-      // Reserve resident capacity for the whole batch, or none of it (Technical-Design §8.1).
+      // Reserve resident capacity for the whole batch, or none of it.
       if (
         live + (proposal.name === 'spawn_subagents' && args.mode === 'items' ? 1 : count) >
         policy.maxResidentExecutions
@@ -840,7 +839,7 @@ const MAX_FILE_TEXT = 1024 * 1024;
 const isPath = (value: unknown) =>
   typeof value === 'string' && value.length > 0 && value.length <= 500;
 
-/** Shapes of file tool arguments (CR-012); the backend checks the paths themselves. */
+/** Shapes of file tool arguments; the backend checks the paths themselves. */
 function fileArgsValid(name: string, args: Record<string, unknown>): boolean {
   const keys = Object.keys(args);
   const only = (...allowed: string[]) => keys.every((k) => allowed.includes(k));

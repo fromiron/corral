@@ -8,7 +8,7 @@ import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
 import { useServices } from '../services.tsx';
 import type { MentionItem } from './composerMenu.ts';
 
-// CR-016: what `@` can point at in a session: files and folders of its working copy (or the
+// what `@` can point at in a session: files and folders of its working copy (or the
 // linked folder before there is one), results of its runs at a fixed version, its runs, and
 // the roles of its team. Names only; nothing here reads a file.
 

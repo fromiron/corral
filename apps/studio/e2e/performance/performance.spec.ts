@@ -12,7 +12,7 @@ const latencyFailures = (receiptMs: number[], domainMs: number[]) => [
   ...(p95(domainMs) > 300 ? ['committed event to UI p95 exceeds 300ms'] : []),
 ];
 
-test('[TC-UX-002-H] [TC-UX-002-N] production fixed load stays within latency and DOM budgets', async ({
+test('production fixed load stays within latency and DOM budgets', async ({
   page,
   browser,
   performanceServer,
@@ -156,7 +156,7 @@ test('[TC-UX-002-H] [TC-UX-002-N] production fixed load stays within latency and
   expect(errors).toEqual([]);
 });
 
-test('[TC-UX-002-N] rejects a 500ms server commit stall and post-commit SSE delay', async ({
+test('rejects a 500ms server commit stall and post-commit SSE delay', async ({
   page,
   performanceServer,
 }, info) => {

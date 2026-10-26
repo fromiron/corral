@@ -160,7 +160,7 @@ try {
     [],
   );
   console.log(
-    'TC-DESK-010 H/N/F PASS: native click opens the exact pending Run and approval; resolved target stays put; legacy focus, SPA document and restart boundary survive. No OS notification displayed.',
+    'H/N/F PASS: native click opens the exact pending Run and approval; resolved target stays put; legacy focus, SPA document and restart boundary survive. No OS notification displayed.',
   );
 } finally {
   await application

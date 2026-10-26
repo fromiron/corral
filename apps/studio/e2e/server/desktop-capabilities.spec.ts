@@ -272,7 +272,7 @@ const offeredTools = (body: unknown) =>
   ) ?? [];
 
 /**
- * CR-055: in a Corral session the conversation lead gives the Corral's writer one task, waits
+ * in a Corral session the conversation lead gives the Corral's writer one task, waits
  * for it and answers with its own reply. The writer keeps its pinned work style and Hashline.
  */
 function leadThenWriter(writer: Reply, answer: string): Reply {
@@ -313,7 +313,7 @@ async function readCommandReport(page: Page, capability: CapabilityFixture, sess
   return response.json();
 }
 
-test('[TC-ABS-001-H] [TC-ABS-002-H] [TC-ABS-003-H] Ask approves a real command and a read-bound Hashline edit in the managed copy', async ({
+test('Ask approves a real command and a read-bound Hashline edit in the managed copy', async ({
   page,
   capability,
 }) => {
@@ -387,7 +387,7 @@ test('[TC-ABS-001-H] [TC-ABS-002-H] [TC-ABS-003-H] Ask approves a real command a
 });
 
 for (const cancelScope of ['run', 'command'] as const) {
-  test(`[TC-ABS-001-N] ${cancelScope === 'run' ? 'Cancel whole run' : 'Stop command'} kills the owned child and grandchild before confirming cleanup`, async ({
+  test(`${cancelScope === 'run' ? 'Cancel whole run' : 'Stop command'} kills the owned child and grandchild before confirming cleanup`, async ({
     page,
     capability,
   }) => {
@@ -492,9 +492,9 @@ for (const cancelScope of ['run', 'command'] as const) {
   });
 }
 
-// CR-055 §6: the composer no longer starts a review-only reader beside a running writer, so
+// the composer no longer starts a review-only reader beside a running writer, so
 // ABS-06's same-session reader is not reachable here; the other-session writer still is.
-test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] a session writer and another session’s writer keep separate controls', async ({
+test('a session writer and another session’s writer keep separate controls', async ({
   page,
   capability,
 }) => {
@@ -504,7 +504,7 @@ test('[TC-ABS-001-H] [TC-ABS-006-H] [TC-ABS-006-N] a session writer and another 
   capability.endpoint.setReply((body) => {
     const offered = offeredTools(body);
     const messages = (body as { messages: { role: string; content: unknown }[] }).messages;
-    // Corral's current state follows the request as the last user message (CR-052), so the
+    // Corral's current state follows the request as the last user message, so the
     // request's label is the latest one in any user message.
     const users = JSON.stringify(
       messages.filter((message) => message.role === 'user').map((message) => message.content),

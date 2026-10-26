@@ -138,7 +138,7 @@ function setup(
   );
   return { transport, definition, started, outcomes };
 }
-it('[TC-HAR-015-H] rechecks each item against the loaded harness tool registry', async () => {
+it('rechecks each item against the loaded harness tool registry', async () => {
   const s = setup({ harness: true });
   await waitForProjection(s.transport, await start(s), ended);
   expect(s.outcomes[0]).toMatchObject({ ok: true, result: { remaining: 0 } });
@@ -154,7 +154,7 @@ async function start(s: ReturnType<typeof setup>) {
   if (!r.runId) throw new Error(JSON.stringify(r.receipt));
   return r.runId;
 }
-it('[TC-HAR-015-H] runs fresh item tasks serially with isolated contexts and shared parent budget', async () => {
+it('runs fresh item tasks serially with isolated contexts and shared parent budget', async () => {
   const gate = new Gate();
   const s = setup({ gate });
   const id = await start(s);
@@ -180,7 +180,7 @@ it('[TC-HAR-015-H] runs fresh item tasks serially with isolated contexts and sha
     result: { remaining: 0, tasks: [{ status: 'completed' }, { status: 'completed' }] },
   });
 });
-it('[TC-HAR-015-N] ends the batch after one failure without starting remaining items', async () => {
+it('ends the batch after one failure without starting remaining items', async () => {
   const s = setup({ fail: true });
   const id = await start(s);
   await waitForProjection(s.transport, id, ended);
@@ -190,7 +190,7 @@ it('[TC-HAR-015-N] ends the batch after one failure without starting remaining i
     result: { remaining: 1, tasks: [{ status: 'failed' }] },
   });
 });
-it('[TC-HAR-015-N] parent cancellation during an item never starts the next item', async () => {
+it('parent cancellation during an item never starts the next item', async () => {
   const gate = new Gate();
   const s = setup({ gate });
   const id = await start(s);
@@ -207,7 +207,7 @@ it('[TC-HAR-015-N] parent cancellation during an item never starts the next item
   expect(p.status).toBe('cancelled');
   expect(s.started.filter((i) => i.nodeId === 'helper')).toHaveLength(1);
 });
-it('[TC-HAR-015-N] pause prevents the next item until a revision-matched resume', async () => {
+it('pause prevents the next item until a revision-matched resume', async () => {
   const gate = new Gate(),
     s = setup({ gate }),
     id = await start(s);
@@ -234,7 +234,7 @@ it('[TC-HAR-015-N] pause prevents the next item until a revision-matched resume'
   expect((await waitForProjection(s.transport, id, ended)).status).toBe('succeeded');
   expect(s.started.filter((i) => i.nodeId === 'helper')).toHaveLength(2);
 });
-it('[TC-HAR-015-N] rejects nested item batches and a batch beside an active sibling', async () => {
+it('rejects nested item batches and a batch beside an active sibling', async () => {
   const nested = setup({ nested: true });
   await waitForProjection(nested.transport, await start(nested), ended);
   expect(nested.outcomes.filter((o) => !o.ok)).toHaveLength(2);

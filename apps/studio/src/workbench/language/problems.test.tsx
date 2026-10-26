@@ -25,7 +25,7 @@ vi.mock('./store.ts', () => ({
   languageCopyKey: (target: unknown) => JSON.stringify(target),
 }));
 
-it('[TC-WBD-018-H] preserves unversioned structured diagnostics in Problems without claiming they are current', async () => {
+it('preserves unversioned structured diagnostics in Problems without claiming they are current', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const target = {
     hostId: 'host',

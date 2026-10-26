@@ -19,7 +19,7 @@ import {
 
 let delayMs = 1500;
 const store = new InMemoryRunStore();
-// The demo's work folder and the file tools on it (02-UX-Spec §10, CR-012).
+// The demo's work folder and the file tools on it.
 const files = new DemoWorkspace(store);
 const transport = new InProcessTransport(
   new Coordinator({
@@ -27,7 +27,7 @@ const transport = new InProcessTransport(
     files,
     clock: { nowIso: () => new Date().toISOString(), monotonicMs: () => performance.now() },
     // A namespace per page load: demo runs vanish on reload, and a session saved in this
-    // browser must not mistake a new run for an old one with the same number (CR-011).
+    // browser must not mistake a new run for an old one with the same number.
     ids: new SequentialIdFactory(crypto.randomUUID().slice(0, 4)),
     timers: {
       after(ms, fn) {
@@ -36,7 +36,7 @@ const transport = new InProcessTransport(
       },
     },
     // The demo shows effort judgments with the rule baseline; the ONNX model runs only in the
-    // local server (CR-003). Observe only: nothing changes what the simulated agents do.
+    // local server. Observe only: nothing changes what the simulated agents do.
     judgments: {
       providers: [new LocalHeuristicProvider()],
       settings: { reasoning_effort: { mode: 'observe', providers: ['local-heuristic'] } },

@@ -1,4 +1,4 @@
-// CR-025 M0: an OS probe, not a sandbox enabled for Corral workers.
+// M0: an OS probe, not a sandbox enabled for Corral workers.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';

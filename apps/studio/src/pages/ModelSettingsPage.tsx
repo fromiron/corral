@@ -18,7 +18,7 @@ import { ModelUsagePanel } from './ModelUsagePanel.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 /**
- * /settings/models (Spec §4.1, C-058). Sign-in happens on the provider's own page, opened by
+ * /settings/models. Sign-in happens on the provider's own page, opened by
  * the person; this page only shows status and expiry. No token is ever sent here.
  */
 export function ModelSettingsPage() {

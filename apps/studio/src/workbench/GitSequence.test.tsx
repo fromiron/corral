@@ -105,7 +105,7 @@ async function mount(initial = state, initialStatus = status) {
   return { owner, onCommand, onRunHooksChange, render, button, click };
 }
 
-it('[TC-WBD-022-H] confirms the reviewed branch commit and policy with the complete Git snapshot', async () => {
+it('confirms the reviewed branch commit and policy with the complete Git snapshot', async () => {
   const view = await mount();
   await view.click('reviewMerge');
   expect(view.onCommand).not.toHaveBeenCalled();
@@ -131,7 +131,7 @@ it('[TC-WBD-022-H] confirms the reviewed branch commit and policy with the compl
   });
 });
 
-it('[TC-WBD-022-N] preserves every draft in the copy and requires a separate abort loss confirmation', async () => {
+it('preserves every draft in the copy and requires a separate abort loss confirmation', async () => {
   const changed: GitStatus = {
     ...status,
     entries: [
@@ -184,7 +184,7 @@ it('[TC-WBD-022-N] preserves every draft in the copy and requires a separate abo
   });
 });
 
-it('[TC-WBD-022-F] offers no sequence action for unsupported or external state and pins an owned continue', async () => {
+it('offers no sequence action for unsupported or external state and pins an owned continue', async () => {
   const view = await mount({
     ...active,
     sequence: {

@@ -121,7 +121,7 @@ async function setup(path = ':memory:') {
   };
 }
 
-it('[TC-MEET-003-H] hands off only the adopted brief and preserves session execution defaults', async () => {
+it('hands off only the adopted brief and preserves session execution defaults', async () => {
   const f = await setup();
   const receipt = await f.service.send(f.source.sessionId, f.request);
   expect(receipt).toMatchObject({
@@ -148,7 +148,7 @@ it('[TC-MEET-003-H] hands off only the adopted brief and preserves session execu
   expect(f.start).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-MEET-003-N] refuses candidates, withdrawn decisions, other projects, meetings and archives before any start', async () => {
+it('refuses candidates, withdrawn decisions, other projects, meetings and archives before any start', async () => {
   const f = await setup();
   await expect(
     f.service.send(f.source.sessionId, { ...f.request, decisionVersionId: 'candidate_1' }),
@@ -198,7 +198,7 @@ it('[TC-MEET-003-N] refuses candidates, withdrawn decisions, other projects, mee
 });
 
 it.each(['draft', 'active', 'composer', 'pending'] as const)(
-  '[TC-MEET-003-N] preserves the target and records only a draft for %s',
+  'preserves the target and records only a draft for %s',
   async (reason) => {
     const f = await setup();
     if (reason === 'active') f.activeRun.mockReturnValue(true);
@@ -222,7 +222,7 @@ it.each(['draft', 'active', 'composer', 'pending'] as const)(
   },
 );
 
-it('[TC-MEET-003-F] repeats a new-session command without another session, entry or run, including service recovery', async () => {
+it('repeats a new-session command without another session, entry or run, including service recovery', async () => {
   const f = await setup();
   const request = { ...f.request, target: { kind: 'new' as const, title: 'New work' } };
   const [first, second] = await Promise.all([
@@ -241,7 +241,7 @@ it('[TC-MEET-003-F] repeats a new-session command without another session, entry
   );
 });
 
-it('[TC-MEET-003-F] reconciles a lost start response from its receipt without dispatching again', async () => {
+it('reconciles a lost start response from its receipt without dispatching again', async () => {
   const f = await setup();
   f.start.mockImplementationOnce(async (input) => {
     f.starts.set(input.commandId, { runId: 'run_1', receipt: accepted(input.commandId) });
@@ -258,7 +258,7 @@ it('[TC-MEET-003-F] reconciles a lost start response from its receipt without di
   expect(f.start).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-MEET-003-F] cancellation wins a start race and later resends never restart it', async () => {
+it('cancellation wins a start race and later resends never restart it', async () => {
   const f = await setup();
   let finish!: (value: { runId: string; receipt: Receipt }) => void;
   f.start.mockImplementationOnce(
@@ -279,7 +279,7 @@ it('[TC-MEET-003-F] cancellation wins a start race and later resends never resta
   expect(f.start).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-MEET-003-H] reads never start a round and explicit rediscussion pins the terminal result', async () => {
+it('reads never start a round and explicit rediscussion pins the terminal result', async () => {
   const f = await setup();
   const receipt = await f.service.send(f.source.sessionId, f.request);
   f.service.receipt(f.source.sessionId, f.request.commandId);
@@ -300,7 +300,7 @@ it('[TC-MEET-003-H] reads never start a round and explicit rediscussion pins the
   expect(receipt.result?.artifactVersionId).toBe('version_1');
 });
 
-it('[TC-MEET-003-H] explicitly launches a draft once using its pinned request and original entry', async () => {
+it('explicitly launches a draft once using its pinned request and original entry', async () => {
   const f = await setup();
   const drafted = await f.service.send(f.source.sessionId, { ...f.request, action: 'draft' });
   const request = { commandId: 'launch_1', targetHasDraft: false };
@@ -318,7 +318,7 @@ it('[TC-MEET-003-H] explicitly launches a draft once using its pinned request an
   expect(f.start).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-MEET-003-N] explicit draft launch still preserves active work and unsent inputs', async () => {
+it('explicit draft launch still preserves active work and unsent inputs', async () => {
   const f = await setup();
   await f.service.send(f.source.sessionId, { ...f.request, action: 'draft' });
   expect(
@@ -337,7 +337,7 @@ it('[TC-MEET-003-N] explicit draft launch still preserves active work and unsent
   expect(f.start).not.toHaveBeenCalled();
 });
 
-it('[TC-MEET-003-H] pins a chosen Corral revision across later edits and draft launch', async () => {
+it('pins a chosen Corral revision across later edits and draft launch', async () => {
   const f = await setup();
   const saved = await f.repository.save({
     definition: CorralDefinition.parse(researchTeam),
@@ -366,7 +366,7 @@ it('[TC-MEET-003-H] pins a chosen Corral revision across later edits and draft l
   expect((await f.repository.getSession(f.target.sessionId))?.corralId).toBeNull();
 });
 
-it('[TC-MEET-003-F] an active run appearing during preparation falls back to a draft', async () => {
+it('an active run appearing during preparation falls back to a draft', async () => {
   const f = await setup();
   f.start.mockImplementationOnce(async (input) => ({
     runId: null,
@@ -385,7 +385,7 @@ it('[TC-MEET-003-F] an active run appearing during preparation falls back to a d
   });
 });
 
-it('[TC-MEET-003-F] a cancelled start whose response is lost still cancels the committed run', async () => {
+it('a cancelled start whose response is lost still cancels the committed run', async () => {
   const f = await setup();
   let finish!: () => void;
   f.start.mockImplementationOnce(async (input) => {
@@ -403,7 +403,7 @@ it('[TC-MEET-003-F] a cancelled start whose response is lost still cancels the c
   expect(f.cancelStart).toHaveBeenCalledTimes(2);
 });
 
-it('[TC-MEET-003-F] reopens a persisted draft receipt and starts the original target and entry', async () => {
+it('reopens a persisted draft receipt and starts the original target and entry', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'corral-handoff-'));
   directories.push(directory);
   const file = join(directory, 'workspace.sqlite');

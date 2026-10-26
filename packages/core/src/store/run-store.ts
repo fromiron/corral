@@ -16,12 +16,12 @@ import type {
 } from '@corral/contracts';
 import type { RunProjection } from '../projection.ts';
 
-// Where committed run facts live (C-011, ADR-003). One commit = one transaction that writes
+// Where committed run facts live. One commit = one transaction that writes
 // the events, the updated projection (which carries effect intents), the command record and
 // artifact bodies together, or nothing at all. Methods are synchronous: better-sqlite3 is, and
 // the in-memory store must behave the same way so tests exercise the real commit path.
 
-/** What a run was started with, fixed for its whole life (C-057, CRL-CAN-002). */
+/** What a run was started with, fixed for its whole life. */
 export interface RunSnapshot {
   imageProfiles?: Record<string, ImageGenerationProfile>;
   permissionMode?: PermissionMode;
@@ -35,16 +35,16 @@ export interface RunSnapshot {
   /** Immutable version of the completion criteria the run started with. */
   criteriaVersionId: string;
   mode: 'mock' | 'live';
-  /** What each model profile resolved to at start (C-058); the run never re-resolves. */
+  /** What each model profile resolved to at start; the run never re-resolves. */
   models: Record<string, ModelProfileSnapshot>;
   /** Role IDs to pinned harnesses; absent for legacy runs. */
   harnesses?: Record<string, EffectiveHarnessSnapshot>;
   reasoningApply?: ReasoningApplySettings;
-  /** The auto choice the definition came from (CR-024); absent for chosen teams. */
+  /** The auto choice the definition came from; absent for chosen teams. */
   autoRoute?: AutoRoute;
-  /** CR-049: the meeting answer this Run is. */
+  /** the meeting answer this Run is. */
   meeting?: MeetingRunOrigin;
-  /** CR-054: where this Run's copied session turns came from; the text is its own record. */
+  /** where this Run's copied session turns came from; the text is its own record. */
   conversation?: ContinuedConversation;
   startedAt: string;
 }
@@ -53,7 +53,7 @@ export interface StoredRun {
   runId: string;
   snapshot: RunSnapshot;
   projection: RunProjection;
-  /** The work session the run continues (CR-011); kept beside the snapshot, not in it. */
+  /** The work session the run continues; kept beside the snapshot, not in it. */
   sessionId?: string | null;
 }
 
@@ -75,11 +75,11 @@ export interface RunSummary {
   corralId: string;
   startedAt: string;
   /**
-   * The project the run started in (CR-010), fixed at start. Null where the store does not
+   * The project the run started in, fixed at start. Null where the store does not
    * record it (the in-browser runtime): the Corral's project stands in.
    */
   projectId: string | null;
-  /** The work session it belongs to (CR-011), or null. */
+  /** The work session it belongs to, or null. */
   sessionId: string | null;
 }
 

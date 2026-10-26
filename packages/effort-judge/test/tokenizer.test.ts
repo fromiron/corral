@@ -15,8 +15,8 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe('compact BPE tokenizer (C-072, ported from mixdog)', () => {
-  it('[TC-DEC-001-H] applies merges by rank, keeps the template ids and falls back to bytes', () => {
+describe('compact BPE tokenizer (ported from mixdog)', () => {
+  it('applies merges by rank, keeps the template ids and falls back to bytes', () => {
     const tok = loadCompactTokenizer(tiny());
     expect(tok.prefix).toEqual([1]);
     expect(tok.suffix).toEqual([2]);
@@ -28,7 +28,7 @@ describe('compact BPE tokenizer (C-072, ported from mixdog)', () => {
     expect(tok.encode('ab<eos>')).toEqual([5, 2]);
   });
 
-  it('[TC-DEC-001-N] characters with neither a token nor byte ids become unk, and a cached build is reused', () => {
+  it('characters with neither a token nor byte ids become unk, and a cached build is reused', () => {
     const dir = tiny();
     expect(loadCompactTokenizer(dir).encode('x')).toEqual([0]);
     // The second load reads tokenizer.bin and must encode identically.

@@ -6,7 +6,7 @@ import { ScriptedAgentAdapter } from '@corral/testkit';
 import { expect, it } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
-it('[TC-ABS-008-H] schedule HTTP command uses Auto/Coordinator and persists conversation readback across restart', async () => {
+it('schedule HTTP command uses Auto/Coordinator and persists conversation readback across restart', async () => {
   const workspace = mkdtempSync(join(tmpdir(), 'corral-schedules-api-'));
   const bootstrapToken = 'schedules-test-token-0123456789abcdef';
   const start = () =>

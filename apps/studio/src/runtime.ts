@@ -11,12 +11,12 @@ export type DemoWorkspaceCall = (
   ...args: unknown[]
 ) => Promise<unknown>;
 
-/** ADR-016: the same Coordinator and transport run in a worker, without a server or keys. */
+/** the same Coordinator and transport run in a worker, without a server or keys. */
 export function createDemoTransport(): RuntimeTransport {
   return createDemoRuntime().transport;
 }
 
-/** The demo worker's transport and its work folder (02-UX-Spec §10). */
+/** The demo worker's transport and its work folder. */
 export function createDemoRuntime(): {
   transport: RuntimeTransport;
   workspace: DemoWorkspaceCall;

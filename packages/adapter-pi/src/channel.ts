@@ -11,7 +11,7 @@ import {
 } from './processes/capacity.ts';
 import { recordWorkerLease, recoverSdkWorkers } from './worker-leases.ts';
 
-// The transport between host and one worker (ADR-017: one child process per execution,
+// The transport between host and one worker (one child process per execution,
 // spawned when needed). The protocol does not depend on it, so tests use a memory pair and
 // the server uses a child process.
 
@@ -63,7 +63,7 @@ export function memoryChannelPair(): { host: Channel; worker: Channel } {
 
 /**
  * A worker in its own Node process over the IPC channel. stdout is ignored and stderr is
- * kept only as a short diagnostic tail, never parsed as protocol (Technical-Design §7.4).
+ * kept only as a short diagnostic tail, never parsed as protocol.
  */
 export function processChannel(
   entry: string,

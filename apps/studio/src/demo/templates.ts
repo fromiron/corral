@@ -1,8 +1,8 @@
 import { type CorralDefinition, DEFAULT_LIMITS } from '@corral/contracts';
 import { addNode, connect, emptyDraft } from '@corral/react';
 
-// Demo templates (C-063). The default shows what the runtime is for: delegation, a question,
-// a review Loop that revises once, and human approval (Spec §6). `starter` is the single
+// Demo templates. The default shows what the runtime is for: delegation, a question,
+// a review Loop that revises once, and human approval. `starter` is the single
 // Agent → Output Corral the demo opened with before.
 
 export type DemoTemplateId = 'research-team' | 'starter';

@@ -31,7 +31,7 @@ async function start(transport: ReturnType<typeof liveRuntime>['transport'], mee
   return runId;
 }
 
-it('[TC-MEET-001-H] commits a clean plain meeting answer through Coordinator tools without another model request', async () => {
+it('commits a clean plain meeting answer through Coordinator tools without another model request', async () => {
   let prompt: string | undefined;
   const { transport, credentialCalls } = liveRuntime([
     (context) => {
@@ -70,7 +70,7 @@ it.each([
   ['whitespace', fauxAssistantMessage('  \n  ')],
   ['truncated', fauxAssistantMessage('Incomplete answer', { stopReason: 'length' })],
   ['provider error', fauxAssistantMessage('Partial answer', { stopReason: 'error' })],
-] as const)('[TC-MEET-001-F] does not submit %s meeting output', async (_case, response) => {
+] as const)('does not submit %s meeting output', async (_case, response) => {
   const { transport, credentialCalls } = liveRuntime([response]);
   const final = await waitForProjection(transport, await start(transport), terminal);
   expect(final.status).toBe('failed');
@@ -79,7 +79,7 @@ it.each([
   expect(credentialCalls).toHaveLength(1);
 });
 
-it('[TC-MEET-001-F] does not replace an incomplete tool workflow with the following plain text', async () => {
+it('does not replace an incomplete tool workflow with the following plain text', async () => {
   const { transport, credentialCalls } = liveRuntime([
     fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Unsubmitted draft.' })], {
       stopReason: 'toolUse',
@@ -93,7 +93,7 @@ it('[TC-MEET-001-F] does not replace an incomplete tool workflow with the follow
   expect(credentialCalls).toHaveLength(2);
 });
 
-it('[TC-MEET-001-N] does not infer meeting authority from an ordinary work definition', async () => {
+it('does not infer meeting authority from an ordinary work definition', async () => {
   const { transport } = liveRuntime([fauxAssistantMessage('This is only a work response.')]);
   const final = await waitForProjection(transport, await start(transport, false), terminal);
   expect(final.status).toBe('failed');
@@ -101,7 +101,7 @@ it('[TC-MEET-001-N] does not infer meeting authority from an ordinary work defin
   expect(Object.values(final.toolCalls)).toHaveLength(0);
 });
 
-it('[TC-MEET-001-N] a stopped meeting answer cannot submit late plain text', async () => {
+it('a stopped meeting answer cannot submit late plain text', async () => {
   const gate = new Gate();
   const { transport } = liveRuntime([
     async () => {
@@ -125,7 +125,7 @@ it('[TC-MEET-001-N] a stopped meeting answer cannot submit late plain text', asy
   expect(Object.values(final.toolCalls)).toHaveLength(0);
 });
 
-it('[TC-MEET-001-N] cancellation after saving the plain answer prevents its submission', async () => {
+it('cancellation after saving the plain answer prevents its submission', async () => {
   const { transport } = liveRuntime([fauxAssistantMessage('Answer before the stop.')]);
   const runId = await start(transport);
   transport.subscribe(runId, 0, {

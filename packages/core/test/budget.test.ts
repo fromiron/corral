@@ -18,8 +18,8 @@ const reserve = (id: string, outputTokens: number) =>
     amount: { outputTokens, modelCalls: 1 },
   });
 
-describe('output-token reservations (C-037)', () => {
-  it('[TC-ABS-010-N] image currency reservations remain charged when unknown and reconcile once from actual billing evidence', () => {
+describe('output-token reservations', () => {
+  it('image currency reservations remain charged when unknown and reconcile once from actual billing evidence', () => {
     const profile = {
       profileId: 'images',
       modelProfileId: 'provider',
@@ -70,7 +70,7 @@ describe('output-token reservations (C-037)', () => {
     });
     expect(settlementFor(budget, 'image_one', 0, 125000)).toBeNull();
   });
-  it('[TC-RUN-006-H] concurrent requests reserve only the remaining output budget', () => {
+  it('concurrent requests reserve only the remaining output budget', () => {
     const limits = { ...DEFAULT_LIMITS, maxOutputTokens: 5_000 };
     let budget = emptyBudget();
     expect(admitModelRequest(budget, limits)).toEqual({ ok: true, maxOutputTokens: 4_096 });
@@ -83,7 +83,7 @@ describe('output-token reservations (C-037)', () => {
     });
   });
 
-  it('[TC-RUN-006-N] unknown usage keeps its reservation charged; late actual usage settles once', () => {
+  it('unknown usage keeps its reservation charged; late actual usage settles once', () => {
     let budget = applyBudgetEvent(emptyBudget(), reserve('first', 4_096));
     budget = applyBudgetEvent(
       budget,
@@ -103,7 +103,7 @@ describe('output-token reservations (C-037)', () => {
     expect(settlementFor(budget, 'missing', 27)).toBeNull();
   });
 
-  it('[TC-RNS-007-H] [TC-RNS-007-N] patches change future admission without refunding spent or reserved', () => {
+  it('patches change future admission without refunding spent or reserved', () => {
     let budget = applyBudgetEvent(emptyBudget(), reserve('first', 100));
     budget = applyBudgetEvent(budget, event('budget.settled', settlementFor(budget, 'first', 80)));
     budget = applyBudgetEvent(budget, reserve('second', 100));
@@ -122,7 +122,7 @@ describe('output-token reservations (C-037)', () => {
     expect(budget).toEqual(before);
   });
 
-  it('[TC-RACE-05] seeded reserve, settle, duplicate and late settlement preserve INV-08', () => {
+  it('seeded reserve, settle, duplicate and late settlement preserve INV-08', () => {
     fc.assert(
       fc.property(
         fc.array(

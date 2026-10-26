@@ -15,7 +15,7 @@ import { ConversationSource } from './session-continuity.ts';
 import { UserAnswers } from './user-input.ts';
 
 // Commands from contracts/command.schema.json. A command is an intent; the Coordinator
-// decides whether it becomes events (Technical-Design §5.2).
+// decides whether it becomes events.
 
 const base = {
   schemaVersion: SchemaVersion,
@@ -186,13 +186,13 @@ export type RunCommandType = RunCommand['type'];
 
 /** POST /runs: start a run from a validated definition snapshot. */
 /**
- * Start from a version of an earlier Run (CR-007): its text is copied into the new brief. The
+ * Start from a version of an earlier Run: its text is copied into the new brief. The
  * new Run never refers to the old Run's versions.
  */
 export const StartFrom = z.strictObject({ runId: Identifier, artifactVersionId: Identifier });
 export type StartFrom = z.infer<typeof StartFrom>;
 
-/** A path inside the work folder: relative, no `..`, no drive or leading slash (CR-016). */
+/** A path inside the work folder: relative, no `..`, no drive or leading slash. */
 const ReferencePath = z
   .string()
   .min(1)
@@ -206,7 +206,7 @@ const ReferencePath = z
   );
 
 /**
- * CR-016: what a person pointed at with `@`. A reference never grants a tool or a path; the run
+ * what a person pointed at with `@`. A reference never grants a tool or a path; the run
  * reads files only through the tools its roles already have. A result is copied at this version.
  */
 export const RunReference = z.discriminatedUnion('kind', [
@@ -243,21 +243,21 @@ export const StartRunRequest = z.strictObject({
   definition: CorralDefinition,
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
-  /** The work session this run continues (CR-011); recorded with the run, not in its snapshot. */
+  /** The work session this run continues; recorded with the run, not in its snapshot. */
   sessionId: Identifier.optional(),
-  /** CR-054: carry the session's turns through an ended run of the same session. */
+  /** carry the session's turns through an ended run of the same session. */
   conversation: ConversationSource.optional(),
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
   roleOverrides: RoleRunOverrides.optional(),
-  /** The auto choice this run's definition came from (CR-024); set by the runtime's starter. */
+  /** The auto choice this run's definition came from; set by the runtime's starter. */
   autoRoute: AutoRoute.optional(),
-  /** CR-055: the session request a conversation start came from, so a resend finds this run. */
+  /** the session request a conversation start came from, so a resend finds this run. */
   autoRequestHash: z
     .string()
     .regex(/^[0-9a-f]{64}$/)
     .optional(),
-  /** CR-049: one meeting answer. Only the meeting service sets it; HTTP starts refuse it. */
+  /** one meeting answer. Only the meeting service sets it; HTTP starts refuse it. */
   meeting: MeetingRunOrigin.optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;

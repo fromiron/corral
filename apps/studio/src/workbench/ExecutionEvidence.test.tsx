@@ -150,7 +150,7 @@ const ops = [
   },
 ];
 
-it('[TC-WBD-015-H] an execution leads to the files it wrote, its results and its checks', async () => {
+it('an execution leads to the files it wrote, its results and its checks', async () => {
   const view = await mount('exec_a', async () => ops);
   const text = view.container.textContent ?? '';
   expect(text).toContain('src/a.ts');
@@ -182,7 +182,7 @@ it('[TC-WBD-015-H] an execution leads to the files it wrote, its results and its
   expect(text).not.toContain('Result v2');
 });
 
-it('[TC-WBD-015-F] a late answer for the session left behind is not shown for the next one', async () => {
+it('a late answer for the session left behind is not shown for the next one', async () => {
   let release = (_value: unknown) => {};
   const slow = new Promise((done) => {
     release = done;

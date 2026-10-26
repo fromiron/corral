@@ -15,8 +15,8 @@ import {
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
 
-// Committed events of one run (C-060, OBS-001). Only the rows in view are in the DOM, so a run
-// with 10,000 events costs the same as one with 50 (Spec §10.3). New events are appended
+// Committed events of one run. Only the rows in view are in the DOM, so a run
+// with 10,000 events costs the same as one with 50. New events are appended
 // below: the selection and the scroll position stay where the reader left them.
 
 const ROW_HEIGHT = 36;

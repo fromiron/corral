@@ -62,7 +62,7 @@ async function mount(api: Record<string, unknown>) {
   await render('s1');
   return { element, render, button: () => element.querySelector('button') };
 }
-it('[TC-WBD-017-H] explicitly enables the returned target and shows external-write limits', async () => {
+it('explicitly enables the returned target and shows external-write limits', async () => {
   let state = strict;
   const start = vi.fn(async () => {
     state = shared;
@@ -83,7 +83,7 @@ it('[TC-WBD-017-H] explicitly enables the returned target and shows external-wri
   await act(async () => view.button()?.click());
   expect(finish).toHaveBeenCalledWith('s1', 'dev1', target);
 });
-it('[TC-WBD-017-N] disabled hosts cannot opt in; uncertain state offers only explicit reconciliation', async () => {
+it('disabled hosts cannot opt in; uncertain state offers only explicit reconciliation', async () => {
   const enter = vi.fn();
   const view = await mount({
     developmentState: async (id: string) =>
@@ -110,7 +110,7 @@ it('[TC-WBD-017-N] disabled hosts cannot opt in; uncertain state offers only exp
   expect(view.element.textContent).toContain(messages.Development.blocked);
   expect(enter).not.toHaveBeenCalled();
 });
-it('[TC-WBD-017-F] an old session response never activates the new session', async () => {
+it('an old session response never activates the new session', async () => {
   let resolve!: (state: DevelopmentState) => void;
   const view = await mount({
     developmentState: (id: string) =>
@@ -125,7 +125,7 @@ it('[TC-WBD-017-F] an old session response never activates the new session', asy
   expect(view.element.textContent).not.toContain(messages.Development.sharedNote);
 });
 
-it('[TC-WBD-017-N] a session without a working copy waits until one is created before reading development state', async () => {
+it('a session without a working copy waits until one is created before reading development state', async () => {
   let hasCopy = false;
   const developmentState = vi.fn(async () => strict);
   const view = await mount({

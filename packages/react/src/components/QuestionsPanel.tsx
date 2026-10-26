@@ -6,7 +6,7 @@ import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
 /**
- * Questions between agents (C-025, Spec §7.2): who asked whom, the answer, and the evidence.
+ * Questions between agents: who asked whom, the answer, and the evidence.
  * Each question links to the responder's own execution, a new task created to answer it.
  */
 export function QuestionsPanel({

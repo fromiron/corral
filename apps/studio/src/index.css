@@ -136,7 +136,7 @@
 .chat-timeline {
   scrollbar-gutter: stable;
 }
-/* CR-053: Overview widgets float in the empty margin right of the centered conversation and
+/* Overview widgets float in the empty margin right of the centered conversation and
    stay put while it scrolls; the view keeps its own layout. When that margin cannot hold them
    they hide, and the composer's Overview button opens the same widgets. */
 [data-chat-view] {
@@ -186,7 +186,7 @@
   .corral-quiet-activity > span {
     animation: none;
   }
-  /* CR-055: a running turn's header stays still; its ticking time still says it works. */
+  /* a running turn's header stays still; its ticking time still says it works. */
   .turn-process .shimmer-text {
     animation: none;
     color: var(--muted-foreground);
@@ -277,7 +277,7 @@
   }
 }
 
-/* Run page (C-066): graph in the middle, call tree beside it, details docked below, and the
+/* Run page: graph in the middle, call tree beside it, details docked below, and the
    selected item's context on the right. Below 1280px the tree moves under the graph. */
 .run-layout {
   display: grid;
@@ -299,7 +299,7 @@
       "dock side";
   }
 }
-/* Phones, split screens and the side panel (roadmap 19, UX-03): one panel at a time, chosen
+/* Phones, split screens and the side panel: one panel at a time, chosen
    above. Measured on the run view's own width, not the window's. */
 @container (max-width: 767px) {
   .run-layout {
@@ -313,7 +313,7 @@
     border-right-width: 0;
   }
 }
-/* CR-017: room for the window buttons the system draws over the top bar (Window Controls
+/* room for the window buttons the system draws over the top bar (Window Controls
    Overlay); without an overlay the env() fallbacks leave the normal padding. */
 .desktop-app .app-topbar {
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);

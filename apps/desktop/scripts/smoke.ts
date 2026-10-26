@@ -58,7 +58,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   console.log('Window attached');
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 30000 });
-  // CR-017: the system draws the window buttons over the top bar; Studio draws none of its own.
+  // the system draws the window buttons over the top bar; Studio draws none of its own.
   await expect(page.getByRole('button', { name: 'Close window' })).toHaveCount(0);
   console.log(
     'Window controls overlay:',
@@ -68,7 +68,7 @@ try {
           .windowControlsOverlay?.visible ?? 'unsupported',
     ),
   );
-  // CR-040: switching an idle workspace still asks; cancelling preserves the running server.
+  // switching an idle workspace still asks; cancelling preserves the running server.
   const initialWorkspace = await page.evaluate(
     async () =>
       (
@@ -183,7 +183,7 @@ try {
     'second launch preserves the existing window',
   );
   await page.getByRole('banner').dispatchEvent('dblclick');
-  // CR-017: a native menu item runs the page's own command (the palette here).
+  // a native menu item runs the page's own command (the palette here).
   await application.evaluate(({ Menu }) => {
     const find = (items: Electron.MenuItem[]): Electron.MenuItem | undefined =>
       items.find((item) => item.label === 'Command palette') ??
@@ -227,7 +227,7 @@ try {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Appearance', exact: true }).click();
   await page.getByRole('option', { name: 'Dark', exact: true }).click();
-  // CR-017: the window follows the page's theme.
+  // the window follows the page's theme.
   await expect
     .poll(() =>
       application?.evaluate(({ BrowserWindow }) =>
@@ -235,7 +235,7 @@ try {
       ),
     )
     .toBe('#151615');
-  // CR-044: native zoom and menu shortcuts respect the settings modal.
+  // native zoom and menu shortcuts respect the settings modal.
   await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
   const settingsUrl = page.url();
   await page.keyboard.press('Control+n');
@@ -378,7 +378,7 @@ try {
   ).toBeVisible({
     timeout: 30000,
   });
-  // TC-WBD-026-F: an obsolete recovery load must not report that the installation is broken.
+  // an obsolete recovery load must not report that the installation is broken.
   assert.deepEqual(
     await application.evaluate(
       () => (globalThis as unknown as { desktopSmokeErrors: string[] }).desktopSmokeErrors,

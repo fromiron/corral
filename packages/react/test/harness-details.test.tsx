@@ -7,7 +7,7 @@ import { HarnessDetails } from '../src/components/HarnessDetails.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
 
-it('[TC-HAR-003-H] shows the pinned resource, final context, payload and unmanaged call evidence', () => {
+it('shows the pinned resource, final context, payload and unmanaged call evidence', () => {
   const definition = linearCorral(['writer']);
   const envelope = {
     schemaVersion: '0.1',

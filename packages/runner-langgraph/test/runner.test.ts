@@ -60,9 +60,9 @@ function scripted(decisions: string[], failing: Set<string>) {
   return { log, callbacks };
 }
 
-describe('LangGraph runner parity with the reference runner (C-014)', () => {
+describe('LangGraph runner parity with the reference runner', () => {
   it.each(['patch', 'approval'] as const)(
-    '[TC-RNS-006-H] a runtime Loop %s can use all ten permitted rounds',
+    'a runtime Loop %s can use all ten permitted rounds',
     async (extension) => {
       const run = async (runner: GraphRunner) => {
         const plan = planOf(researchTeam);

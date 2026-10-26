@@ -17,8 +17,8 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// CR-054: a session follow-up carries the session's earlier requests and answers as turns the
-// Coordinator copies from its own records, instead of CR-007's "Start from this earlier version".
+// a session follow-up carries the session's earlier requests and answers as turns the
+// Coordinator copies from its own records, instead of "Start from this earlier version".
 
 const SESSION = 'session_chat';
 const ended = (status: string) => ['succeeded', 'failed', 'cancelled'].includes(status);
@@ -94,8 +94,8 @@ const briefOf = (input: AgentStartInput | undefined) =>
 const started = (s: Setup, runId: string) =>
   s.store.readEvents(runId, 0)[0]?.payload as Record<string, unknown>;
 
-describe('session conversation continuity (CR-054)', () => {
-  it('[TC-LLM-007-H] a follow-up carries earlier requests and answers as turns and keeps its brief as typed', async () => {
+describe('session conversation continuity', () => {
+  it('a follow-up carries earlier requests and answers as turns and keeps its brief as typed', async () => {
     const s = setup();
     const first = await turn(s, 'cmd_first', '피보나치 수열 설명해봐');
     const firstAnswer = first.projection?.output?.artifactVersionIds[0] ?? '';
@@ -140,7 +140,7 @@ describe('session conversation continuity (CR-054)', () => {
     expect(later?.conversation?.turns[0]).toEqual(input?.conversation?.turns[0]);
   });
 
-  it('[TC-LLM-007-H] the recorded request of an earlier CR-007 run is sent without its copied start point', async () => {
+  it('the recorded request of an earlier start-from run is sent without its copied start point', async () => {
     const s = setup();
     const first = await turn(s, 'cmd_a', 'Write a haiku.');
     const legacy = await turn(s, 'cmd_legacy', 'Shorter, please.', {
@@ -159,7 +159,7 @@ describe('session conversation continuity (CR-054)', () => {
     ]);
   });
 
-  it('[TC-LLM-007-N] a request without a result contributes its status, and later agents get no turns', async () => {
+  it('a request without a result contributes its status, and later agents get no turns', async () => {
     const s = setup();
     const failed = await turn(s, 'cmd_fail', 'FAIL');
     expect(failed.projection?.status).toBe('failed');
@@ -182,7 +182,7 @@ describe('session conversation continuity (CR-054)', () => {
     expect(editor?.conversation).toBeUndefined();
   });
 
-  it('[TC-LLM-007-N] oversized history drops the oldest turns and then the newest answer', async () => {
+  it('oversized history drops the oldest turns and then the newest answer', async () => {
     const s = setup({ maxArtifactBytes: 60 });
     const one = await turn(s, 'cmd_one', 'first question');
     const two = await turn(s, 'cmd_two', 'second question');
@@ -220,7 +220,7 @@ describe('session conversation continuity (CR-054)', () => {
     });
   });
 
-  it('[TC-LLM-007-N] refuses a conversation it cannot read from this session, and starts nothing', async () => {
+  it('refuses a conversation it cannot read from this session, and starts nothing', async () => {
     const gate = new Gate();
     const s = setup({ gate });
     const first = await turn(s, 'cmd_first', 'hello');
@@ -256,7 +256,7 @@ describe('session conversation continuity (CR-054)', () => {
     await waitForProjection(s.transport, active.runId!, (p) => ended(p.status));
   });
 
-  it('[TC-LLM-007-F] a repeated start returns the same run, and a changed copy fails private export checks', async () => {
+  it('a repeated start returns the same run, and a changed copy fails private export checks', async () => {
     const s = setup();
     const first = await turn(s, 'cmd_first', 'hello');
     const request = { conversation: { throughRunId: first.runId } };

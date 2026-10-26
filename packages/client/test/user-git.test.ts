@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { WorkspacesApi } from '../src/index.ts';
 
-it('[TC-WBD-008-H] discovers the requested scope and preserves raw paths and exact diff preconditions in authenticated GETs', async () => {
+it('discovers the requested scope and preserves raw paths and exact diff preconditions in authenticated GETs', async () => {
   const calls: { url: URL; init: RequestInit | undefined }[] = [];
   const response = { observed: true };
   const api = new WorkspacesApi({
@@ -61,7 +61,7 @@ it('[TC-WBD-008-H] discovers the requested scope and preserves raw paths and exa
   expect(calls).toHaveLength(4);
 });
 
-it('[TC-WBD-008-F] preserves a stale-index refusal without replaying the read against another revision', async () => {
+it('preserves a stale-index refusal without replaying the read against another revision', async () => {
   const fetcher = vi
     .fn<typeof fetch>()
     .mockResolvedValue(

@@ -55,7 +55,7 @@ async function until(check: () => Promise<boolean>) {
   throw new Error('Process did not reach the expected observable state');
 }
 
-it('[TC-ABS-006-H] [TC-WBD-026-H] shares twelve host slots across real commands, registered checks and language servers', async () => {
+it('shares twelve host slots across real commands, registered checks and language servers', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corral-host-capacity-'));
   directories.push(directory);
   const root = join(directory, 'source');
@@ -185,7 +185,7 @@ it('[TC-ABS-006-H] [TC-WBD-026-H] shares twelve host slots across real commands,
 }, 120000);
 
 it.skipIf(process.platform !== 'win32')(
-  '[TC-ABS-006-N] retains an unknown native Job cleanup reservation after its owner crashes',
+  'retains an unknown native Job cleanup reservation after its owner crashes',
   async () => {
     const processes = Array.from({ length: 12 }, () => {
       const child = spawnOwnedProcess(process.execPath, ['-e', 'setInterval(()=>{},1000)']);

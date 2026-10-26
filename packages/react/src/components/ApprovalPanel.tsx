@@ -17,7 +17,7 @@ import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
 /**
- * Decisions waiting for the person (C-029, Spec §7.5): each names the exact versions and the
+ * Decisions waiting for the person: each names the exact versions and the
  * criteria it is about. Approving applies to that subject only; a newer version needs its own.
  */
 export function ApprovalPanel({

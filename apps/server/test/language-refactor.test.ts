@@ -135,7 +135,7 @@ async function fixture() {
   return { broker, connection, scope, root, edits, publish, uri };
 }
 
-it('[TC-WBD-021-H] stages saved multi-document refactors with captured versions and leaves commands unavailable', async () => {
+it('stages saved multi-document refactors with captured versions and leaves commands unavailable', async () => {
   const s = await fixture();
   s.connection.propose.mockResolvedValueOnce([
     { title: 'Rename', edit: s.edits },
@@ -212,7 +212,7 @@ it('[TC-WBD-021-H] stages saved multi-document refactors with captured versions 
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
 });
 
-it('[TC-WBD-021-N] rejects dirty source or affected buffers and discards a response after another document changes', async () => {
+it('rejects dirty source or affected buffers and discards a response after another document changes', async () => {
   const s = await fixture();
   const input = {
     ...s.scope,

@@ -42,7 +42,7 @@ const wrap = (ui: React.ReactNode) =>
     </IntlProvider>,
   );
 
-describe('Task Board and questions (C-025)', () => {
+describe('Task Board and questions', () => {
   it('lists every task with its owner, parent and submitted versions', async () => {
     const session = await finishedRun();
     const onOpen = vi.fn();
@@ -63,7 +63,7 @@ describe('Task Board and questions (C-025)', () => {
     }
   });
 
-  it('[TC-OBS-001-H] goes from a question to its responder and the answer', async () => {
+  it('goes from a question to its responder and the answer', async () => {
     const session = await finishedRun();
     wrap(<QuestionsPanel session={session} onOpenArtifact={vi.fn()} />);
     const p = session.getState().projection;

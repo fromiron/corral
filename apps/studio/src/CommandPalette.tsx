@@ -140,7 +140,7 @@ export function CommandLayer() {
       window.removeEventListener('corral:shortcut-context', sync);
     };
   }, [bindings]);
-  // The desktop menu asks for commands by name; they run like their shortcuts (CR-017).
+  // The desktop menu asks for commands by name; they run like their shortcuts.
   useEffect(
     () =>
       desktop?.onCommand((id) => {
@@ -350,7 +350,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
                   navigate({ to: '/sessions/$sessionId', params: { sessionId: x.sessionId } }),
               }),
             ),
-          // CR-010: switch to any active project but the current one.
+          // switch to any active project but the current one.
           ...projects
             .filter((p) => !p.archivedAt && p.projectId !== currentProject())
             .map(
@@ -412,7 +412,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         },
       }),
     );
-    // Only in the editor: the canvas listens for the tidy event (roadmap 18).
+    // Only in the editor: the canvas listens for the tidy event.
     const editing = /\/corrals\/[^/]+\/edit$|^\/demo$/.test(window.location.pathname);
     const tidy: AppCommand[] = editing
       ? [

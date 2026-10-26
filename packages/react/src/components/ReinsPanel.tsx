@@ -16,7 +16,7 @@ export interface SteerTarget {
 }
 
 /**
- * Reins for one execution (Spec §4.4). The header always says who receives the instruction,
+ * Reins for one execution. The header always says who receives the instruction,
  * when it takes effect and how far it reaches. Directive badges change only on committed events.
  */
 export function ReinsPanel({
@@ -36,7 +36,7 @@ export function ReinsPanel({
     text: string;
     commandId?: string;
   } | null>(null);
-  // Pinned to the run and execution it was opened for (CR-046 P18).
+  // Pinned to the run and execution it was opened for.
   const [cancelTarget, setCancelTarget] = useState<{
     runId: string | null;
     executionId: string;
@@ -101,7 +101,7 @@ export function ReinsPanel({
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey) return;
-    // IME: the Enter that confirms a Korean/Japanese composition must not send (UX-001).
+    // IME: the Enter that confirms a Korean/Japanese composition must not send.
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     void send();

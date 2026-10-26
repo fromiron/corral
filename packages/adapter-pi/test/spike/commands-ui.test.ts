@@ -7,7 +7,7 @@ import type {
 import { afterEach, describe, expect, it } from 'vitest';
 import { spikeSession } from './sdk-session.ts';
 
-// S7 (CR-018, plan §6 H1): extension commands and dialogs.
+// S7: extension commands and dialogs.
 // - A command (like `/ponytail ultra`) runs before a run starts and changes later requests.
 // - Pi refuses extension commands while a run is streaming, so Corral cannot route one into a
 //   running execution: in R1 they are run options, given before the run starts.
@@ -48,7 +48,7 @@ function modeExtension(onTool?: () => Promise<void>) {
 }
 
 describe('S7: extension commands and dialogs', () => {
-  it('[TC-HAR-007-H] a command before the run changes the requests, without a model call', async () => {
+  it('a command before the run changes the requests, without a model call', async () => {
     const run = await spikeSession({
       responses: [fauxAssistantMessage('Done.')],
       extensions: [modeExtension()],
@@ -60,7 +60,7 @@ describe('S7: extension commands and dialogs', () => {
     expect(run.log.requests[0]?.systemPrompt).toContain('Mode: ultra.');
   });
 
-  it('[TC-HAR-007-N] Pi refuses an extension command while the run is going', async () => {
+  it('Pi refuses an extension command while the run is going', async () => {
     let session: AgentSession | undefined;
     let refusal = '';
     const run = await spikeSession({
@@ -82,7 +82,7 @@ describe('S7: extension commands and dialogs', () => {
     expect(refusal).toContain('cannot be queued');
   });
 
-  it('[TC-HAR-007-H] a dialog reaches the host with its title and timeout, and gets the host answer', async () => {
+  it('a dialog reaches the host with its title and timeout, and gets the host answer', async () => {
     const asked: { title: string; timeout?: number }[] = [];
     const ui = new Proxy(
       {

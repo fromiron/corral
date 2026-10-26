@@ -6,7 +6,7 @@ import { ScriptedAgentAdapter } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
-it('[TC-MEET-003-H] adopts secretary minutes over HTTP, starts one pinned handoff, and explicitly discusses its result', async () => {
+it('adopts secretary minutes over HTTP, starts one pinned handoff, and explicitly discusses its result', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'corral-meeting-handoff-http-'));
   const token = 'test-bootstrap-token-0123456789abcdef';
   const content = {

@@ -43,7 +43,7 @@ function document(text: string): DocumentBuffer {
   };
 }
 
-it('[TC-WBD-007-H] captures only the UTF-16 selection and hashes the full BOM-preserving buffer', async () => {
+it('captures only the UTF-16 selection and hashes the full BOM-preserving buffer', async () => {
   const text = '\uFEFFbefore😀\r\nchosen한글\r\nhidden';
   const entry = document(text);
   const range = { startLine: 1, startColumn: 7, endLine: 2, endColumn: 9 };
@@ -62,7 +62,7 @@ it('[TC-WBD-007-H] captures only the UTF-16 selection and hashes the full BOM-pr
   expect(await hashDocumentText(text)).not.toBe(attachment.sha256);
 });
 
-it('[TC-WBD-007-N] the captured draft and version cannot change while the asynchronous hash finishes', async () => {
+it('the captured draft and version cannot change while the asynchronous hash finishes', async () => {
   const entry = document('captured\nother');
   entry.dirty = true;
   const capture = captureDocumentAttachment(entry, {
@@ -83,7 +83,7 @@ it('[TC-WBD-007-N] the captured draft and version cannot change while the asynch
   });
 });
 
-it('[TC-WBD-007-F] an invalid or oversized selection is refused without truncating it', async () => {
+it('an invalid or oversized selection is refused without truncating it', async () => {
   await expect(
     captureDocumentAttachment(document('short'), {
       startLine: 1,

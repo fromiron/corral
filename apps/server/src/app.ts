@@ -172,7 +172,7 @@ import {
 } from './workspace.ts';
 import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
-// The local server (C-015, C-055, C-057): REST commands and queries, SSE for committed events,
+// The local server: REST commands and queries, SSE for committed events,
 // and Studio's static files, all on one loopback origin. The Coordinator is the only writer.
 
 const PREVIEW_ROUTE = '/api/v1/runs/:runId/artifact-versions/:versionId/preview';
@@ -184,7 +184,7 @@ function defaultWorktreeRoot(env: NodeJS.ProcessEnv = process.env): string {
 }
 export interface ServerOptions {
   workspace: string;
-  /** Judgment providers beyond the built-in local-heuristic@1 (CR-003), e.g. the local model. */
+  /** Judgment providers beyond the built-in local-heuristic@1, e.g. the local model. */
   decisionProviders?: DecisionProvider[];
   host?: string;
   /** 0 picks a free port. */
@@ -199,11 +199,11 @@ export interface ServerOptions {
   bootstrapToken?: string;
   /** Extra Studio origins, such as the Vite dev server. Opt-in only. */
   extraOrigins?: string[];
-  /** Real model calls (C-020, C-058). Without it, every run uses the simulated agents. */
+  /** Real model calls. Without it, every run uses the simulated agents. */
   live?: LiveModels;
   /** Input network injection and explicit bounded search opt-in; credentials stay server-side. */
   inputs?: InputOptions;
-  /** Where sessions' git worktrees live (CR-012); outside every linked folder. */
+  /** Where sessions' git worktrees live; outside every linked folder. */
   worktreeRoot?: string;
   /** Opt-in only for a local launcher; remote and generic servers leave this off. */
   allowSharedDevelopment?: boolean;
@@ -224,7 +224,7 @@ export interface LiveModels {
     harnesses: HarnessService,
     workerLeaseDirectory: string,
   ): AgentAdapter;
-  /** Profiles when the workspace names none; they follow the available sign-in (CR-004). */
+  /** Profiles when the workspace names none; they follow the available sign-in. */
   defaultProfiles?: () => Promise<ProfileConfig[]>;
 }
 
@@ -305,7 +305,7 @@ const CreateSession = z.strictObject({
   autoTitle: z.boolean().optional(),
   objective: z.string().max(20_000).optional(),
   corralId: Identifier.nullable().optional(),
-  /** CR-049: creates a meeting with these participants. */
+  /** creates a meeting with these participants. */
   meeting: MeetingConfig.optional(),
 });
 const UpdateSession = z.strictObject({
@@ -331,7 +331,7 @@ const NewEntry = z.strictObject({
   executionId: Identifier.nullable().optional(),
   detail: z.string().max(2000).nullable().optional(),
   commandId: Identifier.nullable().optional(),
-  // The template an auto request ran with (CR-024).
+  // The template an auto request ran with.
   auto: SessionEntryAuto.nullable().optional(),
 });
 const EntryChange = z.strictObject({
@@ -348,7 +348,7 @@ const ExplainRequest = z.strictObject({
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
 });
-// CR-024: a request in an auto session; the runtime chooses the template and builds the team.
+// a request in an auto session; the runtime chooses the template and builds the team.
 const AutoRunRequest = z.strictObject({
   harness: HarnessBindingRef.optional(),
   permissionMode: PermissionMode.optional(),
@@ -362,7 +362,7 @@ const AutoRunRequest = z.strictObject({
   mode: z.enum(['mock', 'live']),
   startFrom: StartFrom.optional(),
   conversation: ConversationSource.optional(),
-  /** CR-055: the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
+  /** the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
   team: z.union([z.enum(['none', 'auto']), z.strictObject({ corralId: Identifier })]).optional(),
   references: RunReferences.optional(),
 });
@@ -468,7 +468,7 @@ async function createCorralServer(
   }
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
-  // CR-012: linked folders, session worktrees and the file broker.
+  // linked folders, session worktrees and the file broker.
   const files: WorkspaceService = new WorkspaceService({
     db,
     clock,
@@ -514,7 +514,7 @@ async function createCorralServer(
     readSnapshot: (_sessionId, runId, path) => files.readPreviewSnapshot(runId, path),
     attestConnection: (sessionId, operationId, port, peerPort) =>
       files.attestCommandConnection(sessionId, operationId, port, peerPort),
-    // A Run's command, or a person's development task (CR-046 P15), which has no Run.
+    // A Run's command, or a person's development task, which has no Run.
     operationRun: async (sessionId, operationId) => {
       const operation = files.listCommands(sessionId).find((item) => item.id === operationId);
       if (operation?.state === 'running') return operation.run_id;
@@ -641,7 +641,7 @@ async function createCorralServer(
     adopt: (intent) => coordinator.adoptModelSlot(intent),
     now: () => new Date(clock.nowIso()),
   });
-  // CR-049: meeting rounds start each answer as its own Run through the same Coordinator.
+  // meeting rounds start each answer as its own Run through the same Coordinator.
   const meetings = new MeetingService({
     continuation: (runId, sessionId, participantId, definition, mode) =>
       coordinator.meetingContinuation(runId, sessionId, participantId, definition.roles[0]!, mode),
@@ -732,7 +732,7 @@ async function createCorralServer(
       return fail(reply, 'ORIGIN_REJECTED', 'a session CSRF token is required');
     }
   });
-  // CR-056: Runs that recorded the removed Ultra are not opened. Their records use shapes no
+  // Runs that recorded the removed Ultra are not opened. Their records use shapes no
   // client reads any more, and no new one can start, so the set is fixed at start-up.
   const ultraRuns = new Set(
     (
@@ -892,7 +892,7 @@ async function createCorralServer(
       return reply.code(204).send();
     },
   );
-  // ── Projects (CR-010) ───────────────────────────────────────────────────────
+  // ── Projects ───────────────────────────────────────────────────────
   const projectReply = (reply: FastifyReply, result: ProjectResult, created: boolean) => {
     if (result.ok) return reply.code(created ? 201 : 200).send(result);
     const code: ErrorCode =
@@ -1000,8 +1000,8 @@ async function createCorralServer(
   resources.defer(() => skillQuality.close());
   registerSkillQualityRoutes(app, skillQuality);
 
-  // ── models (C-058) ─────────────────────────────────────────────────────────
-  // Status and expiry only; tokens never appear in these answers (ADR-019).
+  // ── models ─────────────────────────────────────────────────────────
+  // Status and expiry only; tokens never appear in these answers.
   app.get('/api/v1/model-profiles', async () => registry?.profilesView() ?? []);
   app.get('/api/v1/model-auth', async () => registry?.authView() ?? []);
   type ProviderParams = { Params: { providerId: string } };
@@ -1019,7 +1019,7 @@ async function createCorralServer(
       return registryFailure(reply, error);
     }
   });
-  // CR-005: a key typed under Settings → Models; stored on this computer, never sent back.
+  // a key typed under Settings → Models; stored on this computer, never sent back.
   app.put<ProviderParams>('/api/v1/model-auth/:providerId/api-key', async (request, reply) => {
     if (!registry) return noLive(reply);
     const body = parse(
@@ -1101,7 +1101,7 @@ async function createCorralServer(
     return reasoningSettings();
   });
 
-  // ── model settings (CR-008) ────────────────────────────────────────────────
+  // ── model settings ────────────────────────────────────────────────
   // Providers and models to choose from; never credentials or sign-in status.
   app.get('/api/v1/model-catalog', async () => registry?.catalog() ?? []);
   app.get('/api/v1/model-config', async (_request, reply) => {
@@ -1244,7 +1244,7 @@ async function createCorralServer(
     },
   );
 
-  // ── team drafts (CR-006) ───────────────────────────────────────────────────
+  // ── team drafts ───────────────────────────────────────────────────
   // One model request for a goal; only a plan that passes the contract comes back.
   const draftOperations = new Map<
     string,
@@ -1361,7 +1361,7 @@ async function createCorralServer(
         }),
       });
     const resend = coordinator.hasStartCommand(parsed.data.commandId);
-    // CR-011: a run joins a session of its Corral's project only.
+    // a run joins a session of its Corral's project only.
     if (parsed.data.sessionId && !resend) {
       const session = await corrals.getSession(parsed.data.sessionId);
       if (session?.meeting)
@@ -1389,7 +1389,7 @@ async function createCorralServer(
     const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
     return reply.code(status).send(result);
   });
-  // A question about a result (CR-011): its own one-agent run, in the asking session.
+  // A question about a result: its own one-agent run, in the asking session.
   app.post('/api/v1/runs/explain', async (request, reply) => {
     const body = parse(ExplainRequest, request, reply);
     if (!body) return reply;
@@ -1428,7 +1428,7 @@ async function createCorralServer(
     return reply.code(status).send(result);
   });
 
-  // An auto session's request (CR-024): one capped choice request, then one run of the chosen
+  // An auto session's request: one capped choice request, then one run of the chosen
   // template. A resend returns the first start; a dropped connection while choosing starts none.
   const handoffStarts = new Map<string, AbortController>();
   const activeSessionRun = (sessionId: string) =>
@@ -1438,11 +1438,11 @@ async function createCorralServer(
   const autoStarter = createAutoStarter<AbortSignal>({
     prepareModels: (request, profiles) =>
       coordinator.prepareModels(profiles ?? [request.choice.modelProfile], request.mode),
-    // CR-055: the conversation lead gets file tools when the session has a working copy.
+    // the conversation lead gets file tools when the session has a working copy.
     fileTools: async (request) =>
       request.sessionId ? (await files.currentTree(request.sessionId)) !== null : false,
     corral: async (corralId) => (await corrals.get(corralId))?.definition ?? null,
-    // CR-055 §7: a session turn in a trusted folder works in the built-in work style by default.
+    // a session turn in a trusted folder works in the built-in work style by default.
     sessionHarness: () => harnesses.sessionDefault(),
     startRun: async (request, signal, models) => {
       // Choosing can take 30 seconds; edits before the run belong to its starting tree.
@@ -1772,7 +1772,7 @@ async function createCorralServer(
         return fail(reply, 'SCHEMA_INVALID', 'cancellation needs its own command ID');
       if (!(await corrals.getSession(body.sessionId)))
         return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
-      // A start this route made: a chosen auto route, or a session conversation (CR-055).
+      // A start this route made: a chosen auto route, or a session conversation.
       const autoStarted = (result: AutoResult | null) =>
         Boolean(
           result?.autoRoute ||
@@ -1814,7 +1814,7 @@ async function createCorralServer(
     },
   );
 
-  // ── Work folders and file changes (CR-012) ───────────────────────────────────
+  // ── Work folders and file changes ───────────────────────────────────
   /** A run's start snapshot is recorded, and its end snapshot taken when it ends. */
   async function trackRunFiles(runId: string, sessionId: string, startTree: string) {
     const baseline = (await files.startBaseline(runId)) ?? startTree;
@@ -2050,7 +2050,7 @@ async function createCorralServer(
         return workspaceFail(reply, error);
       }
     });
-    // CR-016: names for an `@` reference, ranked; never file contents.
+    // names for an `@` reference, ranked; never file contents.
     app.get<{ Params: { id: string } }>(`${base}/search`, async (request, reply) => {
       const query = z
         .strictObject({
@@ -2138,7 +2138,7 @@ async function createCorralServer(
     }
   });
 
-  // The linked folder as Git sees it now: read only (02-UX-Spec §4).
+  // The linked folder as Git sees it now: read only.
   app.get<ProjectParams>(
     '/api/v1/projects/:projectId/workspace/changes',
     async (request, reply) => {
@@ -2391,7 +2391,7 @@ async function createCorralServer(
       }
     },
   );
-  // CR-046 P15: development tasks a person starts from the copy's package scripts.
+  // development tasks a person starts from the copy's package scripts.
   app.get<{ Params: { sessionId: string } }>(
     '/api/v1/sessions/:sessionId/worktree/tasks',
     async (request, reply) => {
@@ -2454,7 +2454,7 @@ async function createCorralServer(
       }
     },
   );
-  // CR-046 P13: stage, unstage and commit in a session's managed copy, with a receipt.
+  // stage, unstage and commit in a session's managed copy, with a receipt.
   app.post<{ Params: { sessionId: string } }>(
     '/api/v1/sessions/:sessionId/worktree/git/operations',
     async (request, reply) => {
@@ -2624,7 +2624,7 @@ async function createCorralServer(
       },
     );
 
-  // ── Review comments, decisions, applying and reverting (CR-013) ──────────────
+  // ── Review comments, decisions, applying and reverting ──────────────
   const Tree = z.string().regex(/^[0-9a-f]{40,64}$/);
   const guarded =
     <T>(
@@ -2786,7 +2786,7 @@ async function createCorralServer(
     );
   });
 
-  // ── Work sessions (CR-011) ───────────────────────────────────────────────────
+  // ── Work sessions ───────────────────────────────────────────────────
   const sessionReply = (reply: FastifyReply, result: SessionResult, created: boolean) => {
     if (result.ok) return reply.code(created ? 201 : 200).send(result);
     const code: ErrorCode =
@@ -2828,7 +2828,7 @@ async function createCorralServer(
       );
     },
   );
-  // ── Meetings (CR-049) ──────────────────────────────────────────────────────
+  // ── Meetings ──────────────────────────────────────────────────────
   const meetingReply = async (
     reply: FastifyReply,
     sessionId: string,
@@ -3183,7 +3183,7 @@ async function createCorralServer(
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
     },
   );
-  // An HTML result as its own sandboxed document (CR-009). Only artifact versions qualify,
+  // An HTML result as its own sandboxed document. Only artifact versions qualify,
   // and only whole HTML documents; everything else stays text.
   app.get<{ Params: { runId: string; versionId: string } }>(
     PREVIEW_ROUTE,
@@ -3311,7 +3311,7 @@ async function createCorralServer(
     if (path.startsWith('/api/') || !studioPage || request.method !== 'GET') {
       return fail(reply, 'TARGET_NOT_FOUND', 'not found');
     }
-    // Client-side routes all load the same page (C-056).
+    // Client-side routes all load the same page.
     return reply.header('cache-control', 'no-cache').type('text/html').send(studioPage);
   });
 

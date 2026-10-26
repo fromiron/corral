@@ -14,7 +14,7 @@ import { documentStore } from './documents/store.ts';
 type Seen = { plan: CopyRemovalPlan; unsaved: string[]; recoveries: string[] };
 
 /**
- * Removing a session's working copy (CR-046 P21-A) shows first what would be lost: unsaved
+ * Removing a session's working copy shows first what would be lost: unsaved
  * documents and recovery drafts in this browser, the copy's uncommitted Git changes, unsent review
  * comments, writes of unknown outcome and unfinished runs. A copy still held by a task, terminal
  * or run is not removed from here. Removal is for the copy generation shown, never a copy made

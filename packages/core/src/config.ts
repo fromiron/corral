@@ -6,7 +6,7 @@ import {
 } from '@corral/contracts';
 import { z } from 'zod';
 
-// Workspace configuration and the installation policy (C-062, Spec §9, ADR-019). The config
+// Workspace configuration and the installation policy. The config
 // file names model profiles and may lower hard caps; it never raises a cap past the spec and
 // never holds a credential: keys and tokens come from the server environment only.
 
@@ -27,7 +27,7 @@ export interface InstallationPolicy {
 }
 
 /**
- * The "hard cap" column of Spec §9. Timeouts have no cap in the spec; the definition schema's
+ * The "hard cap" column of product contract §9. Timeouts have no cap in the spec; the definition schema's
  * maxima stand in for them.
  */
 export const SPEC_HARD_CAPS: InstallationPolicy = {
@@ -76,7 +76,7 @@ const EndpointUrl = z
     return url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK.has(url.hostname));
   }, 'use https, or http only for localhost, 127.0.0.1 or [::1]; no user, query or fragment');
 
-/** An OpenAI-compatible endpoint (CR-005): Ollama, LM Studio, OpenRouter and the like. */
+/** An OpenAI-compatible endpoint: Ollama, LM Studio, OpenRouter and the like. */
 export const ModelProviderConfig = z.strictObject({
   id: Identifier,
   name: z.string().min(1).max(80),
@@ -126,7 +126,7 @@ export const WorkspaceConfig = z.strictObject({
     )
     .max(20)
     .optional(),
-  /** OpenAI-compatible endpoints the profiles may name (CR-005). Keys are not configuration. */
+  /** OpenAI-compatible endpoints the profiles may name. Keys are not configuration. */
   modelProviders: z.array(ModelProviderConfig).max(10).optional(),
   /** Internal settings-owner checkpoint; never included in portable model configuration. */
   modelSettingsOperation: z
@@ -139,7 +139,7 @@ export const WorkspaceConfig = z.strictObject({
       resultRevision: z.string().regex(/^[a-f0-9]{64}$/),
     })
     .optional(),
-  /** reasoning_effort judgments (CR-003): observe only, off unless asked for. */
+  /** reasoning_effort judgments: observe only, off unless asked for. */
   decisions: z
     .strictObject({
       reasoning_effort: z.strictObject({

@@ -52,7 +52,7 @@ function useElapsed(from: string | null, to: string | null) {
 }
 
 /**
- * CR-055: a chat turn's process as flat one-line rows (DSH-style). While the turn runs, rows
+ * a chat turn's process as flat one-line rows (DSH-style). While the turn runs, rows
  * stream in above a working line; a finished turn folds under its duration and step count.
  */
 export function TurnProcess({

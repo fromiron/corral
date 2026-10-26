@@ -96,7 +96,7 @@ async function completeRequest(host: AgentHost) {
   });
 }
 
-it('[TC-RNS-003-H] [TC-RNS-005-N] a paused required task cannot restart until explicit resume', async () => {
+it('a paused required task cannot restart until explicit resume', async () => {
   const s = controlled(collaborationCorral());
   await drain();
   const parentId = required(s.projection().executionOrder[0]);
@@ -137,7 +137,7 @@ it('[TC-RNS-003-H] [TC-RNS-005-N] a paused required task cannot restart until ex
   await waiting;
 });
 
-it('[TC-RNS-003-H] cancelling a child while paused preserves the user pause', async () => {
+it('cancelling a child while paused preserves the user pause', async () => {
   const s = controlled(collaborationCorral());
   await drain();
   const parent = required(s.hosts.get(required(s.projection().executionOrder[0])));
@@ -167,7 +167,7 @@ it('[TC-RNS-003-H] cancelling a child while paused preserves the user pause', as
   await waiting;
 });
 
-it('[TC-RNS-003-H] a request failure during pause is retained until resume', async () => {
+it('a request failure during pause is retained until resume', async () => {
   const s = controlled();
   await drain();
   const executionId = required(s.projection().executionOrder[0]);
@@ -183,7 +183,7 @@ it('[TC-RNS-003-H] a request failure during pause is retained until resume', asy
   expect(s.hosts.size).toBe(1);
 });
 
-it('[TC-RNS-003-H] no-progress approval is a safe pause boundary without approving it', async () => {
+it('no-progress approval is a safe pause boundary without approving it', async () => {
   const s = controlled();
   await drain();
   const host = required(s.hosts.get(required(s.projection().executionOrder[0])));
@@ -208,7 +208,7 @@ it('[TC-RNS-003-H] no-progress approval is a safe pause boundary without approvi
   s.send('cancel', { scope: { kind: 'run' }, reason: 'Cleanup' });
 });
 
-it('[TC-ART-002-H] multiple writes in a later Loop round keep artifact versions increasing', async () => {
+it('multiple writes in a later Loop round keep artifact versions increasing', async () => {
   const scripted = new ScriptedAgentAdapter({ turns: 1, collaborate: false });
   const coordinator = new Coordinator({
     clock: new FakeClock(),
@@ -251,7 +251,7 @@ it('[TC-ART-002-H] multiple writes in a later Loop round keep artifact versions 
   expect(drafts[2]?.parentVersionId).toBe(drafts[1]?.artifactVersionId);
 });
 
-it('[TC-RUN-007-H] recovery closes open questions and invalidates approvals exactly once', async () => {
+it('recovery closes open questions and invalidates approvals exactly once', async () => {
   const definition = collaborationCorral();
   required(definition.roles.find((r) => r.id === 'researcher')).allowedCollaborationTools.push(
     'ask',

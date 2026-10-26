@@ -10,7 +10,7 @@ import { useTranslations } from 'use-intl';
 import { useSettingsNavigation } from './navigation.ts';
 import { refusalKind } from './refusal.ts';
 
-/** Fired with a request's text to take it back into the request box (UX-04). */
+/** Fired with a request's text to take it back into the request box. */
 export const EDIT_REQUEST = 'corral:edit-request';
 
 export function editRequest(
@@ -30,7 +30,7 @@ export function editRequest(
 }
 
 /**
- * Why a request did not start and what to do about it (UX-04): a short explanation in the
+ * Why a request did not start and what to do about it: a short explanation in the
  * person's language, the runtime's own words kept for detail, and only the actions that help.
  */
 export function RefusalHelp({

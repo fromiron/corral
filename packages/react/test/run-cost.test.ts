@@ -39,8 +39,8 @@ const snapshot = (profile: string, auth: 'oauth' | 'api_key' | 'mock', modelId =
   auth,
 });
 
-describe('estimateRunCost (roadmap 15)', () => {
-  it('[TC-OBS-004-H] prices each API-key call from its own token counts, cache reads at their rate', () => {
+describe('estimateRunCost', () => {
+  it('prices each API-key call from its own token counts, cache reads at their rate', () => {
     const p = projectionWith({
       modelProfiles: { a: snapshot('a', 'api_key') },
       modelCalls: {
@@ -64,7 +64,7 @@ describe('estimateRunCost (roadmap 15)', () => {
     expect(estimate).toMatchObject({ pricedCalls: 2, unknownCalls: 0, subscriptionCalls: 0 });
   });
 
-  it('[TC-STATUS-001-N] [TC-OBS-004-N] subscription, simulated, unpriced and unreported calls are never priced as zero', () => {
+  it('subscription, simulated, unpriced and unreported calls are never priced as zero', () => {
     const p = projectionWith({
       modelProfiles: {
         sub: snapshot('sub', 'oauth'),
@@ -90,7 +90,7 @@ describe('estimateRunCost (roadmap 15)', () => {
   });
 });
 
-it('[TC-LLM-002-N] an unknown Pi zero placeholder remains unpriced', () => {
+it('an unknown Pi zero placeholder remains unpriced', () => {
   const placeholder = call('u', 'a', { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
   const p = projectionWith({
     modelProfiles: { a: snapshot('a', 'api_key') },

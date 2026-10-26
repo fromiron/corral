@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { expect, it } from 'vitest';
 import { MIGRATIONS, migrate } from '../src/index.ts';
 
-it('[TC-WBD-021-H] adds human proposals without changing existing agent proposals', () => {
+it('adds human proposals without changing existing agent proposals', () => {
   const db = new Database(':memory:');
   try {
     for (const migration of MIGRATIONS.slice(0, 29)) {

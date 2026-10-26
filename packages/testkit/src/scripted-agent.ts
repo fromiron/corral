@@ -34,7 +34,7 @@ export interface ScriptedAgentOptions {
   collaborate?: boolean;
   /**
    * What a reviewer submits: a verdict (written as a valid review of the draft it was given),
-   * or raw text. Default: revise in round 1, pass after (demos and tests only, Spec §6).
+   * or raw text. Default: revise in round 1, pass after (demos and tests only).
    */
   review?: (input: AgentStartInput) => 'pass' | 'revise' | 'inconclusive' | string;
 }
@@ -111,7 +111,7 @@ export class ScriptedAgentAdapter implements AgentAdapter {
         if (scripted) return scripted;
         const notes: string[] = [];
 
-        // A responder answers its question and is done (Spec §6 step 5–6).
+        // A responder answers its question and is done.
         if (collaboration && input.assignment.kind === 'question' && tools.includes('reply')) {
           const answer = await request(1, [`answers ${input.assignment.questionId}`]);
           checkpoint();
@@ -203,7 +203,7 @@ export class ScriptedAgentAdapter implements AgentAdapter {
         }
         if (input.role.outputContract === 'review') text = this.reviewOf(input);
         checkpoint();
-        // A role with file tools (CR-012) keeps its reply in the working copy as well: it reads
+        // A role with file tools keeps its reply in the working copy as well: it reads
         // the file first when it exists, as the broker requires, then writes it. A lead that
         // delegated leaves the files to its delegates.
         if (
@@ -219,7 +219,7 @@ export class ScriptedAgentAdapter implements AgentAdapter {
           checkpoint();
           await host.invokeTool({ name: 'write_file', args: { path, text: `${text}\n` } });
         }
-        // CR-055: a final-reply role's last reply is its answer; the Coordinator publishes it.
+        // a final-reply role's last reply is its answer; the Coordinator publishes it.
         if (input.role.answer === 'final_reply' && lastModelCallId)
           return { outcome: 'succeeded', finalTextModelCallId: lastModelCallId };
         const written = await host.invokeTool({ name: 'write_artifact', args: { text } });

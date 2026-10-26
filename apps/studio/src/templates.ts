@@ -44,7 +44,7 @@ export async function createFromTemplate(
 }
 
 /**
- * Example projects for the in-browser demo (02-UX-Spec §10): two projects, a team each and
+ * Example projects for the in-browser demo: two projects, a team each and
  * six sessions with their purposes. Simulated runs only; nothing here is a real record.
  */
 export async function createDemoExamples(
@@ -82,7 +82,7 @@ export async function createDemoExamples(
       if (made.ok) sessionIds.push(made.session.sessionId);
     }
     // The second project works on files: a linked example folder, a team that may change
-    // files, and a working copy for its first session (02-UX-Spec §10).
+    // files, and a working copy for its first session.
     if (index === 1 && workspaces && team.ok) {
       const record = await repository.get(team.corralId);
       if (record) {

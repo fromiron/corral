@@ -46,7 +46,7 @@ import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
 
-/** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins (C-066). */
+/** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins. */
 export function RunPage() {
   const services = useServices();
   const { runId } = runRoute.useParams();
@@ -63,7 +63,7 @@ export function RunPage() {
 }
 
 /**
- * A run's detail, on its own page or inside a session's workbench (02-UX-Spec §3 실행 상세).
+ * A run's detail, on its own page or inside a session's workbench.
  * The caller keeps the search state; `embedded` drops the page landmarks.
  */
 export function RunDetail({
@@ -96,7 +96,7 @@ export function RunDetail({
     return release;
   }, [session, runId, retainRun]);
 
-  // CR-010: the header shows the project this run started in.
+  // the header shows the project this run started in.
   useEffect(() => {
     let live = true;
     Promise.all([transport.listRuns(), repository.list()]).then(
@@ -111,7 +111,7 @@ export function RunDetail({
     };
   }, [transport, repository, runId]);
 
-  // CR-009: whether the run had already ended when the page opened. Decided once, so a run
+  // whether the run had already ended when the page opened. Decided once, so a run
   // that ends while it is watched never moves the page to its results.
   const [openedEnded, setOpenedEnded] = useState<{ runId: string; ended: boolean } | null>(null);
   useEffect(() => {
@@ -459,7 +459,7 @@ function RunWorkspace({
   const Main = embedded ? 'div' : 'main';
   const { previewUrl } = useServices();
   const projection = useStore(session, (s) => s.projection);
-  // CR-009: a run that had ended when the page opened shows its results first. A chosen
+  // a run that had ended when the page opened shows its results first. A chosen
   // view, or something picked in the run view, is kept; results arriving later never move it.
   const view: RunPageView | null =
     chosenView ??
@@ -481,7 +481,7 @@ function RunWorkspace({
   const target = useSteerTarget(session, execution ?? null);
   const layout = useSavedLayout(definition, projection?.corralId ?? null, savedTeam);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  // Below 768px one panel shows at a time (roadmap 19); wider screens show them all.
+  // Below 768px one panel shows at a time; wider screens show them all.
   const [panel, setPanel] = useState<NarrowPanel>('canvas');
   const sideRef = useRef<HTMLElement>(null);
   const waitingDecisions = useStore(
@@ -716,9 +716,9 @@ function useSavedLayout(
 }
 
 /**
- * What the run is doing, from committed facts only (Spec §4.3): which steps are working, the
+ * What the run is doing, from committed facts only: which steps are working, the
  * Loop round, completed tasks and requests in flight. No percentage. Whole-run controls live
- * here and nowhere else on the page (Spec §4.4).
+ * here and nowhere else on the page.
  */
 function RunSummary({
   session,
@@ -838,7 +838,7 @@ function RunSummary({
   );
 }
 
-/** The Loop limit in force: the latest committed loop_limit patch, if any (Spec §8.3). */
+/** The Loop limit in force: the latest committed loop_limit patch, if any. */
 function loopLimit(projection: RunProjection, loopId: string): number | null {
   const patches = Object.values(projection.patches)
     .filter((p) => p.kind === 'loop_limit' && p.scope.nodeId === loopId)
@@ -847,7 +847,7 @@ function loopLimit(projection: RunProjection, loopId: string): number | null {
   return typeof value === 'number' ? value : null;
 }
 
-/** A design node's executions in this run: one per Loop round, call and attempt (Spec §4.3). */
+/** A design node's executions in this run: one per Loop round, call and attempt. */
 function NodeExecutions({
   projection,
   definition,
@@ -911,7 +911,7 @@ function NodeExecutions({
 type RunPageView = 'results' | 'run';
 const VIEWS: RunPageView[] = ['results', 'run'];
 
-/** Results or the run itself (CR-009): two tabs in the summary bar, arrow keys move between. */
+/** Results or the run itself: two tabs in the summary bar, arrow keys move between. */
 function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPageView) => void }) {
   const t = useTranslations('RunPage.view');
   const refs = useRef<Partial<Record<RunPageView, HTMLButtonElement | null>>>({});
@@ -954,7 +954,7 @@ type Tab = (typeof TABS)[number];
 type NarrowPanel = 'canvas' | 'tree' | 'side' | 'dock';
 const NARROW_PANELS: NarrowPanel[] = ['canvas', 'tree', 'side', 'dock'];
 
-/** The panel switcher of a narrow Run page (roadmap 19); hidden from 768px up. */
+/** The panel switcher of a narrow Run page; hidden from 768px up. */
 function NarrowViews({
   panel,
   onChoose,

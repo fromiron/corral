@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { Identifier } from './ids.ts';
 
-// Review artifact (contracts/review.schema.json, Spec §7.5). The runtime separately checks
-// that target and criteria match what was actually reviewed (CRL-ART-003).
+// Review artifact (contracts/review.schema.json, product contract §7.5). The runtime separately checks
+// that target and criteria match what was actually reviewed.
 
 export const ReviewIssue = z.strictObject({
   criterionId: Identifier,

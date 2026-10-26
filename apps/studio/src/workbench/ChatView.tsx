@@ -73,7 +73,7 @@ export function ChatView({
   header?: ReactNode;
   /**
    * Widgets that float in the margin right of the conversation and stay put while it scrolls
-   * (CR-053); index.css hides them when the margin cannot hold them.
+   *; index.css hides them when the margin cannot hold them.
    */
   aside?: ReactNode;
   centerEmpty?: boolean;

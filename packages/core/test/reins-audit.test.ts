@@ -86,7 +86,7 @@ function controlled(
 }
 
 describe('Reins integration counterexamples', () => {
-  it('[TC-RNS-004-N] an unconfirmed child shutdown also cancels surviving parent and sibling scopes', async () => {
+  it('an unconfirmed child shutdown also cancels surviving parent and sibling scopes', async () => {
     const clock = new FakeClock();
     const hosts = new Map<string, AgentHost>();
     const cancelled = new Set<string>();
@@ -144,7 +144,7 @@ describe('Reins integration counterexamples', () => {
   });
 
   it.each(['run', 'execution'] as const)(
-    '[TC-RNS-004-H] [TC-RNS-004-N] cancelling %s waits for the child backend tool to release before confirming',
+    'cancelling %s waits for the child backend tool to release before confirming',
     async (kind) => {
       const definition = collaborationCorral();
       required(definition.roles.find((role) => role.id === 'helper')).allowedWorkTools.push(
@@ -207,7 +207,7 @@ describe('Reins integration counterexamples', () => {
     },
   );
 
-  it('[TC-RACE-09] storage failure cancels an active backend tool and closes admission', async () => {
+  it('storage failure cancels an active backend tool and closes admission', async () => {
     const store = new FailingStore();
     const definition = linearCorral(['writer']);
     required(definition.roles[0]).allowedWorkTools.push('read_document');
@@ -237,7 +237,7 @@ describe('Reins integration counterexamples', () => {
     expect(s.coordinator.admitting).toBe(false);
   });
 
-  it('[TC-RACE-09] storage failure releases the pending question RPC after its workers stop', async () => {
+  it('storage failure releases the pending question RPC after its workers stop', async () => {
     const store = new FailingStore();
     const definition = collaborationCorral();
     required(
@@ -271,7 +271,7 @@ describe('Reins integration counterexamples', () => {
     expect(questionSettled).toBe(true);
   });
 
-  it('[TC-RNS-004-N] unconfirmed worker termination keeps the workspace closed to new runs', async () => {
+  it('unconfirmed worker termination keeps the workspace closed to new runs', async () => {
     const clock = new FakeClock();
     let starts = 0;
     const coordinator = new Coordinator({
@@ -316,7 +316,7 @@ describe('Reins integration counterexamples', () => {
     expect(starts).toBe(1);
   });
 
-  it('[TC-RNS-005-H] [TC-RNS-005-N] [TC-RACE-11] a required task supports two explicit restarts without late old-attempt results changing its new owner', async () => {
+  it('a required task supports two explicit restarts without late old-attempt results changing its new owner', async () => {
     const store = new InMemoryRunStore();
     const s = controlled(collaborationCorral(), { store });
     await drain();
@@ -394,7 +394,7 @@ describe('Reins integration counterexamples', () => {
     expect(s.projection().status).toBe('cancelled');
   });
 
-  it('[TC-RNS-003-N] approving a paused final output keeps the run paused until explicit resume', async () => {
+  it('approving a paused final output keeps the run paused until explicit resume', async () => {
     const clock = new FakeClock();
     const definition = linearCorral(['writer']);
     const output = required(definition.nodes.find((node) => node.type === 'output'));
@@ -452,7 +452,7 @@ describe('Reins integration counterexamples', () => {
     expect(coordinator.getSnapshot(runId).projection.status).toBe('succeeded');
   });
 
-  it('[TC-RNS-003-H] both idempotent pause receipts settle when the shared boundary is reached', async () => {
+  it('both idempotent pause receipts settle when the shared boundary is reached', async () => {
     const s = controlled(linearCorral(['writer']));
     await drain();
     const host = required(s.hosts.get(required(s.projection().executionOrder[0])));
@@ -474,7 +474,7 @@ describe('Reins integration counterexamples', () => {
     await blocked;
   });
 
-  it('[TC-RUN-007-H] recovery expires a pause that never reached its boundary', async () => {
+  it('recovery expires a pause that never reached its boundary', async () => {
     const store = new InMemoryRunStore();
     const s = controlled(linearCorral(['writer']), { store });
     await drain();
@@ -491,7 +491,7 @@ describe('Reins integration counterexamples', () => {
   });
 
   it.each([false, true])(
-    '[TC-RNS-003-H] run cancellation settles pending pause receipts and preserves applied pauses (paused=%s)',
+    'run cancellation settles pending pause receipts and preserves applied pauses (paused=%s)',
     async (reachedBoundary) => {
       const s = controlled(linearCorral(['writer']));
       await drain();
@@ -520,7 +520,7 @@ describe('Reins integration counterexamples', () => {
     },
   );
 
-  it('[TC-RNS-003-H] a superseded pause stays superseded after a later pause reaches its boundary', async () => {
+  it('a superseded pause stays superseded after a later pause reaches its boundary', async () => {
     const s = controlled(linearCorral(['writer']));
     await drain();
     const host = required(s.hosts.get(required(s.projection().executionOrder[0])));

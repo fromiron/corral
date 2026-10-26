@@ -6,7 +6,7 @@ import { ReasoningWire } from './reasoning.ts';
 export const PermissionMode = z.enum(['ask', 'accept_edits', 'auto']);
 export type PermissionMode = z.infer<typeof PermissionMode>;
 
-/** An immutable profile revision, never a path or a mutable "latest" alias (CR-018). */
+/** An immutable profile revision, never a path or a mutable "latest" alias. */
 export const HarnessBindingRef = z.strictObject({
   profileId: Identifier,
   revision: z.int().min(1),

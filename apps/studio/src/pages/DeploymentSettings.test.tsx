@@ -17,7 +17,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('[TC-WBD-024-N] saves deployment edits only on request and preserves existing project tools', async () => {
+it('saves deployment edits only on request and preserves existing project tools', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const deployment = {
     id: 'preview',

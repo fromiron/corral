@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createInventory, GATES, type ReleaseEvidence, verifyEvidence } from './policy.ts';
 
-test('[TC-DX-002-H] inventory includes each exact transitive version and excludes local paths', () => {
+test('inventory includes each exact transitive version and excludes local paths', () => {
   const inventory = createInventory(
     { MIT: [{ name: 'safe', versions: ['1.0.0', '2.0.0'], paths: ['/secret/home'] }] },
     'abc',
@@ -13,7 +13,7 @@ test('[TC-DX-002-H] inventory includes each exact transitive version and exclude
   assert(!JSON.stringify(inventory).includes('/secret'));
 });
 
-test('[TC-DX-002-N] unknown or unreviewed licenses fail closed', () => {
+test('unknown or unreviewed licenses fail closed', () => {
   for (const license of ['UNKNOWN', 'UNLICENSED', 'GPL-3.0-only']) {
     assert.throws(
       () =>
@@ -27,7 +27,7 @@ test('[TC-DX-002-N] unknown or unreviewed licenses fail closed', () => {
   }
 });
 
-test('[TC-LLM-006-N] the pinned LGPL port is reviewed without allowing other LGPL packages', () => {
+test('the pinned LGPL port is reviewed without allowing other LGPL packages', () => {
   const inventory = createInventory(
     { 'LGPL-3.0-only': [{ name: '@corral/pi-runtime-port', versions: ['0.0.0'] }] },
     'fixture',
@@ -47,7 +47,7 @@ test('[TC-LLM-006-N] the pinned LGPL port is reviewed without allowing other LGP
   );
 });
 
-test('[TC-DX-002-H] Pierre’s reviewed lowercase Apache identifier is canonical in the SBOM', () => {
+test('Pierre’s reviewed lowercase Apache identifier is canonical in the SBOM', () => {
   const inventory = createInventory(
     { 'apache-2.0': [{ name: '@pierre/diffs', versions: ['1.5.2'] }] },
     'abc',
@@ -56,7 +56,7 @@ test('[TC-DX-002-H] Pierre’s reviewed lowercase Apache identifier is canonical
   assert.equal(inventory.packages[0]?.licenseDeclared, 'Apache-2.0');
 });
 
-test('[TC-DX-002-N] a permissive license does not approve an unreviewed prerelease', () => {
+test('a permissive license does not approve an unreviewed prerelease', () => {
   assert.throws(
     () =>
       createInventory(
@@ -68,7 +68,7 @@ test('[TC-DX-002-N] a permissive license does not approve an unreviewed prerelea
   );
 });
 
-test('[TC-DEV-003-N] stale, failed or missing evidence never declares a release ready', () => {
+test('stale, failed or missing evidence never declares a release ready', () => {
   assert.throws(() => verifyEvidence({ candidate: 'old', gates: {} }, 'new'), /candidate/);
   assert.throws(() => verifyEvidence({ candidate: 'new', gates: {} }, 'new'), /gate/);
   assert.throws(
@@ -90,7 +90,7 @@ const evidence = (): ReleaseEvidence => ({
     GATES.map((gate) => [gate, { status: 'passed', completedAt: '2026-10-15T00:00:00Z' }]),
   ),
 });
-test('[TC-DEV-003-H] deterministic and separately capped live proof match the candidate', () => {
+test('deterministic and separately capped live proof match the candidate', () => {
   const current = evidence();
   verifyEvidence(current, 'new', false);
   current.live = {
@@ -102,7 +102,7 @@ test('[TC-DEV-003-H] deterministic and separately capped live proof match the ca
   };
   verifyEvidence(current, 'new');
 });
-test('[TC-DEV-004-H] [TC-DEV-004-N] absent, failed, stale and uncapped live proof remains a blocking result', () => {
+test('absent, failed, stale and uncapped live proof remains a blocking result', () => {
   assert.throws(() => verifyEvidence(evidence(), 'new'), /live smoke/);
   for (const patch of [
     { passed: false },
@@ -157,30 +157,6 @@ test('candidate proof changes for new, modified and deleted source but ignores g
     mkdirSync(join(root, 'output'));
     writeFileSync(join(root, 'output/evidence.json'), 'generated');
     assert.equal(candidateHash(root), original);
-    const evidenceDir = join(root, 'docs/evaluation/llm-modernization/evidence');
-    mkdirSync(evidenceDir, { recursive: true });
-    writeFileSync(join(evidenceDir, 'distribution.json'), '{}');
-    execFileSync('git', ['add', '.'], { cwd: root });
-    for (let revision = 0; revision < 3; revision++) {
-      writeFileSync(
-        join(evidenceDir, 'distribution.json'),
-        JSON.stringify({ candidate: original, revision }),
-      );
-      assert.equal(
-        candidateHash(root),
-        original,
-        'generated proof must not change its own source identity',
-      );
-    }
-    const report = join(root, 'docs/evaluation/llm-modernization/report.md');
-    writeFileSync(report, 'Generated result');
-    assert.equal(candidateHash(root), original);
-    const probes = join(root, 'docs/evaluation/llm-modernization/probes');
-    mkdirSync(probes);
-    const probe = join(probes, 'verify-package.mjs');
-    writeFileSync(probe, 'export const check = true;');
-    assert.notEqual(candidateHash(root), original, 'verification code remains a build input');
-    rmSync(probe);
     mkdirSync(join(root, 'patches'));
     writeFileSync(join(root, 'patches/provider.patch'), 'provider fix');
     assert.notEqual(candidateHash(root), original, 'dependency patches remain a build input');

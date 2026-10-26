@@ -38,9 +38,9 @@ export function fakeOpenAI(
   options: {
     env?: Record<string, string>;
     configDir?: string;
-    /** Also lay a Codex CLI login (CR-004) under the config directory, read only. */
+    /** Also lay a Codex CLI login under the config directory, read only. */
     codexLogin?: { mode?: number };
-    /** Label the models as the Responses API, so they report reasoning levels (CR-021). */
+    /** Label the models as the Responses API, so they report reasoning levels. */
     reasoningApi?: boolean;
     imageInput?: boolean;
   } = {},
@@ -50,7 +50,7 @@ export function fakeOpenAI(
     agentNames: [] as (string | undefined)[],
     refreshes: 0,
     tokens: [] as (string | undefined)[],
-    /** Requests the host made itself (team drafts, CR-006), not a worker. */
+    /** Requests the host made itself (team drafts), not a worker. */
     hostRequests: [] as { maxTokens: number | undefined; text: string }[],
   };
   const oauth: OAuthAuth = {
@@ -214,7 +214,7 @@ export function fakeOpenAI(
         },
         spawn: () => {
           const { host, worker } = memoryChannelPair();
-          // Like the real worker: an endpoint (CR-005) is built from its start frame alone.
+          // Like the real worker: an endpoint is built from its start frame alone.
           const workerModels = createModels();
           runWorker(worker, {
             streamFn: (model, context, streamOptions) => {
@@ -245,8 +245,8 @@ export function fakeOpenAI(
       lspQuery?: LspQuery;
       mcpCall?: { name: string; args: JsonObject };
       /**
-       * A plain answer to a host request first. Session chat sends no auto choice since
-       * CR-055, so a session test must not script one.
+       * A plain answer to a host request first. Session chat sends no auto choice,
+       * so a session test must not script one.
        */
       hostReply?: string;
     } = {},
@@ -274,7 +274,7 @@ export function fakeOpenAI(
             }),
           ]
         : []),
-      // CR-055: a final-reply role (a session's conversation lead) is offered no
+      // a final-reply role (a session's conversation lead) is offered no
       // write_artifact; it answers in plain text, and the publishing steps are dropped.
       (context) => {
         // Tool declarations travel in the transcript's system messages.

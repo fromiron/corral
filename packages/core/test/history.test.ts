@@ -44,7 +44,7 @@ async function recordedRun() {
 }
 
 describe('record archives', () => {
-  it('[TC-OBS-003-H] reopens answered questions without mistaking their IDs for artifact bodies', async () => {
+  it('reopens answered questions without mistaking their IDs for artifact bodies', async () => {
     const store = new InMemoryRunStore();
     const runtime = new InProcessTransport(
       new Coordinator({
@@ -78,7 +78,7 @@ describe('record archives', () => {
     expect(() => openRunArchive({ ...archive, events: badEvents })).toThrow(/question/);
   });
 
-  it('[TC-OBS-003-H] [TC-RUN-007-H] reopens private history without a runtime or reissuing effects', async () => {
+  it('reopens private history without a runtime or reissuing effects', async () => {
     const { store, runId, projection } = await recordedRun();
     const archive = exportRunArchive(store, runId, { privateTranscript: true });
     const reopened = openRunArchive(JSON.parse(JSON.stringify(archive)));
@@ -91,7 +91,7 @@ describe('record archives', () => {
     expect(Object.isFrozen(reopened.projection)).toBe(true);
   });
 
-  it('[TC-AUTO-003-H] [TC-OBS-003-H] [TC-OBS-003-N] reopens a completed auto run and rejects changed or missing route metadata', async () => {
+  it('reopens a completed auto run and rejects changed or missing route metadata', async () => {
     const store = new InMemoryRunStore();
     const coordinator = new Coordinator({
       store,
@@ -136,7 +136,7 @@ describe('record archives', () => {
     expect(JSON.stringify(exportRunArchive(store, runId))).not.toContain('autoRoute');
   });
 
-  it('[TC-OBS-003-H] exports committed final response text and verifies its archived body', async () => {
+  it('exports committed final response text and verifies its archived body', async () => {
     const { store, runId } = await recordedRun();
     const finished = store.readEvents(runId, 0).find((event) => event.type === 'model.finished');
     if (finished?.type !== 'model.finished' || !finished.payload.responseRef)
@@ -156,7 +156,7 @@ describe('record archives', () => {
     expect(() => openRunArchive({ ...archive, artifacts: bodies })).toThrow();
   });
 
-  it('[TC-SEC-002-N] public export defaults to an allowlisted timeline without user text or paths', async () => {
+  it('public export defaults to an allowlisted timeline without user text or paths', async () => {
     const { store, runId } = await recordedRun();
     const archive = exportRunArchive(store, runId);
     const text = JSON.stringify(archive);
@@ -172,7 +172,7 @@ describe('record archives', () => {
     expect(archive.events.length).toBeGreaterThan(0);
   });
 
-  it('[TC-RUN-007-H] includes criteria revisions referenced by immutable patch events', async () => {
+  it('includes criteria revisions referenced by immutable patch events', async () => {
     const { store, runId, projection } = await recordedRun();
     const started = store.readEvents(runId, 0)[0];
     if (!started) throw new Error('run start expected');
@@ -207,7 +207,7 @@ describe('record archives', () => {
     ).toThrow();
   });
 
-  it('[TC-OBS-003-N] [TC-RUN-007-N] rejects missing, reordered, foreign, and unknown archive events', async () => {
+  it('rejects missing, reordered, foreign, and unknown archive events', async () => {
     const { store, runId } = await recordedRun();
     const archive = exportRunArchive(store, runId, { privateTranscript: true });
     if (archive.visibility !== 'private') throw new Error('private archive expected');

@@ -2,7 +2,7 @@ import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import type { StreamText } from './session.ts';
 
-// CR-055: a chat turn's process as one flat list of one-line rows (DSH-style), built from
+// a chat turn's process as one flat list of one-line rows (DSH-style), built from
 // committed events, the projection and streamed text. The answer is never a row: it is the
 // reply that ended the turn, shown below the process.
 

@@ -10,7 +10,7 @@ import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
 
-test('[TC-ABS-004-H] an owned service starts from the request, appears with its preview and stops with its run', async ({
+test('an owned service starts from the request, appears with its preview and stops with its run', async ({
   page,
   corral,
 }, testInfo) => {
@@ -93,7 +93,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     },
   ]);
   try {
-    // CR-055: a trusted folder's session runs commands in the built-in work style.
+    // a trusted folder's session runs commands in the built-in work style.
     await corral.open('/');
     await page.getByRole('tab', { name: /^Project folder/ }).click();
     const folder = page.getByRole('tabpanel', { name: 'Project folder' });

@@ -29,7 +29,7 @@ const runtime = () =>
       }),
     }),
   );
-it('[TC-HAR-014-H] prepares a fresh pinned work session for each comparison case', async () => {
+it('prepares a fresh pinned work session for each comparison case', async () => {
   const transport = runtime();
   let prepared = 0;
   const suite = {
@@ -60,7 +60,7 @@ it('[TC-HAR-014-H] prepares a fresh pinned work session for each comparison case
     runSuite(runtime(), suite, 'mock', { signal: new AbortController().signal }),
   ).rejects.toThrow(/workspace/i);
 });
-it('[TC-HAR-014-H] counts a correct candidate rejected by a recipe and records the repair lineage', async () => {
+it('counts a correct candidate rejected by a recipe and records the repair lineage', async () => {
   const definition = CorralDefinition.parse(reviewTeam),
     loop = definition.nodes.find((node) => node.type === 'loop');
   if (!loop) throw new Error('missing loop');
@@ -94,7 +94,7 @@ it('[TC-HAR-014-H] counts a correct candidate rejected by a recipe and records t
   });
   expect(report.results[0]?.recipeHashes).toHaveLength(1);
 });
-it('[TC-QEVAL-002-N] [TC-HAR-014-H] counts committed SDK retry purposes once when the event stream replays frames', async () => {
+it('counts committed SDK retry purposes once when the event stream replays frames', async () => {
   const definition = linearCorral(['writer']);
   definition.roles[0]!.harness = { profileId: 'sample', revision: 1 };
   const coordinator = new Coordinator({
@@ -222,7 +222,7 @@ it('[TC-QEVAL-002-N] [TC-HAR-014-H] counts committed SDK retry purposes once whe
   });
   expect(result.toolsExecuted.sort()).toEqual(['submit_result', 'write_artifact']);
 });
-it('[TC-HAR-014-H] scores fixed expectations separately from run success and keeps calibration out of holdout metrics', async () => {
+it('scores fixed expectations separately from run success and keeps calibration out of holdout metrics', async () => {
   const report = await runSuite(
     runtime(),
     {
@@ -301,7 +301,7 @@ it('[TC-HAR-014-H] scores fixed expectations separately from run success and kee
     definitionHash: expect.stringMatching(/^[a-f0-9]{64}$/),
   });
 });
-it('[TC-HAR-014-N] a missing oracle is not perfect accuracy and required approval is not a quality rejection', async () => {
+it('a missing oracle is not perfect accuracy and required approval is not a quality rejection', async () => {
   const definition = linearCorral(['writer']);
   const output = definition.nodes.find((node) => node.type === 'output');
   if (output?.type === 'output') output.requireApproval = true;
@@ -330,7 +330,7 @@ it('[TC-HAR-014-N] a missing oracle is not perfect accuracy and required approva
   );
   expect(unscored.summary[0]?.quality.finalAccuracy).toBeNull();
 });
-it('[TC-HAR-014-N] validates the five comparison groups and expectations before running any variant', () => {
+it('validates the five comparison groups and expectations before running any variant', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-eval-quality-'));
   roots.push(root);
   writeFileSync(join(root, 'base.json'), JSON.stringify(linearCorral(['writer'])));
@@ -367,7 +367,7 @@ it('[TC-HAR-014-N] validates the five comparison groups and expectations before 
   expect(loadSuite(path).ok).toBe(false);
 });
 
-it('[TC-QEVAL-001-H] runs bounded skill comparisons with fresh repetitions and separate holdout results', async () => {
+it('runs bounded skill comparisons with fresh repetitions and separate holdout results', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-skill-eval-'));
   roots.push(root);
   writeFileSync(join(root, 'base.json'), JSON.stringify(linearCorral(['writer'])));
@@ -420,7 +420,7 @@ it('[TC-QEVAL-001-H] runs bounded skill comparisons with fresh repetitions and s
   expect(cancelled.results).toHaveLength(1);
 });
 
-it('[TC-QEVAL-001-N] refuses missing baselines, mixed groups and unbounded repetition before loading a run', () => {
+it('refuses missing baselines, mixed groups and unbounded repetition before loading a run', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-skill-eval-invalid-'));
   roots.push(root);
   writeFileSync(join(root, 'base.json'), JSON.stringify(linearCorral(['writer'])));

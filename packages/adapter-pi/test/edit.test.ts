@@ -32,12 +32,9 @@ it.each([
     text: 'unchanged  \n“hello”\n',
     edits: [{ oldText: '"hello"', newText: 'world' }],
   },
-])(
-  '[TC-HAR-010-H] preserves official Pi semantics through an isolated worker: $name',
-  async ({ text, edits }) => {
-    expect(await editText({ path: 'a.txt', text, edits })).toEqual(await reference(text, edits));
-  },
-);
+])('preserves official Pi semantics through an isolated worker: $name', async ({ text, edits }) => {
+  expect(await editText({ path: 'a.txt', text, edits })).toEqual(await reference(text, edits));
+});
 
 it.each([
   { name: 'missing match', text: 'one two', edits: [{ oldText: 'missing', newText: 'x' }] },
@@ -51,7 +48,7 @@ it.each([
     ],
   },
   { name: 'unchanged text', text: 'one', edits: [{ oldText: 'one', newText: 'one' }] },
-])('[TC-HAR-010-N] retains the official Pi error: $name', async ({ text, edits }) => {
+])('retains the official Pi error: $name', async ({ text, edits }) => {
   const message = await reference(text, edits).then(
     () => '',
     (error) => error.message,
@@ -60,7 +57,7 @@ it.each([
   await expect(editText({ path: 'a.txt', text, edits })).rejects.toThrow(message);
 });
 
-it('[TC-HAR-010-N] cancelled or invalid edits never spawn a worker', async () => {
+it('cancelled or invalid edits never spawn a worker', async () => {
   const spawn = vi.fn();
   await expect(
     editText(

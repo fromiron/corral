@@ -33,7 +33,7 @@ test('sum adds two numbers', () => assert.equal(sum(2, 3), 5));
 `;
 
 it.skipIf(process.env.CORRAL_MEETING_LIVE !== '1')(
-  '[TC-MEET-003-H] real models discuss, adopt, execute an isolated file fix and discuss its result',
+  'real models discuss, adopt, execute an isolated file fix and discuss its result',
   async () => {
     const candidate = candidateHash();
     const startedAt = new Date().toISOString();

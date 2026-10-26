@@ -43,7 +43,7 @@ function domain(initial: unknown) {
   };
   return adapter;
 }
-describe('[TC-ABS-013-H] vault application journal', () => {
+describe('vault application journal', () => {
   it('waits for real browser preference readback before marking the operation complete', async () => {
     const dir = directory();
     const service = new VaultService({ directory: dir, adapters: () => ({}) });
@@ -62,7 +62,7 @@ describe('[TC-ABS-013-H] vault application journal', () => {
     expect((await restarted.acknowledge(pending.id, password, target)).status).toBe('committed');
   });
 });
-describe('[TC-ABS-013-N] partial apply and stale revisions', () => {
+describe('partial apply and stale revisions', () => {
   it('reads both forward and rollback owner receipts when the process loses their journal acknowledgements', async () => {
     let value = { original: true };
     let revision = 1;

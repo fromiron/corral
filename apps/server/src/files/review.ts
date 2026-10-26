@@ -5,7 +5,7 @@ import { type Clock, RecipeStopReason } from '@corral/contracts';
 import type { Db } from '@corral/storage-sqlite';
 import { safeRelative, WorkspaceError, type WorkspaceService } from './service.ts';
 
-// Review comments, decisions, applying to the linked folder and reverting (CR-013). Comments and
+// Review comments, decisions, applying to the linked folder and reverting. Comments and
 // decisions are fixed to two trees; applying writes the approved tree's immutable contents and
 // records each file's outcome; reverting undoes only what was applied and is unchanged since.
 

@@ -1,7 +1,7 @@
 import { expect, test } from './harness.ts';
 
 test.use({ live: true });
-test('[TC-ABS-013-H] encrypted file restores actual browser preferences through preview and acknowledgement', async ({
+test('encrypted file restores actual browser preferences through preview and acknowledgement', async ({
   page,
   corral,
 }) => {
@@ -35,10 +35,7 @@ test('[TC-ABS-013-H] encrypted file restores actual browser preferences through 
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-ABS-013-N] incorrect vault password fails before any settings change', async ({
-  page,
-  corral,
-}) => {
+test('incorrect vault password fails before any settings change', async ({ page, corral }) => {
   await corral.open('/settings/vault');
   await page.getByLabel('Vault password', { exact: true }).fill('local test vault password');
   await page.getByRole('checkbox', { name: 'Models and providers', exact: true }).uncheck();

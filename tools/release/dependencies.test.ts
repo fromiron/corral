@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { checkDependencies } from '../deps/check.ts';
 
-test('[TC-DX-002-H] [TC-DX-002-N] dependency evidence must match installed versions and compatibility', () => {
+test('dependency evidence must match installed versions and compatibility', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-dependency-check-'));
   const write = (path: string, value: unknown) => {
     mkdirSync(join(root, path, '..'), { recursive: true });
@@ -68,7 +68,7 @@ test('[TC-DX-002-H] [TC-DX-002-N] dependency evidence must match installed versi
   }
 });
 
-test('[TC-DX-002-N] prerelease exceptions require matching reviewed metadata and do not authorize another version', () => {
+test('prerelease exceptions require matching reviewed metadata and do not authorize another version', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-prerelease-check-'));
   const packagePath = join(root, 'node_modules/preview');
   const manifest = {

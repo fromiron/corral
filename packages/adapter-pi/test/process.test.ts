@@ -69,9 +69,9 @@ async function run(transport: InProcessTransport) {
   return { runId: runId ?? '', final: await waitForProjection(transport, runId ?? '', settled) };
 }
 
-describe('worker in a child process (C-017, ADR-017)', () => {
+describe('worker in a child process', () => {
   it.skipIf(process.platform === 'win32').each(['kill', 'exit'])(
-    '[TC-HAR-006-N] worker %s also ends its ordinary child processes',
+    'worker %s also ends its ordinary child processes',
     async (mode) => {
       const channel = processChannel(join(import.meta.dirname, 'fixtures', 'process-group.ts'));
       const ready = new Promise<{ port: number; pid: number }>((resolve) =>
@@ -107,7 +107,7 @@ describe('worker in a child process (C-017, ADR-017)', () => {
       }
     },
   );
-  it('[TC-RUN-007-N] exits when the owning coordinator process disconnects', async () => {
+  it('exits when the owning coordinator process disconnects', async () => {
     const child = fork(join(import.meta.dirname, 'fixtures', 'orphan-worker.ts'), [], {
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     });
@@ -139,7 +139,7 @@ describe('worker in a child process (C-017, ADR-017)', () => {
     expect(await transport.getArtifactText(runId, output)).toBe('env-has-key=false');
   }, 30_000);
 
-  it('[TC-RUN-007-N] a worker that dies mid-request fails its execution and is not retried', async () => {
+  it('a worker that dies mid-request fails its execution and is not retried', async () => {
     const { final } = await run(runtime('crash'));
     expect(final.status).toBe('failed');
     const execution = Object.values(final.executions)[0];
@@ -195,7 +195,7 @@ describe('worker in a child process (C-017, ADR-017)', () => {
         ]
       : []),
   ])(
-    '[TC-RESUME-001-H] [TC-IMAGE-001-H] [TC-QEVAL-002-H] [TC-SEC-002-H] runs a live step on a %s OpenAI-compatible endpoint, with only the right key (CR-005)',
+    'runs a live step on a %s OpenAI-compatible endpoint, with only the right key',
     async (_name, keyless, authorization, sdk, sandbox, withImage: boolean = true) => {
       const endpoint = await startCompatibleEndpoint();
       const resourceRoot = mkdtempSync(join(tmpdir(), 'corral-skill-wire-'));

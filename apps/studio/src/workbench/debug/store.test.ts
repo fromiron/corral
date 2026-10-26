@@ -159,7 +159,7 @@ function setup() {
   };
 }
 
-it('[TC-WBD-023-H] retained views share polling, never stop on close, and recover a lost command by its id', async () => {
+it('retained views share polling, never stop on close, and recover a lost command by its id', async () => {
   vi.useFakeTimers();
   const f = setup();
   f.setState({ ...f.state(), session: null });
@@ -256,7 +256,7 @@ it('[TC-WBD-023-H] retained views share polling, never stop on close, and recove
   expect(late.store.getState().copies[debugCopyKey(target)]?.state?.session?.state).toBe('stopped');
 });
 
-it('[TC-WBD-023-N] stale pauses, dirty drafts and mismatched source hashes cannot move or alter the editor', async () => {
+it('stale pauses, dirty drafts and mismatched source hashes cannot move or alter the editor', async () => {
   const f = setup();
   await f.store.refresh(target);
   const open = vi.fn(() => true);

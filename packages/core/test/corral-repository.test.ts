@@ -37,7 +37,7 @@ function setup() {
 describeCorralRepositoryContract('key-value (browser)', () => setup().repo);
 
 describe('key-value corral repository', () => {
-  it('[TC-LLM-005-F] migrates browser definitions once and keeps the original revision in the receipt', async () => {
+  it('migrates browser definitions once and keeps the original revision in the receipt', async () => {
     const { store, repo } = setup();
     const saved = await repo.save({
       definition: team(),
@@ -59,7 +59,7 @@ describe('key-value corral repository', () => {
     const receipt = [...store.data.entries()].find(([key]) => key.includes('cr052'));
     expect(receipt && JSON.parse(receipt[1]).before).toEqual(saved.record);
   });
-  it('[TC-UX-007-N] a failed storage write preserves the pending title and retry records one request', async () => {
+  it('a failed storage write preserves the pending title and retry records one request', async () => {
     const { store, repo } = setup();
     const created = await repo.createSession({
       projectId: 'default',

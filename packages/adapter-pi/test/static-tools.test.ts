@@ -6,7 +6,7 @@ import {
 import { expect, it } from 'vitest';
 import { describeTool, staticToolDescriptors } from '../src/static-tools.ts';
 
-it('[TC-HAR-003-H] keeps cached Pi schemas identical to the installed public factories', () => {
+it('keeps cached Pi schemas identical to the installed public factories', () => {
   for (const factory of [
     createReadToolDefinition,
     createEditToolDefinition,
@@ -34,13 +34,13 @@ it('classifies shell and hashline tools without weakening their side effects', (
   ]);
 });
 
-it('[TC-ABS-010-N] treats image generation as an external effect with bounded image options', () => {
+it('treats image generation as an external effect with bounded image options', () => {
   expect(staticToolDescriptors(['generate_image'])).toEqual([
     expect.objectContaining({ name: 'generate_image', source: 'corral', sideEffect: 'external' }),
   ]);
 });
 
-it('[TC-ABS-004-N] classifies file previews separately from browser and app effects', () => {
+it('classifies file previews separately from browser and app effects', () => {
   expect(staticToolDescriptors(['preview_file', 'preview_app', 'preview_action'])).toEqual([
     expect.objectContaining({ name: 'preview_file', source: 'corral', sideEffect: 'none' }),
     expect.objectContaining({ name: 'preview_app', source: 'corral', sideEffect: 'external' }),

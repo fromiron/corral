@@ -52,7 +52,7 @@ function useEditSession() {
   };
 }
 
-/** A model profile the role may use, as the local server knows it (UX-06). */
+/** A model profile the role may use, as the local server knows it. */
 export interface ProfileOption {
   profileId: string;
   label: string;
@@ -61,7 +61,7 @@ export interface ProfileOption {
 }
 
 /**
- * The team's defaults and the selected node (UX-10): what applies to every run of the team is
+ * The team's defaults and the selected node: what applies to every run of the team is
  * kept apart from the selected role, and rarely changed settings are folded away.
  */
 type RoleSettings = (role: AgentRole, nodeId: string) => ReactNode;
@@ -545,7 +545,7 @@ function InputsEditor({
   );
 }
 
-/** Pointer-free connection: pick an output port and a valid target port (UX-001). */
+/** Pointer-free connection: pick an output port and a valid target port. */
 function NextSteps({ node, draft }: { node: CorralNode; draft: EditorDraft }) {
   const t = useTranslations('Inspector');
   const tPorts = useTranslations('Canvas.ports');

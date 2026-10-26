@@ -8,7 +8,7 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import { runResults } from '../src/run/results.ts';
 import { sessionStore } from '../src/stories/fixtures.tsx';
 
-// Results view (CR-009, roadmap 21; proposal WBTST-008/009/010/034).
+// Results view.
 
 function version(
   id: string,
@@ -47,8 +47,8 @@ function projectionWith(
   };
 }
 
-describe('runResults (CR-009)', () => {
-  it('[WBTST-008] lists every final output in Output order, not only the first', () => {
+describe('runResults', () => {
+  it('lists every final output in Output order, not only the first', () => {
     const p = projectionWith(
       [version('v_a', 'report', 1), version('v_b', 'summary', 1), version('v_c', 'appendix', 1)],
       { status: 'succeeded', output: { nodeId: 'out', artifactVersionIds: ['v_b', 'v_a', 'v_c'] } },
@@ -83,7 +83,7 @@ describe('runResults (CR-009)', () => {
     ]);
   });
 
-  it('[WBTST-009] keeps what a failed run made as a partial result', () => {
+  it('keeps what a failed run made as a partial result', () => {
     const p = projectionWith([version('n1', 'notes', 1), version('d1', 'draft', 1)], {
       status: 'failed',
     });
@@ -126,7 +126,7 @@ describe('runResults (CR-009)', () => {
   });
 });
 
-describe('HTML preview isolation (CR-009, WBTST-034)', () => {
+describe('HTML preview isolation ', () => {
   it('recognises whole HTML documents only', () => {
     expect(isHtmlDocument('<!DOCTYPE html><html></html>')).toBe(true);
     expect(isHtmlDocument('  <html lang="en">')).toBe(true);
@@ -149,7 +149,7 @@ const wrap = (ui: React.ReactNode) =>
     </IntlProvider>,
   );
 
-describe('RunResults view (CR-009)', () => {
+describe('RunResults view', () => {
   const texts = { v_a: '# Report\n\nalpha body', v_b: 'beta body', v_c: 'gamma body' };
   const finalThree = () =>
     sessionStore({
@@ -168,7 +168,7 @@ describe('RunResults view (CR-009)', () => {
       artifactTexts: texts,
     });
 
-  it('[WBTST-008] shows each of three final outputs when chosen', async () => {
+  it('shows each of three final outputs when chosen', async () => {
     const session = finalThree();
     const onSelect = vi.fn();
     const view = wrap(<RunResults session={session} selectedId={null} onSelect={onSelect} />);
@@ -190,7 +190,7 @@ describe('RunResults view (CR-009)', () => {
     expect(onSelect).toHaveBeenCalledWith('v_c');
   });
 
-  it('[WBTST-010] separates run, review and submission without inventing file-work evidence', async () => {
+  it('separates run, review and submission without inventing file-work evidence', async () => {
     wrap(<RunResults session={finalThree()} selectedId="v_a" onSelect={vi.fn()} />);
     const states = screen.getByRole('list', { name: 'Result state' });
     expect(states).toHaveTextContent('Run: Succeeded');
@@ -199,7 +199,7 @@ describe('RunResults view (CR-009)', () => {
     expect(states).not.toHaveTextContent('No file changes or checks in this run');
   });
 
-  it('[WBTST-009] shows a failed run’s work as a partial result, not “pending”', async () => {
+  it('shows a failed run’s work as a partial result, not “pending”', async () => {
     const session = sessionStore({
       runId: 'run_1',
       projection: projectionWith([version('d1', 'draft', 1)], { status: 'failed' }),
@@ -256,8 +256,8 @@ describe('RunResults view (CR-009)', () => {
   });
 });
 
-describe('Output tab with several final results (CR-009)', () => {
-  it('[WBTST-008] names every final result and offers the Results view', () => {
+describe('Output tab with several final results', () => {
+  it('names every final result and offers the Results view', () => {
     const onOpenResults = vi.fn();
     const session = sessionStore({
       runId: 'run_1',

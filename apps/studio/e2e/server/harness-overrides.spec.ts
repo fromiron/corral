@@ -2,7 +2,7 @@ import { linearCorral } from '@corral/testkit';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
-test('[TC-HAR-003-H] previews a run-only work style, uses its pinned layer and clears it after starting', async ({
+test('previews a run-only work style, uses its pinned layer and clears it after starting', async ({
   page,
   corral,
 }) => {

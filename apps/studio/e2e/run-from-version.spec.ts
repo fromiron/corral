@@ -1,10 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-// CR-007: a new Run that starts from an earlier result; the new Run says where it came from.
+// a new Run that starts from an earlier result; the new Run says where it came from.
 
-test('[TC-ART-005-H] a finished result starts the next run, which names its source', async ({
-  page,
-}) => {
+test('a finished result starts the next run, which names its source', async ({ page }) => {
   await page.goto('/demo?template=starter&delay=100');
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();

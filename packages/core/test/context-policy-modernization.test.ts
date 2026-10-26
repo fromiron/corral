@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { resolveProfileContext } from '../src/profile-context.ts';
 
-it('[TC-LLM-004-H] adaptive defaults fit small and large windows without a legacy warning', () => {
+it('adaptive defaults fit small and large windows without a legacy warning', () => {
   for (const contextWindow of [1024, 8192, 32000, 128000, 1000000]) {
     const result = resolveProfileContext(
       {},

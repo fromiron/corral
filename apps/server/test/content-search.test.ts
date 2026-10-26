@@ -56,7 +56,7 @@ async function setup() {
   return { service, target, path, original, input };
 }
 
-it('[TC-WBD-019-H] searches literal disk text with UTF-16 positions and byte hashes while excluding ignored, protected and binary files', async () => {
+it('searches literal disk text with UTF-16 positions and byte hashes while excluding ignored, protected and binary files', async () => {
   const s = await setup();
   const text = '😀 İ A.b A.B\r\nA.b AxB\n';
   writeFileSync(join(s.path, 'source.ts'), text);
@@ -107,7 +107,7 @@ it('[TC-WBD-019-H] searches literal disk text with UTF-16 positions and byte has
   expect(readFileSync(join(s.original, 'base.txt'), 'utf8')).toBe('original text\n');
 });
 
-it('[TC-WBD-019-N] rejects foreign or stale copy targets while preserving the existing read-only trust policy', async () => {
+it('rejects foreign or stale copy targets while preserving the existing read-only trust policy', async () => {
   const s = await setup();
   await expect(
     s.service.searchContents('s1', { ...s.input, target: { ...s.target, hostId: 'another' } }),
@@ -125,7 +125,7 @@ it('[TC-WBD-019-N] rejects foreign or stale copy targets while preserving the ex
   });
 });
 
-it('[TC-WBD-019-F] cancels pending work and reports bounded results and disk-read truncation', async () => {
+it('cancels pending work and reports bounded results and disk-read truncation', async () => {
   const s = await setup();
   const cancelled = new AbortController();
   const pending = s.service.searchContents('s1', s.input, cancelled.signal);

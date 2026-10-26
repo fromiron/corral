@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { voiceSideband } from '../src/voice/sideband.ts';
 
-it('[TC-LLM-005-N] sideband records duplicate and late usage once without storing audio or transcripts', async () => {
+it('sideband records duplicate and late usage once without storing audio or transcripts', async () => {
   const db = openDatabase(':memory:');
   const store = new SqliteModelAttemptStore(db);
   const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });

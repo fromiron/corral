@@ -54,7 +54,7 @@ async function start() {
     return { status: response.status, body: await response.json() };
   };
 }
-describe('[TC-ABS-013-H] settings vault through existing server owners', () => {
+describe('settings vault through existing server owners', () => {
   it('exports encrypted settings, previews changed providers, applies and reads model registry back', async () => {
     const call = await start();
     const initial = await call('/model-config');
@@ -110,7 +110,7 @@ describe('[TC-ABS-013-H] settings vault through existing server owners', () => {
     ).toEqual(initial.body.modelProfiles.map((profile: { id: string }) => profile.id));
   });
 });
-describe('[TC-ABS-013-N] closed vault boundaries', () => {
+describe('closed vault boundaries', () => {
   it('rejects wrong password, unauthorized domain and stale profile state without overwriting', async () => {
     const call = await start();
     const exported = await call('/vault/export', {

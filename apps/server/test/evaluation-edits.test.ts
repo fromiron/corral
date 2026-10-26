@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { evaluateCodingTools } from '../src/index.ts';
 
-it('[TC-HAR-010-H] compares three edit methods through the real broker with fresh identical copies', async () => {
+it('compares three edit methods through the real broker with fresh identical copies', async () => {
   const hashline = vi.fn(async () => 'alpha\nchanged\n');
   const report = await evaluateCodingTools(
     {
@@ -27,7 +27,7 @@ it('[TC-HAR-010-H] compares three edit methods through the real broker with fres
   expect(new Set(report.results.map((row) => row.baseCommit)).size).toBe(1);
   expect(hashline).toHaveBeenCalledTimes(1);
 });
-it('[TC-HAR-011-N] stale source protection applies equally before any transformer is called', async () => {
+it('stale source protection applies equally before any transformer is called', async () => {
   const hashline = vi.fn(async () => 'wrong');
   const report = await evaluateCodingTools(
     {

@@ -11,7 +11,7 @@ import { expect, it, vi } from 'vitest';
 import { cancellationFromSignal, ModelRequestRuntime } from '../src/models/request-runtime.ts';
 
 it.each([false, true])(
-  '[TC-LLM-002-N] zero usage is reported only when present in the provider frame (%s)',
+  'zero usage is reported only when present in the provider frame (%s)',
   async (reported) => {
     const records = new Map<string, ModelAttempt>();
     let time = 0;
@@ -75,7 +75,7 @@ it.each([false, true])(
   },
 );
 
-it('[TC-LLM-002-N] Retry-After waits before admission and leaves other provider accounts runnable', async () => {
+it('Retry-After waits before admission and leaves other provider accounts runnable', async () => {
   vi.useFakeTimers();
   try {
     let slots = 0,
@@ -154,7 +154,7 @@ it('[TC-LLM-002-N] Retry-After waits before admission and leaves other provider 
   }
 });
 
-it('[TC-LLM-002-F] cancellation returns promptly, retains transport admission until termination, and reconciles late usage', async () => {
+it('cancellation returns promptly, retains transport admission until termination, and reconciles late usage', async () => {
   const records = new Map<string, ModelAttempt>();
   let released = 0;
   const runtime = new ModelRequestRuntime({
@@ -202,7 +202,7 @@ it('[TC-LLM-002-F] cancellation returns promptly, retains transport admission un
   expect(released).toBe(1);
 });
 
-it('[TC-LLM-002-F] a cancelled execution retains its physical slot and late usage reconciles the terminal Run once', async () => {
+it('a cancelled execution retains its physical slot and late usage reconciles the terminal Run once', async () => {
   const records = new Map<string, ModelAttempt>();
   const source = createAssistantMessageEventStream();
   const model = createFauxCore({ provider: 'faux', models: [{ id: 'fixture', name: 'Fixture' }] })
@@ -311,7 +311,7 @@ it('[TC-LLM-002-F] a cancelled execution retains its physical slot and late usag
   expect(Object.values(after.modelCalls)[0]?.responseRef).toBeNull();
 });
 
-it('[TC-LLM-002-F] actual Pi HTTP failures retain Retry-After and request ID before SDK rejection', async () => {
+it('actual Pi HTTP failures retain Retry-After and request ID before SDK rejection', async () => {
   const { createServer } = await import('node:http');
   const { createModels } = await import('@earendil-works/pi-ai');
   const { endpointProvider } = await import('@corral/adapter-pi');

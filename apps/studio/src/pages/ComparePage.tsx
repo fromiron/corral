@@ -6,7 +6,7 @@ import { useModelPrices } from '../prices.ts';
 import { compareRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 
-/** `/compare?a=&b=`: two runs side by side (roadmap 16). Reads only; nothing is started. */
+/** `/compare?a=&b=`: two runs side by side. Reads only; nothing is started. */
 export function ComparePage() {
   const t = useTranslations('Compare');
   const { a, b } = compareRoute.useSearch();

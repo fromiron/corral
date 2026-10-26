@@ -98,7 +98,7 @@ async function setup(
 
 describe('existing parent questions (ABS-11)', () => {
   it.each([2, 3])(
-    '[TC-ABS-011-N] restart preserves the remaining item reservation at maxSpawns=%s',
+    'restart preserves the remaining item reservation at maxSpawns=%s',
     async (maxSpawns) => {
       const interrupted = new Gate();
       const resumeParent = new Gate();
@@ -207,7 +207,7 @@ describe('existing parent questions (ABS-11)', () => {
       }
     },
   );
-  it('[TC-ABS-011-H] active parent receives both scoped questions and reads referenced child drafts', async () => {
+  it('active parent receives both scoped questions and reads referenced child drafts', async () => {
     const resumeParent = new Gate();
     const observed: ParentQuestionMessage[] = [];
     const state = await setup(async (input, host) => {
@@ -288,7 +288,7 @@ describe('existing parent questions (ABS-11)', () => {
     expect(Object.values(final.questions).every((q) => q.status === 'answered')).toBe(true);
   });
 
-  it('[TC-ABS-011-N] run cancellation closes every question and leaves no waiting execution', async () => {
+  it('run cancellation closes every question and leaves no waiting execution', async () => {
     const releaseParent = new Gate();
     const state = await setup(async (input, host) => {
       if (input.nodeId === 'child') {
@@ -329,7 +329,7 @@ describe('existing parent questions (ABS-11)', () => {
     expect(Object.values(final.questions).every((q) => q.status === 'cancelled')).toBe(true);
     expect(Object.values(final.executions).every((e) => e.status === 'cancelled')).toBe(true);
   });
-  it('[TC-ABS-011-N] restarts a child after its question interrupted the parent wait', async () => {
+  it('restarts a child after its question interrupted the parent wait', async () => {
     const interrupted = new Gate();
     const resumeParent = new Gate();
     let originalQuestion = '';
@@ -415,7 +415,7 @@ describe('existing parent questions (ABS-11)', () => {
     ]);
   });
 
-  it('[TC-ABS-011-N] a child ending with a pending question closes it before draining tools', async () => {
+  it('a child ending with a pending question closes it before draining tools', async () => {
     const crash = new Gate();
     const state = await setup(async (input, host) => {
       if (input.nodeId === 'child') {
@@ -453,100 +453,95 @@ describe('existing parent questions (ABS-11)', () => {
     expect(Object.values(final.questions)[0]?.status).toBe('cancelled');
     expect(state.clock.nowIso()).toBe('2026-10-15T00:00:00.000Z');
   });
-  it.each([false, true])(
-    '[TC-ABS-011-H] same parent replies and continues, items=%s',
-    async (items) => {
-      const answers: unknown[] = [];
-      const parentReplies: ToolOutcome[] = [];
-      const state = await setup(async (input, host) => {
-        if (input.nodeId === 'child') {
-          const answer = await host.invokeTool({
-            name: 'ask',
-            args: { targetNodeId: 'parent', body: `Which option for ${input.item?.index ?? 1}?` },
-          });
-          if (!answer.ok) throw new Error(answer.error.message);
-          answers.push(answer.result);
-          return finish(host, `child received ${answer.result.body}`);
-        }
-        let result = await host.invokeTool({
-          name: 'spawn_subagents',
-          args: {
-            ...(items ? { mode: 'items' } : {}),
-            tasks: Array.from({ length: items ? 2 : 1 }, (_, i) => ({
-              targetNodeId: 'child',
-              brief: `item ${i + 1}`,
-            })),
-          },
+  it.each([false, true])('same parent replies and continues, items=%s', async (items) => {
+    const answers: unknown[] = [];
+    const parentReplies: ToolOutcome[] = [];
+    const state = await setup(async (input, host) => {
+      if (input.nodeId === 'child') {
+        const answer = await host.invokeTool({
+          name: 'ask',
+          args: { targetNodeId: 'parent', body: `Which option for ${input.item?.index ?? 1}?` },
         });
-        if (!result.ok) throw new Error(result.error.message);
-        const taskIds = result.result.taskIds;
-        if (items) {
-          const stealsCapacity = await host.invokeTool({
-            name: 'spawn_subagents',
-            args: { tasks: [{ targetNodeId: 'child', brief: 'extra' }] },
-          });
-          expect(stealsCapacity.ok).toBe(false);
-          const draft = await host.invokeTool({
-            name: 'write_artifact',
-            args: { text: 'premature parent result' },
-          });
-          if (!draft.ok) throw new Error(draft.error.message);
-          const premature = await host.invokeTool({
-            name: 'submit_result',
-            args: { artifactVersionIds: [draft.result.artifactVersionId] },
-          });
-          expect(premature.ok).toBe(false);
-        }
-        for (let i = 0; i < 5; i++) {
-          for (const question of questions(result)) {
-            parentReplies.push(
-              await host.invokeTool({
-                name: 'reply',
-                args: { questionId: question.questionId, body: 'Use A.' },
-              }),
-            );
-            const duplicate = await host.invokeTool({
-              name: 'reply',
-              args: { questionId: question.questionId, body: 'Duplicate' },
-            });
-            expect(duplicate.ok).toBe(false);
-          }
-          result = await host.invokeTool({ name: 'await_tasks', args: { taskIds } });
-          if (!result.ok) throw new Error(result.error.message);
-          if (
-            !questions(result).length &&
-            result.result.remaining !== undefined &&
-            result.result.remaining !== 0
-          )
-            continue;
-          if (
-            !questions(result).length &&
-            (result.result.tasks as { status: string }[]).every((t) => t.status === 'completed')
-          )
-            break;
-        }
-        return finish(host, 'parent completed after answering');
+        if (!answer.ok) throw new Error(answer.error.message);
+        answers.push(answer.result);
+        return finish(host, `child received ${answer.result.body}`);
+      }
+      let result = await host.invokeTool({
+        name: 'spawn_subagents',
+        args: {
+          ...(items ? { mode: 'items' } : {}),
+          tasks: Array.from({ length: items ? 2 : 1 }, (_, i) => ({
+            targetNodeId: 'child',
+            brief: `item ${i + 1}`,
+          })),
+        },
       });
-      const final = await waitForProjection(state.transport, state.runId, (p) =>
-        ['succeeded', 'failed'].includes(p.status),
-      );
-      expect(final.status, JSON.stringify(final.executions)).toBe('succeeded');
-      expect(answers).toHaveLength(items ? 2 : 1);
-      expect(answers.every((a) => (a as { outcome: string }).outcome === 'answered')).toBe(true);
-      expect(parentReplies.every((reply) => reply.ok && reply.result.terminal === false)).toBe(
-        true,
-      );
-      expect(state.started.filter((s) => s.nodeId === 'parent')).toHaveLength(1);
-      expect(state.started).toHaveLength(items ? 3 : 2);
-      expect(
-        Object.values(final.questions).every(
-          (q) => q.delivery === 'parent' && q.status === 'answered',
-        ),
-      ).toBe(true);
-    },
-  );
+      if (!result.ok) throw new Error(result.error.message);
+      const taskIds = result.result.taskIds;
+      if (items) {
+        const stealsCapacity = await host.invokeTool({
+          name: 'spawn_subagents',
+          args: { tasks: [{ targetNodeId: 'child', brief: 'extra' }] },
+        });
+        expect(stealsCapacity.ok).toBe(false);
+        const draft = await host.invokeTool({
+          name: 'write_artifact',
+          args: { text: 'premature parent result' },
+        });
+        if (!draft.ok) throw new Error(draft.error.message);
+        const premature = await host.invokeTool({
+          name: 'submit_result',
+          args: { artifactVersionIds: [draft.result.artifactVersionId] },
+        });
+        expect(premature.ok).toBe(false);
+      }
+      for (let i = 0; i < 5; i++) {
+        for (const question of questions(result)) {
+          parentReplies.push(
+            await host.invokeTool({
+              name: 'reply',
+              args: { questionId: question.questionId, body: 'Use A.' },
+            }),
+          );
+          const duplicate = await host.invokeTool({
+            name: 'reply',
+            args: { questionId: question.questionId, body: 'Duplicate' },
+          });
+          expect(duplicate.ok).toBe(false);
+        }
+        result = await host.invokeTool({ name: 'await_tasks', args: { taskIds } });
+        if (!result.ok) throw new Error(result.error.message);
+        if (
+          !questions(result).length &&
+          result.result.remaining !== undefined &&
+          result.result.remaining !== 0
+        )
+          continue;
+        if (
+          !questions(result).length &&
+          (result.result.tasks as { status: string }[]).every((t) => t.status === 'completed')
+        )
+          break;
+      }
+      return finish(host, 'parent completed after answering');
+    });
+    const final = await waitForProjection(state.transport, state.runId, (p) =>
+      ['succeeded', 'failed'].includes(p.status),
+    );
+    expect(final.status, JSON.stringify(final.executions)).toBe('succeeded');
+    expect(answers).toHaveLength(items ? 2 : 1);
+    expect(answers.every((a) => (a as { outcome: string }).outcome === 'answered')).toBe(true);
+    expect(parentReplies.every((reply) => reply.ok && reply.result.terminal === false)).toBe(true);
+    expect(state.started.filter((s) => s.nodeId === 'parent')).toHaveLength(1);
+    expect(state.started).toHaveLength(items ? 3 : 2);
+    expect(
+      Object.values(final.questions).every(
+        (q) => q.delivery === 'parent' && q.status === 'answered',
+      ),
+    ).toBe(true);
+  });
 
-  it('[TC-ABS-011-N] closes the child question without cancelling the parent; late reply is rejected', async () => {
+  it('closes the child question without cancelling the parent; late reply is rejected', async () => {
     const parentReady = new Gate();
     const releaseParent = new Gate();
     let questionId = '';

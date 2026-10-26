@@ -57,7 +57,7 @@ function result(sessionId = 'session'): VerificationResultView {
   };
 }
 
-it('[TC-WBD-007-H] captures the displayed check output and keeps its raw report hash separate', async () => {
+it('captures the displayed check output and keeps its raw report hash separate', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const entry = result();
   const workspaces = {
@@ -115,7 +115,7 @@ it('[TC-WBD-007-H] captures the displayed check output and keeps its raw report 
   }
 });
 
-it('[TC-WBD-007-F] a late check response from another session cannot become the current capture', async () => {
+it('a late check response from another session cannot become the current capture', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   let resolveFirst!: (value: VerificationResultView[]) => void;
   const first = new Promise<VerificationResultView[]>((resolve) => {

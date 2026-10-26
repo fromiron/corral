@@ -20,7 +20,7 @@ export function RunActions({
   const t = useTranslations('Reins');
   const projection = useStore(session, (s) => s.projection);
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
-  // The run the confirmation was opened for (CR-046 P18): a view that follows another run
+  // The run the confirmation was opened for: a view that follows another run
   // drops it, so confirming can never cancel a run the person did not choose.
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const shownRun = projection?.runId ?? null;

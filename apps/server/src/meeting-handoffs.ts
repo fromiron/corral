@@ -191,7 +191,7 @@ export class MeetingHandoffService {
 
   private async dispatch(stored: Stored): Promise<MeetingHandoffReceipt> {
     const { sourceSessionId, commandId, entryId } = stored.receipt;
-    // CR-056: a handoff saved with the removed Ultra is refused, not started as plain auto.
+    // a handoff saved with the removed Ultra is refused, not started as plain auto.
     const { execution } = stored.start;
     if ('qualityPreset' in execution || 'ultra' in execution) {
       stored.receipt.state = 'refused';

@@ -14,7 +14,7 @@ import type { Coordinator } from './coordinator.ts';
 import type { RunProjection } from './projection.ts';
 import { type RuntimeTransport, waitForProjection } from './transport.ts';
 
-// Headless runs and the variant comparison harness (roadmap Core-③, Spec §1.3 and §12).
+// Headless runs and the variant comparison harness (roadmap Core-③, product contract §1.3 and §12).
 // A headless run never decides for a person: when it would wait for an approval it is cancelled
 // and reported as needing a person. User questions instead return a needs_input record.
 // The owner of the runtime remains responsible for shutdown or further answers.

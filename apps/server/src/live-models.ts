@@ -20,12 +20,12 @@ import {
   userConfigDir,
 } from './models/index.ts';
 
-// Live runs (C-020, C-058): sign-in is stored in the user's config directory, outside the
+// Live runs: sign-in is stored in the user's config directory, outside the
 // workspace; each execution runs in its own worker process and gets a token per request.
 export function createLiveModels(): LiveModels {
   const configDir = userConfigDir();
   const own = new FileCredentialStore(configDir);
-  // Corral's own sign-in first; otherwise the Codex CLI login, read only (CR-004).
+  // Corral's own sign-in first; otherwise the Codex CLI login, read only.
   const codexPath = codexAuthPath();
   const credentials = new LayeredCredentialStore(own, codexPath);
   return {

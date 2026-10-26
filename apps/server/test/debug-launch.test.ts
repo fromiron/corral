@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { debugLaunch, debugSourceMapLocations } from '../src/files/debug-launch.ts';
 import { fileHash } from '../src/files/launch-fingerprint.ts';
 
-it('[TC-WBD-023-N] fingerprints a large Chromium binary while preserving the ordinary launch bound', async () => {
+it('fingerprints a large Chromium binary while preserving the ordinary launch bound', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-debug-large-binary-'));
   try {
     const executable = join(root, 'chromium');
@@ -36,7 +36,7 @@ it('[TC-WBD-023-N] fingerprints a large Chromium binary while preserving the ord
   }
 });
 
-it('[TC-WBD-023-N] allows only captured local maps at the owned preview origin for browser fallback', () => {
+it('allows only captured local maps at the owned preview origin for browser fallback', () => {
   const paths = ['out/browser.js.map', 'out/unrelated.js', '../escape.map', 'out/wild*.map'];
   expect(debugSourceMapLocations('/copy', paths, 'http://127.0.0.2:43123/')).toEqual([
     '/copy/**',

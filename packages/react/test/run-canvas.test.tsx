@@ -44,15 +44,15 @@ const execution = (
   ...extra,
 });
 
-describe('run canvas layout (C-065)', () => {
-  it('[TC-OBS-001-H] uses the saved layout when it places every node of the run', () => {
+describe('run canvas layout', () => {
+  it('uses the saved layout when it places every node of the run', () => {
     const { definition, layout } = team();
     const result = runCanvasLayout(definition, layout);
     expect(result.source).toBe('saved');
     expect(result.nodes).toEqual(layout);
   });
 
-  it('[TC-OBS-001-N] arranges every node itself when the saved layout misses one', () => {
+  it('arranges every node itself when the saved layout misses one', () => {
     const { definition, layout } = team();
     const { output: _missing, ...partial } = layout;
     for (const saved of [partial, null]) {
@@ -78,7 +78,7 @@ describe('run canvas layout (C-065)', () => {
     }
   });
 
-  it('[TC-OBS-001-N] ignores saved positions of nodes the run does not have', () => {
+  it('ignores saved positions of nodes the run does not have', () => {
     const { definition, layout } = team();
     const result = runCanvasLayout(definition, { ...layout, gone: { x: 1, y: 1 } });
     expect(result.source).toBe('saved');
@@ -110,8 +110,8 @@ function renderCanvas(
   return { view, session, commits: () => commits, reset: () => (commits = 0) };
 }
 
-describe('RunCanvas (C-065)', () => {
-  it('[TC-OBS-001-H] shows how many executions each node had and reports node clicks', async () => {
+describe('RunCanvas', () => {
+  it('shows how many executions each node had and reports node clicks', async () => {
     const { definition } = team();
     const onSelectNode = vi.fn();
     renderCanvas(
@@ -137,7 +137,7 @@ describe('RunCanvas (C-065)', () => {
     expect(screen.getByRole('application', { name: 'Run graph' })).toBeTruthy();
   });
 
-  it('[TC-OBS-001-N] is read-only: nodes cannot be dragged and ports cannot be connected', async () => {
+  it('is read-only: nodes cannot be dragged and ports cannot be connected', async () => {
     const { definition } = team();
     renderCanvas(definition, projectionWith({}));
     await act(async () => {});
@@ -147,7 +147,7 @@ describe('RunCanvas (C-065)', () => {
     expect(document.querySelector('.react-flow__resize-control')).toBeNull();
   });
 
-  it('[TC-UX-002-N] run updates that leave node statuses alone do not re-render it', async () => {
+  it('run updates that leave node statuses alone do not re-render it', async () => {
     const { definition } = team();
     const harness = renderCanvas(definition, projectionWith({}));
     await act(async () => {});
@@ -165,8 +165,8 @@ describe('RunCanvas (C-065)', () => {
   });
 });
 
-describe('steer target (C-066)', () => {
-  it('[TC-OBS-001-N] an execution the run does not have is not replaced by another one', () => {
+describe('steer target', () => {
+  it('an execution the run does not have is not replaced by another one', () => {
     const session = sessionStore({
       runId: 'run_target',
       projection: projectionWith({

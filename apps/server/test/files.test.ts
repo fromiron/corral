@@ -21,7 +21,7 @@ import { ReviewService } from '../src/files/review.ts';
 import { safeRelative, WorkspaceService } from '../src/files/service.ts';
 import { WorkspaceAccessStore } from '../src/files/workspace-access.ts';
 
-// The file broker's rules (CR-012): paths, the read-before-change rule, and what a stop leaves.
+// The file broker's rules: paths, the read-before-change rule, and what a stop leaves.
 // These integration cases create real Git worktrees and capture multiple trees
 // (including 52 checkpoints for retention). Keep their outer deadline separate
 // from the explicit command and LSP deadlines exercised by the broker.
@@ -86,8 +86,8 @@ async function setup(
   return { db, service, call, original, clock };
 }
 
-describe('file broker (CR-012)', () => {
-  it('[TC-LLM-004-N] paged file reads do not authorize replacing unread content', async () => {
+describe('file broker', () => {
+  it('paged file reads do not authorize replacing unread content', async () => {
     const s = await setup();
     try {
       const root = s.service.copyOf('session_1')!.worktree;
@@ -107,7 +107,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-WBD-001-H] identifies the binding and advances the copy generation after recreation', async () => {
+  it('identifies the binding and advances the copy generation after recreation', async () => {
     const s = await setup();
     try {
       const first = s.service.worktreeView('session_1');
@@ -129,7 +129,7 @@ describe('file broker (CR-012)', () => {
     }
   });
 
-  it('[TC-WBD-001-N] protects active and uncertain readers from removal and rejects acquisition during removal', async () => {
+  it('protects active and uncertain readers from removal and rejects acquisition during removal', async () => {
     const s = await setup();
     try {
       const copy = s.service.copyOf('session_1');
@@ -154,7 +154,7 @@ describe('file broker (CR-012)', () => {
     }
   });
 
-  it('[TC-CONTINUITY-001-N] [TC-RESUME-001-N] runtime file identity refuses changed, foreign and uncertain trees', async () => {
+  it('runtime file identity refuses changed, foreign and uncertain trees', async () => {
     const s = await setup();
     const root = s.service.copyOf('session_1')!.worktree;
     try {
@@ -200,7 +200,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-HUNK-001-H] [TC-HUNK-001-N] [TC-WBD-009-F] selected hunks preserve other changes and the index, checkpoint the correct target and reject stale edits', async () => {
+  it('selected hunks preserve other changes and the index, checkpoint the correct target and reject stale edits', async () => {
     const s = await setup();
     const root = s.service.copyOf('session_1')!.worktree;
     try {
@@ -210,7 +210,7 @@ describe('file broker (CR-012)', () => {
       writeFileSync(join(s.original, 'a.txt'), baseline);
       writeFileSync(join(s.original, 'unrelated.txt'), 'keep');
       const indexBefore = readFileSync(join(s.original, '.git/index'));
-      // The managed copy has its own index (CR-046 P13); hunk work must not stage into it.
+      // The managed copy has its own index; hunk work must not stage into it.
       const copyIndex = () => execFileSync('git', ['ls-files', '--stage', '-z'], { cwd: root });
       const copyIndexBefore = copyIndex();
       const before = await s.service.captureCheckpoint('session_1', {
@@ -303,7 +303,7 @@ describe('file broker (CR-012)', () => {
     }
   });
 
-  it('[TC-CKPT-001-H] [TC-CKPT-001-N] checkpoints preserve a recovery copy and refuse stale, foreign and incomplete restores', async () => {
+  it('checkpoints preserve a recovery copy and refuse stale, foreign and incomplete restores', async () => {
     const s = await setup();
     const root = s.service.copyOf('session_1')!.worktree;
     try {
@@ -413,7 +413,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-CHAT-002-N] reading a finished run never invents its missing end tree from later user changes', async () => {
+  it('reading a finished run never invents its missing end tree from later user changes', async () => {
     const s = await setup();
     try {
       await s.service.snapshotRun('run_1', 'session_1', 'start');
@@ -431,7 +431,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-HAR-014-N] concurrent criteria pinning cannot replace the first immutable set', async () => {
+  it('concurrent criteria pinning cannot replace the first immutable set', async () => {
     const s = await setup();
     const file = await s.call('read_file', { path: 'a.txt' });
     const results = await Promise.allSettled([
@@ -444,7 +444,7 @@ describe('file broker (CR-012)', () => {
     );
     s.db.close();
   });
-  it('[TC-HAR-016-N] MCP launch trust is tied to pinned configuration, working copy code and authentication scope', async () => {
+  it('MCP launch trust is tied to pinned configuration, working copy code and authentication scope', async () => {
     const s = await setup();
     try {
       const local = {
@@ -504,7 +504,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-HAR-016-N] changing legacy check settings retains MCP definitions', async () => {
+  it('changing legacy check settings retains MCP definitions', async () => {
     const s = await setup();
     try {
       const mcp = {
@@ -527,7 +527,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-HAR-014-H] creates comparison copies from the exact requested commit even after the source HEAD moves', async () => {
+  it('creates comparison copies from the exact requested commit even after the source HEAD moves', async () => {
     const s = await setup();
     try {
       const first = s.service.worktreeView('session_1')!.baseCommit;
@@ -552,7 +552,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-HAR-014-N] pins recipe criteria without lending read evidence and rejects changes or a new baseline', async () => {
+  it('pins recipe criteria without lending read evidence and rejects changes or a new baseline', async () => {
     const s = await setup();
     try {
       const source = { sha256: createHash('sha256').update('one\n').digest('hex') };
@@ -687,7 +687,7 @@ describe('file broker (CR-012)', () => {
     return { ...s, input, proposal };
   }
   it.each(['ignored-target', 'ignored-source', 'filtered-target'])(
-    '[TC-HAR-018-N] refuses LSP changes whose original bytes are outside the fixed tree (%s)',
+    'refuses LSP changes whose original bytes are outside the fixed tree (%s)',
     async (kind) => {
       const s = await lspSetup('normal', {
         query: async (input) => {
@@ -745,7 +745,7 @@ describe('file broker (CR-012)', () => {
       }
     },
   );
-  it('[TC-HAR-018-H] surfaces pending language-server proposals in the session inbox until reviewed', async () => {
+  it('surfaces pending language-server proposals in the session inbox until reviewed', async () => {
     const s = await proposalSetup();
     const review = new ReviewService({ db: s.db, clock: new FakeClock(), files: s.service });
     const sessions = [{ sessionId: 'session_1', title: 'Proposal session', entries: [] }];
@@ -760,7 +760,7 @@ describe('file broker (CR-012)', () => {
     expect(review.inbox(sessions, []).some((item) => item.kind === 'lsp_proposal')).toBe(false);
     s.db.close();
   });
-  it('[TC-HAR-018-H] [TC-WBD-001-N] persists a pinned proposal, waits for explicit idle-session apply and never writes twice', async () => {
+  it('persists a pinned proposal, waits for explicit idle-session apply and never writes twice', async () => {
     const s = await proposalSetup();
     expect(s.proposal.state).toBe('pending');
     expect(s.service.lspProposals('session_1')).toHaveLength(1);
@@ -793,7 +793,7 @@ describe('file broker (CR-012)', () => {
     expect(() => s.service.lspProposal('different_session', s.proposal.proposalId)).toThrow();
     s.db.close();
   });
-  it('[TC-HAR-018-N] preflights every file before the first write and rejects a stale proposal', async () => {
+  it('preflights every file before the first write and rejects a stale proposal', async () => {
     const s = await proposalSetup();
     s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
     writeFileSync(join(s.root, 'b.txt'), 'external change\n');
@@ -807,7 +807,7 @@ describe('file broker (CR-012)', () => {
     expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(0);
     s.db.close();
   });
-  it('[TC-HAR-018-N] rechecks working-copy identity after waiting for its lease', async () => {
+  it('rechecks working-copy identity after waiting for its lease', async () => {
     const s = await proposalSetup();
     s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
     const entered = new Gate(),
@@ -842,7 +842,7 @@ describe('file broker (CR-012)', () => {
       s.db.close();
     }
   });
-  it('[TC-HAR-018-N] dismissing during asynchronous preflight cannot apply or overwrite the dismissal', async () => {
+  it('dismissing during asynchronous preflight cannot apply or overwrite the dismissal', async () => {
     for (const stale of [false, true]) {
       const s = await proposalSetup();
       s.db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_1'").run();
@@ -875,7 +875,7 @@ describe('file broker (CR-012)', () => {
       }
     }
   });
-  it('[TC-HAR-018-N] preserves partial writes and recovers uncertain files without replaying them', async () => {
+  it('preserves partial writes and recovers uncertain files without replaying them', async () => {
     const s = await proposalSetup({
       rename: async (from, to) => {
         if (basename(String(to)) === 'b.txt') throw new Error('injected IO failure');
@@ -913,7 +913,7 @@ describe('file broker (CR-012)', () => {
     expect(s.db.prepare('SELECT * FROM file_operations').all()).toHaveLength(2);
     s.db.close();
   });
-  it('[TC-HAR-018-N] a cancelled server reply cannot create a late proposal', async () => {
+  it('a cancelled server reply cannot create a late proposal', async () => {
     let aborted = false;
     const s = await lspSetup('normal', {
       query: async (input) => {
@@ -958,7 +958,7 @@ describe('file broker (CR-012)', () => {
     expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('one\n');
     s.db.close();
   });
-  it('[TC-HAR-010-H] LSP results are relative, pinned and do not create agent write evidence for returned locations', async () => {
+  it('LSP results are relative, pinned and do not create agent write evidence for returned locations', async () => {
     const s = await lspSetup('other_file');
     const plan = await s.service.planLsp(s.input, s.cancellation);
     await expect(s.service.runLsp(s.input, plan, null, s.cancellation)).rejects.toThrow(
@@ -993,14 +993,14 @@ describe('file broker (CR-012)', () => {
       ),
     ).rejects.toThrow(/selected|registered/);
   });
-  it('[TC-HAR-018-N] LSP cannot return a file URI outside the managed worktree', async () => {
+  it('LSP cannot return a file URI outside the managed worktree', async () => {
     const s = await lspSetup('out_of_scope');
     const plan = await s.service.planLsp(s.input, s.cancellation);
     await expect(s.service.runLsp(s.input, plan, plan.fingerprint, s.cancellation)).rejects.toThrow(
       /scope|outside/,
     );
   });
-  it('[TC-HAR-010-N] a file change during an LSP query invalidates the result', async () => {
+  it('a file change during an LSP query invalidates the result', async () => {
     const entered = new Gate(),
       release = new Gate();
     const s = await lspSetup('normal', {
@@ -1028,7 +1028,7 @@ describe('file broker (CR-012)', () => {
     release.open();
     await rejected;
   });
-  it('[TC-HAR-010-N] an edit cannot resurrect a deleted original or replace its frozen hash with a later read', async () => {
+  it('an edit cannot resurrect a deleted original or replace its frozen hash with a later read', async () => {
     for (const kind of ['deleted', 'reread']) {
       const entered = new Gate(),
         release = new Gate();
@@ -1057,7 +1057,7 @@ describe('file broker (CR-012)', () => {
       else expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('external');
     }
   });
-  it('[TC-HAR-010-H] broker edit preserves BOM and CRLF bytes through the public Pi transformer', async () => {
+  it('broker edit preserves BOM and CRLF bytes through the public Pi transformer', async () => {
     const { service, call } = await setup();
     const root = service.copyOf('session_1')?.worktree;
     if (!root) throw new Error('no copy');
@@ -1066,7 +1066,7 @@ describe('file broker (CR-012)', () => {
     await call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'ONE' }] });
     expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('\ufeffONE\r\ntwo\r\n');
   });
-  it('[TC-HAR-011-N] cancellation or destination creation after staging cannot be overwritten and temporary files are removed', async () => {
+  it('cancellation or destination creation after staging cannot be overwritten and temporary files are removed', async () => {
     for (const reason of ['cancel', 'created']) {
       let aborted = false,
         root = '';
@@ -1107,7 +1107,7 @@ describe('file broker (CR-012)', () => {
       ).toBe(false);
     }
   });
-  it('[TC-HAR-011-N] a successful file replacement with failed bookkeeping stays uncertain, not failed', async () => {
+  it('a successful file replacement with failed bookkeeping stays uncertain, not failed', async () => {
     const { service, call, db } = await setup();
     await call('read_file', { path: 'a.txt' });
     db.exec(
@@ -1124,7 +1124,7 @@ describe('file broker (CR-012)', () => {
     );
   });
   it.each(process.platform === 'linux' ? [undefined, 'linux-bwrap' as const] : [undefined])(
-    '[TC-HAR-012-N] automatic checks enforce pinned selection, exact fingerprint approval, owner and stale-tree rejection (%s)',
+    'automatic checks enforce pinned selection, exact fingerprint approval, owner and stale-tree rejection (%s)',
     async (isolation) => {
       const { service, call } = await setup();
       await service.configure('default', {
@@ -1208,7 +1208,7 @@ describe('file broker (CR-012)', () => {
       );
     },
   );
-  it('[TC-HAR-013-H] [TC-WBD-001-N] manual checks use owned frozen copies and retain separate state and verdict', async () => {
+  it('manual checks use owned frozen copies and retain separate state and verdict', async () => {
     const { service, call, db } = await setup();
     await service.configure('default', {
       verifyCommands: [
@@ -1252,7 +1252,7 @@ describe('file broker (CR-012)', () => {
     ).toMatchObject({ stale: true });
     expect(db.prepare('SELECT report_json FROM verifications WHERE id = ?').get(id)).toBeTruthy();
   });
-  it('[TC-HAR-012-N] manual cancellation is session scoped and shutdown drains owned checks', async () => {
+  it('manual cancellation is session scoped and shutdown drains owned checks', async () => {
     const { service } = await setup();
     await service.configure('default', {
       verifyCommands: [
@@ -1278,7 +1278,7 @@ describe('file broker (CR-012)', () => {
       verdict: 'not_evaluated',
     });
   });
-  it('[TC-HAR-012-H] existing workspace settings write immutable check revisions and read their authority', async () => {
+  it('existing workspace settings write immutable check revisions and read their authority', async () => {
     const { service, db } = await setup();
     const check = { id: 'types', name: 'Types', argv: ['node', 'check.mjs'], timeoutMs: 10000 };
     await service.configure('default', { verifyCommands: [check] });
@@ -1295,7 +1295,7 @@ describe('file broker (CR-012)', () => {
     ).rejects.toThrow();
     expect(store.latest('default')?.checks).toEqual([]);
   });
-  it('[TC-HAR-010-N] cancellation or an external change during edit calculation leaves the file untouched', async () => {
+  it('cancellation or an external change during edit calculation leaves the file untouched', async () => {
     for (const cause of ['cancel', 'changed']) {
       const entered = new Gate();
       const release = new Gate();
@@ -1344,7 +1344,7 @@ describe('file broker (CR-012)', () => {
       expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
     }
   });
-  it('[TC-HAR-010-H] Pi edit and write use the same read evidence and recorded atomic write path', async () => {
+  it('Pi edit and write use the same read evidence and recorded atomic write path', async () => {
     const { call, db } = await setup();
     await call('read_file', { path: 'a.txt' });
     const edit = await call('edit', { path: 'a.txt', edits: [{ oldText: 'one', newText: 'two' }] });
@@ -1362,7 +1362,7 @@ describe('file broker (CR-012)', () => {
       db.prepare("SELECT COUNT(*) AS n FROM file_operations WHERE state = 'applied'").get(),
     ).toEqual({ n: 2 });
   });
-  it('[TC-HAR-010-N] all edit blocks must validate before any bytes are changed', async () => {
+  it('all edit blocks must validate before any bytes are changed', async () => {
     const { call, db } = await setup();
     await call('read_file', { path: 'a.txt' });
     await expect(
@@ -1377,7 +1377,7 @@ describe('file broker (CR-012)', () => {
     expect(await call('read_file', { path: 'a.txt' })).toMatchObject({ text: 'one\n' });
     expect(db.prepare('SELECT COUNT(*) AS n FROM file_operations').get()).toEqual({ n: 0 });
   });
-  it('[TC-HAR-011-N] a different execution or restarted attempt cannot borrow another execution’s read', async () => {
+  it('a different execution or restarted attempt cannot borrow another execution’s read', async () => {
     const { call } = await setup();
     await call('read_file', { path: 'a.txt' }, 'exec_a');
     await expect(
@@ -1387,7 +1387,7 @@ describe('file broker (CR-012)', () => {
       /read a.txt/,
     );
   });
-  it('[TC-HAR-011-H] [TC-HAR-011-N] B writing after A reads does not refresh A’s evidence', async () => {
+  it('B writing after A reads does not refresh A’s evidence', async () => {
     const { call } = await setup();
     await call('read_file', { path: 'a.txt' }, 'exec_a');
     await call('read_file', { path: 'a.txt' }, 'exec_b');
@@ -1491,8 +1491,8 @@ describe('file broker (CR-012)', () => {
   });
 });
 
-describe('path search for `@` references (CR-016)', () => {
-  it('[TC-REF-010-H] finds files and folders by fuzzy name, file names first, without reading them', async () => {
+describe('path search for `@` references', () => {
+  it('finds files and folders by fuzzy name, file names first, without reading them', async () => {
     const { service, original } = await setup();
     const scope = { kind: 'project' as const, id: 'default' };
     mkdirSync(join(original, 'src', 'pages'), { recursive: true });
@@ -1515,7 +1515,7 @@ describe('path search for `@` references (CR-016)', () => {
     expect((await service.searchPaths(scope, 'zzzz', 10)).items).toEqual([]);
   });
 
-  it('[TC-REF-011-F] searches only registered scopes', async () => {
+  it('searches only registered scopes', async () => {
     const { service } = await setup();
     await expect(service.searchPaths({ kind: 'project', id: 'missing' }, 'a', 5)).rejects.toThrow();
     await expect(
@@ -1524,7 +1524,7 @@ describe('path search for `@` references (CR-016)', () => {
   });
 });
 
-describe('review, applying and reverting (CR-013)', () => {
+describe('review, applying and reverting', () => {
   it('[WB-REV-004/005] applies the approved tree, skips or refuses conflicts, and reverts only what is unchanged', async () => {
     const { db, service, call, original } = await setup();
     const { ReviewService } = await import('../src/files/review.ts');
@@ -1634,8 +1634,8 @@ describe('review, applying and reverting (CR-013)', () => {
   });
 });
 
-describe('change review evidence (CR-046 P17)', () => {
-  it('[TC-WBD-013-H] [TC-WBD-013-N] credits Corral only for files still as its last write left them', async () => {
+describe('change review evidence', () => {
+  it('credits Corral only for files still as its last write left them', async () => {
     const { service, call } = await setup();
     try {
       await call('read_file', { path: 'a.txt' });
@@ -1660,7 +1660,7 @@ describe('change review evidence (CR-046 P17)', () => {
     }
   });
 
-  it('[TC-WBD-013-N] a check result is outdated by a change to its own command, not to another check', async () => {
+  it('a check result is outdated by a change to its own command, not to another check', async () => {
     const { service } = await setup();
     try {
       const check = {
@@ -1689,8 +1689,8 @@ describe('change review evidence (CR-046 P17)', () => {
   });
 });
 
-describe('working copy lifecycle (CR-046 P21-A)', () => {
-  it('[TC-WBD-016-H] lists what removing the copy would lose before anything is removed', async () => {
+describe('working copy lifecycle', () => {
+  it('lists what removing the copy would lose before anything is removed', async () => {
     const { db, service, call, clock } = await setup();
     try {
       await call('read_file', { path: 'a.txt' });
@@ -1728,7 +1728,7 @@ describe('working copy lifecycle (CR-046 P21-A)', () => {
     }
   });
 
-  it('[TC-WBD-016-N] a removal confirmed for one copy generation never removes the copy made after it', async () => {
+  it('a removal confirmed for one copy generation never removes the copy made after it', async () => {
     const { db, service } = await setup();
     try {
       const access = new WorkspaceAccessStore(db);
@@ -1755,7 +1755,7 @@ describe('working copy lifecycle (CR-046 P21-A)', () => {
   });
 
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
-    '[TC-WBD-016-F] a copy that could not be fully deleted is not recorded as removed',
+    'a copy that could not be fully deleted is not recorded as removed',
     async () => {
       const { service } = await setup();
       const root = service.copyOf('session_1')?.worktree as string;
@@ -1774,7 +1774,7 @@ describe('working copy lifecycle (CR-046 P21-A)', () => {
   );
 });
 
-describe('missing folders (02-UX-Spec §8)', () => {
+describe('missing folders', () => {
   it('says when the linked folder or the working copy is gone, instead of failing', async () => {
     const { service, original } = await setup();
     const copy = service.copyOf('session_1');
@@ -1788,7 +1788,7 @@ describe('missing folders (02-UX-Spec §8)', () => {
   });
 });
 
-describe('the linked folder as Git sees it (02-UX-Spec §4)', () => {
+describe('the linked folder as Git sees it', () => {
   it('lists tracked changes against HEAD and untracked files, and reads the disk side', async () => {
     const { service, original } = await setup();
     writeFileSync(join(original, 'a.txt'), 'one\nmore\n');

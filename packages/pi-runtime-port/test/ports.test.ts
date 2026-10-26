@@ -21,7 +21,7 @@ const model: Model<'openai-completions'> = {
   compat: { supportsMidConvoSystemMessages: true },
 };
 const tool = (name: string) => ({ name, description: 'Fixture tool', parameters: Type.Object({}) });
-it('[TC-LLM-004-H] preserves upstream declaration ordering, identity and route-scoped limits', () => {
+it('preserves upstream declaration ordering, identity and route-scoped limits', () => {
   const first = toolDeclarationPolicy(model, [tool('Alpha'), tool('Beta')], ['Beta'], 0, 'account');
   const second = toolDeclarationPolicy(
     model,
@@ -66,7 +66,7 @@ it('[TC-LLM-004-H] preserves upstream declaration ordering, identity and route-s
   expect(active).toEqual(['Alpha']);
   expect(context.messages).toHaveLength(1);
 });
-it('[TC-LLM-004-N] affinity needs explicit capability, preserves caller keys and calls validation after insertion', async () => {
+it('affinity needs explicit capability, preserves caller keys and calls validation after insertion', async () => {
   const input = { sessionId: 'session-7', cacheRetention: 'short' as const };
   expect(withSessionAffinityOptions(input, model.api)).toBe(input);
   const bodies: unknown[] = [];

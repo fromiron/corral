@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { requestBox, slash, startSession, teamFromTemplate } from './workbench.ts';
 
-// Work sessions and input intents (CR-011, roadmap 23–24; WBTST-004) in the in-browser runtime.
+// Work sessions and input intents in the in-browser runtime.
 
 async function sessionWithTeam(page: Page, delay: number) {
   await page.goto(`/?delay=${delay}`);
@@ -15,7 +15,7 @@ async function sessionWithTeam(page: Page, delay: number) {
 const box = requestBox;
 const cards = (page: Page) => page.locator('[data-testid^="entry-"]');
 
-test('[WBTST-004] a follow-up continues the conversation in a new run; an IME Enter sends nothing', async ({
+test('a follow-up continues the conversation in a new run; an IME Enter sends nothing', async ({
   page,
 }) => {
   await sessionWithTeam(page, 50);
@@ -35,7 +35,7 @@ test('[WBTST-004] a follow-up continues the conversation in a new run; an IME En
     timeout: 20_000,
   });
 
-  // CR-054: the next request carries the conversation; the first run is left as it was.
+  // the next request carries the conversation; the first run is left as it was.
   await expect(page.getByText('Continues this conversation', { exact: true })).toBeVisible();
   await box(page).fill('Now only for one writer');
   await page.getByRole('button', { name: 'Send' }).click();
@@ -45,7 +45,7 @@ test('[WBTST-004] a follow-up continues the conversation in a new run; an IME En
   });
   await expect(cards(page).first().getByText('Succeeded', { exact: true })).toBeVisible();
 
-  // CR-055: a question about an answer is an ordinary message; there is no separate mode.
+  // a question about an answer is an ordinary message; there is no separate mode.
   await box(page).fill('/');
   await expect(page.getByRole('option', { name: /\/ask/ })).toHaveCount(0);
   await box(page).fill('Which one is simpler to back up?');
@@ -57,7 +57,7 @@ test('[WBTST-004] a follow-up continues the conversation in a new run; an IME En
   });
 });
 
-test('[WBTST-004] while a run works, a request waits in the queue until a person starts it', async ({
+test('while a run works, a request waits in the queue until a person starts it', async ({
   page,
 }) => {
   await sessionWithTeam(page, 1500);

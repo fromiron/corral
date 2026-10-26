@@ -14,7 +14,7 @@ afterEach(async () => {
 }, 30000);
 
 it.skipIf(!process.env.CORRAL_BROWSER_EXECUTABLE)(
-  '[TC-ABS-004-H] [TC-ABS-004-N] model preview actions use the same lease, execute once and retain immutable evidence',
+  'model preview actions use the same lease, execute once and retain immutable evidence',
   async () => {
     const { root, service } = await setup();
     await writeFile(
@@ -106,7 +106,7 @@ async function setup() {
   };
 }
 
-it('[TC-ABS-004-H] serves the real copy and relative assets; refresh reads edits and stop revokes the URL', async () => {
+it('serves the real copy and relative assets; refresh reads edits and stop revokes the URL', async () => {
   const { root, service } = await setup();
   const preview = await service.start('session_1', { path: 'site/index.html' });
   expect(new URL(preview.url).hostname).toBe('127.0.0.2');
@@ -125,7 +125,7 @@ it('[TC-ABS-004-H] serves the real copy and relative assets; refresh reads edits
   await expect(fetch(preview.url)).rejects.toThrow();
 });
 
-it('[TC-ABS-004-N] refuses traversal, private files, unsupported content, foreign paths and revoked trust', async () => {
+it('refuses traversal, private files, unsupported content, foreign paths and revoked trust', async () => {
   const { service, root, revoke } = await setup();
   for (const path of [
     '../outside.html',
@@ -153,7 +153,7 @@ it('[TC-ABS-004-N] refuses traversal, private files, unsupported content, foreig
   expect((await fetch(preview.url)).status).toBe(404);
 });
 
-it('[TC-ABS-004-N] a reader preview serves its pinned snapshot while a writer changes the live copy', async () => {
+it('a reader preview serves its pinned snapshot while a writer changes the live copy', async () => {
   const { root } = await setup();
   const service = new PreviewService({
     resolveRoot: async () => root,
@@ -172,7 +172,7 @@ it('[TC-ABS-004-N] a reader preview serves its pinned snapshot while a writer ch
   expect((await fetch(new URL('image.svg', lease.url))).status).toBe(404);
 });
 
-it('[TC-ABS-004-N] remote delegation is distinct, short lived, renewable and revoked with its lease', async () => {
+it('remote delegation is distinct, short lived, renewable and revoked with its lease', async () => {
   const { root } = await setup();
   let now = 1000;
   const service = new PreviewService({ resolveRoot: async () => root, now: () => now });
@@ -201,7 +201,7 @@ it('[TC-ABS-004-N] remote delegation is distinct, short lived, renewable and rev
 });
 
 it.skipIf(!['win32', 'linux'].includes(process.platform))(
-  '[TC-ABS-004-H] [TC-ABS-004-N] owned HTTP and HMR sockets attest the actual service job and revoke together',
+  'owned HTTP and HMR sockets attest the actual service job and revoke together',
   async () => {
     const root = await mkdtemp(join(tmpdir(), 'corral-preview-service-'));
     cleanup.push(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));

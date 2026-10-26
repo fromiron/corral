@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { requestBox, selectSessionTeam } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// CR-055: session chat starts the conversation lead with no auto choice request, so the
+// session chat starts the conversation lead with no auto choice request, so the
 // chooser's routing, its cancellation while choosing, question mode and Ultra are gone. What
 // remains is the start command's lost-response and cancellation reconciliation.
 
@@ -37,10 +37,7 @@ async function autoSession(page: Page, corral: Harness) {
 
 test.use({ live: true, codexLogin: true, reasoningApi: true });
 
-test('[TC-AUTO-001-N] a deleted selected team is unavailable, never silently auto', async ({
-  page,
-  corral,
-}) => {
+test('a deleted selected team is unavailable, never silently auto', async ({ page, corral }) => {
   const sessionId = await autoSession(page, corral);
   const saved = await write(page, '/corrals', 'POST', {
     definition: linearCorral(['required_reviewer']),
@@ -64,7 +61,7 @@ test('[TC-AUTO-001-N] a deleted selected team is unavailable, never silently aut
 });
 
 for (const stop of ['cancel', 'navigate'] as const) {
-  test(`[TC-AUTO-003-N] ${stop} after commit reconciles and cancels the run even when its response is delayed`, async ({
+  test(`${stop} after commit reconciles and cancels the run even when its response is delayed`, async ({
     page,
     corral,
   }) => {
@@ -130,7 +127,7 @@ for (const stop of ['cancel', 'navigate'] as const) {
 }
 
 for (const outcome of ['failed', 'succeeded'] as const) {
-  test(`[TC-AUTO-003-N] an unknown cancellation keeps the command after a ${outcome} run and session remount`, async ({
+  test(`an unknown cancellation keeps the command after a ${outcome} run and session remount`, async ({
     page,
     corral,
   }) => {
@@ -153,7 +150,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     corral.fake?.setResponses([
       async () => {
         await heldWorker;
-        // CR-055: the lead's reply is its answer; an empty reply publishes nothing and fails.
+        // the lead's reply is its answer; an empty reply publishes nothing and fails.
         return fauxAssistantMessage(outcome === 'failed' ? '' : 'Completed result.');
       },
     ]);
@@ -204,7 +201,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     expect(corral.server.coordinator.listRuns()).toHaveLength(1);
   });
 
-  test(`[TC-AUTO-003-N] an unknown queued cancellation keeps its command after a ${outcome} run and session remount`, async ({
+  test(`an unknown queued cancellation keeps its command after a ${outcome} run and session remount`, async ({
     page,
     corral,
   }) => {
@@ -234,7 +231,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     corral.fake?.setResponses([
       async () => {
         await heldWorker;
-        // CR-055: the lead's reply is its answer; an empty reply publishes nothing and fails.
+        // the lead's reply is its answer; an empty reply publishes nothing and fails.
         return fauxAssistantMessage(outcome === 'failed' ? '' : 'Completed result.');
       },
     ]);

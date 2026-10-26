@@ -2,7 +2,7 @@ import definition from '../../../../examples/research-team.corral.json' with { t
 import layout from '../../../../examples/research-team.layout.json' with { type: 'json' };
 import { expect, test } from './harness.ts';
 
-test('[TC-HAR-014-H] pins a review recipe in the Loop editor and explains its stop in the Run and Inbox', async ({
+test('pins a review recipe in the Loop editor and explains its stop in the Run and Inbox', async ({
   page,
   corral,
 }) => {

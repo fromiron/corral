@@ -12,7 +12,7 @@ import {
 import { requestOutputCap } from '../src/reasoning.ts';
 import { missingParentQuestions, withProtectedContext } from '../src/request-record.ts';
 
-it('[TC-LLM-004-N] an internal summary suspends the normal output contract without changing the retained prefix', async () => {
+it('an internal summary suspends the normal output contract without changing the retained prefix', async () => {
   const system = {
     role: 'system' as const,
     content: 'Complete work with write_artifact then submit_result.',
@@ -40,7 +40,7 @@ it('[TC-LLM-004-N] an internal summary suspends the normal output contract witho
 });
 
 it.each([40, 400])(
-  '[TC-LLM-004-N] calibrates an unchanged prefix to reported usage (%s), then estimates only its growth',
+  'calibrates an unchanged prefix to reported usage (%s), then estimates only its growth',
   (tokens) => {
     const meter = new ContextMeter();
     const model = { id: 'fixture', provider: 'fixture', api: 'fixture' };
@@ -65,7 +65,7 @@ it.each([40, 400])(
   },
 );
 
-it('[TC-LLM-004-N] preserves fresh tool evidence and compacts an oversized first input', () => {
+it('preserves fresh tool evidence and compacts an oversized first input', () => {
   const result = {
     role: 'toolResult' as const,
     toolCallId: 'read_1',
@@ -94,7 +94,7 @@ it('[TC-LLM-004-N] preserves fresh tool evidence and compacts an oversized first
   ).toEqual({ start: 0, end: 0 });
 });
 
-it('[TC-LLM-004-N] parent questions already present in current host state are not appended again', () => {
+it('parent questions already present in current host state are not appended again', () => {
   const question = {
     questionId: 'question_1',
     senderExecutionId: 'child',
@@ -115,7 +115,7 @@ it('[TC-LLM-004-N] parent questions already present in current host state are no
   expect(missingParentQuestions([question], [])).toEqual([question]);
 });
 
-it('[TC-LLM-004-F] keeps only current host state and leaves model output space', () => {
+it('keeps only current host state and leaves model output space', () => {
   const state = (text: string) => ({
     version: 1 as const,
     revision: 1,

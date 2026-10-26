@@ -2,7 +2,7 @@ import type { BinaryArtifact, OutputContract } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 
-// What a run produced, as the Results view lists it (CR-009). Computed from committed
+// What a run produced, as the Results view lists it. Computed from committed
 // projection facts only; nothing here is stored. The Output node's versions are the final
 // results, in the order it received them. Everything else the run made is intermediate,
 // grouped per artifact. A run that ended without an Output keeps its work as a partial result.

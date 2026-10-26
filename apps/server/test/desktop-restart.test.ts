@@ -52,7 +52,7 @@ async function start(gate?: Gate) {
   return { server, headers, call, workspace };
 }
 
-it('[TC-ABS-007-N] update restart refuses active work, then closes only after its normal completion', async () => {
+it('update restart refuses active work, then closes only after its normal completion', async () => {
   const gate = new Gate();
   const { server, call } = await start(gate);
   try {
@@ -83,7 +83,7 @@ it('[TC-ABS-007-N] update restart refuses active work, then closes only after it
   }
 });
 
-it('[TC-ABS-007-N] a pending HTTP mutation blocks restart before the route can start a Run', async () => {
+it('a pending HTTP mutation blocks restart before the route can start a Run', async () => {
   const { server, headers, call, workspace } = await start();
   const body = JSON.stringify({ name: 'Still accepting work', description: '' });
   const url = new URL(`${server.url}/api/v1/projects`);
@@ -124,7 +124,7 @@ it('[TC-ABS-007-N] a pending HTTP mutation blocks restart before the route can s
   }
 });
 
-it('[TC-ABS-007-N] a failed pre-update backup restores server admission and permits a later clean restart', async () => {
+it('a failed pre-update backup restores server admission and permits a later clean restart', async () => {
   const { server, call, workspace } = await start();
   const blocked = join(workspace, '.corral', 'update-backups');
   writeFileSync(blocked, 'A file prevents creating the backup directory.');

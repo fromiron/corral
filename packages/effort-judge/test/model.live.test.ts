@@ -34,7 +34,7 @@ const ask = (excerpt: string): EffortQuestion => ({
 });
 
 describe.skipIf(!live)('local-model on the installed release (opt-in)', () => {
-  it('[TC-DEC-001-N] releases the worker after a real model load fails', async () => {
+  it('releases the worker after a real model load fails', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'corral-judge-missing-'));
     const moduleUrl = new URL('../src/provider.ts', import.meta.url).href;
     try {
@@ -51,7 +51,7 @@ describe.skipIf(!live)('local-model on the installed release (opt-in)', () => {
     }
   }, 10_000);
 
-  it('[TC-DEC-001-H] judges a trivial request lower than a hard design task, in a worker thread', async () => {
+  it('judges a trivial request lower than a hard design task, in a worker thread', async () => {
     const dir = defaultModelDir();
     expect(installState(dir)).toBe('current');
     const provider = new OnnxEffortProvider({ dir });

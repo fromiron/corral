@@ -3,7 +3,7 @@ import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/test
 import { expect, it, vi } from 'vitest';
 import { Coordinator } from '../src/index.ts';
 
-it('[TC-PROMPT-002-H] [TC-PROMPT-002-N] a review-only brief narrows real file permissions without changing the saved definition', async () => {
+it('a review-only brief narrows real file permissions without changing the saved definition', async () => {
   const ready = new Gate(),
     done = new Gate();
   let host!: AgentHost, input!: AgentStartInput;

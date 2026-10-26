@@ -36,7 +36,7 @@ async function setup() {
   return { root, db, service, cancel };
 }
 
-it('[TC-ABS-006-H] [TC-ABS-006-N] parallel reader pins writer input; same tree rejects second writer; other tree proceeds', async () => {
+it('parallel reader pins writer input; same tree rejects second writer; other tree proceeds', async () => {
   const { root, db, service, cancel } = await setup();
   try {
     for (const [id, sessionId] of [
@@ -108,7 +108,7 @@ it('[TC-ABS-006-H] [TC-ABS-006-N] parallel reader pins writer input; same tree r
   }
 });
 
-it('[TC-WBD-001-H] [TC-WBD-001-N] Run readers use a human writer input tree and worker recovery retains human ownership', async () => {
+it('Run readers use a human writer input tree and worker recovery retains human ownership', async () => {
   const { root, db, service, cancel } = await setup();
   try {
     const access = new WorkspaceAccessStore(db);

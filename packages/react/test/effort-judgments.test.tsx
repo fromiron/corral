@@ -64,8 +64,8 @@ const decision = (
   ...change,
 });
 
-describe('EffortJudgments (C-071)', () => {
-  it('[TC-DEC-004-H] lists each request with every provider answer and says nothing was applied', () => {
+describe('EffortJudgments', () => {
+  it('lists each request with every provider answer and says nothing was applied', () => {
     view({
       decisionSettings: settings('observe'),
       executions: {
@@ -114,7 +114,7 @@ describe('EffortJudgments (C-071)', () => {
     expect(region.textContent).toContain('local-heuristic: not installed');
   });
 
-  it('[TC-DEC-004-N] failures read as plainly as answers, and nothing is ever shown as applied', () => {
+  it('failures read as plainly as answers, and nothing is ever shown as applied', () => {
     view({
       decisionSettings: settings('observe'),
       decisions: {
@@ -141,7 +141,7 @@ describe('EffortJudgments (C-071)', () => {
     expect(region.textContent?.toLowerCase()).not.toMatch(/\bapplied:/);
   });
 
-  it('[TC-DEC-004-N] a judgment the run ended before reads as not collected, not as pending (#22)', () => {
+  it('a judgment the run ended before reads as not collected, not as pending (#22)', () => {
     view({
       status: 'succeeded',
       decisionSettings: settings('observe'),
@@ -160,7 +160,7 @@ describe('EffortJudgments (C-071)', () => {
     expect(row.textContent).not.toContain('Waiting');
   });
 
-  it('[TC-DEC-004-N] says so when judgments are off, and shows nothing for a runtime without them', () => {
+  it('says so when judgments are off, and shows nothing for a runtime without them', () => {
     const off = view({ decisionSettings: settings('off') });
     expect(screen.getByRole('region', { name: 'Effort judgments' }).textContent).toContain(
       'Effort judgments are off for this run.',

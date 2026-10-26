@@ -57,7 +57,7 @@ vi.mock('@tanstack/react-virtual', () => ({
   }),
 }));
 
-it('[TC-WBD-006-H] a user selection opens the canonical document once and background refresh does not refocus it', async () => {
+it('a user selection opens the canonical document once and background refresh does not refocus it', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.open.mockClear();
   fixture.state = {
@@ -146,7 +146,7 @@ const click = (container: HTMLElement, title: string) =>
     container.querySelector<HTMLButtonElement>(`button[title="${title}"]`)?.click();
   });
 
-it('[TC-WBD-006-H] a session-copy file opens as a document tab whatever it holds, so Files keeps no tab strip of its own (#87)', async () => {
+it('a session-copy file opens as a document tab whatever it holds, so Files keeps no tab strip of its own (#87)', async () => {
   fixture.files = sessionFiles;
   fixture.open.mockClear();
   fixture.state = {
@@ -174,7 +174,7 @@ it('[TC-WBD-006-H] a session-copy file opens as a document tab whatever it holds
   });
 });
 
-it('[TC-WBD-006-N] an original-folder file previews read-only inside Files, one at a time (#87)', async () => {
+it('an original-folder file previews read-only inside Files, one at a time (#87)', async () => {
   fixture.files = {
     ...sessionFiles,
     scope: { kind: 'project', id: 'project' },

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TextAttachments } from './attachments.ts';
 import { Identifier } from './ids.ts';
 
-// CR-049: a meeting is a group chat with optional roles. Legacy reply batches keep their
+// a meeting is a group chat with optional roles. Legacy reply batches keep their
 // persisted IDs for history, cancellation and replay; they are not a conversation limit.
 
 /** The participant ID that addresses the secretary in mentions and answers. */
@@ -188,7 +188,7 @@ export const MeetingState = z.strictObject({
 });
 export type MeetingState = z.infer<typeof MeetingState>;
 
-/** Marks a Run as one meeting answer; only the meeting service sets it (CR-049 C-174). */
+/** Marks a Run as one meeting answer; only the meeting service sets it. */
 export const MeetingRunOrigin = z.strictObject({
   sessionId: Identifier,
   roundId: Identifier,

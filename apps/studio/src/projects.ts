@@ -6,7 +6,7 @@ import {
 } from '@corral/core';
 import { useSyncExternalStore } from 'react';
 
-// The project Studio is working in (CR-010). Pages that know theirs (a project, a Corral, a
+// The project Studio is working in. Pages that know theirs (a project, a Corral, a
 // run) set it; the header shows it, and `/` returns to it. Remembered per browser only: it is
 // a view preference, not a fact about any run.
 

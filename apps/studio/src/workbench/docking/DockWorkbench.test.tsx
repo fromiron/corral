@@ -98,7 +98,7 @@ async function paneActions(node: Element | null | undefined) {
 const activePane = (container: HTMLElement) =>
   container.querySelector('.dv-active-group [role="tab"][aria-selected="true"]')?.textContent;
 
-it('[TC-WBD-006-F] [TC-WBD-026-F] leaves a dirty document open until its close decision succeeds', async () => {
+it('leaves a dirty document open until its close decision succeeds', async () => {
   const f = await fixture();
   await act(async () => {
     expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(true);
@@ -120,7 +120,7 @@ it('[TC-WBD-006-F] [TC-WBD-026-F] leaves a dirty document open until its close d
 });
 
 it.each(['Delete', 'Backspace', 'middle-click'])(
-  '[TC-WBD-006-F] %s on a document tab keeps the unsaved-change guard',
+  '%s on a document tab keeps the unsaved-change guard',
   async (key) => {
     const f = await fixture();
     await act(async () => {
@@ -148,7 +148,7 @@ it.each(['Delete', 'Backspace', 'middle-click'])(
   },
 );
 
-it('[TC-WBD-006-N] rejects another host and keeps one document identity on repeated opens', async () => {
+it('rejects another host and keeps one document identity on repeated opens', async () => {
   const f = await fixture();
   await act(async () => {
     expect(
@@ -166,7 +166,7 @@ it('[TC-WBD-006-N] rejects another host and keeps one document identity on repea
   expect(f.closeView).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-006-H] moving a document between presets reuses its rendered view and logical ownership', async () => {
+it('moving a document between presets reuses its rendered view and logical ownership', async () => {
   const f = await fixture();
   await act(async () => {
     f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
@@ -200,7 +200,7 @@ it('[TC-WBD-006-H] moving a document between presets reuses its rendered view an
   expect(retained[0]?.[1]).not.toBe(retained[1]?.[1]);
 });
 
-it('[TC-WBD-006-N] recreates a document group after the last central context tab is closed', async () => {
+it('recreates a document group after the last central context tab is closed', async () => {
   const f = await fixture();
   await act(async () => f.ref.current?.openContext('chat'));
   await act(async () =>
@@ -226,7 +226,7 @@ it('[TC-WBD-006-N] recreates a document group after the last central context tab
   expect(group(saved.layout.grid.root)).toMatch(/^main[12]$/);
 });
 
-it('[TC-WBD-006-H] restores the active document and labels a saved layout without claiming a preset', async () => {
+it('restores the active document and labels a saved layout without claiming a preset', async () => {
   const original = await fixture();
   await act(async () => {
     original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
@@ -241,7 +241,7 @@ it('[TC-WBD-006-H] restores the active document and labels a saved layout withou
   expect(restored.closeView).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-007-H] an explicit chat selection takes precedence over a restored active document', async () => {
+it('an explicit chat selection takes precedence over a restored active document', async () => {
   const original = await fixture();
   await act(async () => {
     original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
@@ -253,7 +253,7 @@ it('[TC-WBD-007-H] an explicit chat selection takes precedence over a restored a
   expect(restored.closeView).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-007-H] source ranges reach only the opened document view and are not saved in the layout', async () => {
+it('source ranges reach only the opened document view and are not saved in the layout', async () => {
   const f = await fixture({
     renderDocument: (descriptor, panelId, selection) => (
       <span data-testid="document" data-view={panelId} data-selection={JSON.stringify(selection)}>
@@ -286,7 +286,7 @@ it('[TC-WBD-007-H] source ranges reach only the opened document view and are not
   expect(f.closeView).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-014-H] [TC-WBD-014-N] opens a saved team once as a tab of its own and closes it without a document decision', async () => {
+it('opens a saved team once as a tab of its own and closes it without a document decision', async () => {
   const renderGraph = vi.fn((descriptor: { corralId: string }) => (
     <span data-testid="graph">{descriptor.corralId}</span>
   ));
@@ -314,7 +314,7 @@ it('[TC-WBD-014-H] [TC-WBD-014-N] opens a saved team once as a tab of its own an
   expect(document.querySelector('[data-testid="graph"]')).toBeNull();
 });
 
-it('[TC-WBD-014-N] a team tab behind another tab is not drawn: its canvas nodes override visibility', async () => {
+it('a team tab behind another tab is not drawn: its canvas nodes override visibility', async () => {
   const f = await fixture({
     renderGraph: (descriptor) => <span data-testid="graph">{descriptor.corralId}</span>,
     graphTitle: () => 'Team',

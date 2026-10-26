@@ -52,7 +52,7 @@ async function start() {
   return { workspace, configDir, request };
 }
 
-describe('[TC-ABS-005-H] import through the authenticated model settings API', () => {
+describe('import through the authenticated model settings API', () => {
   it('previews chosen file, explicitly copies key, saves atomically and reads profiles back', async () => {
     const { workspace, configDir, request } = await start();
     const path = join(temp(), 'models.json');
@@ -138,7 +138,7 @@ describe('[TC-ABS-005-H] import through the authenticated model settings API', (
     );
   });
 });
-describe('[TC-ABS-005-N] stale configuration and untrusted metadata', () => {
+describe('stale configuration and untrusted metadata', () => {
   it('refuses revision conflict and unsupported selection without changing config or credentials', async () => {
     const { workspace, request } = await start();
     const unreadable = await request('/model-imports/preview', {

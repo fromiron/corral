@@ -19,11 +19,11 @@ async function session(page: Page, corral: Harness, definition = linearCorral(['
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('link', { name: 'New session', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  // CR-024: a new session starts in auto mode; these journeys run the imported team.
+  // a new session starts in auto mode; these journeys run the imported team.
   await selectSessionTeam(page, definition.name);
 }
 
-test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an editable first request', async ({
+test('UX-015-01 new-session drafts survive team setup and become an editable first request', async ({
   page,
   corral,
 }) => {
@@ -94,7 +94,7 @@ test('[WBTST-004] UX-015-01 new-session drafts survive team setup and become an 
 
 test.describe('instruction delivery', () => {
   test.use({ replyDelayMs: 900 });
-  test('[WBTST-004] UX-015-02 a queued instruction updates to delivered without leaving the conversation', async ({
+  test('UX-015-02 a queued instruction updates to delivered without leaving the conversation', async ({
     page,
     corral,
   }) => {
@@ -130,7 +130,7 @@ test.describe('long multi-agent output', () => {
   test.use({
     agentReply: `# Release plan\n\n${'long-reference-'.repeat(250)}\n\n${'A recorded result.\n\n'.repeat(80)}`,
   });
-  test('[WBTST-004] UX-015-03/04/05 failed work exposes its reason, review and every partial result', async ({
+  test('UX-015-03/04/05 failed work exposes its reason, review and every partial result', async ({
     page,
     corral,
   }) => {
@@ -180,10 +180,7 @@ test.describe('long multi-agent output', () => {
   });
 });
 
-test('[WBTST-004] UX-015-04 older results remain reachable after ten runs', async ({
-  page,
-  corral,
-}) => {
+test('UX-015-04 older results remain reachable after ten runs', async ({ page, corral }) => {
   test.setTimeout(60000);
   await session(page, corral);
   let firstRun = '';
@@ -206,7 +203,7 @@ test('[WBTST-004] UX-015-04 older results remain reachable after ten runs', asyn
   await expect(panel.getByRole('button').filter({ hasText: firstRun })).toHaveCount(1);
 });
 
-test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside the session', async ({
+test('UX-015-07 approvals name exact versions and keep review inside the session', async ({
   page,
   corral,
 }) => {
@@ -216,7 +213,7 @@ test('[WBTST-004] UX-015-07 approvals name exact versions and keep review inside
   const sessionUrl = new URL(page.url()).pathname;
   await request(page).fill('Review the release plan and request approval.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  // CR-041: the dock exposes the request; the execution panel owns the one response form.
+  // the dock exposes the request; the execution panel owns the one response form.
   await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 15000 });
   await page.getByTestId('action-required').getByRole('link').click();
   const observer = page.getByRole('tabpanel', { name: 'Execution', exact: true });

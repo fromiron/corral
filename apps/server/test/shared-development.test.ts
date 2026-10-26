@@ -103,7 +103,7 @@ async function setup(enabled = true) {
   };
 }
 
-it('[TC-WBD-017-H] saves while a real development task stays alive, keeps Git and checks scoped, then returns to strict', async () => {
+it('saves while a real development task stays alive, keeps Git and checks scoped, then returns to strict', async () => {
   const s = await setup();
   expect(s.service.developmentState('s1')).toMatchObject({ available: true, operation: null });
   const entered = await s.service.startDevelopment('s1', s.start);
@@ -163,7 +163,7 @@ it('[TC-WBD-017-H] saves while a real development task stays alive, keeps Git an
   expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('one\n');
 });
 
-it('[TC-WBD-017-N] denies foreign/disabled targets and exclusive writers while preserving external-write CAS', async () => {
+it('denies foreign/disabled targets and exclusive writers while preserving external-write CAS', async () => {
   const disabled = await setup(false);
   await expect(disabled.service.startDevelopment('s1', disabled.start)).rejects.toMatchObject({
     code: 'CAPABILITY_DENIED',
@@ -190,7 +190,7 @@ it('[TC-WBD-017-N] denies foreign/disabled targets and exclusive writers while p
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
 });
 
-it('[TC-WBD-017-H] each read-only Run pins its own snapshot across shared saves', async () => {
+it('each read-only Run pins its own snapshot across shared saves', async () => {
   const s = await setup();
   await s.service.startDevelopment('s1', s.start);
   for (const id of ['reader_before', 'reader_after']) {
@@ -214,7 +214,7 @@ it('[TC-WBD-017-H] each read-only Run pins its own snapshot across shared saves'
   s.service.releaseRun('reader_after', true);
 });
 
-it('[TC-WBD-017-F] restart never restores sharing, and uncertain children hold the parent until explicitly reconciled', async () => {
+it('restart never restores sharing, and uncertain children hold the parent until explicitly reconciled', async () => {
   const s = await setup();
   await s.service.startDevelopment('s1', s.start);
   const ops = new WorkbenchOperations(s.db, s.clock);

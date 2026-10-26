@@ -10,7 +10,7 @@ import {
 // Workbench polish P2/P4: one list of commands for `/`, ⌘K, menus and shortcuts.
 
 describe('command registry', () => {
-  it('[TC-HAR-007-N] extension commands retain their target and package alias and cannot run after startup', () => {
+  it('extension commands retain their target and package alias and cannot run after startup', () => {
     const event = RunEvent.parse({
       schemaVersion: '0.1',
       eventId: 'event_1',

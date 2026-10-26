@@ -10,7 +10,7 @@ import {
 } from '../src/index.ts';
 import { resolveProfileContext } from '../src/profile-context.ts';
 
-it('[TC-CONTEXT-001-H] freezes policies before the chooser and preserves them for later roles; the next Run sees the edit', async () => {
+it('freezes policies before the chooser and preserves them for later roles; the next Run sees the edit', async () => {
   let contextWindow = 64000;
   let revision = 'rev-a';
   const seen: ModelProfileSnapshot[] = [];
@@ -101,7 +101,7 @@ it('[TC-CONTEXT-001-H] freezes policies before the chooser and preserves them fo
   );
 });
 
-it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] uses adaptive defaults and validates explicit policies after resolving their source', () => {
+it('uses adaptive defaults and validates explicit policies after resolving their source', () => {
   const base = { contextWindow: 32000, source: 'fallback' as const };
   const legacy = resolveProfileContext({}, base, 'rev-a', 4096);
   expect(legacy.errors).toEqual([]);
@@ -150,7 +150,7 @@ it('[TC-CONTEXT-001-H] [TC-CONTEXT-001-N] uses adaptive defaults and validates e
   expect(resolveProfileContext({}, base, 'rev-c', 4096).policy?.explicit).toBe(false);
 });
 
-it('[TC-CONTEXT-001-H] accepts explicit zero reserves and omission as different profile settings', () => {
+it('accepts explicit zero reserves and omission as different profile settings', () => {
   const config = {
     schemaVersion: '0.1',
     modelProfiles: [
@@ -171,7 +171,7 @@ it('[TC-CONTEXT-001-H] accepts explicit zero reserves and omission as different 
   expect(parseWorkspaceConfig(absent)).toEqual({ ok: true, config: absent });
 });
 
-it('[TC-CONTEXT-001-N] keeps credential and integer validation outside the exact numeric compaction fields', () => {
+it('keeps credential and integer validation outside the exact numeric compaction fields', () => {
   const profile = { id: 'model-a', provider: 'openai', model: 'fixture' };
   for (const invalid of [null, '0', 0.5, -1, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
     expect(

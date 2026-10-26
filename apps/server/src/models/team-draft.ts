@@ -1,6 +1,6 @@
 import { TEAM_LIMITS, TEAM_PATTERNS, TEAM_SLOTS, TeamPlan } from '@corral/contracts';
 
-// CR-006: one model request turns a goal into a team plan. The answer is untrusted text: only
+// one model request turns a goal into a team plan. The answer is untrusted text: only
 // a JSON object that passes the TeamPlan contract is used, and the text itself is never sent
 // back or logged. Tools and wiring are not part of the plan.
 

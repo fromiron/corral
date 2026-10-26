@@ -54,7 +54,7 @@ export function EditorPage() {
   const services = useServices();
   const { repository } = services;
   const { fromRun, fromVersion, fromSession } = editorRoute.useSearch();
-  // CR-010: the header shows the Corral's project, and `/` returns to it.
+  // the header shows the Corral's project, and `/` returns to it.
   useEffect(() => setCurrentProject(record.projectId), [record.projectId]);
   const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
@@ -73,7 +73,7 @@ export function EditorPage() {
 }
 
 /**
- * A saved team as a dock tab (02-UX-Spec §3 팀 설계, CR-046 P18): the same editor and working copy
+ * A saved team as a dock tab: the same editor and working copy
  * as its route, so a draft and its undo history are one whichever way it was opened. It edits the
  * saved team; the next run of the session uses the saved revision, and runs already started keep
  * theirs. Test runs stay on the route; session runs are controlled from the dock's run controls.
@@ -146,7 +146,7 @@ export function DemoPage() {
   );
 }
 
-/** Switches the demo between its templates (C-063). */
+/** Switches the demo between its templates. */
 function TemplatePicker({ current }: { current: DemoTemplateId }) {
   const t = useTranslations('Demo');
   const navigate = useNavigate();
@@ -199,11 +199,11 @@ function Editor({
   toolbar?: ReactNode;
   /** A guide shown above the run controls (the demo team's guide). */
   guide?: GuideSlot | undefined;
-  /** A version the next run starts from, chosen on a Run page (CR-007). */
+  /** A version the next run starts from, chosen on a Run page. */
   startFrom?: StartFromChoice | null;
   /** Inside a session's workbench: runs start from the session, so no run controls here. */
   inSession?: boolean;
-  /** Opened from this session: show the way back and when edits apply (UX-10). */
+  /** Opened from this session: show the way back and when edits apply. */
   fromSession?: string | null;
   workingCopy: EditorWorkingCopy;
 }) {
@@ -293,7 +293,7 @@ function Editor({
     }
   }, [editor, repository, t, workingCopy]);
 
-  // The local server runs saved revisions only, so a run saves first (C-057).
+  // The local server runs saved revisions only, so a run saves first.
   const beforeStart =
     mode === 'server'
       ? async () => {
@@ -528,7 +528,7 @@ function RunSide({
   const target = useSteerTarget(session, chosen);
   const [viewing, setViewing] = useState<string | null>(null);
   const prices = useModelPrices();
-  // CR-007: the next run's starting point, until it starts or the person clears it.
+  // the next run's starting point, until it starts or the person clears it.
   const [startFrom, setStartFrom] = useState<StartFromChoice | null>(initialStartFrom);
   const [setupOpen, setSetupOpen] = useState(true);
   const chooseStartFrom = (value: StartFromChoice) => {

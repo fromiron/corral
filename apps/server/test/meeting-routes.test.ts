@@ -6,7 +6,7 @@ import { ScriptedAgentAdapter } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
-it('[TC-MEET-001-H] [TC-MEET-001-N] a meeting is created, answers a round over HTTP, and its state only changes through rounds', async () => {
+it('a meeting is created, answers a round over HTTP, and its state only changes through rounds', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-meeting-routes-'));
   const token = 'test-bootstrap-token-0123456789abcdef';
   const server = await startCorralServer({

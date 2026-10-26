@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { acquireDatabaseLock } from '../src/ownership.ts';
 
-it('[TC-RUN-007-N] a former owner cannot release or replace the current owner lock', () => {
+it('a former owner cannot release or replace the current owner lock', () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-sqlite-owner-'));
   const path = join(root, 'server.lock.db');
   const first = acquireDatabaseLock(path);

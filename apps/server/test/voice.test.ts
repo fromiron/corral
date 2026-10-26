@@ -40,7 +40,7 @@ const provider = () =>
 afterEach(() => vi.useRealTimers());
 
 it.each(['503', 'timeout'])(
-  '[TC-ABS-015-N] a hangup %s prevents successful host cleanup and retains the call for retry',
+  'a hangup %s prevents successful host cleanup and retains the call for retry',
   async (failure) => {
     const http = provider();
     const voice = new VoiceService(registry(), { fetch: http });
@@ -70,7 +70,7 @@ it.each(['503', 'timeout'])(
   },
 );
 
-it('[TC-ABS-015-H] exchanges SDP through the public operation without exposing a key; owns hangup and limits', async () => {
+it('exchanges SDP through the public operation without exposing a key; owns hangup and limits', async () => {
   const http = provider();
   const voice = new VoiceService(registry(), { fetch: http, id: () => 'call_a', now: () => 1_000 });
   const call = await voice.start(input);
@@ -93,7 +93,7 @@ it('[TC-ABS-015-H] exchanges SDP through the public operation without exposing a
   await voice.close();
 });
 
-it('[TC-ABS-015-N] rejects subscription/custom credentials and redacts provider failures', async () => {
+it('rejects subscription/custom credentials and redacts provider failures', async () => {
   for (const patch of [{ auth: 'oauth' as const }, { endpointHash: 'custom' }]) {
     const http = provider();
     const voice = new VoiceService(registry(patch), { fetch: http });
@@ -107,7 +107,7 @@ it('[TC-ABS-015-N] rejects subscription/custom credentials and redacts provider 
   await expect(voice.start(input)).rejects.toThrow('provider refused');
 });
 
-it('[TC-ABS-015-N] late creation after cancellation is hung up and provider shutdown failures retain ownership', async () => {
+it('late creation after cancellation is hung up and provider shutdown failures retain ownership', async () => {
   const abort = new AbortController();
   const http = provider();
   http.mockImplementationOnce(async () => {
@@ -127,7 +127,7 @@ it('[TC-ABS-015-N] late creation after cancellation is hung up and provider shut
   await voice.close();
 });
 
-it('[TC-ABS-015-N] server enforces elapsed time even without a browser stop request', async () => {
+it('server enforces elapsed time even without a browser stop request', async () => {
   vi.useFakeTimers();
   const http = provider();
   const voice = new VoiceService(registry(), { fetch: http, maxDurationSeconds: 2 });
@@ -137,7 +137,7 @@ it('[TC-ABS-015-N] server enforces elapsed time even without a browser stop requ
   await voice.close();
 });
 
-it('[TC-ABS-015-N] routes reject mismatched run/session ownership before an external call', async () => {
+it('routes reject mismatched run/session ownership before an external call', async () => {
   const app = Fastify();
   const http = provider();
   registerVoiceRoutes(app, {
@@ -156,7 +156,7 @@ it('[TC-ABS-015-N] routes reject mismatched run/session ownership before an exte
   await app.close();
 });
 
-it('[TC-ABS-015-N] an unidentifiable provider call blocks another paid create attempt', async () => {
+it('an unidentifiable provider call blocks another paid create attempt', async () => {
   const http = vi.fn<typeof fetch>(async () => new Response('v=0', { status: 201 }));
   const voice = new VoiceService(registry(), { fetch: http });
   await expect(voice.start(input)).rejects.toThrow('invalid call identifier');

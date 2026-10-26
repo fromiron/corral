@@ -13,7 +13,7 @@ import { checkpointReferences } from '../../../packages/core/src/context-checkpo
 const hash = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
 
 it.each([false, true])(
-  '[TC-CONTEXT-001-H] [TC-RESUME-001-H] [TC-RESUME-001-N] a private checkpoint preserves its policy across restart (recorded=%s)',
+  'a private checkpoint preserves its policy across restart (recorded=%s)',
   async (recorded) => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-runtime-checkpoint-')),
       path = join(directory, 'state.db');

@@ -70,16 +70,16 @@ import {
   userPrompt,
 } from './worker-tools.ts';
 
-// One Pi execution in a worker (C-017–C-019). The worker owns a Pi Agent and a provider
+// One Pi execution in a worker. The worker owns a Pi Agent and a provider
 // connection, nothing else: every model request asks the host for a permit first (the host
 // fixes the context snapshot and attaches directives), every tool call asks the host to
 // authorize and then to execute it, and the result is only proposed by `settled`.
-// Pi's own tool events are not reported as facts (C-052 rule 1).
+// Pi's own tool events are not reported as facts.
 
 export interface WorkerDeps {
   /** pi-ai streaming, e.g. `models.streamSimple`; tests pass the faux provider. */
   streamFn: StreamFn;
-  /** `endpoint` is the definition of an OpenAI-compatible endpoint (CR-005), when it is one. */
+  /** `endpoint` is the definition of an OpenAI-compatible endpoint, when it is one. */
   resolveModel(
     provider: string,
     modelId: string,
@@ -176,7 +176,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             : {}),
         }
       : undefined;
-    // A keyless endpoint never gets a key, whatever a permit carries (CR-005 §4).
+    // A keyless endpoint never gets a key, whatever a permit carries.
     const keyless = start.model.endpoint?.keyless === true;
     const keyOf = (apiKey: string | null | undefined) =>
       keyless ? undefined : (apiKey ?? undefined);
@@ -629,7 +629,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         const message = event.message as AssistantMessage;
         if (lastPrepared) meter.observe(lastPrepared, model, message);
         attemptedTools ||= message.content.some((part) => part.type === 'toolCall');
-        // Meetings answer before any tool; a CR-055 final-reply role may use tools first.
+        // Meetings answer before any tool; a final-reply role may use tools first.
         finalTextModelCallId =
           message.stopReason === 'stop' &&
           textOf(message).trim() &&

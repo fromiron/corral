@@ -135,7 +135,7 @@ describe('ReinsPanel', () => {
     expect(steer).toHaveBeenCalledWith('exec_0002', 'Primary sources only.');
   });
 
-  it('[TC-UX-001-N] does not send while an IME composition is confirming with Enter', () => {
+  it('does not send while an IME composition is confirming with Enter', () => {
     const steer = vi.fn(async () => ({}) as never);
     renderPanel(fakeSession(steer));
     const box = screen.getByLabelText('Instruction');
@@ -262,7 +262,7 @@ it.each(['awaiting_user', 'paused', 'pausing'])(
   },
 );
 
-it('[TC-WBD-015-N] an execution cancel confirmed after the view moved to another run is not sent there', () => {
+it('an execution cancel confirmed after the view moved to another run is not sent there', () => {
   const session = fakeSession();
   const running = (runId: string) => ({
     ...emptyProjection(runId),

@@ -8,7 +8,7 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import type { SessionCommand } from '../src/run/session.ts';
 import { projectionWith, sessionStore } from '../src/stories/fixtures.tsx';
 
-it('[TC-HAR-007-H] shows a scoped extension prompt, sends its exact attempt and removes it on expiry', async () => {
+it('shows a scoped extension prompt, sends its exact attempt and removes it on expiry', async () => {
   const request: ExtensionUiRequest = {
     kind: 'select',
     title: 'Choose a style',
@@ -121,7 +121,7 @@ it('[TC-HAR-007-H] shows a scoped extension prompt, sends its exact attempt and 
   );
 });
 
-it('[TC-INPUT-001-H] asks for an explicit choice and submits free text with its schema and current revision', async () => {
+it('asks for an explicit choice and submits free text with its schema and current revision', async () => {
   const event = RunEvent.parse({
     schemaVersion: '0.1',
     eventId: 'event_user',

@@ -17,7 +17,7 @@ import { expectPrivatePermissions, fixturePermissions } from './fixtures/private
 // Windows checks invoke the real OS ACL APIs; allow their process startup under parallel CI.
 if (process.platform === 'win32') vi.setConfig({ testTimeout: 20_000 });
 
-// CR-004: the Codex CLI login, read only.
+// the Codex CLI login, read only.
 
 const dirs: string[] = [];
 const temp = () => {
@@ -51,8 +51,8 @@ const goodTokens = () => ({
   account_id: 'acct-1',
 });
 
-describe('Codex CLI login source (CR-004)', () => {
-  it('[TC-SEC-002-H] reads the access token as an oauth credential that expires with the token', () => {
+describe('Codex CLI login source', () => {
+  it('reads the access token as an oauth credential that expires with the token', () => {
     const path = codexFile(temp(), goodTokens());
     const login = readCodexLogin(path);
     expect(login.state).toBe('found');
@@ -65,7 +65,7 @@ describe('Codex CLI login source (CR-004)', () => {
     expect(login.permissionsOk).toBe(true);
   });
 
-  it('[TC-SEC-002-N] a missing, broken or tokenless file is no login; loose permissions are reported', () => {
+  it('a missing, broken or tokenless file is no login; loose permissions are reported', () => {
     const dir = temp();
     expect(readCodexLogin(join(dir, 'none.json')).state).toBe('missing');
     writeFileSync(join(dir, 'broken.json'), '{nope');
@@ -75,18 +75,18 @@ describe('Codex CLI login source (CR-004)', () => {
     expect(loose.state === 'found' && loose.permissionsOk).toBe(false);
   });
 
-  it('[TC-SEC-002-H] CODEX_HOME moves the file; otherwise it is ~/.codex/auth.json', () => {
+  it('CODEX_HOME moves the file; otherwise it is ~/.codex/auth.json', () => {
     expect(codexAuthPath({ CODEX_HOME: '/x/codex' }, '/home/u')).toBe(
       join('/x/codex', 'auth.json'),
     );
     expect(codexAuthPath({}, '/home/u')).toBe(join('/home/u', '.codex', 'auth.json'));
   });
 
-  it('[TC-SEC-002-N] a failed permission inspection is unknown, never verified private', () => {
+  it('a failed permission inspection is unknown, never verified private', () => {
     expect(privatePermissions(join(temp(), 'absent.json'))).toBeNull();
   });
 
-  it('[TC-SEC-002-N] upgrades an older Corral credential file with broad access before reading it', async () => {
+  it('upgrades an older Corral credential file with broad access before reading it', async () => {
     const directory = temp();
     const path = join(directory, 'credentials.json');
     writeFileSync(
@@ -105,8 +105,8 @@ describe('Codex CLI login source (CR-004)', () => {
   }, 15_000);
 });
 
-describe('layered credential store (CR-004)', () => {
-  it('[TC-SEC-002-H] Corral’s own sign-in wins; without it openai-codex reads the Codex login', async () => {
+describe('layered credential store', () => {
+  it('Corral’s own sign-in wins; without it openai-codex reads the Codex login', async () => {
     const own = new FileCredentialStore(temp());
     const path = codexFile(temp(), goodTokens());
     const store = new LayeredCredentialStore(own, path);
@@ -125,7 +125,7 @@ describe('layered credential store (CR-004)', () => {
     expect(store.sourceOf('openai-codex')).toBe('corral');
   });
 
-  it('[TC-SEC-002-N] never refreshes, rewrites or deletes the Codex file', async () => {
+  it('never refreshes, rewrites or deletes the Codex file', async () => {
     const path = codexFile(temp(), goodTokens());
     const before = readFileSync(path, 'utf8');
     const mtime = statSync(path).mtimeMs;
@@ -143,8 +143,8 @@ describe('layered credential store (CR-004)', () => {
   });
 });
 
-describe('default profiles (CR-004)', () => {
-  it('[TC-SEC-002-H] use Corral’s own OpenAI sign-in first, then the Codex login, else ask to sign in', () => {
+describe('default profiles', () => {
+  it('use Corral’s own OpenAI sign-in first, then the Codex login, else ask to sign in', () => {
     expect(
       defaultProfilesFor({ ownOpenAI: true, codexLogin: true }).map((p) => p.provider),
     ).toEqual(['openai', 'openai']);
@@ -161,7 +161,7 @@ describe('default profiles (CR-004)', () => {
   });
 });
 
-describe('Models view of a borrowed login (CR-004)', () => {
+describe('Models view of a borrowed login', () => {
   const registryFor = (store: LayeredCredentialStore) =>
     new ModelRegistry(
       builtinModels({ credentials: store }),
@@ -169,7 +169,7 @@ describe('Models view of a borrowed login (CR-004)', () => {
       { credentials: store, getDeviceId: () => 'device', now: () => Date.UTC(2026, 9, 16) },
     );
 
-  it('[TC-SEC-002-H] says the sign-in is the Codex CLI login, with its expiry, and lets live runs start', async () => {
+  it('says the sign-in is the Codex CLI login, with its expiry, and lets live runs start', async () => {
     const store = new LayeredCredentialStore(
       new FileCredentialStore(temp()),
       codexFile(temp(), goodTokens()),
@@ -194,7 +194,7 @@ describe('Models view of a borrowed login (CR-004)', () => {
     expect(registry.resolve('model-a', 'live').ok).toBe(true);
   });
 
-  it('[TC-SEC-002-N] a world-readable Codex file is flagged; no file means not signed in', async () => {
+  it('a world-readable Codex file is flagged; no file means not signed in', async () => {
     const loose = registryFor(
       new LayeredCredentialStore(
         new FileCredentialStore(temp()),

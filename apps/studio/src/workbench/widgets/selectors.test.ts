@@ -44,7 +44,7 @@ const body = (revision: number, statuses: Array<'pending' | 'in_progress' | 'com
 });
 
 describe('chat widget selectors', () => {
-  it('[TC-ABS-003-H] refreshes file changes after hashline and shell writes, including partial failures', () => {
+  it('refreshes file changes after hashline and shell writes, including partial failures', () => {
     const calls = [
       { name: 'edit_hashline', phase: 'finished' },
       { name: 'run_command', phase: 'failed' },
@@ -53,7 +53,7 @@ describe('chat widget selectors', () => {
     ];
     expect(fileChangeSignals(calls, 'running', true)).toEqual({ revision: 2, poll: false });
   });
-  it('[TC-ABS-003-N] keeps service changes live after launch, but never polls an archived or paused run', () => {
+  it('keeps service changes live after launch, but never polls an archived or paused run', () => {
     const calls = [{ name: 'run_command', phase: 'finished' }];
     expect(fileChangeSignals(calls, 'running', true)).toEqual({ revision: 1, poll: true });
     expect(fileChangeSignals(calls, 'running', false).poll).toBe(false);
@@ -63,7 +63,7 @@ describe('chat widget selectors', () => {
       fileChangeSignals([{ name: 'run_command', phase: 'allowed' }], 'running', true).poll,
     ).toBe(false);
   });
-  it('[TC-WIDGET-001-N] PLAN-04 shows live-open errors only for their current target', () => {
+  it('PLAN-04 shows live-open errors only for their current target', () => {
     const current = {
       presentationRunId: 'run_current',
       projectionRunId: null,
@@ -80,7 +80,7 @@ describe('chat widget selectors', () => {
     expect(widgetReadState({ ...current, projectionRunId: 'run_current' })).toBe('error');
     expect(widgetReadState({ ...current, sharedStreamError: null })).toBe('loading');
   });
-  it('[TC-WIDGET-001-H] PLAN-02 PLAN-05 PLAN-07 counts items and keeps a manual disclosure', () => {
+  it('PLAN-02 PLAN-05 PLAN-07 counts items and keeps a manual disclosure', () => {
     const ready = planBodyStatus({
       ref: plan(2, 'exec_w'),
       parsed: { ...body(2, ['completed', 'in_progress', 'pending']), executionId: 'exec_w' },
@@ -109,7 +109,7 @@ describe('chat widget selectors', () => {
     ).not.toContain(':2');
   });
 
-  it('[TC-WIDGET-001-N] PLAN-03 PLAN-04 PLAN-06 PLAN-11 ignore stale bodies and keep unfinished items', () => {
+  it('PLAN-03 PLAN-04 PLAN-06 PLAN-11 ignore stale bodies and keep unfinished items', () => {
     const current = planBodyStatus({
       ref: plan(3, 'exec_w'),
       parsed: { ...body(2, ['completed']), executionId: 'exec_w' },
@@ -182,7 +182,7 @@ describe('chat widget selectors', () => {
     expect(stale.state).toBe('stale-criteria');
   });
 
-  it('[TC-WIDGET-001-N] PLAN-09 PLAN-10 follows the live execution plan, not a finished team plan', () => {
+  it('PLAN-09 PLAN-10 follows the live execution plan, not a finished team plan', () => {
     const plans = [plan(4, 'exec_planner', 'team'), plan(2, 'exec_worker')];
     const executions = [
       {
@@ -233,7 +233,7 @@ describe('chat widget selectors', () => {
     expect(laterEvent.selected?.executionId).toBe('exec_worker');
   });
 
-  it('[TC-WIDGET-001-N] PLAN-09 does not present a finished planner as the worker live plan', () => {
+  it('PLAN-09 does not present a finished planner as the worker live plan', () => {
     const executions = [
       {
         executionId: 'exec_planner',
@@ -259,7 +259,7 @@ describe('chat widget selectors', () => {
     ).toBe('exec_planner');
   });
 
-  it('[TC-WIDGET-001-N] PLAN-10 retains a missing manual target instead of silently enabling follow', () => {
+  it('PLAN-10 retains a missing manual target instead of silently enabling follow', () => {
     const selected = selectPresentedPlan({
       plans: [plan(1, 'exec_worker')],
       executions: [
@@ -278,7 +278,7 @@ describe('chat widget selectors', () => {
     expect(selected.selected).toBeNull();
   });
 
-  it('[TC-WIDGET-001-H] PLAN-10 prefers a working child over its waiting parent without event-order hopping', () => {
+  it('PLAN-10 prefers a working child over its waiting parent without event-order hopping', () => {
     const selected = selectPresentedPlan({
       plans: [plan(1, 'exec_parent'), plan(2, 'exec_worker')],
       executions: [
@@ -302,7 +302,7 @@ describe('chat widget selectors', () => {
     expect(selected.selected?.executionId).toBe('exec_worker');
   });
 
-  it('[TC-WIDGET-002-N] CTX-06 never substitutes another execution for an unmeasured selected role', () => {
+  it('CTX-06 never substitutes another execution for an unmeasured selected role', () => {
     const context = presentContext({
       calls: [
         {
@@ -329,7 +329,7 @@ describe('chat widget selectors', () => {
     expect(context.executionId).toBe('exec_reviewer');
   });
 
-  it('[TC-WIDGET-002-H] CTX-01 CTX-05 CTX-06 CTX-07 keep windows and partial measurements apart', () => {
+  it('CTX-01 CTX-05 CTX-06 CTX-07 keep windows and partial measurements apart', () => {
     const legacy = presentContext({
       calls: [
         {
@@ -455,7 +455,7 @@ describe('chat widget selectors', () => {
     expect(ultra.unmeasuredExecutions).toBe(1);
   });
 
-  it('[TC-WIDGET-001-H] ACTION-01 TOOL-02 keeps decisions and unclear tools visible', () => {
+  it('ACTION-01 TOOL-02 keeps decisions and unclear tools visible', () => {
     expect(
       actionRequired({
         pendingApprovals: 1,
@@ -482,7 +482,7 @@ describe('chat widget selectors', () => {
     expect(rows[1]).toMatchObject({ id: 'call_2', tone: 'cancelled' });
   });
 
-  it('[TC-WIDGET-001-N] ACTION-01 reports failed or interrupted runs even without a tool effect', () => {
+  it('ACTION-01 reports failed or interrupted runs even without a tool effect', () => {
     for (const runStatus of ['failed', 'interrupted']) {
       expect(
         actionRequired({
@@ -504,7 +504,7 @@ describe('chat widget selectors', () => {
     ).toMatchObject({ summary: 'mixed', needsUser: false, hasFailure: true });
   });
 
-  it('[TC-WIDGET-001-H] distinguishes active, queued, paused and failed agent states', () => {
+  it('distinguishes active, queued, paused and failed agent states', () => {
     const executions = [
       'active',
       'queued',
@@ -528,7 +528,7 @@ describe('chat widget selectors', () => {
     });
   });
 
-  it('[TC-WIDGET-001-N] SURFACE-02 hides low-priority chips without dropping them', () => {
+  it('SURFACE-02 hides low-priority chips without dropping them', () => {
     const chips = visibleWidgets({
       hasContext: true,
       agents: { total: 3, working: 2, waiting: 1, failed: 0, delegated: true },
@@ -573,7 +573,7 @@ describe('chat widget selectors', () => {
     ).not.toBe('count');
   });
 
-  it('[TC-WIDGET-001-H] activity avoids repeating the open plan title and freezes elapsed time', () => {
+  it('activity avoids repeating the open plan title and freezes elapsed time', () => {
     const open = activityLine({
       runStatus: 'running',
       startedAt: '2026-10-19T00:00:00.000Z',

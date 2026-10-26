@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useServices } from './services.tsx';
 
 /**
- * List prices from the local server's model catalog, for the run cost estimate (roadmap 15).
+ * List prices from the local server's model catalog, for the run cost estimate.
  * Undefined in the in-browser runtime: its agents are simulated and cost nothing.
  */
 export function useModelPrices(): ModelPrices | undefined {

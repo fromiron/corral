@@ -1,7 +1,7 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, type Page, test } from '@playwright/test';
 
-test('[TC-DEV-005-N] the worker preserves receipts, replay ordering and cancellation boundaries', async ({
+test('the worker preserves receipts, replay ordering and cancellation boundaries', async ({
   page,
 }) => {
   await page.goto('/demo?template=starter&delay=150');
@@ -113,7 +113,7 @@ const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
 const step = (page: Page, id: string) =>
   page.getByRole('region', { name: 'Demo guide' }).locator(`[data-step="${id}"]`);
 
-test('[TC-DEV-005-H] the default demo team delegates, asks, revises once and finishes after approval offline', async ({
+test('the default demo team delegates, asks, revises once and finishes after approval offline', async ({
   page,
   context,
 }) => {
@@ -153,9 +153,7 @@ test('[TC-DEV-005-H] the default demo team delegates, asks, revises once and fin
   expect(runtimeRequests).toEqual([]);
 });
 
-test('[TC-DEV-005-N] a rejected approval does not finish the run or the guide', async ({
-  page,
-}) => {
+test('a rejected approval does not finish the run or the guide', async ({ page }) => {
   await page.goto('/demo?delay=150');
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
@@ -170,7 +168,7 @@ test('[TC-DEV-005-N] a rejected approval does not finish the run or the guide', 
   await expect(step(page, 'finish')).toContainText("Didn't happen in this run");
 });
 
-test('[TC-DEV-005-H] the guide can pause at round 2 so a visitor has time to steer at normal speed', async ({
+test('the guide can pause at round 2 so a visitor has time to steer at normal speed', async ({
   page,
 }) => {
   // The pause travels worker → page → worker; on slow CI runners a 300 ms reply let the round 2

@@ -16,7 +16,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-it('[TC-RSN-001-H] [TC-RSN-003-H] atomic model/effort patch applies to future executions and survives history replay', async () => {
+it('atomic model/effort patch applies to future executions and survives history replay', async () => {
   const first = new Gate(),
     release = new Gate();
   const inputs: AgentStartInput[] = [],

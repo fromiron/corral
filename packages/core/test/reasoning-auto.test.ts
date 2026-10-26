@@ -116,7 +116,7 @@ async function setup(
 }
 
 describe('automatic reasoning admission', () => {
-  it('[TC-LLM-002-N] local reasoning leaves the provider slot available', async () => {
+  it('local reasoning leaves the provider slot available', async () => {
     const judging = new Gate(),
       finish = new Gate();
     const s = await setup(
@@ -147,7 +147,7 @@ describe('automatic reasoning admission', () => {
       (await auxiliary)();
     }
   });
-  it('[TC-RSN-002-H] applies real probabilities before reserving a model request', async () => {
+  it('applies real probabilities before reserving a model request', async () => {
     let received: ReasoningInput | undefined;
     const s = await setup(async (i) => {
       received = i;
@@ -164,7 +164,7 @@ describe('automatic reasoning admission', () => {
     expect(permit.reasoning?.inputHash).toMatch(/^[a-f0-9]{64}$/);
     s.command('cancel');
   });
-  it('[TC-RSN-002-N] cancellation while judging never admits a model request', async () => {
+  it('cancellation while judging never admits a model request', async () => {
     const judging = new Gate();
     const s = await setup(async (_i, cancellation) => {
       judging.open();
@@ -181,7 +181,7 @@ describe('automatic reasoning admission', () => {
     expect(await outcome).toBe('cancelled');
     expect(Object.keys(s.coordinator.getSnapshot(s.runId).projection.modelCalls)).toHaveLength(0);
   });
-  it('[TC-RSN-002-N] a new directive invalidates a judgment before budget admission', async () => {
+  it('a new directive invalidates a judgment before budget admission', async () => {
     const judging = new Gate(),
       finish = new Gate();
     const s = await setup(async () => {
@@ -203,7 +203,7 @@ describe('automatic reasoning admission', () => {
   });
 });
 
-it('[TC-RSN-002-N] pausing during a judgment waits for resume and then requests fresh preparation', async () => {
+it('pausing during a judgment waits for resume and then requests fresh preparation', async () => {
   const judging = new Gate(),
     finish = new Gate();
   const s = await setup(async () => {
@@ -244,7 +244,7 @@ it('[TC-RSN-002-N] pausing during a judgment waits for resume and then requests 
   s.command('cancel');
 });
 
-it('[TC-RSN-002-N] a timed-out judge records medium fallback rather than automatic success', async () => {
+it('a timed-out judge records medium fallback rather than automatic success', async () => {
   const judging = new Gate();
   const s = await setup(async () => {
     judging.open();
@@ -262,7 +262,7 @@ it('[TC-RSN-002-N] a timed-out judge records medium fallback rather than automat
   s.command('cancel');
 });
 
-it('[TC-RSN-002-N] duplicate preparation is refused without a second judge or reservation', async () => {
+it('duplicate preparation is refused without a second judge or reservation', async () => {
   const judging = new Gate(),
     finish = new Gate();
   let calls = 0;
@@ -281,7 +281,7 @@ it('[TC-RSN-002-N] duplicate preparation is refused without a second judge or re
   s.command('cancel');
 });
 
-it('[TC-RSN-002-N] observe and apply consume one shared per-run judgment limit', async () => {
+it('observe and apply consume one shared per-run judgment limit', async () => {
   let calls = 0;
   const s = await setup(async () => {
     calls++;

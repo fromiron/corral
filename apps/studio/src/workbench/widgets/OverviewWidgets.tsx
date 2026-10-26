@@ -37,7 +37,7 @@ import {
 import { type OverviewWidget, overviewWidgets, type UsageSummary } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
-/** The column beside the conversation (CR-053): the presented run's widgets. */
+/** The column beside the conversation: the presented run's widgets. */
 export function OverviewPanel() {
   const model = useChatWidget();
   return model ? <OverviewWidgets model={model} /> : null;

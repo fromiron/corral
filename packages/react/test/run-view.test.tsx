@@ -94,8 +94,8 @@ function renderView() {
   );
 }
 
-describe('RunView execution tree (C-016)', () => {
-  it('[TC-RUN-002-H] shows each Loop round of a node as its own execution', () => {
+describe('RunView execution tree', () => {
+  it('shows each Loop round of a node as its own execution', () => {
     renderView();
     const first = screen.getByTestId('execution-exec_w1');
     const second = screen.getByTestId('execution-exec_w2');
@@ -104,7 +104,7 @@ describe('RunView execution tree (C-016)', () => {
     expect(second).not.toBe(first);
   });
 
-  it('[TC-OBS-001-H] [TC-OBS-001-N] names what a waiting execution waits for, linking the real children', () => {
+  it('names what a waiting execution waits for, linking the real children', () => {
     renderView();
     const parent = screen.getByTestId('execution-exec_r');
     const reason = within(parent).getByTestId('waiting-on');

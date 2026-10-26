@@ -1,7 +1,7 @@
 import { expect, test } from './harness.ts';
 
 for (const colorScheme of ['light', 'dark'] as const) {
-  test(`[TC-UX-007-H] labeled inputs retain quiet boundaries and clear focus in ${colorScheme}`, async ({
+  test(`labeled inputs retain quiet boundaries and clear focus in ${colorScheme}`, async ({
     page,
     corral,
   }) => {
@@ -16,7 +16,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       });
       expect(restingBorder).not.toBe('rgba(0, 0, 0, 0)');
       await field.focus();
-      // CR-045 follow-up adopts subtle resting borders; the 3:1 cue belongs to focus.
+      // follow-up adopts subtle resting borders; the 3:1 cue belongs to focus.
       const contrast = await field.evaluate((input) => {
         const control = input.closest('[data-slot="input-control"]') ?? input;
         const style = getComputedStyle(control);
@@ -70,10 +70,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 test.describe('model identification', () => {
   test.use({ live: true, codexLogin: true, reasoningApi: true });
   for (const locale of ['en', 'ko']) {
-    test(`[TC-UX-007-N] model and effort stay readable at 320/390px in ${locale}`, async ({
-      page,
-      corral,
-    }) => {
+    test(`model and effort stay readable at 320/390px in ${locale}`, async ({ page, corral }) => {
       await page.addInitScript((value) => localStorage.setItem('corral:locale', value), locale);
       await page.route('**/api/v1/model-profiles', async (route) => {
         const response = await route.fetch();
@@ -93,7 +90,7 @@ test.describe('model identification', () => {
       await page
         .getByRole('button', { name: locale === 'en' ? 'Start chat' : '대화 시작', exact: true })
         .click();
-      // Ultra and the request options are gone (CR-055 §6); the model chip carries the choice.
+      // Ultra and the request options are gone; the model chip carries the choice.
       const box = page.getByRole('combobox', {
         name: locale === 'en' ? 'Request' : '요청',
         exact: true,
@@ -153,10 +150,7 @@ test.describe('model identification', () => {
   }
 });
 
-test('[TC-UX-007-H] list filtering is named separately from private text search', async ({
-  page,
-  corral,
-}) => {
+test('list filtering is named separately from private text search', async ({ page, corral }) => {
   await corral.open('/projects/default');
   const filter = page.getByRole('searchbox', { name: 'Filter conversations', exact: true });
   await expect(filter).toBeVisible();
@@ -188,7 +182,7 @@ test('[TC-UX-007-H] list filtering is named separately from private text search'
   await page.keyboard.press('Escape');
 });
 
-test('[TC-UX-007-N] import guidance is contextual and import cancellation or failure preserves the session draft', async ({
+test('import guidance is contextual and import cancellation or failure preserves the session draft', async ({
   page,
   corral,
 }) => {

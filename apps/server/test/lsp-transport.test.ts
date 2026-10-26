@@ -35,7 +35,7 @@ function fixture(mode = 'normal') {
   };
 }
 const live = { aborted: false, onCancel: () => () => {} };
-it('[TC-HAR-018-H] obtains rename and resolved code-action edits without applying them or running commands', async () => {
+it('obtains rename and resolved code-action edits without applying them or running commands', async () => {
   const runner = new LspRunner({ clock: new FakeClock(), timers: systemTimers });
   const input = fixture();
   const rename = await runner.query(
@@ -77,13 +77,13 @@ it('[TC-HAR-018-H] obtains rename and resolved code-action edits without applyin
     ],
   });
 });
-it('[TC-HAR-010-N] server exception text never becomes a public tool error', async () => {
+it('server exception text never becomes a public tool error', async () => {
   const runner = new LspRunner({ clock: new FakeClock(), timers: systemTimers });
   await expect(
     runner.query({ ...fixture('initialize_error'), operation: 'diagnostics' }, live),
   ).rejects.toThrow('language server query failed');
 });
-it('[TC-HAR-010-H] uses public LSP initialization, full document sync and UTF-16 positions for definition/references', async () => {
+it('uses public LSP initialization, full document sync and UTF-16 positions for definition/references', async () => {
   const runner = new LspRunner({ clock: new FakeClock(), timers: systemTimers });
   for (const operation of ['definition', 'references'] as const) {
     const input = fixture();
@@ -102,7 +102,7 @@ it('[TC-HAR-010-H] uses public LSP initialization, full document sync and UTF-16
     });
   }
 });
-it('[TC-HAR-010-H] supports both push and pull diagnostics, without allowing server-initiated edits', async () => {
+it('supports both push and pull diagnostics, without allowing server-initiated edits', async () => {
   const runner = new LspRunner({ clock: new FakeClock(), timers: systemTimers });
   for (const mode of ['normal', 'pull', 'apply_edit']) {
     const result = await runner.query({ ...fixture(mode), operation: 'diagnostics' }, live);
@@ -119,13 +119,13 @@ it.each([
   'wrong_version',
   'utf8',
   'oversized',
-])('[TC-HAR-010-N] %s never becomes a clean diagnostic result', async (mode) => {
+])('%s never becomes a clean diagnostic result', async (mode) => {
   const runner = new LspRunner({ clock: new FakeClock(), timers: systemTimers });
   await expect(runner.query({ ...fixture(mode), operation: 'diagnostics' }, live)).rejects.toThrow(
     /language server|diagnostic|version|UTF-16|limit/i,
   );
 });
-it('[TC-HAR-010-N] cancellation terminates the owned server and cannot publish a late result', async () => {
+it('cancellation terminates the owned server and cannot publish a late result', async () => {
   const controller = new AbortController();
   let pid = 0;
   const runner = new LspRunner({

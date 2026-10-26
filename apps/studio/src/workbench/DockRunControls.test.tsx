@@ -11,7 +11,7 @@ import { DockRunControls } from './DockRunControls.tsx';
 const fixture = vi.hoisted(() => ({ services: {} }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 
-it('[TC-WBD-006-N] controls outside hidden panes retain and open the active run, not the historical selection', async () => {
+it('controls outside hidden panes retain and open the active run, not the historical selection', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const session = createRunSession({} as RuntimeTransport);
   const projection = { ...emptyProjection('active-run'), status: 'running' as const };

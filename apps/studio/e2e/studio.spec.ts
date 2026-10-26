@@ -40,9 +40,7 @@ async function buildAgentToOutput(page: Page) {
   await expect(page.getByText('Ready to run.')).toBeVisible();
 }
 
-test('[TC-CAN-001-H] [TC-UX-004-H] nodes dropped on an empty canvas and connected run as drawn', async ({
-  page,
-}) => {
+test('nodes dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
   await newCorral(page, '?delay=50');
   await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
@@ -69,7 +67,7 @@ test('[TC-CAN-001-H] [TC-UX-004-H] nodes dropped on an empty canvas and connecte
   expect(errors).toEqual([]);
 });
 
-test('[TC-CAN-002-H] saving a layout move bumps only the layout revision, and survives reload', async ({
+test('saving a layout move bumps only the layout revision, and survives reload', async ({
   page,
 }) => {
   await newCorral(page);
@@ -102,7 +100,7 @@ test('[TC-CAN-002-H] saving a layout move bumps only the layout revision, and su
   expect(after?.y).not.toBe(before?.y);
 });
 
-test('[TC-CAN-004-H] [TC-RUN-003-H] an imported team with a Loop validates and runs through its review and approvals', async ({
+test('an imported team with a Loop validates and runs through its review and approvals', async ({
   page,
 }) => {
   const errors = await trackErrors(page);
@@ -140,7 +138,7 @@ test('[TC-CAN-004-H] [TC-RUN-003-H] an imported team with a Loop validates and r
   await expect(page.getByTestId('diagnostics')).toContainText('flow never reaches');
 });
 
-test('[TC-CAN-005-H] keyboard-only connection, duplicate, and one-step undo', async ({ page }) => {
+test('keyboard-only connection, duplicate, and one-step undo', async ({ page }) => {
   await newCorral(page);
   await page.getByRole('button', { name: 'Add Agent' }).click();
   await page.getByRole('button', { name: 'Add Output' }).click();
@@ -181,7 +179,7 @@ test('the workspace and editor have no serious automated accessibility violation
   expect(await serious()).toEqual([]);
 });
 
-test('[TC-ART-003-N] a reviewer without the criteria is flagged, and one click gives it them (#20)', async ({
+test('a reviewer without the criteria is flagged, and one click gives it them (#20)', async ({
   page,
 }) => {
   await page.goto('/');

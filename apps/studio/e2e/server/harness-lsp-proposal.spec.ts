@@ -8,7 +8,7 @@ import { linearCorral } from '@corral/testkit';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
-test('[TC-HAR-018-H] reviews immutable LSP changes and applies them explicitly to the session copy', async ({
+test('reviews immutable LSP changes and applies them explicitly to the session copy', async ({
   page,
   corral,
 }) => {

@@ -35,7 +35,7 @@ function setup() {
 }
 
 describe('pinned project execution configuration', () => {
-  it('[TC-HAR-016-N] adding MCP trust preserves earlier check and language server approvals', () => {
+  it('adding MCP trust preserves earlier check and language server approvals', () => {
     const db = new Database(':memory:');
     databases.push(db);
     for (const migration of MIGRATIONS.slice(0, 9)) db.exec(migration.sql);
@@ -55,7 +55,7 @@ describe('pinned project execution configuration', () => {
       ),
     ).not.toThrow();
   });
-  it('[TC-HAR-016-H] pins MCP endpoint and OAuth scope without changing old configuration hashes', () => {
+  it('pins MCP endpoint and OAuth scope without changing old configuration hashes', () => {
     const { store } = setup();
     const original = store.save('project', 0, config);
     const mcp = {
@@ -93,7 +93,7 @@ describe('pinned project execution configuration', () => {
     ])
       expect(ProjectToolConfig.safeParse({ ...config, mcpServers: [server] }).success).toBe(false);
   });
-  it('[TC-HAR-012-H] preserves exact revisions and computes canonical content hashes', () => {
+  it('preserves exact revisions and computes canonical content hashes', () => {
     const { db, store } = setup();
     expect(store.latest('project')).toBeNull();
     const first = store.save('project', 0, config);
@@ -107,7 +107,7 @@ describe('pinned project execution configuration', () => {
     expect(reopened.get('another', 1)).toBeNull();
   });
 
-  it('[TC-HAR-012-N] rejects stale saves, malformed commands, duplicate IDs and SQL mutation', () => {
+  it('rejects stale saves, malformed commands, duplicate IDs and SQL mutation', () => {
     const { db, store } = setup();
     store.save('project', 0, config);
     expect(() => store.save('project', 0, config)).toThrow(/revision/);
@@ -131,7 +131,7 @@ describe('pinned project execution configuration', () => {
     expect(store.latest('project')?.revision).toBe(1);
   });
 
-  it('[TC-HAR-013-N] trust cannot leak across project, tool kind, ID or changed fingerprint and can be revoked', () => {
+  it('trust cannot leak across project, tool kind, ID or changed fingerprint and can be revoked', () => {
     const { store } = setup();
     const fingerprint = 'a'.repeat(64);
     const target = { projectId: 'project', kind: 'check' as const, id: 'typecheck', fingerprint };
@@ -149,7 +149,7 @@ describe('pinned project execution configuration', () => {
     expect(store.trust(target)).toBeNull();
   });
 
-  it('[TC-HAR-012-H] migrates existing check definitions without granting automatic execution trust', () => {
+  it('migrates existing check definitions without granting automatic execution trust', () => {
     const db = new Database(':memory:');
     databases.push(db);
     for (const migration of MIGRATIONS.slice(0, 7)) db.exec(migration.sql);

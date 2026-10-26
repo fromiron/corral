@@ -150,7 +150,7 @@ async function mount(current: MeetingView) {
   return { container, meetings, button, box, type };
 }
 
-it('[TC-MEET-001-H] shows each answer in participant order and sends a conversational follow-up with mentions', async () => {
+it('shows each answer in participant order and sends a conversational follow-up with mentions', async () => {
   const f = await mount(view());
   const articles = [...f.container.querySelectorAll('article')].map((a) =>
     a.getAttribute('aria-label'),
@@ -181,7 +181,7 @@ it('[TC-MEET-001-H] shows each answer in participant order and sends a conversat
   );
 });
 
-it('[TC-MEET-001-H] a participant waiting for its turn is shown without a failed response or Run link', async () => {
+it('a participant waiting for its turn is shown without a failed response or Run link', async () => {
   const current = view();
   current.rounds[0]!.active = true;
   current.rounds[0]!.answers[0] = answer('p1', 'running');
@@ -198,7 +198,7 @@ it('[TC-MEET-001-H] a participant waiting for its turn is shown without a failed
   expect(waiting.querySelector('a')).toBeNull();
 });
 
-it('[TC-MEET-001-H] exposes individual chat messages without a work panel or round controls', async () => {
+it('exposes individual chat messages without a work panel or round controls', async () => {
   const f = await mount(view());
   const items = [...f.container.querySelectorAll('[data-chat-item]')];
   expect(items).toHaveLength(3);
@@ -214,7 +214,7 @@ it('[TC-MEET-001-H] exposes individual chat messages without a work panel or rou
   expect(f.container.textContent).toContain('usageUnknown');
 });
 
-it('[TC-MEET-001-H] shows in-progress model text before the completed answer arrives', async () => {
+it('shows in-progress model text before the completed answer arrives', async () => {
   liveAnswer.current = {
     projection: { modelCalls: { call_1: { finished: false } } },
     streams: { call_1: { text: 'I would choose kimchi stew', broken: false, completed: false } },
@@ -226,7 +226,7 @@ it('[TC-MEET-001-H] shows in-progress model text before the completed answer arr
   expect(f.container.textContent).toContain('status.running');
 });
 
-it('[TC-MEET-001-F] does not present a broken stream as a complete answer', async () => {
+it('does not present a broken stream as a complete answer', async () => {
   liveAnswer.current = {
     projection: { modelCalls: { call_1: { finished: false } } },
     streams: { call_1: { text: 'Missing a middle chunk', broken: true, completed: false } },
@@ -237,7 +237,7 @@ it('[TC-MEET-001-F] does not present a broken stream as a complete answer', asyn
   expect(f.container.textContent).not.toContain('Missing a middle chunk');
 });
 
-it('[TC-MEET-001-F] only shows stream text associated with the current answer run', async () => {
+it('only shows stream text associated with the current answer run', async () => {
   liveAnswer.current = {
     projection: { modelCalls: {} },
     streams: { old_call: { text: 'Another run response', broken: false, completed: false } },
@@ -248,7 +248,7 @@ it('[TC-MEET-001-F] only shows stream text associated with the current answer ru
   expect(f.container.textContent).not.toContain('Another run response');
 });
 
-it('[TC-MEET-001-H] interleaved human messages and agent mentions display in their posted order', async () => {
+it('interleaved human messages and agent mentions display in their posted order', async () => {
   const first = view().rounds[0]!;
   const f = await mount(
     view({
@@ -279,7 +279,7 @@ it('[TC-MEET-001-H] interleaved human messages and agent mentions display in the
   ).toEqual(['round_1:message', 'round_1:p1', 'mention:p1', 'round_1:p2']);
 });
 
-it('[TC-MEET-001-N] typing while a send receipt is pending preserves the next draft', async () => {
+it('typing while a send receipt is pending preserves the next draft', async () => {
   const f = await mount(view());
   let finish!: (result: any) => void;
   f.meetings.send.mockImplementationOnce(
@@ -301,7 +301,7 @@ it('[TC-MEET-001-N] typing while a send receipt is pending preserves the next dr
   );
 });
 
-it('[TC-MEET-001-N] Enter while composing with an IME does not send, and a lost answer keeps its command ID', async () => {
+it('Enter while composing with an IME does not send, and a lost answer keeps its command ID', async () => {
   const f = await mount(view());
   await f.type('한글 입력');
   await act(async () => {
@@ -319,7 +319,7 @@ it('[TC-MEET-001-N] Enter while composing with an IME does not send, and a lost 
   expect(second?.commandId).toBe(first?.commandId);
 });
 
-it('[TC-MEET-001-F] a running round can be stopped and a waiting message is shown, sendable only when idle', async () => {
+it('a running round can be stopped and a waiting message is shown, sendable only when idle', async () => {
   const running = view({
     rounds: [
       {
@@ -341,7 +341,7 @@ it('[TC-MEET-001-F] a running round can be stopped and a waiting message is show
   expect(f.meetings.dropQueued).toHaveBeenCalledWith('session_1');
 });
 
-it('[TC-MEET-001-N] /반론 is sent to the round service and an uncertain retry keeps its command ID', async () => {
+it('/반론 is sent to the round service and an uncertain retry keeps its command ID', async () => {
   const f = await mount(view());
   await f.type('/반론');
   f.meetings.send.mockRejectedValueOnce(new Error('connection lost'));
@@ -353,7 +353,7 @@ it('[TC-MEET-001-N] /반론 is sent to the round service and an uncertain retry 
   expect(requests[1]?.commandId).toBe(requests[0]?.commandId);
 });
 
-it('[TC-MEET-001-N] active replies and a legacy draft never block new messages; editing preserves that draft identity', async () => {
+it('active replies and a legacy draft never block new messages; editing preserves that draft identity', async () => {
   const current = view({
     rounds: [{ ...view().rounds[0]!, active: true }],
     queued: { commandId: 'queued_1', mode: 'mock', text: 'First draft', mentions: ['p1'] },
@@ -403,7 +403,7 @@ it('[TC-MEET-001-N] active replies and a legacy draft never block new messages; 
   expect(f.box.value).toBe('Keep my next draft');
 });
 
-it('[TC-MEET-001-F] a stopped round is identified even when completed answers are retained', async () => {
+it('a stopped round is identified even when completed answers are retained', async () => {
   const f = await mount(
     view({ rounds: [{ ...view().rounds[0]!, stoppedAt: '2026-10-23T00:00:00Z' }] }),
   );
@@ -411,7 +411,7 @@ it('[TC-MEET-001-F] a stopped round is identified even when completed answers ar
   expect(f.container.textContent).toContain('p1 says yes');
 });
 
-it('[TC-MEET-001-N] asking the secretary to summarise preserves the unsent draft', async () => {
+it('asking the secretary to summarise preserves the unsent draft', async () => {
   const f = await mount(view());
   await f.type('Do not erase this question');
   await act(async () => f.button('summarise')?.click());
@@ -422,7 +422,7 @@ it('[TC-MEET-001-N] asking the secretary to summarise preserves the unsent draft
   );
 });
 
-it('[TC-MEET-001-H] only explicitly attached evidence is sent, and a failed send preserves it', async () => {
+it('only explicitly attached evidence is sent, and a failed send preserves it', async () => {
   const f = await mount(view());
   await act(async () => f.button('attachEvidence')?.click());
   await f.type('Review this evidence');
@@ -437,7 +437,7 @@ it('[TC-MEET-001-H] only explicitly attached evidence is sent, and a failed send
   expect(f.meetings.send.mock.calls.at(-1)?.[1]).not.toHaveProperty('attachments');
 });
 
-it('[TC-MEET-001-H] starts with a compact composer and keeps selected evidence reviewable', async () => {
+it('starts with a compact composer and keeps selected evidence reviewable', async () => {
   const f = await mount(view());
   const disclosure = f.container.querySelector<HTMLDetailsElement>(
     'details[aria-label="evidence"]',
@@ -462,7 +462,7 @@ it('[TC-MEET-001-H] starts with a compact composer and keeps selected evidence r
   expect(disclosure?.querySelector('summary')?.textContent).toBe('evidence');
 });
 
-it('[TC-MEET-001-F] a late refresh cannot replace a newer round view', async () => {
+it('a late refresh cannot replace a newer round view', async () => {
   const current = view({ rounds: [{ ...view().rounds[0]!, active: true }] });
   const f = await mount(current);
   let finish: (value: MeetingView) => void = () => {};
@@ -482,7 +482,7 @@ it('[TC-MEET-001-F] a late refresh cannot replace a newer round view', async () 
   expect(f.container.textContent).toContain('Latest question');
 });
 
-it('[TC-MEET-001-F] slow polling waits for the pending response before requesting another', async () => {
+it('slow polling waits for the pending response before requesting another', async () => {
   vi.useFakeTimers();
   const f = await mount(view({ rounds: [{ ...view().rounds[0]!, active: true }] }));
   let finish: (value: MeetingView) => void = () => {};
@@ -501,7 +501,7 @@ it('[TC-MEET-001-F] slow polling waits for the pending response before requestin
   expect(f.container.textContent).toContain('Slow answer arrived');
 });
 
-it('[TC-MEET-002-H] parsed secretary minutes open the records panel instead of displaying their storage JSON', async () => {
+it('parsed secretary minutes open the records panel instead of displaying their storage JSON', async () => {
   const raw = '{"issues":["Meeting issue"],"claims":[],"candidates":[]}';
   const f = await mount(
     view({
@@ -542,7 +542,7 @@ it('[TC-MEET-002-H] parsed secretary minutes open the records panel instead of d
   expect(document.activeElement?.tagName).toBe('SUMMARY');
 });
 
-it('[TC-MEET-002-F] an unparsed secretary answer stays available for recovery', async () => {
+it('an unparsed secretary answer stays available for recovery', async () => {
   const f = await mount(
     view({
       rounds: [

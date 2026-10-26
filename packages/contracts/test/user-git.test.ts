@@ -16,7 +16,7 @@ const request = {
   indexHash: 'a'.repeat(64),
 };
 
-it('[TC-WBD-008-H] keeps original and managed-copy identities distinct and does not normalize raw paths', () => {
+it('keeps original and managed-copy identities distinct and does not normalize raw paths', () => {
   expect(UserGitTarget.parse(project)).toEqual(project);
   expect(UserGitTarget.parse(session)).toEqual(session);
   expect(GitDiffRequest.parse(request)).toEqual(request);
@@ -24,7 +24,7 @@ it('[TC-WBD-008-H] keeps original and managed-copy identities distinct and does 
     expect(GitDiffRequest.parse({ ...request, target: session, head }).head).toBe(head);
 });
 
-it('[TC-WBD-008-N] rejects missing generations, malformed versions and mutation fields', () => {
+it('rejects missing generations, malformed versions and mutation fields', () => {
   for (const target of [
     { ...project, copyGeneration: 1 },
     { ...session, copyGeneration: 0 },

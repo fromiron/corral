@@ -18,7 +18,7 @@ import { flowEdges, flowNodes } from './CorralCanvas.tsx';
 import { type CanvasNodeData, nodeTypes } from './NodeViews.tsx';
 
 /**
- * The run's definition drawn with run state on each node (C-065, Spec §4.3). Read-only: it has
+ * The run's definition drawn with run state on each node. Read-only: it has
  * no drag, connect, delete or resize, and selecting a node only reports which node it was.
  * Nodes subscribe to their own status, so streamed text does not re-render the graph.
  */

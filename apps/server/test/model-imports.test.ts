@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseModelImport } from '../src/models/imports/parsers.ts';
 
-describe('[TC-ABS-005-H] model configuration import', () => {
+describe('model configuration import', () => {
   it('reads four sources without evaluating key references or hooks', () => {
     const claude = parseModelImport(
       'claude-code',
@@ -47,7 +47,7 @@ describe('[TC-ABS-005-H] model configuration import', () => {
     expect(pi[0]?.secret).toBeUndefined();
   });
 
-  it('[TC-ABS-005-N] rejects oversized/malformed files and duplicate model ids', () => {
+  it('rejects oversized/malformed files and duplicate model ids', () => {
     expect(() => parseModelImport('pi', 'x'.repeat(1024 * 1024 + 1))).toThrow();
     expect(() => parseModelImport('codex', 'model = "one"\nmodel = "two"')).toThrow();
     expect(() => parseModelImport('pi', '{"providers":')).toThrow();
@@ -61,7 +61,7 @@ describe('[TC-ABS-005-H] model configuration import', () => {
     ).toThrow();
   });
 
-  it('[TC-ABS-005-N] keeps incompatible transport, reference keys, OAuth and reasoning explicit', () => {
+  it('keeps incompatible transport, reference keys, OAuth and reasoning explicit', () => {
     const parsed = parseModelImport(
       'claude-code',
       JSON.stringify({

@@ -48,7 +48,7 @@ import {
   planFromAnswer,
 } from './team-draft.ts';
 
-// Model profiles and sign-in for the local server (C-058, ADR-019). Profiles name a provider
+// Model profiles and sign-in for the local server. Profiles name a provider
 // and model; credentials stay in pi-ai's credential store on this computer. Views and errors
 // carry status and expiry only: no token, key or callback URL ever leaves through them.
 
@@ -60,7 +60,7 @@ export interface ProfileConfig extends ProfileContextOverrides {
 }
 
 /**
- * Two OpenAI profiles, used when the workspace config names none (CR-001). Both are in pi-ai's
+ * Two OpenAI profiles, used when the workspace config names none. Both are in pi-ai's
  * ChatGPT-account catalog: a ChatGPT sign-in refuses models outside it (live smoke, P3).
  */
 export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
@@ -70,11 +70,11 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
 
 /**
  * Providers whose subscription OAuth Corral does not start: Anthropic does not allow third-party
- * apps to use subscription credentials (CR-001 §2). They take an API key instead.
+ * apps to use subscription credentials. They take an API key instead.
  */
 const NO_SUBSCRIPTION_OAUTH = new Set(['anthropic']);
 
-/** How a provider is reached: `none` is a keyless local endpoint (CR-005). */
+/** How a provider is reached: `none` is a keyless local endpoint. */
 export type AuthMethod = 'oauth' | 'api_key' | 'none';
 
 /** A sign-in request the registry cannot serve; `code` picks the HTTP answer. */
@@ -91,7 +91,7 @@ export interface ProviderAuthView {
   name: string;
   signedIn: boolean;
   method: AuthMethod | null;
-  /** Ways this provider can be signed in to here (CR-005). */
+  /** Ways this provider can be signed in to here. */
   methods: { oauth: boolean; apiKey: boolean };
   /** host[:port] of an OpenAI-compatible endpoint; null for pi-ai's own providers. */
   endpoint: string | null;
@@ -103,7 +103,7 @@ export interface ProviderAuthView {
   expiresAt: string | null;
   login: LoginView | null;
   /**
-   * Where the sign-in comes from: Corral's own store, the Codex CLI login read only (CR-004),
+   * Where the sign-in comes from: Corral's own store, the Codex CLI login read only,
    * or a key in the server environment (which the page cannot remove).
    */
   source: 'corral' | 'codex-cli' | 'environment' | null;
@@ -114,7 +114,7 @@ export interface ProviderAuthView {
 export interface CatalogProvider {
   providerId: string;
   name: string;
-  /** An OpenAI-compatible endpoint from the workspace config (CR-005). */
+  /** An OpenAI-compatible endpoint from the workspace config. */
   endpoint: boolean;
   methods: { oauth: boolean; apiKey: boolean };
   models: {
@@ -157,7 +157,7 @@ export interface RegistryOptions {
   now?: () => number;
   /** Models a subscription sign-in may call, per provider; null when no list is known. */
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
-  /** OpenAI-compatible endpoints from the workspace config (CR-005), already registered. */
+  /** OpenAI-compatible endpoints from the workspace config, already registered. */
   endpoints?: ReadonlyMap<string, Endpoint>;
 }
 
@@ -414,7 +414,7 @@ export class ModelRegistry implements ModelResolver {
   async credentials(model: ModelProfileSnapshot): Promise<string | null> {
     this.assertEndpointSnapshot(model);
     if (!model.provider || !model.modelId) return null;
-    // A keyless endpoint gets no key from this computer (CR-005 §4).
+    // A keyless endpoint gets no key from this computer.
     if (this.options.endpoints?.get(model.provider)?.spec.keyless) return null;
     const resolved = this.models.getModel(model.provider, model.modelId);
     if (!resolved) throw new Error(`${model.provider} has no model ${model.modelId}`);
@@ -424,7 +424,7 @@ export class ModelRegistry implements ModelResolver {
     } catch {
       // The provider's message can include request details; keep ours.
       if (sourceAware(this.options.credentials)?.sourceOf(model.provider) === 'codex-cli') {
-        // Corral never refreshes a borrowed login (CR-004); Codex does that itself.
+        // Corral never refreshes a borrowed login; Codex does that itself.
         throw new Error(
           'the Codex CLI login has expired; run codex to sign in again, or sign in to Corral under Settings → Models',
         );
@@ -437,7 +437,7 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /**
-   * A team plan for a goal from one request to the first profile's model (CR-006). Outside any
+   * A team plan for a goal from one request to the first profile's model. Outside any
    * Run: the person asked for it, and it is capped in output tokens and time.
    */
   async draftTeam(
@@ -523,7 +523,7 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /**
-   * CR-052: minimum chooser reasoning, model/context output allowance, and bounded JSON text.
+   * minimum chooser reasoning, model/context output allowance, and bounded JSON text.
    * The shared runtime records physical attempts; the caller records only the parsed choice.
    */
   async routeAuto(
@@ -670,7 +670,7 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /**
-   * Profiles and endpoints saved from the Models page (CR-008). Runs already started keep the
+   * Profiles and endpoints saved from the Models page. Runs already started keep the
    * profile snapshot they started with.
    */
   async reconfigure(
@@ -734,7 +734,7 @@ export class ModelRegistry implements ModelResolver {
     return Boolean(this.models.getProvider(providerId)) && !this.options.endpoints?.has(providerId);
   }
 
-  /** Providers and their models for the profile editor (CR-008); no credentials or status. */
+  /** Providers and their models for the profile editor; no credentials or status. */
   catalog(): CatalogProvider[] {
     return this.models
       .getProviders()
@@ -746,7 +746,7 @@ export class ModelRegistry implements ModelResolver {
         models: provider.getModels().map((m) => ({
           id: m.id,
           name: m.name,
-          // pi-ai's list prices (USD per million tokens), for estimates only (roadmap 15).
+          // pi-ai's list prices (USD per million tokens), for estimates only.
           cost: {
             input: m.cost.input,
             output: m.cost.output,
@@ -759,7 +759,7 @@ export class ModelRegistry implements ModelResolver {
       .sort((a, b) => Number(b.endpoint) - Number(a.endpoint) || a.name.localeCompare(b.name));
   }
 
-  /** The non-secret definition of the endpoint behind a model, for its worker (CR-005). */
+  /** The non-secret definition of the endpoint behind a model, for its worker. */
   endpointOf(model: ModelProfileSnapshot): EndpointSpec | null {
     this.assertEndpointSnapshot(model);
     return (model.provider && this.options.endpoints?.get(model.provider)?.spec) || null;
@@ -783,7 +783,7 @@ export class ModelRegistry implements ModelResolver {
     };
   }
 
-  /** Stores an API key entered under Settings → Models; it is never returned (CR-005). */
+  /** Stores an API key entered under Settings → Models; it is never returned. */
   async setApiKey(providerId: string, key: string): Promise<void> {
     if (!this.providers().includes(providerId)) {
       throw new RegistryError('not_found', 'no model profile uses this provider');
@@ -962,7 +962,7 @@ function loginError(error: unknown): string {
   return 'Sign-in failed. Try again.';
 }
 
-/** A credential store that knows where each sign-in came from (the CR-004 layered store). */
+/** A credential store that knows where each sign-in came from (the layered store). */
 interface SourceAware {
   sourceOf(providerId: string): 'corral' | 'codex-cli' | null;
   codexPermissionsOk(): boolean;

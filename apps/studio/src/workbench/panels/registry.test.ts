@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { panelKey } from './registry.ts';
 
-it('[TC-WBD-005-N] view keys retain their target and isolate connected services and projects', () => {
+it('view keys retain their target and isolate connected services and projects', () => {
   const host = {};
   const anotherConnection = {};
   const graph = { kind: 'graph', projectId: 'project_a', corralId: 'team' } as const;

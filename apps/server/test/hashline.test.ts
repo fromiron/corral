@@ -22,7 +22,7 @@ function writeText(result: ReturnType<typeof edit>) {
 }
 
 describe('Hashline v1', () => {
-  it('[TC-ABS-003-H] reads tagged numbered text, then applies all original-coordinate edits atomically', () => {
+  it('reads tagged numbered text, then applies all original-coordinate edits atomically', () => {
     const bytes = Buffer.from('one\ntwo\nthree\nfour\n');
     const read = readHashline({ bytes, path, scope });
     expect(read.text).toBe(`[${path}#${read.tag}]\n1:one\n2:two\n3:three\n4:four`);
@@ -40,20 +40,20 @@ describe('Hashline v1', () => {
   });
 
   it.each(['a\nb\n', 'a\nb', '\ufeffa\r\nb\r\n', '\ufeffa\r\nb'])(
-    '[TC-ABS-003-H] preserves UTF-8 BOM, line endings and final newline: %j',
+    'preserves UTF-8 BOM, line endings and final newline: %j',
     (text) => {
       const out = writeText(edit(text, 'PUT 2.=2:\n+B'));
       expect(out).toBe(text.replace('b', 'B'));
     },
   );
 
-  it('[TC-ABS-003-H] preserves untouched mixed EOL and supports empty files without inventing a newline', () => {
+  it('preserves untouched mixed EOL and supports empty files without inventing a newline', () => {
     expect(writeText(edit('a\r\nb\nc\r\n', 'PUT 2.=2:\n+B'))).toBe('a\r\nB\r\nc\r\n');
     expect(writeText(edit('', 'PUT >$:\n+first'))).toBe('first');
     expect(writeText(edit('a\n', 'CUT 1.=1'))).toBe('');
   });
 
-  it('[TC-ABS-003-H] returns delete and move plans without mutating bytes', () => {
+  it('returns delete and move plans without mutating bytes', () => {
     expect(edit('a\n', 'REM')).toMatchObject({ kind: 'delete', path });
     expect(edit('a\n', 'MV "src/renamed file.txt"')).toMatchObject({
       kind: 'move',
@@ -62,7 +62,7 @@ describe('Hashline v1', () => {
     });
   });
 
-  it('[TC-ABS-003-N] short-tag equivalence never authorizes changed bytes or unseen rows', () => {
+  it('short-tag equivalence never authorizes changed bytes or unseen rows', () => {
     const bytes = Buffer.from('a \nb\t\n');
     const read = readHashline({ bytes, path, scope, offset: 1, limit: 1 });
     const changed = Buffer.from('a\nb\n');
@@ -83,7 +83,7 @@ describe('Hashline v1', () => {
     expect(read.evidence.ranges).toEqual([{ start: 1, end: 1 }]);
   });
 
-  it('[TC-ABS-003-N] rejects genuine 16-bit collisions using full-byte evidence', () => {
+  it('rejects genuine 16-bit collisions using full-byte evidence', () => {
     const seen = new Map<string, Buffer>();
     let collision: { first: Buffer; second: Buffer; tag: string } | undefined;
     for (let i = 0; i < 2000 && !collision; i++) {
@@ -108,7 +108,7 @@ describe('Hashline v1', () => {
     ).toThrow(/changed since/);
   });
 
-  it('[TC-ABS-003-N] rejects foreign scope, path, missing read, stale tags even at head/tail', () => {
+  it('rejects foreign scope, path, missing read, stale tags even at head/tail', () => {
     const bytes = Buffer.from('a\nb\n');
     const read = readHashline({ bytes, path, scope });
     const input = {
@@ -131,7 +131,7 @@ describe('Hashline v1', () => {
     );
   });
 
-  it('[TC-ABS-003-N] destructive whole-file ops require complete visible evidence', () => {
+  it('destructive whole-file ops require complete visible evidence', () => {
     const bytes = Buffer.from('a\nb\n');
     const read = readHashline({ bytes, path, scope, limit: 1 });
     for (const ops of ['REM', 'MV next.txt', 'PUT >$:\n+c', 'PUT <2:\n+x'])
@@ -158,7 +158,7 @@ describe('Hashline v1', () => {
     'MV ../outside.txt',
     'MV C:/outside.txt',
     'MV .git/config',
-  ])('[TC-ABS-003-N] refuses invalid requests without modifying the source: %s', (ops) => {
+  ])('refuses invalid requests without modifying the source: %s', (ops) => {
     const bytes = Buffer.from('a\nb\nc\n');
     const read = readHashline({ bytes, path, scope });
     const original = Buffer.from(bytes);
@@ -168,7 +168,7 @@ describe('Hashline v1', () => {
     expect(bytes).toEqual(original);
   });
 
-  it('[TC-ABS-003-N] rejects invalid UTF-8/UTF-16/NUL and over-limit source/output', () => {
+  it('rejects invalid UTF-8/UTF-16/NUL and over-limit source/output', () => {
     for (const bytes of [
       Buffer.from([0xff]),
       Buffer.from([0xff, 0xfe, 0x61, 0]),
@@ -181,7 +181,7 @@ describe('Hashline v1', () => {
     expect(() => edit('a'.repeat(1024 * 1024), `PUT >$:\n+new`)).toThrow(/1 MiB/);
   });
 
-  it('[TC-ABS-003-N] merging reads never carries evidence across revisions or executions', () => {
+  it('merging reads never carries evidence across revisions or executions', () => {
     const first = readHashline({ bytes: Buffer.from('a\nb\n'), path, scope, limit: 1 }).evidence;
     const second = readHashline({
       bytes: Buffer.from('a\nB\n'),
@@ -195,7 +195,7 @@ describe('Hashline v1', () => {
     expect(mergeHashlineEvidence(second, foreign)).toEqual(foreign);
   });
 
-  it('[TC-ABS-003-N] bounded output grants only complete displayed lines', () => {
+  it('bounded output grants only complete displayed lines', () => {
     const bytes = Buffer.from('one\ntwo\nthree\n');
     const prefixSize = Buffer.byteLength(JSON.stringify(`[${path}#0000]\n1:one`));
     const read = readHashline({ bytes, path, scope, maxOutputBytes: prefixSize });

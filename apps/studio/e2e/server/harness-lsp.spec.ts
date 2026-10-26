@@ -8,7 +8,7 @@ import { linearCorral } from '@corral/testkit';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
-test('[TC-HAR-010-H] registers and selects a language server, approves an SDK query and trusts its fingerprint', async ({
+test('registers and selects a language server, approves an SDK query and trusts its fingerprint', async ({
   page,
   corral,
 }) => {

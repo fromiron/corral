@@ -79,7 +79,7 @@ function fixture() {
   return { root, git, topic };
 }
 
-it('TC-WBD-022-H: local merge exposes three sides and continues only after explicit resolution', async () => {
+it('local merge exposes three sides and continues only after explicit resolution', async () => {
   const f = fixture();
   const initial = await readGitSequence(f.root);
   const plan = await planGitSequence(
@@ -123,7 +123,7 @@ it('TC-WBD-022-H: local merge exposes three sides and continues only after expli
   expect(f.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ')).toHaveLength(3);
 });
 
-it('TC-WBD-022-N: stale or unreviewed abort cannot discard changes and unsafe rebase todo cannot run', async () => {
+it('stale or unreviewed abort cannot discard changes and unsafe rebase todo cannot run', async () => {
   const f = fixture();
   const initial = await readGitSequence(f.root);
   const plan = await planGitSequence(
@@ -172,7 +172,7 @@ it('TC-WBD-022-N: stale or unreviewed abort cannot discard changes and unsafe re
   expect((await readGitSequence(f.root)).sequence).toBeNull();
 });
 
-it('TC-WBD-022-N: ignored personal files obstruct start and abort without being overwritten', async () => {
+it('ignored personal files obstruct start and abort without being overwritten', async () => {
   const f = fixture();
   writeFileSync(join(f.root, 'personal.txt'), 'tracked original\n');
   f.git('add', 'personal.txt');
@@ -227,7 +227,7 @@ it('TC-WBD-022-N: ignored personal files obstruct start and abort without being 
   expect(readFileSync(join(f.root, 'personal.txt'), 'utf8')).toBe('personal ignored bytes\n');
 });
 
-it('TC-WBD-022-F: rebase continuation preserves required signing and rejects a moved reviewed branch', async () => {
+it('rebase continuation preserves required signing and rejects a moved reviewed branch', async () => {
   const f = fixture();
   const state = await readGitSequence(f.root);
   await expect(

@@ -31,7 +31,7 @@ export function EditorToolbar() {
   const canRedo = useStore(editor, (s) => s.canRedo);
   const empty = useStore(editor, (s) => s.draft.definition.nodes.length === 0);
   const { fitView } = useReactFlow();
-  // Tidy up (roadmap 18), then show the whole result once React Flow has the new positions.
+  // Tidy up, then show the whole result once React Flow has the new positions.
   const tidy = useCallback(() => {
     editor.getState().arrange();
     requestAnimationFrame(() => void fitView({ duration: 200, padding: 0.1 }));

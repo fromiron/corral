@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { adaptDesignReview } from '../src/design-review.ts';
 
-it('[TC-DESIGN-001-H] [TC-DESIGN-001-N] targeted findings and preference provenance cannot become release evidence', () => {
+it('targeted findings and preference provenance cannot become release evidence', () => {
   const report = {
     scope: {
       operation: 'review',

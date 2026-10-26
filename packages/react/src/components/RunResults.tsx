@@ -8,12 +8,12 @@ import type { RunSessionStore } from '../run/session.ts';
 import { GeneratedImage } from './ArtifactViewer.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
-/** A whole HTML document, as models sometimes write; only these get a preview (CR-009). */
+/** A whole HTML document, as models sometimes write; only these get a preview. */
 export function isHtmlDocument(text: string): boolean {
   return /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text);
 }
 
-/** No scripts, forms or network; inline styles and data: images only (CR-009, WBTST-034). */
+/** No scripts, forms or network; inline styles and data: images only. */
 export const PREVIEW_POLICY =
   "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'";
 
@@ -25,7 +25,7 @@ export function sandboxedSrcDoc(html: string): string {
 type Format = 'document' | 'source' | 'preview';
 
 /**
- * Everything a run produced, read in a wide pane (CR-009): the Output's final results, the
+ * Everything a run produced, read in a wide pane: the Output's final results, the
  * work in between grouped by artifact, and a failed run's work as a partial result. Run,
  * review and submission are shown apart. File/check evidence belongs to the session panels.
  */

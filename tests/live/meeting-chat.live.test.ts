@@ -27,7 +27,7 @@ const REPORT = INTERACTIONS_ONLY ? 'meeting-chat-interactions.json' : 'meeting-c
 const DEADLINE_MS = 600_000;
 
 it.skipIf(process.env.CORRAL_MEETING_CHAT_LIVE !== '1')(
-  '[TC-MEET-001-H] real models hold a chat, continue it, and plan only when asked',
+  'real models hold a chat, continue it, and plan only when asked',
   async () => {
     const candidate = candidateHash();
     const startedAt = new Date().toISOString();

@@ -10,7 +10,7 @@ import ultraRuns from '../../../packages/core/test/fixtures/ultra-runs.json' wit
 import { startCorralServer } from '../src/index.ts';
 import { type MeetingHandoffDeps, MeetingHandoffService } from '../src/meeting-handoffs.ts';
 
-// CR-056: Ultra is removed. No server path starts it, and runs that recorded it are not opened.
+// Ultra is removed. No server path starts it, and runs that recorded it are not opened.
 
 const ultra = {
   version: 2,
@@ -22,7 +22,7 @@ afterEach(() => {
   for (const db of databases.splice(0)) if (db.open) db.close();
 });
 
-it('[TC-ULTRA-005-H] the HTTP API refuses Ultra starts, entries and candidate routes', async () => {
+it('the HTTP API refuses Ultra starts, entries and candidate routes', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-ultra-removal-'));
   const token = 'test-bootstrap-token-0123456789abcdef';
   const server = await startCorralServer({
@@ -99,7 +99,7 @@ it('[TC-ULTRA-005-H] the HTTP API refuses Ultra starts, entries and candidate ro
 
 type Recorded = { snapshot: StoredRun['snapshot']; projection: RunProjection; events: RunEvent[] };
 
-it('[TC-ULTRA-005-N] a store with Ultra runs starts; those runs are refused with a clear error', async () => {
+it('a store with Ultra runs starts; those runs are refused with a clear error', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-ultra-store-'));
   mkdirSync(join(root, '.corral'));
   const recorded = ultraRuns as unknown as Record<'tournament' | 'comparison', Recorded>;
@@ -233,7 +233,7 @@ async function meeting() {
   return { db, repository, service, start, request, sourceId: source.session.sessionId };
 }
 
-it('[TC-ULTRA-005-H] a meeting handoff cannot ask for Ultra', async () => {
+it('a meeting handoff cannot ask for Ultra', async () => {
   const f = await meeting();
   await expect(
     f.service.send(f.sourceId, {
@@ -250,11 +250,11 @@ it('[TC-ULTRA-005-H] a meeting handoff cannot ask for Ultra', async () => {
   expect(f.start).not.toHaveBeenCalled();
 });
 
-it('[TC-ULTRA-005-F] a handoff saved with Ultra is listed but refused, not started', async () => {
+it('a handoff saved with Ultra is listed but refused, not started', async () => {
   const f = await meeting();
   const drafted = await f.service.send(f.sourceId, f.request);
   expect(drafted.state).toBe('drafted');
-  // A draft saved before CR-056 recorded the Ultra choice in its receipt and start input.
+  // A draft saved before Ultra was removed, recorded the Ultra choice in its receipt and start input.
   const row = f.db
     .prepare('SELECT payload_json FROM meeting_handoffs WHERE command_id=?')
     .get(f.request.commandId) as { payload_json: string };
@@ -280,7 +280,7 @@ it('[TC-ULTRA-005-F] a handoff saved with Ultra is listed but refused, not start
   expect(f.service.receipt(f.sourceId, f.request.commandId)?.state).toBe('refused');
 });
 
-it('[TC-ULTRA-005-F] a session with an entry saved with Ultra still loads; new entries cannot name it', async () => {
+it('a session with an entry saved with Ultra still loads; new entries cannot name it', async () => {
   const f = await meeting();
   const sessionId = f.request.target.kind === 'existing' ? f.request.target.sessionId : '';
   const added = await f.repository.addSessionEntry(sessionId, {

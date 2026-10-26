@@ -8,7 +8,7 @@ import { ScriptedAgentAdapter, type ScriptedAgentOptions } from '@corral/testkit
 import { type CompatibleEndpoint, startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { test as base, expect, type Page } from '@playwright/test';
 
-// C-059 E2E harness: every test gets its own server process state, workspace and SQLite file,
+// E2E harness: every test gets its own server process state, workspace and SQLite file,
 // scripted agents, and a browser that may not reach any host but the local server. Traces are
 // kept for failures (playwright.config.ts).
 
@@ -43,7 +43,7 @@ export interface Harness {
   errors: string[];
   /** The fake OpenAI behind live runs, when the test asked for live models. */
   fake: Fake | null;
-  /** A keyless OpenAI-compatible endpoint on 127.0.0.1 (CR-005), when the test asked for one. */
+  /** A keyless OpenAI-compatible endpoint on 127.0.0.1, when the test asked for one. */
   endpoint: CompatibleEndpoint | null;
 }
 
@@ -132,11 +132,11 @@ export const test = base.extend<{
 }>({
   replyDelayMs: [50, { option: true }],
   live: [false, { option: true }],
-  /** Lay a Codex CLI login (CR-004) for the fake OpenAI to borrow. */
+  /** Lay a Codex CLI login for the fake OpenAI to borrow. */
   codexLogin: [false, { option: true }],
   reasoningApi: [false, { option: true }],
   imageInput: [false, { option: true }],
-  /** Profiles on a keyless OpenAI-compatible endpoint instead of the fake OpenAI (CR-005). */
+  /** Profiles on a keyless OpenAI-compatible endpoint instead of the fake OpenAI. */
   compatibleEndpoint: [false, { option: true }],
   /** Deterministic text or role-specific replies, without provider calls. */
   agentReply: [null, { option: true }],

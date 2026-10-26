@@ -21,7 +21,7 @@ import {
 export { wouldCreateCycle } from './cycles.ts';
 export * from './ports.ts';
 
-// Static validation and IR lowering (Technical-Design §4.2, Spec §5.4). The editor shows these
+// Static validation and IR lowering. The editor shows these
 // diagnostics, and the runtime compiles again before running: the editor is not a trust boundary.
 
 export type DiagnosticCode =

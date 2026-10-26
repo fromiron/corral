@@ -82,7 +82,7 @@ async function setup(io?: ConstructorParameters<typeof WorkspaceService>[0]['io'
   return { service, db, path, target, save, original };
 }
 
-it('[TC-WBD-002-H] reads full bytes and saves exact format/mode with an idempotent receipt', async () => {
+it('reads full bytes and saves exact format/mode with an idempotent receipt', async () => {
   const s = await setup();
   chmodSync(join(s.path, 'a.txt'), 0o770);
   expect(await s.service.readDocument('s1', './a.txt')).toMatchObject({
@@ -120,7 +120,7 @@ it('[TC-WBD-002-H] reads full bytes and saves exact format/mode with an idempote
   expect(await s.service.changeDocument('s1', command)).toEqual(result);
 });
 
-it('[TC-WBD-002-N] refuses stale bytes and foreign generation without changing disk', async () => {
+it('refuses stale bytes and foreign generation without changing disk', async () => {
   const s = await setup();
   expect(await s.service.changeDocument('s1', s.save({ baseHash: hash('stale') }))).toMatchObject({
     state: 'failed',
@@ -139,7 +139,7 @@ it('[TC-WBD-002-N] refuses stale bytes and foreign generation without changing d
   ).toEqual([]);
 });
 
-it('[TC-WBD-002-H] creates, renames exclusively and deletes only with retained recovery bytes', async () => {
+it('creates, renames exclusively and deletes only with retained recovery bytes', async () => {
   const s = await setup();
   const created = await s.service.changeDocument(
     's1',
@@ -200,7 +200,7 @@ it('[TC-WBD-002-H] creates, renames exclusively and deletes only with retained r
   expect(s.db.prepare('SELECT id FROM runs').all()).toEqual([]);
 });
 
-it('[TC-WBD-002-N] refuses deletion when a checkpoint omits or normalizes the original bytes', async () => {
+it('refuses deletion when a checkpoint omits or normalizes the original bytes', async () => {
   const s = await setup();
   writeFileSync(join(s.path, '.gitignore'), 'ignored.txt\n');
   writeFileSync(join(s.path, 'ignored.txt'), 'keep secret');
@@ -225,7 +225,7 @@ it('[TC-WBD-002-N] refuses deletion when a checkpoint omits or normalizes the or
   }
 });
 
-it('[TC-WBD-002-F] releases an unchanged failed write but retains an applied write whose IO acknowledgement was lost', async () => {
+it('releases an unchanged failed write but retains an applied write whose IO acknowledgement was lost', async () => {
   const unchanged = await setup({
     writeFile: async () => {
       throw new Error('injected disk failure');
@@ -253,7 +253,7 @@ it('[TC-WBD-002-F] releases an unchanged failed write but retains an applied wri
   expect(writes).toBe(1);
 });
 
-it('[TC-WBD-002-F] retains both paths and the writer when a rename cannot remove its source', async () => {
+it('retains both paths and the writer when a rename cannot remove its source', async () => {
   const s = await setup({
     unlink: async () => {
       throw new Error('source is locked');
@@ -275,7 +275,7 @@ it('[TC-WBD-002-F] retains both paths and the writer when a rename cannot remove
   expect(await s.service.changeDocument('s1', command)).toEqual(result);
 });
 
-it('[TC-WBD-002-F] a receipt failure retains uncertain ownership after real IO and cannot replay the save', async () => {
+it('a receipt failure retains uncertain ownership after real IO and cannot replay the save', async () => {
   const s = await setup();
   s.db.exec(
     "CREATE TRIGGER fail_document_receipt BEFORE UPDATE ON workbench_operations BEGIN SELECT RAISE(ABORT, 'injected receipt failure'); END",
@@ -303,7 +303,7 @@ it('[TC-WBD-002-F] a receipt failure retains uncertain ownership after real IO a
   expect(s.db.prepare('SELECT state FROM workspace_access').get()).toEqual({ state: 'uncertain' });
 });
 
-it('[TC-WBD-002-N] keeps unsupported paths and bytes read-only and respects Run ownership and trust', async () => {
+it('keeps unsupported paths and bytes read-only and respects Run ownership and trust', async () => {
   const s = await setup();
   for (const [path, bytes, kind, code] of [
     ['binary.bin', Buffer.from([0, 255]), 'binary', 'CAPABILITY_DENIED'],
@@ -352,7 +352,7 @@ it('[TC-WBD-002-N] keeps unsupported paths and bytes read-only and respects Run 
   expect(readFileSync(join(s.original, 'a.txt'), 'utf8')).toBe('\ufeffone\r\n');
 });
 
-it('[TC-WBD-002-N] rechecks admission target before replacement and a repeated request cannot replay', async () => {
+it('rechecks admission target before replacement and a repeated request cannot replay', async () => {
   const entered = new Gate(),
     release = new Gate();
   let writes = 0;

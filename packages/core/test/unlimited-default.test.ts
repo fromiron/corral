@@ -14,7 +14,7 @@ import {
 } from '../src/index.ts';
 
 it.each([1, 3, 6])(
-  '[TC-LLM-005-H] new runs ignore legacy usage defaults with %i host model slots',
+  'new runs ignore legacy usage defaults with %i host model slots',
   async (maxModelConcurrency) => {
     const definition = linearCorral(['writer']);
     definition.limits = {
@@ -38,7 +38,7 @@ it.each([1, 3, 6])(
       definition,
     });
     expect(result.runId).not.toBeNull();
-    // Legacy call and token limits do not stop it; six replies without progress pause it (CR-055).
+    // Legacy call and token limits do not stop it; six replies without progress pause it.
     const projection = await waitForProjection(
       new InProcessTransport(coordinator),
       result.runId!,
@@ -57,7 +57,7 @@ it.each([1, 3, 6])(
   },
 );
 
-it('[TC-LLM-008-F] an unlimited run continues past the no-progress pause only on approval', async () => {
+it('an unlimited run continues past the no-progress pause only on approval', async () => {
   const coordinator = new Coordinator({
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),
@@ -96,7 +96,7 @@ it('[TC-LLM-008-F] an unlimited run continues past the no-progress pause only on
   expect(Object.keys(final.modelCalls)).toHaveLength(8);
 });
 
-it('[TC-LLM-005-N] an explicit live budget patch enables only the chosen limit', async () => {
+it('an explicit live budget patch enables only the chosen limit', async () => {
   const coordinator = new Coordinator({
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),

@@ -1,4 +1,4 @@
-/** CR-042. Appended to the numbered workspace migrations by database.ts. */
+/** Appended to the numbered workspace migrations by database.ts. */
 export const SCHEDULE_MIGRATION = {
   name: '0022_schedules',
   sql: `

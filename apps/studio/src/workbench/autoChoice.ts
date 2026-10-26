@@ -6,7 +6,7 @@ import {
 } from '@corral/contracts';
 import type { ProfileInfo } from './useModels.ts';
 
-// CR-024: sessions run live wherever live is possible, so a session never falls back to
+// sessions run live wherever live is possible, so a session never falls back to
 // simulated agents on its own. An auto session uses one model and reasoning for the choice
 // and for every role of the template it runs.
 
@@ -54,7 +54,7 @@ export function autoReasoningUnsupported(
 
 /**
  * User-edited request identity; the pending command separately freezes mode and startFrom.
- * `team` is the composer's team choice (CR-055): `none` is the default and adds nothing.
+ * `team` is the composer's team choice: `none` is the default and adds nothing.
  */
 export function autoCommandSeed(
   text: string,
@@ -67,7 +67,7 @@ export function autoCommandSeed(
   return `auto\u0000${text}\u0000${JSON.stringify(identity)}`;
 }
 
-/** The reasoning chip's value: a level, a mode, `route`, or '' for unset (CR-021, CR-024). */
+/** The reasoning chip's value: a level, a mode, `route`, or '' for unset. */
 export function reasoningValue(policy: AutoReasoning | undefined): string {
   return policy?.mode === 'fixed' ? policy.level : (policy?.mode ?? '');
 }

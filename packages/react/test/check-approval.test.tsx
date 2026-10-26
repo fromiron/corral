@@ -52,7 +52,7 @@ function setup(text: string | null, purpose?: 'check' | 'lsp') {
   );
   return resolveApproval;
 }
-it('[TC-HAR-010-H] identifies a language server launch and query without promising a frozen check copy', async () => {
+it('identifies a language server launch and query without promising a frozen check copy', async () => {
   const decide = setup(
     JSON.stringify({
       ...plan,
@@ -72,7 +72,7 @@ it('[TC-HAR-010-H] identifies a language server launch and query without promisi
   fireEvent.click(screen.getByRole('button', { name: 'Run this query once' }));
   await vi.waitFor(() => expect(decide).toHaveBeenCalledWith('approval_check', 'approve'));
 });
-it('[TC-HAR-012-H] shows the exact check command, revision and fingerprint before one-time approval', async () => {
+it('shows the exact check command, revision and fingerprint before one-time approval', async () => {
   const decide = setup(JSON.stringify(plan));
   expect(await screen.findByText('node check.mjs')).toBeVisible();
   expect(screen.getByText(/Type check/)).toBeVisible();
@@ -80,7 +80,7 @@ it('[TC-HAR-012-H] shows the exact check command, revision and fingerprint befor
   await vi.waitFor(() => expect(decide).toHaveBeenCalledWith('approval_check', 'approve'));
 });
 it.each([null, JSON.stringify({ ...plan, fingerprint: 'c'.repeat(64) })])(
-  '[TC-HAR-012-N] missing or mismatched approval details cannot be approved blindly',
+  'missing or mismatched approval details cannot be approved blindly',
   async (text) => {
     setup(text);
     expect(await screen.findByRole('button', { name: 'Run this check once' })).toBeDisabled();
@@ -93,7 +93,7 @@ it.each([null, JSON.stringify({ ...plan, fingerprint: 'c'.repeat(64) })])(
 );
 
 it.each([false, true])(
-  '[TC-SAFE-002-H] [TC-SAFE-002-N] tool approval shows final arguments and refuses a tampered body (%s)',
+  'tool approval shows final arguments and refuses a tampered body (%s)',
   async (tampered) => {
     const { toolPermissionPlan } = await import('@corral/core');
     const permission = toolPermissionPlan(
@@ -157,7 +157,7 @@ it.each([false, true])(
   },
 );
 
-it('[TC-ABS-001-H] command approval leads with source and launch scope, keeps transport in disclosure', async () => {
+it('command approval leads with source and launch scope, keeps transport in disclosure', async () => {
   const args = {
     operationId: 'command_1',
     hostId: 'host_1',
@@ -189,7 +189,7 @@ it('[TC-ABS-001-H] command approval leads with source and launch scope, keeps tr
   expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
 });
 
-it('[TC-ABS-003-H] Hashline approval shows the affected path and multiline operations before technical metadata', async () => {
+it('Hashline approval shows the affected path and multiline operations before technical metadata', async () => {
   await renderCorralTool('edit_hashline', {
     version: 1,
     path: 'src/main.ts',

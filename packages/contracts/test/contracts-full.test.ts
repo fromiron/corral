@@ -52,9 +52,9 @@ function expectParity(
   }
 }
 
-describe('C-005 command contract', () => {
+describe('command contract', () => {
   const patch = commands.find((c) => c.type === 'patch') as object;
-  it('[TC-DEV-001-H] accepts every example command and rejects malformed ones in all three forms', () => {
+  it('accepts every example command and rejects malformed ones in all three forms', () => {
     expectParity(commandSeed, generatedCommand, RunCommand, [
       ...commands.map((c): [string, unknown, boolean] => [c.commandId, c, true]),
       [
@@ -92,8 +92,8 @@ describe('C-005 command contract', () => {
   });
 });
 
-describe('C-005 review artifact contract', () => {
-  it('[TC-ART-003-N] a revise verdict without issues is not a valid review', () => {
+describe('review artifact contract', () => {
+  it('a revise verdict without issues is not a valid review', () => {
     expectParity(reviewSeed, generatedReview, ReviewArtifact, [
       ['review-pass', reviewPass, true],
       ['review-revise', reviewRevise, true],
@@ -104,7 +104,7 @@ describe('C-005 review artifact contract', () => {
   });
 });
 
-describe('C-005 definition contract (generated schema)', () => {
+describe('definition contract (generated schema)', () => {
   it('agrees with the seed schema and Zod', () => {
     expectParity(definitionSeed, generatedDefinition, CorralDefinition, [
       ['research team', researchTeam, true],
@@ -115,7 +115,7 @@ describe('C-005 definition contract (generated schema)', () => {
   });
 });
 
-describe('C-005 event contract', () => {
+describe('event contract', () => {
   it('defines a payload schema for exactly the event catalog', () => {
     const catalog = eventCatalog.map((e) => e.type).sort();
     expect([...RUN_EVENT_TYPES].sort()).toEqual(catalog);
@@ -173,7 +173,7 @@ describe('C-005 event contract', () => {
   });
 });
 
-describe('C-005 codegen', () => {
+describe('codegen', () => {
   it('generated JSON Schema files are up to date with the Zod source', () => {
     const fresh = generateJsonSchemas();
     expect(fresh['command.schema.json']).toEqual(generatedCommand);

@@ -30,11 +30,11 @@ export interface RunSessionState {
   definition: CorralDefinition | null;
   definitionError: string | null;
   projection: RunProjection | null;
-  /** Every committed event of the run, in order (Timeline, C-060). */
+  /** Every committed event of the run, in order (Timeline). */
   events: RunEvent[];
   /**
-   * Text of model calls while they stream (C-018). Never a fact: a gap stops a call's text
-   * (`broken`), and the committed output replaces it (Technical-Design §12).
+   * Text of model calls while they stream. Never a fact: a gap stops a call's text
+   * (`broken`), and the committed output replaces it.
    */
   streams: Record<string, StreamText>;
   /** Artifact bodies loaded for viewing, by version id (immutable once loaded). */
@@ -52,7 +52,7 @@ export interface RunSessionState {
   sendCommand(command: SessionCommand): Promise<Receipt>;
   retryCommand(commandId: string): Promise<Receipt>;
   /** Starts a run; with `saved`, from that saved revision (the local server's way). */
-  /** `startFrom`: an earlier version whose text the new run's brief starts from (CR-007). */
+  /** `startFrom`: an earlier version whose text the new run's brief starts from. */
   start(
     definition: CorralDefinition,
     saved?: SavedRevision,

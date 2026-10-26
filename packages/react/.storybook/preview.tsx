@@ -6,7 +6,7 @@ import './preview.css';
 
 const preview: Preview = {
   parameters: {
-    // Accessibility violations fail the story test (C-004 PR gate), not just the panel.
+    // Accessibility violations fail the story test, not just the panel.
     a11y: { test: 'error' },
     layout: 'padded',
   },

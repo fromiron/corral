@@ -128,7 +128,7 @@ function setup() {
     });
   return { api, owner, documents, key, model, monaco, edit };
 }
-it('[TC-WBD-018-H] shares one session across views and syncs dirty text without saving', async () => {
+it('shares one session across views and syncs dirty text without saving', async () => {
   const f = setup();
   const first = f.owner.retain(target),
     second = f.owner.retain(target);
@@ -152,7 +152,7 @@ it('[TC-WBD-018-H] shares one session across views and syncs dirty text without 
   second();
   expect(f.api.stopLanguage).not.toHaveBeenCalled();
 });
-it('[TC-WBD-018-F] drops a late query and old diagnostics after the draft changes', async () => {
+it('drops a late query and old diagnostics after the draft changes', async () => {
   const f = setup();
   f.owner.retain(target);
   await settle();
@@ -201,7 +201,7 @@ it('[TC-WBD-018-F] drops a late query and old diagnostics after the draft change
   expect(f.monaco.editor.setModelMarkers).toHaveBeenLastCalledWith(f.model, expect.any(String), []);
   expect(f.owner.getState().copies[languageCopyKey(target)]?.state?.target).toEqual(target);
 });
-it('[TC-WBD-018-N] keeps a failed start id for retry and does not sync another client or copy', async () => {
+it('keeps a failed start id for retry and does not sync another client or copy', async () => {
   const f = setup();
   f.owner.retain(target);
   await settle();
@@ -226,7 +226,7 @@ it('[TC-WBD-018-N] keeps a failed start id for retry and does not sync another c
   ).toBe(false);
 });
 
-it('[TC-WBD-018-F] reopening a file advances its wire version and a late location never navigates after stop', async () => {
+it('reopening a file advances its wire version and a late location never navigates after stop', async () => {
   const f = setup();
   f.owner.retain(target);
   await settle();
@@ -303,7 +303,7 @@ it('[TC-WBD-018-F] reopening a file advances its wire version and a late locatio
   expect(open).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-021-N] prepares only saved language versions and never refreshes a dirty draft', async () => {
+it('prepares only saved language versions and never refreshes a dirty draft', async () => {
   const f = setup();
   f.owner.retain(target);
   await settle();

@@ -1,6 +1,6 @@
 import { expect, test } from './harness.ts';
 
-test('[TC-UX-006-H] [TC-UX-006-N] settings guard preserves failed edits and saves only their selected target', async ({
+test('settings guard preserves failed edits and saves only their selected target', async ({
   page,
   corral,
 }) => {

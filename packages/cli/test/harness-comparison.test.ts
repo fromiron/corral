@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { runHarnessComparison } from './fixtures/personal-harness.ts';
 
-it('[TC-HAR-014-H] runs five conditions through the actual SDK with fresh copies and separate holdout evidence', async () => {
+it('runs five conditions through the actual SDK with fresh copies and separate holdout evidence', async () => {
   const result = await runHarnessComparison();
   expect(result.kind).toBe('local_sdk_fixture');
   expect(result.report.results).toHaveLength(10);

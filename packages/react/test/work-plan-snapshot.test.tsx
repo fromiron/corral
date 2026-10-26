@@ -45,7 +45,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-describe('shared work plan snapshots (CR-041 PLAN-03/04/05/06/11, PERF-01)', () => {
+describe('shared work plan snapshots', () => {
   it('the historical panel never displays completion from a body with the wrong hash', async () => {
     const ref = await reference();
     const session = sessionStore({

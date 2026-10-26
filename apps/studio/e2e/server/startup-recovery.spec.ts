@@ -1,6 +1,6 @@
 import { expect, test } from './harness.ts';
 
-test('[TC-ABS-014-N] server connection failure stays on its host and retries the same session', async ({
+test('server connection failure stays on its host and retries the same session', async ({
   page,
   corral,
 }) => {

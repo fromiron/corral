@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Clock, IdFactory, IdKind, Scheduler } from '@corral/contracts';
 
-// Process-level capabilities the core receives by injection (CRL-DEV-002).
+// Process-level capabilities the core receives by injection.
 
 const PREFIX: Record<IdKind, string> = {
   run: 'run',

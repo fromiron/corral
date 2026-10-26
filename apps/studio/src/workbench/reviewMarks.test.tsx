@@ -39,7 +39,7 @@ function mount(initial: { hostId: string; sessionId: string }) {
   return { marks, render, ready: render(initial), unmount: () => act(() => root.unmount()) };
 }
 
-it('[TC-WBD-013-H] a change review holds for its own comparison; reading the same final content does not review another', async () => {
+it('a change review holds for its own comparison; reading the same final content does not review another', async () => {
   const fromA = file('a'.repeat(40), 'b'.repeat(40));
   const fromC = file('c'.repeat(40), 'b'.repeat(40));
   expect(contentReadKey(fromA)).toBe(contentReadKey(fromC));
@@ -57,7 +57,7 @@ it('[TC-WBD-013-H] a change review holds for its own comparison; reading the sam
   await view.unmount();
 });
 
-it('[TC-WBD-013-N] marks belong to one host and session, and a session switch never carries them over', async () => {
+it('marks belong to one host and session, and a session switch never carries them over', async () => {
   const change = file('a'.repeat(40), 'b'.repeat(40));
   // A read mark written before change reviews existed is still a read, not a review.
   window.localStorage.setItem('corral:reviewed:old', JSON.stringify([contentReadKey(change)]));

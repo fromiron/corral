@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('[TC-ABS-007-H] shortcuts edit, persist, dispatch, reset and keep Search reachable', async ({
-  page,
-}) => {
+test('shortcuts edit, persist, dispatch, reset and keep Search reachable', async ({ page }) => {
   // Settings open as the dialog over work (#88); app shortcuts act once it is closed.
   const settings = page.locator('[data-settings-dialog]');
   const palette = page.locator('[role="dialog"]:not([data-settings-dialog])');
@@ -43,7 +41,7 @@ test('[TC-ABS-007-H] shortcuts edit, persist, dispatch, reset and keep Search re
   await expect(palette).toBeVisible();
 });
 
-test('[TC-ABS-007-N] capture rejects conflicts and editing keys, Escape leaves binding unchanged', async ({
+test('capture rejects conflicts and editing keys, Escape leaves binding unchanged', async ({
   page,
 }) => {
   await page.goto('/settings?section=shortcuts');

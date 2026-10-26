@@ -16,7 +16,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-it('[TC-WBD-004-N] keeps session, Origin and CSRF checks while isolating interactive frames from ordinary writes', async () => {
+it('keeps session, Origin and CSRF checks while isolating interactive frames from ordinary writes', async () => {
   const inputCall = vi
     .spyOn(PtyRuntime.prototype, 'input')
     .mockImplementation((_session, _id, frame) => ({

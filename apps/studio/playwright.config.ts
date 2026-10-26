@@ -9,7 +9,7 @@ export default defineConfig({
   // Playwright counts host CPUs even in a smaller CI container; avoid starving timed UI flows.
   workers: process.env.CI ? 2 : undefined,
   forbidOnly: Boolean(process.env.CI),
-  // Flaky UI timing must be fixed, not retried away (Implementation Plan §8).
+  // Flaky UI timing must be fixed, not retried away.
   retries: 0,
   reporter: process.env.CI
     ? [['list'], ['junit', { outputFile: 'test-results/junit.xml' }]]
@@ -38,7 +38,7 @@ export default defineConfig({
       use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } },
     },
     {
-      // Against the local server (C-059): each test starts its own server, workspace and DB
+      // Against the local server: each test starts its own server, workspace and DB
       // through the harness, serving the production build of Studio (`pnpm build` first).
       name: 'server',
       testMatch: 'server/**/*.spec.ts',

@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 import { WorkspaceService } from '../src/files/service.ts';
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-004-H] actual terminal writes only its managed copy and shares writer and fixed-reader ownership',
+  'actual terminal writes only its managed copy and shares writer and fixed-reader ownership',
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-pty-workspace-'));
     const original = join(root, 'original');

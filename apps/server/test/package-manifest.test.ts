@@ -21,7 +21,7 @@ function fixture(corral?: unknown, packagePath: string | null = null) {
 }
 
 describe('package declaration review', () => {
-  it('[TC-ABS-012-H] reads immutable metadata for nested installs without executing contributions', () => {
+  it('reads immutable metadata for nested installs without executing contributions', () => {
     const manifest = {
       version: 1,
       requestedCapabilities: ['workspace.read', 'mcp'],
@@ -41,7 +41,7 @@ describe('package declaration review', () => {
     expect(existsSync(join(root, 'EXECUTED'))).toBe(false);
   });
 
-  it('[TC-ABS-012-H] preserves ordinary Pi packages and defaults empty declarations', () => {
+  it('preserves ordinary Pi packages and defaults empty declarations', () => {
     expect(inspectPackageManifest(fixture())).toBeNull();
     expect(inspectPackageManifest(fixture({ version: 1 }))).toEqual({
       version: 1,
@@ -98,14 +98,11 @@ describe('package declaration review', () => {
         { id: 'same', name: 'B', transport: 'stdio', argv: ['b'] },
       ],
     },
-  ])(
-    '[TC-ABS-012-N] rejects unsupported or unsafe declarations without echoing content (%#)',
-    (raw) => {
-      expect(() => inspectPackageManifest(fixture(raw))).toThrow('invalid Corral package manifest');
-    },
-  );
+  ])('rejects unsupported or unsafe declarations without echoing content (%#)', (raw) => {
+    expect(() => inspectPackageManifest(fixture(raw))).toThrow('invalid Corral package manifest');
+  });
 
-  it('[TC-ABS-012-N] bounds files and rejects paths outside the copied package', () => {
+  it('bounds files and rejects paths outside the copied package', () => {
     const root = fixture({ version: 1 });
     expect(() => inspectPackageManifest(root, '../outside')).toThrow('invalid package location');
     writeFileSync(join(root, 'package.json'), ' '.repeat(256 * 1024 + 1));

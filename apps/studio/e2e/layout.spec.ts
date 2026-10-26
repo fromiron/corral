@@ -133,9 +133,7 @@ test('#94 at 390px a session opens on the conversation and other panes open and 
   await expectReachable(requestBox(page));
 });
 
-test('[TC-WIDGET-001-H] at 390px opening another pane and coming back keeps the same draft box', async ({
-  page,
-}) => {
+test('at 390px opening another pane and coming back keeps the same draft box', async ({ page }) => {
   // The narrow dock replaced WorkbenchLayout's side panel (#90); the draft must survive it.
   await blankSession(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -269,7 +267,7 @@ test('#73 an automatically composed team offers no edit link to a team that was 
 });
 
 test('#73 a saved team keeps its edit link on the run page', async ({ page }) => {
-  // CR-055: in a session a saved team is the lead's roster, so its own run starts from the editor.
+  // in a session a saved team is the lead's roster, so its own run starts from the editor.
   await page.goto('/?delay=50');
   await teamFromTemplate(page);
   await page.getByRole('tab', { name: /^Teams/ }).click();
@@ -326,7 +324,7 @@ test('#76 dragging a step across a Loop boundary says it changes the team, and U
   );
 });
 
-// CR-055 §6: there are no request options; the team chip lists no team, then the Corral group.
+// there are no request options; the team chip lists no team, then the Corral group.
 test('#77 the team chip lists no team, then auto, saved Corrals and Corral management', async ({
   page,
 }) => {
@@ -481,7 +479,7 @@ test('#84 the desktop shell hears the chosen language, and General says where na
   await expect(page.getByTestId('desktop-native-options')).toContainText('백그라운드');
 });
 
-test('[TC-SWS-001-H] #90 each area offers its panes and folds layout, groups and the save rule into one menu', async ({
+test('#90 each area offers its panes and folds layout, groups and the save rule into one menu', async ({
   page,
 }) => {
   await blankSession(page);
@@ -512,7 +510,7 @@ test('[TC-SWS-001-H] #90 each area offers its panes and folds layout, groups and
   await expect(page.getByText('Only documents can be split into a new area.')).toBeVisible();
 });
 
-test('[TC-SWS-001-N] #90 a pane whose area is closed opens beside the conversation, not over it', async ({
+test('#90 a pane whose area is closed opens beside the conversation, not over it', async ({
   page,
 }) => {
   await blankSession(page);

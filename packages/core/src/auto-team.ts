@@ -30,8 +30,8 @@ import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import { draftFromPlan, planFromGoal, type TeamWording } from './team-draft.ts';
 
-// CR-024: a session without a chosen team runs in auto mode. A start model picks one of the
-// built-in templates (the CR-006 patterns); the template fixes roles, tools, wiring and
+// a session without a chosen team runs in auto mode. A start model picks one of the
+// built-in templates (the team patterns); the template fixes roles, tools, wiring and
 // limits, and every role uses the session's model and reasoning. The choice is recorded with
 // the run it starts, never the model's answer itself.
 
@@ -115,7 +115,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     finalApproval: false,
   };
   const { definition } = draftFromPlan(plan, input.id, WORDING.labels);
-  // Roles always get a CR-021 policy: `route` becomes the level picked for this request.
+  // Roles always get a reasoning policy: `route` becomes the level picked for this request.
   const asked = input.choice.reasoning;
   const reasoning =
     asked?.mode === 'route'
@@ -170,20 +170,20 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
   };
 }
 
-/** The conversation lead's duty (CR-055); file and command notes follow it as for auto roles. */
+/** The conversation lead's duty; file and command notes follow it as for auto roles. */
 const LEAD_DUTY =
   "You are the assistant in this conversation. Answer the person's latest message directly and completely, using the earlier messages as context. Use tools only when the request needs them. Delegate to subagents only when the person explicitly asks for subagents, parallel agents or a team; then give each a self-contained task, read their results and answer yourself. State routine assumptions; use ask_user when a missing decision would materially change the work.";
 const HELPER_PROMPT =
   'You are a subagent. Do the delegated task given below completely and reply with your findings. You do not see the conversation; rely only on the task text and your tools.';
 
-/** CR-055: delegates the lead may call; `guidance` describes how a saved team worked. */
+/** delegates the lead may call; `guidance` describes how a saved team worked. */
 export interface ConversationRoster {
   roles: AgentRole[];
   guidance?: string;
 }
 
 /**
- * CR-055: session chat is one lead agent that answers with its final reply. It keeps the auto
+ * session chat is one lead agent that answers with its final reply. It keeps the auto
  * single role's tools, model, harness and reasoning, minus the output tools. Without a roster
  * it may call a helper on explicit request; with one, it leads that team by itself.
  */
@@ -276,7 +276,7 @@ function delegateRole(role: AgentRole, id: string, prompt = role.prompt): AgentR
   };
 }
 
-/** CR-055 auto: the auto team's roles as delegates, with the session's model and tools. */
+/** auto: the auto team's roles as delegates, with the session's model and tools. */
 export function autoRoster(input: Omit<AutoDefinitionInput, 'template'>): ConversationRoster {
   const team = autoDefinition({ ...input, template: 'research_write_review' });
   const planner = autoDefinition({ ...input, template: 'write_review' }).roles.find(
@@ -289,7 +289,7 @@ export function autoRoster(input: Omit<AutoDefinitionInput, 'template'>): Conver
   return { roles: roles.map((role) => delegateRole(role, `team_${role.id}`)) };
 }
 
-/** CR-055 Corral: a saved Corral's roles as delegates; its graph becomes guidance. */
+/** Corral: a saved Corral's roles as delegates; its graph becomes guidance. */
 export function corralRoster(corral: CorralDefinition): ConversationRoster {
   const label = (id: string) => corral.nodes.find((node) => node.id === id)?.label ?? id;
   const flow = corral.controlEdges
@@ -359,7 +359,7 @@ export function parseAutoRoute(
   return { template, reason, reasoning: level };
 }
 
-/** The choice without a model (the demo, simulated runs): the CR-006 local suggestion. */
+/** The choice without a model (the demo, simulated runs): the local suggestion. */
 export function localAutoRoute(brief: string): { template: AutoTemplate; reason: string } {
   const plan = planFromGoal(brief, WORDING);
   return { template: plan?.pattern ?? 'single', reason: '' };
@@ -385,11 +385,11 @@ export interface AutoStart {
   mode: 'mock' | 'live';
   choice: AutoModelChoice;
   startFrom?: StartFrom;
-  /** CR-054: the session's turns through this ended run. */
+  /** the session's turns through this ended run. */
   conversation?: ConversationSource;
   /**
-   * CR-055: the conversation lead, alone (`none`), leading the auto roster (`auto`) or a saved
-   * Corral's roles. No chooser request runs. Absent keeps the CR-024 auto choice.
+   * the conversation lead, alone (`none`), leading the auto roster (`auto`) or a saved
+   * Corral's roles. No chooser request runs. Absent keeps the auto choice.
    */
   team?: 'none' | 'auto' | { corralId: string };
   references?: RunReference[];
@@ -407,7 +407,7 @@ const cancelled = () => new Error('the auto request was cancelled before a run s
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
   prepareModels?(
     request: AutoStart,
-    /** CR-055: every profile a roster uses; the request's own profiles when absent. */
+    /** every profile a roster uses; the request's own profiles when absent. */
     profiles?: readonly string[],
   ):
     | { ok: true; models: Record<string, ModelProfileSnapshot> }
@@ -425,14 +425,14 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
     request: AutoStart,
   ): AutoStartResult | null;
   /**
-   * CR-055: whether the session has a working copy for the conversation lead's file tools; the
+   * whether the session has a working copy for the conversation lead's file tools; the
    * start context's value when absent. No chooser runs, so the answer is read at start.
    */
   fileTools?(request: AutoStart): boolean | Promise<boolean>;
-  /** CR-055: a saved Corral whose roles the lead may call; null when it does not exist. */
+  /** a saved Corral whose roles the lead may call; null when it does not exist. */
   corral?(corralId: string): CorralDefinition | null | Promise<CorralDefinition | null>;
   /**
-   * CR-055 §7: the work style a session turn uses in a trusted folder when none was chosen, so
+   * the work style a session turn uses in a trusted folder when none was chosen, so
    * the lead can run commands and previews; null leaves the turn without one.
    */
   sessionHarness?(
@@ -556,7 +556,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
     if (request.team !== undefined) {
       const fileTools = (await deps.fileTools?.(request)) ?? context.fileTools;
       if (signal?.aborted) throw cancelled();
-      // CR-055 §7: in a linked, trusted folder a live session works with commands and previews
+      // in a linked, trusted folder a live session works with commands and previews
       // by default. An explicit work style wins; otherwise the session's default is layered under
       // the person's and project's defaults, which may restrict it. Simulated agents get none:
       // a work style would only be simulated and would take their file tools away.

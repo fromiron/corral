@@ -21,7 +21,7 @@ const read = async (uri: string) => {
   if (!document) throw new Error('outside scope');
   return document;
 };
-it('[TC-HAR-018-H] stages all files without mutation and preserves BOM CRLF and UTF-16 boundaries', async () => {
+it('stages all files without mutation and preserves BOM CRLF and UTF-16 boundaries', async () => {
   const result = await stageLspEdit(
     {
       documentChanges: [
@@ -50,7 +50,7 @@ it('[TC-HAR-018-H] stages all files without mutation and preserves BOM CRLF and 
   ]);
   expect(documents.get(source.uri)!.text).toBe('\uFEFF😀old\r\nlast');
 });
-it('[TC-HAR-018-H] preserves LSP insertion ordering at the same position', async () => {
+it('preserves LSP insertion ordering at the same position', async () => {
   const result = await stageLspEdit(
     { changes: { 'file:///copy/b.ts': [edit(0, 0, 'one'), edit(0, 0, 'two')] } },
     source,
@@ -85,14 +85,11 @@ it.each([
       { textDocument: { uri: source.uri, version: 1 }, edits: [edit(3, 6, 'y')] },
     ],
   },
-])(
-  '[TC-HAR-018-N] refuses unsupported, stale, overlapping or out-of-scope edits %#',
-  async (value) => {
-    await expect(stageLspEdit(value, source, read)).rejects.toThrow();
-  },
-);
+])('refuses unsupported, stale, overlapping or out-of-scope edits %#', async (value) => {
+  await expect(stageLspEdit(value, source, read)).rejects.toThrow();
+});
 
-it('[TC-WBD-021-H] accepts only the captured versions of other synchronized documents', async () => {
+it('accepts only the captured versions of other synchronized documents', async () => {
   const change = {
     documentChanges: [
       { textDocument: { uri: 'file:///copy/b.ts', version: 3 }, edits: [edit(0, 3, 'new')] },

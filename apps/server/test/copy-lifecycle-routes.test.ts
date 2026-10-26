@@ -8,14 +8,14 @@ import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
-// CR-046 P21-A: archiving keeps the copy; removing it is shown first and pinned to its generation.
+// archiving keeps the copy; removing it is shown first and pinned to its generation.
 vi.setConfig({ testTimeout: 40_000 });
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
 });
 
-it('[TC-WBD-016-H] [TC-WBD-016-N] archiving keeps the copy, and a removal for an old generation is refused over HTTP', async () => {
+it('archiving keeps the copy, and a removal for an old generation is refused over HTTP', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-copy-life-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);

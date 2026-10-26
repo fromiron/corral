@@ -25,7 +25,7 @@ function fillRemainingCapacity() {
 }
 
 it.skipIf(!['win32', 'linux'].includes(process.platform))(
-  '[TC-ABS-006-H] stdio MCP shares host admission and returns its slot only after descendant cleanup',
+  'stdio MCP shares host admission and returns its slot only after descendant cleanup',
   async () => {
     const root = await mkdtemp(join(tmpdir(), 'corral-mcp-capacity-'));
     const marker = join(root, 'pids.json');
@@ -98,7 +98,7 @@ it.skipIf(!['win32', 'linux'].includes(process.platform))(
   45000,
 );
 
-it('[TC-ABS-006-N] failed spawn and close during authorization do not consume a process slot', async () => {
+it('failed spawn and close during authorization do not consume a process slot', async () => {
   const root = await mkdtemp(join(tmpdir(), 'corral-mcp-admission-'));
   const server: RegisteredMcpServer = {
     id: 'capacity',

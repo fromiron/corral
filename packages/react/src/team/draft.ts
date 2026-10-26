@@ -1,4 +1,4 @@
-// CR-006 team drafts moved to core so the runtime builds CR-024 auto templates the same way.
+// team drafts moved to core so the runtime builds auto templates the same way.
 export {
   draftFromPlan,
   planFromGoal,

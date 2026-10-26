@@ -6,7 +6,7 @@ import { requestRecord } from '../src/request-record.ts';
 const hash = 'a'.repeat(64);
 
 describe('context usage measurement', () => {
-  it('[TC-WIDGET-002-N] keeps Google configuration system and tool input in the measured request', () => {
+  it('keeps Google configuration system and tool input in the measured request', () => {
     const inspected = inspectContext(
       {
         messages: [
@@ -42,7 +42,7 @@ describe('context usage measurement', () => {
     expect(usage.parts.find((part) => part.category === 'mcp_tools')?.tokens).toBeGreaterThan(0);
   });
 
-  it('[TC-WIDGET-002-N] retained provider reasoning text is counted and opaque reasoning is partial', () => {
+  it('retained provider reasoning text is counted and opaque reasoning is partial', () => {
     const inspected = inspectContext({ messages: [{ role: 'user', content: 'hello' }] });
     const base = {
       role: 'assistant',
@@ -73,7 +73,7 @@ describe('context usage measurement', () => {
     expect(opaque.completeness).toBe('partial');
   });
 
-  it('[TC-WIDGET-002-N] Google tool-result images and opaque thought signatures remain partial', () => {
+  it('Google tool-result images and opaque thought signatures remain partial', () => {
     const inspected = inspectContext({ messages: [{ role: 'user', content: 'hello' }] });
     for (const part of [
       {
@@ -97,7 +97,7 @@ describe('context usage measurement', () => {
     }
   });
 
-  it('[TC-WIDGET-002-N] measures provider tool definitions structurally after serialization', () => {
+  it('measures provider tool definitions structurally after serialization', () => {
     const tool = {
       name: 'lookup',
       description: 'Look up documents.',
@@ -123,7 +123,7 @@ describe('context usage measurement', () => {
     expect(usage.parts.some((part) => part.omission)).toBe(false);
   });
 
-  it('[TC-WIDGET-002-N] final payload additions and short removals cannot retain a falsely complete estimate', () => {
+  it('final payload additions and short removals cannot retain a falsely complete estimate', () => {
     const inspected = inspectContext({
       messages: [
         { role: 'system', content: 'sys' },
@@ -153,7 +153,7 @@ describe('context usage measurement', () => {
     expect(usage.parts.some((part) => part.omission === 'unmeasured_image')).toBe(true);
   });
 
-  it('[TC-WIDGET-002-N] tool calls and structured source text are measured once', () => {
+  it('tool calls and structured source text are measured once', () => {
     const memory = 'Remember the approved requirement.';
     const inspected = inspectContext(
       {
@@ -186,7 +186,7 @@ describe('context usage measurement', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('[TC-WIDGET-002-N] empty or unsupported payloads keep aggregate and parts consistent', () => {
+  it('empty or unsupported payloads keep aggregate and parts consistent', () => {
     const inspected = inspectContext({
       messages: [
         { role: 'system', content: 'private system' },
@@ -199,7 +199,7 @@ describe('context usage measurement', () => {
       expect(usage.usedTokens).toBe(usage.parts.reduce((sum, part) => sum + part.tokens, 0));
     }
   });
-  it('[TC-WIDGET-002-H] CTX-02 counts included categories once with the same estimator', () => {
+  it('CTX-02 counts included categories once with the same estimator', () => {
     const skill = 'Skill resources: skills/review/\nReview the diff.';
     const system = 'You are the writer.';
     const inspected = inspectContext({
@@ -233,7 +233,7 @@ describe('context usage measurement', () => {
     expect(usage.parts.find((part) => part.category === 'memory_files')).toBeUndefined();
   });
 
-  it('[TC-WIDGET-002-N] CTX-01 CTX-04 legacy messages stay messages-only and images are partial', () => {
+  it('CTX-01 CTX-04 legacy messages stay messages-only and images are partial', () => {
     const only = inspectContext({
       messages: [{ role: 'user', content: 'hello', timestamp: 1 }],
     });
@@ -274,7 +274,7 @@ describe('context usage measurement', () => {
     expect(legacy.contextUsage).toBeUndefined();
   });
 
-  it('[TC-WIDGET-002-N] CTX-03 does not add provider or cache tokens into the estimate', () => {
+  it('CTX-03 does not add provider or cache tokens into the estimate', () => {
     const { usage } = inspectContext({
       messages: [
         { role: 'system', content: 'system text', timestamp: 0 },
@@ -287,7 +287,7 @@ describe('context usage measurement', () => {
     expect(JSON.stringify(usage)).not.toContain('cache');
   });
 
-  it('[TC-WIDGET-002-N] drops parts missing from the provider payload and does not claim a full ratio', () => {
+  it('drops parts missing from the provider payload and does not claim a full ratio', () => {
     const { usage, probes } = inspectContext({
       messages: [
         {
@@ -307,7 +307,7 @@ describe('context usage measurement', () => {
     expect(reconciled.usedTokens).toBeLessThan(usage.usedTokens ?? 0);
   });
 
-  it('[TC-WIDGET-002-H] request records keep the message estimate and add a separate usage snapshot', () => {
+  it('request records keep the message estimate and add a separate usage snapshot', () => {
     const record = requestRecord(
       {
         messages: [

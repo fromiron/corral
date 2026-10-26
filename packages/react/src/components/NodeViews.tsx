@@ -47,7 +47,7 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
     <span className="mt-1 inline-flex items-center gap-1 text-xs" data-run-status={status}>
       <span aria-hidden="true">{symbol}</span>
       {t(status)}
-      {/* A node is not one execution: Loop rounds and calls each add one (Spec §4.3). */}
+      {/* A node is not one execution: Loop rounds and calls each add one (product contract §4.3). */}
       {count > (unit === 'executions' ? 1 : 0) ? (
         <span className="text-muted-foreground">· {t(unit, { count })}</span>
       ) : null}

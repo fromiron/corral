@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { RunRoleOverrides } from './RunRoleOverrides.tsx';
 
-it('[TC-RSN-004-N] collapsed per-run settings do not mount hidden model and reasoning selectors', () => {
+it('collapsed per-run settings do not mount hidden model and reasoning selectors', () => {
   const html = renderToStaticMarkup(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
       <RunRoleOverrides

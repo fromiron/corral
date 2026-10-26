@@ -67,7 +67,7 @@ async function mount() {
   return { seen, render, latest: () => seen.at(-1) };
 }
 
-it('[TC-WBD-007-N] a finishing turn keeps its live view until the finished view loads', async () => {
+it('a finishing turn keeps its live view until the finished view loads', async () => {
   const f = await mount();
   expect(f.latest()?.status).toBe('running');
   const loaded = f.seen.length;
@@ -82,20 +82,20 @@ it('[TC-WBD-007-N] a finishing turn keeps its live view until the finished view 
   expect(f.latest()?.status).toBe('succeeded');
 });
 
-it('[TC-WBD-007-F] a failed finished read shows its error instead of the kept live view', async () => {
+it('a failed finished read shows its error instead of the kept live view', async () => {
   const f = await mount();
   await f.render('run', false);
   await act(async () => fixture.read?.reject(new Error('read failed')));
   expect(f.latest()).toEqual({ runId: 'run', status: null, error: 'read failed' });
 });
 
-it('[TC-WBD-007-N] another run never shows the previous run as its own', async () => {
+it('another run never shows the previous run as its own', async () => {
   const f = await mount();
   await f.render('other', false);
   expect(f.latest()).toEqual({ runId: 'other', status: null, error: null });
 });
 
-it('[TC-WBD-007-N] the finished view keeps result texts the live view already loaded', async () => {
+it('the finished view keeps result texts the live view already loaded', async () => {
   const f = await mount();
   await act(async () => fixture.live?.setState({ artifactTexts: { result: 'Loaded answer' } }));
   await f.render('run', false);

@@ -24,7 +24,7 @@ const stream = (...events: TerminalEvent[]) =>
   );
 afterEach(() => vi.useRealTimers());
 
-it('[TC-WBD-004-F] uses the existing CSRF boundary and does not replay ambiguous input', async () => {
+it('uses the existing CSRF boundary and does not replay ambiguous input', async () => {
   const calls: { url: string; init?: RequestInit }[] = [];
   const api = new TerminalsApi({
     baseUrl: '',
@@ -50,7 +50,7 @@ it('[TC-WBD-004-F] uses the existing CSRF boundary and does not replay ambiguous
   expect(new Headers(calls[1]?.init?.headers).get('x-corral-csrf')).toBe('csrf');
 });
 
-it('[TC-WBD-004-H] resumes only after async rendering completes and preserves ANSI as JSON data', async () => {
+it('resumes only after async rendering completes and preserves ANSI as JSON data', async () => {
   vi.useFakeTimers();
   const cursors: string[] = [];
   const received: TerminalEvent[] = [];
@@ -87,7 +87,7 @@ it('[TC-WBD-004-H] resumes only after async rendering completes and preserves AN
   expect(received).toEqual([event(1), event(2)]);
 });
 
-it('[TC-WBD-004-N] refuses a different process generation without delivering or retrying it', async () => {
+it('refuses a different process generation without delivering or retrying it', async () => {
   vi.useFakeTimers();
   const fetcher = vi
     .fn<typeof fetch>()
@@ -108,7 +108,7 @@ it('[TC-WBD-004-N] refuses a different process generation without delivering or 
   expect(errors).toHaveLength(1);
 });
 
-it('[TC-WBD-004-F] reports an interrupted stream before reconnecting so queued input can be dropped', async () => {
+it('reports an interrupted stream before reconnecting so queued input can be dropped', async () => {
   vi.useFakeTimers();
   const errors: unknown[] = [];
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(stream(event(1)));
@@ -128,7 +128,7 @@ it('[TC-WBD-004-F] reports an interrupted stream before reconnecting so queued i
   stop();
 });
 
-it('[TC-WBD-004-N] keeps the terminal frame bound even for an unexpected domain event', async () => {
+it('keeps the terminal frame bound even for an unexpected domain event', async () => {
   vi.useFakeTimers();
   const errors: unknown[] = [];
   const fetcher = vi

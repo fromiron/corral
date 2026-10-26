@@ -41,7 +41,7 @@ function imageProjection() {
   return projection;
 }
 
-it('[TC-ABS-010-H] renders original image bytes through the authorized media route instead of text or HTML', () => {
+it('renders original image bytes through the authorized media route instead of text or HTML', () => {
   const projection = imageProjection();
   const loadArtifact = vi.fn(async () => {});
   const session = sessionStore({ projection, loadArtifact });
@@ -66,7 +66,7 @@ it('[TC-ABS-010-H] renders original image bytes through the authorized media rou
   expect(screen.queryByRole('img')).not.toBeInTheDocument();
 });
 
-it('[TC-ABS-010-H] final results show the generated image directly without exposing metadata as Markdown', () => {
+it('final results show the generated image directly without exposing metadata as Markdown', () => {
   const loadArtifact = vi.fn(async () => {});
   const session = sessionStore({
     runId: 'run_image',

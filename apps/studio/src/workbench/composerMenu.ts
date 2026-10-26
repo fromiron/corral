@@ -1,6 +1,6 @@
 import type { RunReference } from '@corral/contracts';
 
-// CR-016: what the composer's `/` and `@` menus read from the text, and what they put back.
+// what the composer's `/` and `@` menus read from the text, and what they put back.
 // The text keeps a readable token for each reference; the structured reference travels with
 // the request only while its token is still in the text.
 

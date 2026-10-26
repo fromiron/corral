@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-023-H] launches an owned paused Node target and proxies only its attested inspector',
+  'launches an owned paused Node target and proxies only its attested inspector',
   async () => {
     const root = await mkdtemp(join(tmpdir(), 'corral-debug-test-'));
     roots.push(root);
@@ -95,7 +95,7 @@ it.skipIf(process.platform !== 'linux')(
   15000,
 );
 
-it('[TC-WBD-023-N] refuses a foreign inspector before sending discovery bytes', async () => {
+it('refuses a foreign inspector before sending discovery bytes', async () => {
   let received = 0;
   const server = tcpServer((socket) => socket.on('data', (bytes) => (received += bytes.length)));
   server.listen(0, '127.0.0.1');
@@ -117,7 +117,7 @@ it('[TC-WBD-023-N] refuses a foreign inspector before sending discovery bytes', 
 }, 10000);
 
 it.each(['redirect', 'external-websocket'])(
-  '[TC-WBD-023-N] refuses %s inspector discovery without following it',
+  'refuses %s inspector discovery without following it',
   async (mode) => {
     let requests = 0;
     const server = httpServer((_request, response) => {

@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest';
 import type { CoordinatorDeps } from '../src/coordinator.ts';
 import { Coordinator, InMemoryRunStore } from '../src/index.ts';
 
-it('[TC-ABS-004-H] [TC-ABS-004-N] owned preview calls use Coordinator effects and cannot request code or upload tools', async () => {
+it('owned preview calls use Coordinator effects and cannot request code or upload tools', async () => {
   const cleanup = new Gate();
   const closeRun = vi.fn(async () => cleanup.wait());
   const clock = new FakeClock(),

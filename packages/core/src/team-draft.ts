@@ -7,7 +7,7 @@ import {
   type TeamSlot,
 } from '@corral/contracts';
 
-// CR-006: goal → team plan → Corral. The local suggestion reads the goal's words; the plan
+// goal → team plan → Corral. The local suggestion reads the goal's words; the plan
 // becomes a definition whose tools, bindings, Loop ports and limits are fixed by the pattern.
 
 /** Words the local suggestion uses, from the Studio's messages (`TeamDraft.wording`). */

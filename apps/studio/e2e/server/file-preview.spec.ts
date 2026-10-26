@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
-test('[TC-ABS-004-H] [TC-ABS-004-N] session file preview isolates cookies, reads refreshed assets and closes its lease', async ({
+test('session file preview isolates cookies, reads refreshed assets and closes its lease', async ({
   page,
   corral,
 }, testInfo) => {
@@ -115,7 +115,7 @@ test('[TC-ABS-004-H] [TC-ABS-004-N] session file preview isolates cookies, reads
 
 test.describe('run-owned previews', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-ABS-004-H] the normal request flow exposes the model lease in Files and closes it when the run completes', async ({
+  test('the normal request flow exposes the model lease in Files and closes it when the run completes', async ({
     page,
     corral,
   }, testInfo) => {
@@ -140,7 +140,7 @@ test.describe('run-owned previews', () => {
     let previewUrl = '';
     const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
       fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: 'toolUse' });
-    // CR-055: the session's lead works in the built-in work style of a trusted folder, so it
+    // the session's lead works in the built-in work style of a trusted folder, so it
     // can preview without a chosen work style, and it answers with its final reply.
     corral.fake?.setResponses([
       tool('preview_file', { path: 'index.html' }),

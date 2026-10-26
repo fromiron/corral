@@ -23,12 +23,12 @@ import { validTextAttachments } from '../attachments.ts';
 import { canonicalJson } from '../canonical-json.ts';
 import { definitionHash } from '../definition-hash.ts';
 
-// Saved Corrals (C-009). Definition and layout are versioned separately: moving nodes bumps
-// only layoutRevision; changing what runs bumps definitionRevision (CRL-CAN-002, INV-12).
+// Saved Corrals. Definition and layout are versioned separately: moving nodes bumps
+// only layoutRevision; changing what runs bumps definitionRevision.
 // Work in progress may be saved: records hold the draft schema, runs compile the strict one.
 // The browser uses this over localStorage until the local server replaces it (P2, PUT /corrals).
 
-/** Projects group Corrals and their runs (CR-010); records from before them belong here. */
+/** Projects group Corrals and their runs; records from before them belong here. */
 export const DEFAULT_PROJECT_ID = 'default';
 
 export interface ProjectSummary {
@@ -39,7 +39,7 @@ export interface ProjectSummary {
   revision: number;
   createdAt: string;
   updatedAt: string;
-  /** Hidden from the switcher, never deleted (CR-010). */
+  /** Hidden from the switcher, never deleted. */
   archivedAt: string | null;
 }
 
@@ -58,7 +58,7 @@ export type ProjectResult =
       message: string;
     };
 
-/** What a person asked for in a session (CR-011). */
+/** What a person asked for in a session. */
 export type SessionIntent = 'next' | 'queue' | 'steer' | 'explain';
 export type SessionEntryState =
   | 'started'
@@ -90,7 +90,7 @@ export interface SessionEntry {
   detail: string | null;
   /** The command it was sent as, so its receipt and Reins delivery can be looked up. */
   commandId?: string | null;
-  /** The template an auto request ran with (CR-024); absent for a chosen team. */
+  /** The template an auto request ran with; absent for a chosen team. */
   auto?: SessionEntryAuto | null;
 }
 
@@ -122,9 +122,9 @@ export interface SessionEntryChange {
 export interface WorkSession {
   sessionId: string;
   projectId: string;
-  /** The team follow-ups run with; null means auto mode (CR-024). */
+  /** The team follow-ups run with; null means auto mode. */
   corralId: string | null;
-  /** The model and reasoning auto mode uses; null until chosen (CR-024). */
+  /** The model and reasoning auto mode uses; null until chosen. */
   auto: AutoModelChoice | null;
   title: string;
   /** True only until the first request names a session explicitly created without a user title. */
@@ -136,7 +136,7 @@ export interface WorkSession {
   updatedAt: string;
   archivedAt: string | null;
   entries: SessionEntry[];
-  /** CR-049: present only for a meeting; changed only by the meeting service. */
+  /** present only for a meeting; changed only by the meeting service. */
   meeting?: MeetingState;
 }
 
@@ -147,7 +147,7 @@ export interface SessionChange {
   auto?: AutoModelChoice | null;
   pinned?: boolean;
   archived?: boolean;
-  /** CR-049: the meeting service's next state; a work session cannot become a meeting. */
+  /** the meeting service's next state; a work session cannot become a meeting. */
   meeting?: MeetingState;
   expectedRevision: number;
 }
@@ -205,7 +205,7 @@ export interface SaveRequest {
   layout: { nodes: Record<string, NodeLayout>; viewport: CanvasLayout['viewport'] };
   /** null creates a new Corral; otherwise the revision this edit started from. */
   expectedDefinitionRevision: number | null;
-  /** Where a new Corral goes (CR-010); the default project when absent. Ignored on edits. */
+  /** Where a new Corral goes; the default project when absent. Ignored on edits. */
   projectId?: string;
 }
 
@@ -223,13 +223,13 @@ export interface CorralRepository {
   save(request: SaveRequest): Promise<SaveResult>;
   duplicate(corralId: string, name: string): Promise<SaveResult>;
   remove(corralId: string): Promise<void>;
-  /** The default project first, then the rest by name; archived ones included (CR-010). */
+  /** The default project first, then the rest by name; archived ones included. */
   listProjects(): Promise<ProjectSummary[]>;
   createProject(input: { name: string; description?: string }): Promise<ProjectResult>;
   updateProject(projectId: string, change: ProjectChange): Promise<ProjectResult>;
   /** Moves a Corral; runs already started stay in the project they started in. */
   moveCorral(corralId: string, projectId: string): Promise<SaveResult>;
-  /** Pinned first, then most recently active (CR-011). */
+  /** Pinned first, then most recently active. */
   listSessions(projectId: string): Promise<WorkSession[]>;
   getSession(sessionId: string): Promise<WorkSession | null>;
   createSession(input: {
@@ -238,7 +238,7 @@ export interface CorralRepository {
     autoTitle?: boolean;
     objective?: string;
     corralId?: string | null;
-    /** CR-049: creates a meeting with these participants. */
+    /** creates a meeting with these participants. */
     meeting?: MeetingConfig;
   }): Promise<SessionResult>;
   updateSession(sessionId: string, change: SessionChange): Promise<SessionResult>;
@@ -352,7 +352,7 @@ export function planSessionUpdate(
   };
 }
 
-/** A new entry at the end; entries are not revision-checked, they only append (CR-011). */
+/** A new entry at the end; entries are not revision-checked, they only append. */
 export function planSessionEntry(
   current: WorkSession | null,
   sessionId: string,
@@ -413,7 +413,7 @@ export function planSessionEntry(
     }).success
   )
     return { ok: false, error: 'invalid', message: 'invalid request scope' };
-  // CR-056: Ultra was removed; a request naming it is refused, not run without it.
+  // Ultra was removed; a request naming it is refused, not run without it.
   if ('qualityPreset' in entry || 'ultra' in entry)
     return {
       ok: false,
@@ -567,7 +567,7 @@ function checkProjectText(name: string | undefined, description: string | undefi
   return null;
 }
 
-/** A new project, or why not (CR-010). Names are trimmed; the same name may be used twice. */
+/** A new project, or why not. Names are trimmed; the same name may be used twice. */
 export function planProjectCreate(
   input: { name: string; description?: string },
   context: { now: string; projectId: string },
@@ -638,7 +638,7 @@ export function projectRefusal(
   };
 }
 
-/** The same Corral in another project; revisions do not change (CR-010). */
+/** The same Corral in another project; revisions do not change. */
 export function planMove(
   current: CorralRecord | null,
   corralId: string,
@@ -680,7 +680,7 @@ const recordKey = (corralId: string) => `${PREFIX}corral:${corralId}`;
 
 const StoredRecord = z.strictObject({
   corralId: z.string().min(1),
-  // Records saved before projects (CR-010) have none: they belong to the default project.
+  // Records saved before projects have none: they belong to the default project.
   projectId: z.string().min(1).default(DEFAULT_PROJECT_ID),
   name: z.string(),
   definition: CorralDefinitionDraft,
@@ -699,7 +699,7 @@ export function parseCorralRecord(value: unknown, corralId: string): CorralRecor
 }
 
 /**
- * The revision rules every repository applies (CRL-CAN-002): what a save produces from the
+ * The revision rules every repository applies: what a save produces from the
  * current record, or why it is refused. Pure, so every storage adapter means the same thing.
  */
 export function planSave(
@@ -822,7 +822,7 @@ export function createKeyValueCorralRepository(
     if (raw === null) return [];
     const parsed = safeJson(raw);
     if (!Array.isArray(parsed)) throw new Error('The saved session list cannot be read.');
-    // Sessions saved before auto mode have no choice yet (CR-024).
+    // Sessions saved before auto mode have no choice yet.
     return (parsed as WorkSession[]).map((x) => ({ ...x, auto: x.auto ?? null }));
   };
   const findSession = (sessionId: string) =>

@@ -32,7 +32,7 @@ const enabled = process.env.CORRAL_AUTO_LIVE === '1';
 const REQUEST_CAP = 36;
 const ATTEMPT_TIMEOUT_MS = 360_000;
 
-describe.skipIf(!enabled)('auto team live regression (CR-024)', () => {
+describe.skipIf(!enabled)('auto team live regression', () => {
   it('writes, reviews and reopens private history with reported usage', async () => {
     const candidate = candidateHash();
     const startedAt = new Date().toISOString();

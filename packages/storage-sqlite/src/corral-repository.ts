@@ -38,8 +38,8 @@ import {
 } from '@corral/core';
 import type { Db } from './database.ts';
 
-// Saved Corrals in SQLite (C-009, C-011). Every definition revision is kept, so a run can
-// start from the exact revision the user saw, and later edits never reach it (CRL-CAN-002).
+// Saved Corrals in SQLite. Every definition revision is kept, so a run can
+// start from the exact revision the user saw, and later edits never reach it.
 
 export class SqliteCorralRepository implements CorralRepository, DefinitionSource {
   private readonly db: Db;
@@ -169,7 +169,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     return this.db.transaction(() => this.saveRequest(request))();
   }
 
-  /** CR-052: original immutable revisions are the backup; the operation receipt makes this repeatable. */
+  /** original immutable revisions are the backup; the operation receipt makes this repeatable. */
   async migrateExecutionPolicies(): Promise<void> {
     for (const summary of await this.list()) {
       const current = this.read(summary.corralId);

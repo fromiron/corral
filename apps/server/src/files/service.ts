@@ -183,7 +183,7 @@ import { VerificationRunner } from './verification.ts';
 import { WorkbenchOperations } from './workbench-operations.ts';
 import { WorkspaceAccessStore } from './workspace-access.ts';
 
-// Work folders and file changes (CR-012). A project may link one folder, which is only
+// Work folders and file changes. A project may link one folder, which is only
 // observed. A session gets its own git worktree outside that folder; agents change files
 // there only through the broker below, which records what it is about to do before doing it.
 // Snapshots are git trees written from a temporary index, pinned under refs/corral/.
@@ -238,7 +238,7 @@ export interface FileChange {
   deletions: number | null;
   binary: boolean;
   /**
-   * Who the observed result can be credited to (CR-046 P17): `managed_agent` when the file is as
+   * Who the observed result can be credited to: `managed_agent` when the file is as
    * Corral's last applied write or delete left it, `mixed` when Corral changed it and something
    * else changed it afterwards, `external_observed` when Corral never changed it.
    */
@@ -284,7 +284,7 @@ export interface VerificationView {
   endedAt: string | null;
   /** The worktree has changed since it ran. */
   stale: boolean;
-  /** The project's registered command with this id is no longer the one that ran (CR-046 P17). */
+  /** The project's registered command with this id is no longer the one that ran. */
   configChanged: boolean;
   report: VerificationReport | null;
 }
@@ -465,7 +465,7 @@ interface WorktreeRow {
 export class WorkspaceService implements FileTools {
   readonly terminals: PtyRuntime;
   private readonly commandRuntime = new CommandRuntime();
-  /** Development tasks people start (CR-046 P15); the host process cap is still shared. */
+  /** Development tasks people start; the host process cap is still shared. */
   private readonly taskRuntime = new CommandRuntime<UserTaskOwner>();
   private readonly pendingCommands = new Map<string, Promise<CommandReport>>();
   private readonly pendingCommandHashes = new Map<string, string>();
@@ -508,7 +508,7 @@ export class WorkspaceService implements FileTools {
   private readonly allowSharedDevelopment: boolean;
   /** Folders that may never be linked: Corral's own data and credentials. */
   private readonly forbidden: string[];
-  /** Per-worktree write lease: one Corral write at a time (WB-WSP-003). */
+  /** Per-worktree write lease: one Corral write at a time. */
   private readonly leases = new Map<string, Promise<unknown>>();
   private readonly pendingSnapshots = new Map<string, Promise<string | null>>();
   /** Run → execution → path hash: another attempt's read never authorizes an overwrite. */
@@ -690,7 +690,7 @@ export class WorkspaceService implements FileTools {
       },
       prepare: (input) => this.prepareTerminal(input),
     });
-    // A write planned before the last stop has an unknown outcome; it is never redone (WB-WSP-005).
+    // A write planned before the last stop has an unknown outcome; it is never redone.
     this.db
       .prepare(
         `UPDATE file_operations SET state = 'uncertain', updated_at = ?,
@@ -743,7 +743,7 @@ export class WorkspaceService implements FileTools {
     const row = this.binding(projectId);
     if (!row) return null;
     let status: BindingView['status'] = null;
-    // A folder moved or deleted since it was linked (02-UX-Spec §8): said, not guessed around.
+    // A folder moved or deleted since it was linked: said, not guessed around.
     const missing = !(await stat(row.root_path).then(
       (info) => info.isDirectory(),
       () => false,
@@ -1223,7 +1223,7 @@ export class WorkspaceService implements FileTools {
 
   /** Removes the working copy (its files only); the original folder is not touched. */
   /**
-   * What removing this copy would lose (CR-046 P21-A), read without changing anything: Git
+   * What removing this copy would lose, read without changing anything: Git
    * changes in it, owners still holding it, unsent review comments, writes of unknown outcome and
    * runs not yet finished. Unsaved editor buffers and recovery drafts live in the client and are
    * added there. Removal is then confirmed for this exact copy generation.
@@ -2861,7 +2861,7 @@ export class WorkspaceService implements FileTools {
       .all(sessionId) as { runId: string; phase: 'start' | 'end'; tree: string }[];
   }
 
-  /** A run's start snapshot, taken just before the run was started (CR-012). */
+  /** A run's start snapshot, taken just before the run was started. */
   async recordRunStart(runId: string, sessionId: string, tree: string) {
     const row = this.worktree(sessionId);
     if (!row) return;
@@ -3012,7 +3012,7 @@ export class WorkspaceService implements FileTools {
 
   /** Each path Corral changed, with the content hash its last applied operation left (null: none). */
   private managedPaths(sessionId: string, runId: string | null): Map<string, string | null> {
-    // CR-056: edits made in a removed Ultra candidate's own copy never count for the session copy.
+    // edits made in a removed Ultra candidate's own copy never count for the session copy.
     const rows = this.db
       .prepare(
         `SELECT f.kind, f.path, f.to_path, f.after_hash FROM file_operations f
@@ -3046,7 +3046,7 @@ export class WorkspaceService implements FileTools {
     const row = this.worktree(sessionId);
     if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
     const rel = safeRelative(path);
-    // One git process per side, both at once (02-UX-Spec §11: diff display p95 ≤ 500 ms).
+    // One git process per side, both at once (diff display p95 ≤ 500 ms).
     const side = async (tree: string): Promise<FileSide> => {
       let content: Buffer;
       try {
@@ -3062,7 +3062,7 @@ export class WorkspaceService implements FileTools {
     return { path: rel, before, after };
   }
 
-  // ── the linked folder as Git sees it (02-UX-Spec §4 "Git 상태") ─────────────
+  // ── the linked folder as Git sees it ─────────────
 
   /**
    * HEAD → the folder's working tree, staged and unstaged together, plus untracked files.
@@ -3697,7 +3697,7 @@ export class WorkspaceService implements FileTools {
 
   /**
    * Reads Git back for an unconfirmed receipt (a lost response, a failed receipt write or a
-   * restart) and settles it only when HEAD/index prove what happened (CR-046 P13).
+   * restart) and settles it only when HEAD/index prove what happened.
    */
   async resolveGitOperation(sessionId: string, operationId: string): Promise<GitOperation> {
     const receipt = this.gitOperation(sessionId, operationId);
@@ -4102,7 +4102,7 @@ export class WorkspaceService implements FileTools {
   }
 
   /**
-   * CR-016: files and folders for an `@` reference, ranked by a fuzzy match of their path. Only
+   * files and folders for an `@` reference, ranked by a fuzzy match of their path. Only
    * names are read; Git's ignore rules apply, and nothing behind a symbolic link is returned.
    */
   async searchPaths(
@@ -5448,7 +5448,7 @@ export class WorkspaceService implements FileTools {
     );
   }
 
-  /** Scripts a person may start; reading them runs nothing (CR-046 P15). */
+  /** Scripts a person may start; reading them runs nothing. */
   async taskCandidates(sessionId: string): Promise<TaskCandidates> {
     // Without a copy there is nothing to discover; panes poll this before a copy exists.
     const row = this.worktree(sessionId);
@@ -5644,7 +5644,7 @@ export class WorkspaceService implements FileTools {
 
   /**
    * A check copies a snapshot of the tree. A long-lived development task or terminal may keep
-   * writing meanwhile (CR-046 P15); a Run or a short human change in progress may not.
+   * writing meanwhile; a Run or a short human change in progress may not.
    */
   private writerBlocksCheck(sessionId: string): boolean {
     const key = this.worktreeScope(sessionId);
@@ -6576,7 +6576,7 @@ export class WorkspaceService implements FileTools {
     return { from, to, moved: true };
   }
 
-  // ── helpers for review and integration (CR-013) ─────────────────────────────
+  // ── helpers for review and integration ─────────────────────────────
 
   /** The session's working copy and the folder it came from, for the review service. */
   copyOf(sessionId: string): {

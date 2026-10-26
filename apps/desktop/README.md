@@ -116,32 +116,9 @@ frames, the host manager and previews stay denied. The remote host has its own c
 OS microphone privacy settings still apply. Native test runs use Chromium's synthetic device
 rather than recording a person's microphone or opening a paid voice call.
 
-CR-042 verification on Windows (2026-10-21 JST): desktop TypeScript, lint and all 36 desktop
-tests pass, including the installed OpenSSH occupied-port/closed-loopback failure check.
-Runtime preparation loaded SQLite and ONNX
-and received the compiled Pi SDK worker's ready handshake with the bundled Node. The final
-unpacked Windows app, with Studio `index-B97zDyHh.js`, passed `node scripts/native-smoke.ts`:
-native folder selection/trust and a real Git working copy; UI team/session creation and a
-simulated request; isolated interactive preview, script/CSS execution, denied external
-navigation and lease revocation; shortcut remapping and reset; the isolated remote-host form;
-close to tray and second-instance restoration; and restart with retained history, draft and
-preferences. Quit also succeeded with the interactive preview still open. Synthetic audio
-consent passed and camera access was denied. The test ran without host Node/pnpm in PATH.
-The packaged process helper separately executed its adjacent PowerShell/C# assets, ran a
-normal child and confirmed cancellation of both a leader and its grandchild.
-These checks were repeated from an independent directory outside the checkout, with spaces
-in its path and the staging directory unavailable. All 26,618 packaged runtime files matched
-before and after execution, and every loaded native/module path stayed inside that copy.
-The final portable EXE also bootstrapped Studio and quit normally with the same extracted
-runtime fingerprint. Its extraction is slow here: a 180-second check timed out, and the
-next measured attempt reached Studio after 245.5 seconds, including removal of the first
-interrupted extraction. Use `release/win-unpacked/corral.exe` for immediate local access.
-
 The local application is unsigned. NSIS installation and macOS runtime validation remain
 separate release checks. The older Linux smoke script still contains Linux-specific process
-inspection; it is not evidence of Windows testing. The Windows screenshot is
-`release/native-smoke-windows.png`. Exact build identity, evidence and remaining limits are
-recorded in [the delivery verification report](../../docs/evaluation/Desktop-Delivery-Verification.md).
+inspection; it is not evidence of Windows testing.
 Rebuild and rerun this smoke after changes to the bundled sources.
 
 File/app previews opened from Studio use a separate ephemeral `WebContentsView` with no app

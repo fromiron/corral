@@ -49,7 +49,7 @@ import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
-/** Fired by a template card to choose that team in the new-session box (UX-09). */
+/** Fired by a template card to choose that team in the new-session box. */
 const START_WITH_TEMPLATE = 'corral:start-with-template';
 
 /** A layout file is recognised by its shape; everything else is treated as a definition. */
@@ -118,7 +118,7 @@ export function WorkspacePage() {
     if (!definition) return setErrors(['Choose a definition file (.corral.json).']);
     const imported = importDocuments(definition, layout);
     if (!imported.ok) return setErrors(imported.errors);
-    // Without a layout file, arrange the nodes by the flow (roadmap 18).
+    // Without a layout file, arrange the nodes by the flow.
     const draft = layout ? imported.draft : arrangeDraft(imported.draft);
     const layoutDoc = draftLayout(draft, 1);
     const result = await repository.save({
@@ -515,7 +515,7 @@ function ProjectTabs({
   );
 }
 
-/** The project's name and description, rename and archive (CR-010). */
+/** The project's name and description, rename and archive. */
 function ProjectHeader({
   project,
   onError,
@@ -634,7 +634,7 @@ function ProjectHeader({
   );
 }
 
-/** Moves a Corral to another active project; its finished runs stay here (CR-010). */
+/** Moves a Corral to another active project; its finished runs stay here. */
 function MoveCorral({
   name,
   current,
@@ -707,7 +707,7 @@ function StartSession({
   const suggested = WORKSPACE_TEMPLATES.filter((id) => id !== 'blank');
   const isSuggested = (value: string) =>
     value.startsWith('template:') && suggested.includes(value.slice(9) as never);
-  // CR-024: without a chosen team ('') the session starts in auto mode.
+  // without a chosen team ('') the session starts in auto mode.
   const chooseTeam = (available: CorralSummary[]) =>
     available.some((c) => c.corralId === corralId) || isSuggested(corralId) ? corralId : '';
   const team = chooseTeam(corrals);
@@ -887,7 +887,7 @@ function StartSession({
   );
 }
 
-/** The project's work sessions (CR-011): pinned first, searchable. */
+/** The project's work sessions: pinned first, searchable. */
 function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSummary[] }) {
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decryptVault, encryptVault } from '../src/vault/crypto.ts';
 
-describe('[TC-ABS-013-H] encrypted portable configuration', () => {
+describe('encrypted portable configuration', () => {
   it('round trips supported domain snapshots with independent salt and nonce', async () => {
     const value = {
       version: 1 as const,
@@ -15,7 +15,7 @@ describe('[TC-ABS-013-H] encrypted portable configuration', () => {
     expect(await decryptVault(first, 'a long local recovery password')).toEqual(value);
   });
 });
-describe('[TC-ABS-013-N] unauthenticated vault data', () => {
+describe('unauthenticated vault data', () => {
   it('refuses wrong passwords, modified ciphertext, changed versions and unbounded KDF parameters', async () => {
     const value = { version: 1 as const, createdAt: '2026-10-20T00:00:00.000Z', domains: {} };
     const envelope = await encryptVault(value, 'a long local recovery password');

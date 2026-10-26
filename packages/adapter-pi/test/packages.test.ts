@@ -8,7 +8,7 @@ const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-it('[TC-HAR-004-H] Pi package discovery uses its manifest and skill parser without importing extensions', async () => {
+it('Pi package discovery uses its manifest and skill parser without importing extensions', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-package-'));
   roots.push(root);
   mkdirSync(join(root, 'extensions'), { recursive: true });
@@ -44,7 +44,7 @@ it('[TC-HAR-004-H] Pi package discovery uses its manifest and skill parser witho
   expect(existsSync(marker)).toBe(false);
 }, 15000);
 
-it('[TC-HAR-004-N] downloads require an exact npm version or HTTPS Git commit and cannot embed credentials', async () => {
+it('downloads require an exact npm version or HTTPS Git commit and cannot embed credentials', async () => {
   for (const source of [
     'npm:package',
     'npm:package@latest',

@@ -155,7 +155,7 @@ const tick = async () => {
   for (let index = 0; index < 8; index++) await Promise.resolve();
 };
 
-it('[TC-WBD-003-H] shares one document model across views and keeps it through detachment', async () => {
+it('shares one document model across views and keeps it through detachment', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');
   expect(await s.store.open('session', './example.txt')).toBe(key);
@@ -175,7 +175,7 @@ it('[TC-WBD-003-H] shares one document model across views and keeps it through d
   s.store.dispose();
 });
 
-it('[TC-WBD-003-N] a late save acknowledges only its submitted text and cannot close newer edits', async () => {
+it('a late save acknowledges only its submitted text and cannot close newer edits', async () => {
   const s = setup();
   const gate = new Gate();
   s.changeDocument.mockImplementationOnce(async (_session, command) => {
@@ -199,7 +199,7 @@ it('[TC-WBD-003-N] a late save acknowledges only its submitted text and cannot c
   s.store.dispose();
 });
 
-it('[TC-WBD-003-F] response loss uses receipt GET; a missing receipt allows only explicit same-ID retry', async () => {
+it('response loss uses receipt GET; a missing receipt allows only explicit same-ID retry', async () => {
   const s = setup();
   s.changeDocument.mockRejectedValueOnce(new TypeError('Network lost'));
   const key = await s.store.open('session', 'example.txt');
@@ -216,7 +216,7 @@ it('[TC-WBD-003-F] response loss uses receipt GET; a missing receipt allows only
   s.store.dispose();
 });
 
-it('[TC-WBD-003-N] late refresh keeps a newer edit and explicit conflict resolution preserves ours until saved', async () => {
+it('late refresh keeps a newer edit and explicit conflict resolution preserves ours until saved', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');
   const gate = new Gate();
@@ -248,7 +248,7 @@ it('[TC-WBD-003-N] late refresh keeps a newer edit and explicit conflict resolut
   s.store.dispose();
 });
 
-it('[TC-WBD-003-N] reopening from the refreshed file list updates a clean document and preserves a dirty draft', async () => {
+it('reopening from the refreshed file list updates a clean document and preserves a dirty draft', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');
   const model = modelOf(s.store, key);
@@ -272,7 +272,7 @@ it('[TC-WBD-003-N] reopening from the refreshed file list updates a clean docume
   s.store.dispose();
 });
 
-it('[TC-WBD-003-F] recovery keeps memory on quota failure and offers exact-identity stale drafts explicitly', async () => {
+it('recovery keeps memory on quota failure and offers exact-identity stale drafts explicitly', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');
   s.recovery.write = async () => {
@@ -322,7 +322,7 @@ it('[TC-WBD-003-F] recovery keeps memory on quota failure and offers exact-ident
   s.store.dispose();
 });
 
-it('[TC-WBD-003-N] mixed EOL stays raw until explicit conversion and model failure preserves readable content', async () => {
+it('mixed EOL stays raw until explicit conversion and model failure preserves readable content', async () => {
   const s = setup();
   const raw = '\ufeffone\r\ntwo\nthree\r';
   const mixed = file(raw);
@@ -358,7 +358,7 @@ it('[TC-WBD-003-N] mixed EOL stays raw until explicit conversion and model failu
   failed.store.dispose();
 });
 
-it('[TC-WBD-003-N] lists an old generation draft read-only after a renderer restart', async () => {
+it('lists an old generation draft read-only after a renderer restart', async () => {
   const s = setup();
   const oldKey = await s.store.open('session', 'example.txt');
   modelOf(s.store, oldKey).setValue('old copy draft');
@@ -390,7 +390,7 @@ it('[TC-WBD-003-N] lists an old generation draft read-only after a renderer rest
   restarted.dispose();
 });
 
-it('[TC-WBD-003-H] invalidates workspace views exactly once per confirmed save, including receipt recovery and save-on-close', async () => {
+it('invalidates workspace views exactly once per confirmed save, including receipt recovery and save-on-close', async () => {
   const notifySaved = vi.fn();
   const s = setup({ notifySaved });
   const key = await s.store.open('session', 'example.txt');
@@ -412,7 +412,7 @@ it('[TC-WBD-003-H] invalidates workspace views exactly once per confirmed save, 
   s.store.dispose();
 });
 
-it('[TC-WBD-003-N] a missing receipt retries the same command despite a later disk conflict, while uncertain receipts never replay', async () => {
+it('a missing receipt retries the same command despite a later disk conflict, while uncertain receipts never replay', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');
   modelOf(s.store, key).setValue('draft');
@@ -452,7 +452,7 @@ it('[TC-WBD-003-N] a missing receipt retries the same command despite a later di
   s.store.dispose();
 });
 
-it('[TC-WBD-003-F] recovery writes one in-flight snapshot and only the latest pending edit', async () => {
+it('recovery writes one in-flight snapshot and only the latest pending edit', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');
   const release = new Gate();
@@ -477,7 +477,7 @@ it('[TC-WBD-003-F] recovery writes one in-flight snapshot and only the latest pe
   s.store.dispose();
 });
 
-it('[TC-WBD-011-N] a save refused because a task or terminal holds the copy keeps the draft and says who holds it', async () => {
+it('a save refused because a task or terminal holds the copy keeps the draft and says who holds it', async () => {
   const s = setup();
   s.changeDocument.mockRejectedValueOnce(
     new ApiError(
@@ -502,7 +502,7 @@ it('[TC-WBD-011-N] a save refused because a task or terminal holds the copy keep
   s.store.dispose();
 });
 
-it('[TC-WBD-017-H] refreshing after shared mode starts clears writer refusal without changing the draft', async () => {
+it('refreshing after shared mode starts clears writer refusal without changing the draft', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');
   s.store.getState().documents[key]?.model?.setValue('draft\n');

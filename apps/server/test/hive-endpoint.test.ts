@@ -11,7 +11,7 @@ import {
 import { providerRequestFence } from '../../../packages/adapter-pi/src/request-fence.ts';
 import { endpointsFrom, registerEndpoints } from '../src/models/endpoints.ts';
 
-it('[TC-RSN-001-H] [TC-RSN-001-N] Hive endpoint defaults produce the documented Pi wire and preserve explicit limits', async () => {
+it('Hive endpoint defaults produce the documented Pi wire and preserve explicit limits', async () => {
   const definition = ModelProviderConfig.parse({
     id: 'hive',
     name: 'Hive',

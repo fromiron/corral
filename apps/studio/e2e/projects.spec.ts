@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 
-// Projects (CR-010, roadmap 22; proposal WBTST-001/003) in the in-browser runtime. Corrals
+// Projects in the in-browser runtime. Corrals
 // live in this browser's storage; demo runs last until reload and follow their Corral here.
 
 const switcher = (page: Page) =>
@@ -43,9 +43,7 @@ async function singleAgentRun(page: Page) {
   await page.goBack();
 }
 
-test('[WBTST-001] a project keeps its Corrals and runs apart, and / returns to it', async ({
-  page,
-}) => {
+test('a project keeps its Corrals and runs apart, and / returns to it', async ({ page }) => {
   await page.goto('/?delay=50');
   await expect(page).toHaveURL(/\/projects\/default(\?.*)?$/);
   await expect(page.getByRole('heading', { level: 2, name: 'My project' })).toBeVisible();
@@ -78,7 +76,7 @@ test('[WBTST-001] a project keeps its Corrals and runs apart, and / returns to i
   await expect(page).toHaveURL(new RegExp(`/projects/${docs}$`));
 });
 
-test('[WBTST-001] two projects may share a name; a Corral moves; an archived project is hidden', async ({
+test('two projects may share a name; a Corral moves; an archived project is hidden', async ({
   page,
 }) => {
   await newProject(page, 'Same');

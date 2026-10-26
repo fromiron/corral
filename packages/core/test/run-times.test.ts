@@ -9,7 +9,7 @@ import { Coordinator, InProcessTransport, waitForProjection } from '../src/index
 
 // Roadmap 16: a run's start and end come from its own committed events.
 
-it('[TC-OBS-004-H] records when the run started and when it ended; a running run has no end', async () => {
+it('records when the run started and when it ended; a running run has no end', async () => {
   const clock = new FakeClock();
   const coordinator = new Coordinator({
     clock,

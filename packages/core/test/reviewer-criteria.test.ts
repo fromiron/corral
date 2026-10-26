@@ -21,7 +21,7 @@ async function until(done: () => boolean) {
 // its criteriaVersionId names; a criteria patch reaches the next round only.
 
 describe('reviewers receive the criteria text (#20)', () => {
-  it('[TC-ART-003-H] the shipped research teams give their reviewer the current criteria, and a patch reaches the next round only', async () => {
+  it('the shipped research teams give their reviewer the current criteria, and a patch reaches the next round only', async () => {
     const gate = new Gate();
     const seen: AgentStartInput[] = [];
     const coordinator = new Coordinator({
@@ -97,7 +97,7 @@ describe('reviewers receive the criteria text (#20)', () => {
     expect(seen[0]?.inputs.find((i) => i.name === 'criteria')?.text).toBe(firstCriteria?.text);
   });
 
-  it('[TC-ART-003-N] a reviewer without the criteria input is flagged before the run; the shipped teams are not', () => {
+  it('a reviewer without the criteria input is flagged before the run; the shipped teams are not', () => {
     for (const shipped of [researchTeam, headlessTeam]) {
       const compiled = compileDefinition(shipped);
       expect(compiled.ok).toBe(true);

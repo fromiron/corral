@@ -4,7 +4,7 @@ import { agentSummary } from './agentSummary.ts';
 // UX-07: agents are counted by what they are doing, so a paused run never reads as "working".
 
 describe('agent summary (UX-07)', () => {
-  it('[TC-UX-07-H] counts a paused run as paused and waiting, with nobody working', () => {
+  it('counts a paused run as paused and waiting, with nobody working', () => {
     expect(agentSummary(['waiting_children', 'paused', 'paused'])).toEqual({
       working: 0,
       groups: [
@@ -14,7 +14,7 @@ describe('agent summary (UX-07)', () => {
     });
   });
 
-  it('[TC-UX-07-H] keeps the working count first and drops empty groups', () => {
+  it('keeps the working count first and drops empty groups', () => {
     expect(agentSummary(['active', 'active', 'waiting_message', 'ready', 'cancelling'])).toEqual({
       working: 2,
       groups: [
@@ -25,7 +25,7 @@ describe('agent summary (UX-07)', () => {
     });
   });
 
-  it('[TC-UX-07-N] ignores executions that have ended', () => {
+  it('ignores executions that have ended', () => {
     expect(agentSummary(['succeeded', 'failed', 'cancelled'])).toEqual({ working: 0, groups: [] });
   });
 });

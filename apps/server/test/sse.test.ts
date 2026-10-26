@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { boundedSseWriter, flushSseRecord } from '../src/sse.ts';
 
-it('[TC-OBS-002-N] bounds the buffer including the next UTF-8 frame and disconnects once', () => {
+it('bounds the buffer including the next UTF-8 frame and disconnects once', () => {
   const sink = {
     writableLength: 0,
     write(chunk: string) {
@@ -17,7 +17,7 @@ it('[TC-OBS-002-N] bounds the buffer including the next UTF-8 frame and disconne
   expect(closed).toBe(1);
 });
 
-it('[TC-OBS-002-N] flushes the prefix before writing one bounded UTF-8 chunk at a time', async () => {
+it('flushes the prefix before writing one bounded UTF-8 chunk at a time', async () => {
   const frame = `event: domain\ndata: ${'한글🌱'.repeat(100_000)}\n\n`;
   const chunks: Uint8Array[] = [];
   let flushPrefix: () => void = () => {};
@@ -50,7 +50,7 @@ it('[TC-OBS-002-N] flushes the prefix before writing one bounded UTF-8 chunk at 
   expect(Buffer.concat(chunks).toString('utf8')).toBe(frame);
 });
 
-it('[TC-OBS-002-N] stops writing when a disconnected reader fails a chunk', async () => {
+it('stops writing when a disconnected reader fails a chunk', async () => {
   let writes = 0;
   await expect(
     flushSseRecord(

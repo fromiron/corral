@@ -53,7 +53,7 @@ beforeEach(() => {
 });
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-004-N] cleans marked session jobs after their leader exits, including other groups',
+  'cleans marked session jobs after their leader exits, including other groups',
   async () => {
     const identity = capturePtySession(pid, 'our-pty');
     fixture.members.delete(pid);
@@ -75,7 +75,7 @@ it.skipIf(process.platform !== 'linux')(
 );
 
 it.skipIf(process.platform !== 'linux').each(['reused', 'unproven', 'denied'])(
-  '[TC-WBD-004-F] leaves %s process ownership uncertain without signalling',
+  'leaves %s process ownership uncertain without signalling',
   async (failure) => {
     const identity = capturePtySession(pid, 'our-pty');
     if (failure === 'reused')
@@ -96,7 +96,7 @@ it.skipIf(process.platform !== 'linux').each(['reused', 'unproven', 'denied'])(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-WBD-004-N] old boot and non-executing zombies need no signals',
+  'old boot and non-executing zombies need no signals',
   async () => {
     const identity = capturePtySession(pid, 'our-pty');
     const kill = vi.spyOn(process, 'kill').mockReturnValue(true);

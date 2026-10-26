@@ -10,7 +10,7 @@ const orderOf = (definition: unknown) => {
 };
 
 describe('planRun: what this runtime can execute', () => {
-  it('[TC-CAN-001-N] follows the drawn control edges, so rewiring changes the order', () => {
+  it('follows the drawn control edges, so rewiring changes the order', () => {
     expect(orderOf(linearCorral(['research', 'writer']))).toEqual(['research', 'writer', 'output']);
     expect(orderOf(linearCorral(['writer', 'research']))).toEqual(['writer', 'research', 'output']);
   });

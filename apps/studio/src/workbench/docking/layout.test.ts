@@ -44,7 +44,7 @@ function panel(layout: SerializedDockview, id: string) {
   return value;
 }
 
-it('[TC-WBD-008-H] Git restores as its own context without replacing internal changes', () => {
+it('Git restores as its own context without replacing internal changes', () => {
   const layout = createPresetLayout('implementation', [
     { id: 'context:git', descriptor: { kind: 'context', view: 'git' } },
     { id: 'context:changes', descriptor: { kind: 'context', view: 'changes' } },
@@ -57,7 +57,7 @@ it('[TC-WBD-008-H] Git restores as its own context without replacing internal ch
   ]);
 });
 
-it('[TC-WBD-006-H] all presets and reload preserve twenty exact document references and panel IDs', () => {
+it('all presets and reload preserve twenty exact document references and panel IDs', () => {
   const panels = [
     ...DEFAULT_PANELS,
     ...Array.from({ length: MAX_DOCUMENTS }, (_, index) => document(index)),
@@ -76,7 +76,7 @@ it('[TC-WBD-006-H] all presets and reload preserve twenty exact document referen
   }
 });
 
-it('[TC-WBD-003-N] [TC-WBD-006-N] a twenty-first document or retarget of an existing ID is refused without eviction', () => {
+it('a twenty-first document or retarget of an existing ID is refused without eviction', () => {
   const panels = Array.from({ length: MAX_DOCUMENTS }, (_, index) => document(index));
   expect(addDocumentPanel(panels, document(MAX_DOCUMENTS))).toBeNull();
   expect(addDocumentPanel(panels, document(0))).toBe(panels);
@@ -84,7 +84,7 @@ it('[TC-WBD-003-N] [TC-WBD-006-N] a twenty-first document or retarget of an exis
   expect(panels).toHaveLength(MAX_DOCUMENTS);
 });
 
-it('[TC-WBD-006-F] a broken grid recovers every valid document instead of dropping open references', () => {
+it('a broken grid recovers every valid document instead of dropping open references', () => {
   const panels = [...DEFAULT_PANELS, document(0), document(1)];
   const saved = envelope(createPresetLayout('implementation', panels));
   const broken = { ...saved, layout: { ...saved.layout, grid: { root: null } } };
@@ -102,7 +102,7 @@ it('[TC-WBD-006-F] a broken grid recovers every valid document instead of droppi
   ).toEqual(panels);
 });
 
-it('[TC-WBD-006-N] unknown and unauthorized document panes become placeholders without retargeting', () => {
+it('unknown and unauthorized document panes become placeholders without retargeting', () => {
   const saved = envelope(
     createPresetLayout('implementation', [...DEFAULT_PANELS, document(0), document(1)]),
   );
@@ -127,7 +127,7 @@ it('[TC-WBD-006-N] unknown and unauthorized document panes become placeholders w
   expect(layoutStorageKey(undefined, target.projectId)).toBeNull();
 });
 
-it('[TC-WBD-006-N] layout persistence strips arbitrary runtime params, components and titles', () => {
+it('layout persistence strips arbitrary runtime params, components and titles', () => {
   const layout = createPresetLayout('implementation', [...DEFAULT_PANELS, document(0)]);
   const entry = panel(layout, 'document_0');
   entry.params = {
@@ -145,7 +145,7 @@ it('[TC-WBD-006-N] layout persistence strips arbitrary runtime params, component
   expect(restored.layout?.panels.document_0?.contentComponent).toBe('workbench');
 });
 
-it('[TC-WBD-006-F] unsupported floating placement and a third document group fall back without closing documents', () => {
+it('unsupported floating placement and a third document group fall back without closing documents', () => {
   const panels = [...DEFAULT_PANELS, document(0), document(1), document(2)];
   const layout = createPresetLayout('implementation', panels);
   const input = envelope(layout);
@@ -181,7 +181,7 @@ it('[TC-WBD-006-F] unsupported floating placement and a third document group fal
   }
 });
 
-it('[TC-WBD-006-F] malformed storage and non-normalized paths are contained to the layout or affected pane', () => {
+it('malformed storage and non-normalized paths are contained to the layout or affected pane', () => {
   expect(parseLayout('{broken', target.hostId, target.projectId)).toEqual({
     layout: null,
     panels: [],
@@ -197,7 +197,7 @@ it('[TC-WBD-006-F] malformed storage and non-normalized paths are contained to t
 });
 
 it.each(['leaf-root', 'orientation-array', 'missing-size'])(
-  '[TC-WBD-006-F] malformed %s falls back before Dockview consumes it',
+  'malformed %s falls back before Dockview consumes it',
   (failure) => {
     const layout = createPresetLayout('implementation', [document(0)]);
     const grid =
@@ -220,7 +220,7 @@ it.each(['leaf-root', 'orientation-array', 'missing-size'])(
   },
 );
 
-it('[TC-WBD-006-N] duplicate document view IDs and context roles cannot share one mounted owner', () => {
+it('duplicate document view IDs and context roles cannot share one mounted owner', () => {
   const duplicateDocument = { id: 'duplicate_document', descriptor: document(0).descriptor };
   const duplicateTerminal: DockPanel = {
     id: 'duplicate_terminal',
@@ -285,7 +285,7 @@ const groupOf = (node: GridNode, id: string): string | undefined =>
       : undefined
     : (node.data as GridNode[]).map((child) => groupOf(child, id)).find(Boolean);
 
-it('[TC-WBD-014-H] a team graph is its own dock kind, opens beside documents and survives a reload', () => {
+it('a team graph is its own dock kind, opens beside documents and survives a reload', () => {
   const panels = [...DEFAULT_PANELS, document(0), graph('corral_a')];
   for (const preset of ['conversation', 'implementation', 'review'] as const) {
     const layout = createPresetLayout(preset, panels);
@@ -302,7 +302,7 @@ it('[TC-WBD-014-H] a team graph is its own dock kind, opens beside documents and
   }
 });
 
-it('[TC-WBD-014-N] [TC-WBD-014-F] one tab per team, only for this project, and never a file document in disguise', () => {
+it('one tab per team, only for this project, and never a file document in disguise', () => {
   expect(addGraphPanel([graph('corral_a')], graph('corral_a', 'graph:other'))).toBeNull();
   expect(addGraphPanel([graph('corral_a')], graph('corral_b'))).toHaveLength(2);
   expect(

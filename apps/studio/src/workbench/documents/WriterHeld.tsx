@@ -5,7 +5,7 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 
 /**
- * A save refused because another writer holds the copy (CR-046 P15 strict mode). A running task
+ * A save refused because another writer holds the copy (strict mode). A running task
  * can be stopped here; a terminal or Run is stopped where it runs. Saving again stays explicit.
  */
 export function WriterHeld({

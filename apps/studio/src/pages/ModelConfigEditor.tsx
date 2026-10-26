@@ -17,7 +17,7 @@ import { ApiKeyInput } from './ApiKeyInput.tsx';
 
 /**
  * Profiles and OpenAI-compatible endpoints, edited on the Models page and saved to
- * `.corral/config.json` (CR-008). Keys go separately to the credential API after config saves.
+ * `.corral/config.json`. Keys go separately to the credential API after config saves.
  */
 export function ModelConfigEditor({
   config: initialConfig,

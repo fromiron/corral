@@ -2,7 +2,7 @@ import { expect, test } from './harness.ts';
 
 test.use({ live: true, reasoningApi: true });
 
-test('[TC-ABS-010-H] image profile CRUD and role configuration persist through the normal settings and editor flow', async ({
+test('image profile CRUD and role configuration persist through the normal settings and editor flow', async ({
   page,
   corral,
 }) => {

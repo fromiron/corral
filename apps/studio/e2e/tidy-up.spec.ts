@@ -29,9 +29,7 @@ const apart = (
 
 const TOP = ['research', 'review_loop', 'approval', 'output', 'helper', 'respond'];
 
-test('[TC-CAN-002-H] Tidy up rearranges a messy canvas, and one Undo puts it back', async ({
-  page,
-}) => {
+test('Tidy up rearranges a messy canvas, and one Undo puts it back', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page

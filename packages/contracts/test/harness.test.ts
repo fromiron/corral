@@ -12,14 +12,14 @@ const role = {
   outputContract: 'text',
 };
 
-describe('optional harness binding (CR-018, H2)', () => {
-  it('[TC-HAR-009-H] leaves old roles byte-for-byte unchanged and accepts an immutable binding', () => {
+describe('optional harness binding', () => {
+  it('leaves old roles byte-for-byte unchanged and accepts an immutable binding', () => {
     expect(JSON.stringify(AgentRole.parse(role))).toBe(JSON.stringify(role));
     const bound = { ...role, harness: { profileId: 'writing', revision: 2 } };
     expect(AgentRole.parse(bound)).toEqual(bound);
   });
 
-  it('[TC-HAR-009-N] rejects mutable or malformed bindings instead of dropping them', () => {
+  it('rejects mutable or malformed bindings instead of dropping them', () => {
     for (const harness of [
       { profileId: 'writing', revision: 0 },
       { profileId: 'writing', revision: 'latest' },
@@ -30,7 +30,7 @@ describe('optional harness binding (CR-018, H2)', () => {
   });
 });
 
-it('[TC-HAR-004-N] resource entries stay relative to immutable bundles', () => {
+it('resource entries stay relative to immutable bundles', () => {
   for (const value of [
     '/etc/passwd',
     '../skill.md',
@@ -57,7 +57,7 @@ it('[TC-HAR-004-N] resource entries stay relative to immutable bundles', () => {
 
 import { RegisteredMcpServer } from '../src/project-tools.ts';
 
-it('[TC-HAR-016-N] MCP server IDs cannot contain the tool namespace separator', () => {
+it('MCP server IDs cannot contain the tool namespace separator', () => {
   const server = {
     id: 'docs__other',
     name: 'Docs',

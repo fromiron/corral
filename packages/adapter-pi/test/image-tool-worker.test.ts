@@ -7,7 +7,7 @@ import { memoryChannelPair } from '../src/channel.ts';
 import { runWorker } from '../src/worker.ts';
 import { ACCESS_TOKEN, recordingHost } from './harness.ts';
 
-it('[TC-ABS-010-H] core worker supplies image read pixels to its next model request', async () => {
+it('core worker supplies image read pixels to its next model request', async () => {
   const data =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZxkAAAAASUVORK5CYII=';
   const bytes = Buffer.from(data, 'base64');

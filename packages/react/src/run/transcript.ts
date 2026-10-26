@@ -4,7 +4,7 @@ import type { StreamText } from './session.ts';
 
 // One execution's conversation, in commit order (roadmap UX-A3). Built only from committed
 // events, the projection and streamed text; an instruction appears on the request it actually
-// reached (Spec §8.6), never on an earlier one.
+// reached, never on an earlier one.
 
 export type TranscriptEntry =
   | { kind: 'started'; seq: number; nodeId: string; attemptNo: number; round: number | null }

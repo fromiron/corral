@@ -89,7 +89,7 @@ async function fixture(
   };
 }
 
-it('[TC-WBD-007-H] previews the immutable escaped capture and exposes unavailable source without changing it', async () => {
+it('previews the immutable escaped capture and exposes unavailable source without changing it', async () => {
   const item = capture('selection.txt', '<img src=x onerror=alert(1)> saved capture');
   const legacy = createTextAttachment('notes.txt', 'text/plain', 'legacy body');
   const f = await fixture([item, legacy], async () => null);
@@ -115,7 +115,7 @@ it('[TC-WBD-007-H] previews the immutable escaped capture and exposes unavailabl
   expect(f.onChange).not.toHaveBeenCalled();
 });
 
-it('[TC-WBD-007-F] deleting a capture while replacement waits never resurrects it', async () => {
+it('deleting a capture while replacement waits never resurrects it', async () => {
   const original = capture('first.txt', 'first');
   const other = capture('second.txt', 'second');
   const pending = pendingCapture();
@@ -128,7 +128,7 @@ it('[TC-WBD-007-F] deleting a capture while replacement waits never resurrects i
   expect(f.onChange).toHaveBeenCalledTimes(1);
 });
 
-it('[TC-WBD-007-N] replacement preserves current order and unrelated additions and rejects invalid content', async () => {
+it('replacement preserves current order and unrelated additions and rejects invalid content', async () => {
   const original = capture('first.txt', 'first');
   const other = capture('second.txt', 'second');
   const added = capture('third.txt', 'third');
@@ -148,7 +148,7 @@ it('[TC-WBD-007-N] replacement preserves current order and unrelated additions a
   expect(f.row(replacement.name)?.textContent).toContain('replacementFailed');
 });
 
-it('[TC-WBD-013-H] shows that a source is intact apart from whether it still applies', async () => {
+it('shows that a source is intact apart from whether it still applies', async () => {
   const item = capture('check.txt', 'output');
   const f = await fixture([item], async () => null);
   const status = () => f.row(item.name)?.querySelector('[role="status"]');

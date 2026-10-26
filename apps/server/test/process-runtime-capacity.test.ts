@@ -45,7 +45,7 @@ afterEach(async () => {
   );
 });
 
-describe('[TC-ABS-006-H] command process capacity', () => {
+describe('command process capacity', () => {
   it('reserves all twelve slots during startup, deduplicates, and admits another process only after confirmed cleanup', async () => {
     const runtime = new CommandRuntime();
     runtimes.push(runtime);

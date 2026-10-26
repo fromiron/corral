@@ -34,7 +34,7 @@ import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
 import { WorkbenchLayout } from './Workbench.tsx';
 
-// Reviewing a session's file changes (CR-012; WBT-15): a fixed comparison range, the files it
+// Reviewing a session's file changes: a fixed comparison range, the files it
 // changed with where each change came from, the diff in the middle, and the agreed checks.
 
 const DiffCode = lazy(() =>
@@ -456,7 +456,7 @@ export function FileDiff({
       live = false;
     };
   }, [loadKey]);
-  // The diff runs in a worker and is stopped after 3 s (02-UX-Spec §4: no endless spinner).
+  // The diff runs in a worker and is stopped after 3 s (no endless spinner).
   useEffect(() => {
     setDiff(null);
     if (!sides) return;
@@ -842,7 +842,7 @@ function Operations({ sessionId }: { sessionId: string }) {
   );
 }
 
-/** Draft comments go out together, to the running execution or as a new run (WB-REV-002). */
+/** Draft comments go out together, to the running execution or as a new run. */
 function CommentsPanel({
   session,
   runs,
@@ -1030,7 +1030,7 @@ function CommentsPanel({
 
 /**
  * Approve or ask for changes to exactly these two trees; applying follows an approval. A decision
- * made on another comparison, even one ending in the same tree, is shown as earlier (CR-046 P17).
+ * made on another comparison, even one ending in the same tree, is shown as earlier.
  */
 export function DecisionPanel({
   sessionId,
@@ -1206,7 +1206,7 @@ export function DecisionPanel({
   );
 }
 
-// ── file list helpers (02-UX-Spec §4) ───────────────────────────────────────
+// ── file list helpers ───────────────────────────────────────
 
 /** Lock files and build output: folded by default, but deletions stay in view. */
 const GENERATED =

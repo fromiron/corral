@@ -2,7 +2,7 @@ import type { WorkspacesApi } from '@corral/client';
 import type { CorralRepository, RuntimeTransport } from '@corral/core';
 import type { DemoWorkspaceCall } from '../runtime.ts';
 
-// The browser demo's side of the work folder (02-UX-Spec §10): the same calls Studio makes to
+// The browser demo's side of the work folder: the same calls Studio makes to
 // the local server, answered by the demo worker's in-memory folder (demo/workspace.ts).
 
 /** What Studio uses of the server's workspaces API; the demo offers the same. */

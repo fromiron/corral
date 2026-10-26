@@ -13,7 +13,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-it('[TC-ABS-011-H] the product simulated agent answers imported children and resumes their wait', async () => {
+it('the product simulated agent answers imported children and resumes their wait', async () => {
   const parent = linearCorral(['parent']);
   const imported = importMarkdownAgent({
     draft: { definition: parent, layout: {} },

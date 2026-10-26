@@ -1,4 +1,4 @@
-// CR-016: one fuzzy ranking for `@` references, the server's path search and the command
+// one fuzzy ranking for `@` references, the server's path search and the command
 // palette. Letters of each query word must appear in order; runs of letters, word starts and
 // the file name (the last path part) count more, and shorter targets win ties.
 

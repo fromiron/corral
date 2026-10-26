@@ -51,7 +51,7 @@ const completed: ModelBroker['streamFn'] = () => {
   stream.end(message);
   return stream;
 };
-it('[TC-LLM-003-H] bridge permits more than 100 logical requests without retaining every id', async () => {
+it('bridge permits more than 100 logical requests without retaining every id', async () => {
   const f = fixture(completed);
   let closed = false;
   f.channel.onExit(() => {
@@ -64,7 +64,7 @@ it('[TC-LLM-003-H] bridge permits more than 100 logical requests without retaini
     expect((await stream.result()).stopReason).toBe('stop');
   }
 });
-it('[TC-LLM-003-N] host applies the model maximum and its own conversation/cache options', async () => {
+it('host applies the model maximum and its own conversation/cache options', async () => {
   const options: unknown[] = [];
   const f = fixture((selected, messages, request) => {
     options.push(request);
@@ -81,7 +81,7 @@ it('[TC-LLM-003-N] host applies the model maximum and its own conversation/cache
   ]);
 });
 
-it('[TC-LLM-003-N] host delivery honors a slow IPC writer before sending the terminal event', async () => {
+it('host delivery honors a slow IPC writer before sending the terminal event', async () => {
   const pair = memoryChannelPair();
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => {
@@ -114,7 +114,7 @@ it('[TC-LLM-003-N] host delivery honors a slow IPC writer before sending the ter
   expect((await stream.result()).stopReason).toBe('stop');
 });
 it.each([1, 64])(
-  '[TC-LLM-003-H] 64KiB in %i blocks and 64-byte deltas stays below 1MiB on the wire',
+  '64KiB in %i blocks and 64-byte deltas stays below 1MiB on the wire',
   async (blocks) => {
     const f = fixture(() => {
       const stream = createAssistantMessageEventStream();
@@ -161,7 +161,7 @@ it.each([1, 64])(
   },
 );
 
-it('[TC-LLM-003-F] cancellation settles the worker without waiting for channel termination', async () => {
+it('cancellation settles the worker without waiting for channel termination', async () => {
   const pair = memoryChannelPair();
   const channel = modelBridgeChannel(pair.host, {
     model,
@@ -195,7 +195,7 @@ it('[TC-LLM-003-F] cancellation settles the worker without waiting for channel t
   }
 });
 
-it('[TC-LLM-003-N] decoder does not duplicate text already present in a mutable provider partial', () => {
+it('decoder does not duplicate text already present in a mutable provider partial', () => {
   const decode = createStreamDecoder();
   const partial = fauxAssistantMessage('abc');
   decode({ type: 'start', partial });
@@ -204,7 +204,7 @@ it('[TC-LLM-003-N] decoder does not duplicate text already present in a mutable 
   expect('partial' in event && event.partial.content[0]).toEqual({ type: 'text', text: 'abc' });
 });
 
-it('[TC-LLM-003-N] decoder preserves opaque thinking present at the start without deltas', () => {
+it('decoder preserves opaque thinking present at the start without deltas', () => {
   const decode = createStreamDecoder();
   const partial: AssistantMessage = {
     ...fauxAssistantMessage(''),

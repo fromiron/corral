@@ -51,7 +51,7 @@ function until(store: ReturnType<typeof session>, check: (s: RunSessionState) =>
 }
 
 describe('run session', () => {
-  it('[TC-WBD-005-N] shares an in-flight same-run open and starts a fresh read after disposal', async () => {
+  it('shares an in-flight same-run open and starts a fresh read after disposal', async () => {
     const reads: ((definition: CorralDefinition | null) => void)[] = [];
     const getRunDefinition = vi.fn(
       () => new Promise<CorralDefinition | null>((resolve) => reads.push(resolve)),
@@ -92,7 +92,7 @@ describe('run session', () => {
   });
 
   it.each(['applied', 'error'] as const)(
-    '[TC-WBD-005-F] keeps a late %s command result across leaving and reopening its run',
+    'keeps a late %s command result across leaving and reopening its run',
     async (result) => {
       let finish = (_receipt: Receipt) => {};
       let reject = (_error: Error) => {};
@@ -146,7 +146,7 @@ describe('run session', () => {
     },
   );
 
-  it('[TC-WBD-005-N] late commands for another run do not replace its receipt, error or pending command', async () => {
+  it('late commands for another run do not replace its receipt, error or pending command', async () => {
     const pending: {
       command: RunCommand;
       finish: (receipt: Receipt) => void;
@@ -197,7 +197,7 @@ describe('run session', () => {
     store.getState().dispose();
   });
 
-  it('[TC-WIDGET-001-N] failed opening stays scoped to its requested run and ignores old failures', async () => {
+  it('failed opening stays scoped to its requested run and ignores old failures', async () => {
     let failOld!: (error: Error) => void;
     const getRunDefinition = vi
       .fn()
@@ -228,7 +228,7 @@ describe('run session', () => {
     store.getState().dispose();
   });
 
-  it('[TC-WIDGET-001-N] retrying a broken current stream replaces its subscription once', async () => {
+  it('retrying a broken current stream replaces its subscription once', async () => {
     let handlers!: TransportHandlers;
     const unsubscribe = vi.fn();
     const subscribe = vi.fn((_runId, _seq, next: TransportHandlers) => {
@@ -319,7 +319,7 @@ describe('run session', () => {
     expect(delivered.projection?.directives[directiveId]?.modelCallId).toBeTruthy();
   });
 
-  it('[TC-RNS-003-H] refreshes a pending pause receipt when the run is cancelled before pausing', async () => {
+  it('refreshes a pending pause receipt when the run is cancelled before pausing', async () => {
     const gate = new Gate();
     const store = session([gate]);
     await store.getState().start(linearCorral(['writer']));
@@ -452,7 +452,7 @@ describe('run session', () => {
   });
 });
 
-describe('Reins command session (C-032–C-035)', () => {
+describe('Reins command session', () => {
   it('sends the reviewed revision and preserves a rejected receipt without changing status', async () => {
     const store = session();
     store.setState({
@@ -822,7 +822,7 @@ describe('receipt refresh boundaries', () => {
   });
 });
 
-it('[TC-RUN-008] repairs a broken stream from a committed completed response on replay', async () => {
+it('repairs a broken stream from a committed completed response on replay', async () => {
   let handlers: TransportHandlers | undefined;
   const transport = {
     getRunDefinition: async () => linearCorral(['writer']),
@@ -879,7 +879,7 @@ it('[TC-RUN-008] repairs a broken stream from a committed completed response on 
   store.getState().dispose();
 });
 
-it('[TC-RSN-004-N] a failed effective-definition read never disconnects an accepted run', async () => {
+it('a failed effective-definition read never disconnects an accepted run', async () => {
   const gate = new Gate();
   const transport = new InProcessTransport(
     new Coordinator({

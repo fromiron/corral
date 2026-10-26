@@ -116,7 +116,7 @@ async function connection(port: number): Promise<Socket> {
   return socket;
 }
 
-it('[TC-WBD-011-H] [TC-WBD-011-N] lists scripts without running them, runs one on request, attests its port and stops it', async () => {
+it('lists scripts without running them, runs one on request, attests its port and stops it', async () => {
   const s = await setup();
   const candidates = await s.service.taskCandidates('s1');
   expect(candidates).toMatchObject({
@@ -180,7 +180,7 @@ it('[TC-WBD-011-H] [TC-WBD-011-N] lists scripts without running them, runs one o
   expect(await save('save_after')).toMatchObject({ state: 'succeeded' });
 });
 
-it('[TC-WBD-011-F] a check runs from its snapshot while a task holds the copy', async () => {
+it('a check runs from its snapshot while a task holds the copy', async () => {
   const s = await setup();
   await s.service.configure('default', {
     verifyCommands: [
@@ -199,7 +199,7 @@ it('[TC-WBD-011-F] a check runs from its snapshot while a task holds the copy', 
   await s.service.stopTask('s1', 'task_a');
 });
 
-it('[TC-WBD-011-F] after a restart, a task whose process group is gone is settled and frees the copy', async () => {
+it('after a restart, a task whose process group is gone is settled and frees the copy', async () => {
   const s = await setup();
   await s.service.startTask('s1', { operationId: 'task_r', target: s.target, script: 'serve' });
   await s.output('task_r', 'listening');
@@ -225,7 +225,7 @@ it('[TC-WBD-011-F] after a restart, a task whose process group is gone is settle
   await s.service.stopTask('s1', 'task_again');
 });
 
-it('[TC-WBD-011-N] a session without a working copy has no task candidates, not an error', async () => {
+it('a session without a working copy has no task candidates, not an error', async () => {
   const s = await setup();
   await s.service.removeWorktree('s1');
   expect(await s.service.taskCandidates('s1')).toEqual({ packageManager: null, scripts: [] });

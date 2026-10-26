@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './harness.ts';
 
-// Projects against the local server (CR-010, roadmap 22; WBTST-001/003): saved in the
+// Projects against the local server: saved in the
 // workspace database, so they survive reloads, and a run stays where it started.
 
 function handle(page: Page, nodeId: string, port: string) {
@@ -10,10 +10,7 @@ function handle(page: Page, nodeId: string, port: string) {
   );
 }
 
-test('[WBTST-003] a run stays in the project it started in when its Corral moves', async ({
-  page,
-  corral,
-}) => {
+test('a run stays in the project it started in when its Corral moves', async ({ page, corral }) => {
   await corral.open('/projects');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Client A');
   await page.getByRole('button', { name: 'Create project' }).click();

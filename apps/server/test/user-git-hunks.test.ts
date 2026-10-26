@@ -82,7 +82,7 @@ async function selection(root: string, side: 'staged' | 'unstaged' = 'unstaged',
   return { ...input, identity: view.identity, hunkIds: [hunk.id] };
 }
 
-it('[TC-WBD-022-H] stages and unstages selected real Git hunks without changing other entries or working bytes', async () => {
+it('stages and unstages selected real Git hunks without changing other entries or working bytes', async () => {
   const root = setup();
   writeFileSync(join(root, 'other.txt'), 'other staged\n');
   git(root, 'add', 'other.txt');
@@ -102,7 +102,7 @@ it('[TC-WBD-022-H] stages and unstages selected real Git hunks without changing 
   expect(existsSync(join(root, '.git/index.lock'))).toBe(false);
 });
 
-it('[TC-WBD-022-N] refuses stale index, changed working bytes and unsafe content without applying a selected hunk', async () => {
+it('refuses stale index, changed working bytes and unsafe content without applying a selected hunk', async () => {
   const root = setup();
   const staleIndex = await selection(root);
   writeFileSync(join(root, 'other.txt'), 'outside stage\n');
@@ -131,7 +131,7 @@ it('[TC-WBD-022-N] refuses stale index, changed working bytes and unsafe content
   });
 });
 
-it('[TC-WBD-022-F] preserves another index lock and revalidates external writes immediately before publishing', async () => {
+it('preserves another index lock and revalidates external writes immediately before publishing', async () => {
   const root = setup();
   const input = await selection(root);
   const originalIndex = readFileSync(join(root, '.git/index'));

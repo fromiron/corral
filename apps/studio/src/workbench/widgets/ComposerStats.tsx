@@ -6,7 +6,7 @@ import { useServices } from '../../services.tsx';
 import { sessionStats } from './selectors.ts';
 
 /**
- * CR-055: turns · steps · tokens · cache hit for the session, under the composer (DSH-style),
+ * turns · steps · tokens · cache hit for the session, under the composer (DSH-style),
  * read from each turn's Coordinator snapshot. An unreported cache figure is named, never 0.
  */
 export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {

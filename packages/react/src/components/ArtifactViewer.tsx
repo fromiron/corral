@@ -21,7 +21,7 @@ import type { RunSessionStore } from '../run/session.ts';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
 /**
- * One immutable version, rendered safely, with where it came from (C-024, C-025, C-030):
+ * One immutable version, rendered safely, with where it came from:
  * the version it revises, the versions its model call was given, and a line diff against
  * the earlier version. A review renders as its recorded verdict and issues.
  */
@@ -37,7 +37,7 @@ export function ArtifactViewer({
   onClose: () => void;
   /** Opens another version; without it, lineage links open in this viewer. */
   onOpen?: (artifactVersionId: string) => void;
-  /** Offers "New run from this version" (CR-007). */
+  /** Offers "New run from this version". */
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
 }) {
   const t = useTranslations('Artifact');

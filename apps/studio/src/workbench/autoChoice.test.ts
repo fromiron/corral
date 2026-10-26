@@ -9,7 +9,7 @@ import {
 } from './autoChoice.ts';
 import type { ProfileInfo } from './useModels.ts';
 
-// CR-024: sessions run live wherever live is possible; auto sessions use one model and
+// sessions run live wherever live is possible; auto sessions use one model and
 // reasoning for the choice and every role.
 
 const profiles: ProfileInfo[] = [
@@ -17,12 +17,12 @@ const profiles: ProfileInfo[] = [
   { profileId: 'model-b', label: 'OpenAI · b', available: true },
 ];
 
-describe('session run mode (CR-024)', () => {
-  it('[TC-AUTO-004-H] a server with live models runs sessions live; there is no choice to make', () => {
+describe('session run mode', () => {
+  it('a server with live models runs sessions live; there is no choice to make', () => {
     expect(sessionRunMode('server', true)).toBe('live');
   });
 
-  it('[TC-AUTO-004-N] simulation stays only where live is impossible, and a disconnected model blocks instead of simulating', () => {
+  it('simulation stays only where live is impossible, and a disconnected model blocks instead of simulating', () => {
     expect(sessionRunMode('server', false)).toBe('mock');
     expect(sessionRunMode('browser', false)).toBe('mock');
     expect(autoNotReady({ modelProfile: 'model-a' }, profiles, 'live')).toBe(true);
@@ -32,8 +32,8 @@ describe('session run mode (CR-024)', () => {
   });
 });
 
-describe('the auto model choice (CR-024)', () => {
-  it('[TC-AUTO-001-H] a saved choice wins; otherwise the first connected model', () => {
+describe('the auto model choice', () => {
+  it('a saved choice wins; otherwise the first connected model', () => {
     const saved = { modelProfile: 'model-a', reasoning: { mode: 'auto' as const } };
     expect(autoChoiceFor(saved, profiles)).toEqual(saved);
     expect(autoChoiceFor(null, profiles)).toEqual({ modelProfile: 'model-b' });
@@ -42,11 +42,11 @@ describe('the auto model choice (CR-024)', () => {
     expect(autoChoiceFor(null, null)).toEqual({ modelProfile: 'model-a' });
   });
 
-  it('[TC-AUTO-003-N] a request sent with one model is a different command from the same text with another', () => {
+  it('a request sent with one model is a different command from the same text with another', () => {
     const a = autoCommandSeed('Hello', [], { modelProfile: 'model-a' });
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' })).toBe(a);
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-b' })).not.toBe(a);
-    // CR-055: the team is part of the request, so changing it after a lost answer is new.
+    // the team is part of the request, so changing it after a lost answer is new.
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, 'none')).toBe(a);
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, 'auto')).not.toBe(a);
     expect(autoCommandSeed('Hello', [], { modelProfile: 'model-a' }, 'corral:c1')).not.toBe(
@@ -61,8 +61,8 @@ describe('the auto model choice (CR-024)', () => {
   });
 });
 
-describe('per-request reasoning (CR-024 §7)', () => {
-  it('[TC-AUTO-005-H] the reasoning chip round-trips route, modes and levels', () => {
+describe('per-request reasoning', () => {
+  it('the reasoning chip round-trips route, modes and levels', () => {
     for (const policy of [
       { mode: 'route' as const },
       { mode: 'auto' as const },
@@ -74,7 +74,7 @@ describe('per-request reasoning (CR-024 §7)', () => {
     expect(reasoningFrom('')).toBeUndefined();
   });
 
-  it('[TC-AUTO-005-N] choosing per request is a different command from a fixed level', () => {
+  it('choosing per request is a different command from a fixed level', () => {
     expect(
       autoCommandSeed('Hi', [], { modelProfile: 'model-a', reasoning: { mode: 'route' } }),
     ).not.toBe(

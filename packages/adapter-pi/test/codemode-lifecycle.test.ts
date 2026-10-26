@@ -8,7 +8,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
-it('[TC-HAR-017-H] the official codemode factory reports the actual worker exit with its call ID', async () => {
+it('the official codemode factory reports the actual worker exit with its call ID', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'corral-codemode-'));
   try {
     const exits: { id: string; exited: Promise<void> }[] = [];

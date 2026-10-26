@@ -45,7 +45,7 @@ describe('CorralDefinition schema parity with the seed JSON Schema', () => {
 });
 
 describe('CorralDefinition', () => {
-  it('[TC-CAN-002-N] rejects canvas coordinates mixed into the execution definition', () => {
+  it('rejects canvas coordinates mixed into the execution definition', () => {
     const result = CorralDefinition.safeParse(invalid[1]?.[1]);
     expect(result.success).toBe(false);
     expect(result.error?.issues.map((issue) => issue.path.join('.'))).toContain('nodes.0');

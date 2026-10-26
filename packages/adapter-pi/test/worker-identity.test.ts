@@ -38,7 +38,7 @@ vi.mock('node:fs', async (importOriginal) => {
 import { recordWorkerLease, recoverSdkWorkers } from '../src/worker-leases.ts';
 
 it.skipIf(process.platform !== 'linux').each([false, true])(
-  '[TC-HAR-017-N] keeps zombie leader identity when checking reused PID (reused=%s)',
+  'keeps zombie leader identity when checking reused PID (reused=%s)',
   async (reused) => {
     Object.assign(state, { zombie: false, missing: false, start: '100', killed: false });
     const directory = mkdtempSync(join(tmpdir(), 'corral-pid-identity-'));
@@ -61,7 +61,7 @@ it.skipIf(process.platform !== 'linux').each([false, true])(
 );
 
 it.skipIf(process.platform !== 'linux')(
-  '[TC-HAR-017-N] a leaderless group without ownership evidence is never killed by an old PID record',
+  'a leaderless group without ownership evidence is never killed by an old PID record',
   async () => {
     Object.assign(state, { zombie: false, missing: false, start: '100', killed: false });
     const directory = mkdtempSync(join(tmpdir(), 'corral-unproven-group-'));

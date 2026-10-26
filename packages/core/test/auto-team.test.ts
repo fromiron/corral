@@ -20,7 +20,7 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// CR-024: a session without a chosen team runs in auto mode. A start model picks one of the
+// a session without a chosen team runs in auto mode. A start model picks one of the
 // built-in templates; tools, wiring and limits come from the template, and the choice is
 // recorded with the run it started.
 
@@ -30,8 +30,8 @@ const CHOICE: AutoModelChoice = {
 };
 const WRITERS = new Set(['worker', 'writer']);
 
-describe('auto templates (CR-024)', () => {
-  it('[TC-ABS-001-H] [TC-ABS-002-N] explicit Auto work style binds every role and keeps missing style unchanged', () => {
+describe('auto templates', () => {
+  it('explicit Auto work style binds every role and keeps missing style unchanged', () => {
     const base = {
       id: 'auto_style',
       template: 'write_review' as const,
@@ -51,7 +51,7 @@ describe('auto templates (CR-024)', () => {
     expect(before.roles.every((role) => !role.allowedWorkTools.includes('run_command'))).toBe(true);
     expect(autoDefinition(base)).toEqual(before);
   });
-  it('[TC-AUTO-002-H] every template compiles, uses the chosen model and reasoning, and gets file tools with a working copy', () => {
+  it('every template compiles, uses the chosen model and reasoning, and gets file tools with a working copy', () => {
     for (const template of AUTO_TEMPLATES) {
       const definition = autoDefinition({
         id: 'auto_s1',
@@ -92,7 +92,7 @@ describe('auto templates (CR-024)', () => {
     ).toHaveLength(3);
   });
 
-  it('[TC-AUTO-002-N] no working copy means no file tools; an unknown template builds nothing; templates keep the original limits', () => {
+  it('no working copy means no file tools; an unknown template builds nothing; templates keep the original limits', () => {
     for (const template of AUTO_TEMPLATES) {
       const definition = autoDefinition({
         id: 'auto_s1',
@@ -126,8 +126,8 @@ describe('auto templates (CR-024)', () => {
   });
 });
 
-describe('reading the start model’s answer (CR-024)', () => {
-  it('[TC-AUTO-003-H] takes one JSON object naming an allowed template, fenced or not', () => {
+describe('reading the start model’s answer', () => {
+  it('takes one JSON object naming an allowed template, fenced or not', () => {
     expect(
       parseAutoRoute('{"template":"write_review","reason":"Needs a draft and a check."}'),
     ).toEqual({ template: 'write_review', reason: 'Needs a draft and a check.' });
@@ -144,7 +144,7 @@ describe('reading the start model’s answer (CR-024)', () => {
     expect(localAutoRoute('What does this error mean?').template).toBe('single');
   });
 
-  it('[TC-AUTO-003-N] refuses unknown templates, extra fields, long reasons and prose', () => {
+  it('refuses unknown templates, extra fields, long reasons and prose', () => {
     for (const text of [
       '{"template":"shell","reason":"x"}',
       '{"template":"single","reason":"x","tools":["shell"]}',
@@ -215,8 +215,8 @@ async function startedEvent(s: ReturnType<typeof setup>, runId: string) {
   return events.find((e) => e.type === 'run.started');
 }
 
-describe('starting an auto run (CR-024)', () => {
-  it('[TC-AUTO-003-H] one choice request picks the template; run.started records the choice and its usage', async () => {
+describe('starting an auto run', () => {
+  it('one choice request picks the template; run.started records the choice and its usage', async () => {
     const s = setup();
     const result = await s.starter.start(request('cmd_auto_1'), { fileTools: false });
     expect(result.receipt.status).toBe('applied');
@@ -248,7 +248,7 @@ describe('starting an auto run (CR-024)', () => {
     expect(second.autoRoute).toMatchObject({ template: 'single', source: 'local', usage: null });
   });
 
-  it('[TC-AUTO-003-N] bad answers and timeouts fall back to single with the reason; the answer text is never recorded', async () => {
+  it('bad answers and timeouts fall back to single with the reason; the answer text is never recorded', async () => {
     const s = setup();
     const cases: [RouteAnswer, string][] = [
       [{ ok: true, text: 'Use a poem team: roses-are-red', usage: null }, 'invalid_answer'],
@@ -268,7 +268,7 @@ describe('starting an auto run (CR-024)', () => {
     }
   });
 
-  it('[TC-AUTO-003-N] a cancelled choice starts nothing; the same command ID chooses once and starts one run', async () => {
+  it('a cancelled choice starts nothing; the same command ID chooses once and starts one run', async () => {
     const s = setup();
     const signal = { aborted: false };
     let abort = () => {};
@@ -312,7 +312,7 @@ describe('starting an auto run (CR-024)', () => {
   });
 });
 
-describe('per-request reasoning (CR-024 §7)', () => {
+describe('per-request reasoning', () => {
   const routeChoice = { modelProfile: 'model-a', reasoning: { mode: 'route' as const } };
   function routed(
     answerText: string,
@@ -341,7 +341,7 @@ describe('per-request reasoning (CR-024 §7)', () => {
       .getRunSnapshot(runId ?? '')
       ?.definition.roles.map((r) => (r.reasoning?.mode === 'fixed' ? r.reasoning.level : null));
 
-  it('[TC-AUTO-005-H] the start model picks the level with the template; every role runs it fixed', async () => {
+  it('the start model picks the level with the template; every role runs it fixed', async () => {
     expect(
       parseAutoRoute('{"template":"single","reason":"Short.","reasoning":"low"}', [
         'low',
@@ -363,7 +363,7 @@ describe('per-request reasoning (CR-024 §7)', () => {
     });
   });
 
-  it('[TC-AUTO-005-N] an unsupported or missing level, a fallback template and the local rule run medium', async () => {
+  it('an unsupported or missing level, a fallback template and the local rule run medium', async () => {
     for (const [text, levels, template] of [
       ['{"template":"single","reason":"x","reasoning":"xhigh"}', undefined, 'single'],
       ['{"template":"write_review","reason":"x"}', undefined, 'write_review'],

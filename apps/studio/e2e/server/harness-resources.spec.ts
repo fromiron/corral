@@ -6,7 +6,7 @@ import { expect, test } from './harness.ts';
 
 test.describe('extension input during an SDK run', () => {
   test.use({ live: true, codexLogin: true });
-  test('[TC-HAR-007-H] answers a startup prompt through the Run view and finishes the request', async ({
+  test('answers a startup prompt through the Run view and finishes the request', async ({
     page,
     corral,
   }) => {
@@ -105,7 +105,7 @@ test.describe('extension input during an SDK run', () => {
   });
 });
 
-test('[TC-HAR-004-H] [TC-UX-004-N] install, trust, save and preview a mandatory skill through Settings', async ({
+test('install, trust, save and preview a mandatory skill through Settings', async ({
   page,
   corral,
 }) => {

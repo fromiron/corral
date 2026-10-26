@@ -571,7 +571,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               out.push(proxyEvent(event));
             }
             const answer = await stream.result();
-            // CR-055: the latest clean reply without a tool call is a final-reply role's answer.
+            // the latest clean reply without a tool call is a final-reply role's answer.
             finalReplyModelCallId =
               start.role.answer === 'final_reply' &&
               answer.stopReason === 'stop' &&

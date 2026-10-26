@@ -11,7 +11,7 @@ vi.mock('use-intl', () => ({
 }));
 afterEach(() => vi.unstubAllGlobals());
 
-it('[TC-WBD-007-H] explicitly attaches only selected hunks with the frozen comparison, without applying them', async () => {
+it('explicitly attaches only selected hunks with the frozen comparison, without applying them', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const from = 'a'.repeat(40),
     to = 'b'.repeat(40),

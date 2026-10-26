@@ -11,7 +11,7 @@ import { useTranslations } from 'use-intl';
 
 /**
  * `state` says whether the frozen source can still be read as captured. `applies` says, apart
- * from that, whether it still holds for the working copy now (CR-046 P17): an intact hunk of an
+ * from that, whether it still holds for the working copy now: an intact hunk of an
  * earlier tree can be read while its file has changed since. Absent when it cannot be judged.
  */
 export interface ContextSourceStatus {

@@ -7,7 +7,7 @@ import type { NotificationTarget } from './workbench/notifications.ts';
 interface DesktopInfo {
   version: string;
   platform: string;
-  /** The system draws the window buttons over the top bar (CR-017). */
+  /** The system draws the window buttons over the top bar. */
   overlay: boolean;
   status: 'starting' | 'ready' | 'failed';
   gitAvailable: boolean;
@@ -58,7 +58,7 @@ export const previewDesktop =
 
 /**
  * Double-clicking the empty top bar maximizes or restores the window, as a system title bar
- * does (CR-017). The system draws the window buttons themselves over the bar.
+ * does. The system draws the window buttons themselves over the bar.
  */
 export function onTopbarDoubleClick(event: { target: EventTarget; currentTarget: EventTarget }) {
   if (desktop && event.target === event.currentTarget) void desktop.window('maximize');

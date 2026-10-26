@@ -111,7 +111,7 @@ function setup() {
   };
 }
 
-it('[TC-WBD-024-H] reviews pinned source, deduplicates deployment and requires matching readback before success', async () => {
+it('reviews pinned source, deduplicates deployment and requires matching readback before success', async () => {
   const s = setup();
   const plan = await s.tasks.inspect('s1', { target: s.target, profileId: 'deploy' });
   expect(plan.source).toMatchObject({
@@ -145,7 +145,7 @@ it('[TC-WBD-024-H] reviews pinned source, deduplicates deployment and requires m
   expect(readFileSync(join(s.root, 'count'), 'utf8')).toBe('x');
 });
 
-it('[TC-WBD-024-N] refuses stale source/config and dirty source without consent, and rejects mismatched or unsafe results', async () => {
+it('refuses stale source/config and dirty source without consent, and rejects mismatched or unsafe results', async () => {
   const s = setup();
   let plan = await s.tasks.inspect('s1', { target: s.target, profileId: 'deploy' });
   writeFileSync(join(s.root, 'source.txt'), 'dirty');
@@ -209,7 +209,7 @@ it('[TC-WBD-024-N] refuses stale source/config and dirty source without consent,
   });
 });
 
-it('[TC-WBD-024-F] cancellation and restart keep remote outcome unknown without redeploying or accepting late results', async () => {
+it('cancellation and restart keep remote outcome unknown without redeploying or accepting late results', async () => {
   const s = setup();
   writeFileSync(
     join(s.root, 'deploy.cjs'),
@@ -249,7 +249,7 @@ it('[TC-WBD-024-F] cancellation and restart keep remote outcome unknown without 
   expect(readFileSync(join(s.root, 'count'), 'utf8')).toBe('x');
 });
 
-it('[TC-WBD-024-N] credential references stay redacted across chunks and multiline output', () => {
+it('credential references stay redacted across chunks and multiline output', () => {
   const output = new CheckOutput([], ['first-private-line\nsecond-private-line']);
   output.add('stdout', Buffer.from('first-private-'));
   output.add('stdout', Buffer.from('line\nsecond-private-line\n'));

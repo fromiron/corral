@@ -8,7 +8,7 @@ async function choose(page: Page, label: string, option: string) {
   await page.getByRole('option', { name: option, exact: true }).click();
 }
 
-test('[TC-ABS-011-H] reviewed Markdown agent import survives save/reload and is one undoable edit', async ({
+test('reviewed Markdown agent import survives save/reload and is one undoable edit', async ({
   page,
   corral,
 }, testInfo) => {
@@ -178,7 +178,7 @@ Read the supplied code and report the evidence.`);
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-ABS-011-H] Markdown Edit imports a reviewed Hashline role with parent file permissions', async ({
+test('Markdown Edit imports a reviewed Hashline role with parent file permissions', async ({
   page,
   corral,
 }) => {
@@ -218,7 +218,7 @@ Read the current file before applying a bounded edit.`);
   expect(corral.errors).toEqual([]);
 });
 
-test('[TC-ABS-011-H] Bash import inherits a verified local parent work style without trusting source metadata', async ({
+test('Bash import inherits a verified local parent work style without trusting source metadata', async ({
   page,
   corral,
 }) => {

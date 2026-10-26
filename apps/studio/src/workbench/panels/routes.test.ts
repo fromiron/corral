@@ -9,7 +9,7 @@ import {
   validateSessionSearch,
 } from './routes.ts';
 
-it('[TC-WBD-008-H] Git is a separate session pane and keeps its project/session identity', () => {
+it('Git is a separate session pane and keeps its project/session identity', () => {
   expect(validateSessionSearch({ panel: 'git' })).toEqual({ panel: 'git' });
   expect(sessionPanelDescriptor('project', 'session', 'git')).toEqual({
     kind: 'git',
@@ -18,7 +18,7 @@ it('[TC-WBD-008-H] Git is a separate session pane and keeps its project/session 
   });
 });
 
-it('[TC-WBD-007-H] composer links override remembered history without making composer focus sticky', () => {
+it('composer links override remembered history without making composer focus sticky', () => {
   const remembered = { panel: 'run', run: 'run_old', view: 'run', execution: 'old_call' };
   const compose = validateSessionSearch({ compose: true });
   expect(compose).toEqual({ compose: true });
@@ -34,7 +34,7 @@ it('[TC-WBD-007-H] composer links override remembered history without making com
   });
 });
 
-it('[TC-WBD-007-N] an explicit target in a merged widget link takes precedence over composer focus', () => {
+it('an explicit target in a merged widget link takes precedence over composer focus', () => {
   const destination = { panel: 'run', run: 'run_target', view: 'run' };
   expect(validateSessionSearch({ compose: true, ...destination })).toEqual(destination);
   expect(
@@ -54,7 +54,7 @@ it('[TC-WBD-007-N] an explicit target in a merged widget link takes precedence o
   });
 });
 
-it('[TC-WBD-005-H] existing session links and remembered views keep their current precedence', () => {
+it('existing session links and remembered views keep their current precedence', () => {
   const remembered = {
     panel: 'files',
     run: 'run_old',
@@ -83,7 +83,7 @@ it('[TC-WBD-005-H] existing session links and remembered views keep their curren
   ).toEqual({ panel: 'run', run: 'run_a', view: 'results', result: 'answer' });
 });
 
-it('[TC-WBD-005-N] settings and selection values do not become panel identity', () => {
+it('settings and selection values do not become panel identity', () => {
   const first = validateSessionSearch({
     panel: 'run',
     run: 'run_a',
@@ -108,7 +108,7 @@ it('[TC-WBD-005-N] settings and selection values do not become panel identity', 
   expect(sessionPanelDescriptor('project', 'session', undefined)).toBeNull();
 });
 
-it('[TC-WBD-005-F] existing graph, run and review validators preserve accepted values and reject invalid selectors', () => {
+it('existing graph, run and review validators preserve accepted values and reject invalid selectors', () => {
   expect(
     validateRunSearch({ execution: '', artifact: 'version', view: 'other', result: 4 }),
   ).toEqual({ execution: '', artifact: 'version' });

@@ -231,7 +231,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     });
     return { ...s, runCommand, acquireRun };
   }
-  it('[TC-ABS-001-N] cancellation does not finish before run-owned services confirm cleanup', async () => {
+  it('cancellation does not finish before run-owned services confirm cleanup', async () => {
     const stopped = new Gate();
     const stop = vi.fn(() => stopped.wait());
     const s = await commandSetup('auto', false, false, { stop });
@@ -257,7 +257,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     );
   });
 
-  it('[TC-ABS-001-N] uncertain service shutdown fails the Run instead of confirming cancellation', async () => {
+  it('uncertain service shutdown fails the Run instead of confirming cancellation', async () => {
     const s = await commandSetup('auto', false, false, {
       stop: async () => {
         throw new ToolTerminationUnconfirmed();
@@ -282,7 +282,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     );
     expect(s.events().some((event) => event.type === 'cancel.confirmed')).toBe(false);
   });
-  it('[TC-ABS-001-N] pause waits for services before declaring the safe boundary', async () => {
+  it('pause waits for services before declaring the safe boundary', async () => {
     const stopped = new Gate();
     const stop = vi.fn(() => stopped.wait());
     const s = await commandSetup('auto', false, false, { stop });
@@ -322,7 +322,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
       expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('cancelled'),
     );
   });
-  it('[TC-ABS-001-H] output success waits until its service has actually stopped', async () => {
+  it('output success waits until its service has actually stopped', async () => {
     const stopped = new Gate();
     const stop = vi.fn(() => stopped.wait());
     const s = await commandSetup('auto', false, false, { stop });
@@ -353,7 +353,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
       expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('succeeded'),
     );
   });
-  it('[TC-ABS-001-H] asks once using resolved launch identity and duplicate execution cannot spawn twice', async () => {
+  it('asks once using resolved launch identity and duplicate execution cannot spawn twice', async () => {
     const s = await commandSetup('ask');
     const auth = await s
       .host()
@@ -399,7 +399,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     expect(s.coordinator.getRunSnapshot(s.input().runId)?.permissionMode).toBe('ask');
     s.done.open();
   });
-  it('[TC-ABS-002-H] Auto runs an admitted command without extra approval', async () => {
+  it('Auto runs an admitted command without extra approval', async () => {
     const s = await commandSetup('auto');
     const auth = await s
       .host()
@@ -408,7 +408,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     expect(s.events().filter((e) => e.type === 'approval.requested')).toHaveLength(0);
     s.done.open();
   });
-  it('[TC-ABS-001-N] cancellation closes the pending launch and a late approval cannot execute it', async () => {
+  it('cancellation closes the pending launch and a late approval cannot execute it', async () => {
     const s = await commandSetup('accept_edits');
     const auth = await s
       .host()
@@ -471,7 +471,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     ['cancelled', true, true, 'failed'],
     ['uncertain', false, false, 'unknown'],
   ] as const)(
-    '[TC-ABS-001-N] cancellation preserves process %s / cleanup %s / timeout %s as %s',
+    'cancellation preserves process %s / cleanup %s / timeout %s as %s',
     async (state, cleanupConfirmed, timedOut, outcome) => {
       const s = await commandSetup('auto');
       const entered = new Gate();
@@ -528,7 +528,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
       s.done.open();
     },
   );
-  it('[TC-ABS-001-N] a Coordinator tool timeout remains failed even when process cancellation confirms cleanup', async () => {
+  it('a Coordinator tool timeout remains failed even when process cancellation confirms cleanup', async () => {
     const s = await commandSetup('auto');
     const entered = new Gate();
     s.runCommand.mockImplementation(async (_input, _plan, _approved, cancellation) => {
@@ -574,7 +574,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     ).toMatchObject({ error: 'tool timed out' });
     s.done.open();
   });
-  it('[TC-ABS-002-N] changed registration invalidates a pending command grant', async () => {
+  it('changed registration invalidates a pending command grant', async () => {
     const s = await commandSetup('ask');
     const auth = await s
       .host()
@@ -607,7 +607,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     expect(s.runCommand).not.toHaveBeenCalled();
     s.done.open();
   });
-  it('[TC-ABS-002-N] Auto cannot turn review-only or strict into command capability', async () => {
+  it('Auto cannot turn review-only or strict into command capability', async () => {
     for (const [reviewOnly, strict] of [
       [true, false],
       [false, true],
@@ -625,7 +625,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
 });
 
 describe('Coordinator harness boundary (H2)', () => {
-  it('[TC-SBX-002-N] isolated model profiles cannot launch native harnesses or host command recipes', () => {
+  it('isolated model profiles cannot launch native harnesses or host command recipes', () => {
     const native = setup(true, snapshot, { isolation: true });
     expect(native.result.runId).toBeNull();
     const command = setup(
@@ -649,7 +649,7 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(command.result.runId).toBeNull();
   });
 
-  it('[TC-HAR-003-N] simulation cannot fabricate an SDK load or provider payload record', async () => {
+  it('simulation cannot fabricate an SDK load or provider payload record', async () => {
     const s = setup();
     await s.started.wait();
     await s.host().simulateHarness!();
@@ -682,7 +682,7 @@ describe('Coordinator harness boundary (H2)', () => {
     ).toBe(false);
     s.done.open();
   });
-  it('[TC-HAR-017-N] the worker capacity is shared by distinct executions', async () => {
+  it('the worker capacity is shared by distinct executions', async () => {
     const started = new Gate(),
       childrenReady = new Gate(),
       done = new Gate();
@@ -759,7 +759,7 @@ describe('Coordinator harness boundary (H2)', () => {
     await calls[2]!.host.beginNativeTool!(calls[2]!.toolCallId, hash({ code: 'text(1)' }));
     done.open();
   });
-  it('[TC-HAR-016-N] rechecks MCP trust at dispatch and credentials only for selected owned execution', async () => {
+  it('rechecks MCP trust at dispatch and credentials only for selected owned execution', async () => {
     let trusted = true;
     const authorization = vi.fn(async () => 'fixture-token');
     const s = setup(
@@ -805,7 +805,7 @@ describe('Coordinator harness boundary (H2)', () => {
     await s.host().finishNativeTool!(call.toolCallId, 'succeeded');
     s.done.open();
   });
-  it('[TC-HAR-017-N] grants at most two codemode capacities and frees only an owned completion', async () => {
+  it('grants at most two codemode capacities and frees only an owned completion', async () => {
     const s = setup(true, { ...snapshot, resources: [], allowedTools: ['codemode'] });
     await s.started.wait();
     await s.host().reportHarness!({
@@ -827,7 +827,7 @@ describe('Coordinator harness boundary (H2)', () => {
     await s.host().beginNativeTool!(calls[2]!.toolCallId, hash({ code: 'text(1)' }));
     s.done.open();
   });
-  it('[TC-HAR-017-N] closing a parent cancels an already running nested broker call', async () => {
+  it('closing a parent cancels an already running nested broker call', async () => {
     const entered = new Gate();
     let cancelled = false;
     const files: FileTools = {
@@ -868,7 +868,7 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(await child).toMatchObject({ ok: false });
     s.done.open();
   });
-  it('[TC-HAR-017-N] nested calls require a live native parent and cannot execute after it closes', async () => {
+  it('nested calls require a live native parent and cannot execute after it closes', async () => {
     const s = await loaded();
     expect(
       await s
@@ -895,7 +895,7 @@ describe('Coordinator harness boundary (H2)', () => {
     ).rejects.toThrow();
     s.done.open();
   });
-  it('[TC-HAR-016-N] revisions dynamic descriptors and refuses old approvals, duplicate updates and unbound sources', async () => {
+  it('revisions dynamic descriptors and refuses old approvals, duplicate updates and unbound sources', async () => {
     const s = await loaded();
     const approved = await s.host().authorizeTool({ name: 'echo', args: { text: 'hello' } });
     expect(approved.ok).toBe(true);
@@ -920,7 +920,7 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(s.events().filter((e) => e.type === 'harness.tools_updated')).toHaveLength(1);
     s.done.open();
   });
-  it('[TC-HAR-003-H] pins a run-only harness layer and refuses unknown or unbound role overrides', () => {
+  it('pins a run-only harness layer and refuses unknown or unbound role overrides', () => {
     const definition = linearCorral(['writer']);
     const role = definition.roles[0]!;
     role.harness = snapshot.binding;
@@ -967,7 +967,7 @@ describe('Coordinator harness boundary (H2)', () => {
       }).receipt.error?.code,
     ).toBe('IDEMPOTENCY_CONFLICT');
   });
-  it('[TC-HAR-010-H] [TC-HAR-008-H] a selected LSP query uses the owned launch approval and cannot run without read permission', async () => {
+  it('a selected LSP query uses the owned launch approval and cannot run without read permission', async () => {
     const query = {
       serverId: 'typescript',
       path: 'source.ts',
@@ -1068,7 +1068,7 @@ describe('Coordinator harness boundary (H2)', () => {
       s.done.open();
     }
   });
-  it('[TC-HAR-012-N] one approval cannot resume a run with another pending check, and its deadline closes it', async () => {
+  it('one approval cannot resume a run with another pending check, and its deadline closes it', async () => {
     const plan: CheckPlan = {
       commandId: 'types',
       name: 'Types',
@@ -1155,7 +1155,7 @@ describe('Coordinator harness boundary (H2)', () => {
     ).toMatchObject({ decision: 'reject', reason: 'timeout' });
     s.done.open();
   });
-  it('[TC-PLAN-001-H] [TC-PLAN-001-N] [TC-HAR-012-H] a registered check waits for an exact owned approval and executes only once', async () => {
+  it('a registered check waits for an exact owned approval and executes only once', async () => {
     const plan: CheckPlan = {
       commandId: 'types',
       name: 'Types',
@@ -1318,7 +1318,7 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
   });
 
-  it('[TC-HAR-012-N] cancelling a check approval owner closes the request and rejects late approval', async () => {
+  it('cancelling a check approval owner closes the request and rejects late approval', async () => {
     const plan: CheckPlan = {
       commandId: 'types',
       name: 'Types',
@@ -1398,7 +1398,7 @@ describe('Coordinator harness boundary (H2)', () => {
     ).toBe('rejected');
     s.done.open();
   });
-  it('[TC-HAR-002-N] an admitted native effect can finish during pause without admitting another call', async () => {
+  it('an admitted native effect can finish during pause without admitting another call', async () => {
     const s = await loaded();
     const args = { text: 'approved' };
     const auth = await s.host().authorizeTool({ name: 'echo', args });
@@ -1428,7 +1428,7 @@ describe('Coordinator harness boundary (H2)', () => {
     });
     s.done.open();
   });
-  it('[TC-HAR-010-H] [TC-HAR-010-N] Pi edit/write aliases retain role file permissions and cannot modify skill resources', async () => {
+  it('Pi edit/write aliases retain role file permissions and cannot modify skill resources', async () => {
     const execute = vi.fn(async () => ({ path: 'a.txt', sha256: 'a'.repeat(64) }));
     const selected: EffectiveHarnessSnapshot = {
       ...snapshot,
@@ -1484,7 +1484,7 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
     denied.done.open();
   });
-  it('[TC-HAR-007-N] ending an execution closes its outstanding dialog before another attempt can answer', async () => {
+  it('ending an execution closes its outstanding dialog before another attempt can answer', async () => {
     const s = await loaded();
     const answer = s.host().requestExtensionUi!({
       kind: 'input',
@@ -1501,7 +1501,7 @@ describe('Coordinator harness boundary (H2)', () => {
     ]);
     expect(await answer).toEqual({ status: 'cancelled' });
   });
-  it('[TC-HAR-007-H] UI answers match the execution attempt and command replay is idempotent; bodies stay in private records', async () => {
+  it('UI answers match the execution attempt and command replay is idempotent; bodies stay in private records', async () => {
     const s = await loaded();
     const answer = s.host().requestExtensionUi!({
       kind: 'select',
@@ -1558,7 +1558,7 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
   });
 
-  it('[TC-HAR-007-N] UI timeouts and cancellation close the exact request and reject a late reply', async () => {
+  it('UI timeouts and cancellation close the exact request and reject a late reply', async () => {
     const s = await loaded();
     const timed = s.host().requestExtensionUi!({
       kind: 'confirm',
@@ -1601,7 +1601,7 @@ describe('Coordinator harness boundary (H2)', () => {
     ).toBe('rejected');
     expect(s.events().filter((e) => e.type === 'extension.ui_expired')).toHaveLength(2);
   });
-  it('[TC-HAR-005-H] [TC-HAR-005-N] read uses the skill broker and cannot read an unbound skill or worktree without role permission', async () => {
+  it('read uses the skill broker and cannot read an unbound skill or worktree without role permission', async () => {
     const selected: EffectiveHarnessSnapshot = {
       ...snapshot,
       policy: 'strict',
@@ -1646,14 +1646,14 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(outOfRange.ok).toBe(false);
     s.done.open();
   });
-  it('[TC-HAR-009-N] rejects an unresolved profile before creating a Run', () => {
+  it('rejects an unresolved profile before creating a Run', () => {
     const s = setup(false);
     expect(s.result.runId).toBeNull();
     expect(s.result.receipt.status).toBe('rejected');
     expect(s.store.listRuns()).toEqual([]);
   });
 
-  it('[TC-HAR-003-H] pins the snapshot, requires load acknowledgement and records each request with its budget reservation', async () => {
+  it('pins the snapshot, requires load acknowledgement and records each request with its budget reservation', async () => {
     const s = setup();
     await s.started.wait();
     expect(s.input().harness).toEqual(snapshot);
@@ -1682,7 +1682,7 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
   });
 
-  it('[TC-HAR-002-H] native calls record unmanaged ownership and settle once', async () => {
+  it('native calls record unmanaged ownership and settle once', async () => {
     const s = await loaded();
     const args = { text: 'private body', path: '/private/path' };
     const auth = await s.host().authorizeTool({ name: 'echo', args });
@@ -1702,7 +1702,7 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
   });
 
-  it('[TC-HAR-008-N] the harness allowlist also restricts Corral tools the role normally allows', async () => {
+  it('the harness allowlist also restricts Corral tools the role normally allows', async () => {
     const s = setup();
     await s.started.wait();
     await s.host().reportHarness!({
@@ -1721,7 +1721,7 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
   });
 
-  it('[TC-HAR-002-N] changed arguments, duplicate starts and late reports cannot execute or settle again', async () => {
+  it('changed arguments, duplicate starts and late reports cannot execute or settle again', async () => {
     const s = await loaded();
     const args = { text: 'approved' };
     const auth = await s.host().authorizeTool({ name: 'echo', args });
@@ -1743,7 +1743,7 @@ describe('Coordinator harness boundary (H2)', () => {
     s.done.open();
   });
 
-  it('[TC-HAR-003-N] rejects mismatched reports and foreign directive IDs; attaches only actual queued directives', async () => {
+  it('rejects mismatched reports and foreign directive IDs; attaches only actual queued directives', async () => {
     const s = setup();
     await s.started.wait();
     await expect(
@@ -1792,7 +1792,7 @@ describe('Coordinator harness boundary (H2)', () => {
   });
 });
 
-it('[TC-SAFE-002-H] [TC-SAFE-002-N] native permissions bind the final arguments and descriptor, deny wins, and a changed registration cannot use a grant', async () => {
+it('native permissions bind the final arguments and descriptor, deny wins, and a changed registration cannot use a grant', async () => {
   const selected: EffectiveHarnessSnapshot = {
     ...snapshot,
     permissionPolicies: [
@@ -1873,7 +1873,7 @@ it('[TC-SAFE-002-H] [TC-SAFE-002-N] native permissions bind the final arguments 
   }
 });
 
-it('[TC-SAFE-002-H] [TC-SAFE-002-N] core tools enforce path boundaries and role caps, then execute a granted call only once', async () => {
+it('core tools enforce path boundaries and role caps, then execute a granted call only once', async () => {
   const read: ToolDescriptor = { ...descriptor, name: 'read_file', source: 'corral' };
   const remove: ToolDescriptor = { ...read, name: 'delete_file' };
   const paths: unknown[] = [];
@@ -1958,7 +1958,7 @@ it('[TC-SAFE-002-H] [TC-SAFE-002-N] core tools enforce path boundaries and role 
   }
 });
 
-it('[TC-PROMPT-002-N] review-only scope refuses native startup before an execution exists', () => {
+it('review-only scope refuses native startup before an execution exists', () => {
   const s = setup(true, snapshot, { reviewOnly: true });
   expect(s.result.runId).toBeNull();
   expect(s.result.receipt.error?.code).toBe('CAPABILITY_DENIED');

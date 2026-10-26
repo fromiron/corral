@@ -87,7 +87,7 @@ const drain = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 
-it('[TC-LLM-004-H] large tool results keep a scoped immutable source that can be read in ranges', async () => {
+it('large tool results keep a scoped immutable source that can be read in ranges', async () => {
   const s = await setup('normal', 'success', '가🙂'.repeat(6000));
   try {
     s.release.open();
@@ -119,7 +119,7 @@ it('[TC-LLM-004-H] large tool results keep a scoped immutable source that can be
   }
 });
 
-it('[TC-CKPT-001-N] file recovery reserves the idle Coordinator and cannot race an active or uncertain worker', async () => {
+it('file recovery reserves the idle Coordinator and cannot race an active or uncertain worker', async () => {
   const s = await setup('normal', 'unconfirmed');
   await expect(s.coordinator.withFileRestore(async () => 'must not run')).rejects.toThrow();
   s.release.open();
@@ -157,7 +157,7 @@ it('[TC-CKPT-001-N] file recovery reserves the idle Coordinator and cannot race 
   expect(await restore).toBe('restored');
 });
 
-it('[TC-SAFE-001-H] [TC-SAFE-001-N] a core tool executes the authorized arguments once, even if its caller changes them', async () => {
+it('a core tool executes the authorized arguments once, even if its caller changes them', async () => {
   const started = new Gate(),
     done = new Gate();
   let host!: AgentHost;
@@ -226,7 +226,7 @@ it('[TC-SAFE-001-H] [TC-SAFE-001-N] a core tool executes the authorized argument
   }
 });
 
-it('[TC-HAR-012-N] unconfirmed tool process termination settles unknown and prevents another Run', async () => {
+it('unconfirmed tool process termination settles unknown and prevents another Run', async () => {
   const s = await setup('normal', 'unconfirmed');
   s.release.open();
   expect((await s.pending()).ok).toBe(false);
@@ -250,7 +250,7 @@ it('[TC-HAR-012-N] unconfirmed tool process termination settles unknown and prev
   ).toBeNull();
 });
 
-it('[TC-HAR-012-N] normal and exceptional worker endings cancel and drain an owned tool before settling the execution', async () => {
+it('normal and exceptional worker endings cancel and drain an owned tool before settling the execution', async () => {
   for (const termination of ['normal', 'error'] as const) {
     const s = await setup(termination);
     s.finish.open();
@@ -269,7 +269,7 @@ it('[TC-HAR-012-N] normal and exceptional worker endings cancel and drain an own
     ).toBe(false);
   }
 });
-it('[TC-HAR-012-N] late success and error cannot settle an already unknown effect a second time', async () => {
+it('late success and error cannot settle an already unknown effect a second time', async () => {
   for (const response of ['success', 'error'] as const) {
     const s = await setup('normal', response);
     const started = s.store.readEvents(s.runId, 0).find((e) => e.type === 'tool.started');

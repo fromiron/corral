@@ -85,7 +85,7 @@ async function setup(runProbe?: ConstructorParameters<typeof McpService>[2]['run
   };
 }
 
-it('[TC-ABS-012-N] package trust gates new owned MCP launches without changing standalone MCP trust', async () => {
+it('package trust gates new owned MCP launches without changing standalone MCP trust', async () => {
   let launches = 0;
   const s = await setup(async () => {
     launches++;

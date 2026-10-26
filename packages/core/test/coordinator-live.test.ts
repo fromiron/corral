@@ -81,8 +81,8 @@ function collect(transport: InProcessTransport, runId: string) {
   return { events, frames };
 }
 
-describe('tool authorization and execution (C-019)', () => {
-  it('[TC-SEC-001-N] a blocked tool never starts', async () => {
+describe('tool authorization and execution', () => {
+  it('a blocked tool never starts', async () => {
     const agent = new ManualAgent();
     const transport = setup(agent);
     const { runId } = await runOnce(transport);
@@ -107,7 +107,7 @@ describe('tool authorization and execution (C-019)', () => {
     expect(forTool.map((e) => e.type)).toEqual(['tool.requested', 'tool.blocked']);
   });
 
-  it('[TC-SEC-001-H] an allowed tool is requested, allowed, started and finished, once', async () => {
+  it('an allowed tool is requested, allowed, started and finished, once', async () => {
     const agent = new ManualAgent();
     const transport = setup(agent);
     const { runId } = await runOnce(transport);
@@ -138,7 +138,7 @@ describe('tool authorization and execution (C-019)', () => {
   });
 });
 
-describe('text stream frames (C-018)', () => {
+describe('text stream frames', () => {
   it('reaches live subscribers but is never stored as an event', async () => {
     const agent = new ManualAgent();
     const transport = setup(agent);
@@ -164,8 +164,8 @@ describe('text stream frames (C-018)', () => {
   });
 });
 
-describe('model profiles per run mode (C-020, C-058)', () => {
-  it('[TC-HAR-003-N] later executions use the Run model snapshot, while explicit model patches pin their own resolution', async () => {
+describe('model profiles per run mode', () => {
+  it('later executions use the Run model snapshot, while explicit model patches pin their own resolution', async () => {
     for (const patch of [false, true]) {
       let modelId = 'initial';
       const entered = new Gate(),

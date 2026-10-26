@@ -43,7 +43,7 @@ export function localRoute(value: unknown): string {
   }
 }
 
-// CR-017: what the native menu may ask the page to do. The page runs these through its own
+// what the native menu may ask the page to do. The page runs these through its own
 // command registry; nothing else crosses from the menu.
 export const DESKTOP_COMMANDS = [
   'palette',

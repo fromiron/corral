@@ -26,7 +26,7 @@ afterEach(() => {
 });
 const registration = { name: 'Build host', sshAlias: 'corral-build', port: 4319 };
 
-it('[TC-ABS-014-H] registration preserves host identity across reload and never persists bootstrap credentials', () => {
+it('registration preserves host identity across reload and never persists bootstrap credentials', () => {
   const path = join(temporary(), 'hosts.json');
   const registry = new RemoteHostRegistry(path);
   const bootstrapUrl = `http://127.0.0.1:4319/#bootstrap=${'a'.repeat(43)}`;
@@ -42,7 +42,7 @@ it('[TC-ABS-014-H] registration preserves host identity across reload and never 
   expect(new RemoteHostRegistry(path).list()).toEqual([second]);
 });
 
-it('[TC-ABS-014-N] remote pages cannot use another local service, preview listener or demo runtime', () => {
+it('remote pages cannot use another local service, preview listener or demo runtime', () => {
   const origin = 'http://127.0.0.1:4319';
   expect(remoteRequestAllowed(`${origin}/api/v1/runs`, origin, true)).toBe(true);
   expect(remoteRequestAllowed('data:image/png;base64,a', origin, true, 'image')).toBe(true);
@@ -59,7 +59,7 @@ it('[TC-ABS-014-N] remote pages cannot use another local service, preview listen
   expect(remoteRequestAllowed(`${origin}/api/v1/runs`, origin, false)).toBe(false);
 });
 
-it('[TC-ABS-014-N] an edited SSH target cannot inherit the previous host cookie namespace', () => {
+it('an edited SSH target cannot inherit the previous host cookie namespace', () => {
   const registry = new RemoteHostRegistry(join(temporary(), 'hosts.json'));
   const host = registry.register(registration);
   const first = remoteTargetFingerprint('hostname first\nuser corral\nport 22');
@@ -71,13 +71,13 @@ it('[TC-ABS-014-N] an edited SSH target cannot inherit the previous host cookie 
   expect(registry.register({ ...registration, name: 'Renamed' }).targetFingerprint).toBe(first);
 });
 
-it('[TC-ABS-014-N] corrupt registration cannot silently reassign an existing host identity', () => {
+it('corrupt registration cannot silently reassign an existing host identity', () => {
   const path = join(temporary(), 'hosts.json');
   writeFileSync(path, JSON.stringify({ version: 1, hosts: [{ ...registration, id: 'local' }] }));
   expect(() => new RemoteHostRegistry(path)).toThrow('registrations are invalid');
 });
 
-it('[TC-ABS-014-N] bootstrap must match registered loopback port and cannot carry query or navigation', () => {
+it('bootstrap must match registered loopback port and cannot carry query or navigation', () => {
   const token = 'x'.repeat(43);
   expect(remoteBootstrapUrl(`http://localhost:4319/#bootstrap=${token}`, 4319)).toBe(
     `http://127.0.0.1:4319/#bootstrap=${token}`,
@@ -92,7 +92,7 @@ it('[TC-ABS-014-N] bootstrap must match registered loopback port and cannot carr
     expect(() => remoteBootstrapUrl(url, 4319)).toThrow('registered port');
 });
 
-it('[TC-ABS-014-N] SSH accepts only a config alias and strictly pins loopback endpoints and host keys', () => {
+it('SSH accepts only a config alias and strictly pins loopback endpoints and host keys', () => {
   const config = join(temporary(), 'ssh-config');
   const host = { ...registration, id: 'host_00000000-0000-0000-0000-000000000000' };
   const args = remoteSshArgs(host, config);
@@ -115,7 +115,7 @@ it('[TC-ABS-014-N] SSH accepts only a config alias and strictly pins loopback en
 
 // Opt-in to the real installed OpenSSH client. It only contacts a closed local TCP port.
 it.runIf(process.env.CORRAL_TEST_SSH)(
-  '[TC-ABS-014-N] installed SSH refuses an occupied tunnel port and a failed local connection without fallback',
+  'installed SSH refuses an occupied tunnel port and a failed local connection without fallback',
   async () => {
     const config = join(temporary(), 'ssh-config');
     const occupied = createServer();

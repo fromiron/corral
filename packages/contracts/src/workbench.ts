@@ -98,7 +98,7 @@ export interface DocumentOperation extends WorkbenchOperation {
   result: DocumentMutationResult | null;
 }
 
-/** CR-046 P15: a development task a person starts explicitly from the copy's package scripts. */
+/** a development task a person starts explicitly from the copy's package scripts. */
 export const TaskStart = z.strictObject({
   operationId: Identifier,
   target: WorkspaceTarget,

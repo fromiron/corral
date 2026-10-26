@@ -1,9 +1,7 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, test } from '@playwright/test';
 
-test('[TC-RNS-001-N] an unsent instruction stays bound to its original execution', async ({
-  page,
-}) => {
+test('an unsent instruction stays bound to its original execution', async ({ page }) => {
   // The reviewer must still be running when the run is paused: a wide window for slow,
   // loaded runners (seen failing under a full parallel run). Assertions are unchanged.
   await page.goto('/?delay=1500');

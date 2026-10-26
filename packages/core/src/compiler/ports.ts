@@ -1,6 +1,6 @@
 import type { CorralNode, DecisionNode, SourcePort, TargetPort } from '@corral/contracts';
 
-// The single port table (specs/001-canvas/spec.md). The canvas uses it to offer and refuse
+// The single port table (docs/specs/features/canvas.md). The canvas uses it to offer and refuse
 // connections; the compiler uses it to validate them. Both must agree.
 
 export const DECISION_PORTS: Record<DecisionNode['mode'], SourcePort[]> = {
@@ -50,7 +50,7 @@ export function inputPortsOf(node: CorralNode): TargetPort[] {
 const loopOf = (node: CorralNode) => ('loopId' in node && node.loopId ? node.loopId : null);
 
 /**
- * Loop boundary rule (Spec §5.3): from outside only into "enter", from inside only into
+ * Loop boundary rule: from outside only into "enter", from inside only into
  * "repeat"/"exit"; "body" leads inside and "next" leads outside; other edges stay on one side.
  * Returns why the edge is not allowed, or null.
  */

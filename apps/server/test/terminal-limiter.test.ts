@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { InteractiveRequestLimiter, RequestLimiter } from '../src/security.ts';
 
-it('[TC-WBD-004-H] allows ordinary terminal typing without spending the general mutation budget', () => {
+it('allows ordinary terminal typing without spending the general mutation budget', () => {
   let now = 0;
   const input = new InteractiveRequestLimiter(() => now);
   const requests = new RequestLimiter(() => now);
@@ -13,7 +13,7 @@ it('[TC-WBD-004-H] allows ordinary terminal typing without spending the general 
   expect(requests.allow(true)).toBe(false);
 });
 
-it('[TC-WBD-004-N] bounds both input frames and UTF-8 bytes without an attacker-controlled key map', () => {
+it('bounds both input frames and UTF-8 bytes without an attacker-controlled key map', () => {
   let now = 0;
   const input = new InteractiveRequestLimiter(() => now);
   for (let frame = 0; frame < 120; frame++) expect(input.allow(1)).toBe(true);
