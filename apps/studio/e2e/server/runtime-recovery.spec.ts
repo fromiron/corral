@@ -1,5 +1,6 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
+import { panelTab } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('runtime continuation', () => {
@@ -51,8 +52,8 @@ test.describe('runtime continuation', () => {
       `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
     );
     await page.reload();
-    const detail = page.getByTestId('compact-run');
-    await detail.getByText('Executions', { exact: true }).click();
+    const detail = page.getByTestId('run-monitor');
+    await detail.getByRole('button', { name: 'Details', exact: true }).click();
     await detail.getByTestId('status-context').locator(':scope > summary').click();
     const recovery = detail.getByTestId('runtime-recovery');
     await expect(
@@ -83,12 +84,13 @@ test.describe('runtime continuation', () => {
     ]);
     await recovery.getByRole('button', { name: 'Continue in a new Run' }).first().click();
     await expect.poll(() => new URL(page.url()).searchParams.get('run')).not.toBe(started.runId);
-    await expect(page.getByTestId('compact-run')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
     const source = await page.evaluate(
       async (runId) => (await fetch(`/api/v1/runs/${runId}/runtime-checkpoints`)).json(),
       started.runId,
     );
     expect(source[0].blockers).toContain('already_resumed');
+    await panelTab(page, 'Conversation');
     await page
       .getByTestId('chat-timeline')
       .getByRole('button', { name: 'Branch from this message' })
@@ -107,11 +109,15 @@ test.describe('runtime continuation', () => {
     await expect
       .poll(() => new URL(page.url()).pathname)
       .not.toBe(`/sessions/${started.sessionId}`);
-    await expect(page.getByTestId('compact-run')).toContainText('Succeeded');
-    await page.getByTestId('compact-run').getByText('Executions', { exact: true }).click();
+    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
+    await page
+      .getByTestId('run-monitor')
+      .getByRole('button', { name: 'Details', exact: true })
+      .click();
     await expect(
-      page.getByTestId('compact-run').getByRole('link', { name: 'Open the source Run' }),
+      page.getByTestId('run-monitor').getByRole('link', { name: 'Open the source Run' }),
     ).toBeVisible();
+    await panelTab(page, 'Conversation');
     await page
       .getByTestId('chat-timeline')
       .getByRole('button', { name: 'Branch before this request' })
@@ -125,7 +131,7 @@ test.describe('runtime continuation', () => {
       .getByRole('button', { name: 'Start a new session from here' })
       .click();
     await expect.poll(() => new URL(page.url()).pathname).not.toBe(priorSession);
-    await expect(page.getByTestId('compact-run')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
     expect(corral.errors).toEqual([]);
   });
 });

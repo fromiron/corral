@@ -8,6 +8,14 @@ import { expect, type Harness, test } from './harness.ts';
 const request = requestBox;
 const timeline = (page: Page) => page.getByTestId('chat-timeline');
 
+async function openResultsList(page: Page) {
+  const show = page.getByRole('banner').getByRole('button', { name: 'Show the panel' });
+  if (await show.isVisible()) await show.click();
+  await page.getByRole('button', { name: 'Open pane', exact: true }).first().click();
+  await page.getByRole('menuitem', { name: 'Results', exact: true }).click();
+  return page.getByRole('tabpanel', { name: 'Execution history', exact: true });
+}
+
 async function session(page: Page, corral: Harness, definition = linearCorral(['writer'])) {
   await corral.open('/');
   await page.getByRole('tab', { name: /^Teams/ }).click();
@@ -156,8 +164,7 @@ test.describe('long multi-agent output', () => {
       content: e.scrollWidth,
     }));
     expect(bounds.content).toBeLessThanOrEqual(bounds.width);
-    await panelTab(page, 'Results');
-    const panel = page.getByRole('tabpanel', { name: 'Results', exact: true });
+    const panel = await openResultsList(page);
     await expect(panel).toContainText('Partial results');
     for (const artifact of Object.values(projection.artifacts))
       await expect(
@@ -171,7 +178,8 @@ test.describe('long multi-agent output', () => {
     // A failed reload must not claim that completed work has no artifacts.
     await page.getByRole('tab', { name: 'Files', exact: true }).click();
     await page.route('**/api/v1/runs/*/snapshot', (route) => route.abort());
-    await page.getByRole('tab', { name: 'Results', exact: true }).click();
+    await openResultsList(page);
+    await page.reload();
     await expect(panel.getByRole('alert')).toBeVisible();
     await expect(panel.getByText('No results yet.')).toHaveCount(0);
     await page.unroute('**/api/v1/runs/*/snapshot');
@@ -196,8 +204,7 @@ test('UX-015-04 older results remain reachable after ten runs', async ({ page, c
     if (index === 0) firstRun = corral.server.coordinator.listRuns()[0]?.runId as string;
     await expect(page.getByRole('combobox', { name: 'What this is' })).toContainText('Follow-up');
   }
-  await panelTab(page, 'Results');
-  const panel = page.getByRole('tabpanel', { name: 'Results', exact: true });
+  const panel = await openResultsList(page);
   await expect(panel.getByRole('button').filter({ hasText: firstRun })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Show 1 earlier runs' }).click();
   await expect(panel.getByRole('button').filter({ hasText: firstRun })).toHaveCount(1);
@@ -216,7 +223,7 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   // the dock exposes the request; the execution panel owns the one response form.
   await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 15000 });
   await page.getByTestId('action-required').getByRole('link').click();
-  const observer = page.getByRole('tabpanel', { name: 'Execution', exact: true });
+  const observer = page.getByTestId('run-monitor');
   const decision = observer
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: 'Your decision' });
@@ -228,17 +235,22 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   ).toBeVisible();
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(sessionUrl);
-  await expect(page.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
+  await expect(
+    observer.getByRole('region', { name: 'draft · Version 2', exact: true }),
+  ).toBeVisible();
   await observer.getByRole('button', { name: 'review v2', exact: true }).click();
   await expect(
     observer.getByRole('region', { name: 'review · Version 2', exact: true }),
   ).toBeVisible();
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
-  await expect(observer.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
+  await expect(
+    observer.getByRole('region', { name: 'draft · Version 2', exact: true }),
+  ).toBeVisible();
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
   const final = observer.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
+  await panelTab(page, 'Conversation');
   await expect(timeline(page).getByText('Succeeded').first()).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

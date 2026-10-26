@@ -575,7 +575,7 @@ function WorkSessionPage() {
                   if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
                 }}
                 controls={
-                  active ? (
+                  active && panel !== 'run' ? (
                     <DockRunControls
                       key={active.runId}
                       runId={active.runId}
@@ -1072,7 +1072,7 @@ function RunPanel({
   const runId = search.run ?? runs.at(-1)?.runId;
   if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
         <Select
           label={tw('chooseRun')}
@@ -1101,11 +1101,10 @@ function RunPanel({
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
           embedded
-          compact
           search={{
             execution: search.execution,
             artifact: search.artifact,
-            view: search.view,
+            view: search.view ?? (search.result ? 'results' : 'run'),
             result: search.result,
           }}
           setSearch={(patch) => setSearch({ run: runId, ...patch })}

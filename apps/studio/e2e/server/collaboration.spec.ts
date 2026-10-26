@@ -23,8 +23,8 @@ test('one run shows two delegated helpers and a question answered by a new respo
 
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  // a finished run opens on its results; these checks are about the run view.
-  await page.getByRole('tab', { name: 'Execution', exact: true }).click();
+  const monitor = page.getByTestId('run-monitor');
+  await monitor.getByRole('button', { name: 'Executions', exact: true }).click();
 
   // Two helper executions nested under Research in the call tree.
   const research = page.locator('[data-execution-id]').filter({ hasText: 'Research ·' }).first();
@@ -33,8 +33,8 @@ test('one run shows two delegated helpers and a question answered by a new respo
   ).toHaveCount(2);
 
   // The question: from the Writer to a responder execution of its own, answered.
-  const details = page.getByRole('tablist', { name: 'Run details' });
-  await details.getByRole('tab', { name: 'Questions' }).click();
+  await monitor.getByRole('button', { name: 'Details', exact: true }).click();
+  const details = monitor.getByRole('tabpanel', { name: 'Overview', exact: true });
   const question = page.locator('[data-testid^="question-"]');
   await expect(question).toHaveCount(1);
   await expect(question).toContainText('Writer');
@@ -44,7 +44,7 @@ test('one run shows two delegated helpers and a question answered by a new respo
   await expect(page.locator(href ?? '#none')).toContainText('Source Responder');
 
   // A helper's submitted version opens from the Task Board, rendered safely.
-  await details.getByRole('tab', { name: 'Tasks' }).click();
+  await expect(details.getByRole('region', { name: 'Tasks', exact: true })).toBeVisible();
   const helperTask = page
     .locator('[data-testid^="task-"]')
     .filter({ hasText: 'Research Helper' })

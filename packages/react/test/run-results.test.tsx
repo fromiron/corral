@@ -190,6 +190,17 @@ describe('RunResults view', () => {
     expect(onSelect).toHaveBeenCalledWith('v_c');
   });
 
+  it('reports an unknown explicit result instead of showing the default result', () => {
+    const onSelect = vi.fn();
+    wrap(<RunResults session={finalThree()} selectedId="missing_result" onSelect={onSelect} />);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'missing_result is not a result of this run.',
+    );
+    expect(screen.queryByTestId('result-body')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /report v1/ }));
+    expect(onSelect).toHaveBeenCalledWith('v_a');
+  });
+
   it('separates run, review and submission without inventing file-work evidence', async () => {
     wrap(<RunResults session={finalThree()} selectedId="v_a" onSelect={vi.fn()} />);
     const states = screen.getByRole('list', { name: 'Result state' });

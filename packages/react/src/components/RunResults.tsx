@@ -45,15 +45,13 @@ export function RunResults({
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
 }) {
   const t = useTranslations('Results');
+  const targetText = useTranslations('RunPage');
   const projection = useStore(session, (s) => s.projection);
   const results = useMemo(() => (projection ? runResults(projection) : null), [projection]);
   if (!projection || !results) return null;
 
   const all = [...results.final, ...results.intermediate.flatMap((g) => g.versions)];
-  const chosen =
-    all.find((r) => r.artifactVersionId === selectedId) ??
-    all.find((r) => r.artifactVersionId === results.defaultId) ??
-    null;
+  const chosen = all.find((r) => r.artifactVersionId === (selectedId ?? results.defaultId)) ?? null;
 
   return (
     // UX-03: one column until the results have room for a list beside the text, measured on
@@ -132,6 +130,10 @@ export function RunResults({
             {...(previewUrl ? { previewUrl } : {})}
             {...(onStartFrom ? { onStartFrom } : {})}
           />
+        ) : selectedId !== null ? (
+          <p role="alert" className="p-3 text-sm text-warning">
+            {targetText('resultMissing', { result: selectedId })}
+          </p>
         ) : null}
       </div>
     </div>

@@ -277,40 +277,57 @@
   }
 }
 
-/* Run page: graph in the middle, call tree beside it, details docked below, and the
-   selected item's context on the right. Below 1280px the tree moves under the graph. */
+/* The Run monitor follows its own container, including the project file viewer. */
 .run-layout {
   display: grid;
-  min-height: 0;
-  grid-template-columns: 18rem minmax(0, 1fr) 22rem;
-  grid-template-rows: minmax(0, 1fr) 15rem;
-  grid-template-areas:
-    "tree canvas side"
-    "dock dock side";
+  grid-template-columns: 18rem minmax(0, 1fr);
 }
-
+.run-layout[data-details="true"] {
+  grid-template-columns: 18rem minmax(0, 1fr) 22rem;
+}
+.run-layout[data-details="false"] > .run-side {
+  display: none;
+}
 @container (max-width: 1279px) {
-  .run-layout {
+  .run-layout,
+  .run-layout[data-details="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .run-layout[data-details="true"],
+  .run-layout[data-panel="tree"] {
     grid-template-columns: minmax(0, 1fr) 20rem;
-    grid-template-rows: minmax(14rem, 1fr) 9rem 13rem;
-    grid-template-areas:
-      "canvas side"
-      "tree side"
-      "dock side";
+  }
+  .run-tree {
+    display: none;
+  }
+  .run-center {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .run-layout[data-panel="tree"] > .run-tree {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .run-layout[data-panel="tree"] > .run-side {
+    display: none;
   }
 }
-/* Phones, split screens and the side panel: one panel at a time, chosen
-   above. Measured on the run view's own width, not the window's. */
 @container (max-width: 767px) {
-  .run-layout {
+  .run-layout,
+  .run-layout[data-details="true"],
+  .run-layout[data-panel="tree"] {
     display: flex;
     flex-direction: column;
   }
   .run-layout > * {
     flex: 1 1 auto;
-    min-height: 0;
-    border-left-width: 0;
-    border-right-width: 0;
+    border: 0;
+  }
+  .run-layout[data-panel="canvas"] > .run-side,
+  .run-layout[data-panel="tree"] > .run-center,
+  .run-layout[data-panel="side"] > .run-center {
+    display: none;
   }
 }
 /* room for the window buttons the system draws over the top bar (Window Controls
