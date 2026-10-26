@@ -13,7 +13,7 @@ export default defineConfig({
     {
       name: 'chromium',
       testIgnore: ['server/**', 'performance/**'],
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
     {
       name: 'firefox',
@@ -23,12 +23,12 @@ export default defineConfig({
         'palette.spec.ts',
         'run-page-narrow.spec.ts',
       ],
-      use: { ...devices['Desktop Firefox'] },
+      use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } },
     },
     {
       name: 'server',
       testMatch: 'server/**/*.spec.ts',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
   ],
   webServer: {
