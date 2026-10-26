@@ -12,6 +12,7 @@ import {
   KitCardTitle,
   Select,
 } from '../design-kit/index.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
 
@@ -30,8 +31,8 @@ function kindOf(event: RunEvent): string {
 
 export function Timeline({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Timeline');
-  const events = useStore(session, (s) => s.events);
-  const executionViews = useStore(session, (s) => s.projection?.executions);
+  const events = useRunDisplay(session, (s) => s.events);
+  const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
   const definition = useStore(session, (s) => s.definition);
   const nodeLabel = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;

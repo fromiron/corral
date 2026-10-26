@@ -12,6 +12,7 @@ import {
   KitCardTitle,
 } from '../design-kit/index.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 
 /** `prices`: list prices per model (the local server's catalog); without them, no estimate. */
@@ -25,7 +26,7 @@ export function BudgetInspector({
   const t = useTranslations('Budget');
   const format = useFormatter();
   const headingId = useId();
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   if (!projection || !definition) return null;
   const { budget } = projection;

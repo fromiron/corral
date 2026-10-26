@@ -5,6 +5,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button } from '../design-kit/index.ts';
 import type { ModelPrices } from '../run/cost.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
@@ -28,13 +29,13 @@ export function RunView({
   prices?: ModelPrices | undefined;
 }) {
   const t = useTranslations('Run');
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   const startError = useStore(session, (s) => s.startError);
   const definitionError = useStore(session, (s) => s.definitionError);
   const streamError = useStore(session, (s) => s.streamError);
-  const streams = useStore(session, (s) => s.streams);
-  const simulatedHarness = useStore(session, (s) =>
+  const streams = useRunDisplay(session, (s) => s.streams);
+  const simulatedHarness = useRunDisplay(session, (s) =>
     s.events.some((event) => event.type === 'harness.simulated'),
   );
   const labelOf = (nodeId: string) =>
@@ -127,14 +128,18 @@ export function RunOutput({
 }) {
   const t = useTranslations('Run');
   const tr = useTranslations('Results');
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const finals = (projection?.output?.artifactVersionIds ?? []).flatMap(
     (id) => projection?.artifacts[id] ?? [],
   );
-  const outputText = useStore(session, (s) => s.outputText);
+  const loadedOutputText = useStore(session, (s) => s.outputText);
   const runId = useStore(session, (s) => s.runId);
-  const resultId = useStore(session, (s) => s.projection?.output?.artifactVersionIds[0] ?? null);
-  const result = useStore(session, (s) =>
+  const resultId = useRunDisplay(
+    session,
+    (s) => s.projection?.output?.artifactVersionIds[0] ?? null,
+  );
+  const outputText = resultId ? loadedOutputText : null;
+  const result = useRunDisplay(session, (s) =>
     resultId ? s.projection?.artifacts[resultId] : undefined,
   );
   return (
@@ -208,9 +213,9 @@ export function ExecutionTree({
   compact?: boolean;
 }) {
   const t = useTranslations('Run');
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
-  const streams = useStore(session, (s) => s.streams);
+  const streams = useRunDisplay(session, (s) => s.streams);
   if (!projection) return null;
   if (projection.executionOrder.length === 0)
     return <p className="text-xs text-muted-foreground">{t('noExecutions')}</p>;

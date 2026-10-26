@@ -1,6 +1,7 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button } from '../design-kit/index.ts';
+import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
@@ -17,7 +18,7 @@ export function QuestionsPanel({
   onOpenArtifact: (artifactVersionId: string) => void;
 }) {
   const t = useTranslations('Questions');
-  const projection = useStore(session, (s) => s.projection);
+  const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
