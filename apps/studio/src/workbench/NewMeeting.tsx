@@ -83,7 +83,9 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
   const participants = draftParticipants.map((item, index) => {
     const modelProfile = item.modelProfile || pick(index);
     const label = profiles?.find((profile) => profile.profileId === modelProfile)?.label;
-    const base = (label || modelProfile || t('participantName', { number: index + 1 })).trim();
+    const base = (
+      label && label !== modelProfile ? label : t('participantDefault', { number: index + 1 })
+    ).trim();
     let name = item.name ?? base.slice(0, 40);
     if (item.name === null) {
       for (let duplicate = 2; usedNames.has(name.toLowerCase()); duplicate++) {

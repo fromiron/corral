@@ -4009,6 +4009,12 @@
     "selectFrame": "식을 평가하려면 호출 스택에서 프레임을 선택하세요."
   },
   "Meetings": {
+    "participantDefault": "참가자 {number}",
+    "clearDraft": "초안 지우기",
+    "summaryFailed": "비서가 회의록을 정리하지 못했습니다. 다시 요청한 뒤 결정을 검토·채택하세요.",
+    "retrySummary": "회의록 다시 요청",
+    "handoffNeedsMinutes": "아직 넘길 결정이 없습니다. 비서에게 계획을 요청하고 제안을 검토·채택하세요.",
+    "handoffNeedsAdoption": "회의록에서 제안을 검토·채택하면 작업으로 넘길 수 있습니다.",
     "heading": "회의",
     "new": "새 회의",
     "newTitle": "새 회의 만들기",

@@ -137,7 +137,10 @@ it('development roles are explicit and stay editable', async () => {
 });
 
 it('changing models updates only automatic names', async () => {
-  const f = await mount([profile('first'), profile('second')]);
+  const f = await mount([
+    { ...profile('first'), label: 'First model' },
+    { ...profile('second'), label: 'Second model' },
+  ]);
   const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input')];
   const models = [...f.container.querySelectorAll<HTMLSelectElement>('fieldset select')];
   await act(async () => {
@@ -152,7 +155,11 @@ it('changing models updates only automatic names', async () => {
     models[1]!.dispatchEvent(new Event('change', { bubbles: true }));
   });
   const meeting = await submit(f);
-  expect(meeting?.participants.map((item) => item.name)).toEqual(['second', 'Partner', 'first']);
+  expect(meeting?.participants.map((item) => item.name)).toEqual([
+    'Second model',
+    'Partner',
+    'First model',
+  ]);
 });
 
 it('repeated long model labels fit the distinct participant name contract', async () => {
@@ -210,4 +217,24 @@ it('unavailable roles remain visible until the person removes them before creati
   const meeting = f.createSession.mock.calls[0]?.[0].meeting;
   expect(meeting?.participants).toHaveLength(2);
   expect(meeting?.participants.every((item) => item.modelProfile === 'ready')).toBe(true);
+});
+
+it('uses readable numbered participant names for simulated models', async () => {
+  const f = await mount(null, false);
+  const meeting = await submit(f);
+  expect(meeting?.participants.map((item) => item.name)).toEqual([
+    'participantDefault1',
+    'participantDefault2',
+    'participantDefault3',
+  ]);
+  expect(meeting?.participants.every((item) => item.prompt === '')).toBe(true);
+});
+
+it('does not use an internal profile ID as a participant display name', async () => {
+  const f = await mount([profile('internal_profile_id')]);
+  expect((await submit(f))?.participants.map((item) => item.name)).toEqual([
+    'participantDefault1',
+    'participantDefault2',
+    'participantDefault3',
+  ]);
 });

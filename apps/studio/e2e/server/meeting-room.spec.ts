@@ -1,6 +1,6 @@
 import type { MeetingHandoffReceipt, MeetingView } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
-import { Gate } from '@corral/testkit';
+import { Gate, simulatedReply } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
@@ -187,10 +187,10 @@ test.describe('general chat', () => {
           });
         }
         if (latest === 'What should I eat for dinner?')
-          return input.role.name === 'model-a'
+          return input.role.name === 'Participant 1'
             ? 'I would have kimchi stew.'
             : 'I would have potato soup.';
-        if (latest === '@model-b Why potato soup?') {
+        if (latest === '@Participant 2 Why potato soup?') {
           if (
             !brief.includes('I would have kimchi stew.') ||
             !brief.includes('I would have potato soup.')
@@ -204,7 +204,7 @@ test.describe('general chat', () => {
             !brief.includes('Potato soup is filling and easy to share.')
           )
             throw new Error('The preference must follow the earlier question and explanation.');
-          return input.role.name === 'model-a'
+          return input.role.name === 'Participant 1'
             ? 'Then I would choose tofu soup.'
             : 'I would switch to a light vegetable soup.';
         }
@@ -219,22 +219,22 @@ test.describe('general chat', () => {
     await corral.open('/');
     const id = await createMeeting(page, corral, false);
     expect((await meeting(page, id)).config.participants).toMatchObject([
-      { name: 'model-a', prompt: '', modelProfile: 'model-a' },
-      { name: 'model-b', prompt: '', modelProfile: 'model-b' },
+      { name: 'Participant 1', prompt: '', modelProfile: 'model-a' },
+      { name: 'Participant 2', prompt: '', modelProfile: 'model-b' },
     ]);
     const conversation = page.getByTestId('chat-timeline');
     await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /round|rebuttal/i })).toHaveCount(0);
     await send(page, 'What should I eat for dinner?');
     await finishReplies(page, id, 0);
-    await expect(conversation.getByRole('article', { name: 'model-a', exact: true })).toContainText(
-      'I would have kimchi stew.',
-    );
-    await expect(conversation.getByRole('article', { name: 'model-b', exact: true })).toContainText(
-      'I would have potato soup.',
-    );
+    await expect(
+      conversation.getByRole('article', { name: 'Participant 1', exact: true }),
+    ).toContainText('I would have kimchi stew.');
+    await expect(
+      conversation.getByRole('article', { name: 'Participant 2', exact: true }),
+    ).toContainText('I would have potato soup.');
 
-    await send(page, '@model-b Why potato soup?');
+    await send(page, '@Participant 2 Why potato soup?');
     await finishReplies(page, id, 1);
     await expect(conversation.getByRole('article')).toHaveCount(3);
     await expect(conversation.getByRole('article').last()).toContainText(
@@ -244,10 +244,10 @@ test.describe('general chat', () => {
     await send(page, 'I want something light today.');
     await finishReplies(page, id, 2);
     await expect(
-      conversation.getByRole('article', { name: 'model-a', exact: true }).last(),
+      conversation.getByRole('article', { name: 'Participant 1', exact: true }).last(),
     ).toContainText('Then I would choose tofu soup.');
     await expect(
-      conversation.getByRole('article', { name: 'model-b', exact: true }).last(),
+      conversation.getByRole('article', { name: 'Participant 2', exact: true }).last(),
     ).toContainText('I would switch to a light vegetable soup.');
     await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
     await expect(conversation.getByRole('article', { name: 'Secretary', exact: true })).toHaveCount(
@@ -453,4 +453,113 @@ test('handoffs preserve existing input and start work only when requested', asyn
   expect(discussion).toContain(`Artifact: ${started.result?.artifactVersionId}`);
   expect(discussion).toContain('Keep one service and preserve the API.');
   expect(corral.errors).toEqual([]);
+});
+
+test('unsent meeting drafts survive navigation, reload and closing their tab', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+  const workUrl = page.url();
+  await requestBox(page).fill('Keep the work draft too');
+  const id = await createMeeting(page, corral, false);
+  const meetingUrl = page.url();
+  const box = page.getByRole('textbox', { name: 'Meeting message', exact: true });
+  await box.fill('Meeting draft with exact punctuation!');
+  await page.getByRole('button', { name: '@Participant 2', exact: true }).click();
+  await page.goto(workUrl);
+  await expect(requestBox(page)).toHaveValue('Keep the work draft too');
+  await page.goto(meetingUrl);
+  await expect(box).toHaveValue('Meeting draft with exact punctuation!');
+  await page.reload();
+  await expect(box).toHaveValue('Meeting draft with exact punctuation!');
+  await expect(page.getByRole('button', { name: '@Participant 2', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  const second = await page.context().newPage();
+  await second.goto(meetingUrl);
+  await second
+    .getByRole('textbox', { name: 'Meeting message', exact: true })
+    .fill('Saved before closing this tab');
+  await second.close();
+  await page.reload();
+  await expect(box).toHaveValue('Saved before closing this tab');
+  await page.getByRole('button', { name: 'Clear draft', exact: true }).click();
+  await page.reload();
+  await expect(box).toHaveValue('');
+  expect((await meeting(page, id)).rounds).toHaveLength(0);
+  expect(corral.errors).toEqual([]);
+});
+
+test.describe('default simulation', () => {
+  test.use({ agentReply: { reply: simulatedReply } });
+  test('supports minutes, adoption and handoff without exposing diagnostic input dumps', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/');
+    const id = await createMeeting(page, corral, false);
+    await send(page, 'Try a meeting handoff');
+    await finishReplies(page, id, 0);
+    await expect(page.getByTestId('chat-timeline')).toContainText('Simulated response');
+    await expect(page.getByTestId('chat-timeline')).not.toContainText('brief@run_input');
+    await page.getByRole('button', { name: 'Ask secretary for a plan', exact: true }).click();
+    await finishReplies(page, id, 1);
+    await expect
+      .poll(async () => (await meeting(page, id)).minutes?.[0]?.document?.candidates.length)
+      .toBe(1);
+    await page
+      .getByRole('button', { name: 'Review minutes and plan', exact: true })
+      .first()
+      .click();
+    await page.getByRole('button', { name: 'Review and adopt', exact: true }).click();
+    await page.getByRole('button', { name: 'Adopt decision', exact: true }).click();
+    await expect.poll(async () => (await meeting(page, id)).decisions?.length).toBe(1);
+    await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
+    await page
+      .getByRole('textbox', { name: 'New session name', exact: true })
+      .fill('Simulation handoff');
+    await page.getByRole('button', { name: 'Hand off as draft', exact: true }).click();
+    await expect
+      .poll(async () => {
+        const response = await page.request.get(
+          `${corral.server.url}/api/v1/sessions/${id}/meeting-handoffs`,
+        );
+        return (await response.json()).handoffs[0]?.state;
+      })
+      .toBe('drafted');
+    await page.screenshot({ path: test.info().outputPath('simulation-meeting-handoff.png') });
+    expect(corral.errors).toEqual([]);
+  });
+});
+
+test.describe('secretary failure', () => {
+  test.use({ agentReply: { reply: () => 'Invalid structured minutes' } });
+  test('shows one visible failure and retries while records remain collapsed', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/');
+    const id = await createMeeting(page, corral, false);
+    await send(page, 'Discuss an example');
+    await finishReplies(page, id, 0);
+    await page.getByRole('button', { name: 'Ask secretary for a plan', exact: true }).click();
+    await finishReplies(page, id, 1);
+    const recovery = page
+      .getByRole('alert')
+      .filter({ hasText: 'The secretary could not prepare the minutes.' });
+    await expect(recovery).toBeVisible();
+    await expect(
+      page.getByRole('group', { name: 'Minutes, plan and handoff' }),
+    ).not.toHaveAttribute('open');
+    await page.getByRole('button', { name: 'Request minutes again', exact: true }).click();
+    await finishReplies(page, id, 2);
+    await expect(recovery).toHaveCount(1);
+    await expect(recovery).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('meeting-minutes-failure.png') });
+    expect(corral.errors).toEqual([]);
+  });
 });
