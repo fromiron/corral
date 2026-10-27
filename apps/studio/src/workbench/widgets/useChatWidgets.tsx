@@ -16,6 +16,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../../pages/Workbench.tsx';
@@ -47,6 +48,7 @@ import {
 export interface ChatWidgetModel {
   sessionId: string;
   runId: string | null;
+  runNumber: number | null;
   live: boolean;
   /** The finished run on screen and its place among the session's runs. */
   viewed: ReturnType<typeof viewedRun>;
@@ -395,10 +397,26 @@ function useChatWidgetState(
     })),
   );
   const currentTool = tools.find((row) => row.tone === 'running') ?? null;
+  const resultText = useTranslations('Results');
   const listed = projection ? runResults(projection) : null;
   const resultItems = (
     listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? [])
-  ).map((item) => ({ id: item.artifactVersionId, label: `${item.name} v${item.version}` }));
+  ).map((item) => {
+    const nodeId = projection?.executions[item.authorExecutionId]?.nodeId;
+    const author = view?.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+    return {
+      id: item.artifactVersionId,
+      label: [
+        `${item.name} v${item.version}`,
+        author,
+        item.authorExecutionNumber
+          ? resultText('authorExecution', { number: item.authorExecutionNumber })
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    };
+  });
   useEffect(() => {
     if (!presentationRunId || !live || projection?.endedAt) return;
     const timer = setInterval(() => setNow(new Date().toISOString()), 1000);
@@ -451,6 +469,7 @@ function useChatWidgetState(
     sessionId,
     runId: presentationRunId,
     live,
+    runNumber: presentationRunId ? runIds.indexOf(presentationRunId) + 1 || null : null,
     viewed: viewedRun({ runIds, presentationRunId, live }),
     simulated: Boolean(simulated),
     readState,

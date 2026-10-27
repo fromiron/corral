@@ -1,7 +1,63 @@
 import type { Page } from '@playwright/test';
+import { requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
+
+test('selected-run usage and unique result identities survive reload without changing session totals', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  for (const [index, text] of ['First scope check', 'Second scope check'].entries()) {
+    await requestBox(page).fill(text);
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.getByTestId('composer-stats')).toContainText(
+      text.startsWith('First') ? '1 turn' : '2 turns',
+    );
+    await expect(
+      page.getByRole('link', { name: `Succeeded Last run · Run #${index + 1}`, exact: true }),
+    ).toBeVisible();
+  }
+  const totals = await page.getByTestId('composer-stats').locator('summary').innerText();
+  expect(totals).toContain('Session total');
+  const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
+  await picker.click();
+  await page.getByRole('option', { name: /Run #1/ }).click();
+  await expect(page.getByRole('link', { name: /Selected run · Run #1 of 2/ })).toBeVisible();
+  await page.reload();
+  await expect(picker).toContainText('Run #1');
+  await expect(page.getByTestId('composer-stats').locator('summary')).toHaveText(totals);
+  await page.getByTestId('session-summary-trigger').click();
+  const overview = page.getByTestId('session-summary-popup');
+  await expect(overview.getByTestId('overview-run-scope')).toHaveText('Selected run · Run #1');
+  const first = [...corral.server.coordinator.listRuns()].reverse()[0];
+  if (!first) throw new Error('The first run is missing');
+  const { projection } = corral.server.coordinator.getSnapshot(first.runId);
+  await expect(overview.locator('[data-overview-widget="usage"]')).toContainText(
+    projection.budget.spent.toLocaleString('en-US'),
+  );
+  await overview.getByRole('button', { name: 'Open Usage details' }).click();
+  await expect(page.getByTestId('usage-detail')).toContainText('Settled output tokens');
+  await expect(page.getByTestId('usage-detail')).toContainText('Simulation usage');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await requestBox(page).fill('@');
+  const results = page
+    .getByRole('listbox', { name: 'References' })
+    .getByRole('group', { name: 'Results' });
+  await expect(results.getByRole('option').first()).toContainText('Run #2');
+  const names = await results.getByRole('option').allTextContents();
+  expect(new Set(names).size).toBe(names.length);
+  await expect(
+    results.getByRole('option', { name: /Run #2 · Helper · execution 2/ }),
+  ).toBeVisible();
+  await expect(
+    results.getByRole('option', { name: /Run #2 · Helper · execution 3/ }),
+  ).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
 
 function handle(page: Page, nodeId: string, port: string) {
   return page.locator(
@@ -84,7 +140,7 @@ test.describe('an HTML result', () => {
     expect(await page.evaluate(() => (window as unknown as { seen: unknown[] }).seen)).toEqual([]);
 
     // The source is the text as written; Studio's own page runs none of it.
-    await page.getByText('Source', { exact: true }).click();
+    await page.getByRole('radio', { name: 'Source', exact: true }).click();
     await expect(page.getByTestId('result-body').locator('pre')).toContainText('<script>');
     expect(await page.evaluate(() => document.body.dataset.ran)).toBeUndefined();
     // The harness fails the test if the tracker image was requested.
