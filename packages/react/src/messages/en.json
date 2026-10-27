@@ -1887,6 +1887,15 @@
     "densityDetailed": "Detailed activity"
   },
   "Composer": {
+    "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
+    "viewActiveRun": "View active run",
+    "destination": {
+      "next": "Send to: new run in this session · follow-up",
+      "queue": "Send to: next run in this session · queue",
+      "steer": "Send to: Run #{number} · {name} · instruction",
+      "steerUnavailable": "Instruction for {name} · target unavailable",
+      "explain": "Send to: new run about the latest result · question"
+    },
     "nextRequest": "From next request",
     "commands": "Commands",
     "references": "References",
