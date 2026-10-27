@@ -59,7 +59,11 @@ export function EditorPage() {
   const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
-      key={`${panelKey(services, { kind: 'graph', projectId: record.projectId, corralId: record.corralId })}:${record.definitionRevision}:${record.layoutRevision}`}
+      key={panelKey(services, {
+        kind: 'graph',
+        projectId: record.projectId,
+        corralId: record.corralId,
+      })}
       record={record}
       workingCopy={copy}
       startFrom={
