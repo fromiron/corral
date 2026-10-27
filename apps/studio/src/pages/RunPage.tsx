@@ -85,6 +85,7 @@ export function RunPage() {
  */
 export function RunDetail({
   runId,
+  runNumber,
   search,
   setSearch,
   embedded = false,
@@ -92,6 +93,7 @@ export function RunDetail({
 }: {
   sessionId?: string | null;
   runId: string;
+  runNumber?: number;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded?: boolean;
@@ -154,6 +156,7 @@ export function RunDetail({
   return (
     <RunWorkspace
       runId={runId}
+      runNumber={runNumber}
       key={runId}
       session={session}
       definition={definition}
@@ -203,6 +206,7 @@ const NO_STREAMS = {};
 
 function RunWorkspace({
   runId,
+  runNumber,
   session,
   sessionId,
   definition,
@@ -211,6 +215,7 @@ function RunWorkspace({
   embedded,
 }: {
   runId: string;
+  runNumber: number | undefined;
   session: RunSessionStore;
   sessionId: string | null;
   definition: CorralDefinition;
@@ -339,6 +344,16 @@ function RunWorkspace({
   const results = projection ? runResults(projection) : null;
   const selectedResultId = result ?? results?.defaultId ?? undefined;
 
+  if (history?.status === 'loading') {
+    return (
+      <section className="flex flex-col items-start gap-3 p-4" aria-busy="true">
+        <p role="status">{t('loading')}</p>
+        <Button variant="tertiary" size="compact" onClick={() => chooseSeq(undefined)}>
+          {m('latest')}
+        </Button>
+      </section>
+    );
+  }
   return (
     <RunDisplayProvider snapshot={display}>
       <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
@@ -402,11 +417,6 @@ function RunWorkspace({
               })}
             </p>
           ) : null}
-          {history?.status === 'loading' ? (
-            <p role="status" className="mt-2 text-xs text-warning">
-              {m('historyLoading', { seq: atSeq ?? 0, visible: history.projection.lastSeq })}
-            </p>
-          ) : null}
           {history?.gap ? (
             <p role="alert" className="mt-2 text-xs text-warning">
               {m('historyGap', {
@@ -438,6 +448,7 @@ function RunWorkspace({
         >
           <RunResults
             session={session}
+            runNumber={runNumber}
             selectedId={result ?? null}
             onSelect={(id) => setSearch({ view: 'results', result: id })}
             {...(previewUrl ? { previewUrl } : {})}
@@ -765,7 +776,7 @@ function RunSummary({
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
   const projection = useRunDisplay(session, (s) => s.projection);
-  const savedTeam = useSavedTeam(projection?.corralId);
+  const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -776,6 +787,7 @@ function RunSummary({
   const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
   const tasks = Object.values(projection.tasks);
   const inFlight = Object.values(projection.modelCalls).filter((c) => !c.finished).length;
+  const ended = TERMINAL_RUN_STATUSES.has(projection.status);
   const loops = definition.nodes.flatMap((node) =>
     node.type === 'loop' && projection.loopIterations[node.id]?.length
       ? [
@@ -787,7 +799,7 @@ function RunSummary({
         ]
       : [],
   );
-  const corralId = projection.corralId;
+  const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
   return (
     <section
       aria-label={t('summary')}
@@ -796,9 +808,16 @@ function RunSummary({
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           {onView ? <ViewSwitch view={view} onView={onView} /> : null}
-          <h2 className="text-base font-semibold">{definition.name}</h2>
+          <h2 className="text-base font-semibold">
+            {definition.sourceTeam
+              ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
+              : definition.name}
+          </h2>
           {!compact ? (
             <span className="font-mono text-xs text-muted-foreground">{projection.runId}</span>
+          ) : null}
+          {readOnly ? (
+            <span className="text-xs text-muted-foreground">{t('historicalStatus')}</span>
           ) : null}
           <span aria-live="polite" data-testid="run-status">
             <StatusBadge status={projection.status} />
@@ -807,7 +826,7 @@ function RunSummary({
             <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
               {t('openCorral')}
             </Link>
-          ) : corralId && savedTeam === false && !compact ? (
+          ) : corralId && !definition.sourceTeam && savedTeam === false && !compact ? (
             <span className="text-xs text-muted-foreground">{t('unsavedTeam')}</span>
           ) : null}
           {projection.startedFrom && !compact ? (
@@ -830,17 +849,28 @@ function RunSummary({
         {compact && projection.status === 'succeeded' && working.length === 0 ? null : (
           <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
             <span>
-              {working.length
-                ? t('working', { labels: working.join(', ') })
-                : compact
+              {projection.status === 'cancelling'
+                ? t('cancelling')
+                : ended
                   ? null
-                  : t('idle')}
+                  : working.length
+                    ? t('working', { labels: working.join(', ') })
+                    : inFlight || waiting || projection.status === 'paused'
+                      ? null
+                      : t('starting')}
             </span>
             {waiting ? <span>{t('waitingExecutions', { count: waiting })}</span> : null}
             {loops.map((text) => (
               <span key={text}>{text}</span>
             ))}
-            {compact && inFlight === 0 ? null : <span>{t('requests', { count: inFlight })}</span>}
+            {inFlight ? (
+              <span>
+                {t(
+                  ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests',
+                  { count: inFlight },
+                )}
+              </span>
+            ) : null}
             {compact ? null : (
               <span>
                 {t('tasks', {

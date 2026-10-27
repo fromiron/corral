@@ -28,6 +28,7 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
+import type { CorralRecord } from './repository/index.ts';
 import { draftFromPlan, planFromGoal, type TeamWording } from './team-draft.ts';
 
 // a session without a chosen team runs in auto mode. A start model picks one of the
@@ -430,7 +431,12 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
    */
   fileTools?(request: AutoStart): boolean | Promise<boolean>;
   /** a saved Corral whose roles the lead may call; null when it does not exist. */
-  corral?(corralId: string): CorralDefinition | null | Promise<CorralDefinition | null>;
+  corral?(
+    corralId: string,
+  ):
+    | Pick<CorralRecord, 'definition' | 'definitionRevision'>
+    | null
+    | Promise<Pick<CorralRecord, 'definition' | 'definitionRevision'> | null>;
   /**
    * the work style a session turn uses in a trusted folder when none was chosen, so
    * the lead can run commands and previews; null leaves the turn without one.
@@ -577,6 +583,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         fileTools,
       };
       let roster: ConversationRoster | undefined;
+      let sourceTeam: CorralDefinition['sourceTeam'];
       if (request.team === 'auto') roster = autoRoster(common);
       else if (typeof request.team === 'object') {
         const corral = (await deps.corral?.(request.team.corralId)) ?? null;
@@ -591,7 +598,12 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
               error: { code: 'TARGET_NOT_FOUND', message: 'the chosen Corral no longer exists' },
             },
           };
-        roster = corralRoster(corral);
+        roster = corralRoster(corral.definition);
+        sourceTeam = {
+          corralId: request.team.corralId,
+          name: corral.definition.name,
+          revision: corral.definitionRevision,
+        };
         // A Corral role without its own work style works in the session's.
         if (harness)
           roster = {
@@ -600,6 +612,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
           };
       }
       const definition = conversationDefinition({ ...common, ...(roster ? { roster } : {}) });
+      if (sourceTeam) definition.sourceTeam = sourceTeam;
       // A saved team's roles may use other models; each must be prepared before the start.
       const profiles = [...new Set(definition.roles.map((role) => role.modelProfile))];
       let teamModels = models;

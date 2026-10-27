@@ -241,8 +241,8 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
   await expect(page.getByText('Last run').first()).toBeAttached();
   const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
   await picker.click();
-  await page.getByRole('option', { name: /First request/ }).click();
-  await expect(page.getByText('Selected run · 1 of 2').first()).toBeAttached();
+  await page.getByRole('option', { name: /Run #1/ }).click();
+  await expect(page.getByText('Selected run · Run #1 of 2').first()).toBeAttached();
   await expect(page.getByText('Last run')).toHaveCount(0);
 });
 
@@ -272,6 +272,7 @@ test('#73 a saved team keeps its edit link on the run page', async ({ page }) =>
   await teamFromTemplate(page);
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'Edit this team' }).first().click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('link', { name: 'Open execution page' }).click();
@@ -358,6 +359,7 @@ test('#77 a test run says it starts a separate run outside any conversation', as
   await teamFromTemplate(page);
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'Edit this team' }).first().click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await expect(page.getByTestId('run-scope')).toContainText('It is not added to a conversation.');
 });

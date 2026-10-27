@@ -38,7 +38,7 @@ import {
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import {
@@ -61,6 +61,7 @@ import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
 import { sessionListState } from './sessionList.ts';
 import { useModelProfiles } from './useModels.ts';
+import { useSessionAge } from './useSessionAge.ts';
 
 export function useCorralSidebar() {
   const { repository, transport, workspaces } = useServices();
@@ -187,22 +188,6 @@ export function useCorralSidebar() {
 
 const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
 
-/** "3m ago", "2h ago" in the reader's language: when a session last changed. */
-function useAgo() {
-  const locale = useLocale();
-  const format = useMemo(
-    () => new Intl.RelativeTimeFormat(locale, { style: 'narrow', numeric: 'always' }),
-    [locale],
-  );
-  return (iso: string) => {
-    const minutes = Math.round((Date.parse(iso) - Date.now()) / 60_000);
-    if (Math.abs(minutes) < 60) return format.format(Math.min(-1, minutes), 'minute');
-    const hours = Math.round(minutes / 60);
-    if (Math.abs(hours) < 24) return format.format(hours, 'hour');
-    return format.format(Math.round(hours / 24), 'day');
-  };
-}
-
 export const Sidebar = memo(function Sidebar({
   model,
 }: {
@@ -214,8 +199,8 @@ export const Sidebar = memo(function Sidebar({
   const tp = useTranslations('Projects');
   const ts = useTranslations('Sessions');
   const studio = useTranslations('Studio');
+  const ago = useSessionAge();
   const status = useTranslations('Status');
-  const ago = useAgo();
   const profiles = useModelProfiles();
   const connected = Boolean(profiles?.some((p) => p.available));
   const { repository, mode, live } = useServices();

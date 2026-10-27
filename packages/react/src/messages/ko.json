@@ -79,7 +79,7 @@
     "error": "문제가 생겼습니다: {message}",
     "serverBadge": "로컬 서버 / 시뮬레이션 에이전트",
     "serverNote": "Corral과 실행은 이 작업 공간에 저장됩니다. 에이전트는 시뮬레이션이며 모델로 아무것도 보내지 않습니다.",
-    "sessionMissing": "이 탭에는 로컬 서버 세션이 없습니다. Corral 서버가 시작할 때 출력한 링크를 여세요.",
+    "sessionMissing": "로컬 서버에 연결하세요. 서버가 재시작되면 이전 연결 인증이 만료됩니다. 터미널의 현재 시작 링크를 열거나 데스크톱 앱에서 작업 공간을 다시 여세요. 미전송 요청을 자동으로 보내지는 않습니다.",
     "navModels": "모델",
     "liveBadge": "로컬 서버 / 시뮬레이션 또는 실제 에이전트",
     "language": "언어",
@@ -253,7 +253,7 @@
     "removeCall": "{target}로의 링크 제거",
     "noCallableAgents": "에이전트를 추가하고 '호출될 때만'으로 바꾸세요.",
     "fileTools": "파일을 바꿀 수 있음",
-    "fileToolsHint": "Corral 파일 도구로 세션 작업 복사본 안에서만 파일을 읽고 씁니다. 작업 복사본이 없으면 도구는 거절됩니다.",
+    "fileToolsHint": "Corral 파일 도구로 세션 작업 사본 안에서만 파일을 읽고 씁니다. 작업 사본이 없으면 도구는 거절됩니다.",
     "teamDefaults": "이 팀의 모든 실행에 쓰는 기본값",
     "briefHint": "요청 없이 시작한 실행에서 써요. 세션에서는 보낸 요청이 지시문이 돼요.",
     "advanced": "고급",
@@ -398,7 +398,8 @@
     "requestLink": "요청 {request} · 스냅샷 {snapshot}",
     "produced": "만든 버전: {versions}",
     "receiptRun": "실행 전체 명령",
-    "receiptExecution": "실행 하나에 보낸 명령"
+    "receiptExecution": "실행 하나에 보낸 명령",
+    "cancelNotSent": "아직 취소 요청을 보내지 않았습니다. 이 실행을 중지하려면 아래에서 확인하세요."
   },
   "Status": {
     "created": "생성됨",
@@ -467,6 +468,9 @@
     "emptyHint": "아래 템플릿에서 시작하거나 빈 팀을 만들거나 JSON 파일을 가져오세요.",
     "templatesHeading": "템플릿으로 시작",
     "useTemplate": "팀 편집해서 쓰기",
+    "saveCopyTitle": "팀 사본 저장",
+    "copyName": "팀 이름",
+    "saveCopyEdit": "사본 저장하고 편집",
     "template": {
       "research-team": {
         "name": "조사 팀",
@@ -559,7 +563,11 @@
     "evidenceChecks": "검사",
     "uncertainWrite": "결과 모름",
     "evidenceCheckEarlier": "이전 기준",
-    "waitingExecutions": "실행 {count}개 대기 중"
+    "waitingExecutions": "실행 {count}개 대기 중",
+    "historicalStatus": "과거 시점 보기",
+    "starting": "실행 준비 중",
+    "cancelling": "소유 작업 취소 중",
+    "unconfirmedRequests": "모델 요청 {count}개: 종료 미확인"
   },
   "Timeline": {
     "heading": "타임라인",
@@ -1289,7 +1297,8 @@
     "unavailable": "이 결과를 불러오지 못했습니다.",
     "previewOf": "{label} 미리보기",
     "openResults": "결과 화면에서 보기",
-    "finalCount": "{count, plural, other {최종 결과 #개}}"
+    "finalCount": "{count, plural, other {최종 결과 #개}}",
+    "authorExecution": "에이전트 실행 {number}"
   },
   "Projects": {
     "defaultName": "기본 프로젝트",
@@ -1423,8 +1432,8 @@
     "autoStart": "실행이 끝나면 대기 작업을 자동으로 시작",
     "autoStartHint": "이 페이지가 열려 있고 실행이 끝나는 것을 본 뒤에만 시작합니다. 서버를 다시 시작한 뒤에는 시작하지 않습니다.",
     "preRun": "{team} · 모델 {profiles} · 파일: {files} · 호출 수: {calls} · 실행 시간(분): {minutes} · {mode}",
-    "filesCopy": "작업 복사본을 바꿀 수 있음",
-    "filesNoCopy": "도구는 켜졌지만 작업 복사본 없음",
+    "filesCopy": "작업 사본을 바꿀 수 있음",
+    "filesNoCopy": "도구는 켜졌지만 작업 사본 없음",
     "filesNone": "파일 작업 없음",
     "didFinish": "수행함",
     "didNotFinish": "못 끝냄({status}). 만든 산출물은 결과에서 볼 수 있습니다.",
@@ -1450,7 +1459,7 @@
     "runSettings": "실행 설정",
     "autoModel": "모델",
     "autoHint": "요청에 맞춰 진행합니다. 모델:",
-    "autoNotReady": "{model}이(가) 연결되지 않았습니다. 설정 › 모델에서 연결하거나 다른 모델을 고르세요.",
+    "autoNotReady": "{model}이 연결되지 않았습니다. 설정 › 모델에서 연결하세요.",
     "autoFallback": "선택 실패, 에이전트 하나로 실행",
     "autoTemplate": {
       "single": "자동 · 에이전트 하나",
@@ -1477,6 +1486,14 @@
     },
     "selectedRun": "선택한 실행",
     "unlimited": "무제한",
+    "justNow": "방금",
+    "tryDemo": "시뮬레이션 데모 체험",
+    "noWorkingCopy": "이 세션에는 작업 사본이 없어 파일을 바꿀 수 없습니다. 파일을 수정하려면 폴더를 연결하고 작업 사본을 준비하세요.",
+    "prepareWorkingCopy": "파일 작업 준비",
+    "retryRequest": "같은 요청 다시 보내기",
+    "restoreRequest": "메시지 되돌리기",
+    "resendNext": "다음 실행으로 보내기",
+    "resolvePendingBeforeRetry": "이전 요청의 접수를 먼저 확인하세요. 접수 여부가 불명확한 동안 다른 요청을 재전송할 수 없습니다.",
     "savedDetails": "입력된 정보 있음",
     "archivedSending": "메시지를 보내도 이 세션은 보관 상태를 유지합니다.",
     "restoreSession": "세션 되살리기",
@@ -1499,25 +1516,25 @@
     "pathLabel": "이 컴퓨터의 폴더 경로",
     "link": "폴더 연결",
     "unlink": "연결 해제",
-    "notGit": "Git 저장소가 아닙니다. 관측은 되지만 작업 복사본에는 Git이 필요합니다.",
+    "notGit": "Git 저장소가 아닙니다. 관측은 되지만 작업 사본에는 Git이 필요합니다.",
     "gitStatus": "{branch} · {head} · 커밋하지 않은 변경 {changed, plural, other {#개}}",
     "trust": "이 저장소를 신뢰",
-    "trustHint": "작업 복사본과 검증은 이 저장소의 Git 필터와 등록한 명령을 이 컴퓨터에서 실행합니다. 신뢰는 격리가 아닙니다. 직접 실행할 만한 코드만 신뢰하세요.",
+    "trustHint": "작업 사본과 검증은 이 저장소의 Git 필터와 등록한 명령을 이 컴퓨터에서 실행합니다. 신뢰는 격리가 아닙니다. 직접 실행할 만한 코드만 신뢰하세요.",
     "checksHeading": "검증 명령",
-    "checksHint": "셸 없이, 세션의 작업 복사본에서, 실행을 누를 때만 돕니다. 한 줄에 하나: 이름 = 명령과 인자.",
+    "checksHint": "셸 없이, 세션의 작업 사본에서, 실행을 누를 때만 돕니다. 한 줄에 하나: 이름 = 명령과 인자.",
     "saveChecks": "검증 명령 저장",
     "checksPlaceholder": "테스트 = npm t",
     "copyHeading": "세션 작업 사본",
     "copyIntro": "파일 도구를 가진 에이전트는 이 세션 전용 Git 작업 트리에서만 파일을 바꿉니다. 원본 폴더 밖입니다.",
-    "noFolder": "프로젝트 화면에서 작업 폴더를 연결하면 이 세션에 작업 복사본을 만들 수 있습니다.",
+    "noFolder": "프로젝트 화면에서 작업 폴더를 연결하면 이 세션에 작업 사본을 만들 수 있습니다.",
     "notTrusted": "먼저 프로젝트 저장소를 신뢰하세요.",
     "openTrust": "신뢰 설정 열기",
     "openFolderSettings": "폴더 및 도구 열기",
-    "create": "{head}에서 작업 복사본 만들기",
+    "create": "{head}에서 작업 사본 만들기",
     "createHint": "마지막 커밋에서 시작합니다. 폴더의 커밋하지 않은 변경 {changed, plural, other {#개}}는 들어가지 않습니다.",
-    "ready": "커밋 {commit}에서 만든 작업 복사본",
+    "ready": "커밋 {commit}에서 만든 작업 사본",
     "review": "변경 검토",
-    "remove": "작업 복사본 지우기",
+    "remove": "작업 사본 지우기",
     "removeConfirm": "사본의 파일이 지워집니다. 원본 폴더와 기록된 변경은 남습니다. 세션 보관은 사본을 지우지 않습니다.",
     "reviewHeading": "변경 검토",
     "scope": "비교 범위",
@@ -1578,11 +1595,11 @@
     "preparing": "비교 기준을 준비하는 중…",
     "ignoredNote": "Git 제외 목록(.GITIGNORE)에 든 파일은 비교하지 않습니다.",
     "folderMissing": "연결한 폴더가 {path}에 더 이상 없습니다. 다시 연결하거나 연결을 해제하세요. 기록은 남습니다.",
-    "copyMissing": "이 세션의 작업 복사본 폴더가 사라졌습니다. 여기서 지우고 새로 만드세요. 기록된 변경은 남습니다.",
+    "copyMissing": "이 세션의 작업 사본 폴더가 사라졌습니다. 여기서 지우고 새로 만드세요. 기록된 변경은 남습니다.",
     "permission": {
       "none": "권한: 파일 작업 없음",
       "observe": "권한: 폴더 관측만",
-      "copy": "권한: 작업 복사본에만 쓰기"
+      "copy": "권한: 작업 사본에만 쓰기"
     },
     "diffStopped": "비교 계산이 3초를 넘어 멈췄습니다. 원문으로 읽거나 내려받으세요.",
     "computing": "비교하는 중…",
@@ -1590,10 +1607,10 @@
     "checksServerOnly": "검증 명령은 컴퓨터에서 명령을 실행하므로 로컬 서버에서만 됩니다.",
     "chooseFolder": "폴더 선택…",
     "linkExample": "예시 폴더 연결",
-    "noCopyTitle": "이 세션에는 작업 복사본이 없어요",
-    "noCopyBody": "이 세션의 실행은 파일을 다루지 않아 비교할 파일 변경이 없어요. 결과는 결과 패널에서 볼 수 있어요. 실행이 파일을 바꾸게 하려면 먼저 작업 복사본을 만드세요.",
+    "noCopyTitle": "이 세션에는 작업 사본이 없어요",
+    "noCopyBody": "이 세션의 실행은 파일을 다루지 않아 비교할 파일 변경이 없어요. 결과는 결과 패널에서 볼 수 있어요. 실행이 파일을 바꾸게 하려면 먼저 작업 사본을 만드세요.",
     "openResults": "결과 보기",
-    "makeCopyThere": "작업 복사본 준비",
+    "makeCopyThere": "작업 사본 준비",
     "retry": "다시 시도",
     "runChangedNothing": "이 실행은 파일을 바꾸지 않았어요.",
     "nothingChanged": "바뀐 파일이 없어요.",
@@ -1709,14 +1726,15 @@
       "uncertain_write": "결과를 모르는 파일 쓰기",
       "integration": "반영이 깔끔하게 끝나지 않음({detail})",
       "check_failed": "최근 검증 실패: {detail}",
-      "unreviewed": "마지막 검토 뒤 파일 쓰기 {detail}개",
+      "unreviewed": "“작업 사본 읽음 표시” 이후 파일 쓰기 {detail}회 (승인과 별개)",
       "recipe_stopped": "검토 중단: {detail}",
       "lsp_proposal": "검토 대기 중인 언어 서버 제안 ({detail})"
     },
     "open": "열기",
     "retrySend": "같은 요청 결과 확인",
     "sendUnconfirmed": "요청 또는 기록 결과를 확인하지 못했습니다. 새로 보내기 전에 같은 요청의 결과를 확인하세요.",
-    "modelsUnavailable": "모델 연결 정보를 아직 확인하지 못했습니다. 보내기 전에 모델 설정을 확인하세요."
+    "modelsUnavailable": "모델 연결 정보를 아직 확인하지 못했습니다. 보내기 전에 모델 설정을 확인하세요.",
+    "inboxScope": "이 프로젝트의 보관하지 않은 세션에서 필요한 조치 수입니다. 한 세션에 여러 조치가 있을 수 있습니다."
   },
   "Workbench": {
     "reviewFeedback": "변경 검토 · 수정 요청",
@@ -1749,7 +1767,7 @@
     "panelTabs": "보조 패널",
     "headerTeam": "팀: {name} r{revision}",
     "noTeamHeader": "팀 없음",
-    "copyNone": "작업 복사본 없음",
+    "copyNone": "작업 사본 없음",
     "copyFrom": "복사본: {commit}",
     "idle": "실행 중인 실행 없음",
     "mode": {
@@ -1764,10 +1782,11 @@
     "openResults": "결과 보기",
     "expandReview": "검토 화면으로 확대",
     "changeCount": "{count, plural, =0 {변경 없음} other {바뀐 파일 #개}}",
-    "noCopyChanges": "작업 복사본을 만들면 여기에 파일 변경이 보입니다.",
+    "noCopyChanges": "작업 사본을 만들면 여기에 파일 변경이 보입니다.",
     "checksOnReview": "검증은 검토 화면에서 실행합니다.",
     "serverOnly": "파일 작업·변경·검증은 로컬 서버에서만 쓸 수 있습니다.",
-    "runNumber": "실행 {number}"
+    "runNumber": "실행 #{number}",
+    "sessionChangeCount": "세션 변경 · 파일 {count}개"
   },
   "Desktop": {
     "conversation": "대화",
@@ -1822,7 +1841,7 @@
     "linkToBrowse": "작업 폴더를 연결하면 파일을 탐색할 수 있습니다.",
     "fileSource": "파일 위치",
     "sourceFolder": "프로젝트 원본 폴더",
-    "sessionCopy": "세션 작업 복사본",
+    "sessionCopy": "세션 작업 사본",
     "refreshFiles": "파일 새로고침",
     "filterFiles": "파일 검색",
     "openFile": "{path} 열기",
@@ -1848,7 +1867,7 @@
     "appWorkspace": "앱 데이터 폴더",
     "appWorkspaceHint": "팀·세션 기록과 앱 데이터를 저장합니다. 프로젝트 원본 폴더와 세션 작업 사본은 별도로 관리합니다. 다른 데이터 폴더를 열어도 기존 데이터는 유지됩니다.",
     "workspaceLocation": "앱 데이터 위치 보기",
-    "gitMissing": "Git이 설치되어 있지 않습니다. 대화는 가능하며, 작업 복사본 생성과 저장소 변경 검토에는 Git이 필요합니다. 검증 명령에 필요한 도구도 별도로 설치해야 합니다.",
+    "gitMissing": "Git이 설치되어 있지 않습니다. 대화는 가능하며, 작업 사본 생성과 저장소 변경 검토에는 Git이 필요합니다. 검증 명령에 필요한 도구도 별도로 설치해야 합니다.",
     "openWorkspace": "다른 데이터 폴더 열기…",
     "revealWorkspace": "파일 관리자에서 보기",
     "toggleProject": "{name} 세션 목록 접기/펼치기",
@@ -1899,9 +1918,19 @@
     "chatDensity": "대화 표시",
     "densityResults": "결과",
     "densityBasic": "기본",
-    "densityDetailed": "상세 활동"
+    "densityDetailed": "상세 활동",
+    "developmentBuild": "개발 빌드"
   },
   "Composer": {
+    "viewingOtherRun": "실행 #{active}이 진행 중이며 지금은 실행 #{viewed}을 보고 있습니다.",
+    "viewActiveRun": "현재 실행 보기",
+    "destination": {
+      "next": "보낼 대상: 이 세션의 새 실행 · 후속 요청",
+      "queue": "보낼 대상: 이 세션의 다음 실행 · 대기열",
+      "steer": "보낼 대상: 실행 #{number} · {name} · 지시",
+      "steerUnavailable": "{name}에게 지시 · 현재 전달할 수 없음",
+      "explain": "보낼 대상: 최근 결과에 대한 새 실행 · 질문"
+    },
     "nextRequest": "다음 요청부터",
     "commands": "명령",
     "references": "참조",
@@ -2056,8 +2085,8 @@
     "unpin": "세션 고정 해제",
     "archive": "세션 보관",
     "restore": "세션 복원",
-    "makeCopy": "작업 복사본 만들기",
-    "copyExists": "이미 작업 복사본이 있어요",
+    "makeCopy": "작업 사본 만들기",
+    "copyExists": "이미 작업 사본이 있어요",
     "noFolder": "먼저 작업 폴더를 연결하세요",
     "gitCommit": "스테이지한 변경 커밋"
   },
@@ -2072,7 +2101,10 @@
     "connect": "모델 연결",
     "retry": "다시 보내기",
     "queue": "대기열로 옮기기",
-    "edit": "요청 다시 편집"
+    "edit": "요청 다시 편집",
+    "terminal": "터미널이 이 작업 사본을 사용하고 있습니다. 터미널을 열어 직접 중지한 뒤 다시 보내세요.",
+    "diagnostics": "진단 정보",
+    "openTerminal": "터미널 제어 열기"
   },
   "Harness": {
     "heading": "작업 방식",
@@ -2681,7 +2713,8 @@
     "localOnly": "파일 체크포인트는 로컬 앱에서 사용할 수 있습니다.",
     "original": "원본 폴더",
     "workingCopy": "세션 작업 사본",
-    "restoreOriginal": "원본 폴더 복구"
+    "restoreOriginal": "원본 폴더 복구",
+    "requestUnavailable": "원래 요청을 찾을 수 없음"
   },
   "RunStatus": {
     "environment": "환경",
@@ -2827,7 +2860,8 @@
     "requestOpen": "이 요청 전에서 분기",
     "requestDescription": "원래 팀과 기준으로 이 요청을 별도 세션과 Run에서 시작합니다.",
     "requestBoundary": "모델 응답이 만들어지기 전, 원래 요청의 시작 지점에서 분기합니다.",
-    "unlimited": "모델 {model} · 기본 사용량 한도 없음"
+    "unlimited": "모델 {model} · 기본 사용량 한도 없음",
+    "activeRun": "분기하려면 진행 중인 작업과 정리가 끝나야 합니다. 작업 종료를 확인한 뒤 다시 시도하세요."
   },
   "ProfileContext": {
     "contextWindow": "유효 컨텍스트",
@@ -2867,7 +2901,7 @@
     "contextRefresh": "이전 요청 기준 · 새 측정 대기",
     "simulatedNote": "시뮬레이션 수치입니다. 실제 모델 측정값이 아닙니다.",
     "lastRun": "마지막 실행",
-    "selectedRun": "선택한 실행 · {total}개 중 {number}번째",
+    "selectedRun": "선택한 실행 · 실행 #{number} / 총 {total}개",
     "selectedRunUnordered": "선택한 실행",
     "rail": "이번 실행",
     "agentsHeading": "에이전트",
@@ -2983,29 +3017,35 @@
       "agents": "에이전트",
       "environment": "환경",
       "outputTokens": "출력 토큰",
-      "calls": "호출 {max}회 중 {used}회",
-      "callsNoLimit": "호출 {used}회",
+      "calls": "모델 호출 {used}/{max}회",
+      "callsNoLimit": "모델 호출 {used}회",
       "tokenLimit": "한도 {max}",
       "unknownHeld": "확인되지 않은 {count}토큰 보류",
       "perCall": "모델 호출별 출력 토큰: {values}",
-      "files": "파일 {count}개",
+      "files": "변경 파일 {count}개",
       "linesUnknown": "줄 수를 세지 못함",
       "readError": "이 실행을 읽지 못했습니다.",
       "retry": "다시 시도",
       "openDetail": "{name} 자세히 보기",
       "openChanges": "변경사항 열기",
-      "spent": "사용",
-      "held": "보류",
-      "limit": "한도",
+      "spent": "정산된 출력 토큰",
+      "held": "보류한 출력 토큰",
+      "limit": "출력 토큰 한도",
       "noLimit": "한도 없음",
       "modelCalls": "모델 호출",
-      "inputTokens": "입력 토큰",
+      "inputTokens": "보고된 입력 토큰",
       "cachedInput": "캐시 입력",
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "보고 없음",
       "cacheUnreported": "캐시 입력을 보고하지 않은 호출 {count}회",
-      "fullBudget": "실행 열기"
-    }
+      "fullBudget": "실행 열기",
+      "runScope": "선택한 실행 · 실행 #{number}",
+      "selectedRun": "선택한 실행",
+      "usageDefinition": "이 실행의 정산된 출력 토큰과 모델 호출 수입니다. 입력은 끝난 호출이 보고한 사용량이며, 캐시 입력은 입력의 일부로 다시 더하지 않습니다.",
+      "simulatedUsage": "시뮬레이션 사용량이며 실제 제공자 측정값이나 청구액이 아닙니다."
+    },
+    "lastRunNumber": "마지막 실행 · 실행 #{number}",
+    "activityStarting": "실행 준비 중…"
   },
   "ModelImport": {
     "heading": "모델 설정 가져오기",
@@ -3302,7 +3342,7 @@
     "refresh": "터미널 새로고침",
     "shell": "셸",
     "create": "새 터미널",
-    "unavailable": "신뢰한 작업 사본과 사용 가능한 셸이 필요합니다.",
+    "unavailable": "변경 화면에서 신뢰한 폴더의 작업 사본을 먼저 만드세요. 사용 가능한 셸도 필요합니다.",
     "createPending": "터미널 생성 결과를 확인하지 못했습니다. 다른 터미널을 만들기 전에 기존 요청의 결과를 확인하세요.",
     "checkCreate": "생성 결과 확인",
     "retryCreate": "기존 생성 요청 다시 시도",
@@ -3353,7 +3393,12 @@
     "selectOutput": "첨부할 터미널 출력을 먼저 선택하세요.",
     "attachSelectionError": "선택을 첨부하지 못했습니다. 선택 크기와 연결 상태를 확인하세요.",
     "sourceStale": "터미널 출력이 변경되어 이전 선택을 복원하지 않았습니다.",
-    "sourceUnavailable": "이 터미널 출처를 현재 화면에서 열 수 없습니다."
+    "sourceUnavailable": "이 터미널 출처를 현재 화면에서 열 수 없습니다.",
+    "runActive": "실행이 끝난 뒤 새 터미널을 만드세요.",
+    "diagnostics": "진단 정보",
+    "stopped": "중지됨",
+    "stopUnconfirmed": "중지를 시도했지만 종료를 확인하지 못했습니다. 작업 사본 보호를 유지합니다. 호스트 프로세스와 진단 정보를 확인하세요. 보호를 우회하려고 작업 사본을 삭제하지 마세요.",
+    "writerBusy": "다른 작업이 이 작업 사본을 사용하고 있습니다. 해당 작업을 중지하거나 끝날 때까지 기다린 뒤 터미널을 만드세요."
   },
   "Docking": {
     "fileViewer": "파일 뷰어",
@@ -3411,7 +3456,7 @@
     "tools": "작업·미리보기",
     "activeRun": "진행 중 실행 제어",
     "openActiveRun": "진행 중 실행 열기",
-    "activeRunTarget": "진행 중: {request}",
+    "activeRunTarget": "요청: {request}",
     "activeRunNotViewed": "일시정지·중지는 지금 보고 있는 실행이 아니라 이 실행에 적용됩니다.",
     "pendingActions": "응답 대기 {count}개",
     "runDisconnected": "실행 연결이 끊겨 현재 상태를 확인할 수 없습니다.",
@@ -4020,6 +4065,12 @@
     "selectFrame": "식을 평가하려면 호출 스택에서 프레임을 선택하세요."
   },
   "Meetings": {
+    "participantDefault": "참가자 {number}",
+    "clearDraft": "초안 지우기",
+    "summaryFailed": "비서가 회의록을 정리하지 못했습니다. 다시 요청한 뒤 결정을 검토·채택하세요.",
+    "retrySummary": "회의록 다시 요청",
+    "handoffNeedsMinutes": "아직 넘길 결정이 없습니다. 비서에게 계획을 요청하고 제안을 검토·채택하세요.",
+    "handoffNeedsAdoption": "회의록에서 제안을 검토·채택하면 작업으로 넘길 수 있습니다.",
     "heading": "회의",
     "new": "새 회의",
     "newTitle": "새 회의 만들기",
@@ -4103,7 +4154,8 @@
     "evidenceLoading": "결과 불러오는 중…",
     "records": "회의록 · 플랜 · 작업 인계",
     "minutesReady": "비서가 회의록과 플랜을 정리했습니다.",
-    "viewMinutes": "회의록과 플랜 검토"
+    "viewMinutes": "회의록과 플랜 검토",
+    "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요."
   },
   "MeetingsDecisions": {
     "heading": "회의록과 결정",
@@ -4257,9 +4309,11 @@
     },
     "statTurns": "{count}턴",
     "statSteps": "{count}단계",
-    "statTokens": "{tokens} 토큰",
+    "statTokens": "보고된 토큰 {tokens}",
     "statCache": "캐시 적중 {share}",
-    "statCacheUnreported": "캐시 보고 없음"
+    "statCacheUnreported": "캐시 보고 없음",
+    "statSession": "세션 누계",
+    "statDefinition": "차례는 실행 수입니다. 단계는 주 에이전트의 도구 작업과 하위 실행 수이며 모델 호출 수와 다릅니다. 토큰은 끝난 모델 호출이 보고한 입력·출력의 합입니다. 미보고 사용량은 제외하고 캐시 입력은 다시 더하지 않습니다."
   },
   "RunMonitor": {
     "views": "실행 보기",

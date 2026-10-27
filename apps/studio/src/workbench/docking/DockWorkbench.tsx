@@ -684,7 +684,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       }
       if (narrow.current && api.activePanel) api.activePanel.api.maximize();
       refresh();
-      openContext(value === 'review' ? 'changes' : 'files');
+      openContext(value === 'review' ? 'changes' : 'files', true);
       saveLayout();
     }
     function move(panelId: string, destination: GroupName) {

@@ -60,6 +60,7 @@ export const TerminalView = z.strictObject({
   controllerGeneration: z.int().min(0),
   controller: TerminalController.nullable(),
   exitCode: z.int().nullable(),
+  stopped: z.boolean().optional(),
   error: z.string().nullable(),
 });
 export type TerminalView = z.infer<typeof TerminalView>;

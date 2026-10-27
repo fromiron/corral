@@ -740,7 +740,8 @@ export function activityLine(input: {
   const elapsedMs = input.startedAt && end ? Date.parse(end) - Date.parse(input.startedAt) : null;
   const frozen = Boolean(input.endedAt) || terminal;
   let text = 'working';
-  if (input.needsUser && !terminal) text = 'user';
+  if (['created', 'validating'].includes(input.runStatus)) text = 'starting';
+  else if (input.needsUser && !terminal) text = 'user';
   else if (input.failed || input.runStatus === 'failed') text = 'failed';
   else if (
     ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(input.runStatus)

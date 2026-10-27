@@ -43,7 +43,7 @@ import {
   settingsInteractionBlocked,
   useSettingsNavigation,
 } from './workbench/navigation.ts';
-import { changePreferences, preferences, usePreferences } from './workbench/preferences.ts';
+import { usePreferences } from './workbench/preferences.ts';
 import { SessionSearchDialog } from './workbench/SessionSearchDialog.tsx';
 import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
 
@@ -226,7 +226,6 @@ function useGlobalCommands(showHelp: () => void) {
     'extensions',
     harnessCommands(events, th('extensionNotice'), th('startupOnly')),
   );
-  const prefs = usePreferences();
   const go = t('groups.go');
   const sectionLabel = useSettingsSectionLabel();
   useRegisterCommands('global', [
@@ -243,14 +242,6 @@ function useGlobalCommands(showHelp: () => void) {
           params: { projectId: currentProject() },
           search: { newSession: true },
         }),
-    },
-    {
-      id: 'view:sidebar',
-      title: prefs.sidebarOpen ? t('hideSidebar') : t('showSidebar'),
-      group: t('groups.view'),
-      shortcutId: 'view.sidebar',
-      shortcut: shortcutLabel('view.sidebar'),
-      run: () => changePreferences({ sidebarOpen: !preferences.getState().sidebarOpen }),
     },
     {
       id: 'go:settings',

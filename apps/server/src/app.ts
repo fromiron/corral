@@ -1445,7 +1445,7 @@ async function createCorralServer(
     // the conversation lead gets file tools when the session has a working copy.
     fileTools: async (request) =>
       request.sessionId ? (await files.currentTree(request.sessionId)) !== null : false,
-    corral: async (corralId) => (await corrals.get(corralId))?.definition ?? null,
+    corral: (corralId) => corrals.get(corralId),
     // a session turn in a trusted folder works in the built-in work style by default.
     sessionHarness: () => harnesses.sessionDefault(),
     startRun: async (request, signal, models) => {

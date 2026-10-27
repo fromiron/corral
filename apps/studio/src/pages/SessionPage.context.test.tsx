@@ -125,6 +125,7 @@ async function mount(
   initiallyActive: RunSummary | null,
   initialQueue: SessionEntry[] = [],
   runs: RunSummary[] = [],
+  selectedRunId: string | null = null,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
@@ -160,10 +161,15 @@ async function mount(
     startRun: vi.fn(async (_command: unknown) => ({ runId: 'started', receipt: { error: null } })),
     getSnapshot: vi.fn(async () => ({
       projection: {
+        executionOrder: ['execution'],
+        executions: {
+          execution: { executionId: 'execution', nodeId: 'writer', status: 'running' },
+        },
         output: { artifactVersionIds: ['result'] },
         artifacts: { result: { name: 'Result', version: 1 } },
       },
     })),
+    getRunDefinition: vi.fn(async () => ({ nodes: [{ id: 'writer', label: 'Writer' }] })),
   };
   const startExplain = vi.fn();
   // a Corral session's turn starts the conversation lead with the Corral as its team.
@@ -195,7 +201,7 @@ async function mount(
             corrals={[team]}
             runs={runs}
             active={running}
-            selectedRunId={null}
+            selectedRunId={selectedRunId}
             queued={queued}
             onChange={() => {}}
             reference={null}
@@ -338,4 +344,241 @@ it('an explain draft with captured context requires an explicit follow-up choice
     expect.objectContaining({ references: [captured], brief: 'Explain this capture' }),
     expect.anything(),
   );
+});
+
+it('removes a whole-file token without damaging its range or longer paths', async () => {
+  const sessionId = 'exact_file_reference';
+  writeComposerDraft(sessionId, {
+    text: 'Read @README.md @README.md:L1-L3 @README.mdx',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [
+      {
+        id: 'file:readme',
+        kind: 'file',
+        label: 'README.md',
+        reference: { kind: 'file', path: 'README.md' },
+      },
+      {
+        id: 'file:range',
+        kind: 'file',
+        label: 'README.md',
+        lines: { start: 1, end: 3 },
+        reference: { kind: 'file', path: 'README.md', lines: { start: 1, end: 3 } },
+      },
+    ],
+  });
+  const f = await mount(sessionId, null);
+  await f.click('Remove reference README.md');
+  expect(f.container.querySelector('textarea')?.value).toBe('Read @README.md:L1-L3 @README.mdx');
+  await f.click('Remove reference README.md:L1-L3');
+  expect(f.container.querySelector('textarea')?.value).toBe('Read @README.mdx');
+});
+
+it('clears a bare slash on Escape without sending it', async () => {
+  const sessionId = 'slash_escape';
+  const f = await mount(sessionId, null);
+  const input = f.container.querySelector('textarea');
+  expect(input).not.toBeNull();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, '/');
+    input?.setSelectionRange(1, 1);
+    input?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(input?.getAttribute('aria-expanded')).toBe('true');
+  await act(async () =>
+    input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  );
+  expect(input?.value).toBe('');
+  expect(f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(
+    true,
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it('names the viewed and active runs and the queue destination without changing the draft intent', async () => {
+  const sessionId = 'view_old_run';
+  const current = { ...active, runId: 'second', sessionId };
+  const previous = { ...current, runId: 'first', status: 'cancelled' as const };
+  writeComposerDraft(sessionId, {
+    text: 'Later request',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [previous, current], 'first');
+  expect(f.container.querySelector('[data-testid="viewed-run-warning"]')?.textContent).toContain(
+    'Viewing Run #1 while Run #2 is active',
+  );
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
+    'Send to: next run in this session · queue',
+  );
+  expect(readComposerDraft(sessionId).intent).toBe('queue');
+});
+
+it('names the selected run and role for an instruction', async () => {
+  const sessionId = 'instruction_target';
+  const current = { ...active, runId: 'second', sessionId };
+  const f = await mount(
+    sessionId,
+    current,
+    [],
+    [{ ...current, runId: 'first', status: 'cancelled' }, current],
+    'second',
+  );
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
+    'Send to: Run #2 · Writer · #1 · instruction',
+  );
+});
+
+it.each(['cancelled', 'interrupted', 'failed'] as const)(
+  'retries a %s request as a new entry without consuming the current draft or old entry',
+  async (status) => {
+    const sessionId = `retry_${status}`;
+    writeComposerDraft(sessionId, {
+      text: 'Keep this next draft',
+      intent: 'next',
+      target: null,
+      targetLabel: null,
+      references: [],
+      images: [image],
+    });
+    const f = await mount(
+      sessionId,
+      null,
+      [],
+      [{ ...active, runId: 'cancelled', sessionId, status }],
+    );
+    const entry = {
+      ...queuedEntry(captured),
+      entryId: 'original',
+      intent: 'next' as const,
+      state: 'started' as const,
+      runId: 'cancelled',
+      images: [image],
+      permissionMode: 'ask' as const,
+    };
+    // The original entry is repository state, not event-supplied request text.
+    f.session.entries.push(entry);
+    await f.render(null, []);
+    await act(async () =>
+      window.dispatchEvent(
+        new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'original' } }),
+      ),
+    );
+    expect(f.startAuto).toHaveBeenCalledOnce();
+    expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
+      brief: entry.text,
+      references: [captured, image],
+    });
+    expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+      sessionId,
+      expect.objectContaining({
+        intent: 'next',
+        text: entry.text,
+        attachments: [captured],
+        images: [image],
+        runId: 'started',
+      }),
+    );
+    expect(f.repository.updateSessionEntry).not.toHaveBeenCalled();
+    expect(
+      f.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]')?.value,
+    ).toBe('Keep this next draft');
+  },
+);
+
+it('only resends a directive whose delivery record confirms it was not delivered', async () => {
+  const sessionId = 'resend_directive';
+  const f = await mount(sessionId, null);
+  f.session.entries.push({
+    ...queuedEntry(captured),
+    entryId: 'directive',
+    intent: 'steer',
+    state: 'sent',
+    runId: 'ended',
+    commandId: 'steer_command',
+  });
+  for (const status of ['delivered', 'expired']) {
+    f.transport.getSnapshot.mockResolvedValue({
+      projection: { directives: { directive: { commandId: 'steer_command', status } } },
+    } as never);
+    await f.render(null, []);
+    await act(async () =>
+      window.dispatchEvent(
+        new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'directive' } }),
+      ),
+    );
+    expect(f.startAuto).toHaveBeenCalledTimes(status === 'delivered' ? 0 : 1);
+  }
+  expect(f.repository.updateSessionEntry).not.toHaveBeenCalled();
+});
+
+it('resend cannot overwrite the receipt of an unrelated request whose answer was lost', async () => {
+  const sessionId = 'retry_uncertain';
+  writeComposerDraft(sessionId, {
+    text: 'Uncertain current request',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(
+    sessionId,
+    null,
+    [],
+    [{ ...active, runId: 'cancelled', sessionId, status: 'cancelled' }],
+  );
+  f.session.entries.push({
+    ...queuedEntry(captured),
+    entryId: 'original',
+    intent: 'next',
+    state: 'started',
+    runId: 'cancelled',
+  });
+  await f.render(null, []);
+  f.startAuto.mockRejectedValueOnce(new Error('Response lost'));
+  await f.click('Send');
+  expect(f.startAuto).toHaveBeenCalledOnce();
+  await act(async () =>
+    window.dispatchEvent(
+      new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'original' } }),
+    ),
+  );
+  expect(f.startAuto).toHaveBeenCalledOnce();
+  expect(f.container.textContent).toContain('Resolve the previous request');
+});
+
+it('a late directive lookup cannot resend after another run starts', async () => {
+  const sessionId = 'resend_late';
+  const f = await mount(sessionId, null);
+  f.session.entries.push({
+    ...queuedEntry(captured),
+    entryId: 'directive',
+    intent: 'steer',
+    state: 'sent',
+    runId: 'ended',
+    commandId: 'steer_command',
+  });
+  let resolve!: (value: never) => void;
+  f.transport.getSnapshot.mockReturnValue(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  await f.render(null, []);
+  await act(async () =>
+    window.dispatchEvent(
+      new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'directive' } }),
+    ),
+  );
+  await f.render(active, []);
+  await act(async () =>
+    resolve({
+      projection: { directives: { directive: { commandId: 'steer_command', status: 'expired' } } },
+    } as never),
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
 });

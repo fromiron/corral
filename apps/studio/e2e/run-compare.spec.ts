@@ -11,6 +11,7 @@ test('compares runs with readable narrow figures and accessible identities', asy
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team' })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   for (const brief of ['Compare two pens.', 'Compare three pens.']) {
     await page.getByRole('tab', { name: 'Design', exact: true }).click();

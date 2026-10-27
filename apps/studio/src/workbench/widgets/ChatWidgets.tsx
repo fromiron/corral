@@ -62,7 +62,7 @@ function viewedLabel(
   viewed: NonNullable<ChatWidgetModel['viewed']>,
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
-  if (viewed.latest) return t('lastRun');
+  if (viewed.latest && viewed.number) return t('lastRunNumber', { number: viewed.number });
   return viewed.number
     ? t('selectedRun', { number: viewed.number, total: viewed.total })
     : t('selectedRunUnordered');
@@ -718,19 +718,21 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
   const ts = useTranslations('Status');
   const text = model.action.visible
     ? ''
-    : model.activity.text === 'working'
-      ? t('activityWorking')
-      : model.activity.text === 'failed'
-        ? t('activityFailed')
-        : model.activity.text === 'user'
-          ? t('activityUser')
-          : model.activity.text === 'elapsed' || model.activity.text === 'record'
-            ? ''
-            : ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(
-                  model.activity.text,
-                )
-              ? ts(model.activity.text)
-              : model.activity.text;
+    : model.activity.text === 'starting'
+      ? t('activityStarting')
+      : model.activity.text === 'working'
+        ? t('activityWorking')
+        : model.activity.text === 'failed'
+          ? t('activityFailed')
+          : model.activity.text === 'user'
+            ? t('activityUser')
+            : model.activity.text === 'elapsed' || model.activity.text === 'record'
+              ? ''
+              : ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(
+                    model.activity.text,
+                  )
+                ? ts(model.activity.text)
+                : model.activity.text;
   const elapsed =
     model.activity.elapsedMs == null
       ? null

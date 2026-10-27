@@ -118,6 +118,7 @@ export function emptyDraft(corralId = 'untitled', name = 'Untitled Corral'): Edi
   return {
     definition: {
       schemaVersion: '0.1',
+      executionPolicy: { version: 2 },
       id: corralId,
       name,
       entryNodeId: '',

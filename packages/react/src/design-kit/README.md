@@ -13,6 +13,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 - Source Dialog, Select and Dropdown own their popup surfaces, nested elevation, layout and motion. MenuItem, dropdown search/submenu helpers and popup helpers complete their graph.
 - `ui-provider.tsx`, exported as `DesignKitProvider`, supplies Motion's OS reduced-motion policy and the kit's shape, size and Lucide icon contexts. Corral wraps its app entry with this provider.
 - Sidebar integrations retain routing, resize, drawer and preference state. They pass `persist={false}` and `shortcut={null}` to avoid a second owner of application state.
+- Dialog's `left` position anchors the workbench navigation drawer without the centered popup's half-width/height translation; the caller owns its width and height.
 
 `tokens.css` remains a verbatim copy of `design_kit/styles/tokens.css`, SHA-256 `b96f55b7be7b8247946fa297d431fb486b83872a060b202182f08e67c03bb4d0`. Only this CSS snapshot skips formatting. Corral semantic and contrast adjustments live in [theme.css](../theme.css).
 

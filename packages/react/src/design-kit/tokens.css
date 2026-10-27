@@ -9,6 +9,7 @@
    Every color token is written ONCE, as light-dark(light, dark). Which side
    renders is driven by `color-scheme`: the root follows the OS, and a `.light`
    or `.dark` class (on <html>, or on any subtree to force a theme) pins it.
+   React Flow's OS-selected classes are excluded; the graph inherits the app theme.
 
    The selector is `:root, .light, .dark` — not just `:root` — because
    light-dark() inside a custom property resolves against the color-scheme of
@@ -29,8 +30,8 @@
 }
 
 :root,
-.light,
-.dark {
+.light:not(.react-flow),
+.dark:not(.react-flow) {
   /* ── Surfaces (8-level ladder) ──
      Light: 2 color steps (floor, sunken) then flat #FFFFFF; shadow does the
      work. Dark: additive white-opacity ladder over #171717. Each surface
@@ -182,7 +183,7 @@
   }
 }
 
-.light {
+.light:not(.react-flow) {
   color-scheme: light;
   --overlay: 0 0 0;
   --shadow-2-inset: var(--shadow-light-2-inset);
@@ -197,7 +198,7 @@
   --shadow-8: var(--shadow-light-8);
 }
 
-.dark {
+.dark:not(.react-flow) {
   color-scheme: dark;
   --overlay: 255 255 255;
   --shadow-2-inset: var(--shadow-dark-2);

@@ -134,7 +134,8 @@ export function SettingsNavigation({
                         <Link
                           {...navigation.link(key)}
                           activeOptions={{ exact: true, includeSearch: true, includeHash: true }}
-                          inactiveProps={{ 'aria-current': undefined }}
+                          activeProps={{ 'aria-current': active === key ? 'page' : undefined }}
+                          inactiveProps={{ 'aria-current': active === key ? 'page' : undefined }}
                         />
                       }
                     >
@@ -220,8 +221,9 @@ export function SettingsProjectPicker({
         label={label ?? t('appliesToProject')}
         disabled={disabled}
         value={navigation.projectId ?? ''}
+        placeholder={t('chooseProject')}
         options={[
-          { value: '', label: t('chooseProject') },
+          ...(navigation.projectId ? [] : [{ value: '', label: t('chooseProject') }]),
           ...navigation.projects.map((project) => ({
             value: project.projectId,
             label: projectName(project, p('defaultName')),

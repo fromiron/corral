@@ -8,10 +8,11 @@ import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { useSettingsNavigation } from './navigation.ts';
-import { refusalKind } from './refusal.ts';
+import { refusalKind, terminalOwner } from './refusal.ts';
 
 /** Fired with a request's text to take it back into the request box. */
 export const EDIT_REQUEST = 'corral:edit-request';
+export const RESEND_REQUEST = 'corral:resend-request';
 
 export function editRequest(
   text: string,
@@ -40,6 +41,7 @@ export function RefusalHelp({
   onEdit,
   onRetry,
   onQueue,
+  sessionId,
 }: {
   message: string;
   code?: string | undefined;
@@ -47,6 +49,7 @@ export function RefusalHelp({
   onEdit?: () => void;
   onRetry?: () => void;
   onQueue?: () => void;
+  sessionId?: string;
 }) {
   const t = useTranslations('Refusal');
   const navigation = useSettingsNavigation();
@@ -59,10 +62,34 @@ export function RefusalHelp({
       className="flex flex-col gap-1.5 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs"
     >
       <p className="text-danger">{t(kind)}</p>
-      <p className="text-muted-foreground wrap-anywhere" title={code}>
-        {message}
-      </p>
+      {kind === 'terminal' || kind === 'busy' ? (
+        <details>
+          <summary>{t('diagnostics')}</summary>
+          <p className="text-muted-foreground wrap-anywhere" title={code}>
+            {message}
+          </p>
+        </details>
+      ) : (
+        <p className="text-muted-foreground wrap-anywhere" title={code}>
+          {message}
+        </p>
+      )}
       <div className="flex flex-wrap gap-1">
+        {kind === 'terminal' && sessionId ? (
+          <Button
+            size="compact"
+            variant="tertiary"
+            render={
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId }}
+                search={{ panel: 'terminal', terminal: terminalOwner(message) }}
+              />
+            }
+          >
+            {t('openTerminal')}
+          </Button>
+        ) : null}
         {kind === 'signin' || kind === 'profile' ? (
           <Button size="compact" render={<Link {...navigation.link('models')} />}>
             {t('connect')}

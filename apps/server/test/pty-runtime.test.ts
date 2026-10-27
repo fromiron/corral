@@ -15,7 +15,9 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-function setup(options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number } = {}) {
+function setup(
+  options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number; captureFails?: boolean } = {},
+) {
   const path = mkdtempSync(join(tmpdir(), 'corral-pty-test-'));
   const db = openDatabase(':memory:');
   const operations = new WorkbenchOperations(db, new FakeClock());
@@ -65,7 +67,10 @@ function setup(options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number 
     },
     shells: async () => [{ id: 'bash' as const, label: 'Bash', executable: '/bin/bash' }],
     spawn,
-    capture: () => ({ pid: 123, bootId: 'boot', startTicks: '42', sessionId: 123, owner: 'owner' }),
+    capture: () => {
+      if (options.captureFails) throw new Error('session ownership unavailable');
+      return { pid: 123, bootId: 'boot', startTicks: '42', sessionId: 123, owner: 'owner' };
+    },
     cleanup,
     newGeneration: () => 'generation_1',
     historyBytes: options.historyBytes,
@@ -295,4 +300,63 @@ it('restoring an existing owner above the cap keeps new admission blocked after 
     await restarted.close();
     for (const permit of permits) permit.releaseConfirmed();
   }
+});
+
+it('records explicit stop separately from a shell exit code of zero', async () => {
+  const s = setup();
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  const stopped = await s.runtime.stop('session', 'terminal_1', s.identity);
+  s.exit();
+  expect(stopped.state).toBe('exited');
+  expect(s.runtime.get('session', 'terminal_1')).toMatchObject({
+    stopped: true,
+    exitCode: 0,
+  });
+  expect(s.operations.get('terminal_1')?.state).toBe('cancelled');
+});
+
+it('missing process identity remains uncertain across stop and restart with an explicit reason', async () => {
+  const s = setup({ captureFails: true });
+  const first = await s.runtime.create('session', s.request);
+  const uncertain = new Gate();
+  const stream = s.runtime.subscribe(
+    'session',
+    first.terminalId,
+    { generation: first.generation, afterSeq: 0 },
+    (event) => {
+      if (event.type === 'status' && event.terminal.state === 'uncertain') uncertain.open();
+    },
+  );
+  await uncertain.wait();
+  stream.close();
+  expect(s.child.kill).toHaveBeenCalledOnce();
+  expect(s.cleanup).not.toHaveBeenCalled();
+  const stopped = await s.runtime.stop('session', first.terminalId, s.identity);
+  expect(stopped.state).toBe('uncertain');
+  expect(stopped.error).toContain('identity');
+  expect(s.access.ownersAt(s.path)).toHaveLength(1);
+  expect(() => s.access.acquire({ kind: 'run', id: 'run' }, 'session', s.path, true, 1)).toThrow(
+    /writer/,
+  );
+  s.operations.recover();
+  const restarted = new PtyRuntime(s.runtimeOptions);
+  expect((await restarted.stop('session', first.terminalId, s.identity)).state).toBe('uncertain');
+  expect(s.access.ownersAt(s.path)).toHaveLength(1);
+  await restarted.close();
+});
+
+it('restores stopped status from legacy cancelled receipts without that display field', async () => {
+  const s = setup();
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  await s.runtime.stop('session', 'terminal_1', s.identity);
+  const result = s.operations.get('terminal_1')?.result as { terminal: { stopped?: boolean } };
+  delete result.terminal.stopped;
+  s.db
+    .prepare('UPDATE workbench_operations SET result_json=? WHERE operation_id=?')
+    .run(JSON.stringify(result), 'terminal_1');
+  const restarted = new PtyRuntime(s.runtimeOptions);
+  expect(restarted.get('session', 'terminal_1')).toMatchObject({ state: 'exited', stopped: true });
+  await restarted.close();
 });
