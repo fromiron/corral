@@ -61,12 +61,22 @@ export function RunCanvas({
   const edges = useMemo<Edge[]>(() => {
     const observed = JSON.parse(relationSignature) as ObservedRunRelation[];
     return [
-      ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`)).map((edge) => ({
-        ...edge,
-        style: { ...edge.style, opacity: 0.4 },
-        deletable: false,
-        selectable: false,
-      })),
+      ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`))
+        .filter(
+          (edge) =>
+            !observed.some(
+              (relation) =>
+                relation.source === edge.source &&
+                relation.target === edge.target &&
+                relation.kind === edge.sourceHandle,
+            ),
+        )
+        .map((edge) => ({
+          ...edge,
+          style: { ...edge.style, opacity: 0.4 },
+          deletable: false,
+          selectable: false,
+        })),
       ...observed.map((relation) => ({
         id: `observed:${relation.kind}:${relation.source}:${relation.target}`,
         source: relation.source,
@@ -100,6 +110,7 @@ export function RunCanvas({
       <ReactFlowProvider>
         <div className="relative h-full w-full" role="application" aria-label={t('label')}>
           <ReactFlow
+            className="corral-flow"
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}

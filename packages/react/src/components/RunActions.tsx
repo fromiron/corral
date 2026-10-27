@@ -1,8 +1,8 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button } from '../design-kit/index.ts';
+import { useCancelConfirmation } from '../run/cancel-confirmation.ts';
 import type { RunSessionStore, SessionCommand } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
 
@@ -20,15 +20,13 @@ export function RunActions({
   const t = useTranslations('Reins');
   const projection = useStore(session, (s) => s.projection);
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
-  // The run the confirmation was opened for: a view that follows another run
-  // drops it, so confirming can never cancel a run the person did not choose.
-  const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const shownRun = projection?.runId ?? null;
-  useEffect(() => {
-    setConfirmCancel((open) => (open === shownRun ? open : null));
-  }, [shownRun]);
+  const terminal = Boolean(projection && TERMINAL_RUN_STATUSES.has(projection.status));
+  const [confirmCancel, setConfirmCancel] = useCancelConfirmation(
+    shownRun,
+    terminal || projection?.status === 'cancelling',
+  );
   if (!projection) return null;
-  const terminal = TERMINAL_RUN_STATUSES.has(projection.status);
   // A finished run in the page header has no controls: only its receipts, if any.
   if (compact && terminal) {
     return <CommandReceipts session={session} target={`run:${projection.runId}`} />;
@@ -72,24 +70,25 @@ export function RunActions({
               variant="ghost-destructive"
               size="compact"
               disabled={pending || projection.status === 'cancelling'}
-              onClick={() => setConfirmCancel(projection.runId)}
+              onClick={() => setConfirmCancel(true)}
             >
               {t('cancelRun')}
             </Button>
           ) : null}
         </div>
       ) : null}
-      {showCancel && confirmCancel === projection.runId && !terminal ? (
+      {showCancel && confirmCancel && !terminal ? (
         <div className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/5 p-3">
           <p>{t('cancelRunExplain')}</p>
+          <p role="status">{t('cancelNotSent')}</p>
           <div className="flex flex-wrap gap-1">
             <Button
               variant="destructive"
               size="compact"
               disabled={pending}
               onClick={() => {
-                const chosen = confirmCancel;
-                setConfirmCancel(null);
+                const chosen = shownRun;
+                setConfirmCancel(false);
                 if (session.getState().runId !== chosen) return;
                 send({
                   type: 'cancel',
@@ -99,7 +98,7 @@ export function RunActions({
             >
               {t('confirmCancelRun')}
             </Button>
-            <Button variant="tertiary" size="compact" onClick={() => setConfirmCancel(null)}>
+            <Button variant="tertiary" size="compact" onClick={() => setConfirmCancel(false)}>
               {t('keepRunning')}
             </Button>
           </div>

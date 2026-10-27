@@ -157,3 +157,94 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   }
   expect(corral.errors).toEqual([]);
 });
+
+test('history announces its cursor, conversation clears it, and Results Back returns to chat', async ({
+  page,
+  corral,
+}, testInfo) => {
+  const started = await startRun(page, corral);
+  await expect
+    .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
+    .toBe('succeeded');
+  await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('button', { name: 'Previous', exact: true })
+    .click();
+  await expect(page.getByText('Historical view', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/atSeq=/);
+  await panelTab(page, 'Conversation');
+  await expect(page).not.toHaveURL(/atSeq=/);
+  await page.getByRole('link', { name: 'Open in Results', exact: true }).first().click();
+  await expect(page.getByTestId('result-body')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(requestBox(page)).toBeVisible();
+  await page.evaluate(() =>
+    localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'dark' })),
+  );
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.reload();
+  const historyTab = page.getByRole('tab', { name: 'Execution history', exact: true });
+  await expect(historyTab).toBeVisible();
+  await historyTab.click();
+  const flow = page.locator('.corral-flow').first();
+  await expect(flow).toBeVisible();
+  await expect(flow).toHaveCSS('color-scheme', 'dark');
+  const node = flow.locator('.react-flow__node [data-slot="card"]').first();
+  await expect(node).toHaveCSS('background-color', 'rgb(37, 37, 37)');
+  const labels = await flow.locator('.react-flow__edge-text').allTextContents();
+  expect(labels.filter((label) => label === 'delegates')).toHaveLength(0);
+  expect(labels.some((label) => label.includes('observed'))).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('dark-history.png') });
+  expect(corral.errors).toEqual([]);
+});
+
+let holdLifecycleReplies = false;
+const lifecycleReplies: (() => void)[] = [];
+test.describe('cancel recovery', () => {
+  test.use({
+    agentReply: {
+      reply: () => 'Retry response',
+      beforeReply: () =>
+        holdLifecycleReplies
+          ? new Promise<void>((resolve) => lifecycleReplies.push(resolve))
+          : Promise.resolve(),
+    },
+  });
+  test('reload retains unconfirmed cancellation and Retry preserves the new draft', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/');
+    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    holdLifecycleReplies = true;
+    await requestBox(page).fill('Retry this cancelled request');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => lifecycleReplies.length).toBeGreaterThan(0);
+    const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
+    await controls.getByRole('button', { name: 'Cancel whole run', exact: true }).click();
+    await expect(controls).toContainText('Cancellation has not been sent');
+    await page.reload();
+    const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
+    await expect(confirmation).toContainText('Cancellation has not been sent');
+    await confirmation
+      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
+      .click();
+    holdLifecycleReplies = false;
+    for (const release of lifecycleReplies.splice(0)) release();
+    const retry = page.getByRole('button', { name: 'Retry request', exact: true });
+    await expect(retry).toBeEnabled();
+    await requestBox(page).fill('Keep my next draft');
+    await retry.click();
+    await expect(
+      page.getByTestId('chat-timeline').getByText('Retry this cancelled request', { exact: true }),
+    ).toHaveCount(2);
+    await expect(requestBox(page)).toHaveValue('Keep my next draft');
+    expect(corral.errors).toEqual([]);
+  });
+});

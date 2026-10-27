@@ -667,3 +667,19 @@ describe('viewed run label (#72)', () => {
     expect(viewedRun({ runIds, presentationRunId: 'run_x', live: false })?.latest).toBe(false);
   });
 });
+
+it.each(['created', 'validating'])('activity shows startup, not working, for %s', (runStatus) => {
+  expect(
+    activityLine({
+      runStatus,
+      startedAt: null,
+      endedAt: null,
+      now: '2026-10-27T00:00:00Z',
+      planTitle: null,
+      planVisible: false,
+      toolName: null,
+      failed: false,
+      needsUser: false,
+    }).text,
+  ).toBe('starting');
+});

@@ -154,6 +154,7 @@ export function patchSessionSearch(
         }
       : {}),
     ...patch,
+    ...('panel' in patch && patch.panel !== 'run' ? { atSeq: undefined } : {}),
     ...('panel' in patch || 'view' in patch ? { compose: undefined } : {}),
     ...(patch.view === 'results' ? { artifact: undefined } : {}),
   });
