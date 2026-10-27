@@ -45,6 +45,7 @@ import { StartMeeting } from '../workbench/NewMeeting.tsx';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
+import { sessionListState } from '../workbench/sessionList.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
@@ -785,6 +786,11 @@ function StartSession({
   useEffect(() => {
     if (!focus || automatic.current) return;
     automatic.current = true;
+    if (title || objective || corralId) {
+      setDetailsOpen(true);
+      startButton.current?.focus();
+      return;
+    }
     void create();
   }, [focus]);
 
@@ -811,6 +817,12 @@ function StartSession({
             <AccordionItem value="details" highlight="trigger">
               <AccordionTrigger>
                 <span>{n('sessionDetails')}</span>
+                {title || objective ? (
+                  <span className="ml-2 min-w-0 truncate text-foreground">
+                    {t('savedDetails')}
+                    {title ? ` · ${title}` : ''}
+                  </span>
+                ) : null}
                 {selectedTeamName ? (
                   <span className="ml-2 text-foreground">{selectedTeamName}</span>
                 ) : null}
@@ -895,12 +907,35 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
   const now = useNow({ updateInterval: 60_000 });
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [stateFilter, setStateFilter] = useState('all');
+  const [error, setError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const { repository } = useServices();
+  const router = useRouter();
+  const archive = async (session: WorkSession) => {
+    setArchiving(session.sessionId);
+    setError(null);
+    try {
+      const result = await repository.updateSession(session.sessionId, {
+        archived: true,
+        expectedRevision: session.revision,
+      });
+      if (!result.ok) return setError(result.message);
+      projectsChanged();
+      await router.invalidate();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setArchiving(null);
+    }
+  };
   const needle = query.trim().toLowerCase();
   const archivedCount = sessions.filter((x) => x.archivedAt).length;
   const shown = sessions
     .filter(
       (x) =>
         (showArchived || !x.archivedAt) &&
+        (stateFilter === 'all' || sessionListState(x, runs) === stateFilter) &&
         (!needle || `${x.title}\n${x.objective}`.toLowerCase().includes(needle)),
     )
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
@@ -924,22 +959,42 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
           </InputGroup>
         ) : null}
       </div>
+      {sessions.length > 0 ? (
+        <Select
+          label={t('statusFilter')}
+          variant="chip"
+          value={stateFilter}
+          onValueChange={setStateFilter}
+          options={['all', 'running', 'attention', 'completed', 'cancelled', 'ready', 'empty'].map(
+            (value) => ({
+              value,
+              label: t(`listState.${value}`),
+            }),
+          )}
+        />
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
       {sessions.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul aria-label={t('heading')} className="flex flex-col">
           {shown.map((x) => (
-            <li key={x.sessionId}>
+            <li key={x.sessionId} className="flex items-center gap-2">
               <Link
                 to="/sessions/$sessionId"
                 params={{ sessionId: x.sessionId }}
-                className="flex items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
+                className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
               >
                 <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {[
                     x.pinned ? t('pinned') : null,
                     x.archivedAt ? t('archived') : null,
+                    t(`listState.${sessionListState(x, runs)}`),
                     t('runCount', {
                       count: runs.filter((r) => r.sessionId === x.sessionId).length,
                     }),
@@ -949,6 +1004,17 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
                     .join(' · ')}
                 </span>
               </Link>
+              {!x.archivedAt && sessionListState(x, runs) === 'empty' ? (
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  disabled={archiving !== null}
+                  aria-label={t('archiveEmpty', { title: x.title })}
+                  onClick={() => void archive(x)}
+                >
+                  {t('archive')}
+                </Button>
+              ) : null}
             </li>
           ))}
         </ul>

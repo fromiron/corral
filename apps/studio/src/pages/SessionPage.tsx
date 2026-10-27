@@ -110,6 +110,7 @@ export type { SessionPanel } from '../workbench/panels/registry.ts';
 import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
+import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { AutoModelMenu } from '../workbench/AutoModelMenu.tsx';
 import {
   autoChoiceFor,
@@ -502,6 +503,7 @@ function WorkSessionPage() {
         }
         onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
+      <ArchivedSessionNotice key={session.sessionId} session={session} />
       <SourceNavigationContext.Provider
         value={{
           openDocument: (target, path, range) =>
@@ -871,17 +873,19 @@ function SessionActions({
         </Button>
       </Tooltip>
       <Menu>
-        <MenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-compact"
-              aria-label={td('sessionActions', { title: session.title })}
-            />
-          }
-        >
-          <Ellipsis />
-        </MenuTrigger>
+        <Tooltip content={td('sessionActions', { title: session.title })}>
+          <MenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label={td('sessionActions', { title: session.title })}
+              />
+            }
+          >
+            <Ellipsis />
+          </MenuTrigger>
+        </Tooltip>
         <MenuPopup align="end" className="min-w-52">
           <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
           <MenuSub>
@@ -2921,23 +2925,25 @@ export function Composer({
               </Button>
             </Tooltip>
             <Menu>
-              <MenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-compact"
-                    aria-label={tc('attachmentActions')}
-                    disabled={
-                      busy ||
-                      attachmentsBusy ||
-                      imagesBusy ||
-                      (intent !== 'next' && intent !== 'queue')
-                    }
-                  />
-                }
-              >
-                <Plus />
-              </MenuTrigger>
+              <Tooltip content={tc('attachmentActions')}>
+                <MenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-compact"
+                      aria-label={tc('attachmentActions')}
+                      disabled={
+                        busy ||
+                        attachmentsBusy ||
+                        imagesBusy ||
+                        (intent !== 'next' && intent !== 'queue')
+                      }
+                    />
+                  }
+                >
+                  <Plus />
+                </MenuTrigger>
+              </Tooltip>
               <MenuPopup align="start">
                 {mode === 'server' ? (
                   <MenuItem

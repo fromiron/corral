@@ -59,6 +59,7 @@ import {
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
+import { sessionListState } from './sessionList.ts';
 import { useModelProfiles } from './useModels.ts';
 
 export function useCorralSidebar() {
@@ -212,8 +213,8 @@ export const Sidebar = memo(function Sidebar({
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
   const ts = useTranslations('Sessions');
-  const status = useTranslations('Status');
   const studio = useTranslations('Studio');
+  const status = useTranslations('Status');
   const ago = useAgo();
   const profiles = useModelProfiles();
   const connected = Boolean(profiles?.some((p) => p.available));
@@ -228,6 +229,7 @@ export const Sidebar = memo(function Sidebar({
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const needle = query.trim().toLocaleLowerCase();
   const [collapsed, setCollapsed] = useRemembered<Record<string, boolean>>(
     'corral:sidebar-collapsed:v1',
@@ -279,6 +281,10 @@ export const Sidebar = memo(function Sidebar({
     (row) => row.kind === 'session' && path.startsWith(`/sessions/${row.session.sessionId}`),
   );
   const hasActive = activeIndex >= 0;
+  const mountedRows = virtual.getVirtualItems();
+  const sessionTabIndex = mountedRows.some((row) => row.index === activeIndex)
+    ? activeIndex
+    : mountedRows.find((row) => rows[row.index]?.kind === 'session')?.index;
   // Navigate/search brings the selected session into view; background data changes do not.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only intentional navigation/search scrolls the sidebar
   useLayoutEffect(() => {
@@ -387,6 +393,7 @@ export const Sidebar = memo(function Sidebar({
               </Tooltip>
             ) : null}
           </div>
+          <p className="px-2 text-caption text-muted-foreground">{searchText('sidebarScope')}</p>
         </SidebarHeader>
         {mode === 'server' ? (
           <SessionSearchDialog
@@ -438,6 +445,9 @@ export const Sidebar = memo(function Sidebar({
           </p>
         ) : null}
         <nav aria-label={tw('sidebar')} className="flex min-h-0 flex-1 flex-col">
+          <p id="session-list-keys" className="px-4 pb-1 text-caption text-muted-foreground">
+            {ts('keyboardHint')}
+          </p>
           <SidebarContent
             ref={(node) => {
               scroll.current =
@@ -472,7 +482,7 @@ export const Sidebar = memo(function Sidebar({
                   );
                 }}
               >
-                {virtual.getVirtualItems().map((item) => {
+                {mountedRows.map((item) => {
                   const row = rows[item.index];
                   if (!row) return null;
                   const position = {
@@ -530,18 +540,34 @@ export const Sidebar = memo(function Sidebar({
                   }
                   const session = row.session;
                   const active = path.startsWith(`/sessions/${session.sessionId}`);
-                  const run = model.runs.find((r) => r.sessionId === session.sessionId);
+                  const run = model.runs
+                    .filter((r) => r.sessionId === session.sessionId)
+                    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
                   const working = Boolean(run && !ENDED.has(run.status));
-                  // Only what needs attention shows a dot: working, waiting for a person, or failed.
-                  const flagged = run && (working || run.status === 'failed');
+                  const state = sessionListState(session, model.runs);
                   return (
                     <SidebarMenuItem
                       key={item.key}
                       data-sidebar-index={item.index}
                       style={position}
                       className="py-px"
+                      onKeyDownCapture={(event) => {
+                        if (
+                          openMenu !== session.sessionId ||
+                          !['Tab', 'Escape'].includes(event.key)
+                        )
+                          return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const trigger =
+                          event.currentTarget.querySelector<HTMLElement>('[data-session-menu]');
+                        setOpenMenu(null);
+                        requestAnimationFrame(() => trigger?.focus());
+                      }}
                     >
                       <SidebarMenuButton
+                        tabIndex={item.index === sessionTabIndex ? 0 : -1}
+                        aria-describedby="session-list-keys"
                         isActive={active}
                         className="pl-8"
                         render={
@@ -551,26 +577,28 @@ export const Sidebar = memo(function Sidebar({
                           />
                         }
                       >
-                        {session.title}
-                        <span className="ml-auto flex shrink-0 items-center gap-2">
-                          {session.pinned ? <Pin size={12} /> : null}
-                          {!flagged ? (
-                            <span className="text-2xs group-focus-within/menu-item:invisible group-hover/menu-item:invisible">
-                              {ago(session.updatedAt)}
-                            </span>
-                          ) : null}
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="truncate leading-3.5">{session.title}</span>
+                          <span className="truncate text-micro leading-3 text-muted-foreground">
+                            {ts(`listState.${state}`)} · {ago(session.updatedAt)}
+                          </span>
                         </span>
+                        {session.pinned ? <Pin size={12} /> : null}
                       </SidebarMenuButton>
-                      {flagged ? (
+                      {run ? (
                         <SidebarMenuBadge>
                           <StatusDot status={run.status} label={status(run.status)} />
                         </SidebarMenuBadge>
                       ) : null}
-                      <Menu>
+                      <Menu
+                        open={openMenu === session.sessionId}
+                        onOpenChange={(open) => setOpenMenu(open ? session.sessionId : null)}
+                      >
                         <MenuTrigger
                           render={
                             <SidebarMenuAction
                               showOnHover
+                              data-session-menu
                               aria-label={t('sessionActions', { title: session.title })}
                             />
                           }
@@ -602,7 +630,14 @@ export const Sidebar = memo(function Sidebar({
             !model.sessions.some((s) =>
               `${s.title}\n${s.objective}`.toLocaleLowerCase().includes(needle),
             ) ? (
-              <p className="p-3 text-xs text-muted-foreground">{t('noMatches')}</p>
+              <div className="p-3 text-xs text-muted-foreground">
+                <p>{t('noMatches')}</p>
+                {mode === 'server' ? (
+                  <Button variant="ghost" size="compact" onClick={() => setSearchOpen(true)}>
+                    {searchText('searchBody')}
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </SidebarContent>
         </nav>
