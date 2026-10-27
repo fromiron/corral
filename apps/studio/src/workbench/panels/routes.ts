@@ -15,6 +15,7 @@ export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   tab?: 'work' | 'team' | 'run' | undefined;
   panel?: SessionPanel | undefined;
   run?: string | undefined;
+  terminal?: string | undefined;
 }
 export interface ReviewSearch {
   scope?: 'session' | 'review' | 'run' | 'git';
@@ -46,6 +47,7 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   if (SESSION_PANELS.includes(search.panel as SessionPanel))
     out.panel = search.panel as SessionPanel;
   if (search.tab === 'run') out.panel = 'run';
+  if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
   for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
     const value = text(search[key]);
@@ -123,6 +125,7 @@ export function resolveSessionSearch(url: SessionSearch, remembered: unknown): S
       selection.compose ||
       selection.review ||
       selection.run ||
+      selection.terminal ||
       selection.view ||
       selection.artifact ||
       selection.result ||

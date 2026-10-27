@@ -71,6 +71,7 @@ import {
   PanelRight,
   Plus,
   Square,
+  Terminal,
   X,
 } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -448,6 +449,8 @@ function WorkSessionPage() {
     if (view === 'terminal')
       return (
         <TerminalPanel
+          terminalId={search.terminal}
+          runActive={sessionRuns.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
           key={session.sessionId}
           sessionId={session.sessionId}
           projectId={session.projectId}
@@ -516,7 +519,7 @@ function WorkSessionPage() {
             )
               throw new Error(contextMessages('unavailable'));
             setTerminalSource(source);
-            dock.current?.openContext('terminal');
+            showPanel({ panel: 'terminal', terminal: source.terminalId });
           },
         }}
       >
@@ -723,7 +726,7 @@ function SessionActions({
   };
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
-  const { workspaces } = useServices();
+  const { workspaces, terminals } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
   useRegisterCommands('session', [
@@ -855,6 +858,18 @@ function SessionActions({
           <FileDiff />
           {tw('changeCount', { count: changes.length })}
         </Button>
+      ) : null}
+      {terminals ? (
+        <Tooltip content={tdock('terminal')}>
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            aria-label={tdock('terminal')}
+            onClick={() => onPanel('terminal')}
+          >
+            <Terminal />
+          </Button>
+        </Tooltip>
       ) : null}
       <Tooltip
         content={tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer')}
@@ -1360,6 +1375,7 @@ function EntryCard({
       ) : null}
       {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
+          sessionId={sessionId}
           message={entry.detail}
           onEdit={() =>
             editRequest(entry.text, {
@@ -2793,6 +2809,7 @@ export function Composer({
           ) : null}
           {refusal ? (
             <RefusalHelp
+              sessionId={session.sessionId}
               message={refusal.message}
               code={refusal.code}
               network={refusal.network}

@@ -2057,7 +2057,10 @@
     "connect": "Connect a model",
     "retry": "Send again",
     "queue": "Move to the queue",
-    "edit": "Edit the request again"
+    "edit": "Edit the request again",
+    "terminal": "A terminal is holding this working copy. Open its controls, stop it explicitly, then send again.",
+    "diagnostics": "Diagnostic details",
+    "openTerminal": "Open terminal controls"
   },
   "Harness": {
     "heading": "Work styles",
@@ -3282,7 +3285,7 @@
     "refresh": "Refresh terminals",
     "shell": "Shell",
     "create": "New terminal",
-    "unavailable": "A trusted working copy and an available shell are required.",
+    "unavailable": "Create a trusted working copy in Changes before opening a terminal. An available shell is also required.",
     "createPending": "Terminal creation is unconfirmed. Check the original request before creating another terminal.",
     "checkCreate": "Check creation result",
     "retryCreate": "Retry original creation request",
@@ -3333,7 +3336,12 @@
     "selectOutput": "Select terminal output to attach first.",
     "attachSelectionError": "Could not attach the selection. Check its size and connection.",
     "sourceStale": "Terminal output has changed; the previous selection was not restored.",
-    "sourceUnavailable": "This terminal source cannot be opened here."
+    "sourceUnavailable": "This terminal source cannot be opened here.",
+    "runActive": "Wait for the current Run to finish, then create a terminal.",
+    "diagnostics": "Diagnostic details",
+    "stopped": "Stopped",
+    "stopUnconfirmed": "Stop was attempted, but termination could not be verified. The working copy remains protected. Check the host process and diagnostic details; do not delete the working copy to bypass this protection.",
+    "writerBusy": "Another operation is using this working copy. Stop it or wait for it to finish before creating a terminal."
   },
   "Docking": {
     "fileViewer": "File viewer",

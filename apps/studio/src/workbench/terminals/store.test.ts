@@ -283,22 +283,25 @@ it('closes an ended stream only after its final output has been applied', async 
   f.store.dispose();
 });
 
-it('retries creation only after an explicit missing receipt check and keeps its original identity', async () => {
-  const f = setup();
-  f.client.create.mockRejectedValueOnce(new Error('ack lost'));
-  f.client.read.mockRejectedValueOnce(new ApiError(404, 'TARGET_NOT_FOUND', 'missing'));
-  await f.store.refresh('session');
-  await f.store.create('session', 'bash');
-  expect(f.store.getState().sessions.session?.pendingCreate?.operationId).toBe('new_terminal');
-  await f.store.retryCreate('session');
-  expect(f.client.create).toHaveBeenCalledTimes(1);
-  await f.store.checkCreate('session');
-  expect(f.store.getState().sessions.session?.canRetryCreate).toBe(true);
-  await f.store.retryCreate('session');
-  expect(f.client.create).toHaveBeenCalledTimes(2);
-  expect(f.client.create.mock.calls[1]?.[1]).toEqual(f.client.create.mock.calls[0]?.[1]);
-  f.store.dispose();
-});
+it.each([new Error('ack lost'), new ApiError(409, 'REQUEST_OUTCOME_UNKNOWN', 'ack unknown')])(
+  'recovers unknown creation with its original identity: %s',
+  async (error) => {
+    const f = setup();
+    f.client.create.mockRejectedValueOnce(error);
+    f.client.read.mockRejectedValueOnce(new ApiError(404, 'TARGET_NOT_FOUND', 'missing'));
+    await f.store.refresh('session');
+    await f.store.create('session', 'bash');
+    expect(f.store.getState().sessions.session?.pendingCreate?.operationId).toBe('new_terminal');
+    await f.store.retryCreate('session');
+    expect(f.client.create).toHaveBeenCalledTimes(1);
+    await f.store.checkCreate('session');
+    expect(f.store.getState().sessions.session?.canRetryCreate).toBe(true);
+    await f.store.retryCreate('session');
+    expect(f.client.create).toHaveBeenCalledTimes(2);
+    expect(f.client.create.mock.calls[1]?.[1]).toEqual(f.client.create.mock.calls[0]?.[1]);
+    f.store.dispose();
+  },
+);
 
 it('captures only the explicit selection after its pending output is applied', async () => {
   const f = setup();
@@ -373,5 +376,19 @@ it('keeps only selection availability in state and refuses an oversized selectio
   f.selection.text = '한'.repeat(30_000);
   await expect(f.store.captureSelection('terminal')).rejects.toThrow('64 KiB');
   expect(f.selection.text.length).toBe(30_000);
+  f.store.dispose();
+});
+
+it('a confirmed admission refusal does not leave an unknown creation to recover', async () => {
+  const f = setup();
+  f.client.create.mockRejectedValueOnce(
+    new ApiError(409, 'RUN_ALREADY_ACTIVE', 'working copy writer run_1 has not released ownership'),
+  );
+  await f.store.refresh('session');
+  await f.store.create('session', 'bash');
+  expect(f.store.getState().sessions.session?.pendingCreate).toBeNull();
+  expect(f.store.getState().sessions.session?.error).toContain('writer');
+  await f.store.create('session', 'bash');
+  expect(f.client.create).toHaveBeenCalledTimes(2);
   f.store.dispose();
 });

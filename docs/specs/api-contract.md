@@ -122,7 +122,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /sessions/:id/worktree/document-operations/:operationId | — | 원래 대상과 operation ID의 receipt. pending·완료·실패 모두 상대 path/precondition/제출 hash의 intent를 보존하며 원문 text는 저장하지 않는다. 현재 사본 삭제/재생성 후에도 완료 receipt를 조회한다. 같은 ID/다른 내용은 conflict, uncertain을 자동 재실행하지 않는다 |
 | GET /sessions/:id/terminals | — | 현재 target·가용 shell·사용자 터미널 목록. 작업 사본이 없어도 과거 terminal 상태/중지 대상은 조회 가능 |
 | POST /sessions/:id/terminals | `TerminalCreate` | target·operationId·shellId·초기 cols/rows. 공통 writer와 host process permit을 접수하고 starting receipt 반환. 같은 ID/같은 내용은 기존 결과, 다른 내용은 conflict |
-| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller. OS PID/identity·절대 경로는 공개하지 않음 |
+| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller·선택적 stopped(중지 요청 여부). OS PID/identity·절대 경로는 공개하지 않음 |
 | POST /sessions/:id/terminals/:terminalId/control | `TerminalControllerChange` | target/generation·attachmentId·expectedGeneration·claim/release·명시 takeover. 한 controller만 입력하며 takeover는 같은 attachment에도 generation을 바꿈 |
 | POST /sessions/:id/terminals/:terminalId/input | `TerminalInput` | controllerGeneration·sequence·UTF-8 ≤16KiB data. input/resize 공통 순서, 같은 최신 순서/내용만 기존 ack. 자동 stdin 재시도 없음 |
 | POST /sessions/:id/terminals/:terminalId/resize | `TerminalResize` | controller의 공통 순서로 cols 2–500, rows 1–500. 성공한 resize도 output sequence에 포함 |

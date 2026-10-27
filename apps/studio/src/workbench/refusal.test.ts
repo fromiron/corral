@@ -36,3 +36,21 @@ describe('refused start (UX-04)', () => {
     expect(refusalKind({ network: true, message: 'Failed to fetch' })).toBe('network');
   });
 });
+
+it('distinguishes terminal ownership from another Run, including recorded legacy refusals', () => {
+  expect(
+    refusalKind({
+      code: 'RUN_ALREADY_ACTIVE',
+      message: 'working copy terminal writer custom_id has not released ownership',
+    }),
+  ).toBe('terminal');
+  expect(
+    refusalKind({ message: 'working copy writer terminal_123 has not released ownership' }),
+  ).toBe('terminal');
+  expect(
+    refusalKind({
+      code: 'RUN_ALREADY_ACTIVE',
+      message: 'working copy writer run_123 has not released ownership',
+    }),
+  ).toBe('busy');
+});
