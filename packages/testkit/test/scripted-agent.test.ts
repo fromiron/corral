@@ -197,3 +197,24 @@ describe('ScriptedAgentAdapter', () => {
     expect(host.observations[0]?.text).toBe('Answer.\nanswers q_0001');
   });
 });
+
+it('demo replies avoid internal input dumps and produce adoptable, explicitly simulated minutes', async () => {
+  const { simulatedReply } = await import('../src/index.ts');
+  const ordinary = simulatedReply(1, {
+    ...input,
+    inputs: [
+      { name: 'brief', kind: 'run_input', artifactVersionId: null, text: 'Private request' },
+    ],
+  });
+  expect(ordinary).toContain('Simulated response');
+  expect(ordinary).not.toContain('brief@run_input');
+  expect(ordinary).not.toContain('Private request');
+  const minutes = JSON.parse(
+    simulatedReply(1, { ...input, role: { ...input.role, id: 'participant', name: 'Secretary' } }),
+  );
+  const { MeetingMinutesDocument } = await import('@corral/contracts');
+  expect(MeetingMinutesDocument.safeParse(minutes).success).toBe(true);
+  expect(minutes.candidates).toHaveLength(1);
+  expect(minutes.agreements).toEqual([]);
+  expect(minutes.candidates[0].content.goal).toContain('simulation');
+});

@@ -4000,6 +4000,12 @@
     "selectFrame": "Select a frame in the call stack before evaluating an expression."
   },
   "Meetings": {
+    "participantDefault": "Participant {number}",
+    "clearDraft": "Clear draft",
+    "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
+    "retrySummary": "Request minutes again",
+    "handoffNeedsMinutes": "No decision is ready to hand off. Ask the secretary for a plan, then review and adopt a proposal.",
+    "handoffNeedsAdoption": "Review and adopt a proposal in the minutes before handing it off to work.",
     "heading": "Meeting",
     "new": "New meeting",
     "newTitle": "Create a meeting",
