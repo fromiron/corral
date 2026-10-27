@@ -1493,7 +1493,22 @@
     "retryRequest": "Retry request",
     "restoreRequest": "Restore message",
     "resendNext": "Send as next request",
-    "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed."
+    "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed.",
+    "savedDetails": "Saved details",
+    "archivedSending": "Sending a message keeps this session archived.",
+    "restoreSession": "Restore session",
+    "statusFilter": "Session status",
+    "archiveEmpty": "Archive empty session: {title}",
+    "keyboardHint": "Use ↑ and ↓ to move between sessions.",
+    "listState": {
+      "all": "All statuses",
+      "running": "In progress",
+      "attention": "Needs attention",
+      "completed": "Completed",
+      "ready": "No run yet",
+      "empty": "Empty session",
+      "cancelled": "Cancelled"
+    }
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -2821,7 +2836,12 @@
       "artifact": "Result",
       "response": "Model response",
       "interaction": "Interaction"
-    }
+    },
+    "sidebarScope": "All projects · titles and purposes",
+    "paletteScope": "Commands and current project session titles and purposes",
+    "dialogScope": "All projects · titles and purposes. Enable private messages and results to search their text.",
+    "searchBody": "Search messages and results",
+    "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text."
   },
   "MessageBranch": {
     "open": "Branch from this message",

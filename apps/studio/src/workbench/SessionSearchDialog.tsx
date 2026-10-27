@@ -1,4 +1,4 @@
-import type { SessionSearchResult } from '@corral/contracts';
+import type { SessionSearchHit, SessionSearchResult } from '@corral/contracts';
 import {
   Button,
   Dialog,
@@ -14,6 +14,44 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+
+const searchHitKey = (hit: SessionSearchHit) =>
+  JSON.stringify([
+    hit.sessionId,
+    hit.kind,
+    hit.runId,
+    hit.entryId,
+    hit.artifactVersionId,
+    hit.sequence,
+  ]);
+
+export function groupSearchHits(hits: SessionSearchHit[]) {
+  const groups = new Map<string, { sessionId: string; title: string; hits: SessionSearchHit[] }>();
+  const seen = new Set<string>();
+  for (const hit of hits) {
+    const key = searchHitKey(hit);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const group = groups.get(hit.sessionId) ?? {
+      sessionId: hit.sessionId,
+      title: hit.title,
+      hits: [],
+    };
+    group.hits.push(hit);
+    groups.set(hit.sessionId, group);
+  }
+  return [...groups.values()];
+}
+
+export function SearchExcerpt({ text, query }: { text: string; query: string }) {
+  const needle = query.trim().normalize('NFKC');
+  if (!needle) return text;
+  const literal = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.split(new RegExp(`(${literal})`, 'gi')).map((part, index) =>
+    // biome-ignore lint/suspicious/noArrayIndexKey: static text matches have no state or identity beyond their position
+    index % 2 ? <mark key={index}>{part}</mark> : part,
+  );
+}
 
 export function SessionSearchDialog({
   open,
@@ -77,6 +115,7 @@ export function SessionSearchDialog({
           <DialogDescription>{t('privacy')}</DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-3">
+          <p className="text-caption text-muted-foreground">{t('dialogScope')}</p>
           <Input
             aria-label={t('query')}
             value={query}
@@ -109,36 +148,49 @@ export function SessionSearchDialog({
               {t(result.scope)} · {t('count', { count: result.total })}
             </p>
           ) : null}
-          <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
-            {result?.hits.map((hit) => (
-              <li key={`${hit.sessionId}:${hit.runId}:${hit.sequence}:${hit.entryId}:${hit.kind}`}>
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: hit.sessionId }}
-                  search={
-                    hit.entryId
-                      ? { message: hit.entryId }
-                      : hit.runId
-                        ? {
-                            panel: 'run',
-                            run: hit.runId,
-                            view: hit.artifactVersionId ? 'results' : 'run',
-                            artifact: hit.artifactVersionId ?? undefined,
-                          }
-                        : {}
-                  }
-                  onClick={() => onOpenChange(false)}
-                  className="block rounded fill-group p-2 hover:bg-subtle"
-                >
-                  <span className="text-sm font-medium">{hit.title}</span>{' '}
-                  <span className="text-xs text-muted-foreground">
-                    {t(`kind.${hit.kind}`)}
-                    {hit.archived ? ` · ${t('archived')}` : ''}
-                  </span>
-                  <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                    {hit.excerpt}
-                  </p>
-                </Link>
+          {result?.total === 0 && !privateText ? (
+            <p role="status" className="text-caption">
+              {t('privateEmpty')}
+            </p>
+          ) : null}
+          <ul className="max-h-[50vh] space-y-3 overflow-y-auto">
+            {groupSearchHits(result?.hits ?? []).map((group) => (
+              <li key={group.sessionId}>
+                <h3 className="text-sm font-medium">
+                  <SearchExcerpt text={group.title} query={query} />
+                </h3>
+                <ul className="space-y-1">
+                  {group.hits.map((hit) => (
+                    <li key={searchHitKey(hit)}>
+                      <Link
+                        to="/sessions/$sessionId"
+                        params={{ sessionId: hit.sessionId }}
+                        search={
+                          hit.entryId
+                            ? { message: hit.entryId }
+                            : hit.runId
+                              ? {
+                                  panel: 'run',
+                                  run: hit.runId,
+                                  view: hit.artifactVersionId ? 'results' : 'run',
+                                  artifact: hit.artifactVersionId ?? undefined,
+                                }
+                              : {}
+                        }
+                        onClick={() => onOpenChange(false)}
+                        className="block rounded fill-group p-2 hover:bg-subtle"
+                      >
+                        <span className="text-xs text-muted-foreground">
+                          {t(`kind.${hit.kind}`)}
+                          {hit.archived ? ` · ${t('archived')}` : ''}
+                        </span>
+                        <p className="whitespace-pre-wrap break-words text-xs">
+                          <SearchExcerpt text={hit.excerpt} query={query} />
+                        </p>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ul>

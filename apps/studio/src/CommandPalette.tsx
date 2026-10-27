@@ -44,6 +44,7 @@ import {
   useSettingsNavigation,
 } from './workbench/navigation.ts';
 import { usePreferences } from './workbench/preferences.ts';
+import { SessionSearchDialog } from './workbench/SessionSearchDialog.tsx';
 import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
@@ -64,6 +65,7 @@ export function CommandLayer() {
   const bindings = useShortcutBindings();
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState<string | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
   const open = useCallback((which: 'palette' | 'help') => {
     returnTo.current = document.activeElement as HTMLElement | null;
@@ -80,8 +82,17 @@ export function CommandLayer() {
     const show = () => {
       if (!settingsInteractionBlocked()) open('palette');
     };
+    const search = (event: Event) => {
+      if (settingsInteractionBlocked()) return;
+      setPalette(false);
+      setSessionSearch((event as CustomEvent<string>).detail ?? '');
+    };
+    window.addEventListener('corral:search-sessions', search);
     window.addEventListener('corral:open-palette', show);
-    return () => window.removeEventListener('corral:open-palette', show);
+    return () => {
+      window.removeEventListener('corral:open-palette', show);
+      window.removeEventListener('corral:search-sessions', search);
+    };
   }, [open]);
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -162,6 +173,16 @@ export function CommandLayer() {
           }}
         />
       ) : null}
+      <SessionSearchDialog
+        open={sessionSearch !== null}
+        initialQuery={sessionSearch ?? ''}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSessionSearch(null);
+            queueMicrotask(() => returnTo.current?.focus());
+          }
+        }}
+      />
       {help ? <ShortcutHelp onClose={close} /> : null}
     </>
   );
@@ -304,6 +325,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
   const t = useTranslations('CommandPalette');
   const tw = useTranslations('Workspace');
   const tp = useTranslations('Projects');
+  const ts = useTranslations('SessionSearch');
   const navigate = useNavigate();
   const services = useServices();
   const [query, setQuery] = useState('');
@@ -519,6 +541,20 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         onKeyDown={onKeyDown}
         className="w-full rounded-t-lg border-b border-line bg-transparent px-3 py-2.5 text-sm outline-none"
       />
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-caption text-muted-foreground">
+        <p>{ts('paletteScope')}</p>
+        {services.mode === 'server' ? (
+          <Button
+            variant="ghost"
+            size="compact"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent('corral:search-sessions', { detail: query }))
+            }
+          >
+            {ts('searchBody')}
+          </Button>
+        ) : null}
+      </div>
       <div
         id={listId}
         role="listbox"

@@ -34,6 +34,8 @@ All imports use package-relative paths instead of the original `@/` alias. TypeS
 - Slider retains the supplied styles, spacing, hover, spring timing, defaults and runtime branches. Its adaptations are relative imports, formatting, narrow lint explanations for the existing pointer/keyboard layering and spring synchronization, and erased tuple/index assertions for proven nonempty values, clamped step indices and ResizeObserver entries under `noUncheckedIndexedAccess`.
 - ChatMessage imports its text/body/action slots without the unused `File[]` thumbnail branch. Corral's existing authorized artifact preview remains responsible for attachments; no PDF package or external worker is introduced.
 
+Tooltip explicitly provides its popup role and trigger description linkage while retaining the supplied hover, focus, and motion behavior.
+
 ## Narrow API bridges
 
 [adapters](adapters) is part of this design kit, not another component library. Button, Badge, Card, Tooltip, Dialog, Select, Menu and ScrollArea compose the copied components. Former visual variant names map onto kit roles; ordinary controls do not reproduce their old rendering.
@@ -84,7 +86,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/table.tsx` | `components/ui/table.tsx` | `06c8f0ff67776454b3d4b1ab85d2782606f8324c386baf2211e73db70eab785f` | `dc9a729696e6ca5845afe5807493c59da55cae78d00f5198e4ca6643253d9e08` |
 | `components/ui/tabs.tsx` | `components/ui/tabs.tsx` | `1e228ed1618ee913434488ae65e2eac6afd152db239cb8c20860029d5eb7ef67` | `82c12715a1ff3c86c3e0c91d070ccd809f1df57cba3bb190f5d5cd5df9be1593` |
 | `components/ui/thinking-steps.tsx` | `components/ui/thinking-steps.tsx` | `394e5188ff0e1b2d143d3268aae6a5632d29bf934213c273c8fe58ad50388ee3` | `9b341706508f5de0a5db61cc69182c7583b6b4c3a73cf4ec18d8febd6e4ed67e` |
-| `components/ui/tooltip.tsx` | `components/ui/tooltip.tsx` | `bd7e0fef5ebff19d31a20ed49dd08750608996b28fd42fb7808038932b17005b` | `262302c99f0552c3ae7a45f30030c4eac8f22078955c10abeb9d0e500e1f6d30` |
+| `components/ui/tooltip.tsx` | `components/ui/tooltip.tsx` | `bd7e0fef5ebff19d31a20ed49dd08750608996b28fd42fb7808038932b17005b` | `d7db7cfa021c74b1293125c530c10151f931b55d35f8ff30852321f561ede0a9` |
 | `lib/elevated.tsx` | `lib/elevated.tsx` | `96ffaa93dc22fc2e23b208d47c359d05a70c072c936c28f5a69f728d17fd11ec` | `fa96d671a249c20a560245668168fbad26fc07d17da5de294f9436757a921102` |
 | `lib/font-weight.ts` | `lib/font-weight.ts` | `b9ed69148ccb3fa30e559418ea9ee1c1e0037389ee177aaacd9d17db0b3d0c46` | `b9ed69148ccb3fa30e559418ea9ee1c1e0037389ee177aaacd9d17db0b3d0c46` |
 | `lib/icon-context.tsx` | `lib/icon-context.tsx` | `ffc750f1a404375681a6ed162df394cf6f0aefa92324f4d4c6300ee0488c6ec2` | `c7cbdee16e1bb2fae67278088874c1a15239fc72fa04cdf0180d2f8797e224ec` |
