@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { MeetingRoundRequest, MeetingView } from '@corral/contracts';
-import type { WorkSession } from '@corral/core';
+import { createTextAttachment, type WorkSession } from '@corral/core';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -19,16 +19,7 @@ vi.mock('../workbench/MeetingEvidence.tsx', () => ({
     <button
       type="button"
       onClick={() =>
-        onChange([
-          ...value,
-          {
-            name: 'brief.txt',
-            text: 'Selected evidence',
-            bytes: 17,
-            mime: 'text/plain',
-            sha256: 'a'.repeat(64),
-          },
-        ])
+        onChange([...value, createTextAttachment('brief.txt', 'text/plain', 'Selected evidence')])
       }
     >
       attachEvidence
@@ -113,6 +104,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   preferences.setState({ chatDensity: 'basic' });
   liveAnswer.current = {};
+  localStorage.clear();
 });
 
 async function mount(current: MeetingView) {
@@ -136,7 +128,7 @@ async function mount(current: MeetingView) {
     await act(async () => root.unmount());
     container.remove();
   });
-  const session = { sessionId: 'session_1', title: 'Review' } as WorkSession;
+  const session = { sessionId: current.sessionId, title: 'Review' } as WorkSession;
   await act(async () => root.render(<MeetingPage session={session} />));
   const button = (text: string) =>
     [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === text);
@@ -147,7 +139,19 @@ async function mount(current: MeetingView) {
       setter.call(box, text);
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
-  return { container, meetings, button, box, type };
+  return {
+    container,
+    meetings,
+    button,
+    box,
+    type,
+    hide: () => act(async () => root.render(null)),
+    show: () =>
+      act(async () => {
+        services.current = { meetings, mode: 'browser', live: false };
+        root.render(<MeetingPage session={session} />);
+      }),
+  };
 }
 
 it('shows each answer in participant order and sends a conversational follow-up with mentions', async () => {
@@ -568,4 +572,94 @@ it('an unparsed secretary answer stays available for recovery', async () => {
     'Incomplete summary',
   );
   expect(f.button('viewMinutes')).toBeUndefined();
+});
+
+it('keeps the meeting draft across navigation and remounts, isolated from other sessions', async () => {
+  const f = await mount(view());
+  await f.type('Keep this exact meeting draft.');
+  await act(async () => f.button('@Builder')?.click());
+  await act(async () => f.button('attachEvidence')?.click());
+  await f.hide();
+  const other = await mount(view({ sessionId: 'another_meeting' }));
+  expect(other.box.value).toBe('');
+  await other.type('Another draft');
+  await other.hide();
+  await f.show();
+  expect(f.container.querySelector('textarea')?.value).toBe('Keep this exact meeting draft.');
+  expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('true');
+  expect(f.container.textContent).toContain('evidenceSelected');
+  await act(async () => f.button('clearDraft')?.click());
+  expect(f.container.querySelector('textarea')?.value).toBe('');
+  await f.hide();
+  await f.show();
+  expect(f.container.querySelector('textarea')?.value).toBe('');
+});
+
+it('clears only a successfully sent draft and preserves edits made while sending', async () => {
+  const f = await mount(view());
+  await f.type('First request');
+  f.meetings.send.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => f.button('send')?.click());
+  await f.hide();
+  await f.show();
+  expect(f.container.querySelector('textarea')?.value).toBe('First request');
+  let finish: (value: { ok: boolean; outcome: string }) => void = () => {};
+  f.meetings.send.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  await act(async () => {
+    f.button('send')?.click();
+  });
+  const box = f.container.querySelector('textarea')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+      box,
+      'Next request',
+    );
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => finish({ ok: true, outcome: 'started' }));
+  await f.hide();
+  await f.show();
+  expect(f.container.querySelector('textarea')?.value).toBe('Next request');
+  await act(async () => f.button('send')?.click());
+  await f.hide();
+  await f.show();
+  expect(f.container.querySelector('textarea')?.value).toBe('');
+});
+
+it('keeps only the latest minutes error visible outside the collapsed panel with recovery', async () => {
+  const f = await mount(
+    view({
+      minutes: [
+        {
+          minutesId: 'old',
+          roundId: 'round_1',
+          createdAt: 'a',
+          document: null,
+          error: 'Old failure',
+        },
+        {
+          minutesId: 'new',
+          roundId: 'round_1',
+          createdAt: 'b',
+          document: null,
+          error: 'Latest failure',
+        },
+      ],
+    }),
+  );
+  const alerts = [...f.container.querySelectorAll('[role="alert"]')];
+  expect(alerts).toHaveLength(1);
+  expect(alerts[0]?.closest('details')).toBeNull();
+  expect(f.container.textContent).not.toContain('Old failure');
+  expect(f.button('retrySummary')).toBeDefined();
+  await act(async () => f.button('retrySummary')?.click());
+  expect(f.meetings.send.mock.calls.at(-1)?.[1]).toMatchObject({
+    kind: 'message',
+    mentions: ['secretary'],
+  });
+  expect(f.container.textContent).toContain('handoffNeedsMinutes');
 });

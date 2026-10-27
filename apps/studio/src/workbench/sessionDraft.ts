@@ -20,6 +20,7 @@ const revisions = new Map<string, { value: string | null; revision: number }>();
 const consumed = new Map<string, number>();
 
 export interface ComposerDraft {
+  meetingMentions?: string[];
   harness?: HarnessBindingRef;
   permissionMode?: PermissionMode;
   images?: ImageAttachment[];
@@ -71,6 +72,13 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
       ...(value.images !== undefined
         ? { images: ImageAttachments.safeParse(value.images).data ?? [] }
         : {}),
+      ...(Array.isArray(value.meetingMentions)
+        ? {
+            meetingMentions: value.meetingMentions.filter(
+              (id): id is string => typeof id === 'string',
+            ),
+          }
+        : {}),
       text: typeof value.text === 'string' ? value.text : '',
       ...(value.taskScope === 'review_only' ? { taskScope: 'review_only' as const } : {}),
       ...(value.verificationScope === 'release' ? { verificationScope: 'release' as const } : {}),
@@ -92,6 +100,7 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
 export function serializeComposerDraft(draft: ComposerDraft): string | null {
   if (
     !draft.text &&
+    !draft.meetingMentions?.length &&
     !draft.references.length &&
     !draft.attachments?.length &&
     !draft.images?.length &&

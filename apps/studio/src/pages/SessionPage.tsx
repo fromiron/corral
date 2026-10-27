@@ -71,6 +71,7 @@ import {
   PanelRight,
   Plus,
   Square,
+  Terminal,
   X,
 } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -122,7 +123,12 @@ import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
-import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
+import {
+  type MentionItem,
+  mentionToken,
+  pickedReferences,
+  removeMention,
+} from '../workbench/composerMenu.ts';
 import {
   type AttachmentCapture,
   type AttachmentRequest,
@@ -449,6 +455,8 @@ function WorkSessionPage() {
     if (view === 'terminal')
       return (
         <TerminalPanel
+          terminalId={search.terminal}
+          runActive={sessionRuns.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
           key={session.sessionId}
           sessionId={session.sessionId}
           projectId={session.projectId}
@@ -517,7 +525,7 @@ function WorkSessionPage() {
             )
               throw new Error(contextMessages('unavailable'));
             setTerminalSource(source);
-            dock.current?.openContext('terminal');
+            showPanel({ panel: 'terminal', terminal: source.terminalId });
           },
         }}
       >
@@ -724,7 +732,7 @@ function SessionActions({
   };
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
-  const { workspaces } = useServices();
+  const { workspaces, terminals } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
   useRegisterCommands('session', [
@@ -828,15 +836,16 @@ function SessionActions({
           label={t('selectedRun')}
           value={selectedRunId}
           onValueChange={onSelectRun}
-          options={runs.map((run) => ({
+          options={runs.map((run, index) => ({
             value: run.runId,
             label: (
               <span className="block max-w-[min(26rem,70vw)] truncate">
-                {session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
-                  run.runId}{' '}
-                · {status(run.status)}
+                {tw('runNumber', { number: index + 1 })} · {t('selectedRun')} · {status(run.status)}
               </span>
             ),
+            hint:
+              session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
+              run.runId,
           }))}
         />
       ) : null}
@@ -854,8 +863,20 @@ function SessionActions({
           className="gap-1.5 text-muted-foreground"
         >
           <FileDiff />
-          {tw('changeCount', { count: changes.length })}
+          {tw('sessionChangeCount', { count: changes.length })}
         </Button>
+      ) : null}
+      {terminals ? (
+        <Tooltip content={tdock('terminal')}>
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            aria-label={tdock('terminal')}
+            onClick={() => onPanel('terminal')}
+          >
+            <Terminal />
+          </Button>
+        </Tooltip>
       ) : null}
       <Tooltip
         content={tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer')}
@@ -1037,6 +1058,7 @@ function WorkTab({
             runs={runs}
             active={active}
             selectedRunId={selectedRunId}
+            onViewRun={(run) => onPanel('run', { run })}
             queued={queued}
             onChange={onChange}
             reference={reference}
@@ -1112,6 +1134,7 @@ function RunPanel({
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
+          runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
           embedded
           search={{
             atSeq: search.atSeq,
@@ -1145,6 +1168,7 @@ function ArtifactsPanel({
     runId: string;
     id: string;
     label: string;
+    author: string;
     kind: 'final' | 'partial' | 'intermediate';
   };
   const [items, setItems] = useState<Item[]>([]);
@@ -1172,6 +1196,8 @@ function ArtifactsPanel({
         });
         if (!live) return;
         if (!snapshot) continue;
+        const definition = await transport.getRunDefinition(runId);
+        if (!live) return;
         const results = runResults(snapshot.projection);
         for (const artifact of [
           ...results.final,
@@ -1181,6 +1207,17 @@ function ArtifactsPanel({
             runId,
             id: artifact.artifactVersionId,
             label: `${artifact.name} v${artifact.version}`,
+            author: [
+              definition?.nodes.find(
+                (node) =>
+                  node.id === snapshot.projection.executions[artifact.authorExecutionId]?.nodeId,
+              )?.label,
+              artifact.authorExecutionNumber
+                ? tr('authorExecution', { number: artifact.authorExecutionNumber })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · '),
             kind: results.final.includes(artifact)
               ? 'final'
               : results.kind === 'partial'
@@ -1200,7 +1237,7 @@ function ArtifactsPanel({
     return () => {
       live = false;
     };
-  }, [transport, key, retry]);
+  }, [transport, key, retry, tr]);
   if (loading)
     return (
       <p role="status" className="text-xs text-muted-foreground">
@@ -1227,17 +1264,21 @@ function ArtifactsPanel({
               <Button
                 variant="ghost"
                 className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
-                aria-label={`${tr(item.kind)} ${item.label}`}
+                aria-label={`${tr(item.kind)} ${item.label} · ${tw('runNumber', { number: runs.findIndex((run) => run.runId === item.runId) + 1 })} · ${item.author}`}
                 onClick={() => onOpen(item.runId, item.id)}
               >
                 <FileText className="text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.label}</span>
-                  <span
-                    className="truncate font-mono text-2xs text-muted-foreground"
-                    title={item.runId}
-                  >
-                    {item.runId}
+                  <span className="truncate text-2xs text-muted-foreground" title={item.runId}>
+                    {[
+                      tw('runNumber', {
+                        number: runs.findIndex((run) => run.runId === item.runId) + 1,
+                      }),
+                      item.author,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">{tr(item.kind)}</span>
@@ -1371,6 +1412,7 @@ function EntryCard({
       ) : null}
       {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
+          sessionId={sessionId}
           message={entry.detail}
           onEdit={() =>
             editRequest(entry.text, {
@@ -1618,6 +1660,7 @@ export function Composer({
   runs,
   active,
   selectedRunId,
+  onViewRun,
   queued,
   onChange,
   reference,
@@ -1629,6 +1672,7 @@ export function Composer({
   runs: RunSummary[];
   active: RunSummary | null;
   selectedRunId: string | null;
+  onViewRun?: (runId: string) => void;
   queued: SessionEntry[];
   onChange: () => void;
   reference: FileReference | null;
@@ -2615,6 +2659,17 @@ export function Composer({
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
   const stopping = Boolean(ownActive) && !text.trim();
+  const runNumber = (runId: string) => runs.findIndex((run) => run.runId === runId) + 1;
+  const viewingOtherRun = active && selectedRunId && active.runId !== selectedRunId;
+  const destination =
+    intent === 'steer'
+      ? ownActive
+        ? tc('destination.steer', {
+            number: runNumber(ownActive.runId),
+            name: targetName(steerTarget),
+          })
+        : tc('destination.steerUnavailable', { name: targetName(steerTarget) })
+      : tc(`destination.${intent}`);
   // What Send does now, said where it is pressed (#89).
   const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
   // Items this intent does not carry share one notice and one wording (#89).
@@ -2746,6 +2801,27 @@ export function Composer({
       <ComposerSurface.Host>
         <ComposerPlan />
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 p-2">
+          {viewingOtherRun ? (
+            <Banner data-testid="viewed-run-warning" status="warning" size="compact">
+              <BannerTitle>
+                {tc('viewingOtherRun', {
+                  viewed: runNumber(selectedRunId),
+                  active: runNumber(active.runId),
+                })}
+              </BannerTitle>
+              {onViewRun ? (
+                <BannerActions>
+                  <Button
+                    size="compact"
+                    variant="secondary"
+                    onClick={() => onViewRun(active.runId)}
+                  >
+                    {tc('viewActiveRun')}
+                  </Button>
+                </BannerActions>
+              ) : null}
+            </Banner>
+          ) : null}
           {resolved.blocked ? (
             <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
               <BannerTitle>
@@ -2818,6 +2894,7 @@ export function Composer({
           ) : null}
           {refusal ? (
             <RefusalHelp
+              sessionId={session.sessionId}
               message={refusal.message}
               code={refusal.code}
               network={refusal.network}
@@ -2853,9 +2930,9 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="icon-tiny"
-                    aria-label={tc('removeReference', { label: item.label })}
+                    aria-label={tc('removeReference', { label: mentionToken(item).slice(1) })}
                     onClick={() => {
-                      write(text.split(mentionToken(item)).join('').replace(/ {2,}/g, ' '));
+                      write(removeMention(text, item));
                       setPicked((list) => list.filter((x) => x.id !== item.id));
                     }}
                   >
@@ -2924,6 +3001,9 @@ export function Composer({
             searchMentions={searchMentions}
             onMention={(item) => setPicked((list) => [...list, item])}
           />
+          <p data-testid="composer-destination" className="px-2 text-xs text-muted-foreground">
+            {destination}
+          </p>
           <div className="flex flex-wrap items-center gap-0.5">
             <Tooltip content={tc('addReference')}>
               <Button

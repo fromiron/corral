@@ -467,7 +467,12 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
       session(sessionId, { pendingCreate: null });
       return terminal.terminalId;
     } catch (error) {
-      session(sessionId, { error: errorMessage(error) });
+      const refused =
+        error instanceof ApiError && error.status < 500 && error.code !== 'REQUEST_OUTCOME_UNKNOWN';
+      session(sessionId, {
+        error: errorMessage(error),
+        ...(refused ? { pendingCreate: null } : {}),
+      });
       return null;
     } finally {
       session(sessionId, { loading: false });

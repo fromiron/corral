@@ -15,6 +15,7 @@ import type { TerminalSelection, TerminalStore } from './terminals/store.ts';
 const fixture = vi.hoisted(() => ({
   state: {} as ReturnType<TerminalStore['getState']>,
   workspaceId: undefined as string | undefined,
+  refresh: vi.fn(async (_id: string) => {}),
   captureSelection: vi.fn<(id: string) => Promise<TerminalSelection | null>>(),
 }));
 vi.mock('../services.tsx', () => ({
@@ -25,7 +26,7 @@ vi.mock('./terminals/store.ts', () => ({
     getState: () => fixture.state,
     getInitialState: () => fixture.state,
     subscribe: () => () => {},
-    refresh: async () => {},
+    refresh: (id: string) => fixture.refresh(id),
     captureSelection: (id: string) => fixture.captureSelection(id),
   }),
 }));
@@ -68,7 +69,7 @@ const list: TerminalList = {
   shells: [{ id: 'bash', label: 'Bash' }],
   terminals: [terminal],
 };
-function render(current: TerminalView, pendingCreate = false, loading = false) {
+function render(current: TerminalView, pendingCreate = false, loading = false, runActive = false) {
   fixture.state = {
     sessions: {
       session: {
@@ -97,7 +98,7 @@ function render(current: TerminalView, pendingCreate = false, loading = false) {
   };
   return renderToStaticMarkup(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
-      <TerminalPanel sessionId="session" />
+      <TerminalPanel sessionId="session" runActive={runActive} />
     </IntlProvider>,
   );
 }
@@ -113,7 +114,11 @@ it('a missing terminal replay still exposes explicit stop outside the terminal',
 it('unresolved creation exposes receipt recovery and prevents a new terminal', () => {
   const html = render(terminal, true);
   expect(html).toContain('Check creation result');
-  expect(html).toMatch(/<button[^>]*disabled[^>]*>New terminal<\/button>/);
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  expect(
+    [...document.querySelectorAll('button')].find((button) => button.textContent === 'New terminal')
+      ?.disabled,
+  ).toBe(true);
   expect(html).not.toContain('Retry original creation request');
 });
 
@@ -249,5 +254,72 @@ it('attaches only the explicit selected text with its captured source target', a
     container.remove();
     vi.unstubAllGlobals();
     fixture.captureSelection.mockReset();
+  }
+});
+
+it('shows a user stop instead of treating shell exit zero as normal completion', () => {
+  const html = render({ ...terminal, state: 'exited', stopped: true, exitCode: 0 });
+  expect(html).toContain('Stopped');
+  expect(html).not.toContain('Exit code 0');
+});
+
+it('prevents creation during an active Run with a recovery instruction', () => {
+  const html = render({ ...terminal, state: 'exited' }, false, false, true);
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  expect(
+    [...document.querySelectorAll('button')].find((button) => button.textContent === 'New terminal')
+      ?.disabled,
+  ).toBe(true);
+  expect(html).toContain('Wait for the current Run to finish');
+});
+
+it('refreshes terminal availability when a working copy changes', async () => {
+  render(terminal);
+  fixture.refresh.mockClear();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <TerminalPanel sessionId="session" />
+        </IntlProvider>,
+      ),
+    );
+    const before = fixture.refresh.mock.calls.length;
+    await act(async () => window.dispatchEvent(new Event('corral:workspace-changed')));
+    expect(fixture.refresh.mock.calls.length).toBeGreaterThan(before);
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it('a recovery target selects its terminal instead of the remembered terminal', async () => {
+  render(terminal);
+  const session = fixture.state.sessions.session;
+  const first = fixture.state.terminals.terminal;
+  assert(session?.list && first);
+  const second = { ...terminal, terminalId: 'second', shellId: 'sh' };
+  session.list.terminals.push(second);
+  fixture.state.terminals.second = { ...first, terminal: second };
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <TerminalPanel sessionId="session" terminalId="second" />
+        </IntlProvider>,
+      ),
+    );
+    expect(container.querySelector('[aria-label="Select terminal"]')?.textContent).toContain(
+      'Terminal 2 · sh',
+    );
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
   }
 });

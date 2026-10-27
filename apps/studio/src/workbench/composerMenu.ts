@@ -56,6 +56,20 @@ export function mentionToken(item: Pick<MentionItem, 'kind' | 'label' | 'lines'>
   return `@${quoted(label)}${lines}`;
 }
 
+/** Remove this exact reference, leaving longer paths and line ranges intact. */
+export function removeMention(text: string, item: MentionItem): string {
+  return text
+    .replaceAll(mentionToken(item), (token, at: number) => {
+      const before = text[at - 1];
+      const after = text[at + token.length];
+      return (before === undefined || /\s/.test(before)) &&
+        (after === undefined || /\s/.test(after))
+        ? ''
+        : token;
+    })
+    .replace(/ {2,}/g, ' ');
+}
+
 /** The references of `picked` whose token is in `text` as a whole word, without repeats. */
 export function pickedReferences(text: string, picked: readonly MentionItem[]): RunReference[] {
   const out: RunReference[] = [];

@@ -72,18 +72,17 @@ export class WorkspaceAccessStore {
         }
         const held = this.writerAt(key);
         if (writer && held) {
-          const development =
-            held.owner_kind === 'user' &&
-            this.db
-              .prepare(
-                "SELECT 1 FROM workbench_operations WHERE operation_id=? AND kind='development'",
-              )
-              .get(held.owner_id);
+          const operation =
+            held.owner_kind === 'user'
+              ? (this.db
+                  .prepare('SELECT kind FROM workbench_operations WHERE operation_id=?')
+                  .get(held.owner_id) as { kind: string } | undefined)
+              : undefined;
           throw new ToolRefusal(
             'RUN_ALREADY_ACTIVE',
-            development
+            operation?.kind === 'development'
               ? 'finish shared development before starting this exclusive writer'
-              : `working copy writer ${held.owner_id} has not released ownership`,
+              : `working copy ${operation?.kind === 'terminal' ? 'terminal ' : ''}writer ${held.owner_id} has not released ownership`,
           );
         }
         if (held?.state === 'uncertain')

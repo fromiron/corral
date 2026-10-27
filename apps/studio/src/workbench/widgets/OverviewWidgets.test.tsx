@@ -120,7 +120,7 @@ it('shows the run in kit widgets whose details open in place', async () => {
   const usage = container.querySelector<HTMLElement>('[data-overview-widget="usage"]');
   expect(usage?.querySelector('[data-slot="card"]')).not.toBeNull();
   expect(usage?.textContent).toContain('930');
-  expect(usage?.textContent).toContain('4 of 40 calls');
+  expect(usage?.textContent).toContain('4 of 40 model calls');
   expect(usage?.textContent).toContain('256 unconfirmed tokens held');
   expect(container.querySelector('[data-overview-widget="context"]')?.textContent).toContain('71%');
   const changes = container.querySelector('[data-overview-widget="changes"]');
@@ -145,6 +145,19 @@ it('shows the run in kit widgets whose details open in place', async () => {
   expect(trigger?.getAttribute('aria-expanded')).toBe('true');
 });
 
+it('identifies an older selected run without changing its usage or results', async () => {
+  const container = await render(model({ viewed: { latest: false, number: 2, total: 3 } }));
+  expect(container.querySelector('[data-testid="overview-run-scope"]')?.textContent).toBe(
+    'Selected run · Run #2',
+  );
+  const usage = container.querySelector('[data-overview-widget="usage"]');
+  expect(usage?.textContent).toContain('930');
+  expect(usage?.textContent).toContain('output tokens');
+  expect(container.querySelector('[data-overview-widget="results"]')?.textContent).toContain(
+    'draft v1',
+  );
+});
+
 it('names a run without limits and hides widgets with nothing to say', async () => {
   const projection = emptyProjection('run_overview');
   projection.status = 'succeeded';
@@ -159,7 +172,7 @@ it('names a run without limits and hides widgets with nothing to say', async () 
     }),
   );
   expect(widgets(container)).toEqual(['usage']);
-  expect(container.textContent).toContain('1 call');
+  expect(container.textContent).toContain('1 model call');
   expect(container.textContent).not.toContain(' of 40');
 });
 
@@ -192,7 +205,7 @@ it('the usage detail states reported input and cached input and names unreported
   );
   await act(async () => trigger?.click());
   const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
-  expect(detail).toContain('Input tokens');
+  expect(detail).toContain('Reported input tokens');
   expect(detail).toContain('3,500');
   expect(detail).toContain('Cached input');
   expect(detail).toContain('1,500 (50%)');

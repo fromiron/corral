@@ -30,6 +30,7 @@ import {
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
+import { useRegisterCommands } from '../commandRegistry.ts';
 import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
 import { projectName } from '../projects.ts';
 import { useServices } from '../services.tsx';
@@ -91,6 +92,7 @@ function RootFrame() {
   const td = useTranslations('Desktop');
   const th = useTranslations('Harness');
   const tr = useTranslations('Resources');
+  const commands = useTranslations('Commands');
   const projectsText = useTranslations('Projects');
   const prefs = usePreferences();
   const location = useRouterState({ select: (s) => s.location });
@@ -254,6 +256,23 @@ function RootFrame() {
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
+  useRegisterCommands('sidebar', [
+    {
+      id: 'view:sidebar',
+      title: (narrow ? mobileOpen : prefs.sidebarOpen)
+        ? commands('hideSidebar')
+        : commands('showSidebar'),
+      group: commands('groups.view'),
+      shortcutId: 'view.sidebar',
+      shortcut: shortcutLabel('view.sidebar'),
+      run: () => {
+        if (narrow) {
+          changePreferences({ sidebarOpen: true });
+          setMobileOpen((open) => !open);
+        } else changePreferences({ sidebarOpen: !prefs.sidebarOpen });
+      },
+    },
+  ]);
   const showLocation = !/^\/sessions\/[^/]+(?:\/|$)/.test(location.pathname);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -298,6 +317,7 @@ function RootFrame() {
               <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
                 <DialogPopup
                   className="mobile-sidebar-dialog"
+                  position="left"
                   showCloseButton={false}
                   bottomStickOnMobile={false}
                   finalFocus={sidebarTrigger}

@@ -1289,7 +1289,8 @@
     "unavailable": "이 결과를 불러오지 못했습니다.",
     "previewOf": "{label} 미리보기",
     "openResults": "결과 화면에서 보기",
-    "finalCount": "{count, plural, other {최종 결과 #개}}"
+    "finalCount": "{count, plural, other {최종 결과 #개}}",
+    "authorExecution": "에이전트 실행 {number}"
   },
   "Projects": {
     "defaultName": "기본 프로젝트",
@@ -1757,7 +1758,8 @@
     "noCopyChanges": "작업 사본을 만들면 여기에 파일 변경이 보입니다.",
     "checksOnReview": "검증은 검토 화면에서 실행합니다.",
     "serverOnly": "파일 작업·변경·검증은 로컬 서버에서만 쓸 수 있습니다.",
-    "runNumber": "실행 {number}"
+    "runNumber": "실행 #{number}",
+    "sessionChangeCount": "세션 변경 · 파일 {count}개"
   },
   "Desktop": {
     "conversation": "대화",
@@ -1893,6 +1895,15 @@
     "developmentBuild": "개발 빌드"
   },
   "Composer": {
+    "viewingOtherRun": "실행 #{active}이 진행 중이며 지금은 실행 #{viewed}을 보고 있습니다.",
+    "viewActiveRun": "현재 실행 보기",
+    "destination": {
+      "next": "보낼 대상: 이 세션의 새 실행 · 후속 요청",
+      "queue": "보낼 대상: 이 세션의 다음 실행 · 대기열",
+      "steer": "보낼 대상: 실행 #{number} · {name} · 지시",
+      "steerUnavailable": "{name}에게 지시 · 현재 전달할 수 없음",
+      "explain": "보낼 대상: 최근 결과에 대한 새 실행 · 질문"
+    },
     "nextRequest": "다음 요청부터",
     "commands": "명령",
     "references": "참조",
@@ -2063,7 +2074,10 @@
     "connect": "모델 연결",
     "retry": "다시 보내기",
     "queue": "대기열로 옮기기",
-    "edit": "요청 다시 편집"
+    "edit": "요청 다시 편집",
+    "terminal": "터미널이 이 작업 사본을 사용하고 있습니다. 터미널을 열어 직접 중지한 뒤 다시 보내세요.",
+    "diagnostics": "진단 정보",
+    "openTerminal": "터미널 제어 열기"
   },
   "Harness": {
     "heading": "작업 방식",
@@ -2853,7 +2867,7 @@
     "contextRefresh": "이전 요청 기준 · 새 측정 대기",
     "simulatedNote": "시뮬레이션 수치입니다. 실제 모델 측정값이 아닙니다.",
     "lastRun": "마지막 실행",
-    "selectedRun": "선택한 실행 · {total}개 중 {number}번째",
+    "selectedRun": "선택한 실행 · 실행 #{number} / 총 {total}개",
     "selectedRunUnordered": "선택한 실행",
     "rail": "이번 실행",
     "agentsHeading": "에이전트",
@@ -2969,29 +2983,34 @@
       "agents": "에이전트",
       "environment": "환경",
       "outputTokens": "출력 토큰",
-      "calls": "호출 {max}회 중 {used}회",
-      "callsNoLimit": "호출 {used}회",
+      "calls": "모델 호출 {used}/{max}회",
+      "callsNoLimit": "모델 호출 {used}회",
       "tokenLimit": "한도 {max}",
       "unknownHeld": "확인되지 않은 {count}토큰 보류",
       "perCall": "모델 호출별 출력 토큰: {values}",
-      "files": "파일 {count}개",
+      "files": "변경 파일 {count}개",
       "linesUnknown": "줄 수를 세지 못함",
       "readError": "이 실행을 읽지 못했습니다.",
       "retry": "다시 시도",
       "openDetail": "{name} 자세히 보기",
       "openChanges": "변경사항 열기",
-      "spent": "사용",
-      "held": "보류",
-      "limit": "한도",
+      "spent": "정산된 출력 토큰",
+      "held": "보류한 출력 토큰",
+      "limit": "출력 토큰 한도",
       "noLimit": "한도 없음",
       "modelCalls": "모델 호출",
-      "inputTokens": "입력 토큰",
+      "inputTokens": "보고된 입력 토큰",
       "cachedInput": "캐시 입력",
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "보고 없음",
       "cacheUnreported": "캐시 입력을 보고하지 않은 호출 {count}회",
-      "fullBudget": "실행 열기"
-    }
+      "fullBudget": "실행 열기",
+      "runScope": "선택한 실행 · 실행 #{number}",
+      "selectedRun": "선택한 실행",
+      "usageDefinition": "이 실행의 정산된 출력 토큰과 모델 호출 수입니다. 입력은 끝난 호출이 보고한 사용량이며, 캐시 입력은 입력의 일부로 다시 더하지 않습니다.",
+      "simulatedUsage": "시뮬레이션 사용량이며 실제 제공자 측정값이나 청구액이 아닙니다."
+    },
+    "lastRunNumber": "마지막 실행 · 실행 #{number}"
   },
   "ModelImport": {
     "heading": "모델 설정 가져오기",
@@ -3288,7 +3307,7 @@
     "refresh": "터미널 새로고침",
     "shell": "셸",
     "create": "새 터미널",
-    "unavailable": "신뢰한 작업 사본과 사용 가능한 셸이 필요합니다.",
+    "unavailable": "변경 화면에서 신뢰한 폴더의 작업 사본을 먼저 만드세요. 사용 가능한 셸도 필요합니다.",
     "createPending": "터미널 생성 결과를 확인하지 못했습니다. 다른 터미널을 만들기 전에 기존 요청의 결과를 확인하세요.",
     "checkCreate": "생성 결과 확인",
     "retryCreate": "기존 생성 요청 다시 시도",
@@ -3339,7 +3358,12 @@
     "selectOutput": "첨부할 터미널 출력을 먼저 선택하세요.",
     "attachSelectionError": "선택을 첨부하지 못했습니다. 선택 크기와 연결 상태를 확인하세요.",
     "sourceStale": "터미널 출력이 변경되어 이전 선택을 복원하지 않았습니다.",
-    "sourceUnavailable": "이 터미널 출처를 현재 화면에서 열 수 없습니다."
+    "sourceUnavailable": "이 터미널 출처를 현재 화면에서 열 수 없습니다.",
+    "runActive": "실행이 끝난 뒤 새 터미널을 만드세요.",
+    "diagnostics": "진단 정보",
+    "stopped": "중지됨",
+    "stopUnconfirmed": "중지를 시도했지만 종료를 확인하지 못했습니다. 작업 사본 보호를 유지합니다. 호스트 프로세스와 진단 정보를 확인하세요. 보호를 우회하려고 작업 사본을 삭제하지 마세요.",
+    "writerBusy": "다른 작업이 이 작업 사본을 사용하고 있습니다. 해당 작업을 중지하거나 끝날 때까지 기다린 뒤 터미널을 만드세요."
   },
   "Docking": {
     "fileViewer": "파일 뷰어",
@@ -4006,6 +4030,12 @@
     "selectFrame": "식을 평가하려면 호출 스택에서 프레임을 선택하세요."
   },
   "Meetings": {
+    "participantDefault": "참가자 {number}",
+    "clearDraft": "초안 지우기",
+    "summaryFailed": "비서가 회의록을 정리하지 못했습니다. 다시 요청한 뒤 결정을 검토·채택하세요.",
+    "retrySummary": "회의록 다시 요청",
+    "handoffNeedsMinutes": "아직 넘길 결정이 없습니다. 비서에게 계획을 요청하고 제안을 검토·채택하세요.",
+    "handoffNeedsAdoption": "회의록에서 제안을 검토·채택하면 작업으로 넘길 수 있습니다.",
     "heading": "회의",
     "new": "새 회의",
     "newTitle": "새 회의 만들기",
@@ -4244,9 +4274,11 @@
     },
     "statTurns": "{count}턴",
     "statSteps": "{count}단계",
-    "statTokens": "{tokens} 토큰",
+    "statTokens": "보고된 토큰 {tokens}",
     "statCache": "캐시 적중 {share}",
-    "statCacheUnreported": "캐시 보고 없음"
+    "statCacheUnreported": "캐시 보고 없음",
+    "statSession": "세션 누계",
+    "statDefinition": "차례는 실행 수입니다. 단계는 주 에이전트의 도구 작업과 하위 실행 수이며 모델 호출 수와 다릅니다. 토큰은 끝난 모델 호출이 보고한 입력·출력의 합입니다. 미보고 사용량은 제외하고 캐시 입력은 다시 더하지 않습니다."
   },
   "RunMonitor": {
     "views": "실행 보기",
