@@ -718,19 +718,21 @@ function RunActivity({ model }: { model: ChatWidgetModel }) {
   const ts = useTranslations('Status');
   const text = model.action.visible
     ? ''
-    : model.activity.text === 'working'
-      ? t('activityWorking')
-      : model.activity.text === 'failed'
-        ? t('activityFailed')
-        : model.activity.text === 'user'
-          ? t('activityUser')
-          : model.activity.text === 'elapsed' || model.activity.text === 'record'
-            ? ''
-            : ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(
-                  model.activity.text,
-                )
-              ? ts(model.activity.text)
-              : model.activity.text;
+    : model.activity.text === 'starting'
+      ? t('activityStarting')
+      : model.activity.text === 'working'
+        ? t('activityWorking')
+        : model.activity.text === 'failed'
+          ? t('activityFailed')
+          : model.activity.text === 'user'
+            ? t('activityUser')
+            : model.activity.text === 'elapsed' || model.activity.text === 'record'
+              ? ''
+              : ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(
+                    model.activity.text,
+                  )
+                ? ts(model.activity.text)
+                : model.activity.text;
   const elapsed =
     model.activity.elapsedMs == null
       ? null

@@ -1,13 +1,15 @@
 import type { CheckpointRestore, CheckpointRestorePlan, FileCheckpoint } from '@corral/contracts';
 import { Button, Input, Switch } from '@corral/react/design-kit';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
 import { useServices } from '../services.tsx';
 
 export function CheckpointPanel({ sessionId }: { sessionId: string }) {
-  const { workspaces, mode } = useServices();
+  const { workspaces, mode, repository } = useServices();
   const t = useTranslations('Checkpoints');
+  const format = useFormatter();
+  const [requests, setRequests] = useState<Record<string, string>>({});
   const id = useId();
   const [items, setItems] = useState<FileCheckpoint[]>([]);
   const [restores, setRestores] = useState<CheckpointRestore[]>([]);
@@ -18,12 +20,22 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
   const capture = useRef<{ checkpointId: string; label: string } | null>(null);
   const mounted = useRef(true);
   const reload = useCallback(async () => {
-    const data = await workspaces?.checkpoints(sessionId);
+    const [data, session] = await Promise.all([
+      workspaces?.checkpoints(sessionId),
+      repository.getSession(sessionId).catch(() => null),
+    ]);
     if (data && mounted.current) {
       setItems(data.checkpoints);
+      setRequests(
+        Object.fromEntries(
+          session?.entries.flatMap((entry) =>
+            entry.runId && entry.intent !== 'steer' ? [[entry.runId, entry.text]] : [],
+          ) ?? [],
+        ),
+      );
       setRestores(data.restores);
     }
-  }, [workspaces, sessionId]);
+  }, [workspaces, repository, sessionId]);
   useEffect(() => {
     mounted.current = true;
     void reload().catch(() => {
@@ -108,6 +120,15 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
                 {item.kind === 'manual' ? item.label : t(`kind.${item.kind}`)} ·{' '}
                 {t(item.target === 'original' ? 'original' : 'workingCopy')} ·{' '}
                 {t(`state.${item.state}`)} · <code>{item.tree?.slice(0, 8)}</code>
+              </p>
+              <p className="text-muted-foreground">
+                <time dateTime={item.createdAt}>
+                  {format.dateTime(new Date(item.createdAt), {
+                    dateStyle: 'short',
+                    timeStyle: 'medium',
+                  })}
+                </time>
+                {item.runId ? ` · ${requests[item.runId] ?? t('requestUnavailable')}` : ''}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Switch

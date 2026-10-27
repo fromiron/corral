@@ -2,8 +2,8 @@
 @import "./design-kit/tokens.css";
 
 :root,
-.light,
-.dark {
+.light:not(.react-flow),
+.dark:not(.react-flow) {
   /* Small status text and focus need stronger contrast on the light surfaces. */
   --destructive: light-dark(#b91c1c, #fca5a5);
   --destructive-contrast: light-dark(#ffffff, #171717);
@@ -248,4 +248,18 @@
       transition-duration: 0.01ms !important;
     }
   }
+}
+
+/* React Flow's system theme class must not override the app's explicit theme. */
+.corral-flow {
+  color-scheme: inherit;
+  --xy-background-color: var(--background);
+  --xy-node-color: var(--foreground);
+  --xy-edge-label-color: var(--foreground);
+  --xy-edge-label-background-color: var(--card);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--hover);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
 }

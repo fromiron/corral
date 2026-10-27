@@ -364,11 +364,15 @@ class Http {
 
 async function apiError(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as { error?: { code?: ErrorCode; message?: string } };
+    const body = (await response.json()) as {
+      error?: { code?: ErrorCode; message?: string };
+      receipt?: { error?: { code?: ErrorCode; message?: string } };
+    };
+    const error = body.error ?? body.receipt?.error;
     return new ApiError(
       response.status,
-      body.error?.code ?? 'UNKNOWN',
-      body.error?.message ?? response.statusText,
+      error?.code ?? 'UNKNOWN',
+      error?.message ?? response.statusText,
     );
   } catch {
     return new ApiError(response.status, 'UNKNOWN', response.statusText);

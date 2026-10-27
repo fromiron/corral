@@ -12,6 +12,7 @@ import { refusalKind, terminalOwner } from './refusal.ts';
 
 /** Fired with a request's text to take it back into the request box. */
 export const EDIT_REQUEST = 'corral:edit-request';
+export const RESEND_REQUEST = 'corral:resend-request';
 
 export function editRequest(
   text: string,

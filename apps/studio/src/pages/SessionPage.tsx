@@ -28,7 +28,7 @@ import type {
   WorkSession,
 } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
-import { runResults, StatusBadge } from '@corral/react';
+import { runResults, StatusBadge, useCancelConfirmation } from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -157,7 +157,12 @@ import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
-import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
+import {
+  EDIT_REQUEST,
+  editRequest,
+  RESEND_REQUEST,
+  RefusalHelp,
+} from '../workbench/RefusalHelp.tsx';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
@@ -268,6 +273,16 @@ function WorkSessionPage() {
     rememberView(remembered);
   }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
+  const urlViewKey = JSON.stringify(urlSearch);
+  useEffect(() => {
+    if (urlViewKey !== '{}') return;
+    const current = JSON.parse(viewKey) as SessionSearch;
+    // Give Back an explicit destination before remembered state changes with a result link.
+    void navigate({
+      search: () => (Object.keys(current).length ? current : { compose: true }),
+      replace: true,
+    });
+  }, [urlViewKey, viewKey, navigate]);
   const router = useRouter();
   const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
@@ -545,7 +560,7 @@ function WorkSessionPage() {
                 hostId={services.workspaceId}
                 projectId={session.projectId}
                 sessionId={session.sessionId}
-                selectedPanel={search.compose ? null : panel}
+                selectedPanel={panel ?? null}
                 fileWorkAvailable={Boolean(binding)}
                 selectionKey={`${session.sessionId}:${viewKey}`}
                 documentOwner={documents}
@@ -1352,6 +1367,11 @@ function EntryCard({
   const tq = useTranslations('Reasoning');
   const format = useFormatter();
   const run = entry.runId ? runs.find((r) => r.runId === entry.runId) : undefined;
+  const resend = () =>
+    window.dispatchEvent(
+      new CustomEvent(RESEND_REQUEST, { detail: { sessionId, entryId: entry.entryId } }),
+    );
+  const canResend = !runs.some((item) => !TERMINAL_RUN_STATUSES.has(item.status));
   const when = format.dateTime(new Date(entry.createdAt), {
     timeStyle: 'short',
     dateStyle: 'short',
@@ -1438,6 +1458,18 @@ function EntryCard({
           {entry.detail}
         </p>
       ) : null}
+      {run &&
+      ['cancelled', 'interrupted', 'failed'].includes(run.status) &&
+      entry.intent !== 'steer' ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="compact" variant="tertiary" disabled={!canResend} onClick={resend}>
+            {t('retryRequest')}
+          </Button>
+          <Button size="compact" variant="ghost" onClick={() => editRequest(entry.text, entry)}>
+            {t('restoreRequest')}
+          </Button>
+        </div>
+      ) : null}
       {run && entry.intent !== 'steer' ? <RunCard run={run} nested onPanel={onPanel} /> : null}
       {entry.intent === 'steer' && entry.runId ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1445,6 +1477,8 @@ function EntryCard({
             runId={entry.runId}
             commandId={entry.commandId ?? null}
             executionId={entry.executionId ?? null}
+            onResend={resend}
+            resendDisabled={!canResend}
           />
           <Button
             variant="ghost"
@@ -1587,10 +1621,14 @@ function DeliveryStatus({
   runId,
   commandId,
   executionId,
+  onResend,
+  resendDisabled,
 }: {
   runId: string;
   commandId: string | null;
   executionId: string | null;
+  onResend: () => void;
+  resendDisabled: boolean;
 }) {
   const t = useTranslations('Sessions');
   const ts = useTranslations('Transcript.instruction');
@@ -1647,6 +1685,11 @@ function DeliveryStatus({
       </span>
       <span>{t('appliesAt')}</span>
       {status ? <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span> : null}
+      {status && ['not_delivered', 'expired', 'cancelled'].includes(status) ? (
+        <Button size="compact" variant="tertiary" disabled={resendDisabled} onClick={onResend}>
+          {t('resendNext')}
+        </Button>
+      ) : null}
     </>
   );
 }
@@ -1787,8 +1830,6 @@ export function Composer({
       restored.target && restored.targetLabel ? [[restored.target, restored.targetLabel]] : [],
     ),
   );
-  const [confirmStop, setConfirmStop] = useState(false);
-  const stopTarget = useRef<string | null>(null);
   const [teamOpen, setTeamOpen] = useState(false);
   const [autoModelOpen, setAutoModelOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
@@ -1816,6 +1857,10 @@ export function Composer({
   const ownActive =
     runs.find((run) => run.runId === selectedRunId && !TERMINAL_RUN_STATUSES.has(run.status)) ??
     null;
+  const [confirmStop, setConfirmStop] = useCancelConfirmation(
+    ownActive?.runId ?? null,
+    ownActive?.status === 'cancelling',
+  );
   const latest = useLatestResult(runs);
   // a follow-up carries the session's turns through the newest ended run.
   const lastEnded = runs.findLast((run) => TERMINAL_RUN_STATUSES.has(run.status)) ?? null;
@@ -2494,8 +2539,7 @@ export function Composer({
   }, []);
 
   const requestStop = () => {
-    stopTarget.current = ownActive?.runId ?? null;
-    setConfirmStop(stopTarget.current !== null);
+    setConfirmStop(ownActive !== null);
   };
   const runCommand = async (type: 'pause' | 'resume' | 'cancel', runId = ownActive?.runId) => {
     if (!runId) return;
@@ -2524,25 +2568,40 @@ export function Composer({
     onChange();
   };
 
-  const startQueued = async (entry: SessionEntry) => {
+  const entryCommandKey = (entry: SessionEntry, resend: boolean) =>
+    `${resend ? 'resend' : 'queue'}\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, [...(entry.attachments ?? []), ...(resend ? (entry.images ?? []) : [])], autoChoice, team ? `corral:${team.corralId}` : teamMode)}\u0000${entry.permissionMode ?? ''}`;
+  const startQueued = async (entry: SessionEntry, resend = false) => {
+    if (busy || autoRequest.current || unavailable) return;
     setBusy(true);
-    const queuedReferences = entry.attachments ?? [];
+    const queuedReferences: RunReference[] = [
+      ...(entry.attachments ?? []),
+      ...(resend ? (entry.images ?? []) : []),
+    ];
     try {
-      const commandId = commandFor(
-        `queue\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, queuedReferences, autoChoice, team ? `corral:${team.corralId}` : teamMode)}\u0000${entry.permissionMode ?? ''}`,
-      );
+      const commandId = commandFor(entryCommandKey(entry, resend));
       const { runId, detail, auto, cancelError } = await startNext(
         entry.text,
         commandId,
         queuedReferences,
         entry.permissionMode,
       );
-      const saved = await repository.updateSessionEntry(session.sessionId, entry.entryId, {
-        state: runId ? 'started' : 'refused',
+      const outcome = {
+        state: runId ? ('started' as const) : ('refused' as const),
         runId,
         detail,
         ...(auto ? { auto } : {}),
-      });
+      };
+      const saved = resend
+        ? await repository.addSessionEntry(session.sessionId, {
+            intent: 'next',
+            text: entry.text,
+            commandId,
+            ...outcome,
+            ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
+            ...(entry.attachments ? { attachments: entry.attachments } : {}),
+            ...(entry.images ? { images: entry.images } : {}),
+          })
+        : await repository.updateSessionEntry(session.sessionId, entry.entryId, outcome);
       if (!saved.ok) throw new Error(t('failed', { message: saved.message }));
       clearPending();
       if (cancelError) setError(cancelError);
@@ -2558,6 +2617,66 @@ export function Composer({
       setBusy(false);
     }
   };
+  const resendState = useRef({
+    sessionId: session.sessionId,
+    active: Boolean(active),
+    pending: false,
+  });
+  resendState.current = {
+    ...resendState.current,
+    sessionId: session.sessionId,
+    active: Boolean(active),
+  };
+  const resendEntry = useRef<(entryId: string) => Promise<void>>(async () => {});
+  resendEntry.current = async (entryId) => {
+    const entry = session.entries.find((item) => item.entryId === entryId);
+    if (!entry?.runId || active || busy || autoRequest.current || resendState.current.pending)
+      return;
+    resendState.current.pending = true;
+    try {
+      if (entry.intent === 'steer') {
+        const { projection } = await transport.getSnapshot(entry.runId);
+        const directive = Object.values(projection.directives).find(
+          (item) => item.commandId === entry.commandId,
+        );
+        if (!directive || !['not_delivered', 'expired', 'cancelled'].includes(directive.status))
+          return;
+      } else if (
+        !runs.some(
+          (run) =>
+            run.runId === entry.runId &&
+            ['cancelled', 'interrupted', 'failed'].includes(run.status),
+        )
+      )
+        return;
+      if (
+        resendState.current.sessionId !== session.sessionId ||
+        resendState.current.active ||
+        autoRequest.current
+      )
+        return;
+      if (pending.current && pending.current.key !== entryCommandKey(entry, true)) {
+        setError(t('resolvePendingBeforeRetry'));
+        return;
+      }
+      await startQueued(entry, true);
+    } finally {
+      resendState.current.pending = false;
+    }
+  };
+  useEffect(() => {
+    const resend = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId: string; entryId: string }>).detail;
+      if (detail?.sessionId === session.sessionId && typeof detail.entryId === 'string')
+        void resendEntry
+          .current(detail.entryId)
+          .catch((failure: unknown) =>
+            setError(failure instanceof Error ? failure.message : String(failure)),
+          );
+    };
+    window.addEventListener(RESEND_REQUEST, resend);
+    return () => window.removeEventListener(RESEND_REQUEST, resend);
+  }, [session.sessionId]);
   const removeQueued = async (entry: SessionEntry) => {
     await repository.updateSessionEntry(session.sessionId, entry.entryId, { state: 'dismissed' });
     await router.invalidate();
@@ -3314,7 +3433,9 @@ export function Composer({
         <DialogPopup>
           <DialogHeader>
             <DialogTitle>{tr('cancelRun')}</DialogTitle>
-            <DialogDescription>{tr('cancelRunExplain')}</DialogDescription>
+            <DialogDescription>
+              {tr('cancelRunExplain')} {tr('cancelNotSent')}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="tertiary" onClick={() => setConfirmStop(false)}>
@@ -3324,7 +3445,7 @@ export function Composer({
               variant="destructive"
               onClick={() => {
                 setConfirmStop(false);
-                if (stopTarget.current) void runCommand('cancel', stopTarget.current);
+                if (ownActive) void runCommand('cancel', ownActive.runId);
               }}
             >
               {tr('confirmCancelRun')}

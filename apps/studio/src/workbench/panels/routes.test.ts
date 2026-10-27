@@ -253,3 +253,10 @@ it('a terminal recovery link overrides remembered terminal and run selections', 
     panel: 'files',
   });
 });
+
+it('leaving run history clears its cursor while selecting another detail preserves it', () => {
+  const history = { panel: 'run' as const, run: 'run_old', atSeq: 9, view: 'run' as const };
+  expect(patchSessionSearch(history, { panel: undefined }).atSeq).toBeUndefined();
+  expect(patchSessionSearch(history, { panel: 'files' }).atSeq).toBeUndefined();
+  expect(patchSessionSearch(history, { execution: 'exec_old' }).atSeq).toBe(9);
+});

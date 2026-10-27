@@ -344,6 +344,16 @@ function RunWorkspace({
   const results = projection ? runResults(projection) : null;
   const selectedResultId = result ?? results?.defaultId ?? undefined;
 
+  if (history?.status === 'loading') {
+    return (
+      <section className="flex flex-col items-start gap-3 p-4" aria-busy="true">
+        <p role="status">{t('loading')}</p>
+        <Button variant="tertiary" size="compact" onClick={() => chooseSeq(undefined)}>
+          {m('latest')}
+        </Button>
+      </section>
+    );
+  }
   return (
     <RunDisplayProvider snapshot={display}>
       <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
@@ -405,11 +415,6 @@ function RunWorkspace({
                 visible: projection?.lastSeq ?? 0,
                 newer: Math.max(0, head - atSeq),
               })}
-            </p>
-          ) : null}
-          {history?.status === 'loading' ? (
-            <p role="status" className="mt-2 text-xs text-warning">
-              {m('historyLoading', { seq: atSeq ?? 0, visible: history.projection.lastSeq })}
             </p>
           ) : null}
           {history?.gap ? (
@@ -782,6 +787,7 @@ function RunSummary({
   const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
   const tasks = Object.values(projection.tasks);
   const inFlight = Object.values(projection.modelCalls).filter((c) => !c.finished).length;
+  const ended = TERMINAL_RUN_STATUSES.has(projection.status);
   const loops = definition.nodes.flatMap((node) =>
     node.type === 'loop' && projection.loopIterations[node.id]?.length
       ? [
@@ -809,6 +815,9 @@ function RunSummary({
           </h2>
           {!compact ? (
             <span className="font-mono text-xs text-muted-foreground">{projection.runId}</span>
+          ) : null}
+          {readOnly ? (
+            <span className="text-xs text-muted-foreground">{t('historicalStatus')}</span>
           ) : null}
           <span aria-live="polite" data-testid="run-status">
             <StatusBadge status={projection.status} />
@@ -840,17 +849,28 @@ function RunSummary({
         {compact && projection.status === 'succeeded' && working.length === 0 ? null : (
           <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
             <span>
-              {working.length
-                ? t('working', { labels: working.join(', ') })
-                : compact
+              {projection.status === 'cancelling'
+                ? t('cancelling')
+                : ended
                   ? null
-                  : t('idle')}
+                  : working.length
+                    ? t('working', { labels: working.join(', ') })
+                    : inFlight || waiting || projection.status === 'paused'
+                      ? null
+                      : t('starting')}
             </span>
             {waiting ? <span>{t('waitingExecutions', { count: waiting })}</span> : null}
             {loops.map((text) => (
               <span key={text}>{text}</span>
             ))}
-            {compact && inFlight === 0 ? null : <span>{t('requests', { count: inFlight })}</span>}
+            {inFlight ? (
+              <span>
+                {t(
+                  ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests',
+                  { count: inFlight },
+                )}
+              </span>
+            ) : null}
             {compact ? null : (
               <span>
                 {t('tasks', {

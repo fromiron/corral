@@ -424,7 +424,7 @@ function useChatWidgetState(
   }, [live, projection?.endedAt, presentationRunId]);
   const activity = {
     ...activityLine({
-      runStatus: projection?.status ?? (live ? 'running' : 'succeeded'),
+      runStatus: projection?.status ?? (live ? 'created' : 'succeeded'),
       startedAt: projection?.startedAt ?? null,
       endedAt: projection?.endedAt ?? null,
       now,

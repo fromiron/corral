@@ -398,7 +398,8 @@
     "requestLink": "Request {request} · Snapshot {snapshot}",
     "produced": "Produced: {versions}",
     "receiptRun": "Whole-run command",
-    "receiptExecution": "Command to one execution"
+    "receiptExecution": "Command to one execution",
+    "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run."
   },
   "Status": {
     "created": "Created",
@@ -562,7 +563,11 @@
     "evidenceChecks": "Checks",
     "uncertainWrite": "outcome unknown",
     "evidenceCheckEarlier": "earlier version",
-    "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}"
+    "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}",
+    "historicalStatus": "Historical view",
+    "starting": "Preparing to run",
+    "cancelling": "Cancelling owned work",
+    "unconfirmedRequests": "{count, plural, one {# model request: termination unconfirmed} other {# model requests: termination unconfirmed}}"
   },
   "Timeline": {
     "heading": "Timeline",
@@ -1484,7 +1489,11 @@
     "justNow": "Just now",
     "tryDemo": "Try the simulation demo",
     "noWorkingCopy": "This session has no working copy, so it cannot change files. Connect a folder and prepare a working copy to edit files.",
-    "prepareWorkingCopy": "Set up file work"
+    "prepareWorkingCopy": "Set up file work",
+    "retryRequest": "Retry request",
+    "restoreRequest": "Restore message",
+    "resendNext": "Send as next request",
+    "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed."
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -2689,7 +2698,8 @@
     "localOnly": "File checkpoints are available in the local app.",
     "original": "Original folder",
     "workingCopy": "Session working copy",
-    "restoreOriginal": "Restore original folder"
+    "restoreOriginal": "Restore original folder",
+    "requestUnavailable": "Original request unavailable"
   },
   "RunStatus": {
     "environment": "Environment",
@@ -2830,7 +2840,8 @@
     "requestOpen": "Branch before this request",
     "requestDescription": "Start this original request in a separate session and Run, using its original team and criteria.",
     "requestBoundary": "Starts at the original request boundary, before any model response.",
-    "unlimited": "Model {model} · no default usage limits"
+    "unlimited": "Model {model} · no default usage limits",
+    "activeRun": "Branching requires idle work and confirmed cleanup. Wait for running work to finish, then try again."
   },
   "ProfileContext": {
     "contextWindow": "Effective context",
@@ -3013,7 +3024,8 @@
       "usageDefinition": "This run: settled output tokens and model calls. Input is reported usage from finished calls; cached input is part of input, not extra tokens.",
       "simulatedUsage": "Simulation usage; not a provider measurement or bill."
     },
-    "lastRunNumber": "Last run · Run #{number}"
+    "lastRunNumber": "Last run · Run #{number}",
+    "activityStarting": "Preparing to run…"
   },
   "ModelImport": {
     "heading": "Import model settings",
@@ -3424,7 +3436,7 @@
     "tools": "Tasks & preview",
     "activeRun": "Active run controls",
     "openActiveRun": "Open active run",
-    "activeRunTarget": "In progress: {request}",
+    "activeRunTarget": "Request: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
     "pendingActions": "{count, plural, one {# response needed} other {# responses needed}}",
     "runDisconnected": "Run connection lost; its state is unconfirmed.",

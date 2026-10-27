@@ -583,3 +583,26 @@ it('a team tab behind another tab is not drawn: its canvas nodes override visibi
   });
   expect(holder()?.hidden).toBe(false);
 });
+
+it('review preset publishes its Changes destination while keeping the selected document', async () => {
+  const onActiveContext = vi.fn();
+  const f = await fixture({ onActiveContext });
+  await act(async () =>
+    f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' }),
+  );
+  const documentView = document.querySelector('[data-testid="document"]');
+  const rows = await paneActions(documentView);
+  await act(async () => rows.find((row) => row.textContent?.startsWith('preset'))?.click());
+  const review = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+    (option) => option.textContent?.includes('review'),
+  );
+  expect(review).toBeDefined();
+  await act(async () => review?.click());
+  expect(sessionTab(f.container, 'changes')?.getAttribute('aria-selected')).toBe('true');
+  expect(onActiveContext).toHaveBeenLastCalledWith('changes');
+  expect(document.querySelector('[data-testid="document"]')).toBe(documentView);
+  await disposals.pop()?.();
+  const restored = await fixture({ selectedPanel: 'changes' });
+  expect(sessionTab(restored.container, 'changes')?.getAttribute('aria-selected')).toBe('true');
+  expect(activePane(restored.container)).toContain('file.ts');
+});

@@ -366,6 +366,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
         elevateNodesOnSelect={false}
         // The saved viewport frames the Corral when it opens; later pans stay local.
         defaultViewport={draft.viewport}
+        className="corral-flow"
         colorMode="system"
       >
         <Background />
