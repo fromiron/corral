@@ -5,11 +5,20 @@
 export type RefusalKind =
   | 'signin'
   | 'profile'
+  | 'terminal'
   | 'busy'
   | 'limit'
   | 'reference'
   | 'network'
   | 'other';
+
+export function terminalOwner(message: string): string | undefined {
+  const match =
+    /^working copy (?:terminal writer (\S+)|writer (terminal_\S+)) has not released ownership$/.exec(
+      message,
+    );
+  return match?.[1] ?? match?.[2];
+}
 
 export function refusalKind({
   code,
@@ -21,6 +30,7 @@ export function refusalKind({
   network?: boolean;
 }): RefusalKind {
   if (network) return 'network';
+  if (terminalOwner(message)) return 'terminal';
   if (/\bsign[ -]?in\b|login has expired|subscription sign-in/i.test(message)) return 'signin';
   if (/no such model profile|has no model|model profile/i.test(message)) return 'profile';
   switch (code) {
