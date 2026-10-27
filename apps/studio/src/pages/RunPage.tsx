@@ -85,6 +85,7 @@ export function RunPage() {
  */
 export function RunDetail({
   runId,
+  runNumber,
   search,
   setSearch,
   embedded = false,
@@ -92,6 +93,7 @@ export function RunDetail({
 }: {
   sessionId?: string | null;
   runId: string;
+  runNumber?: number;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded?: boolean;
@@ -154,6 +156,7 @@ export function RunDetail({
   return (
     <RunWorkspace
       runId={runId}
+      runNumber={runNumber}
       key={runId}
       session={session}
       definition={definition}
@@ -203,6 +206,7 @@ const NO_STREAMS = {};
 
 function RunWorkspace({
   runId,
+  runNumber,
   session,
   sessionId,
   definition,
@@ -211,6 +215,7 @@ function RunWorkspace({
   embedded,
 }: {
   runId: string;
+  runNumber: number | undefined;
   session: RunSessionStore;
   sessionId: string | null;
   definition: CorralDefinition;
@@ -438,6 +443,7 @@ function RunWorkspace({
         >
           <RunResults
             session={session}
+            runNumber={runNumber}
             selectedId={result ?? null}
             onSelect={(id) => setSearch({ view: 'results', result: id })}
             {...(previewUrl ? { previewUrl } : {})}

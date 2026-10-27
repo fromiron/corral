@@ -1289,7 +1289,8 @@
     "unavailable": "이 결과를 불러오지 못했습니다.",
     "previewOf": "{label} 미리보기",
     "openResults": "결과 화면에서 보기",
-    "finalCount": "{count, plural, other {최종 결과 #개}}"
+    "finalCount": "{count, plural, other {최종 결과 #개}}",
+    "authorExecution": "에이전트 실행 {number}"
   },
   "Projects": {
     "defaultName": "기본 프로젝트",
@@ -1752,7 +1753,8 @@
     "noCopyChanges": "작업 복사본을 만들면 여기에 파일 변경이 보입니다.",
     "checksOnReview": "검증은 검토 화면에서 실행합니다.",
     "serverOnly": "파일 작업·변경·검증은 로컬 서버에서만 쓸 수 있습니다.",
-    "runNumber": "실행 {number}"
+    "runNumber": "실행 #{number}",
+    "sessionChangeCount": "세션 변경 · 파일 {count}개"
   },
   "Desktop": {
     "conversation": "대화",
@@ -2847,7 +2849,7 @@
     "contextRefresh": "이전 요청 기준 · 새 측정 대기",
     "simulatedNote": "시뮬레이션 수치입니다. 실제 모델 측정값이 아닙니다.",
     "lastRun": "마지막 실행",
-    "selectedRun": "선택한 실행 · {total}개 중 {number}번째",
+    "selectedRun": "선택한 실행 · 실행 #{number} / 총 {total}개",
     "selectedRunUnordered": "선택한 실행",
     "rail": "이번 실행",
     "agentsHeading": "에이전트",
@@ -2963,29 +2965,34 @@
       "agents": "에이전트",
       "environment": "환경",
       "outputTokens": "출력 토큰",
-      "calls": "호출 {max}회 중 {used}회",
-      "callsNoLimit": "호출 {used}회",
+      "calls": "모델 호출 {used}/{max}회",
+      "callsNoLimit": "모델 호출 {used}회",
       "tokenLimit": "한도 {max}",
       "unknownHeld": "확인되지 않은 {count}토큰 보류",
       "perCall": "모델 호출별 출력 토큰: {values}",
-      "files": "파일 {count}개",
+      "files": "변경 파일 {count}개",
       "linesUnknown": "줄 수를 세지 못함",
       "readError": "이 실행을 읽지 못했습니다.",
       "retry": "다시 시도",
       "openDetail": "{name} 자세히 보기",
       "openChanges": "변경사항 열기",
-      "spent": "사용",
-      "held": "보류",
-      "limit": "한도",
+      "spent": "정산된 출력 토큰",
+      "held": "보류한 출력 토큰",
+      "limit": "출력 토큰 한도",
       "noLimit": "한도 없음",
       "modelCalls": "모델 호출",
-      "inputTokens": "입력 토큰",
+      "inputTokens": "보고된 입력 토큰",
       "cachedInput": "캐시 입력",
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "보고 없음",
       "cacheUnreported": "캐시 입력을 보고하지 않은 호출 {count}회",
-      "fullBudget": "실행 열기"
-    }
+      "fullBudget": "실행 열기",
+      "runScope": "선택한 실행 · 실행 #{number}",
+      "selectedRun": "선택한 실행",
+      "usageDefinition": "이 실행의 정산된 출력 토큰과 모델 호출 수입니다. 입력은 끝난 호출이 보고한 사용량이며, 캐시 입력은 입력의 일부로 다시 더하지 않습니다.",
+      "simulatedUsage": "시뮬레이션 사용량이며 실제 제공자 측정값이나 청구액이 아닙니다."
+    },
+    "lastRunNumber": "마지막 실행 · 실행 #{number}"
   },
   "ModelImport": {
     "heading": "모델 설정 가져오기",
@@ -4237,9 +4244,11 @@
     },
     "statTurns": "{count}턴",
     "statSteps": "{count}단계",
-    "statTokens": "{tokens} 토큰",
+    "statTokens": "보고된 토큰 {tokens}",
     "statCache": "캐시 적중 {share}",
-    "statCacheUnreported": "캐시 보고 없음"
+    "statCacheUnreported": "캐시 보고 없음",
+    "statSession": "세션 누계",
+    "statDefinition": "차례는 실행 수입니다. 단계는 주 에이전트의 도구 작업과 하위 실행 수이며 모델 호출 수와 다릅니다. 토큰은 끝난 모델 호출이 보고한 입력·출력의 합입니다. 미보고 사용량은 제외하고 캐시 입력은 다시 더하지 않습니다."
   },
   "RunMonitor": {
     "views": "실행 보기",

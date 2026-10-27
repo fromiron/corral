@@ -14,6 +14,7 @@ export interface ResultItem {
   version: number;
   contract: OutputContract;
   authorExecutionId: string;
+  authorExecutionNumber: number | null;
   submitted: boolean;
   byteLength: number;
   parentVersionId: string | null;
@@ -58,6 +59,8 @@ export function runResults(projection: RunProjection): RunResults {
       version: artifact.version,
       contract: artifact.contract,
       authorExecutionId: artifact.authorExecutionId,
+      authorExecutionNumber:
+        projection.executionOrder.indexOf(artifact.authorExecutionId) + 1 || null,
       submitted: artifact.submitted,
       byteLength: artifact.byteLength,
       parentVersionId: artifact.parentVersionId,
@@ -66,7 +69,7 @@ export function runResults(projection: RunProjection): RunResults {
     };
   };
 
-  const finalIds = projection.output?.artifactVersionIds ?? [];
+  const finalIds = [...new Set(projection.output?.artifactVersionIds ?? [])];
   const final = finalIds.flatMap((id) => item(id) ?? []);
   const finalSet = new Set(finalIds);
 

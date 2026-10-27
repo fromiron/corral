@@ -241,8 +241,8 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
   await expect(page.getByText('Last run').first()).toBeAttached();
   const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
   await picker.click();
-  await page.getByRole('option', { name: /First request/ }).click();
-  await expect(page.getByText('Selected run · 1 of 2').first()).toBeAttached();
+  await page.getByRole('option', { name: /Run #1/ }).click();
+  await expect(page.getByText('Selected run · Run #1 of 2').first()).toBeAttached();
   await expect(page.getByText('Last run')).toHaveCount(0);
 });
 

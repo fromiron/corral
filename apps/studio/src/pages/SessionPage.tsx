@@ -827,15 +827,16 @@ function SessionActions({
           label={t('selectedRun')}
           value={selectedRunId}
           onValueChange={onSelectRun}
-          options={runs.map((run) => ({
+          options={runs.map((run, index) => ({
             value: run.runId,
             label: (
               <span className="block max-w-[min(26rem,70vw)] truncate">
-                {session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
-                  run.runId}{' '}
-                · {status(run.status)}
+                {tw('runNumber', { number: index + 1 })} · {t('selectedRun')} · {status(run.status)}
               </span>
             ),
+            hint:
+              session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
+              run.runId,
           }))}
         />
       ) : null}
@@ -853,7 +854,7 @@ function SessionActions({
           className="gap-1.5 text-muted-foreground"
         >
           <FileDiff />
-          {tw('changeCount', { count: changes.length })}
+          {tw('sessionChangeCount', { count: changes.length })}
         </Button>
       ) : null}
       <Tooltip
@@ -1101,6 +1102,7 @@ function RunPanel({
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
+          runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
           embedded
           search={{
             atSeq: search.atSeq,
@@ -1134,6 +1136,7 @@ function ArtifactsPanel({
     runId: string;
     id: string;
     label: string;
+    author: string;
     kind: 'final' | 'partial' | 'intermediate';
   };
   const [items, setItems] = useState<Item[]>([]);
@@ -1161,6 +1164,8 @@ function ArtifactsPanel({
         });
         if (!live) return;
         if (!snapshot) continue;
+        const definition = await transport.getRunDefinition(runId);
+        if (!live) return;
         const results = runResults(snapshot.projection);
         for (const artifact of [
           ...results.final,
@@ -1170,6 +1175,17 @@ function ArtifactsPanel({
             runId,
             id: artifact.artifactVersionId,
             label: `${artifact.name} v${artifact.version}`,
+            author: [
+              definition?.nodes.find(
+                (node) =>
+                  node.id === snapshot.projection.executions[artifact.authorExecutionId]?.nodeId,
+              )?.label,
+              artifact.authorExecutionNumber
+                ? tr('authorExecution', { number: artifact.authorExecutionNumber })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · '),
             kind: results.final.includes(artifact)
               ? 'final'
               : results.kind === 'partial'
@@ -1189,7 +1205,7 @@ function ArtifactsPanel({
     return () => {
       live = false;
     };
-  }, [transport, key, retry]);
+  }, [transport, key, retry, tr]);
   if (loading)
     return (
       <p role="status" className="text-xs text-muted-foreground">
@@ -1216,17 +1232,21 @@ function ArtifactsPanel({
               <Button
                 variant="ghost"
                 className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
-                aria-label={`${tr(item.kind)} ${item.label}`}
+                aria-label={`${tr(item.kind)} ${item.label} · ${tw('runNumber', { number: runs.findIndex((run) => run.runId === item.runId) + 1 })} · ${item.author}`}
                 onClick={() => onOpen(item.runId, item.id)}
               >
                 <FileText className="text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.label}</span>
-                  <span
-                    className="truncate font-mono text-2xs text-muted-foreground"
-                    title={item.runId}
-                  >
-                    {item.runId}
+                  <span className="truncate text-2xs text-muted-foreground" title={item.runId}>
+                    {[
+                      tw('runNumber', {
+                        number: runs.findIndex((run) => run.runId === item.runId) + 1,
+                      }),
+                      item.author,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">{tr(item.kind)}</span>
