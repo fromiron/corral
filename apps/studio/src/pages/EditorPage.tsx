@@ -20,7 +20,7 @@ import {
   ValidationPanel,
 } from '@corral/react';
 import { Button, Input, Select } from '@corral/react/design-kit';
-import { Link, useBlocker, useNavigate } from '@tanstack/react-router';
+import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
 import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -28,7 +28,7 @@ import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
 import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
 import { useModelPrices } from '../prices.ts';
-import { setCurrentProject } from '../projects.ts';
+import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import {
@@ -209,6 +209,7 @@ function Editor({
 }) {
   const t = useTranslations('Editor');
   const n = useTranslations('Navigation');
+  const router = useRouter();
   const services = useServices();
   const { editor, saved, saving, message } = useStore(workingCopy);
   const { repository, mode, live } = services;
@@ -282,6 +283,8 @@ function Editor({
           error: false,
         },
       });
+      projectsChanged();
+      await router.invalidate();
       return result.record;
     } catch (error) {
       workingCopy.setState({
@@ -291,7 +294,7 @@ function Editor({
     } finally {
       workingCopy.setState({ saving: false });
     }
-  }, [editor, repository, t, workingCopy]);
+  }, [editor, repository, router, t, workingCopy]);
 
   // The local server runs saved revisions only, so a run saves first.
   const beforeStart =

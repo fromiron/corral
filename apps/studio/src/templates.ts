@@ -1,5 +1,5 @@
 import { FILE_TOOLS } from '@corral/contracts';
-import type { CorralRepository } from '@corral/core';
+import { type CorralRepository, DEFAULT_PROJECT_ID } from '@corral/core';
 import { emptyDraft } from '@corral/react';
 import { type DemoTemplateId, templateForWorkspace } from './demo/templates.ts';
 import type { WorkspacesClient } from './demo/workspaces-client.ts';
@@ -18,6 +18,7 @@ export async function createFromTemplate(
   id: WorkspaceTemplateId,
   blankName: string,
   projectId?: string,
+  copyName?: string,
 ): Promise<{ ok: true; corralId: string } | { ok: false; message: string }> {
   const suffix = globalThis.crypto.randomUUID().slice(0, 8);
   const draft =
@@ -33,8 +34,21 @@ export async function createFromTemplate(
           const template = templateForWorkspace(id, `${id.replace('-', '_')}_${suffix}`);
           return { definition: template.definition, layout: template.layout };
         })();
+  const names = new Set(
+    (await repository.list())
+      .filter((team) => team.projectId === (projectId ?? DEFAULT_PROJECT_ID))
+      .map((team) => team.name),
+  );
+  const name = copyName?.trim() || draft.definition.name;
+  let uniqueName = name;
+  for (let suffix = 2; names.has(uniqueName); suffix++) uniqueName = `${name} (${suffix})`;
   const result = await repository.save({
     ...draft,
+    definition: {
+      ...draft.definition,
+      name: uniqueName,
+      executionPolicy: draft.definition.executionPolicy ?? { version: 2 },
+    },
     expectedDefinitionRevision: null,
     ...(projectId ? { projectId } : {}),
   });

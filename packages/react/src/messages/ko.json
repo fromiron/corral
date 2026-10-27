@@ -467,6 +467,9 @@
     "emptyHint": "아래 템플릿에서 시작하거나 빈 팀을 만들거나 JSON 파일을 가져오세요.",
     "templatesHeading": "템플릿으로 시작",
     "useTemplate": "팀 편집해서 쓰기",
+    "saveCopyTitle": "팀 사본 저장",
+    "copyName": "팀 이름",
+    "saveCopyEdit": "사본 저장하고 편집",
     "template": {
       "research-team": {
         "name": "조사 팀",

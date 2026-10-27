@@ -272,6 +272,7 @@ test('#73 a saved team keeps its edit link on the run page', async ({ page }) =>
   await teamFromTemplate(page);
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'Edit this team' }).first().click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('link', { name: 'Open execution page' }).click();
@@ -358,6 +359,7 @@ test('#77 a test run says it starts a separate run outside any conversation', as
   await teamFromTemplate(page);
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'Edit this team' }).first().click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await expect(page.getByTestId('run-scope')).toContainText('It is not added to a conversation.');
 });

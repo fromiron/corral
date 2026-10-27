@@ -325,7 +325,8 @@ describe('team selector', () => {
     const corral = linearCorral(['research', 'write']);
     const started: Started[] = [];
     const starter = createAutoStarter({
-      corral: (id) => (id === 'corral_saved' ? corral : null),
+      corral: (id) =>
+        id === 'corral_saved' ? { definition: corral, definitionRevision: 3 } : null,
       startRun: (request) => {
         started.push(request);
         return accepted(request.commandId);
@@ -349,6 +350,13 @@ describe('team selector', () => {
     expect(roster.flatMap((role) => role.allowedCollaborationTools)).not.toContain('submit_result');
     // The saved flow reaches the lead as guidance, not as wiring.
     expect(lead?.prompt).toContain('→');
+    expect(definition.sourceTeam).toEqual({
+      corralId: 'corral_saved',
+      name: corral.name,
+      revision: 3,
+    });
+    corral.name = 'Renamed later';
+    expect(definition.sourceTeam?.name).not.toBe(corral.name);
     expect(definition.controlEdges.every((edge) => !edge.source.startsWith('team_'))).toBe(true);
   });
 
@@ -364,7 +372,7 @@ describe('team selector', () => {
       auth: 'mock' as const,
     });
     const starter = createAutoStarter({
-      corral: () => corral,
+      corral: () => ({ definition: corral, definitionRevision: 1 }),
       prepareModels: (_request, profiles) => {
         asked.push(profiles);
         const list = profiles ?? ['model-a'];

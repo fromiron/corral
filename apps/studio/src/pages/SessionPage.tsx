@@ -820,6 +820,14 @@ function SessionActions({
   ]);
   return (
     <TopbarActions>
+      {team ? (
+        <span
+          className="max-w-48 truncate text-xs text-muted-foreground"
+          title={`${team.name} · r${team.definitionRevision}`}
+        >
+          {team.name} · r{team.definitionRevision}
+        </span>
+      ) : null}
       {runs.length > 1 ? (
         <Select
           variant="chip"

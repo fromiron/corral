@@ -1,4 +1,4 @@
-import type { HarnessDefault, HarnessProfileView } from '@corral/contracts';
+import type { HarnessDefault, HarnessProfileRevision, HarnessProfileView } from '@corral/contracts';
 import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -38,6 +38,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
   const r = useTranslations('Resources');
   const [current, setCurrent] = useState<HarnessDefault | null>(null);
   const [profiles, setProfiles] = useState<HarnessProfileView[]>([]);
+  const [pinned, setPinned] = useState<HarnessProfileRevision | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -49,11 +50,16 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
     if (!api) return;
     let active = true;
     void Promise.all([api.default(scope, scopeId), api.profileManagement()]).then(
-      ([value, list]) => {
+      async ([value, list]) => {
+        const pinned =
+          value.binding && !list.some((p) => `${p.profileId}:${p.revision}` === bindingKey(value))
+            ? await api.profile(value.binding).catch(() => null)
+            : null;
         if (!active) return;
         setCurrent(value);
         setDraft(bindingKey(value));
         setProfiles(list);
+        setPinned(pinned);
       },
       () => active && setError(t('loadFailed')),
     );
@@ -120,7 +126,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
                   ? [
                       {
                         value: bindingKey(current),
-                        label: `${current.binding.profileId} · r${current.binding.revision}`,
+                        label: `${pinned?.name ?? current.binding.profileId} · r${current.binding.revision}`,
                       },
                     ]
                   : []),
