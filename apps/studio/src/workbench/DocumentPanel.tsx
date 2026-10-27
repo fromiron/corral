@@ -450,7 +450,7 @@ export function DocumentPanel({
       ) : null}
       <section
         aria-label={td('fileContent')}
-        className={`min-w-0 overflow-hidden rounded fill-group ${fill ? 'min-h-56 flex-1' : ''}`}
+        className={`min-w-0 overflow-hidden rounded fill-group ${fill ? 'min-h-24 flex-1' : ''}`}
       >
         {editorFailed || entry.modelError || entry.formatBlocked ? (
           <>
@@ -467,7 +467,7 @@ export function DocumentPanel({
             />
           </>
         ) : entry.model ? (
-          <div className={fill ? 'h-full min-h-56' : 'h-[min(45vh,28rem)] min-h-56'}>
+          <div className={fill ? 'h-full min-h-0' : 'h-[min(45vh,28rem)] min-h-56'}>
             <Suspense
               fallback={<p className="p-3 text-xs text-muted-foreground">{t('loading')}</p>}
             >
