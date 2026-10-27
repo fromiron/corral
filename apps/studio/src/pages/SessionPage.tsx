@@ -122,7 +122,12 @@ import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
-import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
+import {
+  type MentionItem,
+  mentionToken,
+  pickedReferences,
+  removeMention,
+} from '../workbench/composerMenu.ts';
 import {
   type AttachmentCapture,
   type AttachmentRequest,
@@ -1026,6 +1031,7 @@ function WorkTab({
             runs={runs}
             active={active}
             selectedRunId={selectedRunId}
+            onViewRun={(run) => onPanel('run', { run })}
             queued={queued}
             onChange={onChange}
             reference={reference}
@@ -1607,6 +1613,7 @@ export function Composer({
   runs,
   active,
   selectedRunId,
+  onViewRun,
   queued,
   onChange,
   reference,
@@ -1618,6 +1625,7 @@ export function Composer({
   runs: RunSummary[];
   active: RunSummary | null;
   selectedRunId: string | null;
+  onViewRun?: (runId: string) => void;
   queued: SessionEntry[];
   onChange: () => void;
   reference: FileReference | null;
@@ -2604,6 +2612,17 @@ export function Composer({
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
   const stopping = Boolean(ownActive) && !text.trim();
+  const runNumber = (runId: string) => runs.findIndex((run) => run.runId === runId) + 1;
+  const viewingOtherRun = active && selectedRunId && active.runId !== selectedRunId;
+  const destination =
+    intent === 'steer'
+      ? ownActive
+        ? tc('destination.steer', {
+            number: runNumber(ownActive.runId),
+            name: targetName(steerTarget),
+          })
+        : tc('destination.steerUnavailable', { name: targetName(steerTarget) })
+      : tc(`destination.${intent}`);
   // What Send does now, said where it is pressed (#89).
   const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
   // Items this intent does not carry share one notice and one wording (#89).
@@ -2735,6 +2754,27 @@ export function Composer({
       <ComposerSurface.Host>
         <ComposerPlan />
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 p-2">
+          {viewingOtherRun ? (
+            <Banner data-testid="viewed-run-warning" status="warning" size="compact">
+              <BannerTitle>
+                {tc('viewingOtherRun', {
+                  viewed: runNumber(selectedRunId),
+                  active: runNumber(active.runId),
+                })}
+              </BannerTitle>
+              {onViewRun ? (
+                <BannerActions>
+                  <Button
+                    size="compact"
+                    variant="secondary"
+                    onClick={() => onViewRun(active.runId)}
+                  >
+                    {tc('viewActiveRun')}
+                  </Button>
+                </BannerActions>
+              ) : null}
+            </Banner>
+          ) : null}
           {resolved.blocked ? (
             <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
               <BannerTitle>
@@ -2828,9 +2868,9 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="icon-tiny"
-                    aria-label={tc('removeReference', { label: item.label })}
+                    aria-label={tc('removeReference', { label: mentionToken(item).slice(1) })}
                     onClick={() => {
-                      write(text.split(mentionToken(item)).join('').replace(/ {2,}/g, ' '));
+                      write(removeMention(text, item));
                       setPicked((list) => list.filter((x) => x.id !== item.id));
                     }}
                   >
@@ -2899,6 +2939,9 @@ export function Composer({
             searchMentions={searchMentions}
             onMention={(item) => setPicked((list) => [...list, item])}
           />
+          <p data-testid="composer-destination" className="px-2 text-xs text-muted-foreground">
+            {destination}
+          </p>
           <div className="flex flex-wrap items-center gap-0.5">
             <Tooltip content={tc('addReference')}>
               <Button
