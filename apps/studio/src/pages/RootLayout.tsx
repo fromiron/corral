@@ -1,6 +1,8 @@
 import { ApiError } from '@corral/client';
 import type { ProjectSummary } from '@corral/core';
 import {
+  Banner,
+  BannerTitle,
   Button,
   Dialog,
   DialogPopup,
@@ -439,9 +441,9 @@ function RootFrame() {
               </header>
               <SettingsOperationStatus />
               {sessionMissing ? (
-                <p role="alert" className="px-4 py-2 text-sm text-warning">
-                  {t('sessionMissing')}
-                </p>
+                <Banner status="warning" size="compact">
+                  <BannerTitle>{t('sessionMissing')}</BannerTitle>
+                </Banner>
               ) : null}
               <div className="app-outlet">
                 <Outlet />
