@@ -32,11 +32,12 @@ export function StartMeeting({ projectId }: { projectId: string }) {
   const t = useTranslations('Meetings');
   const [open, setOpen] = useState(false);
   return (
-    <div>
+    <div className="flex flex-col items-start gap-2">
       <Button variant="tertiary" size="compact" onClick={() => setOpen(true)}>
         <Users size={14} aria-hidden />
         {t('new')}
       </Button>
+      <p className="text-sm text-muted-foreground">{t('startDescription')}</p>
       {open ? <NewMeetingDialog projectId={projectId} onClose={() => setOpen(false)} /> : null}
     </div>
   );
@@ -83,7 +84,9 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
   const participants = draftParticipants.map((item, index) => {
     const modelProfile = item.modelProfile || pick(index);
     const label = profiles?.find((profile) => profile.profileId === modelProfile)?.label;
-    const base = (label || modelProfile || t('participantName', { number: index + 1 })).trim();
+    const base = (
+      label && label !== modelProfile ? label : t('participantDefault', { number: index + 1 })
+    ).trim();
     let name = item.name ?? base.slice(0, 40);
     if (item.name === null) {
       for (let duplicate = 2; usedNames.has(name.toLowerCase()); duplicate++) {

@@ -44,6 +44,7 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team' })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
   if (!(await page.getByLabel('Purpose').isVisible()))

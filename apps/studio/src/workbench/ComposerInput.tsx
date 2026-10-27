@@ -282,7 +282,8 @@ export function ComposerInput({
             }
             if (e.key === 'Escape') {
               e.preventDefault();
-              setDismissed(value);
+              if (trigger?.kind === 'slash' && value === '/') put({ text: '', caret: 0 });
+              else setDismissed(value);
               return;
             }
             if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && rows.length) {

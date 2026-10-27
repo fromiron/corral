@@ -4,6 +4,7 @@ import {
   mentionToken,
   menuPlacement,
   pickedReferences,
+  removeMention,
   replaceTrigger,
   triggerAt,
 } from './composerMenu.ts';
@@ -11,6 +12,28 @@ import {
 // the composer's `/` commands and `@` references.
 
 describe('composer triggers', () => {
+  it('removes only whole reference tokens in either order, including quoted paths and duplicates', () => {
+    const file: MentionItem = {
+      id: 'file:a',
+      kind: 'file',
+      label: 'my notes.md',
+      reference: { kind: 'file', path: 'my notes.md' },
+    };
+    const range: MentionItem = {
+      ...file,
+      id: 'file:a:range',
+      lines: { start: 1, end: 3 },
+      reference: { kind: 'file', path: 'my notes.md', lines: { start: 1, end: 3 } },
+    };
+    const text = 'Read @"my notes.md" @"my notes.md":L1-L3 @"my notes.md":L1-L30 @"my notes.md"';
+    const wholeFirst = removeMention(text, file);
+    expect(wholeFirst).toBe('Read @"my notes.md":L1-L3 @"my notes.md":L1-L30 ');
+    expect(pickedReferences(wholeFirst, [file, range])).toEqual([range.reference]);
+    const rangeFirst = removeMention(text, range);
+    expect(rangeFirst).toBe('Read @"my notes.md" @"my notes.md":L1-L30 @"my notes.md"');
+    expect(pickedReferences(rangeFirst, [file, range])).toEqual([file.reference]);
+    expect(removeMention('@"my notes.md":L1-L3', range)).toBe('');
+  });
   it('opens commands only for `/` at the very start', () => {
     expect(triggerAt('/pa', 3)).toEqual({ kind: 'slash', query: 'pa', start: 0, end: 3 });
     expect(triggerAt('/', 1)).toEqual({ kind: 'slash', query: '', start: 0, end: 1 });

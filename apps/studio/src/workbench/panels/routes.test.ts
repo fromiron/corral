@@ -242,6 +242,18 @@ it('switching Runs clears implicit old targets and cursor while preserving expli
   expect(patchSessionSearch(current, { run: 'run_old', view: 'run' }).atSeq).toBe(9);
 });
 
+it('a terminal recovery link overrides remembered terminal and run selections', () => {
+  expect(
+    resolveSessionSearch(
+      { panel: 'terminal', terminal: 'terminal_owner' },
+      { panel: 'run', run: 'old', terminal: 'terminal_other' },
+    ),
+  ).toEqual({ panel: 'terminal', terminal: 'terminal_owner' });
+  expect(validateSessionSearch({ panel: 'files', terminal: 'terminal_owner' })).toEqual({
+    panel: 'files',
+  });
+});
+
 it('leaving run history clears its cursor while selecting another detail preserves it', () => {
   const history = { panel: 'run' as const, run: 'run_old', atSeq: 9, view: 'run' as const };
   expect(patchSessionSearch(history, { panel: undefined }).atSeq).toBeUndefined();

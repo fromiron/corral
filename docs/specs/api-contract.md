@@ -27,6 +27,8 @@
 
 bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 브라우저·프로필에서도 반복 사용할 수 있다. 유효한 세션 cookie가 있으면 같은 링크를 다시 교환해도 세션과 CSRF token을 유지한다. cookie가 없거나 유효하지 않으면 새 세션을 발급한다. 잘못된 token은 기존 세션이 있어도 거절하며, 서버 재시작은 이전 링크와 세션을 모두 무효화한다.
 
+열린 화면의 인증이 무효화되면 일반 오류 대신 서버 재시작 등으로 연결 인증이 만료될 수 있음을 알리고 현재 서버가 출력한 시작 링크로 재연결하도록 안내한다. 자동 재인증·요청 재전송 없이 초안을 유지한다.
+
 인증된 브라우저 프로필의 같은 호스트·포트에 접속하는 탭은 기존 세션 cookie를 공유한다. 새 탭·새로고침에 bootstrap 재교환을 요구하지 않는다. 같은 탭에서 bootstrap 링크의 fragment만 바뀌어도 인증 초기화를 다시 실행한다. cookie 이름은 실제 수신 포트를 포함해 같은 호스트의 다른 Corral 서버가 인증을 덮어쓰지 않게 한다. 다른 서버의 세션과 CSRF token은 받지 않는다. cookie 이름 분리는 포트 사이의 보안 격리를 뜻하지 않으며 기존 Host/Origin·CSRF 검사를 유지한다.
 
 | Method/path | 요청 | 응답·효과 |
@@ -122,7 +124,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /sessions/:id/worktree/document-operations/:operationId | — | 원래 대상과 operation ID의 receipt. pending·완료·실패 모두 상대 path/precondition/제출 hash의 intent를 보존하며 원문 text는 저장하지 않는다. 현재 사본 삭제/재생성 후에도 완료 receipt를 조회한다. 같은 ID/다른 내용은 conflict, uncertain을 자동 재실행하지 않는다 |
 | GET /sessions/:id/terminals | — | 현재 target·가용 shell·사용자 터미널 목록. 작업 사본이 없어도 과거 terminal 상태/중지 대상은 조회 가능 |
 | POST /sessions/:id/terminals | `TerminalCreate` | target·operationId·shellId·초기 cols/rows. 공통 writer와 host process permit을 접수하고 starting receipt 반환. 같은 ID/같은 내용은 기존 결과, 다른 내용은 conflict |
-| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller. OS PID/identity·절대 경로는 공개하지 않음 |
+| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller·선택적 stopped(중지 요청 여부). OS PID/identity·절대 경로는 공개하지 않음 |
 | POST /sessions/:id/terminals/:terminalId/control | `TerminalControllerChange` | target/generation·attachmentId·expectedGeneration·claim/release·명시 takeover. 한 controller만 입력하며 takeover는 같은 attachment에도 generation을 바꿈 |
 | POST /sessions/:id/terminals/:terminalId/input | `TerminalInput` | controllerGeneration·sequence·UTF-8 ≤16KiB data. input/resize 공통 순서, 같은 최신 순서/내용만 기존 ack. 자동 stdin 재시도 없음 |
 | POST /sessions/:id/terminals/:terminalId/resize | `TerminalResize` | controller의 공통 순서로 cols 2–500, rows 1–500. 성공한 resize도 output sequence에 포함 |

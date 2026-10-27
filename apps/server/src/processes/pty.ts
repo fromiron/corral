@@ -233,6 +233,7 @@ export class PtyRuntime {
   async stop(sessionId: string, terminalId: string, raw: TerminalIdentity): Promise<TerminalView> {
     const entry = this.exact(sessionId, terminalId, TerminalIdentity.parse(raw));
     entry.stopped = true;
+    if (!['exited', 'failed'].includes(entry.view.state)) entry.view.stopped = true;
     if (entry.view.state === 'uncertain') {
       if (entry.identity && (await (this.options.cleanup ?? cleanupPtySession)(entry.identity))) {
         entry.reservation?.releaseConfirmed();
@@ -240,6 +241,11 @@ export class PtyRuntime {
         entry.view.controller = null;
         entry.view.error = null;
         this.options.operations.reconcileTerminal(terminalId, this.stored(entry));
+        this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+      } else {
+        entry.view.error = entry.identity
+          ? 'Terminal process cleanup is still unconfirmed; ownership is retained'
+          : 'Terminal process identity is unavailable; ownership cannot be safely released';
         this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
       }
     } else if (entry.child) {
@@ -325,7 +331,12 @@ export class PtyRuntime {
     let entry = this.entries.get(terminalId);
     if (!entry) {
       const stored = receipt.result as StoredTerminal;
-      entry = this.newEntry({ ...stored.terminal, replayAvailable: false, controller: null });
+      entry = this.newEntry({
+        ...stored.terminal,
+        ...(receipt.state === 'cancelled' ? { stopped: true } : {}),
+        replayAvailable: false,
+        controller: null,
+      });
       entry.identity = stored.identity;
       entry.resolveCompletion();
       this.entries.set(terminalId, entry);
@@ -334,7 +345,7 @@ export class PtyRuntime {
       entry.view.state = 'uncertain';
       entry.view.controller = null;
       entry.view.replayAvailable = false;
-      entry.view.error = 'The host stopped before terminal cleanup was confirmed';
+      entry.view.error ??= 'The host stopped before terminal cleanup was confirmed';
     }
     return entry;
   }

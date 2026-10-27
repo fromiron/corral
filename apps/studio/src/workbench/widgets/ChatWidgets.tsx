@@ -62,7 +62,7 @@ function viewedLabel(
   viewed: NonNullable<ChatWidgetModel['viewed']>,
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
-  if (viewed.latest) return t('lastRun');
+  if (viewed.latest && viewed.number) return t('lastRunNumber', { number: viewed.number });
   return viewed.number
     ? t('selectedRun', { number: viewed.number, total: viewed.total })
     : t('selectedRunUnordered');

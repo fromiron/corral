@@ -12,6 +12,7 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
     .filter({ hasText: name })
     .getByRole('button', { name: 'Edit this team' })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
   await expect(page.getByRole('button', { name: 'Start chat', exact: true })).toBeVisible();

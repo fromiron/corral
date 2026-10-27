@@ -91,12 +91,15 @@ export function MeetingDecisions({
       setBusy(false);
     }
   };
+  const displayedMinutes = view.minutes?.filter(
+    (minutes, index, all) => minutes.document || index === all.length - 1,
+  );
   return (
     <section className="flex min-w-0 flex-col gap-4 text-sm" aria-label={t('heading')}>
       <h2 className="font-medium">{t('heading')}</h2>
       <p className="text-muted-foreground">{t('candidateHint')}</p>
       {!view.minutes?.length ? <p className="text-muted-foreground">{t('empty')}</p> : null}
-      {view.minutes?.map((minutes) => {
+      {displayedMinutes?.map((minutes) => {
         const doc = minutes.document;
         const index = view.rounds.findIndex((round) => round.roundId === minutes.roundId);
         const nonresponses = view.rounds
@@ -118,7 +121,7 @@ export function MeetingDecisions({
               {t('minutes')} · {minutes.createdAt}
             </h3>
             {minutes.error ? (
-              <p role="alert" className="text-danger wrap-anywhere">
+              <p role="note" className="text-danger wrap-anywhere">
                 {t('invalidMinutes')}: {minutes.error}
               </p>
             ) : null}

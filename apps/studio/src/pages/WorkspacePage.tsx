@@ -40,11 +40,13 @@ import { projectName, projectsChanged, setCurrentProject } from '../projects.ts'
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
-import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { TemplateCopyDialog } from '../TemplateCopyDialog.tsx';
+import { createFromTemplate, WORKSPACE_TEMPLATES, type WorkspaceTemplateId } from '../templates.ts';
 import { StartMeeting } from '../workbench/NewMeeting.tsx';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
+import { useSessionAge } from '../workbench/useSessionAge.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
@@ -66,7 +68,7 @@ export function WorkspacePage() {
   const t = useTranslations('Workspace');
   const format = useFormatter();
   const now = useNow({ updateInterval: 60_000 });
-  const { project, projects, corrals, runs, sessions, totals } = workspaceRoute.useLoaderData();
+  const { project, projects, corrals, runs, sessions } = workspaceRoute.useLoaderData();
   const projectId = project.projectId;
   const archived = project.archivedAt !== null;
   useEffect(() => setCurrentProject(projectId), [projectId]);
@@ -76,6 +78,7 @@ export function WorkspacePage() {
   const [errors, setErrors] = useState<string[]>([]);
   const importInput = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [copyTemplate, setCopyTemplate] = useState<WorkspaceTemplateId | null>(null);
   // Roadmap 16: two runs picked for comparison, oldest choice dropped past two.
   const [picked, setPicked] = useState<string[]>([]);
   const tc = useTranslations('Compare');
@@ -290,22 +293,7 @@ export function WorkspacePage() {
                       {t('startWithTemplate')}
                     </Button>
                   )}
-                  <Button
-                    variant="tertiary"
-                    onClick={async () => {
-                      const created = await createFromTemplate(
-                        repository,
-                        id,
-                        t('newName'),
-                        projectId,
-                      );
-                      if (!created.ok) return setErrors([created.message]);
-                      await navigate({
-                        to: '/corrals/$corralId/edit',
-                        params: { corralId: created.corralId },
-                      });
-                    }}
-                  >
+                  <Button variant="tertiary" onClick={() => setCopyTemplate(id)}>
                     {t('useTemplate')}
                   </Button>
                 </CardFooter>
@@ -314,6 +302,16 @@ export function WorkspacePage() {
           ))}
         </div>
       </section>
+      {copyTemplate ? (
+        <TemplateCopyDialog
+          template={copyTemplate}
+          projectId={projectId}
+          onClose={() => setCopyTemplate(null)}
+          onSaved={async (corralId) => {
+            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
+          }}
+        />
+      ) : null}
     </div>
   );
 
@@ -388,7 +386,7 @@ export function WorkspacePage() {
                   corrals={corrals}
                 />
                 <StartMeeting projectId={projectId} />
-                <GettingStarted runs={totals.runs} projectId={projectId} />
+                <GettingStarted runs={runs.length} projectId={projectId} />
               </>
             )}
             <InboxSection projectId={projectId} />
@@ -891,8 +889,7 @@ function StartSession({
 function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSummary[] }) {
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
-  const format = useFormatter();
-  const now = useNow({ updateInterval: 60_000 });
+  const ago = useSessionAge();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const needle = query.trim().toLowerCase();
@@ -943,7 +940,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
                     t('runCount', {
                       count: runs.filter((r) => r.sessionId === x.sessionId).length,
                     }),
-                    tw('updated', { time: format.relativeTime(new Date(x.updatedAt), now) }),
+                    tw('updated', { time: ago(x.updatedAt) }),
                   ]
                     .filter(Boolean)
                     .join(' · ')}

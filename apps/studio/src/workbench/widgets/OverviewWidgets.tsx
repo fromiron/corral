@@ -97,6 +97,11 @@ export function OverviewWidgets({ model }: { model: ChatWidgetModel }) {
       aria-label={t('heading')}
       className="flex flex-col gap-2 p-3"
     >
+      <p data-testid="overview-run-scope" className="text-caption text-muted-foreground">
+        {model.runNumber || model.viewed?.number
+          ? t('runScope', { number: model.runNumber ?? model.viewed?.number ?? 0 })
+          : t('selectedRun')}
+      </p>
       {overviewWidgets(model).map((widget) => (
         <div key={widget} data-overview-widget={widget}>
           <Widget widget={widget} model={model} />
@@ -361,6 +366,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
   return (
     <div data-testid="usage-detail" className="flex flex-col gap-3 text-body">
       <p className="font-medium">{t('usage')}</p>
+      <p className="text-caption text-muted-foreground">{t('usageDefinition')}</p>
       <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
         {rows.map(([name, value]) => (
           <div key={name} className="contents">
@@ -369,6 +375,9 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
           </div>
         ))}
       </dl>
+      {model.simulated ? (
+        <p className="text-caption text-muted-foreground">{t('simulatedUsage')}</p>
+      ) : null}
       {usage.unknown > 0 ? (
         <p className="text-caption text-warning">
           {t('unknownHeld', { count: format.number(usage.unknown) })}
