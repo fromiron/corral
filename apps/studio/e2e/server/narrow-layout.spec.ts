@@ -214,3 +214,22 @@ test('line navigation reveals the selection above the bottom dock', async ({
   await editorPanel.getByRole('button', { name: 'Go to lines', exact: true }).click();
   await expectLine(9);
 });
+
+test('filename search keeps the entered filename readable at 636px', async ({
+  page,
+  corral,
+}, testInfo) => {
+  const { sessionId } = await fixture(page, corral);
+  await page.setViewportSize({ width: 636, height: 757 });
+  await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
+  const field = page.getByRole('textbox', { name: 'Filter files', exact: true });
+  await field.fill('README.md');
+  await expect(page.getByRole('button', { name: 'Open README.md', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open other.txt', exact: true })).toHaveCount(0);
+  await expect.poll(() => field.evaluate((input) => input.scrollLeft)).toBe(0);
+  await testInfo.attach('filename-field-size', {
+    body: JSON.stringify(await field.boundingBox()),
+    contentType: 'application/json',
+  });
+  await page.screenshot({ path: testInfo.outputPath('filename-search-636.png') });
+});
