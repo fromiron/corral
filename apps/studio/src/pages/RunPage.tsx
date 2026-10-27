@@ -771,7 +771,7 @@ function RunSummary({
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
   const projection = useRunDisplay(session, (s) => s.projection);
-  const savedTeam = useSavedTeam(projection?.corralId);
+  const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -793,7 +793,7 @@ function RunSummary({
         ]
       : [],
   );
-  const corralId = projection.corralId;
+  const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
   return (
     <section
       aria-label={t('summary')}
@@ -802,7 +802,11 @@ function RunSummary({
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           {onView ? <ViewSwitch view={view} onView={onView} /> : null}
-          <h2 className="text-base font-semibold">{definition.name}</h2>
+          <h2 className="text-base font-semibold">
+            {definition.sourceTeam
+              ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
+              : definition.name}
+          </h2>
           {!compact ? (
             <span className="font-mono text-xs text-muted-foreground">{projection.runId}</span>
           ) : null}
@@ -813,7 +817,7 @@ function RunSummary({
             <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
               {t('openCorral')}
             </Link>
-          ) : corralId && savedTeam === false && !compact ? (
+          ) : corralId && !definition.sourceTeam && savedTeam === false && !compact ? (
             <span className="text-xs text-muted-foreground">{t('unsavedTeam')}</span>
           ) : null}
           {projection.startedFrom && !compact ? (

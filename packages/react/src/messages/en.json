@@ -467,6 +467,9 @@
     "emptyHint": "Start from a template below, create an empty team or import a JSON file.",
     "templatesHeading": "Start from a template",
     "useTemplate": "Edit this team",
+    "saveCopyTitle": "Save a team copy",
+    "copyName": "Team name",
+    "saveCopyEdit": "Save copy and edit",
     "template": {
       "research-team": {
         "name": "Research team",

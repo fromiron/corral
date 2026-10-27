@@ -282,6 +282,9 @@ export const ExecutionPolicy = z.strictObject({
 export type ExecutionPolicy = z.infer<typeof ExecutionPolicy>;
 
 export const CorralDefinition = z.strictObject({
+  sourceTeam: z
+    .strictObject({ corralId: Identifier, name: z.string().min(1), revision: z.int().min(1) })
+    .optional(),
   executionPolicy: ExecutionPolicy.optional(),
   planOwnerRoleId: Identifier.optional(),
   schemaVersion: SchemaVersion,

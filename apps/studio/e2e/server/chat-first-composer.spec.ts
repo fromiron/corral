@@ -168,6 +168,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team', exact: true })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   const saved = await savedCorrals(page);
   expect(saved).toHaveLength(1);

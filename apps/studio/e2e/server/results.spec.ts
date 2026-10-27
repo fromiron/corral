@@ -77,6 +77,10 @@ async function finishedRun(page: Page) {
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
+  await expect(page.getByRole('tab', { name: 'Test run', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
   await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
