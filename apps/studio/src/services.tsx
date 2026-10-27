@@ -39,6 +39,7 @@ import { createDemoWorkspaces, type WorkspacesClient } from './demo/workspaces-c
 import type {} from './desktop.tsx';
 import { createRunSessions } from './runSessions.ts';
 import { createDemoRuntime } from './runtime.ts';
+import { sessionFetch } from './sessionConnection.ts';
 
 // App-wide services. Studio served by the local server talks to it (saved Corrals, persistent
 // runs); opened any other way it runs the in-browser runtime with simulated agents.
@@ -138,7 +139,7 @@ function servedByLocalServer(): boolean {
 }
 
 export async function createStudioServices(): Promise<StudioServices> {
-  const http = { baseUrl: '' };
+  const http = { baseUrl: '', fetch: sessionFetch };
   const needsServer = window.location.pathname !== '/demo' && servedByLocalServer();
   const health = needsServer ? await probeServer(http) : null;
   // A failed local or remote connection cannot change the host or persistence contract.

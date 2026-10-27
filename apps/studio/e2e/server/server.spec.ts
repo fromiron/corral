@@ -157,6 +157,6 @@ test('Studio works under the strict CSP, and a tab without a session says so', a
   const other = await page.context().browser()?.newPage();
   if (!other) throw new Error('no browser');
   await other.goto(corral.server.url);
-  await expect(other.getByRole('alert')).toContainText('no session with the local server');
+  await expect(other.getByRole('alert')).toContainText('Connect to the local server.');
   await other.close();
 });

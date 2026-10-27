@@ -1284,11 +1284,11 @@ export function DecisionPanel({
           variant="tertiary"
           size="compact"
           type="button"
-          disabled={busy}
+          disabled={busy || Boolean(approved && !earlier)}
           onClick={() => void act(() => decide('approved'))}
           className=""
         >
-          {t('approve')}
+          {t(approved && !earlier ? 'decisionState.approved' : 'approve')}
         </Button>
         <Button
           variant="tertiary"

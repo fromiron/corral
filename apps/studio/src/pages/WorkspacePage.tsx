@@ -45,6 +45,7 @@ import { StartMeeting } from '../workbench/NewMeeting.tsx';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
+import { useSessionAge } from '../workbench/useSessionAge.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
@@ -66,7 +67,7 @@ export function WorkspacePage() {
   const t = useTranslations('Workspace');
   const format = useFormatter();
   const now = useNow({ updateInterval: 60_000 });
-  const { project, projects, corrals, runs, sessions, totals } = workspaceRoute.useLoaderData();
+  const { project, projects, corrals, runs, sessions } = workspaceRoute.useLoaderData();
   const projectId = project.projectId;
   const archived = project.archivedAt !== null;
   useEffect(() => setCurrentProject(projectId), [projectId]);
@@ -388,7 +389,7 @@ export function WorkspacePage() {
                   corrals={corrals}
                 />
                 <StartMeeting projectId={projectId} />
-                <GettingStarted runs={totals.runs} projectId={projectId} />
+                <GettingStarted runs={runs.length} projectId={projectId} />
               </>
             )}
             <InboxSection projectId={projectId} />
@@ -891,8 +892,7 @@ function StartSession({
 function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSummary[] }) {
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
-  const format = useFormatter();
-  const now = useNow({ updateInterval: 60_000 });
+  const ago = useSessionAge();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const needle = query.trim().toLowerCase();
@@ -943,7 +943,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
                     t('runCount', {
                       count: runs.filter((r) => r.sessionId === x.sessionId).length,
                     }),
-                    tw('updated', { time: format.relativeTime(new Date(x.updatedAt), now) }),
+                    tw('updated', { time: ago(x.updatedAt) }),
                   ]
                     .filter(Boolean)
                     .join(' · ')}

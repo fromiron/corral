@@ -57,7 +57,12 @@ export function GettingStarted({ runs, projectId }: { runs: number; projectId: s
         ]
       : []),
     { id: 'run', done: runs > 0, title: t('run'), action: t('runAction') },
-    { id: 'review', done: stored(REVIEWED), title: t('review'), action: t('reviewAction') },
+    {
+      id: 'review',
+      done: runs > 0 && stored(REVIEWED),
+      title: t('review'),
+      action: t('reviewAction'),
+    },
   ];
   if (hidden || steps.every((s) => s.done)) return null;
   const current = steps.find((s) => !s.done)?.id;
