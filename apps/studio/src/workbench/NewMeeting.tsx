@@ -32,11 +32,12 @@ export function StartMeeting({ projectId }: { projectId: string }) {
   const t = useTranslations('Meetings');
   const [open, setOpen] = useState(false);
   return (
-    <div>
+    <div className="flex flex-col items-start gap-2">
       <Button variant="tertiary" size="compact" onClick={() => setOpen(true)}>
         <Users size={14} aria-hidden />
         {t('new')}
       </Button>
+      <p className="text-sm text-muted-foreground">{t('startDescription')}</p>
       {open ? <NewMeetingDialog projectId={projectId} onClose={() => setOpen(false)} /> : null}
     </div>
   );

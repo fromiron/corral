@@ -79,7 +79,7 @@
     "error": "Something went wrong: {message}",
     "serverBadge": "Local server / Simulated agents",
     "serverNote": "Corrals and runs are saved in this workspace. Agents are simulated; nothing is sent to a model.",
-    "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started.",
+    "sessionMissing": "Connect to the local server. If it restarted, the previous connection has expired. Open its current start link from the terminal, or reopen the workspace in the desktop app. Unsent requests are not sent automatically.",
     "navModels": "Models",
     "liveBadge": "Local server / Simulated or live agents",
     "language": "Language",
@@ -1451,7 +1451,7 @@
     "runSettings": "Run settings",
     "autoModel": "Model",
     "autoHint": "The request uses the default workflow. Model:",
-    "autoNotReady": "{model} is not connected. Connect it under Settings › Models, or choose another model.",
+    "autoNotReady": "{model} is not connected. Connect it under Settings › Models.",
     "autoFallback": "choice failed, ran one agent",
     "autoTemplate": {
       "single": "Auto · one agent",
@@ -1477,7 +1477,11 @@
       "fallback": "fallback"
     },
     "selectedRun": "Selected run",
-    "unlimited": "unlimited"
+    "unlimited": "unlimited",
+    "justNow": "Just now",
+    "tryDemo": "Try the simulation demo",
+    "noWorkingCopy": "This session has no working copy, so it cannot change files. Connect a folder and prepare a working copy to edit files.",
+    "prepareWorkingCopy": "Set up file work"
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1500,7 +1504,7 @@
     "openTrust": "Open trust settings",
     "openFolderSettings": "Open Folders & tools",
     "create": "Make a working copy from {head}",
-    "createHint": "It starts from the last commit. The {changed, plural, =0 {folder has no} one {# uncommitted change in your folder is} other {# uncommitted changes in your folder are}} not included.",
+    "createHint": "It starts from the last commit. {changed, plural, =0 {Your folder has no uncommitted changes.} one {Your folder’s # uncommitted change is not included.} other {Your folder’s # uncommitted changes are not included.}}",
     "ready": "Working copy from commit {commit}",
     "review": "Review changes",
     "remove": "Remove working copy",
@@ -1695,14 +1699,15 @@
       "uncertain_write": "File writes with unknown outcome",
       "integration": "Applying did not finish cleanly ({detail})",
       "check_failed": "Latest check failed: {detail}",
-      "unreviewed": "{detail} file writes since your last review",
+      "unreviewed": "{detail} file writes since “Mark working copy as read” (separate from approval)",
       "recipe_stopped": "Review stopped: {detail}",
       "lsp_proposal": "Language server proposals awaiting review ({detail})"
     },
     "open": "Open",
     "retrySend": "Check the same request",
     "sendUnconfirmed": "The request or its record could not be confirmed. Check the same request before sending another.",
-    "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending."
+    "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending.",
+    "inboxScope": "Action items in this project’s unarchived sessions; a session can have several."
   },
   "Workbench": {
     "reviewFeedback": "Review changes and request revisions",
@@ -1886,7 +1891,8 @@
     "chatDensity": "Conversation detail",
     "densityResults": "Results",
     "densityBasic": "Basic",
-    "densityDetailed": "Detailed activity"
+    "densityDetailed": "Detailed activity",
+    "developmentBuild": "Development build"
   },
   "Composer": {
     "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
@@ -4113,7 +4119,8 @@
     "evidenceLoading": "Loading results…",
     "records": "Minutes, plan and handoff",
     "minutesReady": "The secretary has prepared the minutes and plan.",
-    "viewMinutes": "Review minutes and plan"
+    "viewMinutes": "Review minutes and plan",
+    "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan."
   },
   "MeetingsDecisions": {
     "heading": "Minutes and decisions",

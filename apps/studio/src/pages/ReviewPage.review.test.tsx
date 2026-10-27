@@ -60,6 +60,10 @@ it('an approval of this exact comparison is current and can be applied', async (
     'Review.decisionState.approved',
   );
   expect(view.textContent).toContain('Review.integrateHeading');
+  const approve = [...view.querySelectorAll('button')].find((button) =>
+    button.textContent?.includes('Review.decisionState.approved'),
+  );
+  expect(approve?.disabled).toBe(true);
 });
 
 it('an approval of another comparison with the same result is not this review', async () => {
@@ -68,4 +72,8 @@ it('an approval of another comparison with the same result is not this review', 
     'Review.staleDecision',
   );
   expect(view.textContent).not.toContain('Review.integrateHeading');
+  const approve = [...view.querySelectorAll('button')].find((button) =>
+    button.textContent?.includes('Review.approve'),
+  );
+  expect(approve?.disabled).toBe(false);
 });

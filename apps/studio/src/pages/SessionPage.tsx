@@ -179,6 +179,7 @@ import {
   useTeamRoles,
 } from '../workbench/useModels.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
+import { WorkFolderNotice } from '../workbench/WorkFolderNotice.tsx';
 import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx';
 import { OverviewAccess, OverviewPanel } from '../workbench/widgets/OverviewWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
@@ -1018,7 +1019,17 @@ function WorkTab({
         aside={<OverviewPanel />}
         sessionId={session.sessionId}
         messageId={messageId}
-        header={<MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />}
+        header={
+          <>
+            <MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />
+            <WorkFolderNotice
+              key={session.sessionId}
+              sessionId={session.sessionId}
+              revision={runs.map((run) => `${run.runId}:${run.status}`).join(',')}
+              onSetup={() => onPanel('changes')}
+            />
+          </>
+        }
         items={[
           ...session.entries
             .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
@@ -2847,6 +2858,13 @@ export function Composer({
                 <Button size="compact" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
+                <Button
+                  size="compact"
+                  variant="tertiary"
+                  render={<a href="/demo" target="_blank" rel="noreferrer" />}
+                >
+                  {t('tryDemo')}
+                </Button>
               </BannerActions>
             </Banner>
           ) : null}
@@ -2858,6 +2876,13 @@ export function Composer({
               <BannerActions>
                 <Button size="compact" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
+                </Button>
+                <Button
+                  size="compact"
+                  variant="tertiary"
+                  render={<a href="/demo" target="_blank" rel="noreferrer" />}
+                >
+                  {t('tryDemo')}
                 </Button>
               </BannerActions>
             </Banner>

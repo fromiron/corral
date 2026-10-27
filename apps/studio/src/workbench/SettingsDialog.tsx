@@ -60,6 +60,15 @@ export function SettingsDialog({
         className="settings-dialog flex h-[min(640px,calc(100dvh-4rem))] w-full max-w-[880px] flex-col overflow-hidden p-0 max-sm:h-[100dvh] max-sm:rounded-none"
         bottomStickOnMobile={false}
         showCloseButton={false}
+        initialFocus={() => {
+          const active = document.querySelector<HTMLElement>(
+            '[data-settings-dialog] [data-sidebar="menu-button"][data-active="true"]',
+          );
+          return active?.getClientRects().length
+            ? active
+            : (document.querySelector<HTMLElement>('[data-settings-dialog] button[aria-label]') ??
+                false);
+        }}
         finalFocus={() =>
           trigger?.isConnected && trigger.getClientRects().length
             ? trigger

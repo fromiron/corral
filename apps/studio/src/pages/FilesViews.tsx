@@ -418,6 +418,7 @@ export function InboxSection({ projectId }: { projectId: string }) {
       <h2 id="inbox-heading" className="text-sm font-semibold">
         {t('inboxHeading')} ({items.length})
       </h2>
+      <p className="text-xs text-muted-foreground">{t('inboxScope')}</p>
       <ul className="flex flex-col gap-1 text-sm">
         {items.map((item, index) => (
           <li
