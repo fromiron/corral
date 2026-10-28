@@ -734,11 +734,13 @@ it('restores an archived meeting from its notice or registered command without c
 });
 
 it('shows a readable failed-answer reason and keeps technical details collapsed and copyable', async () => {
+  const round = view().rounds[0];
+  if (!round) throw new Error('The meeting fixture needs a round');
   const f = await mount(
     view({
       rounds: [
         {
-          ...view().rounds[0]!,
+          ...round,
           answers: [{ ...answer('p2', 'failed'), detail: 'HTTP 500: provider unavailable' }],
         },
       ],
