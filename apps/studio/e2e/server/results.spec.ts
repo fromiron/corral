@@ -1,8 +1,89 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import type { Page } from '@playwright/test';
 import { requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
+
+test('a completed run explains failed file steps and opens their reasons', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const { csrfToken } = await (
+    await page.request.get(`${corral.server.url}/api/v1/session`)
+  ).json();
+  const cookie = (await page.context().cookies())
+    .map(({ name, value }) => `${name}=${value}`)
+    .join('; ');
+  const call: typeof fetch = (url, init = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('origin', corral.server.url);
+    headers.set('cookie', cookie);
+    headers.set('x-corral-csrf', csrfToken);
+    return fetch(url, { ...init, headers });
+  };
+  const options = { baseUrl: corral.server.url, fetch: call };
+  const repository = new RestCorralRepository(options);
+  const workspaces = new WorkspacesApi(options);
+  const original = join(corral.workspace, 'source');
+  mkdirSync(original);
+  const git = (...args: string[]) =>
+    execFileSync(
+      'git',
+      ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', ...args],
+      { cwd: original },
+    );
+  git('init', '-q');
+  writeFileSync(join(original, 'README.md'), 'Example project\n');
+  git('add', '.');
+  git('commit', '-qm', 'Fixture');
+  await workspaces.bind('default', original);
+  await workspaces.configure('default', { trusted: true });
+  const created = await repository.createSession({
+    projectId: 'default',
+    title: 'Failure context',
+  });
+  assert(created.ok);
+  await workspaces.createWorktree(created.session.sessionId);
+  await page.goto(`${corral.server.url}/sessions/${created.session.sessionId}`);
+  await requestBox(page).fill('Write project notes');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const banner = page.getByTestId('action-required');
+  await expect(banner).toContainText('The run completed, but some tool steps failed.');
+  const run = corral.server.coordinator.listRuns()[0];
+  assert(run);
+  expect(run.status).toBe('succeeded');
+  const failed = Object.values(
+    corral.server.coordinator.getSnapshot(run.runId).projection.toolCalls,
+  ).find((tool) => tool.errorCode === 'TARGET_NOT_FOUND');
+  assert(failed);
+  await page.goto(
+    `${corral.server.url}/sessions/${created.session.sessionId}?run=${run.runId}&atSeq=1`,
+  );
+  await banner.getByRole('link', { name: 'Review failed steps' }).click();
+  await expect(page).toHaveURL(new RegExp(`execution=${failed.executionId}`));
+  await expect(page).not.toHaveURL(/atSeq=/);
+  const failure = page.getByTestId(`failed-step-${failed.toolCallId}`);
+  await expect(failure).toContainText('list_files');
+  await expect(
+    failure.getByText('The requested file, folder, or target is unavailable.'),
+  ).toBeVisible();
+  await expect(failure.locator('details')).not.toHaveAttribute('open');
+  await failure.getByText('Diagnostics', { exact: true }).click();
+  await expect(failure.locator('code')).toHaveText('TARGET_NOT_FOUND: the folder is unavailable');
+  await page.getByRole('tab', { name: 'Usage', exact: true }).click();
+  await page.getByRole('button', { name: 'Usage by request' }).click();
+  const request = page.locator('[data-testid^="budget-call-"]').first();
+  await expect(request.locator('span').first()).toContainText('Request 1');
+  await expect(request.locator('span').first()).not.toContainText('call_');
+  await expect(request.locator('details')).not.toHaveAttribute('open');
+  expect(corral.errors).toEqual([]);
+});
 
 test('selected-run usage and unique result identities survive reload without changing session totals', async ({
   page,

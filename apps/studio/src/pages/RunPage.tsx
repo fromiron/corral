@@ -8,6 +8,7 @@ import {
   EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
+  FailureNotice,
   HarnessDetails,
   historicalStreams,
   QuestionsPanel,
@@ -249,6 +250,11 @@ function RunWorkspace({
     [history, completedStreams],
   );
   const projection = display?.projection ?? liveProjection;
+  const failedTools = execution
+    ? Object.values(projection?.toolCalls ?? {}).filter(
+        (call) => call.executionId === execution && call.phase === 'failed',
+      )
+    : [];
   const head = events.at(-1)?.runSeq ?? 0;
   const chooseSeq = (value: number | undefined) => setSearch({ atSeq: value }, { replace: true });
   const savedTeam = useSavedTeam(liveProjection?.corralId);
@@ -570,6 +576,16 @@ function RunWorkspace({
                   onChoose={chooseExecution}
                   onClose={closeDetail}
                 />
+              ) : null}
+              {failedTools.length ? (
+                <section aria-label={m('failedSteps')} className="mb-3 space-y-2">
+                  {failedTools.map((call) => (
+                    <div key={call.toolCallId} data-testid={`failed-step-${call.toolCallId}`}>
+                      <p className="text-xs font-medium">{call.name}</p>
+                      <FailureNotice code={call.errorCode} message={call.reason ?? ''} />
+                    </div>
+                  ))}
+                </section>
               ) : null}
               <Tabs value={detail} onValueChange={setDetail}>
                 <div className="overflow-x-auto">

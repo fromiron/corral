@@ -444,9 +444,11 @@ export function EnvironmentDetail({ model }: { model: ChatWidgetModel }) {
 }
 export function RunLink({
   model,
+  executionId,
   ...props
 }: {
   model: ChatWidgetModel;
+  executionId?: string;
 } & ComponentProps<'a'>) {
   return (
     <Link
@@ -460,6 +462,9 @@ export function RunLink({
         panel: 'run',
         run: model.runId ?? undefined,
         view: 'run',
+        ...(executionId
+          ? { execution: executionId, artifact: undefined, result: undefined, atSeq: undefined }
+          : {}),
       })}
       resetScroll={false}
       {...props}
@@ -531,8 +536,23 @@ export function ComposerDock({ summary }: { summary?: ReactNode }) {
         >
           <BannerTitle>{actionLabel}</BannerTitle>
           <BannerActions>
-            <Button size="compact" variant="secondary" render={<RunLink model={model} />}>
-              {t('actionOpen')}
+            <Button
+              size="compact"
+              variant="secondary"
+              render={
+                <RunLink
+                  model={model}
+                  executionId={
+                    model.action.needsUser ? undefined : (model.failedExecutionId ?? undefined)
+                  }
+                />
+              }
+            >
+              {t(
+                !model.action.needsUser && model.failedExecutionId
+                  ? 'actionOpenFailure'
+                  : 'actionOpen',
+              )}
             </Button>
           </BannerActions>
         </Banner>

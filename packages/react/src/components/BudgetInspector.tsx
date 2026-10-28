@@ -193,10 +193,18 @@ export function BudgetInspector({
               <KitAccordionTrigger>{t('requests')}</KitAccordionTrigger>
               <KitAccordionContent>
                 <ul className="mt-1 flex flex-col gap-1">
-                  {Object.entries(budget.reservations).map(([id, row]) => (
+                  {Object.entries(budget.reservations).map(([id, row], index) => (
                     <li key={id} data-testid={`budget-call-${row.modelCallId ?? id}`}>
-                      <span className="font-mono">{row.modelCallId ?? id}</span> ·{' '}
-                      <span>{t(`state.${row.status}`)}</span> ·{' '}
+                      <span>
+                        {t(row.image ? 'imageRequestName' : 'requestName', {
+                          role:
+                            definition.nodes.find(
+                              (node) => node.id === projection.executions[row.scope]?.nodeId,
+                            )?.label ?? t('unknownRole'),
+                          number: index + 1,
+                        })}
+                      </span>{' '}
+                      · <span>{t(`state.${row.status}`)}</span> ·{' '}
                       {row.image ? (
                         <>
                           {row.image.actualMicros === null
@@ -219,6 +227,12 @@ export function BudgetInspector({
                           ) : null}
                         </>
                       )}
+                      <details className="text-muted-foreground">
+                        <summary className="cursor-pointer">{t('diagnostics')}</summary>
+                        <code className="select-text break-all">
+                          {[row.modelCallId, id, row.scope].filter(Boolean).join(' · ')}
+                        </code>
+                      </details>
                     </li>
                   ))}
                 </ul>

@@ -224,6 +224,10 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 
 provider/network error는 사용자 키 원문·응답 헤더를 포함하지 않는다. trace용 errorId와 마스킹된 이유를 제공한다. 도구 실행 중 실패는 HTTP success/error와 별개로 ToolOutcome에 structured error를 넣는다.
 
+### 도구 종료 오류 진단
+
+`tool.finished`의 선택적 `errorCode`는 도구 경계가 확인한 계약 오류 코드다. `error`는 기존 안전한 진단 문구를 유지하며, 일반 예외의 메시지·경로·비밀을 기록하는 용도로 사용하지 않는다. 파일 목록의 없는 디렉터리는 `TARGET_NOT_FOUND`와 경로 없는 고정 사유로 변환한다. 예전 이벤트에 코드가 없으면 화면은 일반 실패 안내와 기존 진단을 사용한다.
+
 ## 4. 이벤트 payload 목록
 
 payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는다. causal graph는 cause 1개에 한정하지 않는다.

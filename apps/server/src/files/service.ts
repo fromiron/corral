@@ -6245,7 +6245,15 @@ export class WorkspaceService implements FileTools {
         });
       }
       case 'list_files':
-        return this.list(root, typeof input.args.path === 'string' ? input.args.path : '');
+        return this.list(root, typeof input.args.path === 'string' ? input.args.path : '').catch(
+          (error: unknown) => {
+            if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
+              throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
+            if ((error as NodeJS.ErrnoException)?.code === 'ENOENT')
+              throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
+            throw error;
+          },
+        );
       case 'read_file': {
         const rel = safeRelative(String(input.args.path));
         const kind = await assertPlainPath(root, rel);

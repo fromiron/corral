@@ -75,7 +75,14 @@ async function setup(
   await service.configure('default', { trusted: true });
   await service.createWorktree('session_1', 'default');
   const call = (
-    name: 'read_file' | 'write_file' | 'delete_file' | 'move_file' | 'edit' | 'write',
+    name:
+      | 'read_file'
+      | 'write_file'
+      | 'delete_file'
+      | 'move_file'
+      | 'edit'
+      | 'write'
+      | 'list_files',
     args: Record<string, unknown>,
     executionId = 'exec_1',
   ) =>
@@ -87,6 +94,21 @@ async function setup(
 }
 
 describe('file broker', () => {
+  it('reports a missing list folder as a safe typed refusal', async () => {
+    const s = await setup();
+    try {
+      await expect(s.call('list_files', { path: 'missing-private-folder' })).rejects.toMatchObject({
+        code: 'TARGET_NOT_FOUND',
+        message: 'the folder is unavailable',
+      });
+      await expect(s.call('list_files', { path: 'missing-private-folder' })).rejects.toBeInstanceOf(
+        ToolRefusal,
+      );
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
   it('paged file reads do not authorize replacing unread content', async () => {
     const s = await setup();
     try {

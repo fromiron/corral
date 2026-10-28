@@ -72,6 +72,7 @@ export interface ChatWidgetModel {
   /** The list-price estimate, or why there is none; null before the run is read. */
   cost: RunCostEstimate | null;
   action: ReturnType<typeof actionRequired>;
+  failedExecutionId: string | null;
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
     open: boolean;
@@ -503,6 +504,9 @@ function useChatWidgetState(
     usage: usageSummary(projection, projection?.limits ?? view?.definition?.limits ?? null),
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
+    failedExecutionId:
+      Object.values(projection?.toolCalls ?? {}).find((call) => call.phase === 'failed')
+        ?.executionId ?? null,
     activity,
     plan: {
       open,
