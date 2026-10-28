@@ -12,7 +12,10 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
       const session = await (await fetch('/api/v1/session')).json();
       const response = await fetch(`/api/v1${path}`, {
         method,
-        headers: { 'x-corral-csrf': session.csrfToken, 'content-type': 'application/json' },
+        headers: {
+          'x-corral-csrf': session.csrfToken,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
       if (!response.ok) throw new Error(`Fixture request failed: ${response.status}`);
@@ -100,6 +103,120 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await expect(
       page.getByTestId('app-sidebar').getByRole('img', { name: 'Failed', exact: true }),
     ).toHaveCount(0);
+  } finally {
+    rmSync(original, { recursive: true, force: true });
+  }
+});
+
+test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and a live tab indicator', async ({
+  page,
+  corral,
+}) => {
+  test.skip(process.platform !== 'linux', 'PTY cleanup is qualified on Linux');
+  const original = mkdtempSync(join(tmpdir(), 'corral-e2e-terminal-burst-'));
+  try {
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args], {
+        cwd: original,
+      });
+    git('init', '-q');
+    writeFileSync(join(original, 'README.md'), 'terminal burst fixture\n');
+    git('add', '.');
+    git('commit', '-qm', 'fixture');
+    await corral.open('/');
+    await api(page, '/projects/default/workspace', 'PUT', { path: original });
+    await api(page, '/projects/default/workspace', 'PATCH', { trusted: true });
+    const created = await api(page, '/sessions', 'POST', {
+      projectId: 'default',
+      title: 'Terminal burst',
+    });
+    const sessionId = created.session.sessionId as string;
+    await api(page, `/sessions/${sessionId}/worktree`, 'POST');
+    await corral.open(`/sessions/${sessionId}?panel=terminal`);
+    const panel = page.getByTestId('terminal-panel');
+    await panel.getByRole('button', { name: 'New terminal', exact: true }).click();
+    await expect(panel.getByText('This view controls input.', { exact: true })).toBeVisible();
+    const indicator = page.getByRole('tab').getByRole('img', { name: 'Terminal running' });
+    await expect(indicator).toBeInViewport();
+    const terminalList = await api(page, `/sessions/${sessionId}/terminals`, 'GET');
+    const terminalId = terminalList.terminals[0].terminalId as string;
+    const input = panel.getByRole('textbox', { name: 'Terminal output and input' });
+    await input.click();
+    // Malformed input consumes the same pre-dispatch limiter without touching the PTY.
+    const primed = await page.evaluate(
+      async ({ sessionId, terminalId }) => {
+        const session = await (await fetch('/api/v1/session')).json();
+        return Promise.all(
+          Array.from(
+            { length: 3 },
+            async () =>
+              (
+                await fetch(`/api/v1/sessions/${sessionId}/terminals/${terminalId}/input`, {
+                  method: 'POST',
+                  headers: {
+                    'x-corral-csrf': session.csrfToken,
+                    'content-type': 'application/json',
+                  },
+                  body: JSON.stringify({ data: 'x'.repeat(90_000) }),
+                })
+              ).status,
+          ),
+        );
+      },
+      { sessionId, terminalId },
+    );
+    expect(primed).toContain(429);
+    const responses: number[] = [];
+    page.on('response', (response) => {
+      if (
+        response.url().endsWith(`/terminals/${terminalId}/input`) &&
+        response.request().postDataJSON()?.data
+      )
+        responses.push(response.status());
+    });
+    const payload = `burst-${'a0123456789'.repeat(100)}`;
+    await Promise.all([
+      input.pressSequentially(`printf '%s' '${payload}' > burst.txt\r`),
+      expect(
+        panel.getByText(
+          'Input is arriving too quickly. It is kept in order and will resume shortly.',
+        ),
+      ).toBeVisible(),
+    ]);
+    await expect
+      .poll(async () => {
+        try {
+          return (await api(page, `/sessions/${sessionId}/worktree/document?path=burst.txt`, 'GET'))
+            .content?.text;
+        } catch {
+          return undefined;
+        }
+      })
+      .toBe(payload);
+    expect(responses).toContain(429);
+    expect(responses.length).toBeLessThan(payload.length / 2);
+    await expect(
+      panel.getByText('The last input acknowledgement was lost. Input is paused.'),
+    ).toHaveCount(0);
+    await input.pressSequentially("printf 'continued' > continued.txt\r");
+    await expect
+      .poll(async () => {
+        try {
+          return (
+            await api(page, `/sessions/${sessionId}/worktree/document?path=continued.txt`, 'GET')
+          ).content?.text;
+        } catch {
+          return undefined;
+        }
+      })
+      .toBe('continued');
+    await panel.getByRole('button', { name: 'Stop terminal', exact: true }).click();
+    await expect(panel.getByText('Stopped', { exact: true })).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    await corral.restart();
+    await corral.open(`/sessions/${sessionId}?panel=terminal`);
+    await expect(panel).toContainText('This terminal has ended; you can create a new terminal.');
+    await expect(panel).not.toContainText('Stop this terminal before creating another');
   } finally {
     rmSync(original, { recursive: true, force: true });
   }

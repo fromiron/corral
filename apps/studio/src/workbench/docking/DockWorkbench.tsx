@@ -105,6 +105,7 @@ export interface DockWorkbenchProps {
   /** Called with a listener that refreshes graph tab titles; returns the unsubscribe. */
   subscribeGraphs?(listener: () => void): () => void;
   controls?: ReactNode;
+  terminalStatus?: ReactNode;
   onActiveContext?: (view: DockContextView) => void;
   /** Whether only the conversation is on screen now. */
   onPanesHiddenChange?: (hidden: boolean) => void;
@@ -137,6 +138,7 @@ const RendererContext = createContext<{
   renderDocument: DockWorkbenchProps['renderDocument'];
   renderGraph: DockWorkbenchProps['renderGraph'];
   selection: { panelId: string; range: TextRange } | null;
+  terminalStatus?: ReactNode;
   close: (id: string) => void;
   actions: PaneActions;
 } | null>(null);
@@ -195,7 +197,7 @@ function GraphView({ api, children }: { api: IDockviewPanelProps['api']; childre
 }
 function DockTab(props: IDockviewPanelHeaderProps<PanelParams>) {
   const renderer = useContext(RendererContext);
-  return (
+  const tab = (
     <DockviewDefaultTab
       {...props}
       hideClose
@@ -205,6 +207,15 @@ function DockTab(props: IDockviewPanelHeaderProps<PanelParams>) {
         renderer?.close(props.api.id);
       }}
     />
+  );
+  return props.params.descriptor.kind === 'context' &&
+    props.params.descriptor.view === 'terminal' ? (
+    <div className="flex h-full min-w-0 items-center gap-1">
+      {tab}
+      {renderer?.terminalStatus}
+    </div>
+  ) : (
+    tab
   );
 }
 /**
@@ -977,6 +988,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
           renderDocument: props.renderDocument,
           renderGraph: props.renderGraph,
           selection,
+          terminalStatus: props.terminalStatus,
           close: (id) => void closePanel(id),
           actions: {
             compact,

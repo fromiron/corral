@@ -86,6 +86,37 @@
         "message": {
           "type": "string",
           "minLength": 1
+        },
+        "owner": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "terminal"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "sessionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "active",
+                "uncertain"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "sessionId",
+            "state"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

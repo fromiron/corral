@@ -5,7 +5,7 @@ import {
   type VoiceTranscript,
   type VoiceTranscriptReceipt,
 } from '@corral/client';
-import type { AutoModelChoice, TextAttachment } from '@corral/contracts';
+import type { AutoModelChoice, CommandError, TextAttachment } from '@corral/contracts';
 import {
   IMAGE_MAX_COUNT,
   type ImageAttachment,
@@ -174,7 +174,7 @@ import {
   readComposerDraft,
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
-import { TerminalPanel } from '../workbench/TerminalPanel.tsx';
+import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
@@ -566,6 +566,7 @@ function WorkSessionPage() {
                 fileWorkAvailable={Boolean(binding)}
                 selectionKey={`${session.sessionId}:${viewKey}`}
                 documentOwner={documents}
+                terminalStatus={<TerminalActivity sessionId={session.sessionId} />}
                 renderContext={renderContext}
                 renderDocument={(descriptor, _panelId, selection) =>
                   documents ? (
@@ -1445,6 +1446,8 @@ function EntryCard({
       {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
           sessionId={sessionId}
+          code={entry.refusal?.code}
+          owner={entry.refusal?.owner}
           message={entry.detail}
           onEdit={() =>
             editRequest(entry.text, {
@@ -1822,6 +1825,7 @@ export function Composer({
   const [refusal, setRefusal] = useState<{
     message: string;
     code?: string | undefined;
+    owner?: CommandError['owner'];
     network?: boolean;
   } | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
@@ -2126,6 +2130,7 @@ export function Composer({
     runId: string | null;
     detail: string | null;
     code?: string | undefined;
+    error?: CommandError | undefined;
     auto?: SessionEntryAuto | null;
     cancelled?: boolean;
     cancelError?: string;
@@ -2185,6 +2190,7 @@ export function Composer({
         runId: result.runId,
         detail: result.receipt.error?.message ?? null,
         code: result.receipt.error?.code,
+        error: result.receipt.error ?? undefined,
         cancelled: cancellation !== null,
         ...(cancellation?.cancellation?.error
           ? { cancelError: cancellation.cancellation.error.message }
@@ -2244,10 +2250,10 @@ export function Composer({
   };
 
   /** A refused request keeps its text, intent and references so it can be fixed and resent. */
-  const refused = async (message: string, code?: string) => {
+  const refused = async (message: string, code?: string, owner?: CommandError['owner']) => {
     // A refusal is final for that command; the next attempt is a new command.
     clearPending();
-    setRefusal({ message, code });
+    setRefusal({ message, code, owner });
     await router.invalidate();
     onChange();
   };
@@ -2319,6 +2325,7 @@ export function Composer({
           runId: utterance.target.runId,
           executionId: utterance.target.executionId,
           detail: receipt.error?.message ?? null,
+          refusal: receipt.error ?? null,
           commandId: utterance.commandId,
         });
         onChange();
@@ -2337,6 +2344,7 @@ export function Composer({
         state: result.runId ? 'started' : 'refused',
         runId: result.runId,
         detail: result.detail,
+        refusal: result.error ?? null,
         commandId: utterance.commandId,
         ...(result.auto ? { auto: result.auto } : {}),
       });
@@ -2391,12 +2399,15 @@ export function Composer({
           autoCommandSeed(body, refs, autoChoice, team ? `corral:${team.corralId}` : teamMode) +
             (permissionMode ? `\u0000permission:${permissionMode}` : ''),
         );
-        const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
-          body,
-          commandId,
-          refs,
-          permissionMode,
-        );
+        const {
+          runId,
+          detail,
+          code,
+          error: commandError,
+          auto,
+          cancelled,
+          cancelError,
+        } = await startNext(body, commandId, refs, permissionMode);
         await record({
           ...(permissionMode ? { permissionMode } : {}),
           intent,
@@ -2404,6 +2415,7 @@ export function Composer({
           state: runId ? 'started' : 'refused',
           runId,
           detail,
+          refusal: commandError ?? null,
           commandId,
           ...(auto ? { auto } : {}),
           ...(attachments.length ? { attachments } : {}),
@@ -2416,7 +2428,8 @@ export function Composer({
           onChange();
           return;
         }
-        if (!runId) return await refused(detail ?? t('failed', { message: '' }), code);
+        if (!runId)
+          return await refused(detail ?? t('failed', { message: '' }), code, commandError?.owner);
       } else if (intent === 'queue') {
         await record({
           intent,
@@ -2441,9 +2454,11 @@ export function Composer({
           runId: ownActive.runId,
           executionId: steerTarget,
           detail: receipt.error?.message ?? null,
+          refusal: receipt.error ?? null,
           commandId,
         });
-        if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
+        if (receipt.error)
+          return await refused(receipt.error.message, receipt.error.code, receipt.error.owner);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
         // An auto session asks with its own model.
@@ -2468,11 +2483,13 @@ export function Composer({
           state: result.runId ? 'started' : 'refused',
           runId: result.runId,
           detail: result.receipt.error?.message ?? null,
+          refusal: result.receipt.error ?? null,
         });
         if (!result.runId)
           return await refused(
             result.receipt.error?.message ?? t('noResult'),
             result.receipt.error?.code,
+            result.receipt.error?.owner,
           );
       } else {
         return;
@@ -2491,6 +2508,12 @@ export function Composer({
         clearPending();
         return;
       }
+      if (
+        failure instanceof ApiError &&
+        failure.owner &&
+        ['RUN_ALREADY_ACTIVE', 'RESOURCE_CAPACITY'].includes(failure.code)
+      )
+        return await refused(failure.message, failure.code, failure.owner);
       // The answer was lost: the request may or may not have arrived. The text stays, and a
       // retry reuses the same command ID, so the runtime returns the first receipt.
       setRefusal({
@@ -2583,16 +2606,18 @@ export function Composer({
     ];
     try {
       const commandId = commandFor(entryCommandKey(entry, resend));
-      const { runId, detail, auto, cancelError } = await startNext(
-        entry.text,
-        commandId,
-        queuedReferences,
-        entry.permissionMode,
-      );
+      const {
+        runId,
+        detail,
+        error: commandError,
+        auto,
+        cancelError,
+      } = await startNext(entry.text, commandId, queuedReferences, entry.permissionMode);
       const outcome = {
         state: runId ? ('started' as const) : ('refused' as const),
         runId,
         detail,
+        refusal: commandError ?? null,
         ...(auto ? { auto } : {}),
       };
       const saved = resend
@@ -3028,6 +3053,7 @@ export function Composer({
               sessionId={session.sessionId}
               message={refusal.message}
               code={refusal.code}
+              owner={refusal.owner}
               network={refusal.network}
               onRetry={() => void send()}
               onQueue={() => {

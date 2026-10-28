@@ -5,6 +5,7 @@ import {
   AutoRouteLevel,
   CanvasLayout,
   type Clock,
+  CommandError,
   type CorralDefinition,
   CorralDefinitionDraft,
   HarnessBindingRef,
@@ -88,6 +89,7 @@ export interface SessionEntry {
   executionId: string | null;
   /** Why it was refused or not delivered, in the runtime's words. */
   detail: string | null;
+  refusal?: CommandError | null;
   /** The command it was sent as, so its receipt and Reins delivery can be looked up. */
   commandId?: string | null;
   /** The template an auto request ran with; absent for a chosen team. */
@@ -116,6 +118,7 @@ export interface SessionEntryChange {
   state: SessionEntryState;
   runId?: string | null;
   detail?: string | null;
+  refusal?: CommandError | null;
   auto?: SessionEntryAuto | null;
 }
 
@@ -174,6 +177,7 @@ export interface NewSessionEntry {
   runId?: string | null;
   executionId?: string | null;
   detail?: string | null;
+  refusal?: CommandError | null;
   commandId?: string | null;
   auto?: SessionEntryAuto | null;
 }
@@ -420,6 +424,8 @@ export function planSessionEntry(
       error: 'invalid',
       message: 'Ultra was removed; a request cannot choose it',
     };
+  if (entry.refusal != null && !CommandError.safeParse(entry.refusal).success)
+    return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
   const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
@@ -479,6 +485,7 @@ export function planSessionEntry(
           runId: entry.runId ?? null,
           executionId: entry.executionId ?? null,
           detail: entry.detail ?? null,
+          ...(entry.refusal ? { refusal: CommandError.parse(entry.refusal) } : {}),
           commandId: entry.commandId ?? null,
           ...(entry.meetingHandoff
             ? { meetingHandoff: MeetingHandoffOrigin.parse(entry.meetingHandoff) }
@@ -509,6 +516,8 @@ export function planSessionEntryUpdate(
 ): SessionResult {
   if (!current)
     return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
+  if (change.refusal != null && !CommandError.safeParse(change.refusal).success)
+    return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
   if (!current.entries.some((e) => e.entryId === entryId))
     return { ok: false, error: 'not_found', message: `Session ${sessionId} has no ${entryId}.` };
   return {
@@ -523,6 +532,9 @@ export function planSessionEntryUpdate(
               state: change.state,
               ...(change.runId !== undefined ? { runId: change.runId } : {}),
               ...(change.detail !== undefined ? { detail: change.detail } : {}),
+              ...(change.refusal !== undefined
+                ? { refusal: change.refusal ? CommandError.parse(change.refusal) : null }
+                : {}),
               ...(change.auto !== undefined ? { auto: change.auto } : {}),
             }
           : e,
