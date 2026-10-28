@@ -252,7 +252,10 @@ function RunWorkspace({
   const projection = display?.projection ?? liveProjection;
   const failedTools = execution
     ? Object.values(projection?.toolCalls ?? {}).filter(
-        (call) => call.executionId === execution && call.phase === 'failed',
+        (call) =>
+          call.executionId === execution &&
+          call.phase === 'failed' &&
+          (!call.effectId || projection?.effects[call.effectId]?.outcome !== 'cancelled'),
       )
     : [];
   const head = events.at(-1)?.runSeq ?? 0;

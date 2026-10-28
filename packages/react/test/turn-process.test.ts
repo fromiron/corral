@@ -31,6 +31,45 @@ function projection(status: RunProjection['status'], executions: [string, string
 }
 
 describe('buildTurnProcess', () => {
+  it('uses confirmed tool cancellation while preserving a failure before run cancellation', () => {
+    const p = projection('cancelled', [['lead', 'assistant', 'cancelled']]);
+    const events = ['stopped', 'failed'].flatMap((id) => {
+      p.toolCalls[id] = {
+        toolCallId: id,
+        executionId: 'lead',
+        name: 'await_tasks',
+        status: 'requested',
+        phase: 'failed',
+        effectId: id,
+        reason: id === 'stopped' ? 'scope cancelled' : 'tool failed',
+      };
+      p.effects[id] = {
+        effectId: id,
+        kind: 'tool',
+        scope: 'lead',
+        epoch: 1,
+        reservationId: null,
+        status: 'settled',
+        outcome: id === 'stopped' ? 'cancelled' : 'failed',
+      };
+      return [
+        event(
+          'tool.requested',
+          { executionId: 'lead', toolCallId: id, name: 'await_tasks', validatedArgs: {} },
+          1,
+        ),
+        event(
+          'tool.finished',
+          { executionId: 'lead', toolCallId: id, error: p.toolCalls[id].reason },
+          2,
+        ),
+      ];
+    });
+    expect(buildTurnProcess(events, p, {}, (id) => id).rows).toMatchObject([
+      { id: 'stopped', status: 'cancelled' },
+      { id: 'failed', status: 'failed' },
+    ]);
+  });
   it('lists thinking before tools and tools with their targets, without the answer', () => {
     seq = 0;
     const events = [

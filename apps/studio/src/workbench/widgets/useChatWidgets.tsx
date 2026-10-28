@@ -505,8 +505,8 @@ function useChatWidgetState(
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
     failedExecutionId:
-      Object.values(projection?.toolCalls ?? {}).find((call) => call.phase === 'failed')
-        ?.executionId ?? null,
+      projection?.toolCalls[tools.find((row) => row.tone === 'failed')?.id ?? '']?.executionId ??
+      null,
     activity,
     plan: {
       open,
