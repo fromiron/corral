@@ -9084,6 +9084,32 @@
                 }
               ]
             },
+            "errorCode": {
+              "type": "string",
+              "enum": [
+                "SCHEMA_INVALID",
+                "GRAPH_INVALID",
+                "CAPABILITY_DENIED",
+                "STALE_CONTROL_REVISION",
+                "IDEMPOTENCY_CONFLICT",
+                "COMMAND_NOT_SUPPORTED",
+                "TARGET_NOT_FOUND",
+                "TARGET_TERMINAL",
+                "RUN_ALREADY_ACTIVE",
+                "REVISION_CONFLICT",
+                "RESOURCE_CAPACITY",
+                "CRITERIA_CHANGE_REQUIRES_NEW_RUN",
+                "RESTART_NOT_ALLOWED",
+                "APPROVAL_STALE",
+                "LIMIT_REACHED",
+                "STORAGE_UNAVAILABLE",
+                "SESSION_INVALID",
+                "ORIGIN_REJECTED",
+                "POLICY_ERROR",
+                "MODEL_UNAVAILABLE",
+                "REQUEST_OUTCOME_UNKNOWN"
+              ]
+            },
             "progressHash": {
               "type": "string",
               "pattern": "^[a-f0-9]{64}$"

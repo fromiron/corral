@@ -799,7 +799,11 @@
     "callsInFlight": "Calls in progress",
     "callsUnknown": "Calls with unknown usage",
     "noLimitsNote": "Provider-side limits and charges still apply. Calls with unknown usage are not counted as zero.",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "requestName": "{role} · Request {number}",
+    "imageRequestName": "{role} · Image generation {number}",
+    "unknownRole": "Agent",
+    "diagnostics": "Diagnostics"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -3051,7 +3055,9 @@
       "simulatedUsage": "Simulation usage; not a provider measurement or bill."
     },
     "lastRunNumber": "Last run · Run #{number}",
-    "activityStarting": "Preparing to run…"
+    "activityStarting": "Preparing to run…",
+    "actionCompletedWithFailures": "The run completed, but some tool steps failed. Review those steps before relying on the result.",
+    "actionOpenFailure": "Review failed steps"
   },
   "ModelImport": {
     "heading": "Import model settings",
@@ -4353,6 +4359,19 @@
     "model": "Model dispatch to finish",
     "tool": "Tool start to finish",
     "nonAgentNode": "This node has no separate agent execution. Its outcome appears in the graph and recorded results.",
-    "workPlans": "Work plans"
+    "workPlans": "Work plans",
+    "failedSteps": "Failed steps"
+  },
+  "Failure": {
+    "cancelled": "This step was cancelled.",
+    "unknown": "This step failed. Open diagnostics for the recorded reason.",
+    "diagnostics": "Diagnostics",
+    "code": {
+      "TARGET_NOT_FOUND": "The requested file, folder, or target is unavailable.",
+      "TARGET_TERMINAL": "The target has ended or was cancelled, so this request could not be applied.",
+      "REVISION_CONFLICT": "The target changed. Check its current state before trying again.",
+      "CAPABILITY_DENIED": "This operation was not allowed. Check the recorded reason.",
+      "LIMIT_REACHED": "This operation reached a limit."
+    }
   }
 }

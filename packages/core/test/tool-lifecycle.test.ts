@@ -5,13 +5,14 @@ import {
   Coordinator,
   InMemoryRunStore,
   InProcessTransport,
+  ToolRefusal,
   ToolTerminationUnconfirmed,
   waitForProjection,
 } from '../src/index.ts';
 
 async function setup(
   termination: 'normal' | 'error',
-  response: 'success' | 'error' | 'unconfirmed' = 'success',
+  response: 'success' | 'error' | 'unconfirmed' | 'missing' = 'success',
   text = 'late file body',
 ) {
   const clock = new FakeClock(),
@@ -37,6 +38,8 @@ async function setup(
         await release.wait();
         off();
         if (response === 'error') throw new Error('late backend failure');
+        if (response === 'missing')
+          throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
         if (response === 'unconfirmed') throw new ToolTerminationUnconfirmed();
         return { text };
       },
@@ -86,6 +89,24 @@ async function setup(
 const drain = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
+
+it('preserves a safe refusal code in tool history but does not expose generic backend errors', async () => {
+  for (const response of ['missing', 'error'] as const) {
+    const s = await setup('normal', response);
+    s.release.open();
+    const result = await s.pending();
+    expect(result.ok).toBe(false);
+    const call = Object.values(s.coordinator.getSnapshot(s.runId).projection.toolCalls)[0];
+    if (response === 'missing')
+      expect(call).toMatchObject({
+        errorCode: 'TARGET_NOT_FOUND',
+        reason: 'the folder is unavailable',
+      });
+    else expect(call?.reason).toBe('external tool failed');
+    s.finish.open();
+    await waitForProjection(s.transport, s.runId, (p) => p.status === 'failed');
+  }
+});
 
 it('large tool results keep a scoped immutable source that can be read in ranges', async () => {
   const s = await setup('normal', 'success', '가🙂'.repeat(6000));

@@ -114,6 +114,7 @@ export interface ToolCallView {
   phase?: 'allowed' | 'running' | 'finished' | 'failed';
   effectId?: string;
   reason: string | null;
+  errorCode?: import('@corral/contracts').ErrorCode;
   resultRef?: string | null;
 }
 
@@ -572,6 +573,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
             phase: event.payload.error ? 'failed' : 'finished',
             resultRef: event.payload.resultRef,
             reason: event.payload.error,
+            ...(event.payload.errorCode ? { errorCode: event.payload.errorCode } : {}),
           },
         },
       };
