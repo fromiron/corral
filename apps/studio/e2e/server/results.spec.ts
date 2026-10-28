@@ -131,12 +131,15 @@ test('selected-run usage and unique result identities survive reload without cha
   await expect(results.getByRole('option').first()).toContainText('Run #2');
   const names = await results.getByRole('option').allTextContents();
   expect(new Set(names).size).toBe(names.length);
-  await expect(
-    results.getByRole('option', { name: /Run #2 · Helper · execution 2/ }),
-  ).toBeVisible();
-  await expect(
-    results.getByRole('option', { name: /Run #2 · Helper · execution 3/ }),
-  ).toBeVisible();
+  for (const execution of [2, 3]) {
+    await expect(
+      results
+        .getByRole('option')
+        .filter({ hasText: 'Run #2' })
+        .filter({ hasText: 'Helper' })
+        .filter({ hasText: `execution ${execution}` }),
+    ).toBeVisible();
+  }
   expect(corral.errors).toEqual([]);
 });
 
