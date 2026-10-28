@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { IntlProvider } from 'use-intl';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { RunActions } from '../src/components/RunActions.tsx';
@@ -16,29 +17,42 @@ const mount = (runId: string, status: 'running' | 'cancelled' = 'running') => {
   });
   return {
     ...render(
-      <IntlProvider locale="en" messages={messages}>
-        <RunActions session={session} />
-      </IntlProvider>,
+      <StrictMode>
+        <IntlProvider locale="en" messages={messages}>
+          <RunActions session={session} />
+        </IntlProvider>
+      </StrictMode>,
     ),
     sendCommand,
   };
 };
 
-it('retains an unconfirmed cancellation after remount without sending it or changing its run', () => {
-  const first = mount('original');
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel whole run' }));
-  expect(first.sendCommand).not.toHaveBeenCalled();
-  first.unmount();
-  const other = mount('other');
-  expect(screen.queryByRole('button', { name: 'Confirm whole run cancellation' })).toBeNull();
-  other.unmount();
+it('restores a reload-persisted confirmation without sending it, including StrictMode remounts', async () => {
+  sessionStorage.setItem('corral:cancel-confirmation:original', 'pending');
   const restored = mount('original');
+  await act(async () => {});
   expect(screen.getByText(/Cancellation has not been sent/)).toBeTruthy();
+  expect(restored.sendCommand).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Confirm whole run cancellation' }));
   expect(restored.sendCommand).toHaveBeenCalledWith({
     type: 'cancel',
     payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' },
   });
+});
+
+it('leaving the controls abandons confirmation before a keyed Run view is mounted again', async () => {
+  const first = mount('original');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel whole run' }));
+  first.unmount();
+  await act(async () => {});
+  const other = mount('other');
+  expect(screen.queryByRole('button', { name: 'Confirm whole run cancellation' })).toBeNull();
+  other.unmount();
+  await act(async () => {});
+  const returned = mount('original');
+  expect(screen.queryByRole('button', { name: 'Confirm whole run cancellation' })).toBeNull();
+  expect(first.sendCommand).not.toHaveBeenCalled();
+  expect(returned.sendCommand).not.toHaveBeenCalled();
 });
 
 it('keep running and an ended run clear a pending confirmation', () => {
