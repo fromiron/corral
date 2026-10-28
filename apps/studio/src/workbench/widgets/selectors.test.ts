@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  actionCopy,
   actionRequired,
   activityLine,
   agentActivity,
@@ -44,6 +45,17 @@ const body = (revision: number, statuses: Array<'pending' | 'in_progress' | 'com
 });
 
 describe('chat widget selectors', () => {
+  it('explains a completed run with failed tools without changing its successful status', () => {
+    const action = actionRequired({
+      pendingApprovals: 0,
+      pendingQuestions: 0,
+      failedEffects: 2,
+      unclearEffects: 0,
+      runStatus: 'succeeded',
+    });
+    expect(actionCopy(action)).toEqual(['actionCompletedWithFailures']);
+    expect(action.hasFailure).toBe(true);
+  });
   it('refreshes file changes after hashline and shell writes, including partial failures', () => {
     const calls = [
       { name: 'edit_hashline', phase: 'finished' },

@@ -13,6 +13,7 @@ test('file and line references remain independent and Escape clears only an empt
   try {
     execFileSync('git', ['init', '-q', original]);
     writeFileSync(join(original, 'README.md'), 'first\nsecond\nthird\n');
+    writeFileSync(join(original, 'my  notes.md'), 'Keep the two spaces in this filename.\n');
     execFileSync('git', ['add', '.'], { cwd: original });
     execFileSync(
       'git',
@@ -52,6 +53,16 @@ test('file and line references remain independent and Escape clears only an empt
       .getByRole('complementary', { name: 'File viewer', exact: true })
       .getByRole('button', { name: 'Close file viewer', exact: true })
       .click();
+    await box.press('End');
+    await box.press('Space');
+    await box.press('@');
+    await page
+      .getByRole('listbox', { name: 'References' })
+      .getByRole('option')
+      .filter({ hasText: 'my  notes.md' })
+      .click();
+    const prefix = 'a  b\n```ts\n    indented();\n```\nRead ';
+    await box.fill(`${prefix}@README.md @README.md:L1-L3 @"my  notes.md"`);
     const full = page.getByRole('button', { name: 'Remove reference README.md', exact: true });
     const range = page.getByRole('button', {
       name: 'Remove reference README.md:L1-L3',
@@ -60,11 +71,26 @@ test('file and line references remain independent and Escape clears only an empt
     await expect(full).toBeVisible();
     await expect(range).toBeVisible();
     await full.click();
+    await expect(page.getByRole('listbox', { name: 'References' })).toHaveCount(0);
+    await expect(box).toHaveValue(`${prefix}@README.md:L1-L3 @"my  notes.md"`);
     await expect(range).toBeVisible();
     await expect(box).toHaveValue(/@README\.md:L1-L3/);
+    await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
     await page.reload();
-    await expect(range).toBeVisible();
-    await range.click();
+    const koreanBox = page.getByRole('combobox', { name: '요청', exact: true });
+    const koreanRange = page.getByRole('button', {
+      name: 'README.md:L1-L3 참조 빼기',
+      exact: true,
+    });
+    await expect(koreanRange).toBeVisible();
+    await koreanRange.click();
+    await expect(koreanBox).toHaveValue(`${prefix}@"my  notes.md"`);
+    await expect(page.getByRole('listbox', { name: '참조', exact: true })).toHaveCount(0);
+    await page.evaluate(() => localStorage.setItem('corral:locale', 'en'));
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Remove reference "my  notes.md"', exact: true }),
+    ).toBeVisible();
     await expect(box).not.toHaveValue(/:L1-L3/);
     await box.fill('/');
     await expect(page.getByRole('listbox', { name: 'Commands' })).toBeVisible();

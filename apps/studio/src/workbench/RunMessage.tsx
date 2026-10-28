@@ -3,6 +3,7 @@ import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
   ExecutionTranscript,
+  FailureNotice,
   GeneratedImage,
   ReasoningSummary,
   type ResultItem,
@@ -212,7 +213,9 @@ export function RunMessage({
           })}
         </span>
       ) : null}
-      {execution.error ? <p className="w-full text-danger">{execution.error}</p> : null}
+      {execution.error ? (
+        <FailureNotice message={execution.error} cancelled={execution.status === 'cancelled'} />
+      ) : null}
     </li>
   );
   return (
@@ -251,12 +254,25 @@ export function RunMessage({
           className="space-y-1 text-xs"
           aria-label={t('toolActivity', { count: attention.length })}
         >
-          {attention.map((row) => (
-            <li key={row.id} className="flex flex-wrap gap-x-2">
-              <code>{row.name}</code>
-              <span className="text-danger">{t(`toolPhase.${row.tone}`)}</span>
-            </li>
-          ))}
+          {projection.status === 'succeeded' && attention.some((row) => row.tone === 'failed') ? (
+            <li>{tw('actionCompletedWithFailures')}</li>
+          ) : null}
+          {attention.map((row) => {
+            const call = projection.toolCalls[row.id];
+            return (
+              <li key={row.id} className="flex flex-wrap gap-x-2">
+                <code>{row.name}</code>
+                <span className="text-danger">{t(`toolPhase.${row.tone}`)}</span>
+                {call?.reason ? (
+                  <FailureNotice
+                    message={call.reason}
+                    code={call.errorCode}
+                    cancelled={row.tone === 'cancelled'}
+                  />
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
       {projection.statusReason &&

@@ -12,6 +12,7 @@ import {
   RunDecisionSettings,
 } from './decisions.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
+import { ErrorCode } from './errors.ts';
 import {
   CompactionReport,
   ContentHash,
@@ -518,6 +519,7 @@ export const ToolFinished = event(
     toolCallId: Identifier,
     resultRef: Identifier.nullable(),
     error: z.string().min(1).nullable(),
+    errorCode: ErrorCode.optional(),
     progressHash: ContentHash.optional(),
   }),
 );

@@ -5,7 +5,7 @@ import {
   type VoiceTranscript,
   type VoiceTranscriptReceipt,
 } from '@corral/client';
-import type { AutoModelChoice, TextAttachment } from '@corral/contracts';
+import type { AutoModelChoice, CommandError, TextAttachment } from '@corral/contracts';
 import {
   IMAGE_MAX_COUNT,
   type ImageAttachment,
@@ -126,9 +126,11 @@ import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import {
   type MentionItem,
+  mentionLabel,
   mentionToken,
   pickedReferences,
   removeMention,
+  selectMention,
 } from '../workbench/composerMenu.ts';
 import {
   type AttachmentCapture,
@@ -174,7 +176,7 @@ import {
   readComposerDraft,
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
-import { TerminalPanel } from '../workbench/TerminalPanel.tsx';
+import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
@@ -566,6 +568,7 @@ function WorkSessionPage() {
                 fileWorkAvailable={Boolean(binding)}
                 selectionKey={`${session.sessionId}:${viewKey}`}
                 documentOwner={documents}
+                terminalStatus={<TerminalActivity sessionId={session.sessionId} />}
                 renderContext={renderContext}
                 renderDocument={(descriptor, _panelId, selection) =>
                   documents ? (
@@ -1445,6 +1448,8 @@ function EntryCard({
       {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
           sessionId={sessionId}
+          code={entry.refusal?.code}
+          owner={entry.refusal?.owner}
           message={entry.detail}
           onEdit={() =>
             editRequest(entry.text, {
@@ -1822,6 +1827,7 @@ export function Composer({
   const [refusal, setRefusal] = useState<{
     message: string;
     code?: string | undefined;
+    owner?: CommandError['owner'];
     network?: boolean;
   } | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
@@ -2126,6 +2132,7 @@ export function Composer({
     runId: string | null;
     detail: string | null;
     code?: string | undefined;
+    error?: CommandError | undefined;
     auto?: SessionEntryAuto | null;
     cancelled?: boolean;
     cancelError?: string;
@@ -2185,6 +2192,7 @@ export function Composer({
         runId: result.runId,
         detail: result.receipt.error?.message ?? null,
         code: result.receipt.error?.code,
+        error: result.receipt.error ?? undefined,
         cancelled: cancellation !== null,
         ...(cancellation?.cancellation?.error
           ? { cancelError: cancellation.cancellation.error.message }
@@ -2244,10 +2252,10 @@ export function Composer({
   };
 
   /** A refused request keeps its text, intent and references so it can be fixed and resent. */
-  const refused = async (message: string, code?: string) => {
+  const refused = async (message: string, code?: string, owner?: CommandError['owner']) => {
     // A refusal is final for that command; the next attempt is a new command.
     clearPending();
-    setRefusal({ message, code });
+    setRefusal({ message, code, owner });
     await router.invalidate();
     onChange();
   };
@@ -2319,6 +2327,7 @@ export function Composer({
           runId: utterance.target.runId,
           executionId: utterance.target.executionId,
           detail: receipt.error?.message ?? null,
+          refusal: receipt.error ?? null,
           commandId: utterance.commandId,
         });
         onChange();
@@ -2337,6 +2346,7 @@ export function Composer({
         state: result.runId ? 'started' : 'refused',
         runId: result.runId,
         detail: result.detail,
+        refusal: result.error ?? null,
         commandId: utterance.commandId,
         ...(result.auto ? { auto: result.auto } : {}),
       });
@@ -2391,12 +2401,15 @@ export function Composer({
           autoCommandSeed(body, refs, autoChoice, team ? `corral:${team.corralId}` : teamMode) +
             (permissionMode ? `\u0000permission:${permissionMode}` : ''),
         );
-        const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
-          body,
-          commandId,
-          refs,
-          permissionMode,
-        );
+        const {
+          runId,
+          detail,
+          code,
+          error: commandError,
+          auto,
+          cancelled,
+          cancelError,
+        } = await startNext(body, commandId, refs, permissionMode);
         await record({
           ...(permissionMode ? { permissionMode } : {}),
           intent,
@@ -2404,6 +2417,7 @@ export function Composer({
           state: runId ? 'started' : 'refused',
           runId,
           detail,
+          refusal: commandError ?? null,
           commandId,
           ...(auto ? { auto } : {}),
           ...(attachments.length ? { attachments } : {}),
@@ -2416,7 +2430,8 @@ export function Composer({
           onChange();
           return;
         }
-        if (!runId) return await refused(detail ?? t('failed', { message: '' }), code);
+        if (!runId)
+          return await refused(detail ?? t('failed', { message: '' }), code, commandError?.owner);
       } else if (intent === 'queue') {
         await record({
           intent,
@@ -2441,9 +2456,11 @@ export function Composer({
           runId: ownActive.runId,
           executionId: steerTarget,
           detail: receipt.error?.message ?? null,
+          refusal: receipt.error ?? null,
           commandId,
         });
-        if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
+        if (receipt.error)
+          return await refused(receipt.error.message, receipt.error.code, receipt.error.owner);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
         // An auto session asks with its own model.
@@ -2468,11 +2485,13 @@ export function Composer({
           state: result.runId ? 'started' : 'refused',
           runId: result.runId,
           detail: result.receipt.error?.message ?? null,
+          refusal: result.receipt.error ?? null,
         });
         if (!result.runId)
           return await refused(
             result.receipt.error?.message ?? t('noResult'),
             result.receipt.error?.code,
+            result.receipt.error?.owner,
           );
       } else {
         return;
@@ -2491,6 +2510,12 @@ export function Composer({
         clearPending();
         return;
       }
+      if (
+        failure instanceof ApiError &&
+        failure.owner &&
+        ['RUN_ALREADY_ACTIVE', 'RESOURCE_CAPACITY'].includes(failure.code)
+      )
+        return await refused(failure.message, failure.code, failure.owner);
       // The answer was lost: the request may or may not have arrived. The text stays, and a
       // retry reuses the same command ID, so the runtime returns the first receipt.
       setRefusal({
@@ -2575,7 +2600,8 @@ export function Composer({
   const entryCommandKey = (entry: SessionEntry, resend: boolean) =>
     `${resend ? 'resend' : 'queue'}\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, [...(entry.attachments ?? []), ...(resend ? (entry.images ?? []) : [])], autoChoice, team ? `corral:${team.corralId}` : teamMode)}\u0000${entry.permissionMode ?? ''}`;
   const startQueued = async (entry: SessionEntry, resend = false) => {
-    if (busy || autoRequest.current || unavailable) return;
+    if (busy || autoRequest.current || autoSaving.current || active || savedRequestUnavailable)
+      return;
     setBusy(true);
     const queuedReferences: RunReference[] = [
       ...(entry.attachments ?? []),
@@ -2583,16 +2609,18 @@ export function Composer({
     ];
     try {
       const commandId = commandFor(entryCommandKey(entry, resend));
-      const { runId, detail, auto, cancelError } = await startNext(
-        entry.text,
-        commandId,
-        queuedReferences,
-        entry.permissionMode,
-      );
+      const {
+        runId,
+        detail,
+        error: commandError,
+        auto,
+        cancelError,
+      } = await startNext(entry.text, commandId, queuedReferences, entry.permissionMode);
       const outcome = {
         state: runId ? ('started' as const) : ('refused' as const),
         runId,
         detail,
+        refusal: commandError ?? null,
         ...(auto ? { auto } : {}),
       };
       const saved = resend
@@ -2776,6 +2804,17 @@ export function Composer({
     isAuto && intent === 'next' && autoReasoningUnsupported(autoChoice, profiles, runMode);
   const liveUnavailable =
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
+  const savedRequestUnavailable =
+    missingTeam ||
+    (runMode === 'live' && !live) ||
+    (isAuto && profiles !== null && autoNotReady(autoChoice, profiles, runMode)) ||
+    (isAuto && autoReasoningUnsupported(autoChoice, profiles, runMode)) ||
+    (runMode === 'live' &&
+      profiles !== null &&
+      roles.some(
+        (role) =>
+          !profiles.some((profile) => profile.profileId === role.profileId && profile.available),
+      ));
   const unavailable =
     liveUnavailable ||
     attachmentsBusy ||
@@ -2912,7 +2951,7 @@ export function Composer({
                 <Button
                   variant="ghost"
                   size="compact"
-                  disabled={Boolean(active) || busy || missingTeam}
+                  disabled={Boolean(active) || busy || savedRequestUnavailable}
                   onClick={() => void startQueued(entry)}
                 >
                   {t('startNow')}
@@ -3028,6 +3067,7 @@ export function Composer({
               sessionId={session.sessionId}
               message={refusal.message}
               code={refusal.code}
+              owner={refusal.owner}
               network={refusal.network}
               onRetry={() => void send()}
               onQueue={() => {
@@ -3052,8 +3092,8 @@ export function Composer({
                   data-missing={missing.has(item.id) || undefined}
                   className={`flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-xs ${missing.has(item.id) ? 'bg-danger/10 text-danger line-through' : 'bg-subtle'}`}
                 >
-                  <span className="truncate font-mono" title={item.label}>
-                    {mentionToken(item).slice(1)}
+                  <span className="truncate font-mono" title={mentionLabel(item)}>
+                    {mentionLabel(item)}
                   </span>
                   {missing.has(item.id) ? (
                     <span className="sr-only">{tc('referenceGone')}</span>
@@ -3061,9 +3101,9 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="icon-tiny"
-                    aria-label={tc('removeReference', { label: mentionToken(item).slice(1) })}
+                    aria-label={tc('removeReference', { label: mentionLabel(item) })}
                     onClick={() => {
-                      write(removeMention(text, item));
+                      write(removeMention(text, item, chips));
                       setPicked((list) => list.filter((x) => x.id !== item.id));
                     }}
                   >
@@ -3130,7 +3170,13 @@ export function Composer({
             onKeyDown={onKeyDown}
             commands={commands}
             searchMentions={searchMentions}
-            onMention={(item) => setPicked((list) => [...list, item])}
+            onMention={(item) => {
+              const selected = selectMention(item, picked);
+              setPicked((list) =>
+                list.some((existing) => existing.id === selected.id) ? list : [...list, selected],
+              );
+              return selected;
+            }}
           />
           <p data-testid="composer-destination" className="px-2 text-xs text-muted-foreground">
             {destination}

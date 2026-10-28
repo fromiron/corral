@@ -17,9 +17,11 @@ export function ArchivedSessionNotice({ session }: { session: WorkSession }) {
     setBusy(true);
     setError(null);
     try {
+      const current = await repository.getSession(session.sessionId);
+      if (!current) return setError(t('notFound'));
       const result = await repository.updateSession(session.sessionId, {
         archived: false,
-        expectedRevision: session.revision,
+        expectedRevision: current.revision,
       });
       if (!result.ok) return setError(result.message);
       projectsChanged();

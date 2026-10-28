@@ -2,6 +2,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import { FailureNotice } from './FailureNotice.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
 /** Receipt state comes from the command record, never the HTTP status or a local click. */
@@ -60,9 +61,7 @@ export function CommandReceipts({ session, target }: { session: RunSessionStore;
           </p>
           <p className="text-muted-foreground">{t(`boundary.${receipt.requestedBoundary}`)}</p>
           {receipt.error ? (
-            <p role="alert" className="text-danger">
-              {receipt.error.code}: {receipt.error.message}
-            </p>
+            <FailureNotice code={receipt.error.code} message={receipt.error.message} />
           ) : null}
         </div>
       ))}

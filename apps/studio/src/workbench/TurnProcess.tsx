@@ -93,7 +93,13 @@ export function TurnProcess({
       case 'tool': {
         const name = t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name;
         const state =
-          row.status === 'blocked' ? t('blocked') : row.status === 'failed' ? t('failed') : null;
+          row.status === 'cancelled'
+            ? ts('cancelled')
+            : row.status === 'blocked'
+              ? t('blocked')
+              : row.status === 'failed'
+                ? t('failed')
+                : null;
         return [name, row.target, state].filter(Boolean).join(' · ');
       }
       case 'agent':

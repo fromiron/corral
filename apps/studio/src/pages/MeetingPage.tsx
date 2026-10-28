@@ -14,23 +14,28 @@ import {
   BannerTitle,
   Button,
   Menu,
+  MenuItem,
   MenuPopup,
   MenuTrigger,
   Textarea,
 } from '@corral/react/design-kit';
 import { Ellipsis, Send, Square, Users } from '@corral/react/icons';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouter } from '@tanstack/react-router';
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { useRegisterCommands } from '../commandRegistry.ts';
+import { projectsChanged } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
+import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
 import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
+import { MeetingDiagnostics } from '../workbench/MeetingDiagnostics.tsx';
 import { MeetingEvidencePicker } from '../workbench/MeetingEvidence.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
-import { preferences } from '../workbench/preferences.ts';
+import { isSendKey, preferences } from '../workbench/preferences.ts';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -125,13 +130,14 @@ export function MeetingPage({ session }: { session: WorkSession }) {
   );
   return (
     <>
-      <MeetingActions title={session.title} />
+      <MeetingActions session={session} />
       <ChatView
         centerEmpty
         sessionId={sessionId}
         header={
           <>
             <MeetingHeader title={session.title} config={view.config} />
+            <ArchivedSessionNotice session={session} />
             {hasRecords ? (
               <details ref={recordsPanel} aria-label={t('records')} className="pb-2 text-sm">
                 <summary className="cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-ring">
@@ -236,7 +242,49 @@ export function MeetingPage({ session }: { session: WorkSession }) {
 }
 
 /** The meeting's page menu in the top bar, like a session's. */
-function MeetingActions({ title }: { title: string }) {
+function MeetingActions({ session }: { session: WorkSession }) {
+  const { repository } = useServices();
+  const router = useRouter();
+  const t = useTranslations('Sessions');
+  const command = useTranslations('Commands');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toggleArchive = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const current = await repository.getSession(session.sessionId);
+      if (!current) {
+        setError(t('notFound'));
+        return;
+      }
+      const result = await repository.updateSession(session.sessionId, {
+        archived: !session.archivedAt,
+        expectedRevision: current.revision,
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      projectsChanged();
+      await router.invalidate();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  useRegisterCommands('session', [
+    {
+      id: 'session:archive',
+      title: command(session.archivedAt ? 'restore' : 'archive'),
+      group: command('groups.session'),
+      slash: session.archivedAt ? 'restore' : 'archive',
+      disabled: busy,
+      run: () => void toggleArchive(),
+    },
+  ]);
   const td = useTranslations('Desktop');
   return (
     <TopbarActions>
@@ -246,7 +294,7 @@ function MeetingActions({ title }: { title: string }) {
             <Button
               variant="ghost"
               size="icon-compact"
-              aria-label={td('sessionActions', { title })}
+              aria-label={td('sessionActions', { title: session.title })}
             />
           }
         >
@@ -254,8 +302,12 @@ function MeetingActions({ title }: { title: string }) {
         </MenuTrigger>
         <MenuPopup align="end" className="min-w-52">
           <ChatDensityMenu />
+          <MenuItem disabled={busy} onClick={() => void toggleArchive()}>
+            {t(session.archivedAt ? 'restore' : 'archive')}
+          </MenuItem>
         </MenuPopup>
       </Menu>
+      {error ? <p role="alert">{error}</p> : null}
     </TopbarActions>
   );
 }
@@ -316,6 +368,7 @@ function AnswerCard({
   const t = useTranslations('Meetings');
   const detailed = useStore(preferences, (state) => state.chatDensity === 'detailed');
   const failed = ['failed', 'refused', 'interrupted', 'not_started'].includes(answer.status);
+  const httpStatus = /\b(?:HTTP|status)\s*:?\s*(\d{3})\b/i.exec(answer.detail ?? '')?.[1];
   return (
     <article aria-label={name} className="mb-5 flex min-w-0 flex-col gap-1.5">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -351,7 +404,12 @@ function AnswerCard({
         <StreamingAnswer runId={answer.runId} />
       ) : null}
       {failed && answer.detail ? (
-        <p className="text-xs text-danger wrap-anywhere">{answer.detail}</p>
+        <div className="text-xs">
+          <p className="text-danger">
+            {t(httpStatus ? 'requestFailed' : 'answerFailedHint', { status: httpStatus ?? '' })}
+          </p>
+          <MeetingDiagnostics text={answer.detail} />
+        </div>
       ) : null}
       {detailed && answer.usage ? (
         <p className="text-xs text-muted-foreground tabular-nums">
@@ -398,6 +456,7 @@ function MeetingComposer({
   editQueued(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
 }) {
   const t = useTranslations('Meetings');
+  const sendKey = useStore(preferences, (state) => state.sendKey);
   const [restored] = useState(() => readComposerDraft(view.sessionId));
   const [text, setText] = useState(restored.text);
   const [mentions, setMentions] = useState(restored.meetingMentions ?? []);
@@ -465,7 +524,8 @@ function MeetingComposer({
     if (result?.ok) clearSentComposerDraft(view.sessionId, submittedRevision);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing || event.keyCode === 229 || !isSendKey(event, sendKey))
+      return;
     event.preventDefault();
     void submit(text, mentions);
   };

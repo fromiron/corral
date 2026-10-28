@@ -341,7 +341,55 @@ describe('worker lifecycle and protocol checks', () => {
     await tick();
     worker.kill();
     const result = await handle.waitForSettlement();
-    expect(result.outcome).toBe('failed');
+    expect(result).toEqual({
+      outcome: 'failed',
+      error: 'the model worker reported a request failure',
+    });
+    expect(JSON.stringify(result)).not.toMatch(/opaque-provider-secret|private-user-text|\/home\//);
+  });
+
+  it.each([
+    [
+      JSON.stringify({
+        code: 'SERVER',
+        status: 500,
+        retryAfterMs: 0,
+        requestId: 'opaque-provider-secret',
+      }),
+      'HTTP 500 (SERVER)',
+    ],
+    [
+      'HTTP 500 credential=opaque-provider-secret body=private-user-text /home/private/input.md',
+      'HTTP 500 (SERVER)',
+    ],
+    [
+      JSON.stringify({
+        code: 'TRANSPORT',
+        status: null,
+        retryAfterMs: null,
+        requestId: 'opaque-provider-secret',
+      }),
+      'TRANSPORT',
+    ],
+  ])('keeps only the safe provider failure classification from %s', async (error, cause) => {
+    const { adapter, worker } = scriptedWorker();
+    const handle = await adapter.start(startInput(), recordingHost().host);
+    worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+    await tick();
+    worker.send({
+      type: 'settled',
+      protocolVersion: PROTOCOL_VERSION,
+      executionId: 'exec_1',
+      outcome: 'failed',
+      error,
+    });
+    await tick();
+    worker.kill();
+    const result = await handle.waitForSettlement();
+    expect(result).toEqual({
+      outcome: 'failed',
+      error: `the model request failed: ${cause}`,
+    });
     expect(JSON.stringify(result)).not.toMatch(/opaque-provider-secret|private-user-text|\/home\//);
   });
 

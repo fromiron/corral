@@ -509,17 +509,23 @@ export const Sidebar = memo(function Sidebar({
                         >
                           {projectName(project, tp('defaultName'))}
                         </SidebarMenuButton>
-                        <SidebarMenuAction
-                          aria-label={t('toggleProject', {
+                        <Tooltip
+                          content={t('toggleProject', {
                             name: projectName(project, tp('defaultName')),
                           })}
-                          aria-expanded={!folded}
-                          onClick={() =>
-                            setCollapsed({ ...collapsed, [project.projectId]: !folded })
-                          }
                         >
-                          <ChevronDown className={folded ? '-rotate-90' : undefined} />
-                        </SidebarMenuAction>
+                          <SidebarMenuAction
+                            aria-label={t('toggleProject', {
+                              name: projectName(project, tp('defaultName')),
+                            })}
+                            aria-expanded={!folded}
+                            onClick={() =>
+                              setCollapsed({ ...collapsed, [project.projectId]: !folded })
+                            }
+                          >
+                            <ChevronDown className={folded ? '-rotate-90' : undefined} />
+                          </SidebarMenuAction>
+                        </Tooltip>
                       </SidebarMenuItem>
                     );
                   }
@@ -579,17 +585,19 @@ export const Sidebar = memo(function Sidebar({
                         open={openMenu === session.sessionId}
                         onOpenChange={(open) => setOpenMenu(open ? session.sessionId : null)}
                       >
-                        <MenuTrigger
-                          render={
-                            <SidebarMenuAction
-                              showOnHover
-                              data-session-menu
-                              aria-label={t('sessionActions', { title: session.title })}
-                            />
-                          }
-                        >
-                          <Ellipsis />
-                        </MenuTrigger>
+                        <Tooltip content={t('sessionActions', { title: session.title })}>
+                          <MenuTrigger
+                            render={
+                              <SidebarMenuAction
+                                showOnHover
+                                data-session-menu
+                                aria-label={t('sessionActions', { title: session.title })}
+                              />
+                            }
+                          >
+                            <Ellipsis />
+                          </MenuTrigger>
+                        </Tooltip>
                         <MenuPopup align="start" side="right">
                           <MenuItem onClick={() => setEditing(session)}>{t('rename')}</MenuItem>
                           <MenuItem

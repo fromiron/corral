@@ -73,7 +73,7 @@ test('sidebar session links remain keyboard reachable and row menu returns focus
   await page.keyboard.press('Escape');
   await expect(menu).toBeFocused();
   await sidebar.locator('a[aria-label="New session"]').hover();
-  await expect(page.getByRole('tooltip', { name: /New session/ })).toBeVisible();
+  await expect(page.getByRole('tooltip', { name: /^New session/ })).toBeVisible();
   await page.mouse.move(700, 700);
   await sessionLink.focus();
   await sessionLink.press('ArrowDown');

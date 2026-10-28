@@ -283,6 +283,7 @@
   --lh-micro: 14px;
   --fs-micro-compact: 10px;
   --lh-micro-compact: 12px;
+  --fs-field-touch: 16px;
 }
 
 @theme inline {

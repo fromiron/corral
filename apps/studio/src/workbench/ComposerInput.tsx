@@ -55,7 +55,7 @@ export function ComposerInput({
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   commands: AppCommand[];
   searchMentions: (query: string) => Promise<MentionItem[]>;
-  onMention: (item: MentionItem) => void;
+  onMention: (item: MentionItem) => MentionItem;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   placeholder: string;
   label: string;
@@ -63,10 +63,11 @@ export function ComposerInput({
   const t = useTranslations('Composer');
   const listId = useId();
   const [caret, setCaret] = useState(value.length);
+  const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [mentions, setMentions] = useState<{ query: string; items: MentionItem[] } | null>(null);
-  const trigger: Trigger | null = dismissed === value ? null : triggerAt(value, caret);
+  const trigger: Trigger | null = !focused || dismissed === value ? null : triggerAt(value, caret);
   const query = trigger?.query ?? null;
   const kind = trigger?.kind ?? null;
 
@@ -166,8 +167,8 @@ export function ComposerInput({
       void row.command.run();
       return;
     }
-    onMention(row.item);
-    put(replaceTrigger(value, trigger, mentionToken(row.item)));
+    const item = onMention(row.item);
+    put(replaceTrigger(value, trigger, mentionToken(item)));
   };
 
   // One heading per group, in the order groups first appear; rows keep their rank inside.
@@ -266,6 +267,8 @@ export function ComposerInput({
         value={value}
         placeholder={placeholder}
         rows={1}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
         onChange={(e) => {
           setCaret(e.target.selectionStart);

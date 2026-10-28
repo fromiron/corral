@@ -38,7 +38,7 @@ function terminal(): TerminalView {
     error: null,
   };
 }
-function setup() {
+function setup(options: { wait?: (ms: number) => Promise<void> } = {}) {
   let current = terminal();
   let handler: (message: TerminalStreamMessage) => void | Promise<void> = () => {};
   const callbacks: (() => void)[] = [];
@@ -122,6 +122,7 @@ function setup() {
     }),
   } satisfies TerminalClient;
   const store = terminalStore(client, {
+    ...options,
     attachmentId: 'attachment',
     newOperationId: () => 'new_terminal',
     createRuntime: async () => runtime,
@@ -390,5 +391,114 @@ it('a confirmed admission refusal does not leave an unknown creation to recover'
   expect(f.store.getState().sessions.session?.error).toContain('writer');
   await f.store.create('session', 'bash');
   expect(f.client.create).toHaveBeenCalledTimes(2);
+  f.store.dispose();
+});
+
+it('keeps a rate-limited frame and later input in order until Retry-After, then accepts more input', async () => {
+  const resume = new Gate();
+  const wait = vi.fn(async (_ms: number) => resume.wait());
+  const f = setup({ wait });
+  f.client.input.mockRejectedValueOnce(
+    new ApiError(429, 'LIMIT_REACHED', 'too fast', { retryAfterMs: 1500 }),
+  );
+  await f.store.refresh('session');
+  await f.store.mount('terminal', f.container, 'Terminal');
+  await f.emit({ type: 'status', terminal: terminal() });
+  f.store.sendInput('terminal', 'first');
+  await vi.waitFor(() => expect(wait).toHaveBeenCalledWith(1500));
+  f.store.sendInput('terminal', '한');
+  f.store.sendInput('terminal', '😀');
+  expect(f.store.getState().terminals.terminal?.inputUnknown).toBe(false);
+  expect(f.store.getState().terminals.terminal?.rateLimited).toBe(true);
+  expect(f.client.input).toHaveBeenCalledTimes(1);
+  resume.open();
+  await vi.waitFor(() => expect(f.client.input).toHaveBeenCalledTimes(2));
+  expect(f.client.input.mock.calls[1]?.[2]).toMatchObject({ sequence: 1, data: 'first한😀' });
+  await vi.waitFor(() => expect(f.store.getState().terminals.terminal?.rateLimited).toBe(false));
+  f.store.sendInput('terminal', '\r');
+  await vi.waitFor(() => expect(f.client.input).toHaveBeenCalledTimes(3));
+  expect(f.client.input.mock.calls[2]?.[2]).toMatchObject({ sequence: 2, data: '\r' });
+  f.store.dispose();
+});
+
+it.each(['stop', 'takeover', 'generation', 'dispose'] as const)(
+  'does not resend a throttled frame after %s',
+  async (action) => {
+    const resume = new Gate();
+    const wait = vi.fn(async () => resume.wait());
+    const f = setup({ wait });
+    f.client.input.mockRejectedValueOnce(new ApiError(429, 'LIMIT_REACHED', 'too fast'));
+    await f.store.refresh('session');
+    await f.store.mount('terminal', f.container, 'Terminal');
+    await f.emit({ type: 'status', terminal: terminal() });
+    f.store.sendInput('terminal', 'not-again');
+    await vi.waitFor(() => expect(wait).toHaveBeenCalled());
+    if (action === 'stop') await f.store.stop('terminal');
+    if (action === 'takeover') await f.store.claim('terminal', true);
+    if (action === 'generation') {
+      f.setCurrent({ ...terminal(), generation: 'replacement' });
+      await f.store.refresh('session');
+    }
+    if (action === 'dispose') f.store.dispose();
+    resume.open();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(f.client.input).toHaveBeenCalledTimes(1);
+    f.store.dispose();
+  },
+);
+
+it('merges adjacent pending input within frame bounds without crossing a resize', async () => {
+  const resume = new Gate();
+  const f = setup();
+  f.client.input.mockImplementationOnce(async (_session, _id, frame) => {
+    await resume.wait();
+    return {
+      generation: 'process',
+      controllerGeneration: frame.controllerGeneration,
+      acceptedSequence: frame.sequence,
+    };
+  });
+  await f.store.refresh('session');
+  await f.store.mount('terminal', f.container, 'Terminal');
+  await f.emit({ type: 'status', terminal: terminal() });
+  f.store.sendInput('terminal', 'a');
+  f.store.sendInput('terminal', 'b');
+  f.store.sendInput('terminal', 'c');
+  f.store.resize('terminal', 100, 30);
+  f.store.sendInput('terminal', 'd');
+  f.store.sendInput('terminal', 'e');
+  resume.open();
+  await vi.waitFor(() =>
+    expect(f.store.getState().terminals.terminal?.terminal.controller?.acceptedSequence).toBe(4),
+  );
+  expect(f.client.input.mock.calls.map((call) => call[2].data)).toEqual(['a', 'bc', 'de']);
+  expect(f.client.resize.mock.calls[0]?.[2].sequence).toBe(3);
+  f.store.dispose();
+});
+
+it('drops a throttled frame when an incoming status changes the controller generation for the same view', async () => {
+  const resume = new Gate();
+  const wait = vi.fn(async () => resume.wait());
+  const f = setup({ wait });
+  f.client.input.mockRejectedValueOnce(new ApiError(429, 'LIMIT_REACHED', 'too fast'));
+  await f.store.refresh('session');
+  await f.store.mount('terminal', f.container, 'Terminal');
+  await f.emit({ type: 'status', terminal: terminal() });
+  f.store.sendInput('terminal', 'old-owner-input');
+  await vi.waitFor(() => expect(wait).toHaveBeenCalled());
+  await f.emit({
+    type: 'status',
+    terminal: {
+      ...terminal(),
+      controllerGeneration: 2,
+      controller: { attachmentId: 'attachment', generation: 2, acceptedSequence: 0 },
+    },
+  });
+  resume.open();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(f.client.input).toHaveBeenCalledTimes(1);
+  expect(f.store.getState().terminals.terminal?.rateLimited).toBe(false);
   f.store.dispose();
 });

@@ -1,5 +1,5 @@
 import type { WorkSession } from '@corral/core';
-import { Button } from '@corral/react/design-kit';
+import { Button, Tooltip } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
@@ -107,22 +107,24 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
           >
             {tab.title}
           </a>
-          <Button
-            variant="ghost"
-            size="icon-compact"
-            className="size-6 shrink-0"
-            aria-label={t('close', { title: tab.title })}
-            onClick={() => {
-              setStored(tabs.filter((item) => item.sessionId !== tab.sessionId));
-              if (tab.sessionId === activeId) {
-                const next = visible[index - 1] ?? visible[index + 1];
-                if (next) void navigate({ href: next.href });
-                else void navigate({ to: '/projects' });
-              }
-            }}
-          >
-            <X size={12} />
-          </Button>
+          <Tooltip content={t('close', { title: tab.title })}>
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              className="size-6 shrink-0"
+              aria-label={t('close', { title: tab.title })}
+              onClick={() => {
+                setStored(tabs.filter((item) => item.sessionId !== tab.sessionId));
+                if (tab.sessionId === activeId) {
+                  const next = visible[index - 1] ?? visible[index + 1];
+                  if (next) void navigate({ href: next.href });
+                  else void navigate({ to: '/projects' });
+                }
+              }}
+            >
+              <X size={12} />
+            </Button>
+          </Tooltip>
         </div>
       ))}
     </nav>

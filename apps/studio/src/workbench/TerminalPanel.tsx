@@ -1,5 +1,6 @@
 import type { TextAttachment } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
+import { StatusDot } from '@corral/react';
 import { Button, Select } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
@@ -21,6 +22,24 @@ import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 const TerminalView = lazy(() =>
   import('./terminals/TerminalView.tsx').then((module) => ({ default: module.TerminalView })),
 );
+
+export function TerminalActivity({ sessionId }: { sessionId: string }) {
+  const { terminals } = useServices();
+  return terminals ? (
+    <TerminalActivityState sessionId={sessionId} store={terminalStore(terminals)} />
+  ) : null;
+}
+
+function TerminalActivityState({ sessionId, store }: { sessionId: string; store: TerminalStore }) {
+  const t = useTranslations('Terminals');
+  const running = useStore(
+    store,
+    (state) =>
+      state.sessions[sessionId]?.list?.terminals.some((terminal) => terminal.state === 'running') ??
+      false,
+  );
+  return running ? <StatusDot status="running" label={t('runningTab')} /> : null;
+}
 
 interface TerminalContextProps {
   runActive?: boolean;
@@ -127,6 +146,7 @@ function SessionTerminals({
             connection: value.connection,
             controlling: value.controlling,
             inputUnknown: value.inputUnknown,
+            rateLimited: value.rateLimited,
             inputOverflow: value.inputOverflow,
             error: value.error,
             busy: value.busy,
@@ -305,7 +325,11 @@ function SessionTerminals({
           </div>
           {!current.replayAvailable ? (
             <p role="status" className="text-xs">
-              {t('replayUnavailable')}
+              {t(
+                current.state === 'exited' || current.state === 'failed'
+                  ? 'replayUnavailableEnded'
+                  : 'replayUnavailable',
+              )}
             </p>
           ) : null}
           {current.state === 'uncertain' ? (
@@ -315,6 +339,11 @@ function SessionTerminals({
                   ? 'stopUnconfirmed'
                   : 'uncertain',
               )}
+            </p>
+          ) : null}
+          {entry.rateLimited ? (
+            <p role="status" className="text-xs text-warning">
+              {t('rateLimited')}
             </p>
           ) : null}
           {entry.inputOverflow ? (

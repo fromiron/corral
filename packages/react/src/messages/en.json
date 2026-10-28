@@ -1,4 +1,7 @@
 {
+  "Select": {
+    "placeholder": "Select…"
+  },
   "SettingsDialog": {
     "unsaved": "Unsaved settings",
     "unsavedHint": "Save these changes before leaving, discard them, or keep editing.",
@@ -86,7 +89,7 @@
     "serverShort": "Local · simulated",
     "demoShort": "Demo · simulated",
     "liveNoModel": "Connect a model",
-    "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated.",
+    "liveNoModelNote": "No model is connected. Live requests are blocked until you connect one in Settings › Models. To try simulated agents, open the separate demo.",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
     "retryConnection": "Try again",
     "retry": "Try again"
@@ -471,6 +474,7 @@
     "saveCopyTitle": "Save a team copy",
     "copyName": "Team name",
     "saveCopyEdit": "Save copy and edit",
+    "copyNameAdjusted": "A team with this name exists. This copy will be saved as “{name}”.",
     "template": {
       "research-team": {
         "name": "Research team",
@@ -795,7 +799,11 @@
     "callsInFlight": "Calls in progress",
     "callsUnknown": "Calls with unknown usage",
     "noLimitsNote": "Provider-side limits and charges still apply. Calls with unknown usage are not counted as zero.",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "requestName": "{role} · Request {number}",
+    "imageRequestName": "{role} · Image generation {number}",
+    "unknownRole": "Agent",
+    "diagnostics": "Diagnostics"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -1357,6 +1365,7 @@
     "actions": "Actions for {name}"
   },
   "Sessions": {
+    "notFound": "This session is no longer available.",
     "heading": "Sessions",
     "new": "New session",
     "titleLabel": "Title (optional)",
@@ -1508,7 +1517,9 @@
       "ready": "No run yet",
       "empty": "Empty session",
       "cancelled": "Cancelled"
-    }
+    },
+    "restoreNamed": "Restore session: {title}",
+    "listSessionUnavailable": "This session is no longer available."
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1657,7 +1668,8 @@
     "removalGitUnknown": "The copy's Git changes could not be read.",
     "removalComments": "{count, plural, one {# review comment not sent} other {# review comments not sent}}",
     "removalUncertain": "{count, plural, one {# file write with unknown outcome} other {# file writes with unknown outcome}}",
-    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}"
+    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}",
+    "noCopyReadOnly": "Read-only: this session has no working copy."
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -2103,6 +2115,7 @@
     "queue": "Move to the queue",
     "edit": "Edit the request again",
     "terminal": "A terminal is holding this working copy. Open its controls, stop it explicitly, then send again.",
+    "terminalUncertain": "A terminal has not confirmed termination, so this working copy stays protected. Open its controls and diagnostic details, then check the process on the host. Reconnecting or deleting the copy does not prove termination.",
     "diagnostics": "Diagnostic details",
     "openTerminal": "Open terminal controls"
   },
@@ -2547,6 +2560,8 @@
     "restore": "Restore",
     "archiveConfirm": "Remove from the list? Existing settings and past runs keep using it. You can restore it from archived items.",
     "usages": "Versions referenced by settings",
+    "usageDiagnostics": "Diagnostic details",
+    "usageUnknownProject": "Project unavailable",
     "unused": "No work style references this item.",
     "usedBy": "Used by work styles",
     "newCopy": "An edited copy is available.",
@@ -2686,7 +2701,7 @@
     "retention": "Keeps the latest 50 and the last 30 days. Pinned checkpoints and restore history stay retained.",
     "pin": "Keep",
     "preview": "Preview restore",
-    "restoreExplain": "Restore {count} changed files in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
+    "restoreExplain": "Restore {count, plural, one {# changed file} other {# changed files}} in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
     "restore": "Restore working copy",
     "close": "Close preview",
     "loadFailed": "Could not load checkpoints.",
@@ -2841,7 +2856,9 @@
     "paletteScope": "Commands and current project session titles and purposes",
     "dialogScope": "All projects · titles and purposes. Enable private messages and results to search their text.",
     "searchBody": "Search messages and results",
-    "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text."
+    "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text.",
+    "sourceCount": "{count, plural, one {# source} other {# sources}}",
+    "sourceNumber": "Source {number}"
   },
   "MessageBranch": {
     "open": "Branch from this message",
@@ -3045,7 +3062,9 @@
       "simulatedUsage": "Simulation usage; not a provider measurement or bill."
     },
     "lastRunNumber": "Last run · Run #{number}",
-    "activityStarting": "Preparing to run…"
+    "activityStarting": "Preparing to run…",
+    "actionCompletedWithFailures": "The run completed, but some tool steps failed. Review those steps before relying on the result.",
+    "actionOpenFailure": "Review failed steps"
   },
   "ModelImport": {
     "heading": "Import model settings",
@@ -3366,7 +3385,10 @@
     },
     "exitCode": "Exit code {code}",
     "writerHint": "While this terminal is active, file saves and Runs that write to this copy are blocked. Stop the terminal or use another copy. Hiding this panel does not stop it.",
-    "replayUnavailable": "Output replay is unavailable because its retained history limit was reached. An existing connected view can continue; a new view cannot reconstruct the screen. Stop this terminal before creating another.",
+    "replayUnavailable": "Output replay is unavailable. An existing connected view may continue; a new view cannot reconstruct the screen. Stop this terminal before creating another.",
+    "replayUnavailableEnded": "Output replay is unavailable. This terminal has ended; you can create a new terminal.",
+    "runningTab": "Terminal running",
+    "rateLimited": "Input is arriving too quickly. It is kept in order and will resume shortly.",
     "uncertain": "Termination is unconfirmed. The working copy stays reserved. Stop the terminal and check the result; reconnecting does not restore a process after a host restart.",
     "inputUnknown": "The last input acknowledgement was lost. Input is paused.",
     "inputOverflow": "This input exceeded the queue limit and was not sent. Wait for pending input, then enter smaller portions.",
@@ -4065,6 +4087,12 @@
     "selectFrame": "Select a frame in the call stack before evaluating an expression."
   },
   "Meetings": {
+    "diagnostics": "Diagnostics",
+    "copyDiagnostics": "Copy diagnostics",
+    "diagnosticsCopied": "Copied",
+    "diagnosticsCopyFailed": "Copy failed. Select and copy the diagnostic text.",
+    "requestFailed": "The model provider returned HTTP {status}. Check the model connection or try again.",
+    "answerFailedHint": "The model could not complete this reply. Try again or open diagnostics for the reported cause.",
     "participantDefault": "Participant {number}",
     "clearDraft": "Clear draft",
     "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
@@ -4158,6 +4186,8 @@
     "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan."
   },
   "MeetingsDecisions": {
+    "decisionLabel": "Decision v{number} · {goal}",
+    "supersededBy": "Replaced by v{number}",
     "heading": "Minutes and decisions",
     "candidateHint": "Candidates are proposals. Only a decision you adopt can be handed off to work.",
     "empty": "Ask the secretary to summarise the meeting to prepare candidates.",
@@ -4347,6 +4377,19 @@
     "model": "Model dispatch to finish",
     "tool": "Tool start to finish",
     "nonAgentNode": "This node has no separate agent execution. Its outcome appears in the graph and recorded results.",
-    "workPlans": "Work plans"
+    "workPlans": "Work plans",
+    "failedSteps": "Failed steps"
+  },
+  "Failure": {
+    "cancelled": "This step was cancelled.",
+    "unknown": "This step failed. Open diagnostics for the recorded reason.",
+    "diagnostics": "Diagnostics",
+    "code": {
+      "TARGET_NOT_FOUND": "The requested file, folder, or target is unavailable.",
+      "TARGET_TERMINAL": "The target has ended or was cancelled, so this request could not be applied.",
+      "REVISION_CONFLICT": "The target changed. Check its current state before trying again.",
+      "CAPABILITY_DENIED": "This operation was not allowed. Check the recorded reason.",
+      "LIMIT_REACHED": "This operation reached a limit."
+    }
   }
 }

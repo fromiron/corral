@@ -1,4 +1,7 @@
 {
+  "Select": {
+    "placeholder": "선택…"
+  },
   "SettingsDialog": {
     "unsaved": "저장하지 않은 설정",
     "unsavedHint": "변경을 저장하고 이동하거나, 버리거나, 계속 편집할 수 있습니다.",
@@ -86,7 +89,7 @@
     "serverShort": "로컬 · 시뮬레이션",
     "demoShort": "데모 · 시뮬레이션",
     "liveNoModel": "모델 연결 필요",
-    "liveNoModelNote": "실제 모델을 쓸 수 있지만 아직 연결된 모델이 없어요. 설정 › 모델에서 로그인하세요. 그 전까지 실행은 시뮬레이션이에요.",
+    "liveNoModelNote": "연결된 모델이 없습니다. 설정 › 모델에서 연결하기 전까지 실제 모델 요청은 차단됩니다. 시뮬레이션을 체험하려면 별도 데모를 여세요.",
     "connectionFailed": "서버에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.",
     "retryConnection": "다시 시도",
     "retry": "다시 시도"
@@ -471,6 +474,7 @@
     "saveCopyTitle": "팀 사본 저장",
     "copyName": "팀 이름",
     "saveCopyEdit": "사본 저장하고 편집",
+    "copyNameAdjusted": "같은 이름의 팀이 있습니다. 저장할 이름: {name}",
     "template": {
       "research-team": {
         "name": "조사 팀",
@@ -795,7 +799,11 @@
     "callsInFlight": "진행 중인 호출",
     "callsUnknown": "사용량을 알 수 없는 호출",
     "noLimitsNote": "공급자 쪽 사용량 제한과 과금은 그대로 적용됩니다. 사용량을 알 수 없는 호출은 0으로 계산하지 않습니다.",
-    "unlimited": "무제한"
+    "unlimited": "무제한",
+    "requestName": "{role} · 요청 {number}",
+    "imageRequestName": "{role} · 이미지 생성 {number}",
+    "unknownRole": "에이전트",
+    "diagnostics": "진단 정보"
   },
   "SettingsPatch": {
     "heading": "설정 변경",
@@ -1357,6 +1365,7 @@
     "actions": "{name} 작업"
   },
   "Sessions": {
+    "notFound": "이 세션을 더 이상 열 수 없습니다.",
     "heading": "세션",
     "new": "새 세션",
     "titleLabel": "제목(선택)",
@@ -1459,7 +1468,7 @@
     "runSettings": "실행 설정",
     "autoModel": "모델",
     "autoHint": "요청에 맞춰 진행합니다. 모델:",
-    "autoNotReady": "{model}이 연결되지 않았습니다. 설정 › 모델에서 연결하세요.",
+    "autoNotReady": "모델 연결 필요: {model}. 설정 › 모델에서 연결하세요.",
     "autoFallback": "선택 실패, 에이전트 하나로 실행",
     "autoTemplate": {
       "single": "자동 · 에이전트 하나",
@@ -1508,7 +1517,9 @@
       "ready": "실행 전",
       "empty": "빈 세션",
       "cancelled": "취소됨"
-    }
+    },
+    "restoreNamed": "세션 되살리기: {title}",
+    "listSessionUnavailable": "이 세션을 더 이상 찾을 수 없습니다."
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",
@@ -1657,7 +1668,8 @@
     "removalGitUnknown": "사본의 Git 변경을 읽지 못했습니다.",
     "removalComments": "보내지 않은 검토 의견 {count, plural, other {#개}}",
     "removalUncertain": "결과를 모르는 파일 쓰기 {count, plural, other {#개}}",
-    "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}"
+    "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}",
+    "noCopyReadOnly": "작업 사본이 없어 읽기 전용입니다."
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -1922,7 +1934,7 @@
     "developmentBuild": "개발 빌드"
   },
   "Composer": {
-    "viewingOtherRun": "실행 #{active}이 진행 중이며 지금은 실행 #{viewed}을 보고 있습니다.",
+    "viewingOtherRun": "진행 중: 실행 #{active} · 현재 보는 실행: #{viewed}",
     "viewActiveRun": "현재 실행 보기",
     "destination": {
       "next": "보낼 대상: 이 세션의 새 실행 · 후속 요청",
@@ -2103,6 +2115,7 @@
     "queue": "대기열로 옮기기",
     "edit": "요청 다시 편집",
     "terminal": "터미널이 이 작업 사본을 사용하고 있습니다. 터미널을 열어 직접 중지한 뒤 다시 보내세요.",
+    "terminalUncertain": "터미널 종료가 확인되지 않아 작업 사본을 보호하고 있습니다. 터미널 제어와 진단 정보를 열고 호스트의 프로세스를 확인하세요. 재접속이나 사본 삭제는 종료를 증명하지 않습니다.",
     "diagnostics": "진단 정보",
     "openTerminal": "터미널 제어 열기"
   },
@@ -2547,6 +2560,8 @@
     "restore": "복구",
     "archiveConfirm": "목록에서 제거할까요? 현재 사용하는 설정과 과거 실행에서는 계속 사용됩니다. 보관 목록에서 복구할 수 있습니다.",
     "usages": "설정에서 사용 중인 버전",
+    "usageDiagnostics": "진단 정보",
+    "usageUnknownProject": "확인할 수 없는 프로젝트",
     "unused": "참조하는 작업 방식이 없습니다.",
     "usedBy": "사용 중인 작업 방식",
     "newCopy": "편집한 후속 버전이 있습니다.",
@@ -2841,7 +2856,9 @@
     "paletteScope": "명령과 현재 프로젝트의 세션 제목·목적",
     "dialogScope": "모든 프로젝트 · 제목과 목적을 검색합니다. 본문을 찾으려면 비공개 메시지·결과 포함을 켜세요.",
     "searchBody": "메시지와 결과 검색",
-    "privateEmpty": "제목·목적에 일치하는 결과가 없습니다. 본문을 찾으려면 비공개 메시지·결과 포함을 켜세요."
+    "privateEmpty": "제목·목적에 일치하는 결과가 없습니다. 본문을 찾으려면 비공개 메시지·결과 포함을 켜세요.",
+    "sourceCount": "출처 {count}개",
+    "sourceNumber": "출처 {number}"
   },
   "MessageBranch": {
     "open": "이 메시지에서 분기",
@@ -3045,7 +3062,9 @@
       "simulatedUsage": "시뮬레이션 사용량이며 실제 제공자 측정값이나 청구액이 아닙니다."
     },
     "lastRunNumber": "마지막 실행 · 실행 #{number}",
-    "activityStarting": "실행 준비 중…"
+    "activityStarting": "실행 준비 중…",
+    "actionCompletedWithFailures": "실행은 완료됐지만 일부 도구 단계가 실패했습니다. 결과를 사용하기 전에 해당 단계를 확인하세요.",
+    "actionOpenFailure": "실패한 단계 확인"
   },
   "ModelImport": {
     "heading": "모델 설정 가져오기",
@@ -3366,7 +3385,10 @@
     },
     "exitCode": "종료 코드 {code}",
     "writerHint": "이 터미널이 실행 중이면 파일 저장과 이 사본에 쓰는 Run을 시작할 수 없습니다. 터미널을 종료하거나 다른 사본을 사용하세요. 패널을 숨겨도 터미널은 종료되지 않습니다.",
-    "replayUnavailable": "보관한 출력의 용량 한도를 넘어 화면을 복원할 수 없습니다. 이미 연결된 화면은 계속 사용할 수 있지만 새 화면에서는 복원할 수 없습니다. 새 터미널을 만들려면 이 터미널을 먼저 종료하세요.",
+    "replayUnavailable": "출력을 복원할 수 없습니다. 이미 연결된 화면은 이어 볼 수 있지만 새 화면은 복원할 수 없습니다. 새 터미널을 만들려면 현재 터미널을 중지하세요.",
+    "replayUnavailableEnded": "출력을 복원할 수 없습니다. 이 터미널은 이미 종료됐으므로 새 터미널을 만들 수 있습니다.",
+    "runningTab": "터미널 실행 중",
+    "rateLimited": "입력이 너무 빠릅니다. 순서를 유지해 보관하며 잠시 후 다시 전송합니다.",
     "uncertain": "종료를 확인하지 못해 작업 사본을 계속 예약하고 있습니다. 터미널 종료를 누른 뒤 결과를 확인하세요. 호스트 재시작 후 다시 연결해도 프로세스가 복원되지는 않습니다.",
     "inputUnknown": "마지막 입력의 접수 응답을 확인하지 못해 입력을 멈췄습니다.",
     "inputOverflow": "새 입력이 대기 용량을 넘어 전송되지 않았습니다. 대기 중인 입력이 처리된 뒤 작은 단위로 나눠 입력하세요.",
@@ -4065,6 +4087,12 @@
     "selectFrame": "식을 평가하려면 호출 스택에서 프레임을 선택하세요."
   },
   "Meetings": {
+    "diagnostics": "진단 정보",
+    "copyDiagnostics": "진단 정보 복사",
+    "diagnosticsCopied": "복사됨",
+    "diagnosticsCopyFailed": "복사하지 못했습니다. 진단 내용을 선택해 복사하세요.",
+    "requestFailed": "모델 제공자가 HTTP {status} 오류를 반환했습니다. 모델 연결을 확인하거나 다시 요청하세요.",
+    "answerFailedHint": "모델이 답변을 완료하지 못했습니다. 다시 요청하거나 진단 정보에서 보고된 원인을 확인하세요.",
     "participantDefault": "참가자 {number}",
     "clearDraft": "초안 지우기",
     "summaryFailed": "비서가 회의록을 정리하지 못했습니다. 다시 요청한 뒤 결정을 검토·채택하세요.",
@@ -4158,6 +4186,8 @@
     "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요."
   },
   "MeetingsDecisions": {
+    "decisionLabel": "결정 v{number} · {goal}",
+    "supersededBy": "v{number}로 대체됨",
     "heading": "회의록과 결정",
     "candidateHint": "결정 후보는 제안입니다. 사람이 채택한 결정만 작업으로 넘길 수 있습니다.",
     "empty": "비서에게 회의 정리를 요청하면 결정 후보를 만들 수 있습니다.",
@@ -4347,6 +4377,19 @@
     "model": "모델 전송~종료",
     "tool": "도구 시작~종료",
     "nonAgentNode": "이 노드는 별도의 에이전트 실행을 만들지 않습니다. 처리 결과는 그래프와 기록된 결과에서 확인할 수 있습니다.",
-    "workPlans": "작업 계획"
+    "workPlans": "작업 계획",
+    "failedSteps": "실패한 단계"
+  },
+  "Failure": {
+    "cancelled": "이 단계는 취소되었습니다.",
+    "unknown": "이 단계가 실패했습니다. 기록된 이유는 진단에서 확인하세요.",
+    "diagnostics": "진단 정보",
+    "code": {
+      "TARGET_NOT_FOUND": "요청한 파일·폴더 또는 대상을 찾을 수 없습니다.",
+      "TARGET_TERMINAL": "대상이 종료되었거나 취소되어 이 요청을 적용하지 못했습니다.",
+      "REVISION_CONFLICT": "대상이 바뀌었습니다. 현재 상태를 확인한 뒤 다시 시도하세요.",
+      "CAPABILITY_DENIED": "허용되지 않은 작업입니다. 기록된 이유를 확인하세요.",
+      "LIMIT_REACHED": "이 작업이 한도에 도달했습니다."
+    }
   }
 }

@@ -12,6 +12,7 @@ import {
   DialogPopup,
   DialogTitle,
   Select,
+  Tooltip,
 } from '@corral/react/design-kit';
 import { Mic } from '@corral/react/icons';
 import { useEffect, useRef, useState } from 'react';
@@ -119,15 +120,17 @@ export function LiveVoice({
       };
   return (
     <>
-      <Button
-        ref={trigger}
-        variant="ghost"
-        size="icon-compact"
-        aria-label={ko ? '라이브 음성' : 'Live voice'}
-        onClick={() => setOpen(true)}
-      >
-        <Mic />
-      </Button>
+      <Tooltip content={ko ? '라이브 음성' : 'Live voice'}>
+        <Button
+          ref={trigger}
+          variant="ghost"
+          size="icon-compact"
+          aria-label={ko ? '라이브 음성' : 'Live voice'}
+          onClick={() => setOpen(true)}
+        >
+          <Mic />
+        </Button>
+      </Tooltip>
       <Dialog
         open={open}
         onOpenChange={(value) => {

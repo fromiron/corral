@@ -79,7 +79,7 @@ Read the supplied code and report the evidence.`);
   // Existing generic simulated agent follows the imported graph through Coordinator tools.
   // This verifies delegation/result orchestration, not a real model's decision quality.
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Agents', exact: true }).selectOption('mock');
+  await choose(page, 'Agents', 'Simulated (no model or extension calls)');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20000 });
   const run = corral.server.coordinator.listRuns()[0];
@@ -151,7 +151,7 @@ Read the supplied code and report the evidence.`);
       });
     return call('submit_result', { artifactVersionIds: [written.artifactVersionId] });
   });
-  await page.getByRole('combobox', { name: 'Agents', exact: true }).selectOption('live');
+  await choose(page, 'Agents', 'Live models (uses your sign-in)');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns().length, { timeout: 20000 }).toBe(2);
   const liveRun = corral.server.coordinator.listRuns().find((item) => item.runId !== run.runId);

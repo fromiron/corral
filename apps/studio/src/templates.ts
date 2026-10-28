@@ -1,5 +1,5 @@
 import { FILE_TOOLS } from '@corral/contracts';
-import { type CorralRepository, DEFAULT_PROJECT_ID } from '@corral/core';
+import { type CorralRepository, type CorralSummary, DEFAULT_PROJECT_ID } from '@corral/core';
 import { emptyDraft } from '@corral/react';
 import { type DemoTemplateId, templateForWorkspace } from './demo/templates.ts';
 import type { WorkspacesClient } from './demo/workspaces-client.ts';
@@ -11,6 +11,19 @@ export const WORKSPACE_TEMPLATES: readonly WorkspaceTemplateId[] = [
   'starter',
   'blank',
 ];
+
+export function templateCopyName(
+  name: string,
+  projectId: string,
+  corrals: readonly Pick<CorralSummary, 'name' | 'projectId'>[],
+): string {
+  const names = new Set(
+    corrals.filter((team) => team.projectId === projectId).map((team) => team.name),
+  );
+  let uniqueName = name;
+  for (let suffix = 2; names.has(uniqueName); suffix++) uniqueName = `${name} (${suffix})`;
+  return uniqueName;
+}
 
 /** Saves a new Corral from a template and returns its id, or an error message. */
 export async function createFromTemplate(
@@ -34,14 +47,12 @@ export async function createFromTemplate(
           const template = templateForWorkspace(id, `${id.replace('-', '_')}_${suffix}`);
           return { definition: template.definition, layout: template.layout };
         })();
-  const names = new Set(
-    (await repository.list())
-      .filter((team) => team.projectId === (projectId ?? DEFAULT_PROJECT_ID))
-      .map((team) => team.name),
-  );
   const name = copyName?.trim() || draft.definition.name;
-  let uniqueName = name;
-  for (let suffix = 2; names.has(uniqueName); suffix++) uniqueName = `${name} (${suffix})`;
+  const uniqueName = templateCopyName(
+    name,
+    projectId ?? DEFAULT_PROJECT_ID,
+    await repository.list(),
+  );
   const result = await repository.save({
     ...draft,
     definition: {

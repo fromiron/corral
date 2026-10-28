@@ -632,13 +632,16 @@ describe('meeting messages', () => {
   it('a failed participant shows as failed, the rest answer, and nothing retries', async () => {
     const f = await fixture({
       onStart: (input) => {
-        if (input.role.name === 'Builder') throw new Error('provider unavailable');
+        if (input.role.name === 'Builder') throw new Error('HTTP 500: provider unavailable');
       },
     });
     await f.send('c1', 'question');
     await f.meetings.idle(f.sessionId);
     const round = (await f.meetings.view(f.sessionId))!.rounds[0]!;
     expect(round.answers.map((a) => a.status)).toEqual(['answered', 'failed', 'answered']);
+    expect(round.answers.find((answer) => answer.status === 'failed')?.detail).toContain(
+      'HTTP 500: provider unavailable',
+    );
     expect(f.seen).toHaveLength(3);
   });
 
