@@ -471,6 +471,7 @@ export function FilePanel({
     <Select
       label={ts('mode')}
       size="sm"
+      className="min-w-0 max-w-full shrink-0"
       value={searchMode}
       onValueChange={setSearchMode}
       options={[
@@ -538,14 +539,14 @@ export function FilePanel({
           />
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               {searchModeControl}
               <Input
                 size="sm"
                 disabled
                 placeholder={ts('placeholder')}
                 aria-label={ts('placeholder')}
-                className="min-w-0 flex-1"
+                className="min-w-0 max-w-full flex-[1_0_10rem]"
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -579,7 +580,7 @@ export function FilePanel({
           </div>
         )
       ) : (
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {readOnly ? null : searchModeControl}
           <Input
             size="sm"
@@ -587,7 +588,7 @@ export function FilePanel({
             placeholder={t('filterFiles')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 flex-1"
+            className="min-w-0 max-w-full flex-[1_0_10rem]"
           />
         </div>
       )}

@@ -17,6 +17,7 @@ import {
   TabPanel,
   Tabs,
   TabsList,
+  Tooltip,
 } from '@corral/react/design-kit';
 import { Ellipsis, Plus, X } from '@corral/react/icons';
 import {
@@ -233,14 +234,16 @@ function DockHeaderActions({
   const descriptor = descriptorOf(activePanel);
   const editor = isEditorPanel(descriptor);
   const close = (
-    <Button
-      variant="ghost"
-      size="icon-compact"
-      aria-label={`${t('close')}: ${activePanel.title}`}
-      onClick={() => renderer.close(activePanel.id)}
-    >
-      <X />
-    </Button>
+    <Tooltip content={`${t('close')}: ${activePanel.title}`}>
+      <Button
+        variant="ghost"
+        size="icon-compact"
+        aria-label={`${t('close')}: ${activePanel.title}`}
+        onClick={() => renderer.close(activePanel.id)}
+      >
+        <X />
+      </Button>
+    </Tooltip>
   );
   if (actions.compact) return close;
   const paneGroups = (['develop', 'verify', 'run'] as const).map((name) =>

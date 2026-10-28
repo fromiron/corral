@@ -367,26 +367,40 @@
     grid-template-areas: "palette palette" "canvas inspector";
   }
   .editor-palette {
-    flex-direction: row;
+    flex-direction: column;
     align-items: flex-start;
-    gap: 20px;
-    max-height: 110px;
+    gap: 12px;
+    max-height: none;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
   .editor-palette > section:first-child {
-    flex-shrink: 0;
+    width: 100%;
+    min-width: 0;
+  }
+  .editor-palette > section:not(:first-child) {
+    width: 100%;
+    max-height: 8rem;
+    overflow-y: auto;
   }
   .editor-palette > section:first-child > h2,
   .editor-palette > section:first-child > p,
-  .editor-palette [data-palette-item] .text-xs.text-muted-foreground {
+  .editor-palette [data-palette-item] [data-slot="card-header"] {
     display: none;
   }
-  .editor-palette ul {
+  .editor-palette > section:first-child ul {
     flex-direction: row;
+    flex-wrap: wrap;
   }
   .editor-palette [data-palette-item] {
     padding: 6px 10px;
+  }
+  .editor-palette [data-palette-item] [data-slot="card"] {
+    min-height: 0;
+    padding: 0;
+  }
+  .editor-palette [data-palette-item] [data-slot="card-footer"] {
+    padding: 0;
   }
   .editor-palette [data-palette-item] button {
     margin-top: 4px;
