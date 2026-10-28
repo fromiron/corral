@@ -17,7 +17,12 @@ import { appendComposerAttachment, beginAttachmentCapture } from '../workbench/c
 import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import { Composer } from './SessionPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {}, invalidate: vi.fn(async () => {}) }));
+const fixture = vi.hoisted(() => ({
+  services: {},
+  invalidate: vi.fn(async () => {}),
+  profiles: null as import('../workbench/useModels.ts').ProfileInfo[] | null,
+  roles: [] as { profileId: string; name: string }[],
+}));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ sessionRoute: {}, runRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
@@ -40,8 +45,8 @@ vi.mock('../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
 vi.mock('../workbench/useModels.ts', () => ({
-  useModelProfiles: () => null,
-  useTeamRoles: () => [],
+  useModelProfiles: () => fixture.profiles,
+  useTeamRoles: () => fixture.roles,
 }));
 vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
 vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
@@ -60,6 +65,8 @@ afterEach(async () => {
   window.localStorage.clear();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  fixture.profiles = null;
+  fixture.roles = [];
 });
 
 const captured: TextAttachment = {
@@ -397,6 +404,33 @@ it('clears a bare slash on Escape without sending it', async () => {
   expect(f.startAuto).not.toHaveBeenCalled();
 });
 
+it('removes one legacy same-name result while preserving the other exact draft reference', async () => {
+  const sessionId = 'legacy_result_identity';
+  const references = ['one', 'two'].map((runId, index) => ({
+    id: `result:${runId}`,
+    kind: 'result' as const,
+    label: 'notes v1',
+    detail: `Run #${index + 1} · Writer`,
+    reference: { kind: 'result' as const, runId, artifactVersionId: 'result' },
+  }));
+  writeComposerDraft(sessionId, {
+    text: 'Compare @"notes v1" @"notes v1"',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references,
+  });
+  const f = await mount(sessionId, null);
+  await f.click('Remove reference "notes v1" · Run #1 · Writer');
+  expect(f.container.querySelector('textarea')?.value).toBe('Compare @"notes v1"');
+  expect(readComposerDraft(sessionId).references).toEqual([references[1]]);
+  expect(
+    f.container.querySelector(
+      'button[aria-label=\'Remove reference "notes v1" · Run #2 · Writer\']',
+    ),
+  ).not.toBeNull();
+});
+
 it('names the viewed and active runs and the queue destination without changing the draft intent', async () => {
   const sessionId = 'view_old_run';
   const current = { ...active, runId: 'second', sessionId };
@@ -581,4 +615,100 @@ it('a late directive lookup cannot resend after another run starts', async () =>
     } as never),
   );
   expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it.each(['retry', 'queue', 'auto'] as const)(
+  '%s starts a saved request once despite an unrelated stale instruction draft',
+  async (path) => {
+    const sessionId = `stale_steer_${path}`;
+    const draft = {
+      text: 'Keep this  unsent instruction',
+      intent: 'steer' as const,
+      target: 'execution',
+      targetLabel: 'Writer',
+      references: [],
+      images: [image],
+    };
+    writeComposerDraft(sessionId, draft);
+    const run: RunSummary = {
+      ...active,
+      sessionId,
+      status: path === 'auto' ? 'running' : 'cancelled',
+    };
+    const queued = queuedEntry(captured);
+    const f = await mount(
+      sessionId,
+      path === 'auto' ? run : null,
+      path === 'retry' ? [] : [queued],
+      [run],
+      run.runId,
+    );
+    if (path === 'retry') {
+      f.session.entries.push({
+        ...queued,
+        entryId: 'retry',
+        intent: 'next',
+        state: 'started',
+        runId: run.runId,
+      });
+      await f.render(null, []);
+      await act(async () =>
+        window.dispatchEvent(
+          new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'retry' } }),
+        ),
+      );
+    } else if (path === 'queue') {
+      await f.click('Start now');
+    } else {
+      const automatic = f.container.querySelector<HTMLButtonElement>('[role="switch"]');
+      expect(automatic).not.toBeNull();
+      await act(async () => automatic?.click());
+      expect(automatic?.getAttribute('aria-checked')).toBe('true');
+      run.status = 'succeeded';
+      await f.render(null, [queued]);
+    }
+    expect(f.startAuto).toHaveBeenCalledOnce();
+    expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
+      brief: queued.text,
+      references: [captured],
+    });
+    expect(readComposerDraft(sessionId)).toEqual(draft);
+    expect(f.container.querySelector('textarea')?.value).toBe(draft.text);
+  },
+);
+
+it('still blocks a saved request when its live team model is disconnected', async () => {
+  const sessionId = 'saved_request_disconnected';
+  writeComposerDraft(sessionId, {
+    text: 'Unrelated stale instruction',
+    intent: 'steer',
+    target: 'ended',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const queued = queuedEntry(captured);
+  const run: RunSummary = { ...active, sessionId, status: 'cancelled' };
+  const f = await mount(sessionId, null, [queued], [run]);
+  fixture.profiles = [];
+  fixture.roles = [{ profileId: 'missing', name: 'Writer' }];
+  (fixture.services as { live: boolean }).live = true;
+  f.session.entries.push({
+    ...queued,
+    entryId: 'retry',
+    intent: 'next',
+    state: 'started',
+    runId: run.runId,
+  });
+  await f.render(null, [queued]);
+  const start = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent === 'Start now',
+  );
+  expect(start?.disabled).toBe(true);
+  await act(async () =>
+    window.dispatchEvent(
+      new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'retry' } }),
+    ),
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
+  expect(readComposerDraft(sessionId).text).toBe('Unrelated stale instruction');
 });

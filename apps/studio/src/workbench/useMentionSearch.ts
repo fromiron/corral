@@ -86,18 +86,18 @@ export function useMentionSearch({
                 const author =
                   definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
                 items.push({
-                  id: `result:${artifact.artifactVersionId}`,
+                  id: `result:${run.runId}:${artifact.artifactVersionId}`,
                   kind: 'result',
-                  label: `${artifact.name} v${artifact.version}`,
-                  detail: [
+                  label: [
+                    `${artifact.name} v${artifact.version}`,
                     tw('runNumber', { number: number(run.runId) }),
-                    author,
                     artifact.authorExecutionNumber
                       ? tr('authorExecution', { number: artifact.authorExecutionNumber })
                       : null,
                   ]
                     .filter(Boolean)
                     .join(' · '),
+                  detail: author,
                   reference: {
                     kind: 'result',
                     runId: run.runId,

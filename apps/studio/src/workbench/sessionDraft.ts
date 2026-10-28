@@ -49,6 +49,7 @@ const isMention = (value: unknown): value is MentionItem => {
   return (
     typeof item.id === 'string' &&
     typeof item.label === 'string' &&
+    (item.token === undefined || typeof item.token === 'string') &&
     typeof item.kind === 'string' &&
     KINDS.includes(item.kind) &&
     !!item.reference &&

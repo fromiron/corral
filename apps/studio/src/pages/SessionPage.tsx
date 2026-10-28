@@ -126,9 +126,11 @@ import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
 import {
   type MentionItem,
+  mentionLabel,
   mentionToken,
   pickedReferences,
   removeMention,
+  selectMention,
 } from '../workbench/composerMenu.ts';
 import {
   type AttachmentCapture,
@@ -2575,7 +2577,8 @@ export function Composer({
   const entryCommandKey = (entry: SessionEntry, resend: boolean) =>
     `${resend ? 'resend' : 'queue'}\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, [...(entry.attachments ?? []), ...(resend ? (entry.images ?? []) : [])], autoChoice, team ? `corral:${team.corralId}` : teamMode)}\u0000${entry.permissionMode ?? ''}`;
   const startQueued = async (entry: SessionEntry, resend = false) => {
-    if (busy || autoRequest.current || unavailable) return;
+    if (busy || autoRequest.current || autoSaving.current || active || savedRequestUnavailable)
+      return;
     setBusy(true);
     const queuedReferences: RunReference[] = [
       ...(entry.attachments ?? []),
@@ -2776,6 +2779,17 @@ export function Composer({
     isAuto && intent === 'next' && autoReasoningUnsupported(autoChoice, profiles, runMode);
   const liveUnavailable =
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
+  const savedRequestUnavailable =
+    missingTeam ||
+    (runMode === 'live' && !live) ||
+    (isAuto && profiles !== null && autoNotReady(autoChoice, profiles, runMode)) ||
+    (isAuto && autoReasoningUnsupported(autoChoice, profiles, runMode)) ||
+    (runMode === 'live' &&
+      profiles !== null &&
+      roles.some(
+        (role) =>
+          !profiles.some((profile) => profile.profileId === role.profileId && profile.available),
+      ));
   const unavailable =
     liveUnavailable ||
     attachmentsBusy ||
@@ -2912,7 +2926,7 @@ export function Composer({
                 <Button
                   variant="ghost"
                   size="compact"
-                  disabled={Boolean(active) || busy || missingTeam}
+                  disabled={Boolean(active) || busy || savedRequestUnavailable}
                   onClick={() => void startQueued(entry)}
                 >
                   {t('startNow')}
@@ -3052,8 +3066,8 @@ export function Composer({
                   data-missing={missing.has(item.id) || undefined}
                   className={`flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-xs ${missing.has(item.id) ? 'bg-danger/10 text-danger line-through' : 'bg-subtle'}`}
                 >
-                  <span className="truncate font-mono" title={item.label}>
-                    {mentionToken(item).slice(1)}
+                  <span className="truncate font-mono" title={mentionLabel(item)}>
+                    {mentionLabel(item)}
                   </span>
                   {missing.has(item.id) ? (
                     <span className="sr-only">{tc('referenceGone')}</span>
@@ -3061,9 +3075,9 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="icon-tiny"
-                    aria-label={tc('removeReference', { label: mentionToken(item).slice(1) })}
+                    aria-label={tc('removeReference', { label: mentionLabel(item) })}
                     onClick={() => {
-                      write(removeMention(text, item));
+                      write(removeMention(text, item, chips));
                       setPicked((list) => list.filter((x) => x.id !== item.id));
                     }}
                   >
@@ -3130,7 +3144,13 @@ export function Composer({
             onKeyDown={onKeyDown}
             commands={commands}
             searchMentions={searchMentions}
-            onMention={(item) => setPicked((list) => [...list, item])}
+            onMention={(item) => {
+              const selected = selectMention(item, picked);
+              setPicked((list) =>
+                list.some((existing) => existing.id === selected.id) ? list : [...list, selected],
+              );
+              return selected;
+            }}
           />
           <p data-testid="composer-destination" className="px-2 text-xs text-muted-foreground">
             {destination}

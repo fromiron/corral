@@ -9,9 +9,11 @@ export type MentionKind = 'file' | 'folder' | 'result' | 'run' | 'role';
 export interface MentionItem {
   id: string;
   kind: MentionKind;
-  /** What the token and the menu show: a path, `report v2`, `run-3`, a role name. */
+  /** Human label: a path, a result name and scope, a run number, or a role name. */
   label: string;
   detail?: string;
+  /** A draft-local token bound to this exact reference, independent of its name. */
+  token?: string;
   lines?: { start: number; end: number };
   reference: RunReference;
 }
@@ -48,7 +50,10 @@ export function replaceTrigger(
 
 const quoted = (label: string) => (/[\s"]/.test(label) ? JSON.stringify(label) : label);
 
-export function mentionToken(item: Pick<MentionItem, 'kind' | 'label' | 'lines'>): string {
+export function mentionToken(
+  item: Pick<MentionItem, 'kind' | 'label' | 'lines' | 'token'>,
+): string {
+  if (item.token) return item.token;
   const label = item.kind === 'folder' ? `${item.label.replace(/\/+$/, '')}/` : item.label;
   const lines = item.lines
     ? `:L${item.lines.start}${item.lines.end === item.lines.start ? '' : `-L${item.lines.end}`}`
@@ -56,18 +61,48 @@ export function mentionToken(item: Pick<MentionItem, 'kind' | 'label' | 'lines'>
   return `@${quoted(label)}${lines}`;
 }
 
+export function mentionLabel(item: MentionItem): string {
+  return [
+    item.token ? item.label : mentionToken(item).slice(1),
+    item.kind === 'result' ? item.detail : null,
+    item.token,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+export function selectMention(item: MentionItem, picked: readonly MentionItem[]): MentionItem {
+  const existing = picked.find(
+    (other) => JSON.stringify(other.reference) === JSON.stringify(item.reference),
+  );
+  if (existing) return existing;
+  if (item.kind !== 'result' && !picked.some((other) => mentionToken(other) === mentionToken(item)))
+    return item;
+  let number = 1;
+  while (picked.some((other) => mentionToken(other) === `@result:${number}`)) number++;
+  return { ...item, token: `@result:${number}` };
+}
+
+const mentionPattern = (token: string) =>
+  new RegExp(`(^|\\s)${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'g');
+
 /** Remove this exact reference, leaving longer paths and line ranges intact. */
-export function removeMention(text: string, item: MentionItem): string {
-  return text
-    .replaceAll(mentionToken(item), (token, at: number) => {
-      const before = text[at - 1];
-      const after = text[at + token.length];
-      return (before === undefined || /\s/.test(before)) &&
-        (after === undefined || /\s/.test(after))
-        ? ''
-        : token;
-    })
-    .replace(/ {2,}/g, ' ');
+export function removeMention(
+  text: string,
+  item: MentionItem,
+  picked: readonly MentionItem[] = [],
+): string {
+  const token = mentionToken(item);
+  const pattern = mentionPattern(token);
+  // Older drafts can share a label; keep a token for their remaining exact references.
+  const shared = picked.some((other) => other.id !== item.id && mentionToken(other) === token);
+  let removals = shared
+    ? Math.max(0, Math.min(1, [...text.matchAll(pattern)].length - 1))
+    : Infinity;
+  return text.replace(pattern, (match, before: string, at: number) => {
+    if (removals-- <= 0) return match;
+    return before === ' ' && text[at + match.length] === ' ' ? '' : before;
+  });
 }
 
 /** The references of `picked` whose token is in `text` as a whole word, without repeats. */
@@ -75,16 +110,7 @@ export function pickedReferences(text: string, picked: readonly MentionItem[]): 
   const out: RunReference[] = [];
   const seen = new Set<string>();
   for (const item of picked) {
-    const token = mentionToken(item);
-    let at = text.indexOf(token);
-    let found = false;
-    while (at >= 0 && !found) {
-      const after = text[at + token.length];
-      const before = at === 0 ? undefined : text[at - 1];
-      found =
-        (after === undefined || /\s/.test(after)) && (before === undefined || /\s/.test(before));
-      at = text.indexOf(token, at + 1);
-    }
+    const found = mentionPattern(mentionToken(item)).test(text);
     const key = JSON.stringify(item.reference);
     if (found && !seen.has(key)) {
       seen.add(key);
