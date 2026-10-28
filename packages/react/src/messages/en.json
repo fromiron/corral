@@ -474,6 +474,7 @@
     "saveCopyTitle": "Save a team copy",
     "copyName": "Team name",
     "saveCopyEdit": "Save copy and edit",
+    "copyNameAdjusted": "A team with this name exists. This copy will be saved as “{name}”.",
     "template": {
       "research-team": {
         "name": "Research team",
@@ -2550,6 +2551,8 @@
     "restore": "Restore",
     "archiveConfirm": "Remove from the list? Existing settings and past runs keep using it. You can restore it from archived items.",
     "usages": "Versions referenced by settings",
+    "usageDiagnostics": "Diagnostic details",
+    "usageUnknownProject": "Project unavailable",
     "unused": "No work style references this item.",
     "usedBy": "Used by work styles",
     "newCopy": "An edited copy is available.",

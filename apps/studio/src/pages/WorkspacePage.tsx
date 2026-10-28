@@ -307,6 +307,7 @@ export function WorkspacePage() {
         <TemplateCopyDialog
           template={copyTemplate}
           projectId={projectId}
+          corrals={corrals}
           onClose={() => setCopyTemplate(null)}
           onSaved={async (corralId) => {
             await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
