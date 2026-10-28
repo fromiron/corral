@@ -264,7 +264,11 @@ export function RunMessage({
                 <code>{row.name}</code>
                 <span className="text-danger">{t(`toolPhase.${row.tone}`)}</span>
                 {call?.reason ? (
-                  <FailureNotice message={call.reason} code={call.errorCode} />
+                  <FailureNotice
+                    message={call.reason}
+                    code={call.errorCode}
+                    cancelled={row.tone === 'cancelled'}
+                  />
                 ) : null}
               </li>
             );

@@ -10,6 +10,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { ChatDensityMenu, ChatView } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
 import { RunMessage } from './RunMessage.tsx';
@@ -41,7 +42,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
-async function render(status: 'running' | 'succeeded' = 'running') {
+async function render(status: 'running' | 'succeeded' = 'running', locale: 'en' | 'ko' = 'en') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -144,7 +145,7 @@ async function render(status: 'running' | 'succeeded' = 'running') {
   });
   await act(async () =>
     root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <IntlProvider locale={locale} messages={locale === 'en' ? messages : ko} timeZone="UTC">
         {/* The preference lives in the page menu, outside the conversation it changes. */}
         <Menu>
           <MenuTrigger aria-label="Page menu">…</MenuTrigger>
@@ -174,6 +175,55 @@ async function render(status: 'running' | 'succeeded' = 'running') {
   );
   return { container, projection, events, sendCommand };
 }
+
+it.each(['en', 'ko'] as const)(
+  'keeps cancelled tool guidance distinct from actual failures (%s)',
+  async (locale) => {
+    const f = await render('running', locale);
+    const text = locale === 'en' ? messages : ko;
+    const original = f.projection.toolCalls.tool;
+    if (!original || !fixture.store) throw new Error('The tool fixture is missing');
+    const projection: RunProjection = {
+      ...f.projection,
+      status: 'cancelled',
+      toolCalls: {
+        tool: { ...original, reason: 'Actual failure before cancellation' },
+        waiting: {
+          ...original,
+          toolCallId: 'waiting',
+          name: 'await_tasks',
+          effectId: 'wait',
+          reason: 'scope cancelled',
+        },
+      },
+      effects: {
+        wait: {
+          effectId: 'wait',
+          kind: 'tool',
+          scope: 'exec',
+          epoch: 0,
+          dispatched: true,
+          reservationId: null,
+          status: 'settled',
+          outcome: 'cancelled',
+        },
+      },
+    };
+    await act(async () => fixture.store?.setState({ projection }));
+    const labels = [...f.container.querySelectorAll('li > code')];
+    const cancelled = labels.find((label) => label.textContent === 'await_tasks')?.closest('li');
+    const failed = labels.find((label) => label.textContent === 'failed_tool')?.closest('li');
+    expect(cancelled?.textContent).toContain(text.Desktop.toolPhase.cancelled);
+    expect(cancelled?.textContent).toContain(text.Failure.cancelled);
+    expect(cancelled?.textContent).not.toContain(text.Failure.unknown);
+    expect(cancelled?.querySelector<HTMLDetailsElement>('details')?.open).toBe(false);
+    expect(cancelled?.querySelector('details code')?.textContent).toBe('scope cancelled');
+    expect(failed?.textContent).toContain(text.Desktop.toolPhase.failed);
+    expect(failed?.textContent).toContain(text.Failure.unknown);
+    expect(failed?.textContent).not.toContain(text.Failure.cancelled);
+    expect(f.sendCommand).not.toHaveBeenCalled();
+  },
+);
 
 it('changes only display density while keeping results and required attention outside folds', async () => {
   const f = await render();
