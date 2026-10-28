@@ -498,7 +498,13 @@ export class MeetingService {
             ? 'stopped'
             : 'failed',
       text: null,
-      detail: answer.detail ?? projection.statusReason ?? null,
+      detail:
+        answer.detail ??
+        Object.values(projection.executions).find(
+          (execution) => execution.status === 'failed' && execution.error,
+        )?.error ??
+        projection.statusReason ??
+        null,
     };
   }
 

@@ -2,9 +2,10 @@ import type { MeetingDecisionContent, MeetingView } from '@corral/contracts';
 import { activeMeetingDecision, type WorkSession } from '@corral/core';
 import { Button, Textarea } from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
+import { MeetingDiagnostics } from './MeetingDiagnostics.tsx';
 import { MeetingHandoff } from './MeetingHandoff.tsx';
 
 const fields = [
@@ -35,6 +36,7 @@ export function MeetingDecisions({
   onChange(): Promise<void>;
 }) {
   const t = useTranslations('MeetingsDecisions');
+  const format = useFormatter();
   const { meetings } = useServices();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [withdrawal, setWithdrawal] = useState<{ versionId: string; reason: string } | null>(null);
@@ -118,12 +120,19 @@ export function MeetingDecisions({
             aria-label={t('minutes')}
           >
             <h3 className="font-medium">
-              {t('minutes')} · {minutes.createdAt}
+              {t('minutes')} ·{' '}
+              <time dateTime={minutes.createdAt}>
+                {format.dateTime(new Date(minutes.createdAt), {
+                  dateStyle: 'short',
+                  timeStyle: 'medium',
+                })}
+              </time>
             </h3>
             {minutes.error ? (
-              <p role="note" className="text-danger wrap-anywhere">
-                {t('invalidMinutes')}: {minutes.error}
-              </p>
+              <div role="note" className="text-danger wrap-anywhere">
+                {t('invalidMinutes')}
+                <MeetingDiagnostics text={minutes.error} />
+              </div>
             ) : null}
             {doc ? (
               <>
@@ -158,7 +167,7 @@ export function MeetingDecisions({
                           className="wrap-anywhere"
                         >
                           {nameOf(answer.participantId)} · {t(`answer.${answer.status}`)}
-                          {answer.detail ? `: ${answer.detail}` : ''}
+                          {answer.detail ? <MeetingDiagnostics text={answer.detail} /> : null}
                         </li>
                       ))}
                     </ul>
@@ -245,7 +254,7 @@ export function MeetingDecisions({
           </div>
         </form>
       ) : null}
-      {view.decisions?.map((decision) => {
+      {view.decisions?.map((decision, index) => {
         const withdrawn = view.decisionWithdrawals?.find((w) => w.versionId === decision.versionId);
         const superseded = view.decisions?.find(
           (d) => d.supersedesVersionId === decision.versionId,
@@ -258,13 +267,18 @@ export function MeetingDecisions({
             aria-label={t('decision')}
           >
             <h3 className="font-medium">
-              {t('decision')} · {decision.versionId}
+              {t('decisionLabel', { number: index + 1, goal: decision.content.goal })}
             </h3>
             <p>
               {t(withdrawn ? 'withdrawn' : superseded ? 'superseded' : 'adopted')}
               {withdrawn ? `: ${withdrawn.reason}` : ''}
-              {superseded ? ` · ${superseded.versionId}` : ''}
+              {superseded
+                ? ` · ${t('supersededBy', { number: (view.decisions?.indexOf(superseded) ?? 0) + 1 })}`
+                : ''}
             </p>
+            <MeetingDiagnostics
+              text={[decision.versionId, ...(superseded ? [superseded.versionId] : [])].join('\n')}
+            />
             <DecisionContent content={decision.content} />
             {active ? (
               <>

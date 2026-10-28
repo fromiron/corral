@@ -7,7 +7,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({ services: {} as any }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
+vi.mock('use-intl', () => ({
+  useTranslations: () => (key: string, values?: { number?: number; goal?: string }) =>
+    `${key}${values?.number ?? ''}${values?.goal ?? ''}`,
+  useFormatter: () => ({ dateTime: () => 'local-date' }),
+}));
 vi.mock('./MeetingHandoff.tsx', () => ({ MeetingHandoff: () => <p>handoff-action</p> }));
 vi.mock('@corral/react/design-kit', () => ({
   Input: (props: any) => <input {...props} />,
@@ -203,4 +207,16 @@ it('revisions name the replaced version and withdrawal requires a human reason',
     expect.objectContaining({ versionId: 'v1', reason: 'Scope changed' }),
   );
   expect(Identifier.safeParse(f.withdraw.mock.calls[0]?.[1].commandId).success).toBe(true);
+});
+
+it('labels decisions by version and goal, localizes minutes time and folds internal IDs', async () => {
+  const f = await mount({ ...view, decisions: [decision] });
+  expect(f.container.querySelector('time')?.textContent).toBe('local-date');
+  const headings = [...f.container.querySelectorAll('h3')].map((heading) => heading.textContent);
+  expect(headings).toContain('decisionLabel1Ship safely');
+  expect(headings.some((heading) => heading?.includes(decision.versionId))).toBe(false);
+  const ids = [...f.container.querySelectorAll('details')].find((item) =>
+    item.textContent?.includes(decision.versionId),
+  );
+  expect(ids?.open).toBe(false);
 });

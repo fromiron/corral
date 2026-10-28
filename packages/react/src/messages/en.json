@@ -1357,6 +1357,7 @@
     "actions": "Actions for {name}"
   },
   "Sessions": {
+    "notFound": "This session is no longer available.",
     "heading": "Sessions",
     "new": "New session",
     "titleLabel": "Title (optional)",
@@ -4065,6 +4066,12 @@
     "selectFrame": "Select a frame in the call stack before evaluating an expression."
   },
   "Meetings": {
+    "diagnostics": "Diagnostics",
+    "copyDiagnostics": "Copy diagnostics",
+    "diagnosticsCopied": "Copied",
+    "diagnosticsCopyFailed": "Copy failed. Select and copy the diagnostic text.",
+    "requestFailed": "The model provider returned HTTP {status}. Check the model connection or try again.",
+    "answerFailedHint": "The model could not complete this reply. Try again or open diagnostics for the reported cause.",
     "participantDefault": "Participant {number}",
     "clearDraft": "Clear draft",
     "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
@@ -4158,6 +4165,8 @@
     "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan."
   },
   "MeetingsDecisions": {
+    "decisionLabel": "Decision v{number} · {goal}",
+    "supersededBy": "Replaced by v{number}",
     "heading": "Minutes and decisions",
     "candidateHint": "Candidates are proposals. Only a decision you adopt can be handed off to work.",
     "empty": "Ask the secretary to summarise the meeting to prepare candidates.",
