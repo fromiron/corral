@@ -35,7 +35,7 @@ import {
 import { Ellipsis } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
-import { useFormatter, useNow, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
@@ -67,8 +67,7 @@ function isLayoutFile(text: string): boolean {
 
 export function WorkspacePage() {
   const t = useTranslations('Workspace');
-  const format = useFormatter();
-  const now = useNow({ updateInterval: 60_000 });
+  const ago = useSessionAge();
   const { project, projects, corrals, runs, sessions } = workspaceRoute.useLoaderData();
   const projectId = project.projectId;
   const archived = project.archivedAt !== null;
@@ -221,7 +220,7 @@ export function WorkspacePage() {
                   })}{' '}
                   ·{' '}
                   {t('updated', {
-                    time: format.relativeTime(new Date(corral.updatedAt), now),
+                    time: ago(corral.updatedAt),
                   })}
                 </span>
               </div>
@@ -362,7 +361,7 @@ export function WorkspacePage() {
                 <span className="text-xs text-muted-foreground">
                   {corral?.name ?? run.corralId} ·{' '}
                   {t('runStarted', {
-                    time: format.relativeTime(new Date(run.startedAt), now),
+                    time: ago(run.startedAt),
                   })}
                 </span>
               </li>
@@ -699,6 +698,7 @@ function StartSession({
   draftRef.current = draft;
   const objective = typeof draft?.objective === 'string' ? draft.objective : '';
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
+  const detailsSummary = title || [...objective.trim()].slice(0, 80).join('');
   const [detailsOpen, setDetailsOpen] = useState(Boolean(title || objective || corralId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -808,18 +808,26 @@ function StartSession({
           </CardAction>
         </CardHeader>
         <CardContent>
+          {detailsSummary ? (
+            <p id={`new-session-summary-${projectId}`} className="sr-only">
+              {t('savedDetails')} · {detailsSummary}
+            </p>
+          ) : null}
           <Accordion
             value={detailsOpen ? 'details' : ''}
             onValueChange={(value: string) => setDetailsOpen(value === 'details')}
             className="w-full"
           >
             <AccordionItem value="details" highlight="trigger">
-              <AccordionTrigger>
+              <AccordionTrigger
+                aria-label={n('sessionDetails')}
+                aria-describedby={detailsSummary ? `new-session-summary-${projectId}` : undefined}
+              >
                 <span>{n('sessionDetails')}</span>
                 {title || objective ? (
                   <span className="ml-2 min-w-0 truncate text-foreground">
                     {t('savedDetails')}
-                    {title ? ` · ${title}` : ''}
+                    {detailsSummary ? ` · ${detailsSummary}` : ''}
                   </span>
                 ) : null}
                 {selectedTeamName ? (
@@ -910,13 +918,15 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
   const [archiving, setArchiving] = useState<string | null>(null);
   const { repository } = useServices();
   const router = useRouter();
-  const archive = async (session: WorkSession) => {
+  const setArchived = async (session: WorkSession, archived: boolean) => {
     setArchiving(session.sessionId);
     setError(null);
     try {
+      const current = await repository.getSession(session.sessionId);
+      if (!current) throw new Error(t('listSessionUnavailable'));
       const result = await repository.updateSession(session.sessionId, {
-        archived: true,
-        expectedRevision: session.revision,
+        archived,
+        expectedRevision: current.revision,
       });
       if (!result.ok) return setError(result.message);
       projectsChanged();
@@ -1002,15 +1012,15 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
                     .join(' · ')}
                 </span>
               </Link>
-              {!x.archivedAt && sessionListState(x, runs) === 'empty' ? (
+              {x.archivedAt || sessionListState(x, runs) === 'empty' ? (
                 <Button
                   variant="ghost"
                   size="compact"
                   disabled={archiving !== null}
-                  aria-label={t('archiveEmpty', { title: x.title })}
-                  onClick={() => void archive(x)}
+                  aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', { title: x.title })}
+                  onClick={() => void setArchived(x, !x.archivedAt)}
                 >
-                  {t('archive')}
+                  {t(x.archivedAt ? 'restoreSession' : 'archive')}
                 </Button>
               ) : null}
             </li>
