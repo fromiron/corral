@@ -1,4 +1,5 @@
 import type { AgentStartInput, DeliveredDirective, RequestPermit } from '@corral/contracts';
+import { simulatedReply } from '@corral/testkit';
 
 // Simulated replies for the demo team. They are fixed text, marked as simulated, and
 // built only from what the runtime handed the execution: its inputs, its assignment, the
@@ -22,6 +23,7 @@ export function createDemoReply(): DemoReply {
   // Directives already delivered to each execution stay in its later requests' context.
   const delivered = new Map<string, DeliveredDirective[]>();
   return (turn, input, permit, notes) => {
+    if (input.role.id === 'participant') return simulatedReply(turn, input);
     const directives = [...(delivered.get(input.executionId) ?? []), ...permit.directives];
     delivered.set(input.executionId, directives);
     // A responder answers in its one request (ScriptedAgentAdapter); others use DEMO_TURNS.

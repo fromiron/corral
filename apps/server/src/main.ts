@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { ScriptedAgentAdapter } from '@corral/testkit';
+import { ScriptedAgentAdapter, simulatedReply } from '@corral/testkit';
 import { startCorralServer } from './app.ts';
 import { defaultDecisionProviders } from './decision-providers.ts';
 import { createLiveModels } from './live-models.ts';
@@ -28,6 +28,8 @@ const server = await startCorralServer({
   port: Number(values.port),
   agents: new ScriptedAgentAdapter({
     turns: 2,
+    reply: simulatedReply,
+    appendNotes: false,
     beforeReply: () => new Promise((done) => setTimeout(done, delayMs)),
   }),
   ...(values.static ? { staticDir: resolve(values.static) } : {}),

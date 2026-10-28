@@ -1,5 +1,5 @@
 import { FILE_TOOLS } from '@corral/contracts';
-import type { CorralRepository } from '@corral/core';
+import { type CorralRepository, type CorralSummary, DEFAULT_PROJECT_ID } from '@corral/core';
 import { emptyDraft } from '@corral/react';
 import { type DemoTemplateId, templateForWorkspace } from './demo/templates.ts';
 import type { WorkspacesClient } from './demo/workspaces-client.ts';
@@ -12,12 +12,26 @@ export const WORKSPACE_TEMPLATES: readonly WorkspaceTemplateId[] = [
   'blank',
 ];
 
+export function templateCopyName(
+  name: string,
+  projectId: string,
+  corrals: readonly Pick<CorralSummary, 'name' | 'projectId'>[],
+): string {
+  const names = new Set(
+    corrals.filter((team) => team.projectId === projectId).map((team) => team.name),
+  );
+  let uniqueName = name;
+  for (let suffix = 2; names.has(uniqueName); suffix++) uniqueName = `${name} (${suffix})`;
+  return uniqueName;
+}
+
 /** Saves a new Corral from a template and returns its id, or an error message. */
 export async function createFromTemplate(
   repository: CorralRepository,
   id: WorkspaceTemplateId,
   blankName: string,
   projectId?: string,
+  copyName?: string,
 ): Promise<{ ok: true; corralId: string } | { ok: false; message: string }> {
   const suffix = globalThis.crypto.randomUUID().slice(0, 8);
   const draft =
@@ -33,8 +47,19 @@ export async function createFromTemplate(
           const template = templateForWorkspace(id, `${id.replace('-', '_')}_${suffix}`);
           return { definition: template.definition, layout: template.layout };
         })();
+  const name = copyName?.trim() || draft.definition.name;
+  const uniqueName = templateCopyName(
+    name,
+    projectId ?? DEFAULT_PROJECT_ID,
+    await repository.list(),
+  );
   const result = await repository.save({
     ...draft,
+    definition: {
+      ...draft.definition,
+      name: uniqueName,
+      executionPolicy: draft.definition.executionPolicy ?? { version: 2 },
+    },
     expectedDefinitionRevision: null,
     ...(projectId ? { projectId } : {}),
   });

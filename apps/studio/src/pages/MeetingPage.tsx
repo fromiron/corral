@@ -6,22 +6,42 @@ import {
   SECRETARY_ID,
   type TextAttachment,
 } from '@corral/contracts';
-import type { MeetingResult, WorkSession } from '@corral/core';
+import { activeMeetingDecision, type MeetingResult, type WorkSession } from '@corral/core';
 import { SafeMarkdown } from '@corral/react';
-import { Button, Menu, MenuPopup, MenuTrigger, Textarea } from '@corral/react/design-kit';
+import {
+  Banner,
+  BannerActions,
+  BannerTitle,
+  Button,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+  Textarea,
+} from '@corral/react/design-kit';
 import { Ellipsis, Send, Square, Users } from '@corral/react/icons';
-import { Link } from '@tanstack/react-router';
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useRouter } from '@tanstack/react-router';
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { useRegisterCommands } from '../commandRegistry.ts';
+import { projectsChanged } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
+import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
 import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
+import { MeetingDiagnostics } from '../workbench/MeetingDiagnostics.tsx';
 import { MeetingEvidencePicker } from '../workbench/MeetingEvidence.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
-import { preferences } from '../workbench/preferences.ts';
+import { isSendKey, preferences } from '../workbench/preferences.ts';
+import {
+  COMPOSER_DRAFT_SENT,
+  clearSentComposerDraft,
+  readComposerDraft,
+  writeComposerDraft,
+} from '../workbench/sessionDraft.ts';
 import { TextAttachmentList } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useCorralRun } from '../workbench/useCorralChat.ts';
@@ -110,13 +130,14 @@ export function MeetingPage({ session }: { session: WorkSession }) {
   );
   return (
     <>
-      <MeetingActions title={session.title} />
+      <MeetingActions session={session} />
       <ChatView
         centerEmpty
         sessionId={sessionId}
         header={
           <>
             <MeetingHeader title={session.title} config={view.config} />
+            <ArchivedSessionNotice session={session} />
             {hasRecords ? (
               <details ref={recordsPanel} aria-label={t('records')} className="pb-2 text-sm">
                 <summary className="cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-ring">
@@ -193,6 +214,11 @@ export function MeetingPage({ session }: { session: WorkSession }) {
             view={view}
             mode={mode}
             error={error || loadError}
+            onOpenRecords={() => {
+              if (!recordsPanel.current) return;
+              recordsPanel.current.open = true;
+              recordsPanel.current.querySelector('summary')?.focus();
+            }}
             onStop={
               active ? () => void act(() => meetings.stop(sessionId, active.roundId)) : undefined
             }
@@ -216,7 +242,49 @@ export function MeetingPage({ session }: { session: WorkSession }) {
 }
 
 /** The meeting's page menu in the top bar, like a session's. */
-function MeetingActions({ title }: { title: string }) {
+function MeetingActions({ session }: { session: WorkSession }) {
+  const { repository } = useServices();
+  const router = useRouter();
+  const t = useTranslations('Sessions');
+  const command = useTranslations('Commands');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toggleArchive = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const current = await repository.getSession(session.sessionId);
+      if (!current) {
+        setError(t('notFound'));
+        return;
+      }
+      const result = await repository.updateSession(session.sessionId, {
+        archived: !session.archivedAt,
+        expectedRevision: current.revision,
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      projectsChanged();
+      await router.invalidate();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  useRegisterCommands('session', [
+    {
+      id: 'session:archive',
+      title: command(session.archivedAt ? 'restore' : 'archive'),
+      group: command('groups.session'),
+      slash: session.archivedAt ? 'restore' : 'archive',
+      disabled: busy,
+      run: () => void toggleArchive(),
+    },
+  ]);
   const td = useTranslations('Desktop');
   return (
     <TopbarActions>
@@ -226,7 +294,7 @@ function MeetingActions({ title }: { title: string }) {
             <Button
               variant="ghost"
               size="icon-compact"
-              aria-label={td('sessionActions', { title })}
+              aria-label={td('sessionActions', { title: session.title })}
             />
           }
         >
@@ -234,8 +302,12 @@ function MeetingActions({ title }: { title: string }) {
         </MenuTrigger>
         <MenuPopup align="end" className="min-w-52">
           <ChatDensityMenu />
+          <MenuItem disabled={busy} onClick={() => void toggleArchive()}>
+            {t(session.archivedAt ? 'restore' : 'archive')}
+          </MenuItem>
         </MenuPopup>
       </Menu>
+      {error ? <p role="alert">{error}</p> : null}
     </TopbarActions>
   );
 }
@@ -296,6 +368,7 @@ function AnswerCard({
   const t = useTranslations('Meetings');
   const detailed = useStore(preferences, (state) => state.chatDensity === 'detailed');
   const failed = ['failed', 'refused', 'interrupted', 'not_started'].includes(answer.status);
+  const httpStatus = /\b(?:HTTP|status)\s*:?\s*(\d{3})\b/i.exec(answer.detail ?? '')?.[1];
   return (
     <article aria-label={name} className="mb-5 flex min-w-0 flex-col gap-1.5">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -331,7 +404,12 @@ function AnswerCard({
         <StreamingAnswer runId={answer.runId} />
       ) : null}
       {failed && answer.detail ? (
-        <p className="text-xs text-danger wrap-anywhere">{answer.detail}</p>
+        <div className="text-xs">
+          <p className="text-danger">
+            {t(httpStatus ? 'requestFailed' : 'answerFailedHint', { status: httpStatus ?? '' })}
+          </p>
+          <MeetingDiagnostics text={answer.detail} />
+        </div>
       ) : null}
       {detailed && answer.usage ? (
         <p className="text-xs text-muted-foreground tabular-nums">
@@ -360,6 +438,7 @@ function MeetingComposer({
   mode,
   error,
   onStop,
+  onOpenRecords,
   send,
   sendQueued,
   dropQueued,
@@ -370,15 +449,45 @@ function MeetingComposer({
   mode: 'mock' | 'live';
   error: string;
   onStop?: (() => void) | undefined;
+  onOpenRecords(): void;
   send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
   sendQueued(): Promise<MeetingResult | null>;
   dropQueued(): Promise<MeetingResult | null>;
   editQueued(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
 }) {
   const t = useTranslations('Meetings');
-  const [text, setText] = useState('');
-  const [mentions, setMentions] = useState<string[]>([]);
-  const [attachments, setAttachments] = useState<TextAttachment[]>([]);
+  const sendKey = useStore(preferences, (state) => state.sendKey);
+  const [restored] = useState(() => readComposerDraft(view.sessionId));
+  const [text, setText] = useState(restored.text);
+  const [mentions, setMentions] = useState(restored.meetingMentions ?? []);
+  const [attachments, setAttachments] = useState(restored.attachments ?? []);
+  const draft = useMemo(
+    () => ({
+      text,
+      meetingMentions: mentions,
+      attachments,
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+    }),
+    [text, mentions, attachments],
+  );
+  const draftRevision = useRef(0);
+  useEffect(() => {
+    draftRevision.current = writeComposerDraft(view.sessionId, draft);
+  }, [view.sessionId, draft]);
+  useEffect(() => {
+    const sent = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId: string; revision: number }>).detail;
+      if (detail.sessionId !== view.sessionId || detail.revision !== draftRevision.current) return;
+      setText('');
+      setMentions([]);
+      setAttachments([]);
+    };
+    window.addEventListener(COMPOSER_DRAFT_SENT, sent);
+    return () => window.removeEventListener(COMPOSER_DRAFT_SENT, sent);
+  }, [view.sessionId]);
   const [attachmentLoading, setAttachmentLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const inFlight = useRef(false);
@@ -405,25 +514,67 @@ function MeetingComposer({
   const submit = async (message: string, chosen: string[]) => {
     const trimmed = message.trim();
     if (!trimmed) return;
+    const submittedRevision = writeComposerDraft(view.sessionId, draft);
     const result = await dispatch({
       kind: 'message',
       text: trimmed,
       ...(chosen.length ? { mentions: chosen } : {}),
       ...(attachments.length ? { attachments } : {}),
     });
-    if (result?.ok) {
-      setText((current) => (current === message ? '' : current));
-      setMentions((current) => (current === chosen ? [] : current));
-      setAttachments((current) => (current === attachments ? [] : current));
-    }
+    if (result?.ok) clearSentComposerDraft(view.sessionId, submittedRevision);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing || event.keyCode === 229 || !isSendKey(event, sendKey))
+      return;
     event.preventDefault();
     void submit(text, mentions);
   };
+  const latestMinutes = view.minutes?.at(-1);
+  const latestSecretary = view.rounds
+    .findLast((round) => round.kind === 'secretary')
+    ?.answers.find((answer) => answer.participantId === SECRETARY_ID);
+  const summaryFailed = Boolean(
+    latestMinutes?.error ||
+      (latestSecretary &&
+        ['failed', 'refused', 'interrupted', 'not_started'].includes(latestSecretary.status)),
+  );
+  const hasDecision = view.decisions?.some((decision) =>
+    activeMeetingDecision(view, decision.versionId),
+  );
+  const hasCandidate = view.minutes?.some((minutes) => minutes.document?.candidates.length);
   return (
     <div className="flex flex-col gap-2 rounded-lg fill-group p-3 text-sm">
+      {summaryFailed ? (
+        <Banner role="alert" status="error" contrast="high" size="compact">
+          <BannerTitle>{t('summaryFailed')}</BannerTitle>
+          <BannerActions>
+            <Button
+              size="compact"
+              variant="tertiary"
+              disabled={sending || active}
+              onClick={() =>
+                void dispatch({
+                  kind: 'message',
+                  text: t('summaryRequest'),
+                  mentions: [SECRETARY_ID],
+                })
+              }
+            >
+              {t('retrySummary')}
+            </Button>
+          </BannerActions>
+        </Banner>
+      ) : null}
+      {view.rounds.length > 0 && !hasDecision ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <p>{t(hasCandidate ? 'handoffNeedsAdoption' : 'handoffNeedsMinutes')}</p>
+          {hasCandidate ? (
+            <Button size="compact" variant="tertiary" onClick={onOpenRecords}>
+              {t('viewMinutes')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {view.queued ? (
         <div role="status" className="flex flex-col gap-1 rounded fill-control p-2 text-xs">
           <span className="font-medium">{t('queued')}</span>
@@ -495,6 +646,20 @@ function MeetingComposer({
           <Send size={14} aria-hidden />
           {t('send')}
         </Button>
+        {text || mentions.length || attachments.length ? (
+          <Button
+            size="compact"
+            variant="ghost"
+            disabled={sending}
+            onClick={() => {
+              setText('');
+              setMentions([]);
+              setAttachments([]);
+            }}
+          >
+            {t('clearDraft')}
+          </Button>
+        ) : null}
         {onStop ? (
           <Button size="compact" variant="tertiary" onClick={onStop}>
             <Square size={12} aria-hidden />

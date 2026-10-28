@@ -169,20 +169,23 @@ export class SqliteHarnessStore {
   }[] {
     const defaults = this.db
       .prepare(
-        'SELECT scope, scope_id, profile_id, profile_revision FROM harness_defaults WHERE profile_id IS NOT NULL',
+        `SELECT h.scope, h.scope_id, h.profile_id, h.profile_revision, p.name AS project_name
+        FROM harness_defaults h LEFT JOIN projects p ON h.scope = 'project' AND p.id = h.scope_id
+        WHERE h.profile_id IS NOT NULL`,
       )
       .all() as {
       scope: 'personal' | 'project';
       scope_id: string;
       profile_id: string;
       profile_revision: number;
+      project_name: string | null;
     }[];
     const bindings = defaults
       .filter((row) => !projectId || row.scope === 'personal' || row.scope_id === projectId)
       .map((row) => ({
         binding: { profileId: row.profile_id, revision: row.profile_revision },
         scope: row.scope as 'personal' | 'project' | 'role',
-        name: row.scope_id,
+        name: row.scope === 'project' ? (row.project_name ?? '') : row.scope_id,
         id: `${row.scope}:${row.scope_id}`,
       }));
     const teams = this.db

@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {}, replays: 0 }));
@@ -207,4 +208,90 @@ it('an explicit cursor at the current head stays read-only as live state changes
   expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Running');
   expect(container.querySelector('fieldset[disabled]')).toBeNull();
   expect(navigations.at(-1)).toEqual({ patch: { atSeq: undefined }, options: { replace: true } });
+});
+
+it('a loading historical cursor does not present a synthetic Created status', async () => {
+  const { container } = await mount('inline_team', null, { atSeq: 5 });
+  expect(container.querySelector('[data-testid="run-status"]')).toBeNull();
+  expect(container.textContent).toContain('Loading');
+  expect(container.textContent).not.toContain('not available');
+});
+
+it('historical status is labelled in the header and ended requests are not in flight', async () => {
+  const historical = await mount('inline_team', null, { atSeq: 0 });
+  expect(
+    historical.container.querySelector('[data-testid="run-status"]')?.parentElement?.textContent,
+  ).toContain('Historical view');
+  const live = await mount('inline_team', null);
+  const projection = live.run.getState().projection;
+  if (!projection) throw new Error('missing fixture');
+  await act(async () =>
+    live.run.setState({
+      projection: {
+        ...projection,
+        status: 'cancelled',
+        modelCalls: { pending: { finished: false } as never },
+      },
+    }),
+  );
+  expect(live.container.textContent).not.toContain('in flight');
+  expect(live.container.textContent).toContain('termination unconfirmed');
+});
+
+it('does not list a cancelled tool as a failed step or choose it as the failure destination', async () => {
+  const { container, run } = await mount('inline_team', null, { execution: 'worker' });
+  const projection = emptyProjection('run_layout');
+  projection.status = 'cancelled';
+  for (const id of ['stopped', 'failed']) {
+    projection.toolCalls[id] = {
+      toolCallId: id,
+      executionId: 'worker',
+      name: 'await_tasks',
+      status: 'requested',
+      phase: 'failed',
+      effectId: id,
+      reason: id === 'stopped' ? 'scope cancelled' : 'tool failed',
+    };
+    projection.effects[id] = {
+      effectId: id,
+      kind: 'tool',
+      scope: 'worker',
+      epoch: 1,
+      dispatched: true,
+      reservationId: null,
+      status: 'settled',
+      outcome: id === 'stopped' ? 'cancelled' : 'failed',
+    };
+  }
+  await act(async () => run.setState({ projection }));
+  expect.soft(container.querySelector('[data-testid="failed-step-stopped"]')).toBeNull();
+  expect(container.querySelector('[data-testid="failed-step-failed"]')).not.toBeNull();
+
+  const stopped = projection.toolCalls.stopped;
+  if (!stopped) throw new Error('The cancelled tool fixture is missing');
+  stopped.executionId = 'cancelled-execution';
+  const widgetRoot = createRoot(document.createElement('div'));
+  let destination: string | null | undefined;
+  function Probe() {
+    destination = useChatWidget()?.failedExecutionId;
+    return null;
+  }
+  cleanup.push(async () => {
+    await act(async () => widgetRoot.unmount());
+  });
+  await act(async () =>
+    widgetRoot.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ChatWidgetProvider
+          sessionId="session"
+          presentationRunId="run_layout"
+          runIds={['run_layout']}
+          live={false}
+        >
+          <Probe />
+        </ChatWidgetProvider>
+      </IntlProvider>,
+    ),
+  );
+  expect(destination).toBe('worker');
 });

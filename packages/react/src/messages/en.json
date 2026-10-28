@@ -1,4 +1,7 @@
 {
+  "Select": {
+    "placeholder": "Select…"
+  },
   "SettingsDialog": {
     "unsaved": "Unsaved settings",
     "unsavedHint": "Save these changes before leaving, discard them, or keep editing.",
@@ -79,14 +82,14 @@
     "error": "Something went wrong: {message}",
     "serverBadge": "Local server / Simulated agents",
     "serverNote": "Corrals and runs are saved in this workspace. Agents are simulated; nothing is sent to a model.",
-    "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started.",
+    "sessionMissing": "Connect to the local server. If it restarted, the previous connection has expired. Open its current start link from the terminal, or reopen the workspace in the desktop app. Unsent requests are not sent automatically.",
     "navModels": "Models",
     "liveBadge": "Local server / Simulated or live agents",
     "language": "Language",
     "serverShort": "Local · simulated",
     "demoShort": "Demo · simulated",
     "liveNoModel": "Connect a model",
-    "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated.",
+    "liveNoModelNote": "No model is connected. Live requests are blocked until you connect one in Settings › Models. To try simulated agents, open the separate demo.",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
     "retryConnection": "Try again",
     "retry": "Try again"
@@ -398,7 +401,8 @@
     "requestLink": "Request {request} · Snapshot {snapshot}",
     "produced": "Produced: {versions}",
     "receiptRun": "Whole-run command",
-    "receiptExecution": "Command to one execution"
+    "receiptExecution": "Command to one execution",
+    "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run."
   },
   "Status": {
     "created": "Created",
@@ -467,6 +471,10 @@
     "emptyHint": "Start from a template below, create an empty team or import a JSON file.",
     "templatesHeading": "Start from a template",
     "useTemplate": "Edit this team",
+    "saveCopyTitle": "Save a team copy",
+    "copyName": "Team name",
+    "saveCopyEdit": "Save copy and edit",
+    "copyNameAdjusted": "A team with this name exists. This copy will be saved as “{name}”.",
     "template": {
       "research-team": {
         "name": "Research team",
@@ -559,7 +567,11 @@
     "evidenceChecks": "Checks",
     "uncertainWrite": "outcome unknown",
     "evidenceCheckEarlier": "earlier version",
-    "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}"
+    "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}",
+    "historicalStatus": "Historical view",
+    "starting": "Preparing to run",
+    "cancelling": "Cancelling owned work",
+    "unconfirmedRequests": "{count, plural, one {# model request: termination unconfirmed} other {# model requests: termination unconfirmed}}"
   },
   "Timeline": {
     "heading": "Timeline",
@@ -787,7 +799,11 @@
     "callsInFlight": "Calls in progress",
     "callsUnknown": "Calls with unknown usage",
     "noLimitsNote": "Provider-side limits and charges still apply. Calls with unknown usage are not counted as zero.",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "requestName": "{role} · Request {number}",
+    "imageRequestName": "{role} · Image generation {number}",
+    "unknownRole": "Agent",
+    "diagnostics": "Diagnostics"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -1289,7 +1305,8 @@
     "unavailable": "This result could not be loaded.",
     "previewOf": "Preview of {label}",
     "openResults": "Open in Results",
-    "finalCount": "{count, plural, one {# final result} other {# final results}}"
+    "finalCount": "{count, plural, one {# final result} other {# final results}}",
+    "authorExecution": "execution {number}"
   },
   "Projects": {
     "defaultName": "My project",
@@ -1348,6 +1365,7 @@
     "actions": "Actions for {name}"
   },
   "Sessions": {
+    "notFound": "This session is no longer available.",
     "heading": "Sessions",
     "new": "New session",
     "titleLabel": "Title (optional)",
@@ -1450,7 +1468,7 @@
     "runSettings": "Run settings",
     "autoModel": "Model",
     "autoHint": "The request uses the default workflow. Model:",
-    "autoNotReady": "{model} is not connected. Connect it under Settings › Models, or choose another model.",
+    "autoNotReady": "{model} is not connected. Connect it under Settings › Models.",
     "autoFallback": "choice failed, ran one agent",
     "autoTemplate": {
       "single": "Auto · one agent",
@@ -1476,7 +1494,32 @@
       "fallback": "fallback"
     },
     "selectedRun": "Selected run",
-    "unlimited": "unlimited"
+    "unlimited": "unlimited",
+    "justNow": "Just now",
+    "tryDemo": "Try the simulation demo",
+    "noWorkingCopy": "This session has no working copy, so it cannot change files. Connect a folder and prepare a working copy to edit files.",
+    "prepareWorkingCopy": "Set up file work",
+    "retryRequest": "Retry request",
+    "restoreRequest": "Restore message",
+    "resendNext": "Send as next request",
+    "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed.",
+    "savedDetails": "Saved details",
+    "archivedSending": "Sending a message keeps this session archived.",
+    "restoreSession": "Restore session",
+    "statusFilter": "Session status",
+    "archiveEmpty": "Archive empty session: {title}",
+    "keyboardHint": "Use ↑ and ↓ to move between sessions.",
+    "listState": {
+      "all": "All statuses",
+      "running": "In progress",
+      "attention": "Needs attention",
+      "completed": "Completed",
+      "ready": "No run yet",
+      "empty": "Empty session",
+      "cancelled": "Cancelled"
+    },
+    "restoreNamed": "Restore session: {title}",
+    "listSessionUnavailable": "This session is no longer available."
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1499,7 +1542,7 @@
     "openTrust": "Open trust settings",
     "openFolderSettings": "Open Folders & tools",
     "create": "Make a working copy from {head}",
-    "createHint": "It starts from the last commit. The {changed, plural, =0 {folder has no} one {# uncommitted change in your folder is} other {# uncommitted changes in your folder are}} not included.",
+    "createHint": "It starts from the last commit. {changed, plural, =0 {Your folder has no uncommitted changes.} one {Your folder’s # uncommitted change is not included.} other {Your folder’s # uncommitted changes are not included.}}",
     "ready": "Working copy from commit {commit}",
     "review": "Review changes",
     "remove": "Remove working copy",
@@ -1625,7 +1668,8 @@
     "removalGitUnknown": "The copy's Git changes could not be read.",
     "removalComments": "{count, plural, one {# review comment not sent} other {# review comments not sent}}",
     "removalUncertain": "{count, plural, one {# file write with unknown outcome} other {# file writes with unknown outcome}}",
-    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}"
+    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}",
+    "noCopyReadOnly": "Read-only: this session has no working copy."
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -1694,14 +1738,15 @@
       "uncertain_write": "File writes with unknown outcome",
       "integration": "Applying did not finish cleanly ({detail})",
       "check_failed": "Latest check failed: {detail}",
-      "unreviewed": "{detail} file writes since your last review",
+      "unreviewed": "{detail} file writes since “Mark working copy as read” (separate from approval)",
       "recipe_stopped": "Review stopped: {detail}",
       "lsp_proposal": "Language server proposals awaiting review ({detail})"
     },
     "open": "Open",
     "retrySend": "Check the same request",
     "sendUnconfirmed": "The request or its record could not be confirmed. Check the same request before sending another.",
-    "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending."
+    "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending.",
+    "inboxScope": "Action items in this project’s unarchived sessions; a session can have several."
   },
   "Workbench": {
     "reviewFeedback": "Review changes and request revisions",
@@ -1752,7 +1797,8 @@
     "noCopyChanges": "Make a working copy to see file changes here.",
     "checksOnReview": "Run checks from the review screen.",
     "serverOnly": "File work, changes and checks need the local server.",
-    "runNumber": "Run {number}"
+    "runNumber": "Run #{number}",
+    "sessionChangeCount": "Session changes · {count, plural, one {# file} other {# files}}"
   },
   "Desktop": {
     "conversation": "Conversation",
@@ -1884,9 +1930,19 @@
     "chatDensity": "Conversation detail",
     "densityResults": "Results",
     "densityBasic": "Basic",
-    "densityDetailed": "Detailed activity"
+    "densityDetailed": "Detailed activity",
+    "developmentBuild": "Development build"
   },
   "Composer": {
+    "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
+    "viewActiveRun": "View active run",
+    "destination": {
+      "next": "Send to: new run in this session · follow-up",
+      "queue": "Send to: next run in this session · queue",
+      "steer": "Send to: Run #{number} · {name} · instruction",
+      "steerUnavailable": "Instruction for {name} · target unavailable",
+      "explain": "Send to: new run about the latest result · question"
+    },
     "nextRequest": "From next request",
     "commands": "Commands",
     "references": "References",
@@ -2057,7 +2113,11 @@
     "connect": "Connect a model",
     "retry": "Send again",
     "queue": "Move to the queue",
-    "edit": "Edit the request again"
+    "edit": "Edit the request again",
+    "terminal": "A terminal is holding this working copy. Open its controls, stop it explicitly, then send again.",
+    "terminalUncertain": "A terminal has not confirmed termination, so this working copy stays protected. Open its controls and diagnostic details, then check the process on the host. Reconnecting or deleting the copy does not prove termination.",
+    "diagnostics": "Diagnostic details",
+    "openTerminal": "Open terminal controls"
   },
   "Harness": {
     "heading": "Work styles",
@@ -2500,6 +2560,8 @@
     "restore": "Restore",
     "archiveConfirm": "Remove from the list? Existing settings and past runs keep using it. You can restore it from archived items.",
     "usages": "Versions referenced by settings",
+    "usageDiagnostics": "Diagnostic details",
+    "usageUnknownProject": "Project unavailable",
     "unused": "No work style references this item.",
     "usedBy": "Used by work styles",
     "newCopy": "An edited copy is available.",
@@ -2639,7 +2701,7 @@
     "retention": "Keeps the latest 50 and the last 30 days. Pinned checkpoints and restore history stay retained.",
     "pin": "Keep",
     "preview": "Preview restore",
-    "restoreExplain": "Restore {count} changed files in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
+    "restoreExplain": "Restore {count, plural, one {# changed file} other {# changed files}} in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
     "restore": "Restore working copy",
     "close": "Close preview",
     "loadFailed": "Could not load checkpoints.",
@@ -2666,7 +2728,8 @@
     "localOnly": "File checkpoints are available in the local app.",
     "original": "Original folder",
     "workingCopy": "Session working copy",
-    "restoreOriginal": "Restore original folder"
+    "restoreOriginal": "Restore original folder",
+    "requestUnavailable": "Original request unavailable"
   },
   "RunStatus": {
     "environment": "Environment",
@@ -2788,7 +2851,14 @@
       "artifact": "Result",
       "response": "Model response",
       "interaction": "Interaction"
-    }
+    },
+    "sidebarScope": "All projects · titles and purposes",
+    "paletteScope": "Commands and current project session titles and purposes",
+    "dialogScope": "All projects · titles and purposes. Enable private messages and results to search their text.",
+    "searchBody": "Search messages and results",
+    "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text.",
+    "sourceCount": "{count, plural, one {# source} other {# sources}}",
+    "sourceNumber": "Source {number}"
   },
   "MessageBranch": {
     "open": "Branch from this message",
@@ -2807,7 +2877,8 @@
     "requestOpen": "Branch before this request",
     "requestDescription": "Start this original request in a separate session and Run, using its original team and criteria.",
     "requestBoundary": "Starts at the original request boundary, before any model response.",
-    "unlimited": "Model {model} · no default usage limits"
+    "unlimited": "Model {model} · no default usage limits",
+    "activeRun": "Branching requires idle work and confirmed cleanup. Wait for running work to finish, then try again."
   },
   "ProfileContext": {
     "contextWindow": "Effective context",
@@ -2847,7 +2918,7 @@
     "contextRefresh": "Previous request, waiting for a new measurement",
     "simulatedNote": "Simulated figure. This is not a provider measurement.",
     "lastRun": "Last run",
-    "selectedRun": "Selected run · {number} of {total}",
+    "selectedRun": "Selected run · Run #{number} of {total}",
     "selectedRunUnordered": "Selected run",
     "rail": "This run",
     "agentsHeading": "Agents",
@@ -2963,29 +3034,37 @@
       "agents": "Agents",
       "environment": "Environment",
       "outputTokens": "output tokens",
-      "calls": "{used} of {max} calls",
-      "callsNoLimit": "{used, plural, one {# call} other {# calls}}",
+      "calls": "{used} of {max} model calls",
+      "callsNoLimit": "{used, plural, one {# model call} other {# model calls}}",
       "tokenLimit": "of {max} limit",
       "unknownHeld": "{count} unconfirmed tokens held",
       "perCall": "Output tokens per model call: {values}",
-      "files": "{count, plural, one {# file} other {# files}}",
+      "files": "{count, plural, one {# changed file} other {# changed files}}",
       "linesUnknown": "Line counts unavailable",
       "readError": "This run couldn't be read.",
       "retry": "Retry",
       "openDetail": "Open {name} details",
       "openChanges": "Open the changes",
-      "spent": "Used",
-      "held": "Held",
-      "limit": "Limit",
+      "spent": "Settled output tokens",
+      "held": "Held output tokens",
+      "limit": "Output token limit",
       "noLimit": "No limit",
       "modelCalls": "Model calls",
-      "inputTokens": "Input tokens",
+      "inputTokens": "Reported input tokens",
       "cachedInput": "Cached input",
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "Not reported",
       "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
-      "fullBudget": "Open the run"
-    }
+      "fullBudget": "Open the run",
+      "runScope": "Selected run · Run #{number}",
+      "selectedRun": "Selected run",
+      "usageDefinition": "This run: settled output tokens and model calls. Input is reported usage from finished calls; cached input is part of input, not extra tokens.",
+      "simulatedUsage": "Simulation usage; not a provider measurement or bill."
+    },
+    "lastRunNumber": "Last run · Run #{number}",
+    "activityStarting": "Preparing to run…",
+    "actionCompletedWithFailures": "The run completed, but some tool steps failed. Review those steps before relying on the result.",
+    "actionOpenFailure": "Review failed steps"
   },
   "ModelImport": {
     "heading": "Import model settings",
@@ -3282,7 +3361,7 @@
     "refresh": "Refresh terminals",
     "shell": "Shell",
     "create": "New terminal",
-    "unavailable": "A trusted working copy and an available shell are required.",
+    "unavailable": "Create a trusted working copy in Changes before opening a terminal. An available shell is also required.",
     "createPending": "Terminal creation is unconfirmed. Check the original request before creating another terminal.",
     "checkCreate": "Check creation result",
     "retryCreate": "Retry original creation request",
@@ -3306,7 +3385,10 @@
     },
     "exitCode": "Exit code {code}",
     "writerHint": "While this terminal is active, file saves and Runs that write to this copy are blocked. Stop the terminal or use another copy. Hiding this panel does not stop it.",
-    "replayUnavailable": "Output replay is unavailable because its retained history limit was reached. An existing connected view can continue; a new view cannot reconstruct the screen. Stop this terminal before creating another.",
+    "replayUnavailable": "Output replay is unavailable. An existing connected view may continue; a new view cannot reconstruct the screen. Stop this terminal before creating another.",
+    "replayUnavailableEnded": "Output replay is unavailable. This terminal has ended; you can create a new terminal.",
+    "runningTab": "Terminal running",
+    "rateLimited": "Input is arriving too quickly. It is kept in order and will resume shortly.",
     "uncertain": "Termination is unconfirmed. The working copy stays reserved. Stop the terminal and check the result; reconnecting does not restore a process after a host restart.",
     "inputUnknown": "The last input acknowledgement was lost. Input is paused.",
     "inputOverflow": "This input exceeded the queue limit and was not sent. Wait for pending input, then enter smaller portions.",
@@ -3333,7 +3415,12 @@
     "selectOutput": "Select terminal output to attach first.",
     "attachSelectionError": "Could not attach the selection. Check its size and connection.",
     "sourceStale": "Terminal output has changed; the previous selection was not restored.",
-    "sourceUnavailable": "This terminal source cannot be opened here."
+    "sourceUnavailable": "This terminal source cannot be opened here.",
+    "runActive": "Wait for the current Run to finish, then create a terminal.",
+    "diagnostics": "Diagnostic details",
+    "stopped": "Stopped",
+    "stopUnconfirmed": "Stop was attempted, but termination could not be verified. The working copy remains protected. Check the host process and diagnostic details; do not delete the working copy to bypass this protection.",
+    "writerBusy": "Another operation is using this working copy. Stop it or wait for it to finish before creating a terminal."
   },
   "Docking": {
     "fileViewer": "File viewer",
@@ -3391,7 +3478,7 @@
     "tools": "Tasks & preview",
     "activeRun": "Active run controls",
     "openActiveRun": "Open active run",
-    "activeRunTarget": "In progress: {request}",
+    "activeRunTarget": "Request: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
     "pendingActions": "{count, plural, one {# response needed} other {# responses needed}}",
     "runDisconnected": "Run connection lost; its state is unconfirmed.",
@@ -4000,6 +4087,18 @@
     "selectFrame": "Select a frame in the call stack before evaluating an expression."
   },
   "Meetings": {
+    "diagnostics": "Diagnostics",
+    "copyDiagnostics": "Copy diagnostics",
+    "diagnosticsCopied": "Copied",
+    "diagnosticsCopyFailed": "Copy failed. Select and copy the diagnostic text.",
+    "requestFailed": "The model provider returned HTTP {status}. Check the model connection or try again.",
+    "answerFailedHint": "The model could not complete this reply. Try again or open diagnostics for the reported cause.",
+    "participantDefault": "Participant {number}",
+    "clearDraft": "Clear draft",
+    "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
+    "retrySummary": "Request minutes again",
+    "handoffNeedsMinutes": "No decision is ready to hand off. Ask the secretary for a plan, then review and adopt a proposal.",
+    "handoffNeedsAdoption": "Review and adopt a proposal in the minutes before handing it off to work.",
     "heading": "Meeting",
     "new": "New meeting",
     "newTitle": "Create a meeting",
@@ -4083,9 +4182,12 @@
     "evidenceLoading": "Loading results…",
     "records": "Minutes, plan and handoff",
     "minutesReady": "The secretary has prepared the minutes and plan.",
-    "viewMinutes": "Review minutes and plan"
+    "viewMinutes": "Review minutes and plan",
+    "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan."
   },
   "MeetingsDecisions": {
+    "decisionLabel": "Decision v{number} · {goal}",
+    "supersededBy": "Replaced by v{number}",
     "heading": "Minutes and decisions",
     "candidateHint": "Candidates are proposals. Only a decision you adopt can be handed off to work.",
     "empty": "Ask the secretary to summarise the meeting to prepare candidates.",
@@ -4237,9 +4339,11 @@
     },
     "statTurns": "{count, plural, one {# turn} other {# turns}}",
     "statSteps": "{count, plural, one {# step} other {# steps}}",
-    "statTokens": "{tokens} tokens",
+    "statTokens": "{tokens} reported tokens",
     "statCache": "cache hit {share}",
-    "statCacheUnreported": "cache not reported"
+    "statCacheUnreported": "cache not reported",
+    "statSession": "Session total",
+    "statDefinition": "Turns are runs. Steps count the lead agent’s tool operations and child executions, not model calls. Tokens sum reported input and output from finished model calls; unreported usage is excluded and cached input is not added again."
   },
   "RunMonitor": {
     "views": "Execution views",
@@ -4273,6 +4377,19 @@
     "model": "Model dispatch to finish",
     "tool": "Tool start to finish",
     "nonAgentNode": "This node has no separate agent execution. Its outcome appears in the graph and recorded results.",
-    "workPlans": "Work plans"
+    "workPlans": "Work plans",
+    "failedSteps": "Failed steps"
+  },
+  "Failure": {
+    "cancelled": "This step was cancelled.",
+    "unknown": "This step failed. Open diagnostics for the recorded reason.",
+    "diagnostics": "Diagnostics",
+    "code": {
+      "TARGET_NOT_FOUND": "The requested file, folder, or target is unavailable.",
+      "TARGET_TERMINAL": "The target has ended or was cancelled, so this request could not be applied.",
+      "REVISION_CONFLICT": "The target changed. Check its current state before trying again.",
+      "CAPABILITY_DENIED": "This operation was not allowed. Check the recorded reason.",
+      "LIMIT_REACHED": "This operation reached a limit."
+    }
   }
 }

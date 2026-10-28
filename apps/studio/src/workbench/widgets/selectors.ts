@@ -442,6 +442,7 @@ export function actionRequired(input: {
     visible: kinds.length > 0,
     needsUser: input.pendingApprovals + input.pendingQuestions > 0,
     hasFailure: failed + input.unclearEffects > 0,
+    completedWithFailures: input.runStatus === 'succeeded' && failed > 0,
     count: input.pendingApprovals + input.pendingQuestions + failed + input.unclearEffects,
     summary: kinds.length === 0 ? 'none' : kinds.length === 1 ? kinds[0]! : 'mixed',
     unclearCauses: input.unclearEffects ? (input.unclearCauses ?? ['effect']) : [],
@@ -459,7 +460,10 @@ export function actionCopy(action: ReturnType<typeof actionRequired>) {
   if (!action.visible) return [];
   if (action.summary === 'approval') return ['actionApproval'] as const;
   if (action.summary === 'question') return ['actionQuestion'] as const;
-  if (action.summary === 'failure') return ['actionFailure'] as const;
+  if (action.summary === 'failure')
+    return [
+      action.completedWithFailures ? 'actionCompletedWithFailures' : 'actionFailure',
+    ] as const;
   if (action.summary === 'unclear') return action.unclearCauses.map((cause) => unclearCopy[cause]);
   return ['actionMixed'] as const;
 }
@@ -740,7 +744,8 @@ export function activityLine(input: {
   const elapsedMs = input.startedAt && end ? Date.parse(end) - Date.parse(input.startedAt) : null;
   const frozen = Boolean(input.endedAt) || terminal;
   let text = 'working';
-  if (input.needsUser && !terminal) text = 'user';
+  if (['created', 'validating'].includes(input.runStatus)) text = 'starting';
+  else if (input.needsUser && !terminal) text = 'user';
   else if (input.failed || input.runStatus === 'failed') text = 'failed';
   else if (
     ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(input.runStatus)

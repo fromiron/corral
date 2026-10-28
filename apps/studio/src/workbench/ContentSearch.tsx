@@ -240,7 +240,7 @@ export function ContentSearch({
         }}
         className="flex min-w-0 flex-col gap-2"
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {modeControl}
           <Input
             type="text"
@@ -250,7 +250,7 @@ export function ContentSearch({
             maxLength={200}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 flex-1"
+            className="min-w-0 max-w-full flex-[1_0_10rem]"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">

@@ -172,8 +172,8 @@ interface DialogContentProps extends HTMLAttributes<HTMLDivElement> {
   showCloseButton?: boolean;
   /** Where the panel sits: centered, or anchored 12dvh from the top so a
    *  panel whose height follows its content (a command menu) keeps its top
-   *  edge still. @default "center" */
-  position?: 'center' | 'top';
+   *  edge still, or at the left edge for a navigation drawer. @default "center" */
+  position?: 'center' | 'top' | 'left';
 }
 
 const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
@@ -270,8 +270,9 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                 >)}
                 className={cn(
                   container ? 'absolute' : 'fixed',
-                  'left-1/2 z-50 w-[calc(100%-2rem)]',
-                  position === 'top' ? 'top-[12dvh]' : 'top-1/2',
+                  'z-50 w-[calc(100%-2rem)]',
+                  position === 'left' ? 'left-0 top-0' : 'left-1/2',
+                  position === 'top' ? 'top-[12dvh]' : position === 'center' && 'top-1/2',
                   surfaceClasses(dialogLevel),
                   'p-6 focus:outline-none',
                   size === 'sm' && (compact ? 'max-w-[360px]' : 'max-w-[400px]'),
@@ -284,12 +285,17 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                   ...(baseStyle as React.CSSProperties | undefined),
                   ...(props.style as React.CSSProperties | undefined),
                 }}
-                initial={{ opacity: 0, scale: 0.97, x: '-50%', y: position === 'top' ? 0 : '-50%' }}
+                initial={{
+                  opacity: 0,
+                  scale: 0.97,
+                  x: position === 'left' ? 0 : '-50%',
+                  y: position === 'center' ? '-50%' : 0,
+                }}
                 animate={{
                   opacity: exiting ? 0 : 1,
                   scale: exiting ? 0.97 : 1,
-                  x: '-50%',
-                  y: position === 'top' ? 0 : '-50%',
+                  x: position === 'left' ? 0 : '-50%',
+                  y: position === 'center' ? '-50%' : 0,
                 }}
                 transition={exiting ? spring.slow.exit : spring.slow}
                 onAnimationComplete={() => {

@@ -7,6 +7,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -80,7 +81,7 @@ type TooltipSide = 'top' | 'right' | 'bottom' | 'left';
 
 interface TooltipProps {
   content: ReactNode;
-  children: React.ReactElement;
+  children: React.ReactElement<{ 'aria-describedby'?: string }>;
   side?: TooltipSide;
   sideOffset?: number;
   /** Hover delay before this tooltip opens, in ms. Defaults to 200, or to the
@@ -155,6 +156,7 @@ function Tooltip({
   onOpenChange: onOpenChangeProp,
   followCursor,
 }: TooltipProps) {
+  const tooltipId = useId();
   const [internalOpen, setInternalOpen] = useState(false);
   const open = forceOpen !== undefined ? forceOpen : internalOpen;
   const { actionsRef, rootOpen, onOpenChange } = usePopupExit(open, (v) => {
@@ -201,6 +203,11 @@ function Tooltip({
       {/* Undefined delay inherits the provider's. */}
       <TooltipPrimitive.Trigger
         render={children}
+        aria-describedby={
+          [children.props['aria-describedby'], open ? tooltipId : undefined]
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
         delay={delayDuration}
         onPointerMove={followCursor ? handleFollowMove : undefined}
       />
@@ -211,6 +218,8 @@ function Tooltip({
           className={cn('z-50', contentClassName)}
         >
           <TooltipPrimitive.Popup
+            role="tooltip"
+            id={tooltipId}
             render={(props, state) => {
               const exiting = state.transitionStatus === 'ending';
               const contentChildren = content;

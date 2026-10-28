@@ -102,7 +102,9 @@ export function DesktopAbout({ serverVersion }: { serverVersion?: string }) {
   const version = info
     ? `Corral ${info.version} · ${info.platform} · Node ${info.node}`
     : serverVersion
-      ? t('serverVersion', { version: serverVersion })
+      ? t('serverVersion', {
+          version: serverVersion === '0.0.0' ? t('developmentBuild') : serverVersion,
+        })
       : null;
   const reveal = () => {
     setError(false);

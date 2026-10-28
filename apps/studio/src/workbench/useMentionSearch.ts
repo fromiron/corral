@@ -25,7 +25,8 @@ export function useMentionSearch({
 }) {
   const { workspaces, transport, repository } = useServices();
   const ts = useTranslations('Status');
-  const tc = useTranslations('Composer');
+  const tw = useTranslations('Workbench');
+  const tr = useTranslations('Results');
   const scope = useRef<Promise<FileBrowseScope | null> | null>(null);
   const results = useRef<{ key: string; items: Promise<MentionItem[]> } | null>(null);
   const roles = useRef<{ key: string; items: Promise<MentionItem[]> } | null>(null);
@@ -72,23 +73,38 @@ export function useMentionSearch({
             const items: MentionItem[] = [];
             const ended = ordered.filter((r) => TERMINAL_RUN_STATUSES.has(r.status)).reverse();
             for (const run of ended.slice(0, 10)) {
-              const { projection } = await transport.getSnapshot(run.runId);
+              const [{ projection }, definition] = await Promise.all([
+                transport.getSnapshot(run.runId),
+                transport.getRunDefinition(run.runId),
+              ]);
               const found = runResults(projection);
               for (const artifact of [
                 ...found.final,
                 ...found.intermediate.map((group) => group.latest),
-              ])
+              ]) {
+                const nodeId = projection.executions[artifact.authorExecutionId]?.nodeId;
+                const author =
+                  definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
                 items.push({
-                  id: `result:${artifact.artifactVersionId}`,
+                  id: `result:${run.runId}:${artifact.artifactVersionId}`,
                   kind: 'result',
-                  label: `${artifact.name} v${artifact.version}`,
-                  detail: tc('fromRun', { number: number(run.runId) }),
+                  label: [
+                    `${artifact.name} v${artifact.version}`,
+                    tw('runNumber', { number: number(run.runId) }),
+                    artifact.authorExecutionNumber
+                      ? tr('authorExecution', { number: artifact.authorExecutionNumber })
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · '),
+                  detail: author,
                   reference: {
                     kind: 'result',
                     runId: run.runId,
                     artifactVersionId: artifact.artifactVersionId,
                   },
                 });
+              }
             }
             return items;
           })().catch(() => []),
@@ -97,7 +113,7 @@ export function useMentionSearch({
       const runItems: MentionItem[] = [...ordered].reverse().map((run) => ({
         id: `run:${run.runId}`,
         kind: 'run',
-        label: `run-${number(run.runId)}`,
+        label: tw('runNumber', { number: number(run.runId) }),
         detail: ts(run.status),
         reference: { kind: 'run', runId: run.runId },
       }));
@@ -123,6 +139,6 @@ export function useMentionSearch({
       out.push(...rankFuzzy(query, await roles.current.items, (i) => `${i.label} ${i.detail}`, 4));
       return out;
     },
-    [workspaces, transport, repository, projectId, sessionId, runsKey, team, ts, tc],
+    [workspaces, transport, repository, projectId, sessionId, runsKey, team, ts, tw, tr],
   );
 }

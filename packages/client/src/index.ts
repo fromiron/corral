@@ -210,6 +210,7 @@ export type {
 import {
   type AutoModelChoice,
   type AutoRoute,
+  CommandError,
   type ConversationSource,
   type CorralDefinition,
   type CreateRunRequest,
@@ -315,11 +316,20 @@ export interface HttpOptions {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: ErrorCode | 'UNKNOWN';
+  readonly retryAfterMs?: number;
+  readonly owner?: CommandError['owner'];
 
-  constructor(status: number, code: ErrorCode | 'UNKNOWN', message: string) {
+  constructor(
+    status: number,
+    code: ErrorCode | 'UNKNOWN',
+    message: string,
+    options: { retryAfterMs?: number; owner?: CommandError['owner'] } = {},
+  ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfterMs = options.retryAfterMs;
+    this.owner = options.owner;
   }
 }
 
@@ -362,16 +372,33 @@ class Http {
   }
 }
 
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after');
+  if (value === null || !/^\d+(?:\.\d+)?$/.test(value)) return undefined;
+  const milliseconds = Number(value) * 1000;
+  return Number.isFinite(milliseconds) ? milliseconds : undefined;
+}
+
 async function apiError(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as { error?: { code?: ErrorCode; message?: string } };
+    const body = (await response.json()) as {
+      error?: { code?: ErrorCode; message?: string; owner?: unknown };
+      receipt?: { error?: { code?: ErrorCode; message?: string; owner?: unknown } };
+    };
+    const error = body.error ?? body.receipt?.error;
     return new ApiError(
       response.status,
-      body.error?.code ?? 'UNKNOWN',
-      body.error?.message ?? response.statusText,
+      error?.code ?? 'UNKNOWN',
+      error?.message ?? response.statusText,
+      {
+        retryAfterMs: retryAfterMs(response),
+        owner: CommandError.shape.owner.safeParse(error?.owner).data,
+      },
     );
   } catch {
-    return new ApiError(response.status, 'UNKNOWN', response.statusText);
+    return new ApiError(response.status, 'UNKNOWN', response.statusText, {
+      retryAfterMs: retryAfterMs(response),
+    });
   }
 }
 
@@ -981,11 +1008,15 @@ function refused(commandId: string, code: ErrorCode, message: string): Receipt {
 }
 
 async function apiErrorFrom(response: Response, body: unknown): Promise<ApiError> {
-  const error = (body as { error?: { code?: ErrorCode; message?: string } }).error;
+  const error = (body as { error?: { code?: ErrorCode; message?: string; owner?: unknown } }).error;
   return new ApiError(
     response.status,
     error?.code ?? 'UNKNOWN',
     error?.message ?? response.statusText,
+    {
+      retryAfterMs: retryAfterMs(response),
+      owner: CommandError.shape.owner.safeParse(error?.owner).data,
+    },
   );
 }
 

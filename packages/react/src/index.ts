@@ -6,6 +6,7 @@ export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent, TIDY_EVENT } from './components/EditorToolbar.tsx';
 export { EffortJudgments } from './components/EffortJudgments.tsx';
 export { ExecutionTranscript } from './components/ExecutionTranscript.tsx';
+export { FailureNotice } from './components/FailureNotice.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { InteractionPanel } from './components/InteractionPanel.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
@@ -37,6 +38,7 @@ export {
 } from './editor/store.ts';
 export { default as enMessages } from './messages/en.json' with { type: 'json' };
 export { default as koMessages } from './messages/ko.json' with { type: 'json' };
+export { useCancelConfirmation } from './run/cancel-confirmation.ts';
 export { type CompareRow, compareRuns } from './run/compare.ts';
 export {
   estimateRunCost,

@@ -44,6 +44,7 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team' })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
   if (!(await page.getByLabel('Purpose').isVisible()))
@@ -71,6 +72,8 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
       response.url().endsWith('/api/v1/sessions') && response.request().method() === 'POST',
   );
   await page.getByRole('link', { name: 'New session', exact: true }).click();
+  await expect(page.getByLabel('Purpose')).toHaveValue('Keep this purpose through team setup');
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await committed;
   await expect(page.getByLabel('Purpose')).toBeDisabled();
   await expect(page.getByRole('combobox', { name: 'Corral', exact: true })).toBeDisabled();

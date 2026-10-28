@@ -27,6 +27,8 @@
 
 bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 브라우저·프로필에서도 반복 사용할 수 있다. 유효한 세션 cookie가 있으면 같은 링크를 다시 교환해도 세션과 CSRF token을 유지한다. cookie가 없거나 유효하지 않으면 새 세션을 발급한다. 잘못된 token은 기존 세션이 있어도 거절하며, 서버 재시작은 이전 링크와 세션을 모두 무효화한다.
 
+열린 화면의 인증이 무효화되면 일반 오류 대신 서버 재시작 등으로 연결 인증이 만료될 수 있음을 알리고 현재 서버가 출력한 시작 링크로 재연결하도록 안내한다. 자동 재인증·요청 재전송 없이 초안을 유지한다.
+
 인증된 브라우저 프로필의 같은 호스트·포트에 접속하는 탭은 기존 세션 cookie를 공유한다. 새 탭·새로고침에 bootstrap 재교환을 요구하지 않는다. 같은 탭에서 bootstrap 링크의 fragment만 바뀌어도 인증 초기화를 다시 실행한다. cookie 이름은 실제 수신 포트를 포함해 같은 호스트의 다른 Corral 서버가 인증을 덮어쓰지 않게 한다. 다른 서버의 세션과 CSRF token은 받지 않는다. cookie 이름 분리는 포트 사이의 보안 격리를 뜻하지 않으며 기존 Host/Origin·CSRF 검사를 유지한다.
 
 | Method/path | 요청 | 응답·효과 |
@@ -44,6 +46,8 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1), 원본과 같은 프로젝트 |
 | PUT /corrals/:id/project | `{projectId}` | 팀을 다른 프로젝트로 이동(revision 그대로). 지난 Run은 원래 프로젝트에 남음. 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND` |
 | GET /projects | — | 프로젝트 목록: 기본 프로젝트 먼저, 보관 포함(`archivedAt`) |
+| POST /sessions/search | `SessionSearchRequest` | `SessionSearchResult`; 50개 접힌 결과 단위 페이지. 원문 `excerpt`, 원문 UTF-16 `excerptMatches`, 세션 기준 `runNumber`, 접힌 `sources`의 정확한 entry/run/artifact/sequence ID. 검색·동의·중복 기준은 [세션 목록과 검색](workbench.md#세션-목록과-검색)을 따른다. |
+| POST /sessions/search/rebuild | — | 파생 검색 캐시만 비움; 원문 기록 변경 없음 |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함 |
 | POST /sessions | `{projectId, title, objective?, corralId?, autoTitle?, meeting?:MeetingConfig}` | 새 세션. `meeting`이 있으면 회의, 없으면 기존 work 세션이며 이후 종류 변환은 하지 않는다. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다. |
 | GET·PATCH /sessions/:id | `{title?, objective?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
@@ -122,7 +126,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /sessions/:id/worktree/document-operations/:operationId | — | 원래 대상과 operation ID의 receipt. pending·완료·실패 모두 상대 path/precondition/제출 hash의 intent를 보존하며 원문 text는 저장하지 않는다. 현재 사본 삭제/재생성 후에도 완료 receipt를 조회한다. 같은 ID/다른 내용은 conflict, uncertain을 자동 재실행하지 않는다 |
 | GET /sessions/:id/terminals | — | 현재 target·가용 shell·사용자 터미널 목록. 작업 사본이 없어도 과거 terminal 상태/중지 대상은 조회 가능 |
 | POST /sessions/:id/terminals | `TerminalCreate` | target·operationId·shellId·초기 cols/rows. 공통 writer와 host process permit을 접수하고 starting receipt 반환. 같은 ID/같은 내용은 기존 결과, 다른 내용은 conflict |
-| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller. OS PID/identity·절대 경로는 공개하지 않음 |
+| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller·선택적 stopped(중지 요청 여부). OS PID/identity·절대 경로는 공개하지 않음 |
 | POST /sessions/:id/terminals/:terminalId/control | `TerminalControllerChange` | target/generation·attachmentId·expectedGeneration·claim/release·명시 takeover. 한 controller만 입력하며 takeover는 같은 attachment에도 generation을 바꿈 |
 | POST /sessions/:id/terminals/:terminalId/input | `TerminalInput` | controllerGeneration·sequence·UTF-8 ≤16KiB data. input/resize 공통 순서, 같은 최신 순서/내용만 기존 ack. 자동 stdin 재시도 없음 |
 | POST /sessions/:id/terminals/:terminalId/resize | `TerminalResize` | controller의 공통 순서로 cols 2–500, rows 1–500. 성공한 resize도 output sequence에 포함 |
@@ -196,6 +200,8 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 
 ## 3. 오류
 
+터미널 writer 충돌은 기존 접수 코드(`RUN_ALREADY_ACTIVE`, 읽기 차단은 `RESOURCE_CAPACITY`)와 함께 구조화된 `owner {kind: "terminal", id, sessionId, state: "active" | "uncertain"}`를 반환한다. `uncertain`은 종료 증명이 없는 보호 상태이며 일반 점유와 다른 안내를 제공한다. 소유권 정보는 시작 receipt·HTTP 오류·세션의 선택적 `refusal` 기록에 보존한다. 세션에 저장하는 오류 문구는 기존 detail과 같은 2,000자 한도를 따른다. 새 오류의 분류·복구 링크는 코드와 owner를 사용하고, 구조화 필드가 없는 과거 기록만 기존 메시지로 호환한다. owner는 진단/탐색 정보일 뿐 종료·쓰기 권한을 부여하지 않는다.
+
 | 코드 | HTTP | 의미 |
 |---|---|---|
 | SCHEMA_INVALID | 400 | 이해하지 못하는 형식·unknown field |
@@ -221,6 +227,10 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | REQUEST_OUTCOME_UNKNOWN | 409 | 전송 결과가 확인되지 않은 관리형 요청. 같은 operation ID는 저장된 결과만 조회하며 새 유료 호출을 만들지 않음 |
 
 provider/network error는 사용자 키 원문·응답 헤더를 포함하지 않는다. trace용 errorId와 마스킹된 이유를 제공한다. 도구 실행 중 실패는 HTTP success/error와 별개로 ToolOutcome에 structured error를 넣는다.
+
+### 도구 종료 오류 진단
+
+`tool.finished`의 선택적 `errorCode`는 도구 경계가 확인한 계약 오류 코드다. `error`는 기존 안전한 진단 문구를 유지하며, 일반 예외의 메시지·경로·비밀을 기록하는 용도로 사용하지 않는다. 파일 목록의 없는 디렉터리는 `TARGET_NOT_FOUND`와 경로 없는 고정 사유로 변환한다. 예전 이벤트에 코드가 없으면 화면은 일반 실패 안내와 기존 진단을 사용한다.
 
 ## 4. 이벤트 payload 목록
 
@@ -315,7 +325,7 @@ Bell의 2026-10-25 결정에 따라 이전 Ultra 기록은 읽지 않는다. `ca
 
 ## 사용자 PTY 전송과 복구
 
-정본 schema는 `packages/contracts/src/terminal.ts`다. 기존 Host/Origin/cookie/CSRF 경계를 유지한다. input/resize만 일반 mutation 횟수 대신 host 공통 1초당 120 frames·256KiB 예산을 사용한다. malformed frame도 예산에 포함한다. ack는 host 수신 확인이며 명령 완료가 아니다. UI는 UTF-8 16KiB로 나누되 64KiB 대기 입력을 넘는 전체 붙여넣기는 거절하며, 연결 유실로 확정되지 않은 입력은 자동 재전송하지 않는다.
+정본 schema는 `packages/contracts/src/terminal.ts`다. 기존 Host/Origin/cookie/CSRF 경계를 유지한다. input/resize만 일반 mutation 횟수 대신 host 공통 1초당 120 frames·256KiB 예산을 사용한다. malformed frame도 예산에 포함한다. ack는 host 수신 확인이며 명령 완료가 아니다. UI는 UTF-8 16KiB로 나누되 64KiB 대기 입력을 넘는 전체 붙여넣기는 거절하며, 연결 유실로 확정되지 않은 입력은 자동 재전송하지 않는다. 적용 전 제한에서 반환한 429는 Retry-After(초)만큼 기다린 뒤 원래 입력 순서·프로세스 generation·controller generation으로 재시도할 수 있다. 연속 대기 input은 16KiB 안에서 합치되 resize와 순서를 바꾸지 않고, 64KiB 큐 한도에는 전송 중인 입력도 포함한다.
 
 출력은 최초 크기와 처음부터의 ANSI/resize 순서를 4MiB까지 보관한다. 초과하면 prefix를 폐기하고 replayAvailable=false로 표시한다. 이미 연결된 화면은 이어 읽지만 새 화면이나 cursor gap에 임의 ANSI tail을 주어 복구 성공으로 표시하지 않는다. 종료 후 보관은 5분이며 그 뒤 재생 불가를 명시한다. status metadata는 출력 cursor를 전진시키지 않는다. client는 xterm write callback 완료 후 cursor를 갱신한다. 느린 viewer는 기존 bounded SSE writer로 분리하고 셸은 유지한다.
 

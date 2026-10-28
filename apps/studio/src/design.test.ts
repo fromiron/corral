@@ -50,6 +50,8 @@ describe('design guard (Workbench polish P0)', () => {
 
   it('has a color token for every semantic color utility', () => {
     const theme = readFileSync(join(root, 'packages/react/src/theme.css'), 'utf8');
+    expect(theme).toMatch(/@import ["']\.\/design-kit\/tokens\.css["']/);
+    const tokens = `${theme}\n${readFileSync(join(root, 'packages/react/src/design-kit/tokens.css'), 'utf8')}`;
     const missing = [...text].flatMap(([path, body]) =>
       [
         ...body.matchAll(
@@ -57,7 +59,7 @@ describe('design guard (Workbench polish P0)', () => {
         ),
       ]
         .map((m) => m[1] as string)
-        .filter((name) => !theme.includes(`--color-${name}:`))
+        .filter((name) => !tokens.includes(`--color-${name}:`))
         .map((name) => `${where(path)}: ${name}`),
     );
     expect([...new Set(missing)]).toEqual([]);

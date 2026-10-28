@@ -291,9 +291,11 @@ export interface FileTools {
 /** A refusal a tool backend explains to the agent (no local paths in the message). */
 export class ToolRefusal extends Error {
   readonly code: CommandError['code'];
-  constructor(code: CommandError['code'], message: string) {
+  readonly owner?: CommandError['owner'];
+  constructor(code: CommandError['code'], message: string, owner?: CommandError['owner']) {
     super(message);
     this.code = code;
+    this.owner = owner;
   }
 }
 
@@ -578,6 +580,7 @@ interface ToolFrame {
     error?: string | null,
     outcome?: EventPayload<'effect.settled'>['outcome'],
     progressHash?: string,
+    errorCode?: CommandError['code'],
   ): EventDraft[];
 }
 
@@ -1853,7 +1856,11 @@ export class Coordinator {
     } catch (error) {
       return refuse(
         error instanceof ToolRefusal
-          ? { code: error.code, message: error.message }
+          ? {
+              code: error.code,
+              message: error.message,
+              ...(error.owner ? { owner: error.owner } : {}),
+            }
           : { code: 'STORAGE_UNAVAILABLE', message: 'working copy admission failed' },
       );
     }
@@ -6797,6 +6804,7 @@ export class Coordinator {
         error: string | null = null,
         outcome: EventPayload<'effect.settled'>['outcome'] = error ? 'failed' : 'succeeded',
         progressHash?: string,
+        errorCode?: CommandError['code'],
       ): EventDraft[] =>
         run.projection.effects[effectId] && run.projection.effects[effectId]?.status !== 'admitted'
           ? []
@@ -6810,6 +6818,7 @@ export class Coordinator {
                   resultRef,
                   error,
                   ...(progressHash ? { progressHash } : {}),
+                  ...(errorCode ? { errorCode } : {}),
                 },
               },
               {
@@ -9530,7 +9539,7 @@ export class Coordinator {
         // No process call was dispatched: cancelling its approval cannot be an execution
         // failure. An explicit rejection or approval timeout still takes the failure path.
         this.commit(run, tool.closing(null, null, 'cancelled'));
-      } else this.commit(run, tool.closing(null, message));
+      } else this.commit(run, tool.closing(null, message, undefined, undefined, refusal?.code));
       return {
         ok: false,
         toolCallId: tool.toolCallId,

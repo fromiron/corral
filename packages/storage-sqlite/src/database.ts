@@ -606,6 +606,18 @@ CREATE TABLE model_attempt_events (seq INTEGER PRIMARY KEY, attempt_id TEXT NOT 
 ${IMMUTABLE('model_attempt_events')}
 `,
   },
+  {
+    name: '0036_session_search_sources',
+    sql: `
+DROP TABLE session_search_v1;
+DELETE FROM session_search_state_v1;
+CREATE VIRTUAL TABLE session_search_v1 USING fts5(
+  id UNINDEXED, session_id UNINDEXED, run_id UNINDEXED, entry_id UNINDEXED,
+  artifact_id UNINDEXED, sequence UNINDEXED, kind UNINDEXED, normalized,
+  source_text UNINDEXED, source_hash UNINDEXED, tokenize='trigram'
+);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

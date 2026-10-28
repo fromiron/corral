@@ -13,7 +13,7 @@ export type ProcessRow =
       id: string;
       name: string;
       target: string | null;
-      status: 'requested' | 'allowed' | 'blocked' | 'finished' | 'failed';
+      status: 'requested' | 'allowed' | 'blocked' | 'finished' | 'failed' | 'cancelled';
     }
   | { kind: 'agent'; id: string; label: string; status: string };
 
@@ -110,6 +110,11 @@ export function buildTurnProcess(
         break;
       }
     }
+  }
+  for (const tool of tools.values()) {
+    const effectId = projection?.toolCalls[tool.id]?.effectId;
+    if (effectId && projection?.effects[effectId]?.outcome === 'cancelled')
+      tool.status = 'cancelled';
   }
   // Every other execution (a delegate or a team role) is one row; its own work opens beside.
   for (const id of projection?.executionOrder.slice(1) ?? []) {

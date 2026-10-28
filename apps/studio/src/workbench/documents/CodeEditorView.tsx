@@ -53,6 +53,7 @@ function revealTextSelection(instance: editor.IStandaloneCodeEditor, range: Text
   });
   instance.setSelection(selection);
   instance.revealRangeInCenter(selection);
+  instance.getDomNode()?.scrollIntoView({ block: 'nearest' });
 }
 
 function applyEditorTheme(monaco: Monaco) {

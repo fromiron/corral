@@ -36,3 +36,47 @@ describe('refused start (UX-04)', () => {
     expect(refusalKind({ network: true, message: 'Failed to fetch' })).toBe('network');
   });
 });
+
+it('distinguishes terminal ownership from another Run, including recorded legacy refusals', () => {
+  expect(
+    refusalKind({
+      code: 'RUN_ALREADY_ACTIVE',
+      message: 'working copy terminal writer custom_id has not released ownership',
+    }),
+  ).toBe('terminal');
+  expect(
+    refusalKind({ message: 'working copy writer terminal_123 has not released ownership' }),
+  ).toBe('terminal');
+  expect(
+    refusalKind({
+      code: 'RUN_ALREADY_ACTIVE',
+      message: 'working copy writer run_123 has not released ownership',
+    }),
+  ).toBe('busy');
+});
+
+it('classifies current terminal ownership from structured fields independently of wording', () => {
+  const owner = {
+    kind: 'terminal' as const,
+    id: 'custom_owner',
+    sessionId: 'session',
+    state: 'active' as const,
+  };
+  expect(refusalKind({ code: 'RUN_ALREADY_ACTIVE', message: 'localized new wording', owner })).toBe(
+    'terminal',
+  );
+  expect(
+    refusalKind({
+      code: 'RUN_ALREADY_ACTIVE',
+      message: 'localized new wording',
+      owner: { ...owner, state: 'uncertain' },
+    }),
+  ).toBe('terminalUncertain');
+  expect(
+    refusalKind({
+      code: 'RESOURCE_CAPACITY',
+      message: 'localized new wording',
+      owner: { ...owner, state: 'uncertain' },
+    }),
+  ).toBe('terminalUncertain');
+});

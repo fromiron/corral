@@ -8,6 +8,30 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import { createRunSession } from '../src/run/session.ts';
 
 describe('BudgetInspector', () => {
+  it('names the role and request while keeping call IDs in collapsed diagnostics', () => {
+    const session = createRunSession({} as never);
+    const p = emptyProjection('run_budget');
+    p.executions.exec_writer = { nodeId: 'writer' } as never;
+    p.modelCalls.call_private = { executionId: 'exec_writer' } as never;
+    p.budget.reservations.res_private = {
+      modelCallId: 'call_private',
+      scope: 'exec_writer',
+      reserved: 100,
+      actual: 42,
+      status: 'settled',
+    };
+    session.setState({ projection: p, definition: linearCorral(['writer']) });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <BudgetInspector session={session} />
+      </IntlProvider>,
+    );
+    const row = screen.getByTestId('budget-call-call_private');
+    expect(row.querySelector('span')).toHaveTextContent('writer · Request 1');
+    expect(row.querySelector('details')).not.toHaveAttribute('open');
+    expect(row.querySelector('details')).toHaveTextContent('call_private');
+    expect(row.querySelector('details')).toHaveTextContent('res_private');
+  });
   it('keeps confirmed, reserved and unknown usage distinct; unavailable cost is never zero', () => {
     const session = createRunSession({} as never);
     const p = emptyProjection('run_budget');

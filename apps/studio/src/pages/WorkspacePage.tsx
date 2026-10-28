@@ -35,16 +35,19 @@ import {
 import { Ellipsis } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
-import { useFormatter, useNow, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
-import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { TemplateCopyDialog } from '../TemplateCopyDialog.tsx';
+import { createFromTemplate, WORKSPACE_TEMPLATES, type WorkspaceTemplateId } from '../templates.ts';
 import { StartMeeting } from '../workbench/NewMeeting.tsx';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
+import { sessionListState } from '../workbench/sessionList.ts';
+import { useSessionAge } from '../workbench/useSessionAge.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
@@ -64,9 +67,8 @@ function isLayoutFile(text: string): boolean {
 
 export function WorkspacePage() {
   const t = useTranslations('Workspace');
-  const format = useFormatter();
-  const now = useNow({ updateInterval: 60_000 });
-  const { project, projects, corrals, runs, sessions, totals } = workspaceRoute.useLoaderData();
+  const ago = useSessionAge();
+  const { project, projects, corrals, runs, sessions } = workspaceRoute.useLoaderData();
   const projectId = project.projectId;
   const archived = project.archivedAt !== null;
   useEffect(() => setCurrentProject(projectId), [projectId]);
@@ -76,6 +78,7 @@ export function WorkspacePage() {
   const [errors, setErrors] = useState<string[]>([]);
   const importInput = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [copyTemplate, setCopyTemplate] = useState<WorkspaceTemplateId | null>(null);
   // Roadmap 16: two runs picked for comparison, oldest choice dropped past two.
   const [picked, setPicked] = useState<string[]>([]);
   const tc = useTranslations('Compare');
@@ -217,7 +220,7 @@ export function WorkspacePage() {
                   })}{' '}
                   ·{' '}
                   {t('updated', {
-                    time: format.relativeTime(new Date(corral.updatedAt), now),
+                    time: ago(corral.updatedAt),
                   })}
                 </span>
               </div>
@@ -290,22 +293,7 @@ export function WorkspacePage() {
                       {t('startWithTemplate')}
                     </Button>
                   )}
-                  <Button
-                    variant="tertiary"
-                    onClick={async () => {
-                      const created = await createFromTemplate(
-                        repository,
-                        id,
-                        t('newName'),
-                        projectId,
-                      );
-                      if (!created.ok) return setErrors([created.message]);
-                      await navigate({
-                        to: '/corrals/$corralId/edit',
-                        params: { corralId: created.corralId },
-                      });
-                    }}
-                  >
+                  <Button variant="tertiary" onClick={() => setCopyTemplate(id)}>
                     {t('useTemplate')}
                   </Button>
                 </CardFooter>
@@ -314,6 +302,17 @@ export function WorkspacePage() {
           ))}
         </div>
       </section>
+      {copyTemplate ? (
+        <TemplateCopyDialog
+          template={copyTemplate}
+          projectId={projectId}
+          corrals={corrals}
+          onClose={() => setCopyTemplate(null)}
+          onSaved={async (corralId) => {
+            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
+          }}
+        />
+      ) : null}
     </div>
   );
 
@@ -362,7 +361,7 @@ export function WorkspacePage() {
                 <span className="text-xs text-muted-foreground">
                   {corral?.name ?? run.corralId} ·{' '}
                   {t('runStarted', {
-                    time: format.relativeTime(new Date(run.startedAt), now),
+                    time: ago(run.startedAt),
                   })}
                 </span>
               </li>
@@ -388,7 +387,7 @@ export function WorkspacePage() {
                   corrals={corrals}
                 />
                 <StartMeeting projectId={projectId} />
-                <GettingStarted runs={totals.runs} projectId={projectId} />
+                <GettingStarted runs={runs.length} projectId={projectId} />
               </>
             )}
             <InboxSection projectId={projectId} />
@@ -699,6 +698,7 @@ function StartSession({
   draftRef.current = draft;
   const objective = typeof draft?.objective === 'string' ? draft.objective : '';
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
+  const detailsSummary = title || [...objective.trim()].slice(0, 80).join('');
   const [detailsOpen, setDetailsOpen] = useState(Boolean(title || objective || corralId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -785,6 +785,11 @@ function StartSession({
   useEffect(() => {
     if (!focus || automatic.current) return;
     automatic.current = true;
+    if (title || objective || corralId) {
+      setDetailsOpen(true);
+      startButton.current?.focus();
+      return;
+    }
     void create();
   }, [focus]);
 
@@ -803,14 +808,28 @@ function StartSession({
           </CardAction>
         </CardHeader>
         <CardContent>
+          {detailsSummary ? (
+            <p id={`new-session-summary-${projectId}`} className="sr-only">
+              {t('savedDetails')} · {detailsSummary}
+            </p>
+          ) : null}
           <Accordion
             value={detailsOpen ? 'details' : ''}
             onValueChange={(value: string) => setDetailsOpen(value === 'details')}
             className="w-full"
           >
             <AccordionItem value="details" highlight="trigger">
-              <AccordionTrigger>
+              <AccordionTrigger
+                aria-label={n('sessionDetails')}
+                aria-describedby={detailsSummary ? `new-session-summary-${projectId}` : undefined}
+              >
                 <span>{n('sessionDetails')}</span>
+                {title || objective ? (
+                  <span className="ml-2 min-w-0 truncate text-foreground">
+                    {t('savedDetails')}
+                    {detailsSummary ? ` · ${detailsSummary}` : ''}
+                  </span>
+                ) : null}
                 {selectedTeamName ? (
                   <span className="ml-2 text-foreground">{selectedTeamName}</span>
                 ) : null}
@@ -891,16 +910,40 @@ function StartSession({
 function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSummary[] }) {
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
-  const format = useFormatter();
-  const now = useNow({ updateInterval: 60_000 });
+  const ago = useSessionAge();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [stateFilter, setStateFilter] = useState('all');
+  const [error, setError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const { repository } = useServices();
+  const router = useRouter();
+  const setArchived = async (session: WorkSession, archived: boolean) => {
+    setArchiving(session.sessionId);
+    setError(null);
+    try {
+      const current = await repository.getSession(session.sessionId);
+      if (!current) throw new Error(t('listSessionUnavailable'));
+      const result = await repository.updateSession(session.sessionId, {
+        archived,
+        expectedRevision: current.revision,
+      });
+      if (!result.ok) return setError(result.message);
+      projectsChanged();
+      await router.invalidate();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setArchiving(null);
+    }
+  };
   const needle = query.trim().toLowerCase();
   const archivedCount = sessions.filter((x) => x.archivedAt).length;
   const shown = sessions
     .filter(
       (x) =>
         (showArchived || !x.archivedAt) &&
+        (stateFilter === 'all' || sessionListState(x, runs) === stateFilter) &&
         (!needle || `${x.title}\n${x.objective}`.toLowerCase().includes(needle)),
     )
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
@@ -924,31 +967,62 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
           </InputGroup>
         ) : null}
       </div>
+      {sessions.length > 0 ? (
+        <Select
+          label={t('statusFilter')}
+          variant="chip"
+          value={stateFilter}
+          onValueChange={setStateFilter}
+          options={['all', 'running', 'attention', 'completed', 'cancelled', 'ready', 'empty'].map(
+            (value) => ({
+              value,
+              label: t(`listState.${value}`),
+            }),
+          )}
+        />
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
       {sessions.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul aria-label={t('heading')} className="flex flex-col">
           {shown.map((x) => (
-            <li key={x.sessionId}>
+            <li key={x.sessionId} className="flex items-center gap-2">
               <Link
                 to="/sessions/$sessionId"
                 params={{ sessionId: x.sessionId }}
-                className="flex items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
+                className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
               >
                 <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {[
                     x.pinned ? t('pinned') : null,
                     x.archivedAt ? t('archived') : null,
+                    t(`listState.${sessionListState(x, runs)}`),
                     t('runCount', {
                       count: runs.filter((r) => r.sessionId === x.sessionId).length,
                     }),
-                    tw('updated', { time: format.relativeTime(new Date(x.updatedAt), now) }),
+                    tw('updated', { time: ago(x.updatedAt) }),
                   ]
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
               </Link>
+              {x.archivedAt || sessionListState(x, runs) === 'empty' ? (
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  disabled={archiving !== null}
+                  aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', { title: x.title })}
+                  onClick={() => void setArchived(x, !x.archivedAt)}
+                >
+                  {t(x.archivedAt ? 'restoreSession' : 'archive')}
+                </Button>
+              ) : null}
             </li>
           ))}
         </ul>

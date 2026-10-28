@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  actionCopy,
   actionRequired,
   activityLine,
   agentActivity,
@@ -44,6 +45,17 @@ const body = (revision: number, statuses: Array<'pending' | 'in_progress' | 'com
 });
 
 describe('chat widget selectors', () => {
+  it('explains a completed run with failed tools without changing its successful status', () => {
+    const action = actionRequired({
+      pendingApprovals: 0,
+      pendingQuestions: 0,
+      failedEffects: 2,
+      unclearEffects: 0,
+      runStatus: 'succeeded',
+    });
+    expect(actionCopy(action)).toEqual(['actionCompletedWithFailures']);
+    expect(action.hasFailure).toBe(true);
+  });
   it('refreshes file changes after hashline and shell writes, including partial failures', () => {
     const calls = [
       { name: 'edit_hashline', phase: 'finished' },
@@ -666,4 +678,20 @@ describe('viewed run label (#72)', () => {
   it('does not claim an order for a run the session does not list', () => {
     expect(viewedRun({ runIds, presentationRunId: 'run_x', live: false })?.latest).toBe(false);
   });
+});
+
+it.each(['created', 'validating'])('activity shows startup, not working, for %s', (runStatus) => {
+  expect(
+    activityLine({
+      runStatus,
+      startedAt: null,
+      endedAt: null,
+      now: '2026-10-27T00:00:00Z',
+      planTitle: null,
+      planVisible: false,
+      toolName: null,
+      failed: false,
+      needsUser: false,
+    }).text,
+  ).toBe('starting');
 });

@@ -1,8 +1,11 @@
 import type { CorralDefinition } from '@corral/contracts';
 import {
   Background,
+  BaseEdge,
   Controls,
   type Edge,
+  type EdgeProps,
+  getBezierPath,
   MarkerType,
   type Node,
   ReactFlow,
@@ -19,6 +22,40 @@ import { type ObservedRunRelation, observedRunRelations } from '../run/selectors
 import type { RunSessionStore } from '../run/session.ts';
 import { flowEdges, flowNodes } from './CorralCanvas.tsx';
 import { type CanvasNodeData, nodeTypes } from './NodeViews.tsx';
+
+function ObservedEdge({
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
+  label,
+  markerEnd,
+  style,
+}: EdgeProps) {
+  const [path, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+  return (
+    <BaseEdge
+      path={path}
+      label={label}
+      labelX={labelX}
+      // Bottom port names need space; keep higher targets at their own path midpoint.
+      labelY={labelY < sourceY ? labelY : Math.max(labelY, sourceY + 40)}
+      markerEnd={markerEnd}
+      style={style}
+    />
+  );
+}
+
+const edgeTypes = { observed: ObservedEdge };
 
 /**
  * The run's definition drawn with run state on each node. Read-only: it has
@@ -61,14 +98,31 @@ export function RunCanvas({
   const edges = useMemo<Edge[]>(() => {
     const observed = JSON.parse(relationSignature) as ObservedRunRelation[];
     return [
-      ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`)).map((edge) => ({
-        ...edge,
-        style: { ...edge.style, opacity: 0.4 },
-        deletable: false,
-        selectable: false,
-      })),
+      ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`))
+        .filter(
+          (edge) =>
+            !observed.some(
+              (relation) =>
+                relation.source === edge.source &&
+                relation.target === edge.target &&
+                relation.kind === edge.sourceHandle,
+            ),
+        )
+        .map((edge) => ({
+          ...edge,
+          ariaLabel: typeof edge.label === 'string' ? edge.label : undefined,
+          label: observed.some(
+            (relation) => relation.source === edge.source && relation.kind === edge.sourceHandle,
+          )
+            ? undefined
+            : edge.label,
+          style: { ...edge.style, opacity: 0.4 },
+          deletable: false,
+          selectable: false,
+        })),
       ...observed.map((relation) => ({
         id: `observed:${relation.kind}:${relation.source}:${relation.target}`,
+        type: 'observed',
         source: relation.source,
         sourceHandle: relation.kind,
         target: relation.target,
@@ -100,8 +154,10 @@ export function RunCanvas({
       <ReactFlowProvider>
         <div className="relative h-full w-full" role="application" aria-label={t('label')}>
           <ReactFlow
+            className="corral-flow"
             nodes={nodes}
             edges={edges}
+            edgeTypes={edgeTypes}
             nodeTypes={nodeTypes}
             nodesDraggable={false}
             nodesConnectable={false}

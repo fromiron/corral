@@ -48,6 +48,20 @@ function projectionWith(
 }
 
 describe('runResults', () => {
+  it('lists a repeated Output version once without merging distinct same-named results', () => {
+    const projection = projectionWith(
+      [
+        version('one', 'notes-a', 1, { name: 'notes' }),
+        version('two', 'notes-b', 1, { name: 'notes' }),
+      ],
+      { status: 'succeeded', output: { nodeId: 'out', artifactVersionIds: ['one', 'one', 'two'] } },
+    );
+    expect(runResults(projection).final.map((item) => item.artifactVersionId)).toEqual([
+      'one',
+      'two',
+    ]);
+  });
+
   it('lists every final output in Output order, not only the first', () => {
     const p = projectionWith(
       [version('v_a', 'report', 1), version('v_b', 'summary', 1), version('v_c', 'appendix', 1)],

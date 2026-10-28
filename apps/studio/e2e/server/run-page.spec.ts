@@ -157,3 +157,164 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   }
   expect(corral.errors).toEqual([]);
 });
+
+test('history announces its cursor, conversation clears it, and Results Back returns to chat', async ({
+  page,
+  corral,
+}, testInfo) => {
+  const started = await startRun(page, corral);
+  await expect
+    .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
+    .toBe('succeeded');
+  await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('button', { name: 'Previous', exact: true })
+    .click();
+  await expect(page.getByText('Historical view', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/atSeq=/);
+  await panelTab(page, 'Conversation');
+  await expect(page).not.toHaveURL(/atSeq=/);
+  await page.getByRole('link', { name: 'Open in Results', exact: true }).first().click();
+  await expect(page.getByTestId('result-body')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(requestBox(page)).toBeVisible();
+  await page.evaluate(() =>
+    localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'dark' })),
+  );
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.reload();
+  const historyTab = page.getByRole('tab', { name: 'Execution history', exact: true });
+  await expect(historyTab).toBeVisible();
+  await historyTab.click();
+  const flow = page.locator('.corral-flow').first();
+  await expect(flow).toBeVisible();
+  await expect(flow).toHaveCSS('color-scheme', 'dark');
+  const node = flow.locator('.react-flow__node [data-slot="card"]').first();
+  await expect(node).toHaveCSS('background-color', 'rgb(37, 37, 37)');
+  const labels = await flow.locator('.react-flow__edge-text').allTextContents();
+  expect(labels.filter((label) => label === 'delegates')).toHaveLength(0);
+  expect(labels.some((label) => label.includes('observed'))).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('dark-history.png') });
+  expect(corral.errors).toEqual([]);
+});
+
+let holdLifecycleReplies = false;
+const lifecycleReplies: (() => void)[] = [];
+test.describe('cancel recovery', () => {
+  test.use({
+    agentReply: {
+      reply: () => 'Retry response',
+      beforeReply: () =>
+        holdLifecycleReplies
+          ? new Promise<void>((resolve) => lifecycleReplies.push(resolve))
+          : Promise.resolve(),
+    },
+  });
+  test('cancelling a run explains its waiting tool as cancelled, including after reload', async ({
+    page,
+    corral,
+  }) => {
+    holdLifecycleReplies = true;
+    try {
+      const target = await startRun(page, corral);
+      await page.evaluate(async ({ runId, sessionId }) => {
+        const { csrfToken } = await (await fetch('/api/v1/session')).json();
+        const response = await fetch(`/api/v1/sessions/${sessionId}/entries`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify({
+            intent: 'next',
+            text: 'Cancel the waiting team',
+            state: 'started',
+            runId,
+          }),
+        });
+        if (!response.ok) throw new Error(`entry setup: ${response.status}`);
+      }, target);
+      await expect
+        .poll(() =>
+          Object.values(
+            corral.server.coordinator.getSnapshot(target.runId).projection.toolCalls,
+          ).some((tool) => tool.name === 'await_tasks'),
+        )
+        .toBe(true);
+      await corral.open(`/sessions/${target.sessionId}`);
+      await page
+        .getByRole('region', { name: 'Active run controls', exact: true })
+        .getByRole('button', { name: 'Cancel whole run', exact: true })
+        .click();
+      await page
+        .getByRole('dialog', { name: 'Cancel whole run', exact: true })
+        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
+        .click();
+      holdLifecycleReplies = false;
+      for (const release of lifecycleReplies.splice(0)) release();
+      await expect
+        .poll(() => corral.server.coordinator.getSnapshot(target.runId).projection.status)
+        .toBe('cancelled');
+      for (const reload of [false, true]) {
+        if (reload) await page.reload();
+        const tool = page
+          .getByTestId('chat-timeline')
+          .locator('li > code')
+          .filter({ hasText: /^await_tasks$/ })
+          .locator('..');
+        await expect(tool.getByText('This step was cancelled.', { exact: true })).toBeVisible();
+        await expect(tool).not.toContainText('This step failed.');
+        await expect(tool.locator('details')).not.toHaveAttribute('open');
+        await tool.getByText('Diagnostics', { exact: true }).click();
+        await expect(tool.locator('details code')).toHaveText('scope cancelled');
+      }
+      const waiting = Object.values(
+        corral.server.coordinator.getSnapshot(target.runId).projection.toolCalls,
+      ).find((tool) => tool.name === 'await_tasks');
+      if (!waiting) throw new Error('The waiting tool is missing');
+      await page.goto(
+        `${corral.server.url}/sessions/${target.sessionId}?panel=run&run=${target.runId}&view=run&execution=${waiting.executionId}`,
+      );
+      await expect(page.getByTestId('run-monitor')).toBeVisible();
+      await expect(page.getByTestId(`failed-step-${waiting.toolCallId}`)).toHaveCount(0);
+      expect(corral.errors).toEqual([]);
+    } finally {
+      holdLifecycleReplies = false;
+      for (const release of lifecycleReplies.splice(0)) release();
+    }
+  });
+  test('reload retains unconfirmed cancellation and Retry preserves the new draft', async ({
+    page,
+    corral,
+  }) => {
+    await corral.open('/');
+    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    holdLifecycleReplies = true;
+    await requestBox(page).fill('Retry this cancelled request');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => lifecycleReplies.length).toBeGreaterThan(0);
+    const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
+    await controls.getByRole('button', { name: 'Cancel whole run', exact: true }).click();
+    await expect(controls).toContainText('Cancellation has not been sent');
+    await page.reload();
+    const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
+    await expect(confirmation).toContainText('Cancellation has not been sent');
+    await confirmation
+      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
+      .click();
+    holdLifecycleReplies = false;
+    for (const release of lifecycleReplies.splice(0)) release();
+    const retry = page.getByRole('button', { name: 'Retry request', exact: true });
+    await expect(retry).toBeEnabled();
+    await requestBox(page).fill('Keep my next draft');
+    await retry.click();
+    await expect(
+      page.getByTestId('chat-timeline').getByText('Retry this cancelled request', { exact: true }),
+    ).toHaveCount(2);
+    await expect(requestBox(page)).toHaveValue('Keep my next draft');
+    expect(corral.errors).toEqual([]);
+  });
+});

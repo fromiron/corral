@@ -526,11 +526,11 @@ async function startHeadless(values: { demo?: boolean }, workspace: string) {
   const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
     '@corral/server'
   );
-  const { ScriptedAgentAdapter } = await import('@corral/testkit');
+  const { ScriptedAgentAdapter, simulatedReply } = await import('@corral/testkit');
   return startCorralServer({
     workspace,
     port: 0,
-    agents: new ScriptedAgentAdapter({ turns: 2 }),
+    agents: new ScriptedAgentAdapter({ turns: 2, reply: simulatedReply, appendNotes: false }),
     decisionProviders: defaultDecisionProviders(),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });
@@ -564,14 +564,14 @@ async function startServer(
   const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
     '@corral/server'
   );
-  const { ScriptedAgentAdapter } = await import('@corral/testkit');
+  const { ScriptedAgentAdapter, simulatedReply } = await import('@corral/testkit');
   return startCorralServer({
     workspace,
     port,
     staticDir,
     allowSharedDevelopment,
     decisionProviders: defaultDecisionProviders(),
-    agents: new ScriptedAgentAdapter({ turns: 2 }),
+    agents: new ScriptedAgentAdapter({ turns: 2, reply: simulatedReply, appendNotes: false }),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });
 }
