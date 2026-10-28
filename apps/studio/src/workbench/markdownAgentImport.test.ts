@@ -307,6 +307,21 @@ describe('Markdown agent import', () => {
         })),
       },
     };
+    const almostFull = {
+      ...full,
+      definition: { ...full.definition, nodes: full.definition.nodes.slice(0, 19) },
+    };
+    expect(
+      importMarkdownAgent({
+        draft: almostFull,
+        candidate: parseMarkdownAgent(source),
+        parentNodeId: 'node_0',
+        modelProfile: 'connected',
+        profiles: profile,
+        mappings: { Read: 'read_file', Glob: 'list_files' },
+        suffix: 'last',
+      }).definition.nodes,
+    ).toHaveLength(20);
     expect(() =>
       importMarkdownAgent({
         draft: full,

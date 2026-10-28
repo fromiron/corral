@@ -105,6 +105,8 @@ Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`;
 
 Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Long conversation output retains the established 15 / 28px reader role as an explicit reading-density exception. Preserve Korean and English labels without clipping or forced single-line paragraphs.
 
+Editable fields use the 16px `--fs-field-touch` size on coarse pointers to prevent iOS focus zoom, preserving their existing line height.
+
 ## Layout, Spacing and Shape
 
 Use one workspace grammar: sidebar, top bar, task content and contextual panels. Settings remain an overlay on the current work. Do not change task ownership or introduce a second navigation system as part of visual styling.
