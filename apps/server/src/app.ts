@@ -10,7 +10,7 @@ import {
   CanvasLayout,
   CaptureCheckpoint,
   type Clock,
-  type CommandError,
+  CommandError,
   ContentHash,
   ContentSearch,
   ConversationSource,
@@ -316,6 +316,7 @@ const UpdateSession = z.strictObject({
   archived: z.boolean().optional(),
   expectedRevision: z.int().min(1),
 });
+const EntryRefusal = CommandError.extend({ message: z.string().min(1).max(2000) });
 const NewEntry = z.strictObject({
   harness: HarnessBindingRef.optional(),
   permissionMode: PermissionMode.optional(),
@@ -329,6 +330,7 @@ const NewEntry = z.strictObject({
   runId: Identifier.nullable().optional(),
   executionId: Identifier.nullable().optional(),
   detail: z.string().max(2000).nullable().optional(),
+  refusal: EntryRefusal.nullable().optional(),
   commandId: Identifier.nullable().optional(),
   // The template an auto request ran with.
   auto: SessionEntryAuto.nullable().optional(),
@@ -337,6 +339,7 @@ const EntryChange = z.strictObject({
   state: EntryState,
   runId: Identifier.nullable().optional(),
   detail: z.string().max(2000).nullable().optional(),
+  refusal: EntryRefusal.nullable().optional(),
   auto: SessionEntryAuto.nullable().optional(),
 });
 const ExplainRequest = z.strictObject({
@@ -386,8 +389,15 @@ function ifMatchRevision(header: string | undefined): number | null {
   return value && /^[1-9]\d*$/.test(value) ? Number(value) : null;
 }
 
-const fail = (reply: FastifyReply, code: ErrorCode, message: string) =>
-  reply.code(STATUS[code]).send({ error: { code, message } satisfies CommandError });
+const fail = (
+  reply: FastifyReply,
+  code: ErrorCode,
+  message: string,
+  owner?: CommandError['owner'],
+) =>
+  reply
+    .code(STATUS[code])
+    .send({ error: { code, message, ...(owner ? { owner } : {}) } satisfies CommandError });
 
 const receiptStatus = (receipt: Receipt) => {
   if (receipt.error) return STATUS[receipt.error.code];
@@ -1832,7 +1842,8 @@ async function createCorralServer(
   }
   const workspaceFail = (reply: FastifyReply, error: unknown) => {
     if (error instanceof WorkspaceError) return fail(reply, error.code, error.message);
-    if (error instanceof ToolRefusal) return fail(reply, 'SCHEMA_INVALID', error.message);
+    if (error instanceof ToolRefusal)
+      return fail(reply, error.owner ? error.code : 'SCHEMA_INVALID', error.message, error.owner);
     // Git's message can name local paths; only the step is reported.
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the folder operation failed');
   };
@@ -2000,7 +2011,12 @@ async function createCorralServer(
 
   const gitFail = (reply: FastifyReply, error: unknown) => {
     if (error instanceof WorkspaceError || error instanceof ToolRefusal)
-      return fail(reply, error.code, error.message);
+      return fail(
+        reply,
+        error.code,
+        error.message,
+        error instanceof ToolRefusal ? error.owner : undefined,
+      );
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the Git request failed');
   };
   const GitDiffQuery = GitDiffRequest.omit({ target: true, head: true }).extend({
@@ -2203,7 +2219,12 @@ async function createCorralServer(
   });
   const documentFail = (reply: FastifyReply, error: unknown) => {
     if (error instanceof WorkspaceError || error instanceof ToolRefusal)
-      return fail(reply, error.code, error.message);
+      return fail(
+        reply,
+        error.code,
+        error.message,
+        error instanceof ToolRefusal ? error.owner : undefined,
+      );
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the document operation failed');
   };
   registerFileEditRoutes(app, files, documentFail);

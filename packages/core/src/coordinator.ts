@@ -291,9 +291,11 @@ export interface FileTools {
 /** A refusal a tool backend explains to the agent (no local paths in the message). */
 export class ToolRefusal extends Error {
   readonly code: CommandError['code'];
-  constructor(code: CommandError['code'], message: string) {
+  readonly owner?: CommandError['owner'];
+  constructor(code: CommandError['code'], message: string, owner?: CommandError['owner']) {
     super(message);
     this.code = code;
+    this.owner = owner;
   }
 }
 
@@ -1854,7 +1856,11 @@ export class Coordinator {
     } catch (error) {
       return refuse(
         error instanceof ToolRefusal
-          ? { code: error.code, message: error.message }
+          ? {
+              code: error.code,
+              message: error.message,
+              ...(error.owner ? { owner: error.owner } : {}),
+            }
           : { code: 'STORAGE_UNAVAILABLE', message: 'working copy admission failed' },
       );
     }

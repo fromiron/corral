@@ -31,6 +31,7 @@ import {
   type RunProjection,
   type RunStore,
   SPEC_HARD_CAPS,
+  ToolRefusal,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -588,5 +589,33 @@ describe('Coordinator: activations', () => {
       (p) => p.status === 'awaiting_user',
     );
     expect(Object.values(waiting.approvals)[0]?.kind).toBe('user_action');
+  });
+});
+
+it('preserves structured terminal ownership in a rejected start receipt', async () => {
+  const owner = {
+    kind: 'terminal' as const,
+    id: 'custom_owner',
+    sessionId: 'session',
+    state: 'uncertain' as const,
+  };
+  const { transport } = coordinator({
+    files: {
+      acquireRun: () => {
+        throw new ToolRefusal('RUN_ALREADY_ACTIVE', 'termination unconfirmed', owner);
+      },
+      available: () => true,
+      execute: async () => ({}),
+    },
+  });
+  const result = await transport.startRun({
+    ...start(linearCorral(['writer']), 'blocked_terminal'),
+    sessionId: 'session',
+  });
+  expect(result.runId).toBeNull();
+  expect(result.receipt.error).toEqual({
+    code: 'RUN_ALREADY_ACTIVE',
+    message: 'termination unconfirmed',
+    owner,
   });
 });

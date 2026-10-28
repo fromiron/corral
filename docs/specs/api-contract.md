@@ -198,6 +198,8 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 
 ## 3. 오류
 
+터미널 writer 충돌은 기존 접수 코드(`RUN_ALREADY_ACTIVE`, 읽기 차단은 `RESOURCE_CAPACITY`)와 함께 구조화된 `owner {kind: "terminal", id, sessionId, state: "active" | "uncertain"}`를 반환한다. `uncertain`은 종료 증명이 없는 보호 상태이며 일반 점유와 다른 안내를 제공한다. 소유권 정보는 시작 receipt·HTTP 오류·세션의 선택적 `refusal` 기록에 보존한다. 세션에 저장하는 오류 문구는 기존 detail과 같은 2,000자 한도를 따른다. 새 오류의 분류·복구 링크는 코드와 owner를 사용하고, 구조화 필드가 없는 과거 기록만 기존 메시지로 호환한다. owner는 진단/탐색 정보일 뿐 종료·쓰기 권한을 부여하지 않는다.
+
 | 코드 | HTTP | 의미 |
 |---|---|---|
 | SCHEMA_INVALID | 400 | 이해하지 못하는 형식·unknown field |
@@ -321,7 +323,7 @@ Bell의 2026-10-25 결정에 따라 이전 Ultra 기록은 읽지 않는다. `ca
 
 ## 사용자 PTY 전송과 복구
 
-정본 schema는 `packages/contracts/src/terminal.ts`다. 기존 Host/Origin/cookie/CSRF 경계를 유지한다. input/resize만 일반 mutation 횟수 대신 host 공통 1초당 120 frames·256KiB 예산을 사용한다. malformed frame도 예산에 포함한다. ack는 host 수신 확인이며 명령 완료가 아니다. UI는 UTF-8 16KiB로 나누되 64KiB 대기 입력을 넘는 전체 붙여넣기는 거절하며, 연결 유실로 확정되지 않은 입력은 자동 재전송하지 않는다.
+정본 schema는 `packages/contracts/src/terminal.ts`다. 기존 Host/Origin/cookie/CSRF 경계를 유지한다. input/resize만 일반 mutation 횟수 대신 host 공통 1초당 120 frames·256KiB 예산을 사용한다. malformed frame도 예산에 포함한다. ack는 host 수신 확인이며 명령 완료가 아니다. UI는 UTF-8 16KiB로 나누되 64KiB 대기 입력을 넘는 전체 붙여넣기는 거절하며, 연결 유실로 확정되지 않은 입력은 자동 재전송하지 않는다. 적용 전 제한에서 반환한 429는 Retry-After(초)만큼 기다린 뒤 원래 입력 순서·프로세스 generation·controller generation으로 재시도할 수 있다. 연속 대기 input은 16KiB 안에서 합치되 resize와 순서를 바꾸지 않고, 64KiB 큐 한도에는 전송 중인 입력도 포함한다.
 
 출력은 최초 크기와 처음부터의 ANSI/resize 순서를 4MiB까지 보관한다. 초과하면 prefix를 폐기하고 replayAvailable=false로 표시한다. 이미 연결된 화면은 이어 읽지만 새 화면이나 cursor gap에 임의 ANSI tail을 주어 복구 성공으로 표시하지 않는다. 종료 후 보관은 5분이며 그 뒤 재생 불가를 명시한다. status metadata는 출력 cursor를 전진시키지 않는다. client는 xterm write callback 완료 후 cursor를 갱신한다. 느린 viewer는 기존 bounded SSE writer로 분리하고 셸은 유지한다.
 

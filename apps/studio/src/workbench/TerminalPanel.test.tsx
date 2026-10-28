@@ -323,3 +323,10 @@ it('a recovery target selects its terminal instead of the remembered terminal', 
     vi.unstubAllGlobals();
   }
 });
+
+it('does not tell an already stopped terminal to stop again when replay is unavailable', () => {
+  const html = render({ ...terminal, state: 'exited', stopped: true, replayAvailable: false });
+  expect(html).toContain('Output replay is unavailable');
+  expect(html).not.toContain('Stop this terminal before creating another');
+  expect(html).not.toContain('retained history limit was reached');
+});

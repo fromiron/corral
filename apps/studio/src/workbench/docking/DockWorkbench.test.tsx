@@ -40,6 +40,7 @@ async function fixture(
       | 'renderGraph'
       | 'graphTitle'
       | 'controls'
+      | 'terminalStatus'
       | 'onActiveContext'
       | 'fileWorkAvailable'
     >
@@ -605,4 +606,18 @@ it('review preset publishes its Changes destination while keeping the selected d
   const restored = await fixture({ selectedPanel: 'changes' });
   expect(sessionTab(restored.container, 'changes')?.getAttribute('aria-selected')).toBe('true');
   expect(activePane(restored.container)).toContain('file.ts');
+});
+
+it('keeps the terminal activity indicator on its tab while another pane is active and removes it on stop', async () => {
+  const props: Partial<DockWorkbenchProps> = {
+    terminalStatus: <span role="img" aria-label="Terminal running" />,
+    fileWorkAvailable: true,
+  };
+  const f = await fixture(props);
+  await act(async () => f.ref.current?.openContext('terminal'));
+  await act(async () => f.ref.current?.openContext('files'));
+  expect(f.container.querySelector('[role="tab"] [aria-label="Terminal running"]')).not.toBeNull();
+  props.terminalStatus = null;
+  await f.renderSession('session');
+  expect(f.container.querySelector('[aria-label="Terminal running"]')).toBeNull();
 });
