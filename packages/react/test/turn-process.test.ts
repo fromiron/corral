@@ -48,6 +48,7 @@ describe('buildTurnProcess', () => {
         kind: 'tool',
         scope: 'lead',
         epoch: 1,
+        dispatched: true,
         reservationId: null,
         status: 'settled',
         outcome: id === 'stopped' ? 'cancelled' : 'failed',

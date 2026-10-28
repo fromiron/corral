@@ -257,6 +257,7 @@ it('does not list a cancelled tool as a failed step or choose it as the failure 
       kind: 'tool',
       scope: 'worker',
       epoch: 1,
+      dispatched: true,
       reservationId: null,
       status: 'settled',
       outcome: id === 'stopped' ? 'cancelled' : 'failed',
@@ -266,7 +267,9 @@ it('does not list a cancelled tool as a failed step or choose it as the failure 
   expect.soft(container.querySelector('[data-testid="failed-step-stopped"]')).toBeNull();
   expect(container.querySelector('[data-testid="failed-step-failed"]')).not.toBeNull();
 
-  projection.toolCalls.stopped!.executionId = 'cancelled-execution';
+  const stopped = projection.toolCalls.stopped;
+  if (!stopped) throw new Error('The cancelled tool fixture is missing');
+  stopped.executionId = 'cancelled-execution';
   const widgetRoot = createRoot(document.createElement('div'));
   let destination: string | null | undefined;
   function Probe() {
