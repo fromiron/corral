@@ -1,4 +1,7 @@
 {
+  "Select": {
+    "placeholder": "선택…"
+  },
   "SettingsDialog": {
     "unsaved": "저장하지 않은 설정",
     "unsavedHint": "변경을 저장하고 이동하거나, 버리거나, 계속 편집할 수 있습니다.",
@@ -86,7 +89,7 @@
     "serverShort": "로컬 · 시뮬레이션",
     "demoShort": "데모 · 시뮬레이션",
     "liveNoModel": "모델 연결 필요",
-    "liveNoModelNote": "실제 모델을 쓸 수 있지만 아직 연결된 모델이 없어요. 설정 › 모델에서 로그인하세요. 그 전까지 실행은 시뮬레이션이에요.",
+    "liveNoModelNote": "연결된 모델이 없습니다. 설정 › 모델에서 연결하기 전까지 실제 모델 요청은 차단됩니다. 시뮬레이션을 체험하려면 별도 데모를 여세요.",
     "connectionFailed": "서버에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.",
     "retryConnection": "다시 시도",
     "retry": "다시 시도"
@@ -1459,7 +1462,7 @@
     "runSettings": "실행 설정",
     "autoModel": "모델",
     "autoHint": "요청에 맞춰 진행합니다. 모델:",
-    "autoNotReady": "{model}이 연결되지 않았습니다. 설정 › 모델에서 연결하세요.",
+    "autoNotReady": "모델 연결 필요: {model}. 설정 › 모델에서 연결하세요.",
     "autoFallback": "선택 실패, 에이전트 하나로 실행",
     "autoTemplate": {
       "single": "자동 · 에이전트 하나",
@@ -1922,7 +1925,7 @@
     "developmentBuild": "개발 빌드"
   },
   "Composer": {
-    "viewingOtherRun": "실행 #{active}이 진행 중이며 지금은 실행 #{viewed}을 보고 있습니다.",
+    "viewingOtherRun": "진행 중: 실행 #{active} · 현재 보는 실행: #{viewed}",
     "viewActiveRun": "현재 실행 보기",
     "destination": {
       "next": "보낼 대상: 이 세션의 새 실행 · 후속 요청",

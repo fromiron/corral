@@ -98,5 +98,17 @@ test.describe('no connected models', () => {
     );
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(requestBox(page)).toHaveValue('Do not send without a connection.');
+    await page.getByRole('button', { name: 'Connect a model', exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toContainText('Live requests are blocked');
+    await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
+    await page.reload();
+    await expect(page.getByTestId('models-not-ready')).toBeVisible();
+    await page.getByRole('button', { name: '모델 연결 필요', exact: true }).hover();
+    await expect(page.getByRole('tooltip')).toContainText('실제 모델 요청은 차단됩니다');
+    await corral.open('/projects/default?settings=project-defaults');
+    await expect(
+      page.getByRole('combobox', { name: '프로젝트 기본값', exact: true }),
+    ).toContainText('선택…');
+    await page.screenshot({ path: '/tmp/corral-followup-select-ko.png' });
   });
 });

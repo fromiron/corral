@@ -1,4 +1,7 @@
 {
+  "Select": {
+    "placeholder": "Select…"
+  },
   "SettingsDialog": {
     "unsaved": "Unsaved settings",
     "unsavedHint": "Save these changes before leaving, discard them, or keep editing.",
@@ -86,7 +89,7 @@
     "serverShort": "Local · simulated",
     "demoShort": "Demo · simulated",
     "liveNoModel": "Connect a model",
-    "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated.",
+    "liveNoModelNote": "No model is connected. Live requests are blocked until you connect one in Settings › Models. To try simulated agents, open the separate demo.",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
     "retryConnection": "Try again",
     "retry": "Try again"
@@ -2686,7 +2689,7 @@
     "retention": "Keeps the latest 50 and the last 30 days. Pinned checkpoints and restore history stay retained.",
     "pin": "Keep",
     "preview": "Preview restore",
-    "restoreExplain": "Restore {count} changed files in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
+    "restoreExplain": "Restore {count, plural, one {# changed file} other {# changed files}} in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
     "restore": "Restore working copy",
     "close": "Close preview",
     "loadFailed": "Could not load checkpoints.",
