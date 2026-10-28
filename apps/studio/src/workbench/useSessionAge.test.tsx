@@ -40,3 +40,39 @@ it('shows just now for a new session and advances without changing its timestamp
     await act(async () => root.unmount());
   }
 });
+
+it.each([
+  ['en', 'Just now'],
+  ['ko', '방금'],
+])(
+  'never describes a newly saved item as future in %s when the clock snapshot is stale',
+  async (locale, justNow) => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const now = new Date('2026-10-28T00:00:00Z');
+    vi.useFakeTimers({ now });
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    function Age({ stamp }: { stamp: string }) {
+      const age = useSessionAge();
+      return <span>{age(stamp)}</span>;
+    }
+    const render = (stamp: string) =>
+      act(async () =>
+        root.render(
+          <IntlProvider locale={locale} now={now} messages={{ Sessions: { justNow } }}>
+            <Age stamp={stamp} />
+          </IntlProvider>,
+        ),
+      );
+    try {
+      await render(new Date(now.getTime() - 10_000).toISOString());
+      expect(container.textContent).toBe(justNow);
+      const saved = new Date(now.getTime() + 120_000).toISOString();
+      expect(Date.parse(saved)).toBeGreaterThan(now.getTime());
+      await render(saved);
+      expect(container.textContent).toBe(justNow);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);

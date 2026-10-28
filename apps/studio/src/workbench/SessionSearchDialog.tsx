@@ -1,4 +1,4 @@
-import type { SessionSearchHit, SessionSearchResult } from '@corral/contracts';
+import type { SessionSearchHit, SessionSearchResult, SessionSearchSource } from '@corral/contracts';
 import {
   Button,
   Dialog,
@@ -11,7 +11,7 @@ import {
   Switch,
 } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 
@@ -43,13 +43,101 @@ export function groupSearchHits(hits: SessionSearchHit[]) {
   return [...groups.values()];
 }
 
-export function SearchExcerpt({ text, query }: { text: string; query: string }) {
+export function SearchExcerpt({
+  text,
+  query,
+  matches,
+}: {
+  text: string;
+  query: string;
+  matches?: SessionSearchHit['excerptMatches'];
+}) {
+  if (matches) {
+    const content: ReactNode[] = [];
+    let offset = 0;
+    for (const { start, end } of matches) {
+      content.push(
+        text.slice(offset, start),
+        <mark key={`${start}:${end}`}>{text.slice(start, end)}</mark>,
+      );
+      offset = end;
+    }
+    content.push(text.slice(offset));
+    return content;
+  }
   const needle = query.trim().normalize('NFKC');
   if (!needle) return text;
   const literal = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return text.split(new RegExp(`(${literal})`, 'gi')).map((part, index) =>
     // biome-ignore lint/suspicious/noArrayIndexKey: static text matches have no state or identity beyond their position
     index % 2 ? <mark key={index}>{part}</mark> : part,
+  );
+}
+
+function SearchResult({
+  hit,
+  query,
+  onNavigate,
+}: {
+  hit: SessionSearchHit;
+  query: string;
+  onNavigate(): void;
+}) {
+  const t = useTranslations('SessionSearch');
+  const tw = useTranslations('Workbench');
+  const sources = hit.sources ?? [hit];
+  const link = (source: SessionSearchSource, content: ReactNode) => (
+    <Link
+      to="/sessions/$sessionId"
+      params={{ sessionId: hit.sessionId }}
+      search={
+        source.entryId
+          ? { message: source.entryId }
+          : source.runId
+            ? {
+                panel: 'run',
+                run: source.runId,
+                view: source.artifactVersionId ? 'results' : 'run',
+                result: source.artifactVersionId ?? undefined,
+                atSeq: source.artifactVersionId ? undefined : (source.sequence ?? undefined),
+              }
+            : {}
+      }
+      onClick={onNavigate}
+      className="block rounded fill-group p-2 hover:bg-subtle"
+    >
+      {content}
+    </Link>
+  );
+  const content = (
+    <>
+      <span className="block text-xs text-muted-foreground">
+        {hit.runNumber ? `${tw('runNumber', { number: hit.runNumber })} · ` : ''}
+        {[...new Set(sources.map((source) => t(`kind.${source.kind}`)))].join(' · ')}
+        {hit.archived ? ` · ${t('archived')}` : ''}
+        {sources.length > 1 ? ` · ${t('sourceCount', { count: sources.length })}` : ''}
+      </span>
+      <span className="block whitespace-pre-wrap break-words text-xs">
+        <SearchExcerpt text={hit.excerpt} query={query} matches={hit.excerptMatches} />
+      </span>
+    </>
+  );
+  return sources.length > 1 ? (
+    <details>
+      <summary className="rounded p-2">{content}</summary>
+      <ul className="space-y-1 pl-3">
+        {sources.map((source, index) => (
+          <li key={JSON.stringify(source)}>
+            {link(
+              source,
+              `${t(`kind.${source.kind}`)} · ${t('sourceNumber', { number: index + 1 })}`,
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
+  ) : (
+    link(hit, content)
   );
 }
 
@@ -162,32 +250,11 @@ export function SessionSearchDialog({
                 <ul className="space-y-1">
                   {group.hits.map((hit) => (
                     <li key={searchHitKey(hit)}>
-                      <Link
-                        to="/sessions/$sessionId"
-                        params={{ sessionId: hit.sessionId }}
-                        search={
-                          hit.entryId
-                            ? { message: hit.entryId }
-                            : hit.runId
-                              ? {
-                                  panel: 'run',
-                                  run: hit.runId,
-                                  view: hit.artifactVersionId ? 'results' : 'run',
-                                  artifact: hit.artifactVersionId ?? undefined,
-                                }
-                              : {}
-                        }
-                        onClick={() => onOpenChange(false)}
-                        className="block rounded fill-group p-2 hover:bg-subtle"
-                      >
-                        <span className="text-xs text-muted-foreground">
-                          {t(`kind.${hit.kind}`)}
-                          {hit.archived ? ` · ${t('archived')}` : ''}
-                        </span>
-                        <p className="whitespace-pre-wrap break-words text-xs">
-                          <SearchExcerpt text={hit.excerpt} query={query} />
-                        </p>
-                      </Link>
+                      <SearchResult
+                        hit={hit}
+                        query={query}
+                        onNavigate={() => onOpenChange(false)}
+                      />
                     </li>
                   ))}
                 </ul>

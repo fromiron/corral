@@ -1508,7 +1508,9 @@
       "ready": "No run yet",
       "empty": "Empty session",
       "cancelled": "Cancelled"
-    }
+    },
+    "restoreNamed": "Restore session: {title}",
+    "listSessionUnavailable": "This session is no longer available."
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1657,7 +1659,8 @@
     "removalGitUnknown": "The copy's Git changes could not be read.",
     "removalComments": "{count, plural, one {# review comment not sent} other {# review comments not sent}}",
     "removalUncertain": "{count, plural, one {# file write with unknown outcome} other {# file writes with unknown outcome}}",
-    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}"
+    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}",
+    "noCopyReadOnly": "Read-only: this session has no working copy."
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -2841,7 +2844,9 @@
     "paletteScope": "Commands and current project session titles and purposes",
     "dialogScope": "All projects · titles and purposes. Enable private messages and results to search their text.",
     "searchBody": "Search messages and results",
-    "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text."
+    "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text.",
+    "sourceCount": "{count, plural, one {# source} other {# sources}}",
+    "sourceNumber": "Source {number}"
   },
   "MessageBranch": {
     "open": "Branch from this message",

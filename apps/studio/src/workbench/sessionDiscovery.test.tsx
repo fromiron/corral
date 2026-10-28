@@ -69,3 +69,14 @@ it('highlights literal matches while keeping markup and regular expression chara
   );
   expect(renderToStaticMarkup(<SearchExcerpt text="plain" query="" />)).toBe('plain');
 });
+
+it('uses server match ranges without changing the original Unicode or case', () => {
+  const text = 'CASE ﬃ e\u0301';
+  const matches = [
+    { start: 5, end: 6 },
+    { start: 7, end: 9 },
+  ];
+  expect(renderToStaticMarkup(<SearchExcerpt text={text} query="ffi" matches={matches} />)).toBe(
+    'CASE <mark>ﬃ</mark> <mark>e\u0301</mark>',
+  );
+});

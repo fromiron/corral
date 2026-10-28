@@ -1508,7 +1508,9 @@
       "ready": "실행 전",
       "empty": "빈 세션",
       "cancelled": "취소됨"
-    }
+    },
+    "restoreNamed": "세션 되살리기: {title}",
+    "listSessionUnavailable": "이 세션을 더 이상 찾을 수 없습니다."
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",
@@ -1657,7 +1659,8 @@
     "removalGitUnknown": "사본의 Git 변경을 읽지 못했습니다.",
     "removalComments": "보내지 않은 검토 의견 {count, plural, other {#개}}",
     "removalUncertain": "결과를 모르는 파일 쓰기 {count, plural, other {#개}}",
-    "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}"
+    "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}",
+    "noCopyReadOnly": "작업 사본이 없어 읽기 전용입니다."
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -2841,7 +2844,9 @@
     "paletteScope": "명령과 현재 프로젝트의 세션 제목·목적",
     "dialogScope": "모든 프로젝트 · 제목과 목적을 검색합니다. 본문을 찾으려면 비공개 메시지·결과 포함을 켜세요.",
     "searchBody": "메시지와 결과 검색",
-    "privateEmpty": "제목·목적에 일치하는 결과가 없습니다. 본문을 찾으려면 비공개 메시지·결과 포함을 켜세요."
+    "privateEmpty": "제목·목적에 일치하는 결과가 없습니다. 본문을 찾으려면 비공개 메시지·결과 포함을 켜세요.",
+    "sourceCount": "출처 {count}개",
+    "sourceNumber": "출처 {number}"
   },
   "MessageBranch": {
     "open": "이 메시지에서 분기",
