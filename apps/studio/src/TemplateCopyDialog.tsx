@@ -1,3 +1,4 @@
+import type { CorralSummary } from '@corral/core';
 import {
   Button,
   Dialog,
@@ -8,19 +9,21 @@ import {
   DialogTitle,
   Input,
 } from '@corral/react/design-kit';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from './services.tsx';
-import { createFromTemplate, type WorkspaceTemplateId } from './templates.ts';
+import { createFromTemplate, templateCopyName, type WorkspaceTemplateId } from './templates.ts';
 
 export function TemplateCopyDialog({
   template,
   projectId,
+  corrals,
   onSaved,
   onClose,
 }: {
   template: WorkspaceTemplateId;
   projectId: string;
+  corrals: CorralSummary[];
   onSaved(corralId: string): Promise<void>;
   onClose(): void;
 }) {
@@ -31,6 +34,9 @@ export function TemplateCopyDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const nameHintId = useId();
+  const savedName = templateCopyName(name.trim(), projectId, corrals);
+  const adjustedName = name.trim() && savedName !== name.trim();
   const save = async () => {
     if (busy || !name.trim()) return;
     setBusy(true);
@@ -58,6 +64,7 @@ export function TemplateCopyDialog({
         <DialogPanel>
           <Input
             aria-label={t('copyName')}
+            aria-describedby={adjustedName ? nameHintId : undefined}
             value={name}
             disabled={busy}
             onChange={(event) => setName(event.target.value)}
@@ -65,6 +72,11 @@ export function TemplateCopyDialog({
               if (event.key === 'Enter' && !event.nativeEvent.isComposing) void save();
             }}
           />
+          {adjustedName ? (
+            <p id={nameHintId} role="status" className="text-sm text-muted-foreground">
+              {t('copyNameAdjusted', { name: savedName })}
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-sm text-danger">
               {error}

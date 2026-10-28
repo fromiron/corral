@@ -142,6 +142,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   const t = useTranslations('Harness'),
     r = useTranslations('Resources');
   const n = useTranslations('Navigation');
+  const projectsText = useTranslations('Projects');
   const navigation = useSettingsNavigation();
   const { harnesses: api } = useServices();
   const [resources, setResources] = useState<HarnessResourceView[]>([]);
@@ -479,14 +480,24 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                     </Button>
                   </div>
                   {meta?.usages.length ? (
-                    <div className="text-xs text-muted-foreground">
+                    <section aria-label={r('usages')} className="text-xs text-muted-foreground">
                       <p>{r('usages')}</p>
                       {meta.usages.map((usage) => (
-                        <p key={usage.id}>
-                          {usage.scope} · {usage.name} · r{usage.revision}
-                        </p>
+                        <div key={usage.id}>
+                          <p>
+                            {t(usage.scope)}
+                            {usage.scope === 'personal'
+                              ? ''
+                              : ` · ${usage.name || (usage.id === 'project:default' ? projectsText('defaultName') : r('usageUnknownProject'))}`}{' '}
+                            · r{usage.revision}
+                          </p>
+                          <details>
+                            <summary>{r('usageDiagnostics')}</summary>
+                            <code className="select-all break-all">{usage.id}</code>
+                          </details>
+                        </div>
                       ))}
-                    </div>
+                    </section>
                   ) : null}
                 </div>
               ) : null}

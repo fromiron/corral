@@ -1,7 +1,18 @@
 import { createKeyValueCorralRepository } from '@corral/core';
 import { emptyDraft } from '@corral/react';
 import { expect, it } from 'vitest';
-import { createFromTemplate } from './templates.ts';
+import { createFromTemplate, templateCopyName } from './templates.ts';
+
+it('previews the same suffix sequence as save without considering teams from another project', () => {
+  const teams = [
+    { name: 'Research team', projectId: 'one' },
+    { name: 'Research team (2)', projectId: 'one' },
+    { name: 'Research team (3)', projectId: 'two' },
+  ];
+  expect(templateCopyName('Research team', 'one', teams)).toBe('Research team (3)');
+  expect(templateCopyName('Research team', 'two', teams)).toBe('Research team');
+  expect(templateCopyName('New name', 'one', teams)).toBe('New name');
+});
 
 it('names repeated template copies distinctly within their project', async () => {
   const values = new Map<string, string>();

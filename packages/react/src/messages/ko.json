@@ -471,6 +471,7 @@
     "saveCopyTitle": "팀 사본 저장",
     "copyName": "팀 이름",
     "saveCopyEdit": "사본 저장하고 편집",
+    "copyNameAdjusted": "같은 이름의 팀이 있습니다. 저장할 이름: {name}",
     "template": {
       "research-team": {
         "name": "조사 팀",
@@ -2547,6 +2548,8 @@
     "restore": "복구",
     "archiveConfirm": "목록에서 제거할까요? 현재 사용하는 설정과 과거 실행에서는 계속 사용됩니다. 보관 목록에서 복구할 수 있습니다.",
     "usages": "설정에서 사용 중인 버전",
+    "usageDiagnostics": "진단 정보",
+    "usageUnknownProject": "확인할 수 없는 프로젝트",
     "unused": "참조하는 작업 방식이 없습니다.",
     "usedBy": "사용 중인 작업 방식",
     "newCopy": "편집한 후속 버전이 있습니다.",
