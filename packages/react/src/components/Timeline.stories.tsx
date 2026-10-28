@@ -87,12 +87,18 @@ export const TenThousandEvents: Story = {
     expect(rows().length).toBeLessThan(60);
 
     // Filters: only what the reader asked for.
-    await userEvent.selectOptions(canvas.getByLabelText('Actor'), 'user');
+    const popup = within(canvasElement.ownerDocument.body);
+    await userEvent.click(canvas.getByRole('combobox', { name: 'Actor' }));
+    await userEvent.click(await popup.findByRole('option', { name: 'You' }));
+    await waitFor(() => expect(popup.queryByRole('listbox')).toBeNull());
     await waitFor(() =>
       expect(canvas.getByTestId('timeline-count')).toHaveTextContent('1,050 events'),
     );
     for (const r of rows()) expect(r).toHaveTextContent('directive.accepted');
-    await userEvent.selectOptions(canvas.getByLabelText('Execution'), 'exec_0001');
+    await userEvent.click(canvas.getByRole('combobox', { name: 'Execution' }));
+    await userEvent.click(await popup.findByRole('option', { name: 'exec_0001' }));
+    await waitFor(() => expect(popup.queryByRole('listbox')).toBeNull());
     for (const r of rows()) expect(r).toHaveTextContent('exec_0001');
+    expect(canvas.getByRole('combobox', { name: 'Execution' })).toHaveFocus();
   },
 };

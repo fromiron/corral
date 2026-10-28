@@ -21,6 +21,8 @@ import {
 export { wouldCreateCycle } from './cycles.ts';
 export * from './ports.ts';
 
+export const MAX_CANVAS_NODES = 20;
+
 // Static validation and IR lowering. The editor shows these
 // diagnostics, and the runtime compiles again before running: the editor is not a trust boundary.
 
@@ -132,8 +134,11 @@ export function compileDefinition(input: unknown, options: CompileOptions = {}):
   const definition = parsed.data;
 
   const context = new Context(definition);
-  if (definition.nodes.length > 20)
-    context.error('SCHEMA_INVALID', 'this version supports at most 20 nodes per Corral');
+  if (definition.nodes.length > MAX_CANVAS_NODES)
+    context.error(
+      'SCHEMA_INVALID',
+      `this version supports at most ${MAX_CANVAS_NODES} nodes per Corral`,
+    );
   checkIdentity(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkStructure(context);
