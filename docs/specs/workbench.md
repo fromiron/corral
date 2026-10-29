@@ -258,3 +258,5 @@ Node launch는 등록된 사본 내부 프로그램을 실행한다. Chromium la
 **배포 명령의 exit 0은 배포 성공이 아니다.** 명령 종료와 로컬 프로세스 정리가 확인돼도 외부 결과가 없으면 uncertain이다. 사람이 누른 별도 결과 확인 명령만 원래 operation·환경·source commit/tree·배포 ID와 일치하는 응답을 읽어 pending/succeeded/failed를 판정한다. 결과 URL은 HTTPS 또는 loopback HTTP이며 URL 자격 증명·query·fragment를 허용하지 않는다. 읽기 전용 상태 조회가 재배포나 결과 확인 명령을 자동 실행하지 않는다.
 
 응답 유실·timeout·host 재시작은 원래 operation의 상태를 확인하며 자동 재배포하지 않는다. **로컬 작업 중지/확인 종료는 외부 배포의 취소나 rollback이 아니다.** 소유 프로세스 정리를 확인하면 사본 예약을 해제하고 terminal cancelled와 외부 결과 미확인을 남긴다. 종료한 operation의 앱 내 결과 확인은 다시 실행하지 않으며 대상 서비스에서 수동으로 확인한다. 로컬 mock 검증은 실제 외부 provider 배포·readback의 실증을 대신하지 않는다. 결과 확인 명령의 데이터 계약은 [API 계약](api-contract.md)을 따른다.
+
+서버 세션이 만료되거나 서버가 재시작되면 새 시작 링크가 필요한 이유와 다시 확인 동작을 제공한다. 회의록 패널은 넓혀 읽을 수 있다. 확장 중에는 대화 목록을 숨기고 기록 영역 안에서 스크롤하며 컴포저와 편집 중인 결정 초안을 유지한다. 기록을 접으면 대화 목록을 다시 표시한다.

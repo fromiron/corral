@@ -639,7 +639,22 @@
     "notWithSubscription": "Not available with a subscription sign-in. Choose another model for this profile.",
     "changeModel": "Change model",
     "fileHint": "Advanced: the same setting is in .corral/config.json.",
-    "editModels": "Edit models"
+    "editModels": "Edit models",
+    "configured": "Configured",
+    "testConnection": "Test connection",
+    "connectionTestHint": "Checks the model-list endpoint without sending a model request. A successful check does not guarantee model availability.",
+    "imageSupported": "Images supported",
+    "textOnly": "Text only",
+    "imageUnknown": "Image support unconfirmed",
+    "connectionTest": {
+      "connected": "Endpoint responded.",
+      "authentication": "Credentials were rejected or are missing. Update the key and test again.",
+      "rateLimit": "Requests are limited. Wait before testing again.",
+      "server": "The endpoint is temporarily unavailable. Retry later.",
+      "redirect": "The endpoint redirected the request. Review its configured address.",
+      "unsupported": "This endpoint does not support the connection check. Review its API base address.",
+      "connection": "Could not connect. Check the address, network, and local server."
+    }
   },
   "Markdown": {
     "imageNotLoaded": "Image not loaded: {alt} ({host})",
@@ -2117,7 +2132,10 @@
     "terminal": "A terminal is holding this working copy. Open its controls, stop it explicitly, then send again.",
     "terminalUncertain": "A terminal has not confirmed termination, so this working copy stays protected. Open its controls and diagnostic details, then check the process on the host. Reconnecting or deleting the copy does not prove termination.",
     "diagnostics": "Diagnostic details",
-    "openTerminal": "Open terminal controls"
+    "openTerminal": "Open terminal controls",
+    "image": "This model has no confirmed image input support. Remove the image or choose a model that supports images.",
+    "capability": "This operation needs a capability that is unavailable in the current environment. Check the diagnostics before trying again.",
+    "chooseImageModel": "Choose an image model"
   },
   "Harness": {
     "heading": "Work styles",
@@ -2634,7 +2652,17 @@
     "browserExecutable": "Installed Chromium executable",
     "browserReady": "Text required in the HTTP readiness response",
     "browserDevCommand": "Registered dev server command",
-    "configureMcpFirst": "Manage authentication and launch trust in MCP server settings before discovering tools here."
+    "configureMcpFirst": "Manage authentication and launch trust in MCP server settings before discovering tools here.",
+    "probeFailure": {
+      "connection": "The MCP server refused the connection. Start the server and check its address and port, then test again.",
+      "dns": "The MCP server name could not be resolved. Check the address and network, then test again.",
+      "timeout": "The MCP server did not respond in time. Check that it is running, then test again.",
+      "authentication": "The MCP server rejected authorization. Sign in again or update its credentials, then test again.",
+      "rateLimit": "The MCP server is limiting requests. Wait before testing again.",
+      "server": "The MCP server is temporarily unavailable. Retry when it recovers.",
+      "protocol": "The MCP server rejected the request. Check the endpoint address and transport.",
+      "unknown": "The MCP connection test failed. Check the server, transport, and launch settings, then test again."
+    }
   },
   "Navigation": {
     "app": "App",
@@ -4183,7 +4211,9 @@
     "records": "Minutes, plan and handoff",
     "minutesReady": "The secretary has prepared the minutes and plan.",
     "viewMinutes": "Review minutes and plan",
-    "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan."
+    "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan.",
+    "expandRecords": "Expand records",
+    "compactRecords": "Compact records"
   },
   "MeetingsDecisions": {
     "decisionLabel": "Decision v{number} · {goal}",
@@ -4390,6 +4420,24 @@
       "REVISION_CONFLICT": "The target changed. Check its current state before trying again.",
       "CAPABILITY_DENIED": "This operation was not allowed. Check the recorded reason.",
       "LIMIT_REACHED": "This operation reached a limit."
+    },
+    "provider": {
+      "AUTH": "The model provider rejected the credentials.",
+      "QUOTA": "The model account has no remaining quota.",
+      "RATE_LIMIT": "The model provider is limiting requests.",
+      "CONTEXT_OVERFLOW": "The request exceeds this model’s context limit.",
+      "SERVER": "The model provider is temporarily unavailable.",
+      "TRANSPORT": "The model provider could not be reached.",
+      "CANCELLED": "The model request was cancelled."
+    },
+    "recovery": {
+      "AUTH": "Open Settings → Models to reconnect or replace the API key, then retry.",
+      "QUOTA": "Check the account’s quota or choose another configured model, then retry.",
+      "RATE_LIMIT": "Wait a moment, then retry. Repeated immediate requests may extend the limit.",
+      "CONTEXT_OVERFLOW": "Shorten the message or start a new conversation with the needed context.",
+      "SERVER": "Wait for the provider to recover or choose another configured model, then retry.",
+      "TRANSPORT": "Check the network and endpoint address. Start the local model server if needed, then retry.",
+      "CANCELLED": "Send the message again when you are ready."
     }
   }
 }

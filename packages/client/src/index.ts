@@ -1347,6 +1347,18 @@ export interface ProviderAuthView {
   endpoint: string | null;
   /** A key was entered for another address than the one the workspace names now. */
   endpointChanged: boolean;
+  connectionTest?: {
+    kind:
+      | 'connected'
+      | 'authentication'
+      | 'rateLimit'
+      | 'server'
+      | 'redirect'
+      | 'unsupported'
+      | 'connection';
+    status: number | null;
+    checkedAt: string;
+  } | null;
   subscription: boolean;
   expiresAt: string | null;
   login: LoginView | null;
@@ -1372,6 +1384,7 @@ export interface ModelProfileView {
   modelName: string | null;
   available: boolean;
   reasoning: boolean | null;
+  imageInput?: boolean | null;
   reasoningCapabilities?: ReasoningCapabilities;
   contextWindow: number | null;
   contextPolicy?: ProfileContextPolicy;
@@ -1553,6 +1566,16 @@ export class ModelsApi {
         goal,
         operationId: options.operationId ?? globalThis.crypto.randomUUID(),
       }),
+    });
+  }
+
+  testEndpoint(
+    providerId: string,
+    revision: string,
+  ): Promise<NonNullable<ProviderAuthView['connectionTest']>> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/probe`, {
+      method: 'POST',
+      body: JSON.stringify({ revision }),
     });
   }
 
