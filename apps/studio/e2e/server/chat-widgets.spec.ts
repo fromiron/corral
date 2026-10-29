@@ -61,6 +61,48 @@ async function send(page: Page, text: string) {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
 }
 
+test('plain completion is announced once and opening history is silent', async ({
+  page,
+  corral,
+}) => {
+  const finish = gate();
+  corral.fake?.setResponses([
+    async () => {
+      await finish.waiting;
+      return fauxAssistantMessage('The requested review is complete.');
+    },
+  ]);
+  try {
+    await session(page, corral);
+    await send(page, 'Review the current state.');
+    const dock = page.getByTestId('composer-dock');
+    await expect(dock.getByText('Running', { exact: true })).toBeVisible();
+    await expect(
+      page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
+    ).toHaveCount(0);
+    finish.release();
+    await expect(
+      dock.locator('[aria-live="polite"]').filter({ hasText: 'Run status: Succeeded' }),
+    ).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId('app-sidebar')
+        .getByText(/Succeeded/)
+        .first(),
+    ).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('chat-timeline')).toContainText(
+      'The requested review is complete.',
+    );
+    await expect(
+      page.getByTestId('composer-dock').locator('[aria-live="polite"]'),
+    ).not.toContainText(['Run status: Succeeded']);
+    expect(corral.errors).toEqual([]);
+  } finally {
+    finish.release();
+  }
+});
+
 test('live plans, context, manual collapse and an answer use the primary session flow', async ({
   page,
   corral,

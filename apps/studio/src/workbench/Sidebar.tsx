@@ -571,7 +571,8 @@ export const Sidebar = memo(function Sidebar({
                         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span className="truncate leading-3.5">{session.title}</span>
                           <span className="truncate text-micro leading-3 text-muted-foreground">
-                            {ts(`listState.${state}`)} · {ago(session.updatedAt)}
+                            {run ? status(run.status) : ts(`listState.${state}`)} ·{' '}
+                            {ago(session.updatedAt)}
                           </span>
                         </span>
                         {session.pinned ? <Pin size={12} /> : null}
