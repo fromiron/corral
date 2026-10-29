@@ -177,6 +177,7 @@ import {
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
+import { TerminalWriterNotice } from '../workbench/TerminalWriterNotice.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
@@ -2971,6 +2972,7 @@ export function Composer({
       <ComposerSurface.Host>
         <ComposerPlan />
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 p-2">
+          {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
           {viewingOtherRun ? (
             <Banner data-testid="viewed-run-warning" status="warning" size="compact">
               <BannerTitle>
