@@ -1173,6 +1173,28 @@
         "loop": "Review loop",
         "decision": "Review decision",
         "output": "Output"
+      },
+      "securityReview": {
+        "name": "Security PR review",
+        "roles": {
+          "researcher": {
+            "name": "Security reviewer",
+            "duty": "Review the pull request for security issues. Record the affected code, evidence, impact, and uncertainty; do not invent access to unavailable code."
+          },
+          "writer": {
+            "name": "Findings author",
+            "duty": "Write a concise security review summary from the evidence, separating confirmed issues from unverified concerns and describing suggested fixes."
+          },
+          "reviewer": {
+            "name": "Independent verifier",
+            "duty": "Independently double check each security finding against the provided code and evidence. Reject unsupported claims and request specific corrections."
+          }
+        },
+        "criteria": {
+          "evidence": "Tie each security finding to specific code and evidence; state when code or context is missing.",
+          "verification": "Independently verify the findings and distinguish confirmed issues from unverified concerns.",
+          "approval": "Provide a concise summary and suggested fixes for the user to approve."
+        }
       }
     }
   },
