@@ -305,6 +305,7 @@
     "giveCriteria": "Add a criteria input"
   },
   "Run": {
+    "permissionSettings": "Tool rules for future runs",
     "heading": "Run",
     "scopeSaved": "Saves this team first, then starts a separate run. It is not added to a conversation.",
     "scopeDraft": "Starts a separate run of this draft. It is not added to a conversation.",

@@ -232,9 +232,10 @@ it('changes only display density while keeping results and required attention ou
   expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
   for (const chatDensity of ['results', 'basic', 'detailed'] as const) {
     await act(async () => preferences.setState({ chatDensity }));
-    const action = f.container.querySelector('[data-testid="run-required-action"]');
+    const action = f.container.querySelector('[data-testid="approval-approval"]');
     expect(action).not.toBeNull();
     expect(action?.closest('details')).toBeNull();
+    expect(action?.textContent).toContain('Continue with this version');
     expect(f.container.textContent).toContain('failed_tool');
     expect(f.container.querySelector('[data-testid="team-activity"]')?.textContent).toContain(
       'Execution failed visibly',

@@ -8,6 +8,7 @@
 - SDK는 실행 소유 worker에서 구동한다. 서버 프로세스가 native 확장을 직접 로드하지 않는다. 기존 core worker와 SDK worker의 호환 경로를 보존한다.
 - turn·압축·재시도·확장 중첩 모델 호출은 Corral permit과 같은 Run 예산을 사용한다. 자격 증명 없는 proxy와 host의 요청별 허가 경계를 우회하지 않는다.
 - 도구는 최종 인자·descriptor·현재 정책으로 승인한다. Corral broker를 거치지 않는 Pi 기본 도구로 교체하지 않는다. 승인 뒤 변경·예외·unknown 효과는 fail closed다.
+- 도구 승인 카드는 해당 요청의 대화 안에서도 승인·거절할 수 있다. 검증한 호출 본문에서 파일 경로와 쓸 내용 또는 교체 전후를 먼저 보여 주며, 현재 파일을 읽지 않았다면 전체 파일 diff나 새 파일이라고 주장하지 않는다. 원시 인자와 지문은 접힌 상세 정보에 남긴다. 반복 호출의 규칙은 하네스 설정으로 직접 이동해 별도로 저장하며, 한 번 허용은 현재 호출에만 적용된다. 대화 밀도·작업 기록 접힘으로 승인 카드를 숨기지 않는다.
 - 역할 allowlist·resource revision·directive·요청 context를 고정하고 실제 payload의 hash·크기를 기록한다. 공개 이벤트에 본문·키·내부 경로를 노출하지 않는다.
 - 필수 확장 로드 실패는 다른 runtime으로 조용히 fallback하지 않는다. 취소는 소유 worker·MCP·codemode의 실제 종료와 늦은 이벤트를 구분한다. Task/Run 완료는 Coordinator가 확정한다.
 - `sdk-worker.ts`, `worker.ts`, `worker-tools.ts`, `worker-leases.ts`가 구현 입구다. SDK 세션의 settled가 곧 제품 성공은 아니다.
