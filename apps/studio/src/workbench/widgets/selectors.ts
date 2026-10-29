@@ -418,7 +418,7 @@ export function presentContext(input: {
 }
 
 /** Why an outcome is unclear: an effect, usage still held against the budget, or a stop. */
-export type UnclearCause = 'effect' | 'usage' | 'termination';
+export type UnclearCause = 'effect' | 'model' | 'usage' | 'termination';
 
 export function actionRequired(input: {
   pendingApprovals: number;
@@ -451,6 +451,7 @@ export function actionRequired(input: {
 
 const unclearCopy = {
   effect: 'actionUnclear',
+  model: 'actionModelUnknown',
   usage: 'actionUsageUnknown',
   termination: 'actionStopUnconfirmed',
 } as const;
@@ -478,9 +479,11 @@ export function effectAttention(projection: RunProjection | null) {
     Object.values(projection?.executions ?? {}).some(
       (execution) => execution.error?.endsWith('termination_unconfirmed') === true,
     );
-  const unknownEffects = effects.filter((effect) => effect.outcome === 'unknown').length;
+  const unknown = effects.filter((effect) => effect.outcome === 'unknown');
+  const unknownEffects = unknown.length;
   const unclearCauses: UnclearCause[] = [
-    ...(unknownEffects ? (['effect'] as const) : []),
+    ...(unknown.some((effect) => effect.kind !== 'model_request') ? (['effect'] as const) : []),
+    ...(unknown.some((effect) => effect.kind === 'model_request') ? (['model'] as const) : []),
     ...(budgetUnknown ? (['usage'] as const) : []),
     ...(terminationUnknown ? (['termination'] as const) : []),
   ];

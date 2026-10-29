@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { TerminalView } from '@corral/contracts';
 import type { Page } from '@playwright/test';
 import { requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -26,6 +27,90 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
 }
 
 test.use({ replyDelayMs: 2000 });
+test('terminal guidance follows observed active, uncertain and ended ownership without releasing it', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const created = await api(page, '/sessions', 'POST', {
+    projectId: 'default',
+    title: 'Observed terminal owner',
+  });
+  const sessionId = created.session.sessionId as string;
+  // This is an explicit read-response fixture. Actual OS cleanup is covered by the PTY flow below.
+  let terminal: TerminalView = {
+    terminalId: 'terminal_fixture',
+    generation: 'generation_fixture',
+    shellId: 'bash',
+    state: 'running',
+    target: {
+      hostId: 'fixture',
+      projectId: 'default',
+      bindingId: 'binding_fixture',
+      sessionId,
+      copyGeneration: 1,
+    },
+    initialCols: 80,
+    initialRows: 24,
+    cols: 80,
+    rows: 24,
+    lastSequence: 0,
+    replayAvailable: true,
+    controllerGeneration: 0,
+    controller: null,
+    exitCode: null,
+    error: null,
+  };
+  const mutations: string[] = [];
+  await page.route(`**/api/v1/sessions/${sessionId}/terminals**`, async (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET') {
+      mutations.push(request.method());
+      await route.abort();
+      return;
+    }
+    const url = new URL(request.url());
+    if (url.pathname.endsWith('/events')) {
+      await route.fulfill({
+        contentType: 'text/event-stream',
+        body: `data: ${JSON.stringify({ type: 'status', terminal })}\n\n`,
+      });
+    } else {
+      await route.fulfill({
+        json: url.pathname.endsWith('/terminals')
+          ? {
+              target: terminal.target,
+              available: true,
+              reason: null,
+              shells: [{ id: 'bash', label: 'Bash' }],
+              terminals: [terminal],
+            }
+          : terminal,
+      });
+    }
+  });
+  await corral.open(`/sessions/${sessionId}`);
+  const notice = page.getByTestId('terminal-writer-notice');
+  await expect(notice).toContainText('A terminal is holding this working copy');
+  await notice.getByRole('link', { name: 'Open terminal controls' }).click();
+  const panel = page.getByTestId('terminal-panel');
+  await expect(panel).toContainText('Releasing input only disconnects this view’s keyboard');
+  terminal = { ...terminal, state: 'uncertain', replayAvailable: false };
+  await panel.getByRole('button', { name: 'Refresh terminals' }).click();
+  await expect(
+    page.getByRole('tab').getByRole('img', { name: 'Terminal termination needs confirmation' }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await expect(notice).toContainText('termination has not been confirmed');
+  await notice.screenshot({ path: test.info().outputPath('terminal-uncertain-notice.png') });
+  await notice.getByRole('link', { name: 'Open terminal controls' }).click();
+  terminal = { ...terminal, state: 'exited', exitCode: 0 };
+  await panel.getByRole('button', { name: 'Refresh terminals' }).click();
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  expect(mutations).toEqual([]);
+});
+
 test('terminal ownership explains refusal and explicit stop restores sending without a reload', async ({
   page,
   corral,
@@ -65,7 +150,21 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     const input = panel.getByRole('textbox', { name: 'Terminal output and input' });
     await input.pressSequentially('sleep 120');
     await input.press('Enter');
+    await panel.getByRole('button', { name: 'Release input', exact: true }).click();
+    await expect(panel).toContainText('Releasing input only disconnects this view’s keyboard');
+    await expect(panel.getByRole('button', { name: 'Stop terminal', exact: true })).toBeEnabled();
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await expect(page.getByTestId('terminal-writer-notice')).toContainText(
+      'A terminal is holding this working copy',
+    );
+    await page
+      .getByTestId('terminal-writer-notice')
+      .screenshot({ path: test.info().outputPath('terminal-before-send.png') });
+    await expect(
+      page
+        .getByTestId('terminal-writer-notice')
+        .getByRole('link', { name: 'Open terminal controls' }),
+    ).toBeVisible();
     await requestBox(page).fill('Summarize the fixture');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     const refusal = page.getByTestId('refusal').last();
@@ -85,6 +184,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await expect(sidebarSession).toBeVisible();
     await expect(panel.getByText('Exit code 0', { exact: true })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await expect(page.getByTestId('terminal-writer-notice')).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Summarize the fixture');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await openTerminal.click();

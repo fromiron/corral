@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
+import { panelTab, requestBox, teamFromTemplate } from './workbench.ts';
 
 // Layout regressions from the workbench audit (#93–#95): a control that is in the DOM but
 // clipped by a scroller or replaced by another pane still fails a person.
@@ -60,6 +60,7 @@ test('#93 the @ reference menu is not clipped by the composer scroller', async (
 
 /** Opens a pane, in its own area, from the + menu of the area that shows `beside`. */
 async function openFromMenu(page: Page, name: string, beside = 'Files') {
+  await panelTab(page, 'Files');
   const header = page
     .locator('.dv-groupview')
     .filter({ has: page.getByRole('tab', { name: beside, exact: true }) });
@@ -67,23 +68,22 @@ async function openFromMenu(page: Page, name: string, beside = 'Files') {
   await page.getByRole('menuitem', { name, exact: true }).click();
 }
 
-test('#95 every pane tab is selected by a click on it and none closes', async ({ page }) => {
+test('#95 every file pane tab selects its pane without closing another', async ({ page }) => {
   await blankSession(page);
-  // A new session shows the panes its replies link to; the rest open from an area's + menu.
-  await openFromMenu(page, 'Git');
   await openFromMenu(page, 'Terminal');
-  await openFromMenu(page, 'Checks');
+  await openFromMenu(page, 'Tasks & preview');
   const tabs = page.locator('[data-tab-panel-id]');
-  const before = await tabs.evaluateAll((list) =>
-    list.map((node) => node.getAttribute('data-tab-panel-id')),
-  );
-  for (const name of ['Git', 'Changes', 'Run', 'Results', 'Files', 'Terminal', 'Checks']) {
-    const tab = page.getByRole('tab', { name, exact: true });
+  const before = await tabs.count();
+  for (const name of ['Files', 'Terminal', 'Tasks & preview']) {
+    const tab = page.locator('.dv-groupview').getByRole('tab', { name, exact: true });
     await tab.hover();
     await tab.click();
     await expect(tab).toHaveAttribute('aria-selected', 'true');
   }
-  await expect(tabs).toHaveCount(before.length);
+  await panelTab(page, 'Conversation');
+  await expectReachable(requestBox(page));
+  await panelTab(page, 'Files');
+  await expect(tabs).toHaveCount(before);
 });
 
 test('#95 an untrusted folder offers its trust settings, and a linked folder drops the link hint', async ({
@@ -114,13 +114,15 @@ test('#94 at 390px a session opens on the conversation and other panes open and 
   const url = page.url().split('?')[0] as string;
   // A remembered side pane (here: Run) must not replace the conversation on a phone.
   await page.goto(`${url}?panel=run`);
-  await expect(page.getByRole('tab', { name: 'Run', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tab', { name: 'Execution history', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(url);
   await expectReachable(requestBox(page));
+  await panelTab(page, 'Files');
   const toolbar = page.getByTestId('dock-toolbar');
   expect((await toolbar.boundingBox())?.height ?? 0).toBeLessThanOrEqual(52);
   // Another pane opens from the one switcher, then closes back to the conversation.
@@ -129,7 +131,7 @@ test('#94 at 390px a session opens on the conversation and other panes open and 
   await page.getByRole('option', { name: 'Files', exact: true }).click();
   await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
   await expect(requestBox(page)).toBeHidden();
-  await toolbar.getByRole('button', { name: 'Back to conversation', exact: true }).click();
+  await panelTab(page, 'Conversation');
   await expectReachable(requestBox(page));
 });
 
@@ -141,11 +143,12 @@ test('at 390px opening another pane and coming back keeps the same draft box', a
   await requestBox(page).evaluate((node) => {
     (node as HTMLElement & { marked?: boolean }).marked = true;
   });
+  await panelTab(page, 'Files');
   const toolbar = page.getByTestId('dock-toolbar');
   await toolbar.getByRole('combobox', { name: 'Panes', exact: true }).click();
   await page.getByRole('option', { name: 'Files', exact: true }).click();
   await expect(requestBox(page)).toBeHidden();
-  await toolbar.getByRole('button', { name: 'Back to conversation', exact: true }).click();
+  await panelTab(page, 'Conversation');
   await expect(requestBox(page)).toHaveValue('Preserved draft');
   expect(
     await requestBox(page).evaluate((node) => (node as HTMLElement & { marked?: boolean }).marked),
@@ -159,6 +162,12 @@ test('#94 shrinking an open session to 390px keeps the conversation reachable', 
   await page.setViewportSize({ width: 390, height: 844 });
   await expectReachable(requestBox(page));
   const toolbar = page.getByTestId('dock-toolbar');
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tab', { name: 'Conversation', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await panelTab(page, 'Files');
   await expect(toolbar.getByRole('combobox', { name: 'Panes', exact: true })).toBeVisible();
   await expect(toolbar.getByRole('combobox', { name: 'Layout', exact: true })).toHaveCount(0);
 });
@@ -178,13 +187,15 @@ test('#70 #86 Git, Terminal and running commands open from the palette, / and th
     'true',
   );
   await expect(page).toHaveURL(/panel=terminal/);
+  await panelTab(page, 'Conversation');
   await requestBox(page).fill('/git');
   await expect(page.getByRole('listbox', { name: 'Commands' })).toBeVisible();
   await requestBox(page).press('Enter');
-  await expect(page.getByRole('tab', { name: 'Git', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tab', { name: 'Changes', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   const url = page.url().split('?')[0] as string;
   await page.goto(`${url}?panel=tools`);
   await expect(page.getByRole('tab', { name: 'Tasks & preview', exact: true })).toHaveAttribute(
@@ -202,28 +213,26 @@ const painted = (target: Locator) =>
     return top !== null && (top === node || node.contains(top));
   });
 
-test('#71 hiding the panel hides the side and bottom panes, and showing brings them back', async ({
+test('#71 switching to conversation hides file panes and returning restores them', async ({
   page,
 }) => {
   await blankSession(page);
-  await openFromMenu(page, 'Checks');
-  const banner = page.getByRole('banner');
-  const files = page.getByRole('tab', { name: 'Files', exact: true });
-  const checks = page.getByRole('tab', { name: 'Checks', exact: true });
-  expect(await painted(files)).toBe(true);
-  // Panes are on screen, so the toggle offers to hide them.
-  const hide = banner.getByRole('button', { name: 'Hide the panel', exact: true });
-  await expect(hide).toHaveAttribute('aria-pressed', 'true');
-  await hide.click();
-  await expect.poll(() => painted(files)).toBe(false);
-  await expect.poll(() => painted(checks)).toBe(false);
+  await requestBox(page).fill('Keep this draft while browsing files.');
+  await openFromMenu(page, 'Tasks & preview');
+  const checks = page
+    .locator('.dv-groupview')
+    .getByRole('tab', { name: 'Tasks & preview', exact: true });
+  expect(await painted(checks)).toBe(true);
+  await panelTab(page, 'Conversation');
+  await expect(checks).toBeHidden();
   await expectReachable(requestBox(page));
-  const show = banner.getByRole('button', { name: 'Show the panel', exact: true });
-  await expect(show).toHaveAttribute('aria-pressed', 'false');
-  await show.click();
+  await expect(requestBox(page)).toHaveValue('Keep this draft while browsing files.');
+  await page
+    .getByRole('tablist', { name: 'Session views' })
+    .getByRole('tab', { name: 'Files', exact: true })
+    .click();
   await expect.poll(() => painted(checks)).toBe(true);
-  await expect(banner.getByRole('button', { name: 'Hide the panel', exact: true })).toBeVisible();
-  await expectReachable(requestBox(page));
+  await expect(checks).toHaveAttribute('aria-selected', 'true');
 });
 
 test('#72 an older finished run is labelled as the selected run, not the last run', async ({
@@ -238,6 +247,7 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
       timeout: 20_000,
     });
   }
+  await panelTab(page, 'Execution history');
   await expect(page.getByText('Last run').first()).toBeAttached();
   const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
   await picker.click();
@@ -252,7 +262,13 @@ async function finishedRunPage(page: Page) {
   await requestBox(page).press('Control+Enter');
   await expect(timeline.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
   // The demo keeps runs in this page's worker, so the run page is reached in-app.
-  await page.locator('a[href*="/runs/run_"]').first().dispatchEvent('click');
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox', { name: 'Search commands' }).fill('Open run');
+  await palette
+    .getByRole('option', { name: /^Open run run_/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/runs\/run_/);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
 }
@@ -282,15 +298,19 @@ test('#73 a saved team keeps its edit link on the run page', async ({ page }) =>
   await expect(page.getByText('not found', { exact: false })).toHaveCount(0);
 });
 
-test('#75 the panel tooltip exposes its keyboard shortcut', async ({ page }) => {
+test('#75 primary views remain reachable through their tab keyboard path', async ({ page }) => {
   await blankSession(page);
-  await page
-    .getByRole('banner')
-    .getByRole('button', { name: 'Hide the panel', exact: true })
-    .hover();
-  const key = page.getByRole('tooltip').locator('kbd');
-  await expect(key).toBeVisible();
-  await expect(key).not.toHaveText('');
+  await panelTab(page, 'Files');
+  await panelTab(page, 'Conversation');
+  const views = page.getByRole('tablist', { name: 'Session views' });
+  await views.getByRole('tab', { name: 'Conversation', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(views.getByRole('tab', { name: 'Files', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(views.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 });
 
 test('#76 dragging a step across a Loop boundary says it changes the team, and Undo restores it', async ({
@@ -377,11 +397,16 @@ test('#83 the narrow settings menu keeps the desktop groups and order', async ({
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   const desktop = await dialog
     .getByTestId('settings-sidebar')
-    .locator('section')
+    .locator('[data-sidebar="group"]')
     .evaluateAll((groups) =>
       groups.map((group) => [
         group.getAttribute('aria-label'),
-        [...group.querySelectorAll('a')].map((link) => link.textContent?.trim()),
+        [...group.querySelectorAll('a')].map((link) => {
+          const accessible = link.cloneNode(true) as HTMLElement;
+          for (const decoration of accessible.querySelectorAll('[aria-hidden="true"]'))
+            decoration.remove();
+          return accessible.textContent?.trim();
+        }),
       ]),
     );
   await page.setViewportSize({ width: 500, height: 757 });
@@ -491,6 +516,7 @@ test('#90 each area offers its panes and folds layout, groups and the save rule 
   await blankSession(page);
   // No second header row: the areas' own headers carry the pane controls.
   await expect(page.getByTestId('dock-toolbar')).toHaveCount(0);
+  await panelTab(page, 'Files');
   const side = page
     .locator('.dv-groupview')
     .filter({ has: page.getByRole('tab', { name: 'Files', exact: true }) });
@@ -508,34 +534,29 @@ test('#90 each area offers its panes and folds layout, groups and the save rule 
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   // Splitting a non-document pane is refused with its reason.
-  const files = page.getByRole('tab', { name: 'Files', exact: true });
-  const chat = page.locator('[data-dock-panel-id="context:chat"]');
-  const box = await chat.boundingBox();
-  if (!box) throw new Error('no chat pane');
-  await files.dragTo(chat, { targetPosition: { x: box.width - 8, y: box.height / 2 } });
+  const files = page.locator('.dv-groupview').getByRole('tab', { name: 'Files', exact: true });
+  const pane = page.locator('[data-dock-panel-id="context:files"]');
+  const box = await pane.boundingBox();
+  if (!box) throw new Error('no files pane');
+  await files.dragTo(pane, { targetPosition: { x: box.width - 8, y: box.height / 2 } });
   await expect(page.getByText('Only documents can be split into a new area.')).toBeVisible();
 });
 
-test('#90 a pane whose area is closed opens beside the conversation, not over it', async ({
-  page,
-}) => {
+test('#90 contextual panes open in Files and preserve the conversation draft', async ({ page }) => {
   await blankSession(page);
-  // From the conversation's own + menu too: the pane goes to its area, not over the request.
-  await openFromMenu(page, 'Checks', 'Conversation');
+  await requestBox(page).fill('Keep this conversation draft.');
+  await panelTab(page, 'Tasks & preview');
+  await expect(
+    page.locator('.dv-groupview').getByRole('tab', { name: 'Tasks & preview', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await expect(requestBox(page)).toBeHidden();
+  await panelTab(page, 'Terminal');
+  await expect(
+    page.locator('.dv-groupview').getByRole('tab', { name: 'Terminal', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await panelTab(page, 'Conversation');
   await expectReachable(requestBox(page));
-  await expect(page.getByRole('tab', { name: 'Checks', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
-  await palette.getByRole('combobox', { name: 'Search commands' }).fill('terminal');
-  await palette.getByRole('combobox', { name: 'Search commands' }).press('Enter');
-  await expect(page.getByRole('tab', { name: 'Terminal', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expectReachable(requestBox(page));
+  await expect(requestBox(page)).toHaveValue('Keep this conversation draft.');
 });
 
 test('#91 a running run is paused from one place, the active run controls, at any width', async ({
@@ -562,10 +583,11 @@ test('#91 Git changes have one home: an old review Git address opens the Git pan
   const url = page.url().split('?')[0] as string;
   await page.goto(`${url}/review?scope=git`);
   await expect(page).toHaveURL(/\/sessions\/session_[^/]+\?(?:.*&)?panel=git/);
-  await expect(page.getByRole('tab', { name: 'Git', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tab', { name: 'Changes', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   // The review screen offers its change scopes, not a second Git view.
   await page.goto(`${url}/review`);
   await page.getByRole('combobox', { name: 'Compare', exact: true }).click();

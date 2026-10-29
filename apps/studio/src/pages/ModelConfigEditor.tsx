@@ -5,6 +5,8 @@ import {
   type ModelConfig,
   type ProfileConfig,
 } from '@corral/client';
+import { SCHEMA_VERSION } from '@corral/contracts';
+import { parseWorkspaceConfig } from '@corral/core';
 import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -65,9 +67,21 @@ export function ModelConfigEditor({
     const timer = setTimeout(() => {
       try {
         const modelProfiles = profiles.map(fromProfile);
+        const modelProviders = endpoints.map(fromDraft);
+        // Editing a connection necessarily passes through incomplete drafts. Preview only
+        // valid shapes; explicit Save keeps the server's validation and revision guard.
+        const draft = parseWorkspaceConfig({
+          schemaVersion: SCHEMA_VERSION,
+          modelProfiles,
+          modelProviders,
+        });
+        if (!draft.ok) {
+          setPreviewError(t('previewUnavailable'));
+          return;
+        }
         void models
           .previewConfig(
-            { revision: config.revision, modelProfiles, modelProviders: endpoints.map(fromDraft) },
+            { revision: config.revision, modelProfiles, modelProviders },
             controller.signal,
           )
           .then((result) => {

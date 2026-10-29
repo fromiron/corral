@@ -150,6 +150,10 @@ test.describe('viewed and active execution', () => {
       await expect(page.getByTestId('viewed-run-warning')).toContainText(
         'Viewing Run #1 while Run #2 is active',
       );
+      await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
+      await expect(page.getByTestId('composer-destination')).toContainText('instruction');
+      await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
+      await page.getByRole('option', { name: /^Queue/ }).click();
       await box.fill('Keep this queued request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
         'Send to: next run in this session · queue',

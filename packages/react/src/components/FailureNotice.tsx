@@ -15,17 +15,25 @@ export function FailureNotice({
   // Older simulated settlements stored this fixed cancellation diagnostic without a code field.
   const reasonCode =
     code ?? (message === 'TARGET_TERMINAL: scope cancelled' ? 'TARGET_TERMINAL' : null);
+  const provider =
+    !cancelled &&
+    /^the model request failed: (?:HTTP [1-5]\d{2} \()?((?:AUTH|QUOTA|RATE_LIMIT|CONTEXT_OVERFLOW|SERVER|TRANSPORT|CANCELLED))(?:\))?$/.exec(
+      message,
+    )?.[1];
   return (
     <div className="w-full text-xs">
       <p className={cancelled ? 'text-muted-foreground' : 'text-danger'}>
         {t(
           cancelled
             ? 'cancelled'
-            : reasonCode && t.has(`code.${reasonCode}`)
-              ? `code.${reasonCode}`
-              : 'unknown',
+            : provider
+              ? `provider.${provider}`
+              : reasonCode && t.has(`code.${reasonCode}`)
+                ? `code.${reasonCode}`
+                : 'unknown',
         )}
       </p>
+      {provider ? <p className="mt-1 text-muted-foreground">{t(`recovery.${provider}`)}</p> : null}
       <details className="mt-1 text-muted-foreground">
         <summary className="cursor-pointer">{t('diagnostics')}</summary>
         <code className="select-text whitespace-pre-wrap break-words">

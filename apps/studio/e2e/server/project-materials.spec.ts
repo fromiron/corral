@@ -3,8 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from './harness.ts';
 
-// the composer no longer attaches project instructions or memory to a request;
-// they stay versioned project records.
+// Project instructions and memory stay versioned records; request attachment is explicit.
 test('clone and link through Projects; save versioned instructions', async ({ page, corral }) => {
   test.setTimeout(60000);
   const source = join(corral.workspace, 'source-repo');

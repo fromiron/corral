@@ -35,7 +35,8 @@ export function AutoModelMenu({
 }) {
   const t = useTranslations('Sessions'),
     tq = useTranslations('Reasoning'),
-    tc = useTranslations('Composer');
+    tc = useTranslations('Composer'),
+    tm = useTranslations('Models');
   const profile = profiles.find((p) => p.profileId === value.modelProfile);
   const effort =
     value.reasoning?.mode === 'fixed'
@@ -126,6 +127,15 @@ export function AutoModelMenu({
               disabled={disabled}
             >
               {profile.label}
+              <span className="text-xs text-muted-foreground">
+                {tm(
+                  profile.imageInput === true
+                    ? 'imageSupported'
+                    : profile.imageInput === false
+                      ? 'textOnly'
+                      : 'imageUnknown',
+                )}
+              </span>
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>

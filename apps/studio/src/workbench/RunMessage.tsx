@@ -2,9 +2,11 @@ import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/cont
 import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
+  CopyTextButton,
   ExecutionTranscript,
   FailureNotice,
   GeneratedImage,
+  MessageBody,
   ReasoningSummary,
   type ResultItem,
   ReviewSummary,
@@ -56,6 +58,7 @@ export function RunMessage({
   const trun = useTranslations('Run');
   const tt = useTranslations('Transcript');
   const tw = useTranslations('Widgets');
+  const tm = useTranslations('MessageBody');
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const [disclosure, setDisclosure] = useState<{
     runId: string;
@@ -120,10 +123,9 @@ export function RunMessage({
   if (working && !watched) setWatched(true);
   const processOpen = chosen ?? (chatDensity === 'detailed' || working);
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
+  const questions = interactions.filter((interaction) => interaction.kind !== 'approval');
   const requiredLabel =
-    interactions.length === 1
-      ? tw(interactions[0]?.kind === 'approval' ? 'actionApproval' : 'actionQuestion')
-      : tw('actionMixed', { count: interactions.length });
+    questions.length === 1 ? tw('actionQuestion') : tw('actionMixed', { count: questions.length });
   const label = (nodeId: string) =>
     state.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
@@ -169,10 +171,15 @@ export function RunMessage({
   // In a conversation only the lead's reply can become the answer; delegates speak in rows.
   const lead = projection.executionOrder[0];
   const streams =
-    working || handoff
+    working || handoff || !projection.output
       ? Object.entries(state.streams).filter(([id]) => {
           const owner = projection.modelCalls[id]?.executionId;
-          return !sessionId || !owner || owner === lead;
+          return (
+            (!sessionId || !owner || owner === lead) &&
+            (working ||
+              handoff ||
+              (!projection.modelCalls[id]?.responseRef && Boolean(state.streams[id]?.text)))
+          );
         })
       : [];
   const current = working
@@ -220,7 +227,7 @@ export function RunMessage({
   );
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {sessionId && interactions.length ? (
+      {sessionId && questions.length ? (
         // The composer's live region announces it; the banner itself stays a note.
         <Banner
           data-testid="run-required-action"
@@ -248,7 +255,25 @@ export function RunMessage({
         </Banner>
       ) : null}
       {working && !sessionId ? <RunActions session={store} compact /> : null}
-      {sessionId ? null : <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />}
+      <ApprovalPanel
+        session={store}
+        onOpenArtifact={onOpenArtifact}
+        showPlan={!sessionId}
+        showRelatedPanels={!sessionId}
+        policySettingsAction={
+          sessionId ? (
+            <Button
+              size="compact"
+              variant="tertiary"
+              render={
+                <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
+              }
+            >
+              {trun('permissionSettings')}
+            </Button>
+          ) : undefined
+        }
+      />
       {attention.length ? (
         <ul
           className="space-y-1 text-xs"
@@ -388,9 +413,19 @@ export function RunMessage({
         <div
           data-testid="live-text"
           aria-live="off"
-          className="live-text min-w-0 text-sm leading-7 whitespace-pre-wrap wrap-anywhere"
+          className="live-text min-w-0 text-sm leading-7 wrap-anywhere"
         >
-          {writing[1].text}
+          {!working && !handoff ? (
+            <p className="mb-2 text-xs text-muted-foreground" role="note">
+              {tm('interrupted')}
+              {writing[1].truncated ? ` · ${tm('truncated')}` : ''}
+            </p>
+          ) : null}
+          {working || handoff ? (
+            <SafeMarkdown text={writing[1].text} />
+          ) : (
+            <MessageBody text={writing[1].text} markdown />
+          )}
         </div>
       ) : writing && chatDensity !== 'results' ? (
         <div data-testid="live-text" aria-live="off" className="min-w-0">
@@ -401,15 +436,16 @@ export function RunMessage({
                 ? name(writer)
                 : null}
           </p>
-          <p className="live-text max-h-40 overflow-hidden text-sm leading-6 whitespace-pre-wrap text-text/80 wrap-anywhere">
-            {writing[1].text.slice(-1200)}
+          <div className="live-text max-h-40 overflow-auto text-sm leading-6 text-text/80 wrap-anywhere">
+            {!working && !handoff ? <p role="note">{tm('interrupted')}</p> : null}
+            <SafeMarkdown text={writing[1].text} />
             {current ? (
               <span
                 aria-hidden="true"
                 className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted align-text-bottom motion-reduce:animate-none"
               />
             ) : null}
-          </p>
+          </div>
         </div>
       ) : null}
       {resultError ? (
@@ -489,7 +525,7 @@ function ChatResult({
         {text === undefined ? (
           <p className="text-xs text-muted-foreground">{ta('loading')}</p>
         ) : (
-          <SafeMarkdown text={text} />
+          <MessageBody text={text} markdown />
         )}
         <div className="chat-result-actions flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <Link
@@ -557,6 +593,7 @@ function ChatResult({
           ) : (
             <SafeMarkdown text={text} />
           )}
+          {text !== undefined ? <CopyTextButton text={text} /> : null}
           <Link
             {...location}
             search={search(result.artifactVersionId)}

@@ -49,6 +49,8 @@ const safeErrors = new Set([
   'MCP probe cancelled',
   'MCP probe timed out',
   'MCP probe failed',
+  'MCP connection refused',
+  'MCP server name could not be resolved',
   'MCP probe authorization failed',
   'MCP probe cleanup unconfirmed',
   'MCP settings are being saved; retry after completion',
@@ -78,7 +80,7 @@ async function action(reply: FastifyReply, work: () => unknown) {
         code: conflict ? 'STALE_CONTROL_REVISION' : 'SCHEMA_INVALID',
         message: conflict
           ? 'The saved revision changed. Reload before saving.'
-          : safeErrors.has(message)
+          : safeErrors.has(message) || /^MCP server returned HTTP [1-5]\d{2}$/.test(message)
             ? message
             : 'Resource or profile could not be validated. Check the source, trust and selected revision.',
       },

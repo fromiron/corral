@@ -31,6 +31,7 @@ import {
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
 import { actionCopy, type WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
@@ -560,6 +561,11 @@ export function ComposerDock({ summary }: { summary?: ReactNode }) {
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {[countNotice, model.action.visible ? actionLabel : ''].filter(Boolean).join(' · ')}
       </p>
+      <RunStatusAnnouncement
+        runId={model.runId}
+        status={model.plan.runStatus}
+        ready={model.readState === 'ready'}
+      />
     </div>
   );
 }

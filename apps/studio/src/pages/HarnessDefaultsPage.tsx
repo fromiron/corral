@@ -112,6 +112,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
             </div>
             <Select
               label={t(scope)}
+              placeholder={t('none')}
               value={draft}
               disabled={!current || busy}
               className="h-9 w-full sm:w-72"

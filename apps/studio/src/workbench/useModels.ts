@@ -14,6 +14,7 @@ export interface ProfileInfo {
   /** "OpenAI · gpt-5" */
   label: string;
   available: boolean;
+  imageInput?: boolean | null;
   reasoningCapabilities?: ReasoningCapabilities | undefined;
 }
 
@@ -50,6 +51,7 @@ export function useModelProfiles(): ProfileInfo[] | null {
             provider: p.provider,
             modelId: p.modelId,
             reasoningCapabilities: p.reasoningCapabilities,
+            imageInput: p.imageInput,
             label: `${p.providerName} · ${p.modelName ?? p.modelId}`,
             // Ready to call: the model is known, a sign-in or key is set, and a subscription
             // sign-in may use this model.

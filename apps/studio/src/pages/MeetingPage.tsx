@@ -7,7 +7,7 @@ import {
   type TextAttachment,
 } from '@corral/contracts';
 import { activeMeetingDecision, type MeetingResult, type WorkSession } from '@corral/core';
-import { SafeMarkdown } from '@corral/react';
+import { FailureNotice, SafeMarkdown } from '@corral/react';
 import {
   Banner,
   BannerActions,
@@ -64,6 +64,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const refreshId = useRef(0);
+  const [recordsExpanded, setRecordsExpanded] = useState(false);
   const recordsPanel = useRef<HTMLDetailsElement>(null);
   const sessionId = session.sessionId;
   const refresh = useCallback(async () => {
@@ -133,17 +134,35 @@ export function MeetingPage({ session }: { session: WorkSession }) {
       <MeetingActions session={session} />
       <ChatView
         centerEmpty
+        expandedHeader={recordsExpanded && hasRecords}
         sessionId={sessionId}
         header={
           <>
             <MeetingHeader title={session.title} config={view.config} />
             <ArchivedSessionNotice session={session} />
             {hasRecords ? (
-              <details ref={recordsPanel} aria-label={t('records')} className="pb-2 text-sm">
+              <details
+                ref={recordsPanel}
+                aria-label={t('records')}
+                className="pb-2 text-sm"
+                onToggle={(event) => {
+                  if (!event.currentTarget.open) setRecordsExpanded(false);
+                }}
+              >
                 <summary className="cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-ring">
                   {t('records')}
                 </summary>
-                <div className="flex max-h-[40dvh] flex-col gap-4 overflow-y-auto py-3">
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  aria-pressed={recordsExpanded}
+                  onClick={() => setRecordsExpanded((value) => !value)}
+                >
+                  {t(recordsExpanded ? 'compactRecords' : 'expandRecords')}
+                </Button>
+                <div
+                  className={`flex flex-col gap-4 py-3 ${recordsExpanded ? '' : 'max-h-[40dvh] overflow-y-auto'}`}
+                >
                   <MeetingDecisions session={session} view={view} onChange={refresh} />
                   <MeetingHandoffLinks sessionId={sessionId} meeting={view} onRediscuss={refresh} />
                 </div>
@@ -404,12 +423,16 @@ function AnswerCard({
         <StreamingAnswer runId={answer.runId} />
       ) : null}
       {failed && answer.detail ? (
-        <div className="text-xs">
-          <p className="text-danger">
-            {t(httpStatus ? 'requestFailed' : 'answerFailedHint', { status: httpStatus ?? '' })}
-          </p>
-          <MeetingDiagnostics text={answer.detail} />
-        </div>
+        answer.detail.startsWith('the model request failed: ') ? (
+          <FailureNotice message={answer.detail} />
+        ) : (
+          <div className="text-xs">
+            <p className="text-danger">
+              {t(httpStatus ? 'requestFailed' : 'answerFailedHint', { status: httpStatus ?? '' })}
+            </p>
+            <MeetingDiagnostics text={answer.detail} />
+          </div>
+        )
       ) : null}
       {detailed && answer.usage ? (
         <p className="text-xs text-muted-foreground tabular-nums">

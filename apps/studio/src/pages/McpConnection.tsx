@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { operationId } from '../workbench/harness/Target.tsx';
+import { mcpFailureKind } from '../workbench/mcpFailure.ts';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
@@ -26,7 +27,8 @@ export function McpConnection({
 }) {
   const t = useTranslations('Harness'),
     r = useTranslations('Resources'),
-    n = useTranslations('Navigation');
+    n = useTranslations('Navigation'),
+    f = useTranslations('Failure');
   const navigation = useSettingsNavigation();
   const { repository, workspaces } = useServices();
   const [copies, setCopies] = useState<{ id: string; name: string }[]>([]);
@@ -139,6 +141,7 @@ export function McpConnection({
       setBusy(false);
     }
   }
+  const failureKind = mcpFailureKind(error);
   return (
     <div className="flex flex-col gap-6">
       {server.transport === 'stdio' ? (
@@ -450,9 +453,15 @@ export function McpConnection({
         </div>
       </section>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
+        <div role="alert" className="text-sm text-danger">
+          <p>{failureKind ? r(`probeFailure.${failureKind}`) : error}</p>
+          {failureKind ? (
+            <details className="text-muted-foreground">
+              <summary>{f('diagnostics')}</summary>
+              <code>{error}</code>
+            </details>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -10,9 +10,10 @@ import {
   type Node,
   type NodeChange,
   ReactFlow,
+  useNodesInitialized,
   useReactFlow,
 } from '@xyflow/react';
-import { type DragEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
@@ -116,12 +117,37 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
   const { editor } = useStudioStores();
   const draft = useStore(editor, (s) => s.draft);
   const selectedNodeId = useStore(editor, (s) => s.selectedNodeId);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes, getNodesBounds, getViewport, fitView } = useReactFlow();
+  const initialized = useNodesInitialized();
+  const canvas = useRef<HTMLDivElement>(null);
+  const framed = useRef(false);
+  useEffect(() => {
+    if (!initialized || framed.current || !canvas.current) return;
+    const { clientWidth: width, clientHeight: height } = canvas.current;
+    if (!width || !height) return;
+    framed.current = true;
+    const bounds = getNodesBounds(getNodes());
+    const { x, y, zoom } = getViewport();
+    // Preserve a saved framing that fits; only adapt an off-screen graph on opening.
+    if (
+      bounds.x * zoom + x < 0 ||
+      bounds.y * zoom + y < 0 ||
+      (bounds.x + bounds.width) * zoom + x > width ||
+      (bounds.y + bounds.height) * zoom + y > height
+    ) {
+      void fitView({ padding: 0.15, maxZoom: 1 });
+    }
+  }, [initialized, fitView, getNodes, getNodesBounds, getViewport]);
   const { definition, layout } = draft;
+  const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
 
   const nodes = useMemo(
-    () => flowNodes(definition.nodes, layout, selectedNodeId),
-    [definition.nodes, layout, selectedNodeId],
+    () =>
+      flowNodes(definition.nodes, layout, selectedNodeId).map((node) => ({
+        ...node,
+        measured: measured[node.id],
+      })),
+    [definition.nodes, layout, selectedNodeId, measured],
   );
   const { controlEdges, capabilityLinks } = definition;
   const edges = useMemo(
@@ -131,6 +157,16 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<CanvasNodeData>>[]) => {
+      // Measurements are local rendering state. Keeping them on controlled nodes lets
+      // React Flow report initialization without turning a DOM measurement into an edit.
+      const dimensions = changes.filter((change) => change.type === 'dimensions');
+      if (dimensions.length)
+        setMeasured((previous) => {
+          const next = { ...previous };
+          for (const change of dimensions)
+            if (change.dimensions) next[change.id] = change.dimensions;
+          return next;
+        });
       const state = editor.getState();
       const movingLoops = new Set<string>();
       for (const change of changes) {
@@ -344,7 +380,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
   );
 
   return (
-    <div className="relative h-full w-full" aria-label={t('label')} role="application">
+    <div ref={canvas} className="relative h-full w-full" aria-label={t('label')} role="application">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -364,7 +400,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
         onDrop={onDrop}
         deleteKeyCode={['Backspace', 'Delete']}
         elevateNodesOnSelect={false}
-        // The saved viewport frames the Corral when it opens; later pans stay local.
+        // Saved framing is adapted once if needed; later pans stay local.
         defaultViewport={draft.viewport}
         className="corral-flow"
         colorMode="system"

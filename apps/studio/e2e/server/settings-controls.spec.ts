@@ -74,7 +74,16 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(tools).toHaveValue('read_file, search');
     await page.emulateMedia({ forcedColors: 'active' });
     await tools.focus();
-    await expect(tools).toHaveCSS('outline-style', 'solid');
+    // The kit draws focus on the visible control wrapper, not the inner textarea.
+    const focusIndicator = tools.locator('..');
+    await expect(focusIndicator).toHaveAttribute('data-slot', 'textarea-control');
+    await expect(tools).toBeFocused();
+    await expect(focusIndicator).toHaveCSS('outline-style', 'solid');
+    expect(
+      await focusIndicator.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).outlineWidth),
+      ),
+    ).toBeGreaterThan(0);
     expect(corral.errors).toEqual([]);
   });
 }

@@ -1,4 +1,65 @@
+import type { Locator } from '@playwright/test';
 import { expect, test } from './harness.ts';
+
+// Measure rendered affordances, including alpha-composited borders and kit focus rings.
+async function boundaryContrast(field: Locator) {
+  return field.evaluate((input) => {
+    const control =
+      input.closest('[data-slot="input-control"], [data-slot="textarea-control"]') ??
+      input.parentElement;
+    if (!control) throw new Error('A field control is required');
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('A color sampler is required');
+    ctx.fillStyle = 'Canvas';
+    ctx.fillRect(0, 0, 1, 1);
+    const ancestors: Element[] = [];
+    for (let node = control.parentElement; node; node = node.parentElement) ancestors.unshift(node);
+    for (const node of ancestors) {
+      ctx.fillStyle = getComputedStyle(node).backgroundColor;
+      ctx.fillRect(0, 0, 1, 1);
+    }
+    const adjacent = [...ctx.getImageData(0, 0, 1, 1).data];
+    const luminance = (channels: number[]) =>
+      channels.slice(0, 3).reduce((sum, channel, index) => {
+        const value = channel / 255;
+        return (
+          sum +
+          (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4) *
+            ([0.2126, 0.7152, 0.0722][index] ?? 0)
+        );
+      }, 0);
+    const backdrop = luminance(adjacent);
+    const cues = [getComputedStyle(control).backgroundColor];
+    for (const node of [control, input]) {
+      const style = getComputedStyle(node);
+      if (Number.parseFloat(style.borderTopWidth) > 0 && style.borderTopStyle !== 'none')
+        cues.push(style.borderTopColor);
+      if (Number.parseFloat(style.outlineWidth) > 0 && style.outlineStyle !== 'none')
+        cues.push(style.outlineColor);
+      for (const shadow of style.boxShadow.split(/,(?![^()]*\))/)) {
+        const color = shadow.match(/(?:rgba?|color|oklch|oklab|lab|lch)\([^)]*\)/)?.[0];
+        const geometry = color ? shadow.replace(color, '') : '';
+        if (
+          color &&
+          (geometry.match(/-?[\d.]+px/g) ?? []).some((length) => Number.parseFloat(length) !== 0)
+        )
+          cues.push(color);
+      }
+    }
+    return Math.max(
+      ...cues.map((color) => {
+        ctx.fillStyle = `rgb(${adjacent.slice(0, 3).join(' ')})`;
+        ctx.fillRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const value = luminance([...ctx.getImageData(0, 0, 1, 1).data]);
+        return (Math.max(value, backdrop) + 0.05) / (Math.min(value, backdrop) + 0.05);
+      }),
+    );
+  });
+}
 
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`labeled inputs retain quiet boundaries and clear focus in ${colorScheme}`, async ({
@@ -10,59 +71,17 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
     const name = page.getByRole('textbox', { name: 'Session name', exact: true });
     for (const field of [name, page.getByRole('textbox', { name: 'Purpose', exact: true })]) {
-      const restingBorder = await field.evaluate((input) => {
-        const control = input.closest('[data-slot="input-control"]') ?? input;
-        return getComputedStyle(control).borderTopColor;
-      });
-      expect(restingBorder).not.toBe('rgba(0, 0, 0, 0)');
+      await expect(field).toBeVisible();
+      await expect.poll(() => boundaryContrast(field)).toBeGreaterThan(1);
       await field.focus();
-      // follow-up adopts subtle resting borders; the 3:1 cue belongs to focus.
-      const contrast = await field.evaluate((input) => {
-        const control = input.closest('[data-slot="input-control"]') ?? input;
-        const style = getComputedStyle(control);
-        let container = control.parentElement;
-        while (container && getComputedStyle(container).backgroundColor === 'rgba(0, 0, 0, 0)')
-          container = container.parentElement;
-        const canvas = document.createElement('canvas');
-        canvas.width = canvas.height = 1;
-        const ctx = canvas.getContext('2d');
-        if (!ctx || !container) throw new Error('A rendered field and color sampler are required');
-        const luminance = (color: string) => {
-          ctx.clearRect(0, 0, 1, 1);
-          ctx.fillStyle = color;
-          ctx.fillRect(0, 0, 1, 1);
-          const [r, g, b, alpha] = ctx.getImageData(0, 0, 1, 1).data;
-          if (alpha !== 255) return null;
-          return [r ?? 0, g ?? 0, b ?? 0].reduce((sum, channel, index) => {
-            const value = channel / 255;
-            return (
-              sum +
-              (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4) *
-                ([0.2126, 0.7152, 0.0722][index] ?? 0)
-            );
-          }, 0);
-        };
-        const adjacent = luminance(getComputedStyle(container).backgroundColor);
-        if (adjacent === null) throw new Error('The field must have an opaque adjacent surface');
-        const cues = [style.backgroundColor];
-        if (Number.parseFloat(style.borderTopWidth) > 0) cues.push(style.borderTopColor);
-        if (Number.parseFloat(style.outlineWidth) > 0) cues.push(style.outlineColor);
-        return Math.max(
-          ...cues.map((color) => {
-            const value = luminance(color);
-            return value === null
-              ? 1
-              : (Math.max(value, adjacent) + 0.05) / (Math.min(value, adjacent) + 0.05);
-          }),
-        );
-      });
-      expect(contrast).toBeGreaterThanOrEqual(3);
+      // Resting bounds may be quiet; keyboard focus must remain a strong visible cue.
+      await expect.poll(() => boundaryContrast(field)).toBeGreaterThanOrEqual(3);
     }
     await page.getByRole('combobox', { name: 'Corral', exact: true }).focus();
     await page.keyboard.press('Tab');
     await expect(name).toBeFocused();
     expect(await name.evaluate((input) => input.matches(':focus-visible'))).toBe(true);
-    await expect(name.locator('..')).not.toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
+    await expect.poll(() => boundaryContrast(name)).toBeGreaterThanOrEqual(3);
     expect(corral.errors).toEqual([]);
   });
 }

@@ -1663,3 +1663,61 @@ describe('work folders and file changes', () => {
     // Real Windows Job startup and confirmed cancellation both occur in this flow.
   }, 30_000);
 });
+
+it('serves partial output only through the authenticated workspace snapshot, never artifact or export routes', async () => {
+  let host!: import('@corral/contracts').AgentHost;
+  const server = await start({
+    agents: {
+      async start(_input, bound) {
+        host = bound;
+        let finish!: (value: import('@corral/contracts').AgentSettlement) => void;
+        const done = new Promise<import('@corral/contracts').AgentSettlement>((resolve) => {
+          finish = resolve;
+        });
+        return {
+          cancel: async () => finish({ outcome: 'cancelled' }),
+          waitForSettlement: () => done,
+        };
+      },
+    },
+  });
+  const { call } = await browser(server);
+  const { runId } = server.coordinator.startRun({
+    schemaVersion: '0.1',
+    commandId: 'prefix',
+    mode: 'mock',
+    definition: linearCorral(['writer']),
+  });
+  if (!runId) throw new Error('missing run');
+  for (let i = 0; i < 100; i++) await Promise.resolve();
+  const permit = await host.prepareModelRequest();
+  host.streamText({
+    modelCallId: permit.modelCallId,
+    chunkIndex: 0,
+    text: 'PRIVATE incomplete prefix',
+  });
+  server.coordinator.submit({
+    schemaVersion: '0.1',
+    commandId: 'prefix-stop',
+    runId,
+    type: 'cancel',
+    payload: { scope: { kind: 'run' }, reason: 'stop' },
+  });
+  const base = `${server.url}/api/v1/runs/${runId}`;
+  const snapshot = await (await call(`${base}/snapshot`)).json();
+  expect(snapshot.partialOutputs[permit.modelCallId].text).toBe('PRIVATE incomplete prefix');
+  expect(JSON.stringify(snapshot.projection)).not.toContain('PRIVATE incomplete prefix');
+  expect((await fetch(`${base}/snapshot`)).status).toBe(401);
+  const ref = encodeURIComponent(`stream:${encodeURIComponent(permit.modelCallId)}:0`);
+  expect((await call(`${base}/artifact-versions/${ref}`)).status).toBe(404);
+  expect((await call(`${base}/artifact-versions/${ref}/preview`)).status).toBe(404);
+  for (const privateTranscript of [false, true]) {
+    const response = await call(`${base}/export`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ privateTranscript }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain('PRIVATE incomplete prefix');
+  }
+});

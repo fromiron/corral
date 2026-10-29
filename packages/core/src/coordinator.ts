@@ -141,6 +141,7 @@ import { adaptDesignReview } from './design-review.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
+import { PartialOutputWriter, type RuntimeSnapshot, readPartialOutputs } from './partial-output.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
 import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
@@ -3526,13 +3527,21 @@ export class Coordinator {
   }
 
   /** Null when the run does not exist. */
-  findSnapshot(runId: string): { projection: RunProjection; seq: number } | null {
+  findSnapshot(runId: string, includePartial = false): RuntimeSnapshot | null {
     const projection = this.projectionOf(runId);
-    return projection ? { projection, seq: projection.lastSeq } : null;
+    return projection
+      ? {
+          projection,
+          seq: projection.lastSeq,
+          ...(includePartial
+            ? { partialOutputs: readPartialOutputs(this.store, runId, projection) }
+            : {}),
+        }
+      : null;
   }
 
-  getSnapshot(runId: string): { projection: RunProjection; seq: number } {
-    const snapshot = this.findSnapshot(runId);
+  getSnapshot(runId: string): RuntimeSnapshot {
+    const snapshot = this.findSnapshot(runId, true);
     if (!snapshot) throw new Error(`run ${runId} does not exist`);
     return snapshot;
   }
@@ -6295,6 +6304,7 @@ export class Coordinator {
     const agent: Actor = { kind: 'agent', id: executionId };
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
+    let partialWriter: PartialOutputWriter | undefined;
     let harnessState: 'unloaded' | 'loaded' | 'simulated' | 'failed' = 'unloaded';
     let toolsRevision = 1;
     const descriptors = new Map<string, ToolDescriptor>();
@@ -8016,7 +8026,18 @@ export class Coordinator {
         const call = run.projection.modelCalls[delta.modelCallId];
         if (lastCall?.modelCallId !== delta.modelCallId || !call || call.finished) return;
         if (run.projection.executions[executionId]?.status !== 'active') return;
-        this.publishFrame({ runId: run.runId, ...delta });
+        if (
+          run.cancelRequested.has(executionId) ||
+          TERMINAL_RUN_STATUSES.has(run.projection.status)
+        )
+          return;
+        const execution = run.projection.executions[executionId];
+        if (!execution || run.projection.tasks[execution.taskId]?.activeExecutionId !== executionId)
+          return;
+        if (partialWriter?.modelCallId !== delta.modelCallId)
+          partialWriter = new PartialOutputWriter(this.store, run.runId, delta.modelCallId);
+        const saved = partialWriter.append(delta);
+        if (saved) this.publishFrame({ runId: run.runId, ...saved });
       },
     };
     return host;
