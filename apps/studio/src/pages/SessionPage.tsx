@@ -27,7 +27,7 @@ import type {
   SessionIntent,
   WorkSession,
 } from '@corral/core';
-import { validTextAttachments } from '@corral/core';
+import { queuedSessionCommandId, validTextAttachments } from '@corral/core';
 import { runResults, StatusBadge, useCancelConfirmation } from '@corral/react';
 import {
   Accordion,
@@ -255,6 +255,7 @@ function WorkSessionPage() {
     session.sessionId,
     search.run,
     session.revision,
+    session.entries,
   );
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
@@ -1858,9 +1859,9 @@ export function Composer({
   // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
   // the first receipt instead of starting a second run.
   const pending = useRef(pendingSessionCommands.get(session.sessionId) ?? null);
-  const commandFor = (key: string) => {
+  const commandFor = (key: string, commandId?: string) => {
     if (pending.current?.key !== key) {
-      pending.current = { key, commandId: newCommandId() };
+      pending.current = { key, commandId: commandId ?? newCommandId() };
       pendingSessionCommands.set(session.sessionId, pending.current);
     }
     return pending.current.commandId;
@@ -2583,7 +2584,23 @@ export function Composer({
       ...(resend ? (entry.images ?? []) : []),
     ];
     try {
-      const commandId = commandFor(entryCommandKey(entry, resend));
+      if (!resend) {
+        const current = await repository.getSession(session.sessionId);
+        const persisted = current?.entries.find((item) => item.entryId === entry.entryId);
+        if (
+          persisted?.state !== 'queued' ||
+          queuedSessionCommandId(session.sessionId, persisted) !==
+            queuedSessionCommandId(session.sessionId, entry)
+        ) {
+          await router.invalidate();
+          onChange();
+          return;
+        }
+      }
+      const commandId = commandFor(
+        entryCommandKey(entry, resend),
+        resend ? undefined : queuedSessionCommandId(session.sessionId, entry),
+      );
       const {
         runId,
         detail,
@@ -2591,6 +2608,14 @@ export function Composer({
         auto,
         cancelError,
       } = await startNext(entry.text, commandId, queuedReferences, entry.permissionMode);
+      if (!resend && commandError?.code === 'IDEMPOTENCY_CONFLICT') {
+        // Another tab can have a different model/history snapshot of the same queue item.
+        // Its original receipt owns the outcome, including while that start is pending.
+        setError(detail ?? commandError.message);
+        await router.invalidate();
+        onChange();
+        return;
+      }
       const outcome = {
         state: runId ? ('started' as const) : ('refused' as const),
         runId,

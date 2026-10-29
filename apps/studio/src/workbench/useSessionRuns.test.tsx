@@ -29,11 +29,12 @@ it('discovers another tab’s new request from idle and revalidates changed sess
   vi.useFakeTimers();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   let revision = 1;
+  const entries: unknown[] = [];
   let runs: RunSummary[] = [];
   fixture.listRuns.mockImplementation(async () => runs);
-  fixture.getSession.mockImplementation(async () => ({ revision }));
+  fixture.getSession.mockImplementation(async () => ({ revision, entries }));
   function View() {
-    const value = useSessionRuns('session', undefined, 1);
+    const value = useSessionRuns('session', undefined, 1, []);
     return (
       <p>
         {value.runs.map((run) => run.runId).join(',')}:{value.lost ? 'lost' : 'connected'}
@@ -77,4 +78,34 @@ it('discovers another tab’s new request from idle and revalidates changed sess
   await act(async () => window.dispatchEvent(new Event('online')));
   expect(fixture.invalidate).toHaveBeenCalledTimes(3);
   expect(container.textContent).toBe('remote:connected');
+});
+
+// A named session's subsequent requests do not change its settings revision.
+it('refreshes appended and settled entries with unchanged revision and timestamp', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const initial = { revision: 3, updatedAt: 'same-clock-tick', entries: [] };
+  let session: unknown = initial;
+  fixture.listRuns.mockResolvedValue([]);
+  fixture.getSession.mockImplementation(async () => session);
+  function View() {
+    useSessionRuns('named', undefined, initial.revision, initial.entries);
+    return null;
+  }
+  const root = createRoot(document.createElement('div'));
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+  });
+  await act(async () => root.render(<View />));
+  expect(fixture.invalidate).not.toHaveBeenCalled();
+  session = { ...initial, entries: [{ entryId: 'second', state: 'queued' }] };
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1500);
+  });
+  expect(fixture.invalidate).toHaveBeenCalledTimes(1);
+  session = { ...initial, entries: [{ entryId: 'second', state: 'started', runId: 'new' }] };
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1500);
+  });
+  expect(fixture.invalidate).toHaveBeenCalledTimes(2);
 });

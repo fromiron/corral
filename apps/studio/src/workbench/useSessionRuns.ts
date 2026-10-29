@@ -1,5 +1,5 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunSummary } from '@corral/core';
+import { canonicalJson, type RunSummary, type SessionEntry } from '@corral/core';
 import { useRouter } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useServices } from '../services.tsx';
@@ -10,6 +10,7 @@ export function useSessionRuns(
   sessionId: string,
   selectedRunId: string | undefined,
   revision: number,
+  entries: readonly SessionEntry[],
 ) {
   const { transport, repository } = useServices();
   const router = useRouter();
@@ -17,9 +18,10 @@ export function useSessionRuns(
   const [lost, setLost] = useState(false);
   const refreshRead = useRef(() => {});
   const refresh = useCallback(() => refreshRead.current(), []);
+  const persistedState = canonicalJson([revision, entries]);
   useEffect(() => {
     void selectedRunId;
-    let knownRevision = revision;
+    let knownState = persistedState;
     const watcher = watchRefresh(async (current) => {
       try {
         const [runs, session] = await Promise.all([
@@ -27,19 +29,22 @@ export function useSessionRuns(
           repository.getSession(sessionId),
         ]);
         if (!current()) return;
+        const nextState = session ? canonicalJson([session.revision, session.entries]) : null;
+        if (nextState && nextState !== knownState) {
+          await router.invalidate();
+          if (current()) knownState = nextState;
+        }
+        // Publish run transitions after their request records are revalidated.
+        if (!current()) return;
         setAll(runs);
         setLost(false);
-        if (session && session.revision !== knownRevision) {
-          await router.invalidate();
-          if (current()) knownRevision = session.revision;
-        }
       } catch {
         if (current()) setLost(true);
       }
     }, 1500);
     refreshRead.current = watcher.refresh;
     return watcher.dispose;
-  }, [transport, repository, router, sessionId, selectedRunId, revision]);
+  }, [transport, repository, router, sessionId, selectedRunId, persistedState]);
   const runs = all
     .filter((run) => run.sessionId === sessionId)
     .reverse()
