@@ -248,6 +248,13 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
 /** a meeting has its own chat; every other session keeps the work view. */
 export function SessionPage() {
   const { session } = sessionRoute.useLoaderData();
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = `${session.title} · Corral Studio`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [session.title]);
   return session.meeting ? (
     <MeetingPage key={session.sessionId} session={session} />
   ) : (
@@ -1865,8 +1872,9 @@ export function Composer({
     if (session.entries.length === 0) input.current?.focus();
   }, [session.entries.length]);
   const ownActive =
-    runs.find((run) => run.runId === selectedRunId && !TERMINAL_RUN_STATUSES.has(run.status)) ??
-    null;
+    active?.sessionId === session.sessionId && !TERMINAL_RUN_STATUSES.has(active.status)
+      ? active
+      : null;
   const [confirmStop, setConfirmStop] = useCancelConfirmation(
     ownActive?.runId ?? null,
     ownActive?.status === 'cancelling',

@@ -277,6 +277,10 @@ export function ChatView({
                     aria-setsize={items.length}
                     data-index={index}
                     data-chat-item={item.id}
+                    aria-current={item.id === messageId ? 'location' : undefined}
+                    className={
+                      item.id === messageId ? 'rounded-lg ring-2 ring-focus-ring' : undefined
+                    }
                     ref={virtualized ? rows.measureElement : undefined}
                     onFocusCapture={() => setFocused(item.id)}
                     onBlurCapture={(event) => {

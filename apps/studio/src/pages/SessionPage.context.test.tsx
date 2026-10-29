@@ -165,6 +165,7 @@ async function mount(
     updateSessionEntry: vi.fn(async () => ({ ok: true, session })),
   };
   const transport = {
+    sendCommand: vi.fn(async (_command: unknown) => ({ error: null })),
     startRun: vi.fn(async (_command: unknown) => ({ runId: 'started', receipt: { error: null } })),
     getSnapshot: vi.fn(async () => ({
       projection: {
@@ -711,4 +712,34 @@ it('still blocks a saved request when its live team model is disconnected', asyn
   );
   expect(f.startAuto).not.toHaveBeenCalled();
   expect(readComposerDraft(sessionId).text).toBe('Unrelated stale instruction');
+});
+
+it('browsing an older run does not change the active instruction destination', async () => {
+  const sessionId = 'historical_view_current_destination';
+  const current = { ...active, runId: 'second', sessionId };
+  const previous = { ...current, runId: 'first', status: 'cancelled' as const };
+  writeComposerDraft(sessionId, {
+    text: 'Check edge cases',
+    intent: 'steer',
+    target: 'execution',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [previous, current], 'first');
+  expect(f.transport.getSnapshot).toHaveBeenCalledWith('second');
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toContain(
+    'Run #2',
+  );
+  await f.click('Send');
+  expect(f.transport.sendCommand).toHaveBeenCalledWith(
+    expect.objectContaining({
+      runId: 'second',
+      type: 'steer',
+      payload: expect.objectContaining({
+        targetExecutionId: 'execution',
+        text: 'Check edge cases',
+      }),
+    }),
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
 });

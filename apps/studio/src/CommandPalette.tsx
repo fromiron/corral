@@ -360,7 +360,11 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
                 group: t('groups.sessions'),
                 keywords: [x.objective],
                 run: () =>
-                  navigate({ to: '/sessions/$sessionId', params: { sessionId: x.sessionId } }),
+                  navigate({
+                    to: '/sessions/$sessionId',
+                    params: { sessionId: x.sessionId },
+                    search: { compose: true },
+                  }),
               }),
             ),
           // switch to any active project but the current one.

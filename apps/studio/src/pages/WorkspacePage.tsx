@@ -995,6 +995,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
               <Link
                 to="/sessions/$sessionId"
                 params={{ sessionId: x.sessionId }}
+                search={{ compose: true }}
                 className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
               >
                 <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
