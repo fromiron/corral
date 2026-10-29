@@ -170,6 +170,7 @@ import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
+import { isScheduledRequest } from '../workbench/scheduledRuns.ts';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -186,6 +187,7 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
+import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { WorkFolderNotice } from '../workbench/WorkFolderNotice.tsx';
 import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx';
@@ -202,44 +204,6 @@ import { useRemembered } from './Workbench.tsx';
 // one input box whose intent is chosen, never guessed.
 
 const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
-
-/** The session's runs, kept current while one is working. */
-function useSessionRuns(sessionId: string, selectedRunId?: string) {
-  const { transport } = useServices();
-  const [all, setAll] = useState<RunSummary[]>([]);
-  const [tick, setTick] = useState(0);
-  // Unreachable server: run states are unknown, not finished.
-  const [lost, setLost] = useState(false);
-  const refresh = useCallback(() => setTick((n) => n + 1), []);
-  useEffect(() => {
-    void tick;
-    void sessionId;
-    void selectedRunId;
-    let live = true;
-    transport.listRuns().then(
-      (runs) => {
-        if (!live) return;
-        setAll(runs);
-        setLost(false);
-      },
-      () => live && setLost(true),
-    );
-    return () => {
-      live = false;
-    };
-  }, [transport, tick, sessionId, selectedRunId]);
-  const runs = all
-    .filter((r) => r.sessionId === sessionId)
-    .reverse()
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  const active = runs.findLast((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
-  useEffect(() => {
-    if (!active && !lost) return;
-    const timer = setInterval(refresh, 1500);
-    return () => clearInterval(timer);
-  }, [active, lost, refresh]);
-  return { runs, active, refresh, lost };
-}
 
 /**
  * Context panes follow the session URL; document tabs keep their explicit workspace target.
@@ -287,7 +251,11 @@ function WorkSessionPage() {
     });
   }, [urlViewKey, viewKey, navigate]);
   const router = useRouter();
-  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
+  const { runs, active, refresh, lost } = useSessionRuns(
+    session.sessionId,
+    search.run,
+    session.revision,
+  );
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
@@ -1051,9 +1019,12 @@ function WorkTab({
         messageId={messageId}
         header={
           <>
-            <MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />
+            <MeetingHandoffLinks
+              key={`handoffs:${session.sessionId}`}
+              sessionId={session.sessionId}
+            />
             <WorkFolderNotice
-              key={session.sessionId}
+              key={`folder:${session.sessionId}`}
               sessionId={session.sessionId}
               revision={runs.map((run) => `${run.runId}:${run.status}`).join(',')}
               onSetup={() => onPanel('changes')}
@@ -1384,7 +1355,11 @@ function EntryCard({
     dateStyle: 'short',
   });
   // A plain follow-up needs no label; queue, instruction and question say what they were.
-  const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
+  const label = isScheduledRequest(entry)
+    ? t('scheduledRequest')
+    : entry.intent === 'next'
+      ? null
+      : t(`intentShort.${entry.intent}`);
   // what an auto request ran with; not a team the person chose.
   const auto = entry.auto
     ? [

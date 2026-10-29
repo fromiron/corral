@@ -404,6 +404,24 @@
     "receiptExecution": "실행 하나에 보낸 명령",
     "cancelNotSent": "아직 취소 요청을 보내지 않았습니다. 이 실행을 중지하려면 아래에서 확인하세요."
   },
+  "Schedules": {
+    "dispatch": "시작 요청: {status}",
+    "occurrence": {
+      "dispatching": "시작 요청 중",
+      "started": "시작됨",
+      "missed": "예약 시각 놓침",
+      "overlap": "이전 실행 중으로 건너뜀",
+      "refused": "거절됨",
+      "interrupted": "시작 요청 중단"
+    },
+    "savedEnabled": "활성 상태로 저장했어요. 다음 예약 시각에 실행합니다.",
+    "savedDisabled": "비활성 상태로 저장했어요. 활성화하기 전까지 실행하지 않습니다.",
+    "resultTitle": "예약 실행 종료",
+    "result": "예약 실행: {status}",
+    "openRun": "실행 열기",
+    "dismiss": "닫기",
+    "unavailable": "현재 실행 상태를 확인할 수 없어요"
+  },
   "Status": {
     "created": "생성됨",
     "validating": "확인 중",
@@ -1365,6 +1383,7 @@
     "actions": "{name} 작업"
   },
   "Sessions": {
+    "scheduledRequest": "예약 실행 요청",
     "notFound": "이 세션을 더 이상 열 수 없습니다.",
     "heading": "세션",
     "new": "새 세션",
@@ -4232,6 +4251,7 @@
     }
   },
   "MeetingsHandoff": {
+    "reload": "작업 인계 다시 불러오기",
     "open": "작업으로 넘기기",
     "serverRequired": "작업 인계는 Corral 서버에 연결했을 때 사용할 수 있습니다.",
     "scopeHint": "채택한 결정과 선택한 근거를 요청서로 넘깁니다. 대상 세션의 기본 Corral은 바뀌지 않습니다.",

@@ -337,6 +337,11 @@ export function planSessionUpdate(
       error: 'invalid',
       message: `A session title has 1 to ${TITLE_MAX} characters.`,
     };
+  const pinOnly =
+    change.pinned !== undefined &&
+    Object.entries(change).every(
+      ([key, value]) => value === undefined || key === 'pinned' || key === 'expectedRevision',
+    );
   return {
     ok: true,
     session: {
@@ -351,7 +356,7 @@ export function planSessionUpdate(
         ? {}
         : { archivedAt: change.archived ? (current.archivedAt ?? now) : null }),
       revision: current.revision + 1,
-      updatedAt: now,
+      updatedAt: pinOnly ? current.updatedAt : now,
     },
   };
 }

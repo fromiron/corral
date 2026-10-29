@@ -58,7 +58,13 @@ import {
 } from './notifications.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
+import { watchRefresh } from './refresh.ts';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
+import {
+  completedScheduleRuns,
+  type ScheduledRunOutcome,
+  scheduledRunOutcomes,
+} from './scheduledRuns.ts';
 import { sessionListState } from './sessionList.ts';
 import { useModelProfiles } from './useModels.ts';
 import { useSessionAge } from './useSessionAge.ts';
@@ -66,6 +72,8 @@ import { useSessionAge } from './useSessionAge.ts';
 export function useCorralSidebar() {
   const { repository, transport, workspaces } = useServices();
   const td = useTranslations('Desktop');
+  const scheduledText = useTranslations('Schedules');
+  const statusText = useTranslations('Status');
   const navigate = useNavigate();
   const href = useRouterState({ select: (s) => workHref(s.location.href) ?? s.location.href });
   const version = useProjectsVersion();
@@ -76,90 +84,81 @@ export function useCorralSidebar() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [inbox, setInbox] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    void version;
-    let live = true;
-    void (async () => {
-      try {
-        const ps = await repository.listProjects();
-        const lists = await Promise.all(
-          ps.filter((p) => !p.archivedAt).map((p) => repository.listSessions(p.projectId)),
-        );
-        if (!live) return;
-        setProjects(ps.filter((p) => !p.archivedAt));
-        setSessions(lists.flat().filter((s) => !s.archivedAt));
-        setError(null);
-      } catch (e) {
-        if (live) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [repository, version]);
+  const [scheduledResults, setScheduledResults] = useState<ScheduledRunOutcome[]>([]);
+  const scheduledSeen = useRef<{
+    transport: typeof transport;
+    runs: RunSummary[];
+  } | null>(null);
   useEffect(() => {
     void href;
     void version;
-    let live = true;
-    void Promise.all([repository.listSessions(current), repository.list()]).then(
-      ([list, teams]) => {
-        if (live) {
-          setCorrals(teams);
-          setSessions((all) => [
-            ...all.filter((s) => s.projectId !== current),
-            ...list.filter((s) => !s.archivedAt),
-          ]);
-        }
-      },
-      (failure: unknown) => {
-        if (live) setError(failure instanceof Error ? failure.message : String(failure));
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [repository, current, href, version]);
-  useEffect(() => {
-    let live = true;
-    let loading = false;
+    if (scheduledSeen.current?.transport !== transport) setScheduledResults([]);
     let seen: NotificationTarget[] | null = null;
-    const refresh = () => {
-      if (loading) return;
-      loading = Boolean(workspaces);
-      void transport.listRuns().then(
-        (r) => {
-          if (live) setRuns(r);
-        },
-        () => {},
-      );
-      void workspaces
-        ?.inbox(current)
-        .then(
-          (r) => {
-            if (!live) return;
-            setInbox(r.length);
-            const added = inboxNotificationTargets(r, seen ?? r);
-            // First load is the baseline; equal counts can still contain a new decision.
-            seen = inboxNotificationTargets(r);
-            void desktop?.badge(r.length).catch(() => {});
-            if (added[0] && preferences.getState().notify && !document.hasFocus())
+    let runKey: string | null = null;
+    let latestSessions: WorkSession[] = [];
+    const watcher = watchRefresh(async (currentRead, force) => {
+      try {
+        const [latestRuns, items] = await Promise.all([
+          transport.listRuns(),
+          workspaces?.inbox(current).catch(() => null) ?? Promise.resolve(null),
+        ]);
+        const nextRunKey = latestRuns
+          .map((run) => `${run.runId}:${run.status}`)
+          .sort()
+          .join(',');
+        // Full session entries are needed only after a run changes or an explicit wake-up.
+        if (force || nextRunKey !== runKey) {
+          const [ps, teams] = await Promise.all([repository.listProjects(), repository.list()]);
+          const activeProjects = ps.filter((project) => !project.archivedAt);
+          const lists = await Promise.all(
+            activeProjects.map((project) => repository.listSessions(project.projectId)),
+          );
+          if (!currentRead()) return;
+          latestSessions = lists.flat().filter((session) => !session.archivedAt);
+          setProjects(activeProjects);
+          setCorrals(teams);
+          setSessions(latestSessions);
+          runKey = nextRunKey;
+        }
+        if (!currentRead()) return;
+        setRuns(latestRuns);
+        setError(null);
+        const outcomes = scheduledRunOutcomes(latestSessions, latestRuns);
+        const completed = completedScheduleRuns(
+          outcomes,
+          scheduledSeen.current?.transport === transport ? scheduledSeen.current.runs : null,
+        );
+        scheduledSeen.current = { transport, runs: latestRuns };
+        if (completed.length) {
+          setScheduledResults((previous) => [
+            ...completed,
+            ...previous.filter((run) => !completed.some((next) => next.runId === run.runId)),
+          ]);
+          if (preferences.getState().notify && !document.hasFocus())
+            for (const run of completed)
               void desktop
-                ?.notify(td('notifyTitle'), td('notifyBody', { count: r.length }), added[0])
+                ?.notify(
+                  scheduledText('resultTitle'),
+                  scheduledText('result', { status: statusText(run.status) }),
+                )
                 .catch(() => {});
-          },
-          () => {},
-        )
-        .finally(() => {
-          loading = false;
-        });
-    };
-    refresh();
-    const timer = setInterval(refresh, 2000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [transport, workspaces, current, td]);
+        }
+        if (items) {
+          setInbox(items.length);
+          const added = inboxNotificationTargets(items, seen ?? items);
+          seen = inboxNotificationTargets(items);
+          void desktop?.badge(items.length).catch(() => {});
+          if (added[0] && preferences.getState().notify && !document.hasFocus())
+            void desktop
+              ?.notify(td('notifyTitle'), td('notifyBody', { count: items.length }), added[0])
+              .catch(() => {});
+        }
+      } catch (failure) {
+        if (currentRead()) setError(failure instanceof Error ? failure.message : String(failure));
+      }
+    }, 2000);
+    return watcher.dispose;
+  }, [repository, transport, workspaces, current, href, version, td, scheduledText, statusText]);
   useEffect(() => {
     if (!desktop?.onNotification || !workspaces) return;
     let version = 0;
@@ -183,7 +182,18 @@ export function useCorralSidebar() {
       off();
     };
   }, [repository, workspaces, navigate]);
-  return { projects, corrals, sessions, runs, inbox, error, current };
+  return {
+    projects,
+    corrals,
+    sessions,
+    runs,
+    inbox,
+    error,
+    current,
+    scheduledResults,
+    dismissScheduled: (runId: string) =>
+      setScheduledResults((results) => results.filter((run) => run.runId !== runId)),
+  };
 }
 
 const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
