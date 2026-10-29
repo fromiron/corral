@@ -15,7 +15,7 @@ test.describe('ordinary chat entry', () => {
     );
     await expect(page.getByTestId('step-corral')).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Corral', exact: true })).toBeHidden();
-    await expect(page.getByLabel('Purpose')).toBeHidden();
+    await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toBeHidden();
     await page.getByRole('button', { name: 'Start chat', exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionId = new URL(page.url()).pathname.split('/').at(-1);
@@ -46,7 +46,9 @@ test('an explicit optional Corral choice and draft survive project navigation', 
 }) => {
   await corral.open('/');
   await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await page.getByLabel('Purpose').fill('Keep the optional purpose.');
+  await page
+    .getByRole('textbox', { name: 'Purpose', exact: true })
+    .fill('Keep the optional purpose.');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.reload();
   await expect(page.getByRole('tab', { name: /^Teams/ })).toHaveAttribute('aria-selected', 'true');
@@ -58,7 +60,9 @@ test('an explicit optional Corral choice and draft survive project navigation', 
   await expect(page.getByRole('combobox', { name: 'Corral', exact: true })).toContainText(
     'Single agent',
   );
-  await expect(page.getByLabel('Purpose')).toHaveValue('Keep the optional purpose.');
+  await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
+    'Keep the optional purpose.',
+  );
   await page.getByRole('tab', { name: /^Sessions/ }).click();
   await page.goto(`${corral.server.url}/projects/default#corrals`);
   await expect(page.getByRole('tab', { name: /^Teams/ })).toHaveAttribute('aria-selected', 'true');
