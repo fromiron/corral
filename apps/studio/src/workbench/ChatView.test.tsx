@@ -99,3 +99,76 @@ it('identifies and highlights the message selected from search', async () => {
   expect(row?.getAttribute('aria-current')).toBe('location');
   expect(row?.className).toContain('ring-focus-ring');
 });
+
+it('returns to the same search hit after leaving its link and reading elsewhere', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const resizeCallbacks = new Set<() => void>();
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      callback: () => void;
+      constructor(callback: () => void) {
+        this.callback = callback;
+        resizeCallbacks.add(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {
+        resizeCallbacks.delete(this.callback);
+      }
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const show = async (messageId?: string) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <ChatView
+            sessionId="repeated-search"
+            messageId={messageId}
+            items={[{ id: 'entry', content: <p>Search result</p> }]}
+            composer={<textarea aria-label="request" />}
+          />
+        </IntlProvider>,
+      ),
+    );
+  await show('entry');
+  const box = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+  const row = container.querySelector<HTMLElement>('[data-chat-item="entry"]');
+  if (!box || !row) throw new Error('Conversation fixture missing');
+  let top = 0;
+  Object.defineProperties(box, {
+    scrollHeight: { get: () => 1000 },
+    clientHeight: { get: () => 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = value;
+      },
+    },
+  });
+  box.getBoundingClientRect = () => ({ top: 0, bottom: 200 }) as DOMRect;
+  row.getBoundingClientRect = () => ({ top: 600 - top, bottom: 660 - top }) as DOMRect;
+  const resize = async () =>
+    act(async () => {
+      for (const callback of resizeCallbacks) callback();
+    });
+  await resize();
+  expect(top).toBe(600);
+  await show();
+  await act(async () => {
+    box.dispatchEvent(new Event('wheel', { bubbles: true }));
+    box.scrollTop = 50;
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  await show('entry');
+  await resize();
+  expect(top).toBe(600);
+  expect(row.getAttribute('aria-current')).toBe('location');
+});
