@@ -167,8 +167,7 @@ test('line navigation reveals the selection above the bottom dock', async ({
   await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
   const editorPanel = page.getByTestId('dock-document-panel');
   await expect(editorPanel.locator('.monaco-editor')).toBeVisible();
-  await page.getByRole('button', { name: 'Open pane', exact: true }).first().click();
-  await page.getByRole('menuitem', { name: 'Terminal', exact: true }).click();
+  await page.getByRole('banner').getByRole('button', { name: 'Terminal', exact: true }).click();
   const expectLine = async (line: number) => {
     const selected = editorPanel.locator('.view-line').filter({ hasText: `Line ${line}:` });
     await expect

@@ -120,6 +120,8 @@ export function validateEditorSearch(search: Record<string, unknown>): EditorSea
 export function resolveSessionSearch(url: SessionSearch, remembered: unknown): SessionSearch {
   // TanStack merges validated fields with raw parent search; normalize that merged view.
   const selection = validateSessionSearch({ ...url });
+  // A bare session link opens its conversation; tab links carry their explicit view.
+  if (Object.keys(selection).length === 0) return selection;
   const explicitTarget = Boolean(
     selection.atSeq !== undefined ||
       selection.compose ||

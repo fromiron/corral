@@ -238,81 +238,82 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         )}
         {...props}
       >
-        <CheckboxPrimitive.Root
-          checked={checked}
-          // Hidden from AT and tab order: the row is already the checkbox.
-          tabIndex={-1}
-          aria-hidden
-          className={cn(
-            'relative shrink-0 appearance-none bg-transparent p-0 border-0 outline-none cursor-pointer',
-            compact ? 'w-[14px] h-[14px]' : 'w-[16px] h-[16px]',
-          )}
-          // No onCheckedChange: the click bubbles to the row's onClick, and
-          // handling both would toggle twice.
-        >
-          {/* Border: transparent when checked, darker on hover/focus. */}
-          <div
+        <span inert aria-hidden="true" className="pointer-events-none inline-flex shrink-0">
+          <CheckboxPrimitive.Root
+            checked={checked}
+            // Hidden from AT and tab order: the row is already the checkbox.
+            tabIndex={-1}
+            aria-hidden
             className={cn(
-              'absolute inset-0 border-solid transition-all duration-80',
-              compact ? 'rounded-[4px]' : 'rounded-[5px]',
-              checked
-                ? 'border-[1.5px] border-transparent'
-                : isActive
-                  ? 'border-[1.5px] border-neutral-400 dark:border-neutral-500'
-                  : 'border-[1.5px] border-border',
+              'relative shrink-0 appearance-none bg-transparent p-0 border-0 outline-none cursor-pointer',
+              compact ? 'w-[14px] h-[14px]' : 'w-[16px] h-[16px]',
             )}
-          />
-          {/* keepMounted lets AnimatePresence play the retract; initial={false}
+            // The outer row owns toggle; this inert primitive supplies the indicator state.
+          >
+            {/* Border: transparent when checked, darker on hover/focus. */}
+            <div
+              className={cn(
+                'absolute inset-0 border-solid transition-all duration-80',
+                compact ? 'rounded-[4px]' : 'rounded-[5px]',
+                checked
+                  ? 'border-[1.5px] border-transparent'
+                  : isActive
+                    ? 'border-[1.5px] border-neutral-400 dark:border-neutral-500'
+                    : 'border-[1.5px] border-border',
+              )}
+            />
+            {/* keepMounted lets AnimatePresence play the retract; initial={false}
               keeps default selections from animating on mount. */}
-          <AnimatePresence initial={false}>
-            {checked && (
-              <CheckboxPrimitive.Indicator
-                keepMounted
-                render={(indicatorProps) => {
-                  const rest = omit(indicatorProps as React.HTMLAttributes<SVGSVGElement>, [
-                    'style',
-                    'onDrag',
-                    'onDragStart',
-                    'onDragEnd',
-                    'onAnimationStart',
-                    'onAnimationEnd',
-                    'onAnimationIteration',
-                  ]);
-                  return (
-                    <motion.svg
-                      {...rest}
-                      width={compact ? 16 : 18}
-                      height={compact ? 16 : 18}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-foreground"
-                      initial={{ opacity: 1 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 1 }}
-                    >
-                      <motion.path
-                        d="M6 12L10 16L18 8"
-                        initial={{ pathLength: 0 }}
-                        animate={{
-                          pathLength: 1,
-                          transition: { duration: 0.08, ease: 'easeOut' },
-                        }}
-                        exit={{
-                          pathLength: 0,
-                          transition: { duration: 0.04, ease: 'easeIn' },
-                        }}
-                      />
-                    </motion.svg>
-                  );
-                }}
-              />
-            )}
-          </AnimatePresence>
-        </CheckboxPrimitive.Root>
+            <AnimatePresence initial={false}>
+              {checked && (
+                <CheckboxPrimitive.Indicator
+                  keepMounted
+                  render={(indicatorProps) => {
+                    const rest = omit(indicatorProps as React.HTMLAttributes<SVGSVGElement>, [
+                      'style',
+                      'onDrag',
+                      'onDragStart',
+                      'onDragEnd',
+                      'onAnimationStart',
+                      'onAnimationEnd',
+                      'onAnimationIteration',
+                    ]);
+                    return (
+                      <motion.svg
+                        {...rest}
+                        width={compact ? 16 : 18}
+                        height={compact ? 16 : 18}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-foreground"
+                        initial={{ opacity: 1 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 1 }}
+                      >
+                        <motion.path
+                          d="M6 12L10 16L18 8"
+                          initial={{ pathLength: 0 }}
+                          animate={{
+                            pathLength: 1,
+                            transition: { duration: 0.08, ease: 'easeOut' },
+                          }}
+                          exit={{
+                            pathLength: 0,
+                            transition: { duration: 0.04, ease: 'easeIn' },
+                          }}
+                        />
+                      </motion.svg>
+                    );
+                  }}
+                />
+              )}
+            </AnimatePresence>
+          </CheckboxPrimitive.Root>
+        </span>
 
         {/* An invisible semibold sizer reserves width so the row never shifts
             when the label gains weight; both spans share the text-box trim. */}

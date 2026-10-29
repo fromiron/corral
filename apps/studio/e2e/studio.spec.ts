@@ -169,7 +169,7 @@ test('the workspace and editor have no serious automated accessibility violation
   const serious = async () =>
     (await new AxeBuilder({ page }).analyze()).violations
       .filter((v) => v.impact === 'serious' || v.impact === 'critical')
-      .map((v) => `${v.id}: ${v.nodes.length} nodes`);
+      .map((v) => ({ rule: v.id, targets: v.nodes.map((node) => node.target) }));
   expect(await serious()).toEqual([]);
 
   await page.getByRole('tab', { name: /^Teams/ }).click();

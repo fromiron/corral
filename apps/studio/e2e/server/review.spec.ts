@@ -46,6 +46,24 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(page.getByTestId('run-output')).toBeVisible();
+  await page.getByRole('button', { name: 'Results', exact: true }).click();
+  const results = page.getByTestId('run-results');
+  await results
+    .getByRole('region', { name: 'Final results', exact: true })
+    .getByRole('button', { name: /^draft v2/ })
+    .click();
+  await expect(results.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
+  const run = corral.server.coordinator.listRuns()[0];
+  if (!run) throw new Error('Expected the completed review run');
+  const finalId = corral.server.coordinator.getSnapshot(run.runId).projection.output
+    ?.artifactVersionIds[0];
+  if (!finalId) throw new Error('Expected a confirmed final output');
+  const finalText = corral.server.coordinator.getArtifactText(run.runId, finalId);
+  if (!finalText) throw new Error('Expected confirmed output text');
+  await results.getByRole('radio', { name: 'Source', exact: true }).click();
+  await expect(results.getByTestId('result-body')).toHaveText(finalText);
+  await expect(results.getByRole('article', { name: 'draft v2', exact: true })).toContainText(
+    'Submitted',
+  );
   expect(corral.errors).toEqual([]);
 });
