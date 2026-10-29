@@ -3152,7 +3152,7 @@ async function createCorralServer(
   });
   app.get<RunParams>('/api/v1/runs/:runId/snapshot', async (request, reply) => {
     return (
-      coordinator.findSnapshot(request.params.runId) ??
+      coordinator.findSnapshot(request.params.runId, true) ??
       fail(reply, 'TARGET_NOT_FOUND', 'no such run')
     );
   });

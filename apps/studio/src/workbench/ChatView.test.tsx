@@ -8,6 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ChatView } from './ChatView.tsx';
 
+const resizeCallbacks = new Set<() => void>();
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
@@ -19,9 +20,16 @@ async function render(aside?: React.ReactNode) {
   vi.stubGlobal(
     'ResizeObserver',
     class {
+      constructor(privateCallback: () => void) {
+        this.callback = privateCallback;
+        resizeCallbacks.add(privateCallback);
+      }
+      callback: () => void;
       observe() {}
       unobserve() {}
-      disconnect() {}
+      disconnect() {
+        resizeCallbacks.delete(this.callback);
+      }
     },
   );
   const container = document.createElement('div');
@@ -90,4 +98,50 @@ it('the widgets sit in the right margin and hide when it is too narrow', () => {
   expect(css).toMatch(
     /@container chat-view \(max-width: 74\.99rem\)\s*\{\s*\.session-widget-access\s*\{\s*display:\s*flex;/,
   );
+});
+
+it('follows growing replies, keeps following after a message click, and pauses for manual scroll until Latest', async () => {
+  sessionStorage.clear();
+  const container = await render();
+  const box = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]')!;
+  const row = container.querySelector<HTMLElement>('[data-chat-item]')!;
+  let height = 500;
+  let top = 0;
+  Object.defineProperties(box, {
+    scrollHeight: { get: () => height },
+    clientHeight: { get: () => 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  row.getBoundingClientRect = () => ({ top: -top, bottom: height - top }) as DOMRect;
+  const resize = async () =>
+    act(async () => {
+      for (const callback of resizeCallbacks) callback();
+    });
+  await resize();
+  expect(top).toBe(300);
+  row.querySelector('p')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  height = 700;
+  await resize();
+  expect(top).toBe(500);
+  await act(async () => {
+    box.dispatchEvent(new Event('wheel', { bubbles: true }));
+    box.scrollTop = 100;
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  height = 1000;
+  await resize();
+  expect(top).toBe(100);
+  const latest = [...container.querySelectorAll('button')].find(
+    (button) => button.getAttribute('aria-label') === 'Jump to latest',
+  )!;
+  await act(async () => latest.click());
+  expect(top).toBe(800);
+  height = 1200;
+  await resize();
+  expect(top).toBe(1000);
 });

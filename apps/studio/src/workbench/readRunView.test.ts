@@ -89,3 +89,21 @@ it('PLAN-04 retries failed reads and never caches an active run as final', async
   await readRunView(transport, history, 'run_retry', false);
   expect(transport.getSnapshot).toHaveBeenCalledTimes(3);
 });
+
+it('restores interrupted partial output from a finished summary without loading an archive', async () => {
+  const projection = { ...emptyProjection('run_partial'), status: 'interrupted' as const };
+  const transport = {
+    getSnapshot: vi.fn(async () => ({
+      projection,
+      seq: 0,
+      partialOutputs: { call: { text: 'Saved prefix', next: 2, truncated: false } },
+    })),
+    getRunDefinition: vi.fn(async () => linearCorral(['writer'])),
+  };
+  const history = vi.fn(async () => null);
+  const view = await readRunView(transport, history, 'run_partial', false);
+  expect(view.streams).toMatchObject({
+    call: { text: 'Saved prefix', next: 2, broken: false, partial: true },
+  });
+  expect(history).not.toHaveBeenCalled();
+});

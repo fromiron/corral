@@ -330,3 +330,7 @@ Bell의 2026-10-25 결정에 따라 이전 Ultra 기록은 읽지 않는다. `ca
 출력은 최초 크기와 처음부터의 ANSI/resize 순서를 4MiB까지 보관한다. 초과하면 prefix를 폐기하고 replayAvailable=false로 표시한다. 이미 연결된 화면은 이어 읽지만 새 화면이나 cursor gap에 임의 ANSI tail을 주어 복구 성공으로 표시하지 않는다. 종료 후 보관은 5분이며 그 뒤 재생 불가를 명시한다. status metadata는 출력 cursor를 전진시키지 않는다. client는 xterm write callback 완료 후 cursor를 갱신한다. 느린 viewer는 기존 bounded SSE writer로 분리하고 셸은 유지한다.
 
 터미널은 Run과 다른 사용자 owner이고 관리 사본의 writer 및 host 공통 12 process permits를 사용한다. 터미널을 실행 중인 사본은 파일 저장/새 writer Run을 거절한다. 다른 사본의 Run 취소는 이 PTY의 종료 요청이 아니다. Linux는 boot ID/PID/startTicks/SID를 확인하고 동일 session의 실행 중 descendant가 사라진 뒤 예약을 해제한다. host 재시작은 명령을 재실행하지 않으며 uncertain owner를 용량에 복원한다. 저장된 identity를 증명할 수 없는 중단 구간이나 setsid/daemon 이탈은 완전한 OS 격리/자동 회수로 주장하지 않는다.
+
+## 부분 모델 출력 읽기
+
+인증된 Run snapshot 응답은 선택적인 `partialOutputs`를 포함한다. 키는 snapshot의 알려진 모델 호출 ID이고 값은 `{ text, next, truncated }`이다. 완료된 확정 응답이 있는 호출은 포함하지 않는다. 이 데이터는 로컬의 비공개 출력 접두부이며 projection·event·산출물·사용량 판정에 포함되지 않는다. 오래된 저장소 또는 기록에는 필드가 없어도 된다.

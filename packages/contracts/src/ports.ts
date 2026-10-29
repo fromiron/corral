@@ -190,7 +190,7 @@ export type ToolAuthorization =
   | { ok: true; toolCallId: string }
   | { ok: false; toolCallId: string; error: CommandError };
 
-/** A piece of model output while it streams. Transient: never stored. */
+/** A live piece of model output. A bounded private display prefix may be saved outside the event log. */
 export interface TextDelta {
   modelCallId: string;
   chunkIndex: number;

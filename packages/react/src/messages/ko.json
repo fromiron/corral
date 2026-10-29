@@ -641,6 +641,18 @@
     "fileHint": "고급: 같은 설정이 .corral/config.json에 있습니다.",
     "editModels": "모델 편집"
   },
+  "MessageBody": {
+    "copyCode": "코드 복사",
+    "copyMessage": "메시지 복사",
+    "copied": "복사됨",
+    "copyFailed": "복사하지 못했습니다. 텍스트를 선택해 직접 복사하세요.",
+    "showMore": "메시지 전체 보기",
+    "showLess": "메시지 접기",
+    "plainText": "일반 텍스트",
+    "editAsNew": "새 요청으로 편집",
+    "interrupted": "미완성 응답 — 생성이 중단되었습니다",
+    "truncated": "수신된 앞부분만 남아 있습니다."
+  },
   "Markdown": {
     "imageNotLoaded": "이미지를 불러오지 않음: {alt} ({host})",
     "image": "이미지"

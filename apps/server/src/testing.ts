@@ -43,6 +43,8 @@ export function fakeOpenAI(
     /** Label the models as the Responses API, so they report reasoning levels. */
     reasoningApi?: boolean;
     imageInput?: boolean;
+    /** Deterministic slow streaming for cancellation and follow-scroll browser tests. */
+    tokensPerSecond?: number;
   } = {},
 ) {
   const seen = {
@@ -91,6 +93,7 @@ export function fakeOpenAI(
   };
   const faux = createFauxCore({
     provider: 'openai',
+    tokensPerSecond: options.tokensPerSecond,
     ...(options.reasoningApi ? { api: 'openai-responses' } : {}),
     models: [
       {

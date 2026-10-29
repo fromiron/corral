@@ -232,7 +232,11 @@ export function ChatView({
         aria-label={t('conversation')}
         className={`chat-timeline min-h-0 overscroll-contain ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
         onWheel={stopRestoring}
-        onPointerDown={stopRestoring}
+        onPointerDown={(event) => {
+          // A scrollbar drag is navigation; clicking message actions is not.
+          if (event.target === event.currentTarget) stopRestoring();
+        }}
+        onTouchMove={stopRestoring}
         onKeyDown={(event) => {
           if (
             ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)

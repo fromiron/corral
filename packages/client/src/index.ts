@@ -259,8 +259,8 @@ import type {
   ProjectResult,
   ProjectSummary,
   RunArchive,
-  RunProjection,
   RunSummary,
+  RuntimeSnapshot,
   RuntimeTransport,
   SaveRequest,
   SaveResult,
@@ -731,7 +731,7 @@ export class HttpSseTransport implements RuntimeTransport {
     return (await response.json()) as Receipt;
   }
 
-  getSnapshot(runId: string): Promise<{ projection: RunProjection; seq: number }> {
+  getSnapshot(runId: string): Promise<RuntimeSnapshot> {
     return this.http.json(`/runs/${encodeURIComponent(runId)}/snapshot`);
   }
 
