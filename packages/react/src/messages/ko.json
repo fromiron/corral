@@ -1669,7 +1669,8 @@
     "removalComments": "보내지 않은 검토 의견 {count, plural, other {#개}}",
     "removalUncertain": "결과를 모르는 파일 쓰기 {count, plural, other {#개}}",
     "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}",
-    "noCopyReadOnly": "작업 사본이 없어 읽기 전용입니다."
+    "noCopyReadOnly": "작업 사본이 없어 읽기 전용입니다.",
+    "operationDetails": "쓰기 상세 정보"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -1717,7 +1718,9 @@
       "partial": "일부 반영",
       "conflict": "반영 안 됨: 충돌",
       "reverted": "되돌림",
-      "failed": "실패"
+      "failed": "실패",
+      "partlyReverted": "일부 되돌림",
+      "notReverted": "되돌리지 않음: 반영 이후 파일이 변경됨"
     },
     "fileOutcome": {
       "planned": "계획",
@@ -1746,7 +1749,10 @@
     "retrySend": "같은 요청 결과 확인",
     "sendUnconfirmed": "요청 또는 기록 결과를 확인하지 못했습니다. 새로 보내기 전에 같은 요청의 결과를 확인하세요.",
     "modelsUnavailable": "모델 연결 정보를 아직 확인하지 못했습니다. 보내기 전에 모델 설정을 확인하세요.",
-    "inboxScope": "이 프로젝트의 보관하지 않은 세션에서 필요한 조치 수입니다. 한 세션에 여러 조치가 있을 수 있습니다."
+    "inboxScope": "이 프로젝트의 보관하지 않은 세션에서 필요한 조치 수입니다. 한 세션에 여러 조치가 있을 수 있습니다.",
+    "confirmRevert": "반영한 파일 되돌리기",
+    "confirmRevertNote": "원본 폴더의 다음 파일을 되돌립니다. 반영 후 Corral 외부에서 변경한 파일은 그대로 보존합니다. 되돌리기 전에 체크포인트를 저장합니다.",
+    "cancelRevert": "취소"
   },
   "Workbench": {
     "reviewFeedback": "변경 검토 · 수정 요청",
@@ -2729,7 +2735,9 @@
     "original": "원본 폴더",
     "workingCopy": "세션 작업 사본",
     "restoreOriginal": "원본 폴더 복구",
-    "requestUnavailable": "원래 요청을 찾을 수 없음"
+    "requestUnavailable": "원래 요청을 찾을 수 없음",
+    "unchanged": "이전 체크포인트 이후 변경 없음",
+    "alreadyMatches": "이미 이 체크포인트와 같은 상태입니다. 복원할 변경이 없습니다."
   },
   "RunStatus": {
     "environment": "환경",

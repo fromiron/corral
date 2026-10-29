@@ -4,6 +4,14 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
 import { useServices } from '../services.tsx';
+import { unchangedCheckpoints } from './fileReviewPresentation.ts';
+
+const kindLabels: Partial<Record<FileCheckpoint['kind'], string>> = {
+  before_run: 'Before Run',
+  after_run: 'After Run',
+  runtime: 'Runtime boundary',
+  hunk_proposal: 'Selected hunk proposal',
+};
 
 export function CheckpointPanel({ sessionId }: { sessionId: string }) {
   const { workspaces, mode, repository } = useServices();
@@ -59,6 +67,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
   };
   if (!workspaces) return null;
   if (mode === 'browser') return <p className="text-xs text-muted-foreground">{t('localOnly')}</p>;
+  const unchanged = unchangedCheckpoints(items);
   return (
     <section aria-labelledby={id} className="flex flex-col gap-2 border-t border-line pt-3 text-xs">
       <h4 id={id} className="font-medium">
@@ -130,6 +139,12 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
                 </time>
                 {item.runId ? ` · ${requests[item.runId] ?? t('requestUnavailable')}` : ''}
               </p>
+              {item.kind !== 'manual' && item.label && item.label !== kindLabels[item.kind] ? (
+                <p className="text-muted-foreground">{item.label}</p>
+              ) : null}
+              {unchanged.has(item.checkpointId) ? (
+                <p className="text-muted-foreground">{t('unchanged')}</p>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <Switch
                   label={t('pin')}
@@ -172,6 +187,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
             {t(plan.target === 'original' ? 'original' : 'workingCopy')}
           </p>
           <p>{t('restoreExplain', { count: plan.files.length })}</p>
+          {plan.files.length === 0 ? <p role="status">{t('alreadyMatches')}</p> : null}
           <p className="font-mono">
             {plan.expectedTree.slice(0, 8)} → {plan.targetTree.slice(0, 8)}
           </p>
@@ -186,9 +202,10 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
             <Button
               size="compact"
               variant="tertiary"
-              disabled={busy}
+              disabled={busy || plan.files.length === 0}
               onClick={() =>
                 void act(async () => {
+                  if (plan.files.length === 0) return;
                   await workspaces.restoreCheckpoint(sessionId, {
                     operationId: plan.operationId,
                     checkpointId: plan.checkpointId,

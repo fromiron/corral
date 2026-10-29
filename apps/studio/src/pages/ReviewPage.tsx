@@ -13,12 +13,21 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import { createTextAttachment, type RunSummary, type WorkSession } from '@corral/core';
-import { Button, Input, Select, Switch } from '@corral/react/design-kit';
+import {
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+  Input,
+  Select,
+  Switch,
+} from '@corral/react/design-kit';
 import { Check, Eye } from '@corral/react/icons';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
@@ -34,6 +43,10 @@ import {
   appendComposerAttachment,
   beginAttachmentCapture,
 } from '../workbench/context/bridge.ts';
+import {
+  integrationDisplayState,
+  uniqueFileOperations,
+} from '../workbench/fileReviewPresentation.ts';
 import { HunkActions } from '../workbench/HunkActions.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
@@ -887,11 +900,39 @@ export function Checks({
 
 function Operations({ sessionId }: { sessionId: string }) {
   const t = useTranslations('Files');
-  const { workspaces } = useServices();
+  const format = useFormatter();
+  const { workspaces, repository } = useServices();
   const [ops, setOps] = useState<FileOperationView[]>([]);
+  const [requests, setRequests] = useState<Record<string, string>>({});
   useEffect(() => {
-    void workspaces?.fileOperations(sessionId).then(setOps, () => setOps([]));
-  }, [workspaces, sessionId]);
+    let current = true;
+    void workspaces?.fileOperations(sessionId).then(
+      (items) => {
+        if (current) setOps(uniqueFileOperations(items));
+      },
+      () => {
+        if (current) setOps([]);
+      },
+    );
+    void repository.getSession(sessionId).then(
+      (session) => {
+        if (current)
+          setRequests(
+            Object.fromEntries(
+              session?.entries.flatMap((entry) =>
+                entry.runId && entry.intent !== 'steer' ? [[entry.runId, entry.text]] : [],
+              ) ?? [],
+            ),
+          );
+      },
+      () => {
+        if (current) setRequests({});
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [workspaces, repository, sessionId]);
   if (ops.length === 0) return null;
   return (
     <section aria-labelledby="ops-heading" className="flex flex-col gap-1">
@@ -906,7 +947,23 @@ function Operations({ sessionId }: { sessionId: string }) {
           >
             {op.kind}{' '}
             <span className="font-mono">{op.to_path ? `${op.path} → ${op.to_path}` : op.path}</span>{' '}
-            · {op.state} · {op.run_id}
+            · {op.state}
+            <p className="line-clamp-2 wrap-anywhere">
+              <time dateTime={op.created_at}>
+                {format.dateTime(new Date(op.created_at), {
+                  dateStyle: 'short',
+                  timeStyle: 'medium',
+                })}
+              </time>
+              {' · '}
+              {requests[op.run_id] ?? op.run_id}
+            </p>
+            <details>
+              <summary>{t('operationDetails')}</summary>
+              <code className="break-all">
+                {op.id} · {op.execution_id ?? op.run_id}
+              </code>
+            </details>
             {op.state === 'uncertain' ? <span className="block">{t('uncertain')}</span> : null}
           </li>
         ))}
@@ -1228,6 +1285,10 @@ export function DecisionPanel({
   const [decisions, setDecisions] = useState<ReviewDecisionView[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationResultView[]>([]);
   const [plan, setPlan] = useState<IntegrationPlanFile[] | null>(null);
+  const [revertTarget, setRevertTarget] = useState<{
+    sessionId: string;
+    integration: IntegrationResultView;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const act = async (work: () => Promise<unknown>) => {
@@ -1351,7 +1412,9 @@ export function DecisionPanel({
           data-testid="integration"
           className="flex flex-col gap-1 rounded fill-group p-2 text-xs"
         >
-          <span className="font-medium">{t(`integrationState.${integration.state}`)}</span>
+          <span className="font-medium">
+            {t(`integrationState.${integrationDisplayState(integration)}`)}
+          </span>
           <ul>
             {integration.files.map((f) => (
               <li key={f.path}>
@@ -1365,12 +1428,7 @@ export function DecisionPanel({
               size="compact"
               title={t('revertNote')}
               disabled={busy || active}
-              onClick={() =>
-                void act(async () => {
-                  await workspaces?.revert(sessionId, integration.integrationId);
-                  await reload();
-                })
-              }
+              onClick={() => setRevertTarget({ sessionId, integration })}
               className="self-start"
             >
               {t('revert')}
@@ -1378,6 +1436,44 @@ export function DecisionPanel({
           ) : null}
         </div>
       ))}
+      <Dialog
+        open={revertTarget?.sessionId === sessionId}
+        onOpenChange={(open) => {
+          if (!open) setRevertTarget(null);
+        }}
+      >
+        <DialogPopup showCloseButton={false} bottomStickOnMobile={false}>
+          <DialogTitle>{t('confirmRevert')}</DialogTitle>
+          <DialogDescription>{t('confirmRevertNote')}</DialogDescription>
+          <ul className="my-3 max-h-48 overflow-y-auto text-xs font-mono">
+            {revertTarget?.integration.files
+              .filter((file) => file.outcome === 'applied')
+              .map((file) => (
+                <li key={file.path}>{file.path}</li>
+              ))}
+          </ul>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={busy} onClick={() => setRevertTarget(null)}>
+              {t('cancelRevert')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={busy || active}
+              onClick={() => {
+                if (!revertTarget || revertTarget.sessionId !== sessionId || busy || active) return;
+                const integrationId = revertTarget.integration.integrationId;
+                void act(async () => {
+                  await workspaces?.revert(sessionId, integrationId);
+                  setRevertTarget(null);
+                  await reload();
+                });
+              }}
+            >
+              {t('confirmRevert')}
+            </Button>
+          </div>
+        </DialogPopup>
+      </Dialog>
     </section>
   );
 }
