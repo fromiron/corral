@@ -22,8 +22,14 @@ const fixture = vi.hoisted(() => ({
   invalidate: vi.fn(async () => {}),
   profiles: null as import('../workbench/useModels.ts').ProfileInfo[] | null,
   roles: [] as { profileId: string; name: string }[],
+  materialsRequest: vi.fn(
+    async (_path: string, _body?: unknown): Promise<unknown> => ({ materials: [] }),
+  ),
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../projects-api.ts', () => ({
+  projectRequest: (...args: [string, unknown?]) => fixture.materialsRequest(...args),
+}));
 vi.mock('../router.tsx', () => ({ sessionRoute: {}, runRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#session">{children}</a>,
@@ -61,12 +67,14 @@ vi.mock('../workbench/ImageAttachments.tsx', () => ({
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
-  for (const dispose of disposals.splice(0)) await dispose();
+  for (const dispose of disposals.splice(0).reverse()) await dispose();
   window.localStorage.clear();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   fixture.profiles = null;
   fixture.roles = [];
+  fixture.materialsRequest.mockReset();
+  fixture.materialsRequest.mockResolvedValue({ materials: [] });
 });
 
 const captured: TextAttachment = {
@@ -135,10 +143,25 @@ async function mount(
   selectedRunId: string | null = null,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
+  Object.defineProperty(Element.prototype, 'getAnimations', {
+    configurable: true,
+    value: () => [],
+  });
+  disposals.push(async () => {
+    if (animations) Object.defineProperty(Element.prototype, 'getAnimations', animations);
+    else Reflect.deleteProperty(Element.prototype, 'getAnimations');
+  });
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   vi.stubGlobal(
     'ResizeObserver',
     class {
       observe() {}
+      unobserve() {}
       disconnect() {}
     },
   );
@@ -711,4 +734,125 @@ it('still blocks a saved request when its live team model is disconnected', asyn
   );
   expect(f.startAuto).not.toHaveBeenCalled();
   expect(readComposerDraft(sessionId).text).toBe('Unrelated stale instruction');
+});
+
+it('explicitly attaches a selected project material version and records that snapshot in the request', async () => {
+  const attachment = createTextAttachment(
+    'Coding style v1',
+    'text/plain',
+    'Use strict TypeScript.',
+  );
+  fixture.materialsRequest.mockImplementation(async (path, body) => {
+    if (path.endsWith('/attachment')) {
+      expect(body).toEqual({ id: 'material_style', revision: 1 });
+      return { attachment };
+    }
+    return {
+      materials: [
+        {
+          id: 'material_style',
+          projectId: 'project',
+          kind: 'instructions',
+          name: 'Coding style',
+          revision: 1,
+          text: attachment.text,
+        },
+      ],
+    };
+  });
+  writeComposerDraft('material_request', {
+    text: 'Review my code',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount('material_request', null);
+  expect(readComposerDraft('material_request').attachments).toBeUndefined();
+  await selectMaterial(f);
+  expect(readComposerDraft('material_request').attachments).toEqual([attachment]);
+  await f.click('Send');
+  expect(f.startAuto).toHaveBeenCalledWith(
+    expect.objectContaining({ references: [attachment], brief: 'Review my code' }),
+    expect.anything(),
+  );
+  expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+    'material_request',
+    expect.objectContaining({ attachments: [attachment] }),
+  );
+});
+
+async function selectMaterial(f: Awaited<ReturnType<typeof mount>>) {
+  await act(async () => {
+    f.container.querySelector<HTMLButtonElement>('button[aria-label="Attachments"]')?.click();
+    await new Promise(requestAnimationFrame);
+  });
+  const attachMaterial = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (node) => node.textContent?.startsWith('Attach instructions or memory'),
+  );
+  expect(attachMaterial).toBeDefined();
+  await act(async () => attachMaterial?.click());
+  const picker = document.querySelector<HTMLButtonElement>(
+    'button[role="combobox"][aria-label="Attach project instructions or memory to this request"]',
+  );
+  expect(picker).not.toBeNull();
+  await act(async () => picker?.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+    node.textContent?.includes('Coding style'),
+  );
+  expect(option).toBeDefined();
+  await act(async () => option?.click());
+}
+
+it('ignores completion from a dismissed picker while its replacement is still loading', async () => {
+  const attachment = createTextAttachment(
+    'Coding style v1',
+    'text/plain',
+    'Use strict TypeScript.',
+  );
+  const pending: ((value: unknown) => void)[] = [];
+  fixture.materialsRequest.mockImplementation(async (path) => {
+    if (path.endsWith('/attachment')) return new Promise((resolve) => pending.push(resolve));
+    return {
+      materials: [
+        {
+          id: 'style',
+          projectId: 'project',
+          kind: 'instructions',
+          name: 'Coding style',
+          revision: 1,
+          text: attachment.text,
+        },
+      ],
+    };
+  });
+  const id = 'cancelled_material';
+  writeComposerDraft(id, {
+    text: 'Keep my request',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(id, null);
+  await selectMaterial(f);
+  expect(pending).toHaveLength(1);
+  await act(async () =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  );
+  await selectMaterial(f);
+  expect(pending).toHaveLength(2);
+  await act(async () => pending[0]?.({ attachment }));
+  expect(f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(
+    true,
+  );
+  expect(readComposerDraft(id).attachments).toBeUndefined();
+  await act(async () => pending[1]?.({ attachment }));
+  expect(f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(
+    false,
+  );
+  expect(readComposerDraft(id)).toMatchObject({
+    text: 'Keep my request',
+    attachments: [attachment],
+  });
 });

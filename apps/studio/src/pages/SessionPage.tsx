@@ -159,6 +159,7 @@ import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
+import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import {
   EDIT_REQUEST,
@@ -1743,6 +1744,7 @@ export function Composer({
   const tc = useTranslations('Composer');
   const format = useFormatter();
   const contextMessages = useTranslations('Context');
+  const materialMessages = useTranslations('Materials');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
   const services = useServices();
@@ -1758,6 +1760,7 @@ export function Composer({
   );
   const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
   const textFiles = useRef<HTMLInputElement>(null);
@@ -3237,6 +3240,14 @@ export function Composer({
                 >
                   {tc('attachText')}
                 </MenuItem>
+                {mode === 'server' ? (
+                  <MenuItem
+                    disabled={attachments.length >= TEXT_ATTACHMENT_MAX_COUNT}
+                    onClick={() => setMaterialsOpen(true)}
+                  >
+                    {materialMessages('attachPlaceholder')}
+                  </MenuItem>
+                ) : null}
               </MenuPopup>
             </Menu>
 
@@ -3436,6 +3447,29 @@ export function Composer({
           {error}
         </p>
       ) : null}
+      <Dialog open={materialsOpen} onOpenChange={setMaterialsOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{materialMessages('attachPlaceholder')}</DialogTitle>
+            <DialogDescription>{materialMessages('hint')}</DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            {materialsOpen ? (
+              <ProjectMaterialPicker
+                key={attachmentEpoch}
+                projectId={session.projectId}
+                value={attachments}
+                onChange={(value) => {
+                  setAttachments(value);
+                  setMaterialsOpen(false);
+                }}
+                onBusyChange={setAttachmentsBusy}
+                disabled={busy || (intent !== 'next' && intent !== 'queue')}
+              />
+            ) : null}
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
       <Dialog open={modelsOpen} onOpenChange={setModelsOpen}>
         <DialogPopup>
           <DialogHeader>
