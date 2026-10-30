@@ -1577,7 +1577,7 @@ function RunCard({
     >
       <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         {/* a working or finished turn speaks through its process and answer. */}
-        {nested && (run.status === 'succeeded' || run.status === 'running') ? (
+        {nested && ['created', 'validating', 'running', 'succeeded'].includes(run.status) ? (
           <span className="sr-only">
             <StatusBadge status={run.status} />
           </span>

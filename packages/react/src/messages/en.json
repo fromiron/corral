@@ -405,7 +405,7 @@
     "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run."
   },
   "Status": {
-    "created": "Created",
+    "created": "Starting…",
     "validating": "Validating",
     "running": "Running",
     "pausing": "Pausing",
@@ -1731,7 +1731,7 @@
     },
     "revert": "Revert",
     "revertNote": "Only files still as applied are reverted.",
-    "inboxHeading": "Needs you",
+    "inboxHeading": "Pending actions",
     "inbox": {
       "decision": "A run waits for your decision",
       "queued": "Queued next task: {detail}",
@@ -1746,7 +1746,7 @@
     "retrySend": "Check the same request",
     "sendUnconfirmed": "The request or its record could not be confirmed. Check the same request before sending another.",
     "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending.",
-    "inboxScope": "Action items in this project’s unarchived sessions; a session can have several."
+    "inboxScope": "Pending actions in this project’s unarchived sessions. A session can have several actions; this is not a count of failed sessions."
   },
   "Workbench": {
     "reviewFeedback": "Review changes and request revisions",
@@ -1761,7 +1761,7 @@
     "searchSessions": "Filter conversations",
     "sessions": "Sessions",
     "newSession": "New session",
-    "needsYou": "Needs you ({count})",
+    "needsYou": "Pending actions ({count})",
     "teamLibrary": "Team library",
     "allProjects": "All projects",
     "models": "Models",
@@ -2956,7 +2956,9 @@
     "actionApproval": "Approval needed",
     "actionQuestion": "A question is waiting",
     "actionFailure": "A failure needs attention",
-    "actionUnclear": "A file effect is unclear",
+    "actionUnclear": "An operation has an unconfirmed outcome",
+    "actionModelUnknown": "A model request has an unconfirmed outcome",
+    "runStatusAnnouncement": "Run status: {status}",
     "actionUsageUnknown": "Unconfirmed usage is still held against the budget",
     "actionStopUnconfirmed": "The stop could not be confirmed",
     "actionMixed": "{count} items need attention",
