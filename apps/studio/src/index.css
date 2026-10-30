@@ -359,8 +359,23 @@
 }
 .editor-inspector {
   grid-area: inspector;
+  overflow-wrap: anywhere;
+}
+.editor-inspector [data-slot="button"] {
+  max-width: 100%;
+  height: auto;
+  min-height: 1.75rem;
+  white-space: normal;
+}
+.editor-layout[data-tools-open="false"] {
+  grid-template-columns: 12rem minmax(0, 1fr);
+  grid-template-areas: "palette canvas";
 }
 @container editor (max-width: 1100px) {
+  .editor-layout[data-tools-open="false"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "palette" "canvas";
+  }
   .editor-layout {
     grid-template-columns: minmax(0, 1fr) 16rem;
     grid-template-rows: auto minmax(0, 1fr);
@@ -407,6 +422,9 @@
   }
 }
 @container editor (max-width: 760px) {
+  .editor-layout[data-tools-open="false"] {
+    grid-template-rows: auto 360px;
+  }
   .editor-frame {
     height: auto;
     min-height: 100%;
