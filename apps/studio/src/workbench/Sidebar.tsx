@@ -1,3 +1,4 @@
+import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { StatusDot } from '@corral/react';
 import {
@@ -65,12 +66,12 @@ import {
   type ScheduledRunOutcome,
   scheduledRunOutcomes,
 } from './scheduledRuns.ts';
-import { sessionListState } from './sessionList.ts';
+import { sessionListState, uncertainSessionTerminal } from './sessionList.ts';
 import { useModelProfiles } from './useModels.ts';
 import { useSessionAge } from './useSessionAge.ts';
 
 export function useCorralSidebar() {
-  const { repository, transport, workspaces } = useServices();
+  const { repository, transport, workspaces, terminals } = useServices();
   const td = useTranslations('Desktop');
   const scheduledText = useTranslations('Schedules');
   const statusText = useTranslations('Status');
@@ -83,6 +84,11 @@ export function useCorralSidebar() {
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [inbox, setInbox] = useState(0);
+  const [terminalAttention, setTerminalAttention] = useState<InboxItemView[]>([]);
+  useEffect(() => {
+    void terminals;
+    setTerminalAttention([]);
+  }, [terminals]);
   const [error, setError] = useState<string | null>(null);
   const [scheduledResults, setScheduledResults] = useState<ScheduledRunOutcome[]>([]);
   const scheduledSeen = useRef<{
@@ -100,7 +106,10 @@ export function useCorralSidebar() {
       try {
         if ('error' in result) throw result.error;
         const latestRuns = result.runs;
-        const items = await (workspaces?.inbox(current).catch(() => null) ?? Promise.resolve(null));
+        const [items, terminalItems] = await Promise.all([
+          workspaces?.inbox(current).catch(() => null) ?? Promise.resolve(null),
+          terminals?.attention().catch(() => null) ?? Promise.resolve([]),
+        ]);
         const nextRunKey = latestRuns
           .map((run) => `${run.runId}:${run.status}`)
           .sort()
@@ -120,6 +129,7 @@ export function useCorralSidebar() {
           runKey = nextRunKey;
         }
         if (!currentRead()) return;
+        if (terminalItems) setTerminalAttention(terminalItems);
         setRuns(latestRuns);
         setError(null);
         const outcomes = scheduledRunOutcomes(latestSessions, latestRuns);
@@ -157,7 +167,18 @@ export function useCorralSidebar() {
       }
     });
     return watcher.dispose;
-  }, [repository, transport, workspaces, current, href, version, td, scheduledText, statusText]);
+  }, [
+    repository,
+    transport,
+    workspaces,
+    terminals,
+    current,
+    href,
+    version,
+    td,
+    scheduledText,
+    statusText,
+  ]);
   useEffect(() => {
     if (!desktop?.onNotification || !workspaces) return;
     let version = 0;
@@ -187,6 +208,7 @@ export function useCorralSidebar() {
     sessions,
     runs,
     inbox,
+    terminalAttention,
     error,
     current,
     scheduledResults,
@@ -544,7 +566,11 @@ export const Sidebar = memo(function Sidebar({
                     .filter((r) => r.sessionId === session.sessionId)
                     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
                   const working = Boolean(run && !ENDED.has(run.status));
-                  const state = sessionListState(session, model.runs);
+                  const terminal = uncertainSessionTerminal(
+                    session.sessionId,
+                    model.terminalAttention,
+                  );
+                  const state = sessionListState(session, model.runs, model.terminalAttention);
                   return (
                     <SidebarMenuItem
                       key={item.key}
@@ -574,14 +600,19 @@ export const Sidebar = memo(function Sidebar({
                           <Link
                             to="/sessions/$sessionId"
                             params={{ sessionId: session.sessionId }}
-                            search={{ compose: true }}
+                            search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
                           />
                         }
                       >
                         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span className="truncate leading-3.5">{session.title}</span>
                           <span className="truncate text-micro leading-3 text-muted-foreground">
-                            {run ? status(run.status) : ts(`listState.${state}`)} ·{' '}
+                            {terminal ? `${ts('terminalNeedsAttention')} · ` : null}
+                            {run
+                              ? `${status(run.status)} · `
+                              : terminal
+                                ? null
+                                : `${ts(`listState.${state}`)} · `}
                             {ago(session.updatedAt)}
                           </span>
                         </span>

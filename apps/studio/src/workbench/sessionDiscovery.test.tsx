@@ -40,6 +40,15 @@ it('keeps a configured meeting and an unsent purpose out of empty-session cleanu
   expect(sessionListState(meeting, [])).toBe('ready');
 });
 
+it('keeps an uncertain terminal-only session in attention instead of empty or completed', () => {
+  const terminal = { kind: 'uncertain_terminal' as const, sessionId: 'session', terminalId: 'pty' };
+  const items = [terminal];
+  expect(sessionListState(session, [], items)).toBe('attention');
+  expect(sessionListState(session, [run('succeeded', '2026-01-01')], items)).toBe('attention');
+  expect(sessionListState(session, [], [{ ...terminal, sessionId: 'another' }])).toBe('empty');
+  expect(sessionListState(session, [], [])).toBe('empty');
+});
+
 it('groups duplicate search targets once without hiding another matching message', () => {
   const hit: SessionSearchHit = {
     sessionId: 's',

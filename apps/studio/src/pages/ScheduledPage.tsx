@@ -5,6 +5,7 @@ import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-ki
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
+import { projectName } from '../projects.ts';
 import { schedulesApi } from '../schedules-api.ts';
 import { useServices } from '../services.tsx';
 import { watchRefresh } from '../workbench/refresh.ts';
@@ -28,6 +29,7 @@ export function ScheduledPage() {
   const { repository, models, mode, live, transport } = useServices();
   const ko = useLocale().startsWith('ko');
   const t = useTranslations('Schedules');
+  const tp = useTranslations('Projects');
   const text = (en: string, kr: string) => (ko ? kr : en);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [sessions, setSessions] = useState<WorkSession[]>([]);
@@ -264,7 +266,7 @@ export function ScheduledPage() {
                   )
                   .map((project) => ({
                     value: project.projectId,
-                    label: project.name || text('Default project', '기본 프로젝트'),
+                    label: projectName(project, tp('defaultName')),
                   }))}
               />
             </div>

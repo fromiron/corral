@@ -340,7 +340,24 @@ function SessionTerminals({
               )}
             </p>
           ) : null}
-          {current.state === 'uncertain' ? (
+          {current.diagnostic ? (
+            <div
+              data-testid="terminal-recovery-guidance"
+              role="alert"
+              className="space-y-1 text-xs text-danger"
+            >
+              <p>{t(`diagnosticReason.${current.diagnostic.code}`)}</p>
+              <p>
+                {t(
+                  !mayStop
+                    ? 'diagnosticEnded'
+                    : current.diagnostic.code === 'host_restart_required'
+                      ? 'diagnosticHostRestart'
+                      : 'diagnosticCheck',
+                )}
+              </p>
+            </div>
+          ) : current.state === 'uncertain' ? (
             <p role="alert" className="text-xs text-danger">
               {t(
                 stopAttempted === current.terminalId && !entry.busy
@@ -445,7 +462,13 @@ function SessionTerminals({
                   run(() => store.stop(selectedId));
                 }}
               >
-                {t(entry.busy || current.state === 'stopping' ? 'stopping' : 'stop')}
+                {t(
+                  entry.busy || current.state === 'stopping'
+                    ? 'stopping'
+                    : current.state === 'uncertain' && current.diagnostic
+                      ? 'recheckTermination'
+                      : 'stop',
+                )}
               </Button>
             ) : null}
           </div>
@@ -498,12 +521,19 @@ function SessionTerminals({
               {t('actionFailed')}
             </p>
           ) : null}
-          {entry.error || current.error ? (
+          {entry.error || current.error || current.diagnostic ? (
             <details>
               <summary>{t('diagnostics')}</summary>
-              <p className="break-words text-xs text-muted-foreground">
-                {entry.error || current.error}
-              </p>
+              {current.diagnostic ? (
+                <code className="text-xs text-muted-foreground">
+                  {current.diagnostic.phase} · {current.diagnostic.code}
+                </code>
+              ) : null}
+              {entry.error || current.error ? (
+                <p className="break-words text-xs text-muted-foreground">
+                  {entry.error || current.error}
+                </p>
+              ) : null}
             </details>
           ) : null}
         </>

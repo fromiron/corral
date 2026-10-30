@@ -79,7 +79,16 @@ test('file setup remains reachable after a request without a working copy', asyn
   await expect(page.getByTestId('chat-timeline')).toContainText('Add a comment to example.js.');
   const notice = page.getByTestId('work-folder-notice');
   await expect(notice).toContainText('cannot change files');
-  await notice.getByRole('button', { name: 'Set up file work' }).click();
+  const dismiss = notice.getByRole('button', { name: 'Hide working copy notice', exact: true });
+  await dismiss.focus();
+  await dismiss.press('Enter');
+  await expect(notice).toHaveCount(0);
+  const setup = page.getByTestId('work-folder-setup');
+  await expect(setup).toBeFocused();
+  await page.reload();
+  await expect(setup).toBeVisible();
+  await expect(notice).toHaveCount(0);
+  await setup.click();
   await expect(page.getByRole('link', { name: 'Open Folders & tools', exact: true })).toBeVisible();
 });
 

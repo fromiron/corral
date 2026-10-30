@@ -394,6 +394,26 @@ it('a confirmed admission refusal does not leave an unknown creation to recover'
   f.store.dispose();
 });
 
+it('an explicit recovery stop keeps the full current target and terminal generation', async () => {
+  const f = setup();
+  const current: TerminalView = {
+    ...terminal(),
+    state: 'uncertain',
+    generation: 'recovery-generation',
+    target: { ...target, copyGeneration: 2 },
+    diagnostic: { phase: 'recovery', code: 'host_restart_required' },
+  };
+  f.setCurrent(current);
+  await f.store.refresh('session');
+  expect(f.client.stop).not.toHaveBeenCalled();
+  await f.store.stop(current.terminalId);
+  expect(f.client.stop).toHaveBeenCalledExactlyOnceWith('session', current.terminalId, {
+    target: current.target,
+    generation: current.generation,
+  });
+  f.store.dispose();
+});
+
 it('keeps a rate-limited frame and later input in order until Retry-After, then accepts more input', async () => {
   const resume = new Gate();
   const wait = vi.fn(async (_ms: number) => resume.wait());

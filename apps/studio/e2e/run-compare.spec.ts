@@ -3,7 +3,9 @@ import { expect, test } from '@playwright/test';
 // Roadmap 16: two runs of a Corral side by side, picked from the workspace's run list.
 
 test('compares runs with readable narrow figures and accessible identities', async ({ page }) => {
-  await page.goto('/?delay=50');
+  await page.goto('/compare?delay=50');
+  await page.getByRole('link', { name: 'Choose two runs', exact: true }).click();
+  await expect(page.getByRole('tab', { name: /^Runs/ })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .getByRole('region', { name: 'Start from a template' })
@@ -26,6 +28,8 @@ test('compares runs with readable narrow figures and accessible identities', asy
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
   await page.getByRole('tab', { name: /^Runs/ }).click();
   const runs = page.getByRole('region', { name: 'Runs' });
+  await expect(runs.getByRole('link', { name: 'Compare two pens.', exact: true })).toBeVisible();
+  await expect(runs.getByRole('link', { name: 'Compare three pens.', exact: true })).toBeVisible();
   await runs.getByRole('checkbox').nth(0).check();
   await runs.getByRole('checkbox').nth(1).check();
   await runs.getByRole('button', { name: 'Compare 2 runs' }).click();

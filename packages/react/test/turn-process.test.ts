@@ -31,6 +31,60 @@ function projection(status: RunProjection['status'], executions: [string, string
 }
 
 describe('buildTurnProcess', () => {
+  it('identifies the exact artifact version for a read without replacing unknown targets', () => {
+    const p = projection('succeeded', [['lead', 'assistant', 'succeeded']]);
+    const version = {
+      artifactVersionId: 'artv_original',
+      artifactId: 'artifact_report',
+      version: 2,
+      parentVersionId: null,
+      name: 'Security report',
+      contract: 'text',
+      contentHash: 'a'.repeat(64),
+      byteLength: 12,
+      authorExecutionId: 'lead',
+      modelCallId: null,
+      contextSnapshotId: null,
+      submitted: true,
+      configRevision: 1,
+      criteriaVersionId: null,
+      inputArtifactVersionIds: [],
+    } satisfies RunProjection['artifacts'][string];
+    p.artifacts.artv_original = version;
+    p.artifacts.artv_latest = { ...version, artifactVersionId: 'artv_latest', version: 3 };
+    const events = ['artv_original', 'artv_missing'].map((artifactVersionId) =>
+      event(
+        'tool.requested',
+        {
+          executionId: 'lead',
+          toolCallId: artifactVersionId,
+          name: 'read_artifact',
+          validatedArgs: { artifactVersionId },
+        },
+        1,
+      ),
+    );
+    const process = buildTurnProcess(events, p, {}, (id) => id);
+    expect(process.rows).toEqual([
+      {
+        kind: 'tool',
+        id: 'artv_original',
+        name: 'read_artifact',
+        target: 'artv_original',
+        artifact: { name: 'Security report', version: 2 },
+        status: 'requested',
+      },
+      {
+        kind: 'tool',
+        id: 'artv_missing',
+        name: 'read_artifact',
+        target: 'artv_missing',
+        status: 'requested',
+      },
+    ]);
+    expect(p.artifacts.artv_original.version).toBe(2);
+  });
+
   it('uses confirmed tool cancellation while preserving a failure before run cancellation', () => {
     const p = projection('cancelled', [['lead', 'assistant', 'cancelled']]);
     const events = ['stopped', 'failed'].flatMap((id) => {

@@ -2815,6 +2815,7 @@ async function createCorralServer(
       }
     },
   );
+  app.get('/api/v1/terminals/attention', async () => review.terminalAttention());
   app.get<ProjectParams>('/api/v1/projects/:projectId/inbox', async (request) => {
     const sessions = await corrals.listSessions(request.params.projectId);
     return review.inbox(

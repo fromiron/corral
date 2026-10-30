@@ -58,6 +58,7 @@ export interface InboxItem {
     | 'decision'
     | 'queued'
     | 'uncertain_write'
+    | 'uncertain_terminal'
     | 'integration'
     | 'check_failed'
     | 'unreviewed'
@@ -67,6 +68,8 @@ export interface InboxItem {
   sessionTitle: string;
   runId: string | null;
   detail: string | null;
+  /** Present only for an uncertain terminal's read-only recovery link. */
+  terminalId?: string;
 }
 
 /** The file in the linked folder as it is now: absent, its hash, or refused (a link). */
@@ -534,12 +537,45 @@ export class ReviewService {
 
   // ── what needs a person ─────────────────────────────────────────────────────
 
+  /** Unresolved current terminal writers only; no history, output or filesystem paths. */
+  terminalAttention(): InboxItem[] {
+    // The existing partial index contains held writers only, excluding released-owner history.
+    const terminals = this.db
+      .prepare(
+        `SELECT o.operation_id,s.id AS session_id,s.title
+         FROM workspace_access a INDEXED BY workspace_access_writer
+         JOIN workbench_operations o ON a.owner_kind='user' AND a.owner_id=o.operation_id
+         JOIN session_worktrees w ON w.session_id=a.session_id
+           AND w.copy_generation=a.copy_generation AND w.removed_at IS NULL
+         JOIN work_sessions s ON s.id=w.session_id AND s.archived_at IS NULL
+         JOIN projects p ON p.id=s.project_id AND p.archived_at IS NULL
+         JOIN workspace_bindings b ON b.id=w.binding_id AND b.project_id=s.project_id
+         WHERE o.kind='terminal' AND a.writer=1
+           AND a.state IN ('active','uncertain') AND a.state='uncertain'
+           AND json_extract(o.target_json,'$.sessionId')=a.session_id
+           AND json_extract(o.target_json,'$.copyGeneration')=a.copy_generation
+           AND json_extract(o.target_json,'$.bindingId')=w.binding_id
+           AND json_extract(o.target_json,'$.projectId')=s.project_id
+         ORDER BY o.created_at,o.operation_id`,
+      )
+      .all() as { operation_id: string; session_id: string; title: string }[];
+    return terminals.map((terminal) => ({
+      kind: 'uncertain_terminal',
+      sessionId: terminal.session_id,
+      sessionTitle: terminal.title,
+      runId: null,
+      terminalId: terminal.operation_id,
+      detail: null,
+    }));
+  }
+
   inbox(
     sessions: { sessionId: string; title: string; entries: { state: string; text: string }[] }[],
     runs: { runId: string; status: string; sessionId: string | null }[],
   ): InboxItem[] {
     const items: InboxItem[] = [];
     const titleOf = new Map(sessions.map((s) => [s.sessionId, s.title]));
+    items.push(...this.terminalAttention().filter((item) => titleOf.has(item.sessionId)));
     const seenSessions = new Set<string>();
     for (const run of runs) {
       const latest = run.sessionId !== null && !seenSessions.has(run.sessionId);
