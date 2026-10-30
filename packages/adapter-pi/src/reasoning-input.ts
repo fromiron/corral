@@ -1,6 +1,7 @@
 import type { ReasoningInput } from '@corral/contracts';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { Context } from '@earendil-works/pi-ai';
+import { isCorralState } from './request-record.ts';
 import { withoutAssignmentMetadata } from './worker-tools.ts';
 
 /** Read only ordinary text. Hidden thinking and image data never enter the classifier. */
@@ -25,8 +26,10 @@ export function requestReasoningInput(
   assignment: string,
   directiveIds: string[],
 ): ReasoningInput {
-  const messages = context.messages.filter((message): message is Context['messages'][number] =>
-    ['system', 'user', 'assistant', 'toolResult'].includes(message.role),
+  const messages = context.messages.filter(
+    (message): message is Context['messages'][number] =>
+      ['system', 'user', 'assistant', 'toolResult'].includes(message.role) &&
+      !isCorralState(message),
   );
   const userIndex = messages.findLastIndex((message) => message.role === 'user');
   const users = messages.filter((message) => message.role === 'user');

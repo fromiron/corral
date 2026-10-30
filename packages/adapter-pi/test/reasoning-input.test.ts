@@ -93,3 +93,41 @@ it('gives the judge the task, not the assignment metadata in front of it', () =>
   expect(input.prevRequest).toBe('## brief\n\nFix the typo in README');
   expect(withoutAssignmentMetadata('no metadata here')).toBe('no metadata here');
 });
+
+it('judges the request, not the Corral state message appended after it', () => {
+  const state = (n: number) => ({
+    role: 'user',
+    content: `[Corral current state]\n${JSON.stringify({ executionId: `exec_${n}`, limits: { maxSpawns: 12 } })}`,
+    timestamp: 0,
+  });
+  const brief = { role: 'user', content: '## brief\n\nFix the typo in README', timestamp: 1 };
+  const first = requestReasoningInput({ messages: [brief, state(1)] } as Context, 'turn', '', []);
+  expect(first).toMatchObject({ kind: 'turn', request: brief.content, prevRequest: '' });
+
+  const step = requestReasoningInput(
+    {
+      messages: [
+        brief,
+        {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'c1', name: 'write_artifact', arguments: {} }],
+          timestamp: 2,
+        },
+        {
+          role: 'toolResult',
+          toolCallId: 'c1',
+          toolName: 'write_artifact',
+          content: [{ type: 'text', text: 'saved' }],
+          timestamp: 3,
+        },
+        state(2),
+      ],
+    } as Context,
+    'turn',
+    '',
+    [],
+  );
+  expect(step).toMatchObject({ kind: 'step', request: brief.content, prevRequest: '' });
+  expect(step.calls.map((call) => call.name)).toEqual(['write_artifact']);
+  expect(JSON.stringify([first, step])).not.toContain('Corral current state');
+});
