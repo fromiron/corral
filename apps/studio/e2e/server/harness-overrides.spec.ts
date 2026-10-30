@@ -52,6 +52,7 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
   const select = page.getByRole('combobox', { name: 'Run work style for writer', exact: true });
   await select.click();
   await page.getByRole('option', { name: 'One-time style · r1', exact: true }).click();
+  await expect(select).toHaveAttribute('aria-expanded', 'false');
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => {
     release = resolve;
@@ -69,15 +70,22 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
   await requested;
   await select.click();
   await page.getByRole('option', { name: 'Keep role settings', exact: true }).click();
+  await expect(select).toHaveAttribute('aria-expanded', 'false');
   const received = page.waitForResponse('**/api/v1/harness/preview');
   release();
   await received;
   await expect(page.getByTestId('run-harness-preview')).toHaveCount(0);
   await select.click();
   await page.getByRole('option', { name: 'One-time style · r1', exact: true }).click();
+  await expect(select).toHaveAttribute('aria-expanded', 'false');
   await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
   await expect(page.getByTestId('run-harness-preview')).toContainText('limited');
-  await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+  await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');

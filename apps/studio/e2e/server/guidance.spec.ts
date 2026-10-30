@@ -108,7 +108,7 @@ test.describe('no connected models', () => {
     await corral.open('/projects/default?settings=project-defaults');
     await expect(
       page.getByRole('combobox', { name: '프로젝트 기본값', exact: true }),
-    ).toContainText('선택…');
+    ).toContainText('없음');
     await page.screenshot({ path: '/tmp/corral-followup-select-ko.png' });
   });
 });

@@ -1,6 +1,32 @@
+import { requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, compatibleEndpoint: true });
+
+test('a request to a stopped endpoint explains the connection failure in the conversation', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await expect(requestBox(page)).toBeVisible();
+  await corral.endpoint?.close();
+  await requestBox(page).fill('Check the local connection.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('failed');
+  const conversation = page.getByTestId('chat-timeline');
+  await expect(conversation.getByText('The model provider could not be reached.')).toBeVisible();
+  await expect(
+    conversation.getByText(
+      'Check the network and endpoint address. Start the local model server if needed, then retry.',
+    ),
+  ).toBeVisible();
+  await expect(conversation.getByText('This step failed.', { exact: false })).toHaveCount(0);
+  await expect(
+    conversation.locator('details[open]').filter({ hasText: 'Diagnostics' }),
+  ).toHaveCount(0);
+  expect(corral.errors).toEqual([]);
+});
 
 test('model settings keep configuration distinct from endpoint reachability and explain recovery', async ({
   page,

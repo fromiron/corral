@@ -31,13 +31,13 @@ test('an idle second tab discovers a remote request and answer without replacing
       .getByTestId('app-sidebar')
       .locator('a[href^="/sessions/"]')
       .first();
-    await expect(firstSidebarSession).toHaveAttribute('href', otherPath);
+    await expect(firstSidebarSession).toHaveAttribute('href', `${otherPath}?compose=true`);
     corral.fake?.answerWith('The background request finished.');
     await second.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(second.getByTestId('chat-timeline')).toContainText(
       'The background request finished.',
     );
-    await expect(firstSidebarSession).toHaveAttribute('href', originalPath);
+    await expect(firstSidebarSession).toHaveAttribute('href', `${originalPath}?compose=true`);
     await expect(page).toHaveURL(new RegExp(otherPath));
     expect(corral.errors).toEqual([]);
   } finally {

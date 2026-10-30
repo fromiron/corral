@@ -45,7 +45,12 @@ export function ValidationPanel() {
     });
   };
   return (
-    <section aria-labelledby="validation-heading" className="flex flex-col gap-2">
+    <section
+      aria-labelledby="validation-heading"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: the diagnostic region scrolls in the narrow editor and must be reachable by keyboard
+      tabIndex={0}
+      className="flex flex-col gap-2"
+    >
       <h2 id="validation-heading" className="text-subtitle">
         {t('heading')}
       </h2>

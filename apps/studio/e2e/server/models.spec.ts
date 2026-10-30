@@ -49,7 +49,7 @@ test('signing in from Settings shows status and expiry, never the token', async 
     timeout: 10_000,
   });
   await expect(openai).toContainText('Current token valid until');
-  await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+  await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
   expect(await page.content()).not.toContain('secret');
   expect(corral.errors).toEqual([]);
 });
@@ -114,7 +114,7 @@ test.describe('a borrowed Codex CLI login', () => {
     // Signing out of Codex happens in Codex; a Corral sign-in can take over instead.
     await expect(openai.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
     await expect(openai.getByRole('button', { name: 'Sign in to Corral instead' })).toBeVisible();
-    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+    await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
     const content = await page.content();
     expect(content).not.toContain(FAKE_CODEX_ACCESS);
     expect(content).not.toContain('secret');
@@ -153,7 +153,7 @@ test('an API key typed under Models runs live, is never shown, and can be remove
   await expect(openai.getByTestId('auth-status')).toContainText('Using the API key you entered');
   // The key field gives way to "Remove key"; the key is not kept in the page.
   await expect(openai.getByLabel('API key')).toHaveCount(0);
-  await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+  await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
   expect(await page.content()).not.toContain('sk-e2e-entered-secret');
 
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
@@ -196,7 +196,7 @@ test.describe('a keyless OpenAI-compatible endpoint', () => {
     await expect(local).toContainText(new URL(corral.endpoint?.baseUrl ?? '').host);
     await expect(local.getByLabel('API key')).toHaveCount(0);
     await expect(local.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
-    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+    await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
 
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);

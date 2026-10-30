@@ -15,7 +15,12 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(aside?: React.ReactNode, expandedHeader = false, messageId?: string) {
+async function render(
+  aside?: React.ReactNode,
+  expandedHeader = false,
+  messageId?: string,
+  itemContent: React.ReactNode = <p>reply</p>,
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
     'ResizeObserver',
@@ -47,7 +52,7 @@ async function render(aside?: React.ReactNode, expandedHeader = false, messageId
           messageId={messageId}
           header={<p>Meeting records</p>}
           expandedHeader={expandedHeader}
-          items={[{ id: 'entry', content: <p>reply</p> }]}
+          items={[{ id: 'entry', content: itemContent }]}
           composer={<textarea aria-label="request" />}
           aside={aside}
         />
@@ -155,6 +160,51 @@ it('expanded records use the reading area while retaining the composer and mount
   expect(timeline?.hidden).toBe(true);
   expect(timeline?.textContent).toContain('reply');
   expect(container.querySelector('textarea[aria-label="request"]')?.closest('[hidden]')).toBeNull();
+});
+
+it('keeps an older message action in place when pointer focus precedes its scroll event', async () => {
+  sessionStorage.clear();
+  const container = await render(
+    undefined,
+    false,
+    undefined,
+    <button type="button">Retry request</button>,
+  );
+  const box = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+  const row = container.querySelector<HTMLElement>('[data-chat-item]');
+  const action = row?.querySelector('button');
+  if (!box || !row || !action) throw new Error('Conversation action fixture missing');
+  let height = 1000;
+  let top = 0;
+  Object.defineProperties(box, {
+    scrollHeight: { get: () => height },
+    clientHeight: { get: () => 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  row.getBoundingClientRect = () => ({ top: -top, bottom: height - top }) as DOMRect;
+  const resize = async () =>
+    act(async () => {
+      for (const callback of resizeCallbacks) callback();
+    });
+  await resize();
+  expect(top).toBe(800);
+  // Browser hit testing scrolls the older action into view before pointerdown.
+  // Its queued scroll event has not run when focus triggers a React render.
+  box.scrollTop = 100;
+  await act(async () => {
+    action.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    action.focus();
+  });
+  expect(document.activeElement).toBe(action);
+  expect(top).toBe(100);
+  height = 1200;
+  await resize();
+  expect(top).toBe(100);
 });
 
 it('identifies and highlights the message selected from search', async () => {

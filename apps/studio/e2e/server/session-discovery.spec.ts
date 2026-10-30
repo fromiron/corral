@@ -9,6 +9,10 @@ test('archived sessions run only after explicit sending and stay archived', asyn
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(requestBox(page)).toBeVisible();
   const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
+  const sidebarSession = page
+    .getByTestId('app-sidebar')
+    .locator(`a[href="/sessions/${sessionId}?compose=true"]`);
+  await expect(sidebarSession).toBeVisible();
   await page
     .getByRole('banner')
     .getByRole('button', { name: /Actions for/ })
@@ -21,9 +25,7 @@ test('archived sessions run only after explicit sending and stay archived', asyn
   await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(1);
   const response = await page.request.get(`${corral.server.url}/api/v1/sessions/${sessionId}`);
   expect((await response.json()).archivedAt).toBeTruthy();
-  await expect(
-    page.getByTestId('app-sidebar').locator(`a[href="/sessions/${sessionId}"]`),
-  ).toHaveCount(0);
+  await expect(sidebarSession).toHaveCount(0);
   await expect(page.getByText('Sending a message keeps this session archived.')).toBeVisible();
 });
 

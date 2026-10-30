@@ -58,7 +58,7 @@ import {
 } from './notifications.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
-import { watchRefresh } from './refresh.ts';
+import { watchRunList } from './runList.ts';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
 import {
   completedScheduleRuns,
@@ -96,12 +96,11 @@ export function useCorralSidebar() {
     let seen: NotificationTarget[] | null = null;
     let runKey: string | null = null;
     let latestSessions: WorkSession[] = [];
-    const watcher = watchRefresh(async (currentRead, force) => {
+    const watcher = watchRunList(transport, async (result, currentRead, force) => {
       try {
-        const [latestRuns, items] = await Promise.all([
-          transport.listRuns(),
-          workspaces?.inbox(current).catch(() => null) ?? Promise.resolve(null),
-        ]);
+        if ('error' in result) throw result.error;
+        const latestRuns = result.runs;
+        const items = await (workspaces?.inbox(current).catch(() => null) ?? Promise.resolve(null));
         const nextRunKey = latestRuns
           .map((run) => `${run.runId}:${run.status}`)
           .sort()
@@ -156,7 +155,7 @@ export function useCorralSidebar() {
       } catch (failure) {
         if (currentRead()) setError(failure instanceof Error ? failure.message : String(failure));
       }
-    }, 2000);
+    });
     return watcher.dispose;
   }, [repository, transport, workspaces, current, href, version, td, scheduledText, statusText]);
   useEffect(() => {

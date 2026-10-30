@@ -478,13 +478,16 @@ for (const cancelScope of ['run', 'command'] as const) {
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true);
-    const hidePanel = page.getByRole('banner').getByRole('button', { name: 'Hide the panel' });
-    await hidePanel.focus();
-    await hidePanel.press('Enter');
+    const views = page.getByRole('tablist', { name: 'Session views', exact: true });
+    const conversation = views.getByRole('tab', { name: 'Conversation', exact: true });
+    const files = views.getByRole('tab', { name: 'Files', exact: true });
+    await conversation.focus();
+    await conversation.press('Enter');
     await expect(commands).not.toBeVisible();
-    const showPanel = page.getByRole('banner').getByRole('button', { name: 'Show the panel' });
-    await expect(showPanel).toBeFocused();
-    await showPanel.press('Enter');
+    await expect(conversation).toBeFocused();
+    await conversation.press('ArrowRight');
+    await expect(files).toBeFocused();
+    await files.press('Enter');
     await expect(commands).toBeVisible();
     await commands.getByText('Output', { exact: true }).focus();
     await page.keyboard.press('Enter');
@@ -554,6 +557,11 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect(commandApproval).toContainText('node command-write.mjs');
   expect(existsSync(join(first.worktree, 'command.txt'))).toBe(false);
   await commandApproval.getByRole('button', { name: 'Allow once', exact: true }).click();
+  await page
+    .getByTestId('chat-timeline')
+    .getByTestId('run-required-action')
+    .getByRole('link', { name: 'Go to the request', exact: true })
+    .click();
   await expect(page.getByTestId('run-monitor')).toContainText(
     'Fixture A is waiting for your answer.',
     { timeout: 30000 },
@@ -595,6 +603,7 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page.getByRole('button', { name: /Make a working copy from/ }).click();
+  await panelTab(page, 'Conversation');
   await requestBox(page).fill('Hold C in this separate working copy.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => status('C'), { timeout: 30000 }).toBe('awaiting_user');

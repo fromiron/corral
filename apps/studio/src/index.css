@@ -120,7 +120,9 @@
   background: var(--raised);
 }
 @media (forced-colors: active) {
-  .dropdown-glass {
+  .dropdown-glass,
+  [data-settings-dialog],
+  [data-settings-guard] {
     outline: 1px solid CanvasText;
   }
 }

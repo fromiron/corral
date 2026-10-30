@@ -281,8 +281,9 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
 }) => {
   await graphSession(page, corral, templateForWorkspace('research-team', 'approval_team'));
   const sessionUrl = new URL(page.url()).pathname;
-  // the dock exposes the request; the execution panel owns the one response form.
+  // The conversation offers approval inline; opening history exposes only its own form.
   await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 15000 });
+  await expect(timeline(page).locator('[data-testid^="approval-"]')).toBeVisible();
   await page.getByTestId('action-required').getByRole('link').click();
   const observer = page.getByTestId('run-monitor');
   const decision = observer
@@ -290,7 +291,7 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
     .filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
-  await expect(timeline(page).locator('[data-testid^="approval-"]')).toHaveCount(0);
+  await expect(timeline(page).locator('[data-testid^="approval-"]')).toBeHidden();
   await expect(
     page.getByTestId('app-sidebar').getByRole('img', { name: 'Waiting for you', exact: true }),
   ).toBeVisible();

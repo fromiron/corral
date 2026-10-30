@@ -114,6 +114,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await page.getByRole('option', { name: 'Writer with files', exact: true }).click();
     await page.getByRole('button', { name: 'Start chat' }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);
+    const sessionPath = new URL(page.url()).pathname;
 
     await panelTab(page, 'Files');
     await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
@@ -128,6 +129,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     const copy = page.getByRole('region', { name: 'Working copy' });
     await copy.getByRole('button', { name: /Make a working copy from/ }).click();
     await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(page.getByTestId('pre-run')).toContainText('can change the working copy');
 
     await requestBox(page).fill('Write the notes');
@@ -140,8 +142,11 @@ test('a session works in its own copy, and its changes are reviewed and checked'
       /scope=run/,
     );
 
+    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
     await copy.getByRole('link', { name: 'Review changes' }).click();
-    await expect(page).toHaveURL(/\/review/);
+    await expect(page).toHaveURL(
+      new URL(`${sessionPath}?panel=changes&review=true`, corral.server.url).href,
+    );
     const file = page.getByRole('button', { name: /notes\/team_writer_role\.md/ });
     await expect(file).toContainText('Added');
     await expect(file).toContainText('Corral');
@@ -221,13 +226,10 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(parts).toContainText('Target: original folder');
     await parts.getByRole('button', { name: 'Approve and apply to original' }).click();
     await expect.poll(() => existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(true);
-    await page.goto(
-      new URL(
-        `/sessions/${new URL(page.url()).pathname.split('/')[2]}?panel=changes`,
-        page.url(),
-      ).toString(),
-    );
+    await page.getByRole('button', { name: 'Back to Git changes', exact: true }).click();
+    await expect(page).toHaveURL(new URL(`${sessionPath}?panel=changes`, corral.server.url).href);
     const checkpoints = page.getByRole('region', { name: 'File checkpoints', exact: true });
+    await checkpoints.getByRole('button', { name: 'Refresh checkpoints', exact: true }).click();
     const originalBackup = checkpoints
       .getByTestId('checkpoint-row')
       .filter({ hasText: 'Before restore' })

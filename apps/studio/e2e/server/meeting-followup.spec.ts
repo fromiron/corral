@@ -106,7 +106,7 @@ for (const locale of ['en', 'ko']) {
       await palette.getByRole('option').filter({ hasText: m.Commands.restore }).click();
       await expect(notice).toHaveCount(0);
       await expect(
-        page.getByTestId('app-sidebar').locator(`a[href="/sessions/${id}"]`),
+        page.getByTestId('app-sidebar').locator(`a[href="/sessions/${id}?compose=true"]`),
       ).toBeVisible();
       await expect(box).toHaveValue('Preserve my draft');
       await page.evaluate(() => {

@@ -173,7 +173,7 @@ it('the selected Graph tab returns from the tree and result links keep the monit
 
 it('an explicit cursor at the current head stays read-only as live state changes until Latest', async () => {
   const { container, run, navigations } = await mount('inline_team', null, { atSeq: 0 });
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Created');
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Starting…');
   expect(container.querySelector('fieldset[disabled]')).not.toBeNull();
   const event = RunEvent.parse({
     schemaVersion: '0.1',
@@ -198,7 +198,7 @@ it('an explicit cursor at the current head stays read-only as live state changes
       });
   });
   expect(fixture.replays).toBe(replays);
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Created');
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Starting…');
   expect(run.getState().projection).toBe(live);
   const latest = [...container.querySelectorAll('button')].find((el) =>
     el.textContent?.includes('Latest'),

@@ -221,6 +221,20 @@ export function ChatView({
     readingAnchor.current = null;
     follow.current = false;
   };
+  const readPosition = () => {
+    const box = timeline.current;
+    if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
+    follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    const top = box.getBoundingClientRect().top;
+    const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+      (item) => item.getBoundingClientRect().bottom > top,
+    );
+    readingAnchor.current =
+      !follow.current && row
+        ? { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top }
+        : null;
+    setAtEnd(follow.current);
+  };
 
   return (
     <div
@@ -247,6 +261,9 @@ export function ChatView({
         onPointerDown={(event) => {
           // A scrollbar drag is navigation; clicking message actions is not.
           if (event.target === event.currentTarget) stopRestoring();
+          // Hit testing can scroll an older action into view before the scroll event.
+          // Read that position before focus renders can move the target under the pointer.
+          else readPosition();
         }}
         onTouchMove={stopRestoring}
         onKeyDown={(event) => {
@@ -255,20 +272,7 @@ export function ChatView({
           )
             stopRestoring();
         }}
-        onScroll={() => {
-          const box = timeline.current;
-          if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
-          follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-          const top = box.getBoundingClientRect().top;
-          const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
-            (item) => item.getBoundingClientRect().bottom > top,
-          );
-          readingAnchor.current =
-            !follow.current && row
-              ? { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top }
-              : null;
-          setAtEnd(follow.current);
-        }}
+        onScroll={readPosition}
       >
         <div
           ref={content}
