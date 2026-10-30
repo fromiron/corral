@@ -19,7 +19,7 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | 관리형 LLM 요청·컨텍스트·캐시·정산 | [llm-runtime.md](llm-runtime.md) |
 | HTTP·이벤트·스키마 | [api.md](api.md), [api-contract.md](api-contract.md) |
 | 화면·코드 용어 | [glossary.md](glossary.md) |
-| 기능별 수용 기준 | [features/](features/): [canvas](features/canvas.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
+| 기능별 수용 기준 | [features/](features/): [canvas](features/canvas.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [로컬 AI](features/local-intelligence.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
 | 디자인 토큰·공용 컴포넌트 | [DESIGN.md](../../DESIGN.md) |
 | 모델 연결·출시·평가 사용법 | [guides/](../guides/) |
 
