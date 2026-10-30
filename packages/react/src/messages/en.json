@@ -1706,7 +1706,8 @@
     "removalComments": "{count, plural, one {# review comment not sent} other {# review comments not sent}}",
     "removalUncertain": "{count, plural, one {# file write with unknown outcome} other {# file writes with unknown outcome}}",
     "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}",
-    "noCopyReadOnly": "Read-only: this session has no working copy."
+    "noCopyReadOnly": "Read-only: this session has no working copy.",
+    "operationDetails": "Write details"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -1754,7 +1755,9 @@
       "partial": "Partly applied",
       "conflict": "Not applied: conflicts",
       "reverted": "Reverted",
-      "failed": "Failed"
+      "failed": "Failed",
+      "partlyReverted": "Partly reverted",
+      "notReverted": "Not reverted: files changed since applying"
     },
     "fileOutcome": {
       "planned": "Planned",
@@ -1783,7 +1786,10 @@
     "retrySend": "Check the same request",
     "sendUnconfirmed": "The request or its record could not be confirmed. Check the same request before sending another.",
     "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending.",
-    "inboxScope": "Pending actions in this project’s unarchived sessions. A session can have several actions; this is not a count of failed sessions."
+    "inboxScope": "Pending actions in this project’s unarchived sessions. A session can have several actions; this is not a count of failed sessions.",
+    "confirmRevert": "Revert applied files",
+    "confirmRevertNote": "Revert these files in the original folder. Files changed outside Corral since applying are kept. A checkpoint is saved before reverting.",
+    "cancelRevert": "Cancel"
   },
   "Workbench": {
     "reviewFeedback": "Review changes and request revisions",
@@ -2766,7 +2772,9 @@
     "original": "Original folder",
     "workingCopy": "Session working copy",
     "restoreOriginal": "Restore original folder",
-    "requestUnavailable": "Original request unavailable"
+    "requestUnavailable": "Original request unavailable",
+    "unchanged": "No changes since the previous checkpoint",
+    "alreadyMatches": "Already matches this checkpoint. There is nothing to restore."
   },
   "RunStatus": {
     "environment": "Environment",

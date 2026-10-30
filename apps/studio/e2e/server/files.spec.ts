@@ -208,6 +208,10 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(page.getByTestId('integration').first()).toContainText('Applied');
     expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(true);
     await page.getByRole('button', { name: 'Revert' }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Revert applied files', exact: true })
+      .click();
     await expect(page.getByTestId('integration').first()).toContainText('Reverted');
     expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(false);
     const parts = page.getByRole('region', { name: 'Selected changes', exact: true });

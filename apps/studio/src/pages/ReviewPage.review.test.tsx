@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ReviewDecisionView } from '@corral/client';
+import type { IntegrationResultView, ReviewDecisionView } from '@corral/client';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -31,12 +31,17 @@ const approved = (from: string): ReviewDecisionView => ({
   stale: false,
 });
 
-async function render(decision: ReviewDecisionView) {
+async function render(
+  decision: ReviewDecisionView,
+  integrations: IntegrationResultView[] = [],
+  revert = vi.fn(),
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.services = {
     workspaces: {
       decisions: vi.fn(async () => [decision]),
-      integrations: vi.fn(async () => []),
+      integrations: vi.fn(async () => integrations),
+      revert,
     },
   };
   const container = document.createElement('div');
@@ -64,6 +69,63 @@ it('an approval of this exact comparison is current and can be applied', async (
     button.textContent?.includes('Review.decisionState.approved'),
   );
   expect(approve?.disabled).toBe(true);
+});
+
+it('requires confirmation before reverting', async () => {
+  const revert = vi.fn(async () => {});
+  const view = await render(
+    approved(base),
+    [
+      {
+        integrationId: 'integration',
+        decisionId: 'decision_1',
+        state: 'applied',
+        createdAt: '2026-10-29T00:00:00Z',
+        files: [{ path: 'note.txt', action: 'write', outcome: 'applied', detail: null }],
+      },
+    ],
+    revert,
+  );
+  await act(async () =>
+    [...view.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Review.revert')
+      ?.click(),
+  );
+  expect(revert).not.toHaveBeenCalled();
+  const cancel = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Review.cancelRevert',
+  );
+  await act(async () => cancel?.click());
+  expect(revert).not.toHaveBeenCalled();
+  await act(async () =>
+    [...view.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Review.revert')
+      ?.click(),
+  );
+  const confirm = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Review.confirmRevert',
+  );
+  expect(confirm).toBeDefined();
+  await act(async () => confirm?.click());
+  expect(revert).toHaveBeenCalledExactlyOnceWith('session', 'integration');
+});
+
+it('shows revert outcomes separately from apply outcomes', async () => {
+  const view = await render(approved(base), [
+    {
+      integrationId: 'integration',
+      decisionId: 'decision_1',
+      state: 'partial',
+      createdAt: '2026-10-29T00:00:00Z',
+      files: [
+        { path: 'a.txt', action: 'write', outcome: 'reverted', detail: null },
+        { path: 'b.txt', action: 'write', outcome: 'revert_conflict', detail: null },
+      ],
+    },
+  ]);
+  expect(view.textContent).toContain('Review.integrationState.partlyReverted');
+  expect(view.textContent).not.toContain('Review.integrationState.partial');
+  expect(view.textContent).toContain('Review.fileOutcome.revert_conflict');
 });
 
 it('an approval of another comparison with the same result is not this review', async () => {
