@@ -201,7 +201,11 @@ export function ChatView({
   });
   const jumped = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
-    if (!messageId || jumped.current === messageId) return;
+    if (!messageId) {
+      jumped.current = undefined;
+      return;
+    }
+    if (jumped.current === messageId) return;
     const index = items.findIndex((item) => item.id === messageId);
     if (index < 0) return;
     follow.current = false;
@@ -289,6 +293,10 @@ export function ChatView({
                     aria-setsize={items.length}
                     data-index={index}
                     data-chat-item={item.id}
+                    aria-current={item.id === messageId ? 'location' : undefined}
+                    className={
+                      item.id === messageId ? 'rounded-lg ring-2 ring-focus-ring' : undefined
+                    }
                     ref={virtualized ? rows.measureElement : undefined}
                     onFocusCapture={() => setFocused(item.id)}
                     onBlurCapture={(event) => {

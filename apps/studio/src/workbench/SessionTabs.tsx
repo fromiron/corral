@@ -51,10 +51,21 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
   const navigation = useRef(visible);
   navigation.current = visible;
   const activeTab = useRef<HTMLAnchorElement>(null);
+  const tabStrip = useRef<HTMLElement>(null);
   const visibleActiveId = visible.find((tab) => tab.sessionId === activeId)?.sessionId;
+  const visibleLabels = JSON.stringify(visible.map(({ sessionId, title }) => [sessionId, title]));
   useEffect(() => {
-    if (visibleActiveId) activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [visibleActiveId]);
+    if (!visibleActiveId || !visibleLabels) return;
+    const reveal = () => activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    reveal();
+    window.addEventListener('resize', reveal);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reveal);
+    if (tabStrip.current) observer?.observe(tabStrip.current);
+    return () => {
+      window.removeEventListener('resize', reveal);
+      observer?.disconnect();
+    };
+  }, [visibleActiveId, visibleLabels]);
   useRegisterCommands(
     'session-tabs',
     desktop
@@ -78,6 +89,7 @@ export function SessionTabs({ sessions }: { sessions: WorkSession[] }) {
   if (!visible.length) return null;
   return (
     <nav
+      ref={tabStrip}
       aria-label={t('label')}
       className="session-tabs flex min-w-0 items-center gap-1 overflow-x-auto py-1"
     >

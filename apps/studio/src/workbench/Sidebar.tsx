@@ -565,6 +565,7 @@ export const Sidebar = memo(function Sidebar({
                           <Link
                             to="/sessions/$sessionId"
                             params={{ sessionId: session.sessionId }}
+                            search={{ compose: true }}
                           />
                         }
                       >

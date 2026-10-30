@@ -260,3 +260,15 @@ it('leaving run history clears its cursor while selecting another detail preserv
   expect(patchSessionSearch(history, { panel: 'files' }).atSeq).toBeUndefined();
   expect(patchSessionSearch(history, { execution: 'exec_old' }).atSeq).toBe(9);
 });
+
+it('message search opens its exact conversation without inheriting a saved run or panel', () => {
+  expect(
+    resolveSessionSearch(
+      { message: 'entry_found' },
+      { panel: 'changes', run: 'run_old', atSeq: 4, view: 'results', result: 'old' },
+    ),
+  ).toEqual({ message: 'entry_found' });
+  expect(
+    resolveSessionSearch({ message: 'entry_found' }, { panel: 'run', run: 'run_old' }),
+  ).toEqual({ message: 'entry_found' });
+});

@@ -123,6 +123,7 @@ export function resolveSessionSearch(url: SessionSearch, remembered: unknown): S
   const explicitTarget = Boolean(
     selection.atSeq !== undefined ||
       selection.compose ||
+      selection.message ||
       selection.review ||
       selection.run ||
       selection.terminal ||
