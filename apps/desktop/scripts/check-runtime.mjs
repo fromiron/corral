@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { existsSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Resolve from the deployed server manifest, never this build script or the checkout.
@@ -24,7 +24,7 @@ for (const name of [
   '@corral/contracts',
   '@corral/adapter-pi',
   '@corral/storage-sqlite',
-  '@corral/effort-judge',
+  '@corral/local-intelligence',
 ])
   resolved(name);
 const pi = await import(pathToFileURL(resolved('@corral/adapter-pi')).href);
@@ -38,9 +38,14 @@ const Database = storageRequire('better-sqlite3');
 const database = new Database(':memory:');
 assert.equal(database.prepare('SELECT 1 AS value').get().value, 1);
 database.close();
-const judgeRequire = createRequire(resolved('@corral/effort-judge'));
-contained(judgeRequire.resolve('onnxruntime-node'));
-judgeRequire('onnxruntime-node');
+// The local AI ships its pinned download manifest and effort weights; both must load as built.
+const local = await import(pathToFileURL(resolved('@corral/local-intelligence')).href);
+const bundle = local.bundledManifest();
+local.loadEffortClassifier(local.bundledEffortWeights(), {
+  dims: bundle.embedding.dims,
+  baseModelSha256: bundle.model.sha256,
+  preprocessVersion: local.EFFORT_PREPROCESS_VERSION,
+});
 contained(require.resolve('node-pty'));
 const pty = require('node-pty');
 assert.equal(typeof pty.spawn, 'function');
@@ -85,24 +90,11 @@ assert(
   'SQLite native binding was not loaded',
 );
 assert(
-  native.some((path) => path.includes('onnxruntime')),
-  'ONNX native binding was not loaded',
-);
-assert(
   native.some((path) => path.includes(`${sep}node-pty${sep}`)),
   'PTY native binding was not loaded',
 );
 for (const file of Object.keys(require.cache)) contained(file);
-for (const file of native) {
-  const actual = contained(file);
-  if (process.platform === 'win32' && basename(actual).includes('onnxruntime')) {
-    for (const name of ['onnxruntime.dll', 'DirectML.dll', 'dxcompiler.dll', 'dxil.dll']) {
-      const library = join(dirname(actual), name);
-      assert(existsSync(library), `ONNX companion missing: ${name}`);
-      contained(library);
-    }
-  }
-}
+for (const file of native) contained(file);
 const processEntry = resolved('@corral/adapter-pi/processes');
 for (const name of ['windows-job.ps1', 'windows-job.cs'])
   contained(join(dirname(processEntry), name));
@@ -133,5 +125,5 @@ for (const [entry, start, protocol] of [
   });
 }
 console.log(
-  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/ONNX/PTY bindings, both Pi worker handshakes${process.platform === 'linux' ? ', PTY shell input/101x37 resize/exit' : ''}.`,
+  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/PTY bindings, local AI manifest and weights, both Pi worker handshakes${process.platform === 'linux' ? ', PTY shell input/101x37 resize/exit' : ''}.`,
 );

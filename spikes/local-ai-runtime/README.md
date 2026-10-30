@@ -122,4 +122,4 @@ node bench/onnx-bench.ts <onnx-dir> <tokenizer-dir> model_q4 <out.json> 6
 node bench/compare.ts <a.json> <b.json>
 ```
 
-`liblitert-lm.so`는 `litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl`(sha256 `c5a8a953…be76`)에서 꺼낸다. ONNX 벤치의 토크나이저 디렉터리에는 `onnx-community/embeddinggemma-2-ONNX`의 `tokenizer.json`을 둔다(이 스크립트가 같은 디렉터리에 `tokenizer.bin` 캐시를 쓴다). 내려받은 파일과 측정 결과는 저장소 밖에 둔다.
+`liblitert-lm.so`는 `litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl`(sha256 `c5a8a953…be76`)에서 꺼낸다. ONNX 벤치의 토크나이저 디렉터리에는 `onnx-community/embeddinggemma-2-ONNX`의 `tokenizer.json`을 둔다(이 스크립트가 같은 디렉터리에 `tokenizer.bin` 캐시를 쓴다). 내려받은 파일과 측정 결과는 저장소 밖에 둔다. `onnx-bench.ts`는 이후 제거된 `packages/effort-judge`의 토크나이저와 onnxruntime-node를 쓴다. 다시 돌리려면 그 패키지가 남아 있는 커밋 `2b3c0ed9`에서 실행한다.

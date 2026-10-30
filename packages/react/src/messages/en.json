@@ -2551,7 +2551,7 @@
     "source": {
       "fixed": "Manual",
       "provider_default": "Provider default",
-      "local-model": "ONNX applied",
+      "local-model": "Local model applied",
       "fallback": "Fallback",
       "compaction": "Compaction base"
     },
@@ -2566,7 +2566,8 @@
       "provider_error": "Judge error",
       "invalid_response": "Invalid answer",
       "limit": "Judgment limit",
-      "missing_input": "Missing input"
+      "missing_input": "Missing input",
+      "abstained": "Judge not confident"
     },
     "appliedHeading": "Applied reasoning by request",
     "observeHeading": "Observe-only judgments (not applied)"

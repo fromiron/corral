@@ -517,7 +517,6 @@
       "usedBy": [
         "@corral/adapter-pi",
         "@corral/desktop",
-        "@corral/effort-judge",
         "@corral/live-tests",
         "@corral/local-intelligence",
         "@corral/server",
@@ -980,21 +979,6 @@
       "scope": "runtime",
       "usedBy": [
         "@corral/server"
-      ]
-    },
-    {
-      "name": "onnxruntime-node",
-      "version": "1.30.0",
-      "license": "MIT",
-      "integrity": "sha512-twhs1C2C/BFkz1yc5OY0KIU2GUq6DURO7hD4bx5Q2Qy3nAMJwRXW8xU3NVczE29VA9lolLOYepoD8fjTGOfIqw==",
-      "published": "2026-09-14T20:05:58.862Z",
-      "repository": "git+https://github.com/Microsoft/onnxruntime.git",
-      "gitHead": null,
-      "engines": null,
-      "peerDependencies": null,
-      "scope": "runtime",
-      "usedBy": [
-        "@corral/effort-judge"
       ]
     },
     {

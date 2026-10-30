@@ -15,7 +15,6 @@
   "dependencies": {
     "@corral/contracts": "workspace:*",
     "@corral/core": "workspace:*",
-    "@corral/effort-judge": "workspace:*",
     "@corral/local-intelligence": "workspace:*",
     "@corral/server": "workspace:*",
     "@corral/storage-sqlite": "workspace:*",

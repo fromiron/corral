@@ -14,7 +14,7 @@ const settings = (mode: 'off' | 'observe'): RunProjection['decisionSettings'] =>
     providers: [
       {
         id: 'local-model',
-        version: 'effort-judge-v6',
+        version: 'corral-local-ai-1+effort-v1',
         privacy: 'local',
         available: true,
         reason: null,
@@ -49,7 +49,7 @@ const decision = (
   change: Partial<RunProjection['decisions'][string]>,
 ): RunProjection['decisions'][string] => ({
   decisionId: id,
-  provider: 'local-model@effort-judge-v6',
+  provider: 'local-model@corral-local-ai-1+effort-v1',
   privacy: 'local',
   executionId: 'exec_1',
   modelCallId: 'call_1',
@@ -90,7 +90,8 @@ describe('EffortJudgments', () => {
       },
       executionOrder: ['exec_1'],
       decisions: {
-        dec_1: decision('dec_1', {}),
+        // A run judged by the removed judge model still reads as it was recorded.
+        dec_1: decision('dec_1', { provider: 'local-model@effort-judge-v6' }),
         dec_2: decision('dec_2', {
           provider: 'local-heuristic@1',
           answer: 'medium',

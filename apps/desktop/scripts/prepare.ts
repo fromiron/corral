@@ -239,5 +239,5 @@ writeFileSync(
   ),
 );
 console.log(
-  `Prepared ${target.platform} ${target.arch} runtime: Node ${NODE_VERSION}, SQLite, both Pi workers, ONNX/PTY runtime and Studio; ${inventory.files} physical files, zero links.`,
+  `Prepared ${target.platform} ${target.arch} runtime: Node ${NODE_VERSION}, SQLite, both Pi workers, local AI assets, PTY runtime and Studio; ${inventory.files} physical files, zero links.`,
 );

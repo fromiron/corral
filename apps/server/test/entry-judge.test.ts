@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -8,6 +8,7 @@ import {
   bundledManifest,
   dataBase,
   defaultLocalAiDir,
+  legacyJudgeDir,
   runtimeTarget,
 } from '@corral/local-intelligence';
 import { linearCorral } from '@corral/testkit';
@@ -160,6 +161,16 @@ describe('the server entry point registers the local AI effort judge (#21)', () 
     },
     30_000,
   );
+
+  it('starting removes the old judge model but keeps files Corral did not write', async () => {
+    const dataHome = temp();
+    const old = legacyJudgeDir(dataBase(modelEnv(dataHome), process.platform, dataHome));
+    mkdirSync(old, { recursive: true });
+    for (const name of ['model.onnx', 'tokenizer.json', 'install.json', 'notes.txt'])
+      writeFileSync(join(old, name), 'x');
+    await serve(dataHome);
+    expect(readdirSync(old)).toEqual(['notes.txt']);
+  }, 30_000);
 
   it('without an installed bundle it is plainly unavailable, and the server still runs', async () => {
     const providers = await decisionProviders(temp());

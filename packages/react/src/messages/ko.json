@@ -2551,7 +2551,7 @@
     "source": {
       "fixed": "수동",
       "provider_default": "공급자 기본",
-      "local-model": "ONNX 판정 적용",
+      "local-model": "로컬 모델 적용",
       "fallback": "기본값 대체",
       "compaction": "요약 기본값"
     },
@@ -2566,7 +2566,8 @@
       "provider_error": "판정기 오류",
       "invalid_response": "잘못된 판정 응답",
       "limit": "판정 한도",
-      "missing_input": "판정 입력 없음"
+      "missing_input": "판정 입력 없음",
+      "abstained": "판정 보류"
     },
     "appliedHeading": "요청별 추론 적용 기록",
     "observeHeading": "관찰 전용 판정 (요청에 미적용)"

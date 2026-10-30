@@ -143,7 +143,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | local-ai install|status [--data-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | local-ai install|status [--data-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -165,7 +165,6 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         redact: { type: 'boolean', default: false },
         private: { type: 'boolean', default: false },
         archive: { type: 'string' },
-        'model-dir': { type: 'string' },
         'data-dir': { type: 'string' },
         judgments: { type: 'boolean', default: false },
         json: { type: 'boolean', default: false },
@@ -182,17 +181,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
     }
     if (
       extra ||
-      ![
-        'dev',
-        'validate',
-        'run',
-        'inspect',
-        'export',
-        'judge',
-        'local-ai',
-        'exec',
-        'eval',
-      ].includes(command)
+      !['dev', 'validate', 'run', 'inspect', 'export', 'local-ai', 'exec', 'eval'].includes(command)
     ) {
       io.write(usage);
       return 1;
@@ -201,7 +190,6 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       throw new Error(
         'Model/effort options require exec auto; custom teams keep their own workflow',
       );
-    if (command === 'judge') return await judge(target, values['model-dir'], io);
     if (command === 'local-ai') return await localAi(target, values['data-dir'], io);
     const workspace = resolve(io.cwd, values.workspace ?? '.');
     if (command === 'exec' || command === 'eval') {
@@ -444,41 +432,6 @@ function readInput(path: string, maximumBytes = 2 * 1024 * 1024): string {
   if (!statSync(path).isFile() || statSync(path).size > maximumBytes)
     throw new Error('input is not a bounded file');
   return readFileSync(path, 'utf8');
-}
-
-/**
- * `corral judge install|status`: the local effort judge model lives in the OS's standard
- * per-user data directory. Installing downloads ≈185 MB from the release in the bundled
- * manifest and checks every file's size and sha256.
- */
-async function judge(action: string | undefined, modelDir: string | undefined, io: CliIO) {
-  const { bundledManifest, defaultModelDir, installModel, installState } = await import(
-    '@corral/effort-judge'
-  );
-  const dir = modelDir ? resolve(io.cwd, modelDir) : defaultModelDir();
-  const manifest = bundledManifest();
-  if (action === 'status') {
-    const state = installState(dir, manifest);
-    io.write(
-      state === 'current'
-        ? `${manifest.release} installed in ${dir}`
-        : state === 'stale'
-          ? `an older release is installed in ${dir}; run \`corral judge install\``
-          : `not installed (${dir}); run \`corral judge install\``,
-    );
-    return 0;
-  }
-  if (action !== 'install') {
-    io.write(usage);
-    return 1;
-  }
-  io.write(`Installing ${manifest.release} into ${dir}.`);
-  await installModel(dir, {
-    manifest,
-    onFile: (name, size) => io.write(`Downloading ${name} (${Math.round(size / 1e6)} MB).`),
-  });
-  io.write(`${manifest.release} installed.`);
-  return 0;
 }
 
 /**
