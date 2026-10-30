@@ -120,10 +120,9 @@ export function RunMessage({
   if (working && !watched) setWatched(true);
   const processOpen = chosen ?? (chatDensity === 'detailed' || working);
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
+  const questions = interactions.filter((interaction) => interaction.kind !== 'approval');
   const requiredLabel =
-    interactions.length === 1
-      ? tw(interactions[0]?.kind === 'approval' ? 'actionApproval' : 'actionQuestion')
-      : tw('actionMixed', { count: interactions.length });
+    questions.length === 1 ? tw('actionQuestion') : tw('actionMixed', { count: questions.length });
   const label = (nodeId: string) =>
     state.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
@@ -220,7 +219,7 @@ export function RunMessage({
   );
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {sessionId && interactions.length ? (
+      {sessionId && questions.length ? (
         // The composer's live region announces it; the banner itself stays a note.
         <Banner
           data-testid="run-required-action"
@@ -248,7 +247,25 @@ export function RunMessage({
         </Banner>
       ) : null}
       {working && !sessionId ? <RunActions session={store} compact /> : null}
-      {sessionId ? null : <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />}
+      <ApprovalPanel
+        session={store}
+        onOpenArtifact={onOpenArtifact}
+        showPlan={!sessionId}
+        showRelatedPanels={!sessionId}
+        policySettingsAction={
+          sessionId ? (
+            <Button
+              size="compact"
+              variant="tertiary"
+              render={
+                <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
+              }
+            >
+              {trun('permissionSettings')}
+            </Button>
+          ) : undefined
+        }
+      />
       {attention.length ? (
         <ul
           className="space-y-1 text-xs"

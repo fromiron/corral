@@ -2,12 +2,14 @@ import {
   CheckPlan,
   CommandPlan,
   HashlineEditInput,
+  PiEditInput,
+  PiWriteInput,
   type Receipt,
   RunCommandArgs,
   ToolPermissionPlan,
 } from '@corral/contracts';
 import { validToolPermissionPlan } from '@corral/core';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button } from '../design-kit/index.ts';
@@ -26,6 +28,8 @@ export function ApprovalPanel({
   className,
   compact = false,
   showPlan = true,
+  showRelatedPanels = true,
+  policySettingsAction,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
@@ -35,6 +39,10 @@ export function ApprovalPanel({
   compact?: boolean;
   /** The session composer already presents the current plan; detail views retain it. */
   showPlan?: boolean;
+  /** Conversation turns already own their workflow and question surfaces. */
+  showRelatedPanels?: boolean;
+  /** Navigation only: never grants broader permission to this call. */
+  policySettingsAction?: ReactNode;
 }) {
   const t = useTranslations('Approvals');
   const headingId = useId();
@@ -100,8 +108,10 @@ export function ApprovalPanel({
   if (approvals.length === 0)
     return (
       <>
-        <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-        <InteractionPanel session={session} />
+        {showRelatedPanels ? (
+          <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
+        ) : null}
+        {showRelatedPanels ? <InteractionPanel session={session} /> : null}
         {showPlan ? <WorkPlanPanel session={session} /> : null}
       </>
     );
@@ -121,8 +131,10 @@ export function ApprovalPanel({
 
   return (
     <>
-      <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-      <InteractionPanel session={session} />
+      {showRelatedPanels ? (
+        <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
+      ) : null}
+      {showRelatedPanels ? <InteractionPanel session={session} /> : null}
       {showPlan ? <WorkPlanPanel session={session} /> : null}
       <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
         <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
@@ -232,7 +244,7 @@ export function ApprovalPanel({
                 </ul>
               </div>
             ) : null}
-            <div className={`flex gap-2 ${compact ? 'ml-auto' : ''}`}>
+            <div className={`flex flex-wrap items-center gap-2 ${compact ? 'ml-auto' : ''}`}>
               <Button
                 size="compact"
                 disabled={
@@ -283,6 +295,7 @@ export function ApprovalPanel({
                     )
                   : t(`rejectAs.${approval.kind}`)}
               </Button>
+              {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
             </div>
             {refused?.error ? (
               <p role="alert" className="text-danger">
@@ -352,6 +365,55 @@ const shellNames = {
 /** Summaries only change presentation. The verified body/fingerprint still authorizes the exact call. */
 function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
   if (plan.descriptor.source !== 'corral') return null;
+  if (plan.descriptor.name === 'write_file' || plan.descriptor.name === 'write') {
+    const args = plan.arguments;
+    if (
+      plan.descriptor.name === 'write_file' &&
+      Object.keys(args).some((key) => key !== 'path' && key !== 'text')
+    )
+      return null;
+    const parsed = PiWriteInput.safeParse(
+      plan.descriptor.name === 'write_file' ? { path: args.path, content: args.text } : args,
+    );
+    if (!parsed.success) return null;
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        <p className="font-medium">{ko ? '쓸 파일 내용' : 'Proposed file content'}</p>
+        <p className="break-words font-mono">{parsed.data.path}</p>
+        <pre
+          data-testid="file-approval-content"
+          className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono"
+        >
+          {parsed.data.content}
+        </pre>
+      </div>
+    );
+  }
+  if (plan.descriptor.name === 'edit') {
+    const parsed = PiEditInput.safeParse(plan.arguments);
+    if (!parsed.success) return null;
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        <p className="font-medium">{ko ? '요청한 교체 내용' : 'Requested replacements'}</p>
+        <p className="break-words font-mono">{parsed.data.path}</p>
+        <ol className="max-h-80 space-y-3 overflow-auto">
+          {parsed.data.edits.map((edit, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the fingerprint fixes this immutable ordered edit list.
+            <li key={`${plan.fingerprint}:${index}`}>
+              <p className="text-muted-foreground">{ko ? '교체 전' : 'Before'}</p>
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+                {edit.oldText}
+              </pre>
+              <p className="text-muted-foreground">{ko ? '교체 후' : 'After'}</p>
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+                {edit.newText}
+              </pre>
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  }
   if (plan.descriptor.name === 'run_command') {
     const parsed = ResolvedCommand.safeParse(plan.arguments);
     if (!parsed.success) return null;

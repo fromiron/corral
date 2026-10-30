@@ -202,6 +202,38 @@ it('Hashline approval shows the affected path and multiline operations before te
   expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
 });
 
+it.each(['write_file', 'write'])(
+  'file permission previews the exact content before raw arguments (%s)',
+  async (name) => {
+    const content = '<script>unsafe()</script>\nconst value = 2;';
+    await renderCorralTool(
+      name,
+      name === 'write_file'
+        ? { path: 'src/main.ts', text: content }
+        : { path: 'src/main.ts', content },
+    );
+    expect(await screen.findByText('Proposed file content')).toBeVisible();
+    expect(screen.getByText('src/main.ts')).toBeVisible();
+    expect(screen.getByTestId('file-approval-content')).toHaveTextContent(
+      content.replace('\n', ' '),
+    );
+    expect(screen.getByTestId('file-approval-content').querySelector('script')).toBeNull();
+    expect(screen.getByText(/"path": "src\/main.ts"/)).not.toBeVisible();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
+  },
+);
+
+it('edit permission shows the exact replacement pairs without claiming a current file diff', async () => {
+  await renderCorralTool('edit', {
+    path: 'src/main.ts',
+    edits: [{ oldText: 'const value = 1;', newText: 'const value = 2;' }],
+  });
+  expect(await screen.findByText('Requested replacements')).toBeVisible();
+  expect(screen.getByText('const value = 1;')).toBeVisible();
+  expect(screen.getByText('const value = 2;')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
+});
+
 async function renderCorralTool(name: string, args: Record<string, unknown>) {
   const { toolPermissionPlan } = await import('@corral/core');
   const permission = toolPermissionPlan(
