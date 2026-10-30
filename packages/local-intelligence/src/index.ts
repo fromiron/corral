@@ -1,0 +1,43 @@
+export { type Bundle, bundledManifest, validBundle } from './bundle.ts';
+export {
+  type EffortClassifier,
+  type EffortJudgment,
+  type EffortWeights,
+  loadEffortClassifier,
+} from './effort/classifier.ts';
+export { EFFORT_PREPROCESS_VERSION, effortText } from './effort/preprocess.ts';
+export { type EffortEngine, LocalEffortProvider } from './effort/provider.ts';
+export {
+  type Backend,
+  type Device,
+  type EmbedRequest,
+  type EmbedTask,
+  type EngineOptions,
+  type EngineState,
+  type EngineStatus,
+  LocalEmbeddingEngine,
+  TASK_PREFIX,
+} from './engine/engine.ts';
+export {
+  builtHelperPath,
+  type HelperCommand,
+  type HelperLauncher,
+  type HelperProcess,
+  spawnHelper,
+} from './engine/helper.ts';
+export {
+  bundleDir,
+  type InstallOptions,
+  type InstallProgress,
+  type InstallState,
+  installBundle,
+  installState,
+} from './install.ts';
+export { cleanupLegacyJudge } from './legacy.ts';
+export {
+  cpuThreads,
+  dataBase,
+  defaultLocalAiDir,
+  legacyJudgeDir,
+  runtimeTarget,
+} from './platform.ts';

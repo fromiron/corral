@@ -339,6 +339,16 @@ importers:
         specifier: 24.19.2
         version: 24.19.2
 
+  packages/local-intelligence:
+    dependencies:
+      '@corral/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+
   packages/pi-runtime-port:
     dependencies:
       '@earendil-works/pi-ai':
