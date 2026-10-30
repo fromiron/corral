@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DecisionAnswer, ReasoningResolution } from '../src/index.ts';
+import {
+  DecisionAnswer,
+  ModelRequestIntent,
+  ReasoningApplySettings,
+  ReasoningResolution,
+} from '../src/index.ts';
 
 const base = {
   requested: { mode: 'auto' },
@@ -42,5 +47,49 @@ describe('reasoning records', () => {
     expect(DecisionAnswer.safeParse(answer).success).toBe(true);
     expect(DecisionAnswer.safeParse({ ...answer, abstain: 'yes' }).success).toBe(false);
     expect(DecisionAnswer.safeParse({ ...answer, note: 'x' }).success).toBe(false);
+  });
+});
+
+describe('external judgment (Jev)', () => {
+  it('records an escalated request and where its level came from', () => {
+    const resolution = {
+      requested: { mode: 'auto' },
+      resolved: 'xhigh',
+      source: 'external-model',
+      preparationId: 'prep_1',
+      judged: 'xhigh',
+      judgeVersion: 'jev-2026-09-15',
+      ladder: ['low', 'medium', 'high', 'xhigh'],
+      policyVersion: 'corral-effort-v1',
+      escalated: true,
+    };
+    expect(ReasoningResolution.parse(resolution)).toEqual(resolution);
+    expect(ReasoningResolution.safeParse({ ...resolution, escalated: false }).success).toBe(false);
+  });
+
+  it('fixes the external judge at run start, and only Jev', () => {
+    const apply = {
+      enabled: true,
+      maxCalls: 4,
+      provider: 'local-model',
+      version: 'corral-local-ai-1+effort-v1',
+      external: { provider: 'jev', model: 'jev-latest' },
+    };
+    expect(ReasoningApplySettings.parse(apply)).toEqual(apply);
+    expect(
+      ReasoningApplySettings.safeParse({ ...apply, external: { provider: 'other', model: 'x' } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('owns a judge request by its decision effect', () => {
+    expect(
+      ModelRequestIntent.parse({
+        requestId: 'effect_1',
+        purpose: 'reasoning_effort',
+        revision: 1,
+        owner: { kind: 'judge', id: 'effect_1', runId: 'run_1', executionId: 'exec_1' },
+      }),
+    ).toMatchObject({ purpose: 'reasoning_effort', owner: { kind: 'judge' } });
   });
 });

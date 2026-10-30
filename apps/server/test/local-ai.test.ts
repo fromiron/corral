@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -12,6 +12,8 @@ import {
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
+import { JevJudge } from '../src/jev.ts';
+import { FileCredentialStore } from '../src/models/credential-store.ts';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -26,7 +28,7 @@ const neverReady: HelperLauncher = (command) => {
   return { write() {}, onLine() {}, onExit() {}, kill: async () => {} };
 };
 
-async function serve(localIntelligence: LocalIntelligence | undefined) {
+async function serve(localIntelligence: LocalIntelligence | undefined, externalJudge?: JevJudge) {
   const root = mkdtempSync(join(tmpdir(), 'corral-local-ai-'));
   dirs.push(root);
   const workspace = join(root, 'workspace');
@@ -43,6 +45,7 @@ async function serve(localIntelligence: LocalIntelligence | undefined) {
     worktreeRoot: join(root, 'worktrees'),
     agents: new ScriptedAgentAdapter({ turns: 1 }),
     ...(localIntelligence ? { localIntelligence } : {}),
+    ...(externalJudge ? { externalJudge } : {}),
   });
   const login = await fetch(`${server.url}/api/v1/session`, {
     method: 'POST',
@@ -51,14 +54,16 @@ async function serve(localIntelligence: LocalIntelligence | undefined) {
   });
   const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
   const csrf = login.headers.get('x-corral-csrf') ?? '';
-  const call = async (path: string, method = 'GET') => {
+  const call = async (path: string, method = 'GET', body?: unknown) => {
     const response = await fetch(`${server.url}/api/v1${path}`, {
       method,
       headers: {
         origin: server.url,
         cookie,
         ...(method === 'GET' ? {} : { 'x-corral-csrf': csrf }),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
@@ -105,6 +110,7 @@ it.skipIf(!target)(
           downloadBytes: bundle.model.size + runtimeSize,
           progress: null,
           error: null,
+          external: expect.objectContaining({ provider: 'jev', enabled: false }),
         },
       });
       expect(await call('/local-ai/install', 'POST')).toMatchObject({
@@ -167,6 +173,76 @@ it('refuses to install where local AI cannot run, and a server without it says s
     });
   } finally {
     await none.server.close();
+  }
+});
+
+it('stores the TypeSafe key and the workspace Jev setting, and never returns the key', async () => {
+  const KEY = 'ts-secret-key-0123456789';
+  const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
+  const keyDir = mkdtempSync(join(tmpdir(), 'corral-local-ai-keys-'));
+  dirs.push(dataRoot, keyDir);
+  const { server, call, root } = await serve(
+    createLocalIntelligence({ root: dataRoot, env: {}, launch: neverReady }),
+    await JevJudge.open({ credentials: new FileCredentialStore(keyDir) }),
+  );
+  const config = () =>
+    JSON.parse(readFileSync(join(root, 'workspace', '.corral', 'config.json'), 'utf8')) as {
+      decisions?: { reasoning_effort: Record<string, unknown> };
+    };
+  try {
+    const first = await call('/local-ai');
+    expect(first.body.external).toEqual({
+      provider: 'jev',
+      model: 'jev-latest',
+      enabled: false,
+      keyConfigured: false,
+      revision: expect.any(String),
+    });
+    const { revision } = first.body.external as { revision: string };
+
+    const saved = await call('/local-ai/external-judge/api-key', 'PUT', { key: KEY });
+    expect(saved).toMatchObject({ status: 200, body: { external: { keyConfigured: true } } });
+    expect(JSON.stringify(saved.body)).not.toContain(KEY);
+    expect(JSON.stringify((await call('/local-ai')).body)).not.toContain(KEY);
+    expect(await call('/local-ai/external-judge/api-key', 'PUT', { key: '' })).toMatchObject({
+      status: 400,
+    });
+
+    expect(
+      await call('/local-ai/external-judge', 'PUT', { enabled: true, revision: 'stale' }),
+    ).toMatchObject({ status: 409 });
+    expect(config().decisions).toBeUndefined();
+    const enabled = await call('/local-ai/external-judge', 'PUT', { enabled: true, revision });
+    expect(enabled).toMatchObject({ status: 200, body: { external: { enabled: true } } });
+    expect(config().decisions?.reasoning_effort).toMatchObject({
+      allowExternal: true,
+      external: { provider: 'jev', model: 'jev-latest' },
+    });
+
+    // Turning automatic reasoning on keeps the Jev setting.
+    const reasoning = await call('/models/reasoning');
+    await call('/models/reasoning', 'PUT', { apply: true, revision: reasoning.body.revision });
+    expect(config().decisions?.reasoning_effort).toMatchObject({
+      apply: true,
+      allowExternal: true,
+      external: { provider: 'jev' },
+    });
+
+    const off = await call('/local-ai/external-judge', 'PUT', {
+      enabled: false,
+      revision: ((await call('/local-ai')).body.external as { revision: string }).revision,
+    });
+    expect(off).toMatchObject({ status: 200, body: { external: { enabled: false } } });
+    expect(config().decisions?.reasoning_effort).toMatchObject({ allowExternal: false });
+    expect(config().decisions?.reasoning_effort.external).toBeUndefined();
+
+    expect(await call('/local-ai/external-judge/api-key', 'DELETE')).toMatchObject({
+      status: 200,
+      body: { external: { keyConfigured: false } },
+    });
+    expect(readFileSync(join(keyDir, 'credentials.json'), 'utf8')).not.toContain(KEY);
+  } finally {
+    await server.close();
   }
 });
 

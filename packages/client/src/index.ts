@@ -1395,6 +1395,14 @@ export interface LocalAiView {
   downloadBytes: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
+  /** Automatic reasoning's external judge: the workspace setting and whether a key is stored. */
+  external: {
+    provider: 'jev';
+    model: string;
+    enabled: boolean;
+    keyConfigured: boolean;
+    revision: string;
+  };
 }
 
 export interface ModelProfileView {
@@ -1500,6 +1508,22 @@ export class ModelsApi {
   }
   cancelLocalAiInstall(): Promise<LocalAiView> {
     return this.http.json('/local-ai/install', { method: 'DELETE' });
+  }
+  setExternalJudge(enabled: boolean, revision: string): Promise<LocalAiView> {
+    return this.http.json('/local-ai/external-judge', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, revision }),
+    });
+  }
+  /** Stores the TypeSafe key server-side; the response says only that one is stored. */
+  setExternalJudgeKey(key: string): Promise<LocalAiView> {
+    return this.http.json('/local-ai/external-judge/api-key', {
+      method: 'PUT',
+      body: JSON.stringify({ key }),
+    });
+  }
+  deleteExternalJudgeKey(): Promise<LocalAiView> {
+    return this.http.json('/local-ai/external-judge/api-key', { method: 'DELETE' });
   }
   profiles(): Promise<ModelProfileView[]> {
     return this.http.json('/model-profiles');

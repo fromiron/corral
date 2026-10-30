@@ -3415,6 +3415,25 @@
                       "type": "null"
                     }
                   ]
+                },
+                "external": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "jev"
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -9316,6 +9335,7 @@
                     "fixed",
                     "provider_default",
                     "local-model",
+                    "external-model",
                     "fallback",
                     "compaction"
                   ]
@@ -9380,6 +9400,10 @@
                     "missing_input",
                     "abstained"
                   ]
+                },
+                "escalated": {
+                  "type": "boolean",
+                  "const": true
                 }
               },
               "required": [

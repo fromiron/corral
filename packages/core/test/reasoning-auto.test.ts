@@ -2,6 +2,7 @@ import type {
   AgentHost,
   DecisionCancellation,
   DecisionProvider,
+  ExternalEffortJudge,
   ReasoningInput,
 } from '@corral/contracts';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
@@ -28,6 +29,7 @@ async function setup(
   observe = false,
   maxModelConcurrency = 6,
   levels: ('low' | 'medium' | 'high' | 'xhigh')[] = ['low', 'medium', 'high'],
+  options: { externalJudge?: ExternalEffortJudge; external?: boolean; mode?: 'live' | 'mock' } = {},
 ) {
   let observed = 0;
   const clock = new FakeClock();
@@ -87,16 +89,20 @@ async function setup(
           providers: observe ? ['local-model'] : [],
           apply: true,
           ...(observe ? { maxCalls: 2 } : {}),
+          ...(options.external
+            ? { allowExternal: true, external: { provider: 'jev' as const, model: 'jev-latest' } }
+            : {}),
         },
       },
     },
+    ...(options.externalJudge ? { externalJudge: options.externalJudge } : {}),
   });
   const team = linearCorral(['writer']);
   team.roles[0]!.reasoning = { mode: 'auto' };
   const start = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start',
-    mode: 'live',
+    mode: options.mode ?? 'live',
     definition: team,
   });
   expect(start.runId).not.toBeNull();
@@ -375,5 +381,193 @@ describe('corral-effort-v1', () => {
     });
     expect(permit.reasoning?.judged).toBeUndefined();
     s.command('cancel');
+  });
+});
+
+describe('external judgment (Jev)', () => {
+  const ladder = ['low', 'medium', 'high', 'xhigh'] as const;
+  const abstained = {
+    answer: 'high',
+    probabilities: { low: 0.2, medium: 0.25, high: 0.3, xhigh: 0.25 },
+    evidenceLevel: 'model_probability',
+    abstain: true,
+  };
+  function jev(
+    answer: (cancellation: DecisionCancellation) => Promise<{ answer: string; model: string }>,
+    available: true | string = true,
+  ) {
+    const calls: Parameters<ExternalEffortJudge['judge']>[] = [];
+    const judge: ExternalEffortJudge = {
+      provider: 'jev',
+      available: () => available,
+      judge: async (...args) => {
+        calls.push(args);
+        return answer(args[2]) as ReturnType<ExternalEffortJudge['judge']>;
+      },
+    };
+    return { judge, calls };
+  }
+  const decisionEffects = (s: Awaited<ReturnType<typeof setup>>) =>
+    Object.values(s.coordinator.getSnapshot(s.runId).projection.effects).filter(
+      (effect) => effect.kind === 'decision',
+    );
+
+  it('asks Jev once when the local judge abstains, inside a recorded decision effect', async () => {
+    const j = jev(async () => ({ answer: 'xhigh', model: 'jev-2026-09-15' }));
+    const s = await setup(async () => abstained, false, 6, [...ladder], {
+      externalJudge: j.judge,
+      external: true,
+    });
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({
+      resolved: 'xhigh',
+      judged: 'xhigh',
+      source: 'external-model',
+      escalated: true,
+      judgeVersion: 'jev-2026-09-15',
+      policyVersion: 'corral-effort-v1',
+    });
+    expect(j.calls).toHaveLength(1);
+    const [[sent, request] = []] = j.calls;
+    if (!request) throw new Error('Jev was not asked');
+    expect(sent).toEqual(input);
+    expect(request).toMatchObject({
+      model: 'jev-latest',
+      owner: { runId: s.runId, attemptNo: 1 },
+    });
+    expect(decisionEffects(s)).toEqual([
+      expect.objectContaining({
+        effectId: request.owner.effectId,
+        status: 'settled',
+        outcome: 'succeeded',
+      }),
+    ]);
+    s.command('cancel');
+  });
+
+  it('never asks Jev when the local judge is clear, it is off, it has no key, or the run is mock', async () => {
+    const clear = {
+      answer: 'high',
+      probabilities: { low: 0, medium: 0, high: 1, xhigh: 0 },
+      evidenceLevel: 'model_probability',
+    };
+    const cases = [
+      { decide: clear, external: true, available: true as const, mode: 'live' as const },
+      { decide: abstained, external: false, available: true as const, mode: 'live' as const },
+      { decide: abstained, external: true, available: 'no TypeSafe key', mode: 'live' as const },
+      { decide: abstained, external: true, available: true as const, mode: 'mock' as const },
+    ];
+    for (const c of cases) {
+      const j = jev(async () => ({ answer: 'low', model: 'jev-latest' }), c.available);
+      const s = await setup(async () => c.decide, false, 6, [...ladder], {
+        externalJudge: j.judge,
+        external: c.external,
+        mode: c.mode,
+      });
+      const permit = await s.host.prepareModelRequest(undefined, input);
+      expect(j.calls).toHaveLength(0);
+      expect(permit.reasoning?.source).not.toBe('external-model');
+      expect(permit.reasoning?.escalated).toBeUndefined();
+      expect(decisionEffects(s)).toEqual([]);
+      s.command('cancel');
+    }
+  });
+
+  it('turns a Jev failure or an answer outside the ladder into medium, and says Jev was tried', async () => {
+    const cases = [
+      { fail: new Error('HTTP 401', { cause: 'provider_error' }), fallback: 'provider_error' },
+      { fail: null, answer: 'max', fallback: 'invalid_response' },
+    ];
+    for (const c of cases) {
+      const j = jev(async () => {
+        if (c.fail) throw c.fail;
+        return { answer: c.answer ?? 'low', model: 'jev-latest' };
+      });
+      const s = await setup(async () => abstained, false, 6, [...ladder], {
+        externalJudge: j.judge,
+        external: true,
+      });
+      const permit = await s.host.prepareModelRequest(undefined, input);
+      expect(permit.reasoning).toMatchObject({
+        resolved: 'medium',
+        source: 'fallback',
+        fallback: c.fallback,
+        escalated: true,
+      });
+      expect(decisionEffects(s)).toEqual([expect.objectContaining({ outcome: 'failed' })]);
+      s.command('cancel');
+    }
+  });
+
+  it('shares the 3 s deadline: a slow local judge leaves no time, a slow Jev times out', async () => {
+    const slowLocal = jev(async () => ({ answer: 'low', model: 'jev-latest' }));
+    let s = await setup(
+      async () => {
+        s.clock.advance(2600);
+        return abstained;
+      },
+      false,
+      6,
+      [...ladder],
+      { externalJudge: slowLocal.judge, external: true },
+    );
+    expect((await s.host.prepareModelRequest(undefined, input)).reasoning).toMatchObject({
+      fallback: 'abstained',
+    });
+    expect(slowLocal.calls).toHaveLength(0);
+    s.command('cancel');
+
+    const asked = new Gate();
+    let aborted = false;
+    const slowJev = jev(
+      (cancellation) =>
+        new Promise(() => {
+          cancellation.onCancel(() => {
+            aborted = true;
+          });
+          asked.open();
+        }),
+    );
+    s = await setup(async () => abstained, false, 6, [...ladder], {
+      externalJudge: slowJev.judge,
+      external: true,
+    });
+    const request = s.host.prepareModelRequest(undefined, input);
+    await asked.wait();
+    s.clock.advance(3000);
+    expect((await request).reasoning).toMatchObject({
+      resolved: 'medium',
+      fallback: 'timeout',
+      escalated: true,
+    });
+    expect(aborted).toBe(true);
+    expect(decisionEffects(s)).toEqual([expect.objectContaining({ outcome: 'cancelled' })]);
+    s.command('cancel');
+  });
+
+  it('cancelling the run while Jev answers aborts it and admits no model request', async () => {
+    const asked = new Gate();
+    let aborted = false;
+    const j = jev(
+      (cancellation) =>
+        new Promise(() => {
+          cancellation.onCancel(() => {
+            aborted = true;
+          });
+          asked.open();
+        }),
+    );
+    const s = await setup(async () => abstained, false, 6, [...ladder], {
+      externalJudge: j.judge,
+      external: true,
+    });
+    const request = s.host.prepareModelRequest(undefined, input);
+    await asked.wait();
+    s.command('cancel');
+    await expect(request).rejects.toThrow();
+    expect(aborted).toBe(true);
+    expect(Object.values(s.coordinator.getSnapshot(s.runId).projection.modelCalls ?? {})).toEqual(
+      [],
+    );
   });
 });

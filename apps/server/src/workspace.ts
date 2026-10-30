@@ -112,8 +112,14 @@ export function writeModelConfig(
   return { ok: true, config: parsed.config, revision: configRevision(root) };
 }
 
-/** Explicit apply opt-in; preserves observer settings and guards concurrent config edits. */
-export function writeReasoningApply(root: string, apply: boolean, expectedRevision: string) {
+type ReasoningEffortConfig = NonNullable<WorkspaceConfig['decisions']>['reasoning_effort'];
+
+/** Changes `decisions.reasoning_effort` only, guarding concurrent config edits. */
+function writeReasoningEffort(
+  root: string,
+  expectedRevision: string,
+  change: (current: ReasoningEffortConfig) => ReasoningEffortConfig,
+) {
   if (configRevision(root) !== expectedRevision) return { ok: false as const };
   const path = join(root, CONFIG);
   const raw = existsSync(path)
@@ -121,17 +127,31 @@ export function writeReasoningApply(root: string, apply: boolean, expectedRevisi
     : { schemaVersion: '0.1' };
   const current = parseWorkspaceConfig(raw);
   if (!current.ok) return { ok: false as const };
-  const reasoning_effort = {
-    ...(current.config.decisions?.reasoning_effort ?? {
-      mode: 'off' as const,
-      providers: ['local-model'],
-    }),
-    apply,
-  };
+  const reasoning_effort = change(
+    current.config.decisions?.reasoning_effort ?? { mode: 'off', providers: ['local-model'] },
+  );
   const next = { ...raw, decisions: { reasoning_effort } };
   const parsed = parseWorkspaceConfig(next);
   if (!parsed.ok) return { ok: false as const };
   writeFileSync(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
   renameSync(`${path}.tmp`, path);
   return { ok: true as const, config: parsed.config, revision: configRevision(root) };
+}
+
+/** Explicit apply opt-in; preserves observer and external judge settings. */
+export function writeReasoningApply(root: string, apply: boolean, expectedRevision: string) {
+  return writeReasoningEffort(root, expectedRevision, (current) => ({ ...current, apply }));
+}
+
+/** Automatic reasoning's external judge; null turns it and other external providers off. */
+export function writeExternalJudge(
+  root: string,
+  external: { provider: 'jev'; model: string } | null,
+  expectedRevision: string,
+) {
+  return writeReasoningEffort(root, expectedRevision, ({ external: _, ...current }) => ({
+    ...current,
+    allowExternal: external !== null,
+    ...(external ? { external } : {}),
+  }));
 }

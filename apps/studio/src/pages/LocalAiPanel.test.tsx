@@ -18,6 +18,13 @@ const view = (overrides: Partial<LocalAiView> = {}): LocalAiView => ({
   downloadBytes: 198 * MB,
   progress: null,
   error: null,
+  external: {
+    provider: 'jev',
+    model: 'jev-latest',
+    enabled: false,
+    keyConfigured: false,
+    revision: 'r1',
+  },
   ...overrides,
 });
 
@@ -28,6 +35,12 @@ afterEach(() => {
 
 async function render(onInstalled = () => {}) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  // The kit's select checks for a touch pointer.
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -125,4 +138,55 @@ it('offers no install where local AI cannot run, and says so when status cannot 
   expect(broken.querySelector('[role="alert"]')?.textContent).toContain(
     'Could not load local AI status',
   );
+});
+
+it('asks Jev only after the person opts in, and never shows the saved key', async () => {
+  const KEY = 'ts-secret-key-0123456789';
+  const external = view().external;
+  const enabled = { ...external, enabled: true, revision: 'r2' };
+  const setExternalJudge = vi.fn().mockResolvedValue(view({ external: enabled }));
+  const setExternalJudgeKey = vi
+    .fn()
+    .mockResolvedValue(view({ external: { ...enabled, keyConfigured: true } }));
+  const deleteExternalJudgeKey = vi.fn().mockResolvedValue(view({ external: enabled }));
+  fixture.services = {
+    models: {
+      localAi: vi.fn().mockResolvedValue(view()),
+      installLocalAi: vi.fn(),
+      cancelLocalAiInstall: vi.fn(),
+      setExternalJudge,
+      setExternalJudgeKey,
+      deleteExternalJudgeKey,
+    },
+  };
+  const container = await render();
+  expect(container.textContent).toContain('TypeSafe has published no retention policy');
+  const mode = container.querySelector<HTMLButtonElement>(
+    'button[role="combobox"][aria-label="When the local judge is unsure"]',
+  );
+  expect(mode?.textContent).toContain('Use medium');
+  await act(async () => mode?.click());
+  const jev = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+    node.textContent?.includes('Ask Jev'),
+  );
+  expect(jev).toBeDefined();
+  await act(async () => jev?.click());
+  expect(setExternalJudge).toHaveBeenCalledWith(true, 'r1');
+  expect(container.textContent).toContain('Add a TypeSafe API key to ask Jev');
+
+  const input = container.querySelector<HTMLInputElement>('input[type="password"]');
+  expect(input).not.toBeNull();
+  await act(async () => {
+    if (!input) return;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, KEY);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => button(container, 'Save key')?.click());
+  expect(setExternalJudgeKey).toHaveBeenCalledWith(KEY);
+  expect(container.textContent).toContain('TypeSafe API key saved');
+  expect(container.innerHTML).not.toContain(KEY);
+
+  await act(async () => button(container, 'Remove key')?.click());
+  expect(deleteExternalJudgeKey).toHaveBeenCalledTimes(1);
+  expect(container.querySelector<HTMLInputElement>('input[type="password"]')?.value).toBe('');
 });

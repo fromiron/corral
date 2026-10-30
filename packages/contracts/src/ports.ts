@@ -288,4 +288,23 @@ export interface DecisionCancellation {
   onCancel(fn: () => void): () => void;
 }
 
+/**
+ * A paid outside judge asked once when the local judge abstains, in live runs that opted in.
+ * A failure rejects with an Error whose `cause` is `provider_error`, `timeout`,
+ * `invalid_response` or `unavailable`; messages carry neither the key nor the request text.
+ */
+export interface ExternalEffortJudge {
+  readonly provider: 'jev';
+  /** True, or why it cannot be asked (no key). Read without I/O. */
+  available(): true | string;
+  judge(
+    input: ReasoningInput,
+    request: {
+      model: string;
+      owner: { runId: string; executionId: string; effectId: string; attemptNo: number };
+    },
+    cancellation: DecisionCancellation,
+  ): Promise<{ answer: string; model: string }>;
+}
+
 import type { ImageInput } from './attachments.ts';

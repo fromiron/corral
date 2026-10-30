@@ -117,6 +117,7 @@ import { ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
+import { JEV_MODEL, JevJudge } from './jev.ts';
 import { MeetingHandoffService, registerMeetingHandoffRoutes } from './meeting-handoffs.ts';
 import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
@@ -167,6 +168,7 @@ import {
   configRevision,
   prepareWorkspace,
   readWorkspaceConfig,
+  writeExternalJudge,
   writeModelConfig,
   writeReasoningApply,
 } from './workspace.ts';
@@ -188,6 +190,8 @@ export interface ServerOptions {
   decisionProviders?: DecisionProvider[];
   /** The local AI engine and its `local-model` effort judge; the server closes it on shutdown. */
   localIntelligence?: LocalIntelligence;
+  /** Automatic reasoning's external judge; live servers otherwise open one on their credentials. */
+  externalJudge?: JevJudge;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -586,6 +590,15 @@ async function createCorralServer(
   };
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
+  const externalJudge =
+    options.externalJudge ??
+    (options.live
+      ? await JevJudge.open({
+          credentials: options.live.credentials,
+          attempts: modelAttempts,
+          now: () => clock.nowIso(),
+        })
+      : undefined);
   const imageProfiles = new ImageProfileStore(db, () => registry);
   const imageGeneration = new ImageGenerationService(
     db,
@@ -651,6 +664,7 @@ async function createCorralServer(
     policy: workspace.policy,
     sessionId: backendSessionId,
     judgments: judgmentConfig,
+    ...(externalJudge ? { externalJudge } : {}),
   });
   registry?.configureRequests({
     store: modelAttempts,
@@ -1137,21 +1151,71 @@ async function createCorralServer(
     return reasoningSettings();
   });
 
-  // ── local AI install (settings panel) ─────────────────────────────
+  // ── local AI (settings panel) ─────────────────────────────────────
   const noLocalAi = (reply: FastifyReply) =>
     fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
+  const localAiView = (local: LocalIntelligence, status = local.status()) => {
+    const wanted = workspace.config.decisions?.reasoning_effort;
+    return {
+      ...status,
+      external: {
+        provider: 'jev' as const,
+        model: wanted?.external?.model ?? JEV_MODEL,
+        enabled: wanted?.allowExternal === true && wanted.external?.provider === 'jev',
+        keyConfigured: externalJudge?.keyConfigured() ?? false,
+        revision: configRevision(workspace.root),
+      },
+    };
+  };
   app.get('/api/v1/local-ai', async (_request, reply) =>
-    local ? local.status() : noLocalAi(reply),
+    local ? localAiView(local) : noLocalAi(reply),
   );
   app.post('/api/v1/local-ai/install', async (_request, reply) => {
     if (!local) return noLocalAi(reply);
     if (local.status().state === 'unsupported')
       return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
-    return reply.code(202).send(local.install());
+    return reply.code(202).send(localAiView(local, local.install()));
   });
   app.delete('/api/v1/local-ai/install', async (_request, reply) =>
-    local ? local.cancelInstall() : noLocalAi(reply),
+    local ? localAiView(local, await local.cancelInstall()) : noLocalAi(reply),
   );
+  app.put('/api/v1/local-ai/external-judge', async (request, reply) => {
+    if (!local) return noLocalAi(reply);
+    const parsed = z
+      .strictObject({ enabled: z.boolean(), revision: z.string().min(1) })
+      .safeParse(request.body);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'invalid external judge setting');
+    const changed = writeExternalJudge(
+      workspace.root,
+      parsed.data.enabled ? { provider: 'jev', model: JEV_MODEL } : null,
+      parsed.data.revision,
+    );
+    if (!changed.ok)
+      return reply
+        .code(409)
+        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
+    workspace.config = changed.config;
+    workspace.configRevision = changed.revision;
+    registry?.setConfigRevision(changed.revision);
+    judgmentConfig.settings = judgmentSettings(changed.config);
+    return localAiView(local);
+  });
+  app.put('/api/v1/local-ai/external-judge/api-key', async (request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (!externalJudge)
+      return fail(reply, 'CAPABILITY_DENIED', 'the external judge needs live models');
+    const parsed = z
+      .strictObject({ key: z.string().trim().min(1).max(4096) })
+      .safeParse(request.body);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'enter a TypeSafe API key');
+    await externalJudge.setKey(parsed.data.key);
+    return localAiView(local);
+  });
+  app.delete('/api/v1/local-ai/external-judge/api-key', async (_request, reply) => {
+    if (!local) return noLocalAi(reply);
+    await externalJudge?.deleteKey();
+    return localAiView(local);
+  });
 
   // ── model settings ────────────────────────────────────────────────
   // Providers and models to choose from; never credentials or sign-in status.

@@ -33,6 +33,8 @@ export interface JudgmentConfig {
       maxCalls?: number;
       /** External providers are refused unless the workspace opted in. */
       allowExternal?: boolean;
+      /** Automatic reasoning's external judge, asked only with allowExternal. */
+      external?: { provider: 'jev'; model: string };
     };
   };
 }

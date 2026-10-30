@@ -2552,6 +2552,7 @@
       "fixed": "Manual",
       "provider_default": "Provider default",
       "local-model": "Local model applied",
+      "external-model": "External judge applied",
       "fallback": "Fallback",
       "compaction": "Compaction base"
     },
@@ -2569,6 +2570,7 @@
       "missing_input": "Missing input",
       "abstained": "Judge not confident"
     },
+    "escalated": "Jev asked",
     "appliedHeading": "Applied reasoning by request",
     "observeHeading": "Observe-only judgments (not applied)"
   },
@@ -2590,7 +2592,20 @@
     "update": "Update",
     "cancel": "Cancel install",
     "loadFailed": "Could not load local AI status. Reload and try again.",
-    "actionFailed": "Could not change the install. Try again."
+    "actionFailed": "Could not change the install. Try again.",
+    "external": {
+      "heading": "External judge",
+      "mode": "When the local judge is unsure",
+      "off": "Use medium",
+      "jev": "Ask Jev (TypeSafe)",
+      "scope": "In live runs, Jev gets the same judge text the local AI reads: the current request, plan, recent tool calls, and the previous request and reply, each cut to a length limit. It never gets files, keys, or run IDs. TypeSafe has published no retention policy for this API. Applies to this workspace from the next run.",
+      "keySaved": "TypeSafe API key saved",
+      "keyMissing": "Add a TypeSafe API key to ask Jev. Until then unsure requests use medium.",
+      "keyHint": "Kept on this computer, outside the workspace. Corral never shows it again.",
+      "saveKey": "Save key",
+      "removeKey": "Remove key",
+      "saveFailed": "Could not save the external judge setting. Reload and try again."
+    }
   },
   "Resources": {
     "skills": "Skills",

@@ -54,7 +54,14 @@ export type ReasoningInput = z.infer<typeof ReasoningInput>;
 export const ReasoningResolution = z.strictObject({
   requested: ReasoningPolicy,
   resolved: ReasoningLevel.nullable(),
-  source: z.enum(['fixed', 'provider_default', 'local-model', 'fallback', 'compaction']),
+  source: z.enum([
+    'fixed',
+    'provider_default',
+    'local-model',
+    'external-model',
+    'fallback',
+    'compaction',
+  ]),
   preparationId: Identifier,
   inputHash: z
     .string()
@@ -80,6 +87,8 @@ export const ReasoningResolution = z.strictObject({
       'abstained',
     ])
     .optional(),
+  /** Set when the external judge was asked, whatever it answered. */
+  escalated: z.literal(true).optional(),
 });
 export type ReasoningResolution = z.infer<typeof ReasoningResolution>;
 export const ReasoningWire = z.strictObject({
@@ -93,5 +102,9 @@ export const ReasoningApplySettings = z.strictObject({
   maxCalls: z.int().min(0).max(100),
   provider: z.literal('local-model'),
   version: z.string().max(200).nullable(),
+  /** The external judge asked when the local judge abstains; fixed when the run starts. */
+  external: z
+    .strictObject({ provider: z.literal('jev'), model: z.string().min(1).max(100) })
+    .optional(),
 });
 export type ReasoningApplySettings = z.infer<typeof ReasoningApplySettings>;

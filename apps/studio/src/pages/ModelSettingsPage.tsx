@@ -124,7 +124,11 @@ export function ModelSettingsPage() {
                 <ReasoningSettingsPanel key={`${config?.revision}:${localAiInstalls}`} />
               </div>
               <div id="models-local-ai" tabIndex={-1} className="outline-none">
-                <LocalAiPanel onInstalled={() => setLocalAiInstalls((count) => count + 1)} />
+                {/* Both panels save the workspace config; each re-reads after the other saves. */}
+                <LocalAiPanel
+                  key={config?.revision}
+                  onInstalled={() => setLocalAiInstalls((count) => count + 1)}
+                />
               </div>
               <ModelUsagePanel />
             </>
