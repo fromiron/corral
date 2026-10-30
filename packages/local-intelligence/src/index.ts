@@ -23,6 +23,7 @@ export {
   type HelperCommand,
   type HelperLauncher,
   type HelperProcess,
+  helperFileName,
   spawnHelper,
 } from './engine/helper.ts';
 export {

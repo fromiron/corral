@@ -5,7 +5,7 @@ disabled; the isolated preload exposes only the named window, folder, workspace 
 link operations. The server, SQLite module and Pi child processes all use the bundled Node
 24.19.0 runtime rather than Electron's Node ABI.
 
-Build with Node **24.19.0** and pnpm **10.30.3**:
+Build with Node **24.19.0**, pnpm **10.30.3** and a Rust toolchain (`cargo`) for the local AI helper:
 
 ```sh
 pnpm install
@@ -31,7 +31,9 @@ Package on the target OS and architecture. The builder accepts Windows x64/arm64
 (portable EXE and per-user NSIS installer), macOS x64/arm64 (DMG and ZIP), and Linux
 x64/arm64 (AppImage). These are build targets, not a statement that every target has been
 tested. `prepare:runtime` copies the host Node executable (`node.exe` on Windows), verifies
-SQLite and the local AI package's manifest and effort weights with that executable, starts the compiled Pi SDK worker, and records OS,
+SQLite and the local AI package's manifest and effort weights with that executable, builds the
+local AI helper with `cargo build --release --locked` into the local AI package's `bin/` and starts
+it once, starts the compiled Pi SDK worker, and records OS,
 architecture and Node version in `staging/runtime.json`. Packaging rejects a mismatching
 host identity instead of shipping native libraries built for another OS.
 

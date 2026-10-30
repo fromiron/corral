@@ -3,6 +3,7 @@
 // can drive a fake one.
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
@@ -75,9 +76,22 @@ export const spawnHelper: HelperLauncher = (command) => {
   };
 };
 
-/** The helper built in this checkout (`pnpm --filter @corral/local-intelligence build:helper`). */
-export function builtHelperPath(platform: string = process.platform): string | null {
-  const name = `corral-local-ai-helper${platform === 'win32' ? '.exe' : ''}`;
-  const path = fileURLToPath(new URL(`../../helper/target/release/${name}`, import.meta.url));
-  return existsSync(path) ? path : null;
+export function helperFileName(platform: string = process.platform) {
+  return `corral-local-ai-helper${platform === 'win32' ? '.exe' : ''}`;
+}
+
+/**
+ * The helper the desktop runtime ships in this package's `bin/`, else the one built in this
+ * checkout (`pnpm --filter @corral/local-intelligence build:helper`).
+ */
+export function builtHelperPath(
+  platform: string = process.platform,
+  packageDir: string = fileURLToPath(new URL('../../', import.meta.url)),
+): string | null {
+  const name = helperFileName(platform);
+  return (
+    [join(packageDir, 'bin', name), join(packageDir, 'helper/target/release', name)].find(
+      existsSync,
+    ) ?? null
+  );
 }

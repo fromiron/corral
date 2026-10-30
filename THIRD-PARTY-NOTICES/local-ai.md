@@ -8,6 +8,6 @@
 | LiteRT-LM C library from the `litert-lm-api` wheel | 0.19.0 | Apache-2.0 (wheel metadata), Google | https://github.com/google-ai-edge/LiteRT-LM |
 | `dxcompiler.dll`, `dxil.dll` (Windows only, same wheel) | as shipped in the 0.19.0 wheel | Microsoft DirectX Shader Compiler; the wheel carries no separate license file for them and their terms were not reviewed separately | https://github.com/microsoft/DirectXShaderCompiler |
 
-- The Rust helper that loads the library is built from `packages/local-intelligence/helper`. Its dependencies are pinned in `helper/Cargo.lock`: libloading 0.8.8 (ISC), serde 1.0.219 and serde_json 1.0.140 (MIT OR Apache-2.0). The desktop package does not include the helper yet.
+- The Rust helper that loads the library is built from `packages/local-intelligence/helper`. Its direct dependencies are pinned in `helper/Cargo.lock`: libloading 0.8.8 (ISC), serde 1.0.219 and serde_json 1.0.140 (MIT OR Apache-2.0). The desktop runtime ships the helper built on the packaging host. The license texts of every locked crate are in `local-ai-helper-crates.txt`; regenerate it with `node tools/local-intelligence/helper-notices.ts` after changing the lock.
 - The effort classifier weights in `packages/local-intelligence/weights/` were trained on public datasets; their attribution is in `packages/local-intelligence/NOTICE.md`.
 - Code derived from Mixdog (Apache-2.0) and its statement of changes are in `packages/local-intelligence/NOTICE.md` and `LICENSE-Apache-2.0.txt`.
