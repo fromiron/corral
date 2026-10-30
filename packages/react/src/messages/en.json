@@ -405,6 +405,24 @@
     "receiptExecution": "Command to one execution",
     "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run."
   },
+  "Schedules": {
+    "dispatch": "Dispatch: {status}",
+    "occurrence": {
+      "dispatching": "Dispatching",
+      "started": "Started",
+      "missed": "Missed",
+      "overlap": "Skipped: previous run active",
+      "refused": "Refused",
+      "interrupted": "Dispatch interrupted"
+    },
+    "savedEnabled": "Saved and enabled. This schedule will run at its next scheduled time.",
+    "savedDisabled": "Saved as disabled. This schedule will not run until you enable it.",
+    "resultTitle": "Scheduled run finished",
+    "result": "Scheduled run: {status}",
+    "openRun": "Open run",
+    "dismiss": "Dismiss",
+    "unavailable": "Current run status unavailable"
+  },
   "Status": {
     "created": "Starting…",
     "validating": "Validating",
@@ -1417,6 +1435,7 @@
     "actions": "Actions for {name}"
   },
   "Sessions": {
+    "scheduledRequest": "Scheduled request",
     "notFound": "This session is no longer available.",
     "heading": "Sessions",
     "new": "New session",
@@ -4314,6 +4333,7 @@
     }
   },
   "MeetingsHandoff": {
+    "reload": "Reload handoffs",
     "open": "Hand off to work",
     "serverRequired": "Work handoff is available when connected to the Corral server.",
     "scopeHint": "This request uses the adopted decision and its selected evidence. The target session’s default Corral stays the same.",

@@ -73,6 +73,19 @@ afterEach(async () => {
   window.localStorage.clear();
   vi.restoreAllMocks();
 });
+
+it('clears a handoff read failure after reconnect without clearing a failed command', async () => {
+  const f = await mount(true, { ...receipt, state: 'starting' });
+  f.api.list.mockRejectedValueOnce(new Error('Failed to fetch'));
+  await act(async () => window.dispatchEvent(new Event('corral:meeting-handoffs-changed')));
+  expect(f.container.textContent).toContain('Failed to fetch');
+  await act(async () => window.dispatchEvent(new Event('online')));
+  expect(f.container.textContent).not.toContain('Failed to fetch');
+  f.api.cancel.mockRejectedValueOnce(new Error('Cancellation was refused'));
+  await act(async () => f.button('cancel').click());
+  await act(async () => window.dispatchEvent(new Event('focus')));
+  expect(f.container.textContent).toContain('Cancellation was refused');
+});
 async function mount(links = false, savedReceipt = receipt, source = false) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000000');

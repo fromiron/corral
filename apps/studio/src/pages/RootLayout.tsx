@@ -48,6 +48,7 @@ import {
   workHref,
 } from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
+import { ScheduledRunNotifications } from '../workbench/ScheduledRunNotifications.tsx';
 import { SessionTabs } from '../workbench/SessionTabs.tsx';
 import { SettingsDialog } from '../workbench/SettingsDialog.tsx';
 import {
@@ -460,6 +461,10 @@ function RootFrame() {
                 </Tooltip>
               </header>
               <SettingsOperationStatus />
+              <ScheduledRunNotifications
+                results={sidebar.scheduledResults}
+                dismiss={sidebar.dismissScheduled}
+              />
               {sessionMissing ? (
                 <Banner status="warning" size="compact">
                   <BannerTitle>{t('sessionMissing')}</BannerTitle>

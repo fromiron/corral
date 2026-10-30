@@ -179,7 +179,12 @@ async function mount(
     archivedAt: null,
     entries: [],
   };
+  let persistedQueue = initialQueue;
   const repository = {
+    getSession: vi.fn(async () => ({
+      ...session,
+      entries: [...session.entries, ...persistedQueue],
+    })),
     get: vi.fn(async () => ({ ...team, definition: linearCorral(['writer']) })),
     addSessionEntry: vi.fn(async (_sessionId: string, _entry: Partial<SessionEntry>) => ({
       ok: true,
@@ -223,6 +228,7 @@ async function mount(
   document.body.append(container);
   const root = createRoot(container);
   const render = async (running: RunSummary | null, queued: SessionEntry[]) => {
+    persistedQueue = queued;
     await act(async () =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -886,4 +892,30 @@ it('browsing an older run does not change the active instruction destination', a
     }),
   );
   expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it('two independent composers use one queued identity and a conflicting loser cannot overwrite the entry', async () => {
+  const queued = queuedEntry(captured);
+  const first = await mount('two_tabs', null, [queued]);
+  const second = await mount('two_tabs', null, [queued]);
+  first.startAuto.mockRejectedValueOnce(new Error('response lost'));
+  await first.click('Start now');
+  second.startAuto.mockResolvedValueOnce({
+    runId: null,
+    receipt: {
+      error: { code: 'IDEMPOTENCY_CONFLICT', message: 'Already started with another choice' },
+    },
+    autoRoute: null,
+  } as never);
+  await second.click('Start now');
+  expect(second.startAuto.mock.calls[0]?.[0]).toMatchObject({
+    commandId: (first.startAuto.mock.calls[0]?.[0] as { commandId: string } | undefined)?.commandId,
+  });
+  expect(second.repository.updateSessionEntry).not.toHaveBeenCalled();
+  second.repository.getSession.mockResolvedValueOnce({
+    ...second.session,
+    entries: [{ ...queued, state: 'started', runId: 'winner' }],
+  });
+  await second.click('Start now');
+  expect(second.startAuto).toHaveBeenCalledTimes(1);
 });
