@@ -276,7 +276,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `tool.blocked` | toolCallId,reason |
 | `tool.started` | effectId,toolCallId |
 | `tool.finished` | resultRef,error |
-| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision |
+| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: requested,resolved,source,judged,ladder,policyVersion,judgeVersion,fallback). 자동 추론 규칙과 fallback 이유는 [로컬 AI](features/local-intelligence.md)가 정한다. 이전 실행의 `mixdog-relative-v1`은 읽기만 한다 |
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `budget.reserved` | reservationId,amount,scope |

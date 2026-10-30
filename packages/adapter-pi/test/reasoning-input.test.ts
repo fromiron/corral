@@ -2,6 +2,7 @@ import { ReasoningInput } from '@corral/contracts';
 import type { Context } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
 import { requestReasoningInput } from '../src/reasoning-input.ts';
+import { assignmentMetadata, withoutAssignmentMetadata } from '../src/worker-tools.ts';
 
 describe('private judge request input', () => {
   it('uses tool results and ordinary text, never hidden thinking', () => {
@@ -71,4 +72,24 @@ it('truncates supplementary Unicode by code points within the private IPC bounds
   expect(input.calls[0]!.result).toBe(`${emoji.repeat(2000)}\n…\n${emoji.repeat(1000)}`);
   expect(input.request).not.toMatch(/[\uD800-\uDFFF]/u);
   expect(input.calls[0]!.args).not.toMatch(/[\uD800-\uDFFF]/u);
+});
+
+it('gives the judge the task, not the assignment metadata in front of it', () => {
+  const metadata = JSON.stringify({
+    criteriaVersionId: 'av_criteria',
+    taskBrief: { inputHash: 'a'.repeat(64), limits: { maxSpawns: 12 }, sourceRefs: [] },
+    padding: 'x'.repeat(2000),
+  });
+  const prompt = `${assignmentMetadata(metadata)}## brief\n\nFix the typo in README`;
+  const context = {
+    messages: [
+      { role: 'user', content: prompt, timestamp: 1 },
+      { role: 'assistant', content: [{ type: 'text', text: 'Done' }], timestamp: 2 },
+      { role: 'user', content: prompt.replace('typo', 'second typo'), timestamp: 3 },
+    ],
+  } as Context;
+  const input = requestReasoningInput(context, 'turn', '', []);
+  expect(input.request).toBe('## brief\n\nFix the second typo in README');
+  expect(input.prevRequest).toBe('## brief\n\nFix the typo in README');
+  expect(withoutAssignmentMetadata('no metadata here')).toBe('no metadata here');
 });

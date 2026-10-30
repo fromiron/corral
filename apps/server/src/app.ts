@@ -86,6 +86,7 @@ import {
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
+import type { LocalIntelligence } from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
   openDatabase,
@@ -183,8 +184,10 @@ function defaultWorktreeRoot(env: NodeJS.ProcessEnv = process.env): string {
 }
 export interface ServerOptions {
   workspace: string;
-  /** Judgment providers beyond the built-in local-heuristic@1, e.g. the local model. */
+  /** Judgment providers beyond the built-in local-heuristic@1 and the local AI judge. */
   decisionProviders?: DecisionProvider[];
+  /** The local AI engine and its `local-model` effort judge; the server closes it on shutdown. */
+  localIntelligence?: LocalIntelligence;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -422,6 +425,8 @@ async function createCorralServer(
   resources: AsyncDisposableStack,
   closeResources: () => Promise<void>,
 ): Promise<CorralServer> {
+  const local = options.localIntelligence;
+  if (local) resources.defer(() => local.close());
   const host = options.host ?? '127.0.0.1';
   assertLoopback(host);
   const workspace = prepareWorkspace(options.workspace);
@@ -463,7 +468,11 @@ async function createCorralServer(
     );
     await registry.refreshStatus();
   }
-  const decisionProviders = [new LocalHeuristicProvider(), ...(options.decisionProviders ?? [])];
+  const decisionProviders = [
+    new LocalHeuristicProvider(),
+    ...(local ? [local.effort] : []),
+    ...(options.decisionProviders ?? []),
+  ];
   // A configured, installed provider loads ahead of the first judgment (the local model takes
   // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
   for (const id of new Set([
@@ -1089,14 +1098,15 @@ async function createCorralServer(
   });
 
   const reasoningSettings = () => {
+    // A bundle installed while the server runs counts from the next settings read.
+    local?.engine.refreshInstall();
     const provider = decisionProviders.find((p) => p.id === 'local-model' && p.privacy === 'local');
-    const availability = provider?.available();
+    const availability = provider?.available() ?? 'this server has no local AI';
     return {
       apply: workspace.config.decisions?.reasoning_effort.apply === true,
       available: availability === true,
       version: provider?.version ?? null,
-      reason:
-        availability === true ? null : 'Local judge is unavailable. Run corral judge install.',
+      reason: availability === true ? null : `Local AI is unavailable: ${availability}`,
       revision: configRevision(workspace.root),
     };
   };

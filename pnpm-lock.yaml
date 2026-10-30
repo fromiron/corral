@@ -74,9 +74,9 @@ importers:
       '@corral/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@corral/effort-judge':
+      '@corral/local-intelligence':
         specifier: workspace:*
-        version: link:../../packages/effort-judge
+        version: link:../../packages/local-intelligence
       '@corral/pi-runtime-port':
         specifier: workspace:*
         version: link:../../packages/pi-runtime-port

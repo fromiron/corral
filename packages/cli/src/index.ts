@@ -589,7 +589,7 @@ export function judgmentReport(projection: RunProjection): string {
 
 /** The local server without Studio: nothing is built or served (exec, eval). */
 async function startHeadless(values: { demo?: boolean }, workspace: string) {
-  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+  const { createLiveModels, defaultLocalIntelligence, startCorralServer } = await import(
     '@corral/server'
   );
   const { ScriptedAgentAdapter, simulatedReply } = await import('@corral/testkit');
@@ -597,7 +597,7 @@ async function startHeadless(values: { demo?: boolean }, workspace: string) {
     workspace,
     port: 0,
     agents: new ScriptedAgentAdapter({ turns: 2, reply: simulatedReply, appendNotes: false }),
-    decisionProviders: defaultDecisionProviders(),
+    localIntelligence: defaultLocalIntelligence(),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });
 }
@@ -627,7 +627,7 @@ async function startServer(
       );
     });
   }
-  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+  const { createLiveModels, defaultLocalIntelligence, startCorralServer } = await import(
     '@corral/server'
   );
   const { ScriptedAgentAdapter, simulatedReply } = await import('@corral/testkit');
@@ -636,7 +636,7 @@ async function startServer(
     port,
     staticDir,
     allowSharedDevelopment,
-    decisionProviders: defaultDecisionProviders(),
+    localIntelligence: defaultLocalIntelligence(),
     agents: new ScriptedAgentAdapter({ turns: 2, reply: simulatedReply, appendNotes: false }),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });

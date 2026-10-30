@@ -488,7 +488,7 @@ function ReasoningSettingsPanel() {
           <p>
             {settings.available
               ? `${settings.version} · ${t('ready')}`
-              : t('installHint', { command: 'corral judge install' })}
+              : t('installHint', { command: 'corral local-ai install' })}
           </p>
         ) : null}
         {error ? (

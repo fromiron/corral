@@ -1,10 +1,10 @@
 import type { ModelProfileSnapshot, ReasoningPolicy, ReasoningResolution } from '@corral/contracts';
 import {
-  chooseReasoningLevel,
   DecisionAnswer,
   type DecisionCancellation,
   type DecisionProvider,
   EFFORT_LEVELS,
+  type EffortLevel,
   type ReasoningInput,
   type Scheduler,
 } from '@corral/contracts';
@@ -45,7 +45,17 @@ export function fixedReasoning(
   };
 }
 
-/** Timeout/cancel settles the waiter; the provider retains real worker occupancy until exit. */
+/** The judged level if the model supports it, else the nearest higher one, else the nearest lower. */
+function supportedLevel(level: EffortLevel, ladder: readonly EffortLevel[]): EffortLevel {
+  const rank = EFFORT_LEVELS.indexOf(level);
+  return ladder.find((l) => EFFORT_LEVELS.indexOf(l) >= rank) ?? ladder[ladder.length - 1]!;
+}
+
+/**
+ * `corral-effort-v1`: the local judgment applied to the model's supported low–xhigh levels. The
+ * 3 s deadline is set once; timeout/cancel settles the waiter while the provider keeps its real
+ * occupancy until the computation ends.
+ */
 export async function automaticReasoning(
   input: ReasoningInput | undefined,
   base: ReasoningResolution,
@@ -125,20 +135,20 @@ export async function automaticReasoning(
       answer.data.evidenceLevel !== 'model_probability'
     )
       return fallback('invalid_response');
-    const probabilities = answer.data.probabilities;
-    const choice = chooseReasoningLevel(EFFORT_LEVELS.map((level) => probabilities[level]));
     const ladder = EFFORT_LEVELS.filter((level) => candidates.includes(level));
-    const baseIndex = ladder.indexOf('medium');
-    if (baseIndex < 0) return fallback('unavailable');
-    const resolved = ladder[Math.max(0, Math.min(ladder.length - 1, baseIndex + choice - 1))];
+    if (!ladder.includes('medium')) return fallback('unavailable');
+    const policy = {
+      ladder,
+      policyVersion: 'corral-effort-v1' as const,
+      judgeVersion: provider.version,
+    };
+    if (answer.data.abstain) return { ...fallback('abstained'), ...policy };
     return {
       ...base,
-      resolved: resolved ?? 'medium',
-      judged: EFFORT_LEVELS[choice] ?? 'medium',
-      ladder,
-      policyVersion: 'mixdog-relative-v1',
+      ...policy,
+      resolved: supportedLevel(answer.data.answer, ladder),
+      judged: answer.data.answer,
       source: 'local-model',
-      judgeVersion: provider.version,
     };
   } finally {
     off();

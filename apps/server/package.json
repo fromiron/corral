@@ -15,7 +15,7 @@
     "@corral/adapter-pi": "workspace:*",
     "@corral/contracts": "workspace:*",
     "@corral/core": "workspace:*",
-    "@corral/effort-judge": "workspace:*",
+    "@corral/local-intelligence": "workspace:*",
     "@corral/pi-runtime-port": "workspace:*",
     "@corral/runner-langgraph": "workspace:*",
     "@corral/storage-sqlite": "workspace:*",

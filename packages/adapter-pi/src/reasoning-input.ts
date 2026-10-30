@@ -1,6 +1,7 @@
 import type { ReasoningInput } from '@corral/contracts';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { Context } from '@earendil-works/pi-ai';
+import { withoutAssignmentMetadata } from './worker-tools.ts';
 
 /** Read only ordinary text. Hidden thinking and image data never enter the classifier. */
 const text = (content: unknown): string =>
@@ -50,8 +51,13 @@ export function requestReasoningInput(
   const previous = messages.slice(0, userIndex).findLast((message) => message.role === 'assistant');
   return {
     kind: purpose === 'compaction' ? 'compaction' : step ? 'step' : 'turn',
-    request: head([assignment, text(users.at(-1)?.content)].filter(Boolean).join('\n'), 12000),
-    prevRequest: head(text(users.at(-2)?.content), 600),
+    request: head(
+      [assignment, withoutAssignmentMetadata(text(users.at(-1)?.content))]
+        .filter(Boolean)
+        .join('\n'),
+      12000,
+    ),
+    prevRequest: head(withoutAssignmentMetadata(text(users.at(-2)?.content)), 600),
     prev: tail(text(previous?.content), 1000),
     step: Math.min(10000, messages.filter((message) => message.role === 'assistant').length),
     plan: step ? tail(text(assistant?.content), 300) : '',

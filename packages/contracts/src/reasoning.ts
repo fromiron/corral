@@ -67,7 +67,8 @@ export const ReasoningResolution = z.strictObject({
     .array(z.enum(['low', 'medium', 'high', 'xhigh']))
     .max(4)
     .optional(),
-  policyVersion: z.literal('mixdog-relative-v1').optional(),
+  /** `mixdog-relative-v1` only appears in runs recorded before corral-effort-v1; it is read, never run. */
+  policyVersion: z.enum(['mixdog-relative-v1', 'corral-effort-v1']).optional(),
   fallback: z
     .enum([
       'unavailable',
@@ -76,6 +77,7 @@ export const ReasoningResolution = z.strictObject({
       'invalid_response',
       'limit',
       'missing_input',
+      'abstained',
     ])
     .optional(),
 });

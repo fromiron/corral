@@ -9364,7 +9364,10 @@
                 },
                 "policyVersion": {
                   "type": "string",
-                  "const": "mixdog-relative-v1"
+                  "enum": [
+                    "mixdog-relative-v1",
+                    "corral-effort-v1"
+                  ]
                 },
                 "fallback": {
                   "type": "string",
@@ -9374,7 +9377,8 @@
                     "provider_error",
                     "invalid_response",
                     "limit",
-                    "missing_input"
+                    "missing_input",
+                    "abstained"
                   ]
                 }
               },
