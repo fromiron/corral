@@ -77,6 +77,9 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
       .getByRole('button', { name: /Make a working copy from/ })
       .click();
     await page.getByRole('tab', { name: 'Files', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: 'File source', exact: true })).toContainText(
+      'Session working copy',
+    );
     await page.getByRole('button', { name: 'Open index.html', exact: true }).click();
     await page.getByRole('button', { name: 'Open preview', exact: true }).click();
     const frame = page.frameLocator('[data-testid="file-preview-frame"]');
