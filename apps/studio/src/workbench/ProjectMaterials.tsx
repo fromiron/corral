@@ -135,8 +135,10 @@ export function ProjectMaterialPicker({
           } catch (e) {
             if (alive.current) setError(e instanceof Error ? e.message : t('attachFailed'));
           } finally {
-            if (alive.current) setBusy(false);
-            onBusyChange?.(false);
+            if (alive.current) {
+              setBusy(false);
+              onBusyChange?.(false);
+            }
           }
         }}
       />
