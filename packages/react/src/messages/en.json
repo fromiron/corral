@@ -3447,7 +3447,12 @@
     "diagnostics": "Diagnostic details",
     "stopped": "Stopped",
     "stopUnconfirmed": "Stop was attempted, but termination could not be verified. The working copy remains protected. Check the host process and diagnostic details; do not delete the working copy to bypass this protection.",
-    "writerBusy": "Another operation is using this working copy. Stop it or wait for it to finish before creating a terminal."
+    "writerBusy": "Another operation is using this working copy. Stop it or wait for it to finish before creating a terminal.",
+    "releaseHint": "Releasing input only disconnects this view’s keyboard. The terminal still holds the working copy until its process stops.",
+    "uncertainTab": "Terminal termination needs confirmation",
+    "writerNotice": "A terminal is holding this working copy. Stop it before sending a request that writes files.",
+    "writerUncertainNotice": "Terminal termination has not been confirmed. The working copy stays reserved until the process is confirmed stopped.",
+    "openControls": "Open terminal controls"
   },
   "Docking": {
     "fileViewer": "File viewer",
