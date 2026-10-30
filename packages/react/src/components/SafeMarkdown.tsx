@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '../design-kit/index.ts';
+import { CodeBlock } from './CodeBlock.tsx';
 
 // Model output as Markdown, never as HTML. Raw HTML in the text is
 // dropped within Markdown; complete HTML documents stay readable as escaped source. Links
@@ -34,9 +35,9 @@ export function SafeMarkdown({
   if (/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text)) {
     return (
       <div className="typeset typeset-compact min-w-0 max-w-full">
-        <pre>
-          <code>{text}</code>
-        </pre>
+        <CodeBlock>
+          <code className="language-html">{text}</code>
+        </CodeBlock>
       </div>
     );
   }
@@ -49,6 +50,7 @@ export function SafeMarkdown({
         remarkPlugins={[remarkGfm]}
         urlTransform={safeUrl}
         components={{
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
           a: ({ href, children }) =>
             href ? (
               <a href={href} target="_blank" rel="noopener noreferrer" className="underline">

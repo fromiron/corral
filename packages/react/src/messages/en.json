@@ -644,6 +644,18 @@
     "fileHint": "Advanced: the same setting is in .corral/config.json.",
     "editModels": "Edit models"
   },
+  "MessageBody": {
+    "copyCode": "Copy code",
+    "copyMessage": "Copy message",
+    "copied": "Copied",
+    "copyFailed": "Could not copy. Select the text and copy it manually.",
+    "showMore": "Show full message",
+    "showLess": "Collapse message",
+    "plainText": "Plain text",
+    "editAsNew": "Edit as new request",
+    "interrupted": "Incomplete response — generation stopped",
+    "truncated": "Only the received prefix is available."
+  },
   "Markdown": {
     "imageNotLoaded": "Image not loaded: {alt} ({host})",
     "image": "image"

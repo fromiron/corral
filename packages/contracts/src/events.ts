@@ -844,7 +844,7 @@ export const RUN_EVENT_TYPES: readonly RunEventType[] = RunEvent.options.map(
   (option) => option.shape.type.value,
 );
 
-/** Transient text delta. Never persisted, never part of the projection. */
+/** Transient text delta, never part of the projection. A bounded private display prefix may be saved. */
 export interface StreamFrame {
   runId: string;
   modelCallId: string;

@@ -28,7 +28,7 @@ import type {
   WorkSession,
 } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
-import { runResults, StatusBadge, useCancelConfirmation } from '@corral/react';
+import { MessageBody, runResults, StatusBadge, useCancelConfirmation } from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -1431,7 +1431,14 @@ function EntryCard({
             </AccordionItem>
           </Accordion>
         ) : null}
-        <p>{entry.text}</p>
+        <MessageBody
+          text={entry.text}
+          actions={
+            entry.intent !== 'steer' ? (
+              <EditAsNewRequest onClick={() => editRequest(entry.text, entry)} />
+            ) : undefined
+          }
+        />
         {entry.attachments?.length ? <TextAttachmentList attachments={entry.attachments} /> : null}
         {entry.images?.length ? (
           <ImageAttachmentList sessionId={sessionId} images={entry.images} />
@@ -3721,5 +3728,14 @@ function ModelAssignments({
         );
       })}
     </ul>
+  );
+}
+
+function EditAsNewRequest({ onClick }: { onClick(): void }) {
+  const t = useTranslations('MessageBody');
+  return (
+    <Button size="compact" variant="ghost" onClick={onClick}>
+      {t('editAsNew')}
+    </Button>
   );
 }

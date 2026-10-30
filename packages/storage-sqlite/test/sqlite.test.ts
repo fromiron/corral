@@ -506,3 +506,55 @@ describe('projects in SQLite', () => {
     expect(new SqliteRunStore(db).listRuns()[0]?.projectId).toBe('default');
   });
 });
+
+it('preserves the private incomplete prefix across a process restart without creating a result', async () => {
+  const file = tempFile();
+  const dbA = openDatabase(file);
+  let host!: import('@corral/contracts').AgentHost;
+  const writer = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory('prefix-a'),
+    store: new SqliteRunStore(dbA),
+    agents: {
+      async start(_input, bound) {
+        host = bound;
+        return { cancel: async () => {}, waitForSettlement: () => new Promise(() => {}) };
+      },
+    },
+  });
+  const { runId } = writer.startRun({
+    schemaVersion: '0.1',
+    commandId: 'prefix-start',
+    mode: 'mock',
+    definition: linearCorral(['writer']),
+  });
+  if (!runId) throw new Error('missing run');
+  for (let i = 0; i < 100; i++) await Promise.resolve();
+  const permit = await host.prepareModelRequest();
+  host.streamText({
+    modelCallId: permit.modelCallId,
+    chunkIndex: 0,
+    text: '**Saved before restart**',
+  });
+  dbA.close();
+  const reader = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory('prefix-b'),
+    store: new SqliteRunStore(openDatabase(file)),
+    agents: {
+      start: async () => {
+        throw new Error('no replayed agent');
+      },
+    },
+  });
+  const snapshot = reader.getSnapshot(runId);
+  expect(snapshot.projection.status).toBe('interrupted');
+  expect(snapshot.partialOutputs?.[permit.modelCallId]).toEqual({
+    text: '**Saved before restart**',
+    next: 1,
+    truncated: false,
+  });
+  expect(snapshot.projection.output).toBeNull();
+  expect(snapshot.projection.modelCalls[permit.modelCallId]?.responseRef).toBeNull();
+  expect(Object.values(snapshot.projection.artifacts)).toHaveLength(0);
+});
