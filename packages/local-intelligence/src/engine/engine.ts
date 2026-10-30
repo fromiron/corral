@@ -149,8 +149,7 @@ export class LocalEmbeddingEngine {
 
   private unavailable(): string | null {
     if (this.closing) return 'the local AI engine is closed';
-    if (this.install === 'unsupported')
-      return `local AI is not available on ${process.platform}-${process.arch}`;
+    if (this.install === 'unsupported') return 'local AI has no runtime for this platform';
     if (!this.options.helperPath) return 'the local AI helper is not built';
     if (this.install === 'missing') return 'not installed: run `corral local-ai install`';
     if (this.install === 'stale')

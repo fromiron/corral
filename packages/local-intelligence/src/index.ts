@@ -5,8 +5,8 @@ export {
   type EffortWeights,
   loadEffortClassifier,
 } from './effort/classifier.ts';
-export { EFFORT_PREPROCESS_VERSION, effortText } from './effort/preprocess.ts';
-export { type EffortEngine, LocalEffortProvider } from './effort/provider.ts';
+export { EFFORT_PREPROCESS_VERSION, effortText, requestInput } from './effort/preprocess.ts';
+export { type EffortEngine, effortRequest, LocalEffortProvider } from './effort/provider.ts';
 export {
   type Backend,
   type Device,
@@ -25,6 +25,12 @@ export {
   type HelperProcess,
   spawnHelper,
 } from './engine/helper.ts';
+export {
+  bundledEffortWeights,
+  createLocalIntelligence,
+  type LocalIntelligence,
+  type LocalIntelligenceOptions,
+} from './factory.ts';
 export {
   bundleDir,
   type InstallOptions,

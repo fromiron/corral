@@ -11,6 +11,26 @@ cancellation and progress; the runtime library is extracted from a pinned wheel;
 installed into its own folder; inference runs in a separate helper process with an effort-first
 queue instead of a worker thread.
 
+## Effort classifier weights (`weights/effort-v1.json`)
+
+A linear classifier trained by Corral on embeddings of text from these datasets
+(`tools/local-intelligence/effort/datasets.md` lists the pinned revisions):
+
+- MATH, Hendrycks et al. (`EleutherAI/hendrycks_math`), MIT License.
+- GSM8K, OpenAI (`openai/gsm8k`), MIT License.
+- MMLU, Hendrycks et al. (`cais/mmlu`), MIT License.
+- MMMLU, OpenAI (`openai/MMMLU`), MIT License.
+- TACO, BAAI, Shandong Normal University and Peking University (`BAAI/TACO`), Apache License 2.0;
+  it includes material under the MIT License and web-crawled material used under CC BY 4.0
+  (<https://creativecommons.org/licenses/by/4.0/>). HackerRank problems were not used.
+- CommitPackFT, BigCode (`bigcode/commitpackft`), MIT License; commit subjects from permissively
+  licensed repositories.
+- SWE-rebench, Nebius (`nebius/SWE-rebench`), CC BY 4.0
+  (<https://creativecommons.org/licenses/by/4.0/>); GitHub issue texts and the size of the patches
+  that resolved them.
+
+No dataset text is included in this package.
+
 ## Downloaded at install time, not part of this package
 
 `corral local-ai install` downloads the files pinned in `src/bundle.json` and checks each file's

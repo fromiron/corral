@@ -519,6 +519,7 @@
         "@corral/desktop",
         "@corral/effort-judge",
         "@corral/live-tests",
+        "@corral/local-intelligence",
         "@corral/server",
         "@corral/storage-sqlite",
         "@corral/testkit",

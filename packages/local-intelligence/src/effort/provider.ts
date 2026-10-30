@@ -9,13 +9,23 @@ import type {
 } from '@corral/contracts';
 import type { EmbedRequest } from '../engine/engine.ts';
 import type { EffortClassifier } from './classifier.ts';
-import { effortText } from './preprocess.ts';
+import { effortText, requestInput } from './preprocess.ts';
 
 export interface EffortEngine {
   available(): true | string;
   isReady(): boolean;
   warmUp(): Promise<void>;
   embed(request: EmbedRequest, cancellation?: DecisionCancellation): Promise<Float32Array[]>;
+}
+
+/** The engine request for one effort judgment. Training embeds its sample through it too. */
+export function effortRequest(input: ReasoningInput): EmbedRequest {
+  return {
+    texts: [effortText(input)],
+    task: 'classification',
+    overflow: 'truncate',
+    priority: 'effort',
+  };
 }
 
 export class LocalEffortProvider implements DecisionProvider {
@@ -49,19 +59,7 @@ export class LocalEffortProvider implements DecisionProvider {
   }
 
   decide(question: EffortQuestion, cancellation: DecisionCancellation) {
-    return this.judge(
-      {
-        kind: 'turn',
-        request: question.input.excerpt,
-        prevRequest: '',
-        prev: '',
-        step: 0,
-        plan: '',
-        calls: [],
-        directiveIds: [],
-      },
-      cancellation,
-    );
+    return this.judge(requestInput(question.input.excerpt), cancellation);
   }
 
   decideRequest(input: ReasoningInput, cancellation: DecisionCancellation) {
@@ -70,15 +68,7 @@ export class LocalEffortProvider implements DecisionProvider {
 
   private async judge(input: ReasoningInput, cancellation: DecisionCancellation) {
     if (input.kind === 'compaction') throw new Error('compaction requests are not judged');
-    const [vector] = await this.engine.embed(
-      {
-        texts: [effortText(input)],
-        task: 'classification',
-        overflow: 'truncate',
-        priority: 'effort',
-      },
-      cancellation,
-    );
+    const [vector] = await this.engine.embed(effortRequest(input), cancellation);
     const judgment = this.classifier.judge(vector!);
     return {
       answer: judgment.answer,

@@ -32,6 +32,20 @@ function result(text: string): string {
   return [...text].length <= 360 ? text : `${head(text, 240)} … ${tail(text, 120)}`;
 }
 
+/** A judgment input that has only the request text, as the observe path and training see it. */
+export function requestInput(request: string): ReasoningInput {
+  return {
+    kind: 'turn',
+    request,
+    prevRequest: '',
+    prev: '',
+    step: 0,
+    plan: '',
+    calls: [],
+    directiveIds: [],
+  };
+}
+
 export function effortText(input: ReasoningInput): string {
   const lines = [`request: ${head(clean(input.request), 1200)}`];
   const plan = clean(input.plan);

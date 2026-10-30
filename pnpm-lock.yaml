@@ -272,6 +272,9 @@ importers:
       '@corral/effort-judge':
         specifier: workspace:*
         version: link:../effort-judge
+      '@corral/local-intelligence':
+        specifier: workspace:*
+        version: link:../local-intelligence
       '@corral/server':
         specifier: workspace:*
         version: link:../../apps/server

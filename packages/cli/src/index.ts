@@ -143,7 +143,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | local-ai install|status [--data-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -166,6 +166,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         private: { type: 'boolean', default: false },
         archive: { type: 'string' },
         'model-dir': { type: 'string' },
+        'data-dir': { type: 'string' },
         judgments: { type: 'boolean', default: false },
         json: { type: 'boolean', default: false },
         out: { type: 'string' },
@@ -181,7 +182,17 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
     }
     if (
       extra ||
-      !['dev', 'validate', 'run', 'inspect', 'export', 'judge', 'exec', 'eval'].includes(command)
+      ![
+        'dev',
+        'validate',
+        'run',
+        'inspect',
+        'export',
+        'judge',
+        'local-ai',
+        'exec',
+        'eval',
+      ].includes(command)
     ) {
       io.write(usage);
       return 1;
@@ -191,6 +202,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         'Model/effort options require exec auto; custom teams keep their own workflow',
       );
     if (command === 'judge') return await judge(target, values['model-dir'], io);
+    if (command === 'local-ai') return await localAi(target, values['data-dir'], io);
     const workspace = resolve(io.cwd, values.workspace ?? '.');
     if (command === 'exec' || command === 'eval') {
       if (!target) {
@@ -466,6 +478,60 @@ async function judge(action: string | undefined, modelDir: string | undefined, i
     onFile: (name, size) => io.write(`Downloading ${name} (${Math.round(size / 1e6)} MB).`),
   });
   io.write(`${manifest.release} installed.`);
+  return 0;
+}
+
+/**
+ * `corral local-ai install|status`: the local AI bundle (embedding model and runtime library)
+ * lives in the OS's standard per-user data directory, one folder per release. Installing
+ * downloads ≈200 MB from the pinned URLs in the bundled manifest and checks every file's size
+ * and sha256.
+ */
+async function localAi(action: string | undefined, dataDir: string | undefined, io: CliIO) {
+  const {
+    bundleDir,
+    bundledManifest,
+    defaultLocalAiDir,
+    installBundle,
+    installState,
+    runtimeTarget,
+  } = await import('@corral/local-intelligence');
+  const root = dataDir ? resolve(io.cwd, dataDir) : defaultLocalAiDir();
+  const bundle = bundledManifest();
+  const target = runtimeTarget(bundle, process.platform, process.arch);
+  const dir = bundleDir(root, bundle);
+  const install = '`corral local-ai install`';
+  if (action === 'status') {
+    const state = installState(root, target, bundle);
+    io.write(
+      state === 'current'
+        ? `${bundle.release} installed in ${dir}`
+        : state === 'stale'
+          ? `an older release is installed in ${root}; run ${install}`
+          : state === 'unsupported'
+            ? `local AI has no runtime for ${process.platform}-${process.arch}`
+            : `not installed (${dir}); run ${install}`,
+    );
+    return 0;
+  }
+  if (action !== 'install') {
+    io.write(usage);
+    return 1;
+  }
+  if (!target) throw new Error(`local AI has no runtime for ${process.platform}-${process.arch}`);
+  io.write(`Installing ${bundle.release} into ${dir}.`);
+  let current = '';
+  await installBundle(root, {
+    bundle,
+    target,
+    signal: io.signal,
+    onProgress: ({ file, total }) => {
+      if (file === current) return;
+      current = file;
+      io.write(`Downloading ${file} (${Math.round(total / 1e6)} MB).`);
+    },
+  });
+  io.write(`${bundle.release} installed.`);
   return 0;
 }
 
