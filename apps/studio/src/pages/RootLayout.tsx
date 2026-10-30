@@ -578,6 +578,9 @@ export function SessionMissingView() {
       <p role="alert" className="text-sm text-danger">
         {t('sessionMissing')}
       </p>
+      <Button variant="secondary" onClick={() => window.location.reload()}>
+        {t('retryConnection')}
+      </Button>
     </main>
   );
 }

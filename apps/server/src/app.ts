@@ -1033,6 +1033,18 @@ async function createCorralServer(
       return registryFailure(reply, error);
     }
   });
+  app.post<ProviderParams>('/api/v1/model-auth/:providerId/probe', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    const body = parse(z.strictObject({ revision: z.string().min(1).max(100) }), request, reply);
+    if (!body) return reply;
+    if (body.revision !== configRevision(workspace.root))
+      return fail(reply, 'REVISION_CONFLICT', 'the config changed before the connection test');
+    try {
+      return await registry.testEndpoint(request.params.providerId);
+    } catch (error) {
+      return registryFailure(reply, error);
+    }
+  });
   // a key typed under Settings → Models; stored on this computer, never sent back.
   app.put<ProviderParams>('/api/v1/model-auth/:providerId/api-key', async (request, reply) => {
     if (!registry) return noLive(reply);

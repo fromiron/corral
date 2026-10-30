@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { McpChallenge, type RegisteredMcpServer } from '@corral/contracts';
 import { z } from 'zod';
 import { sdkProcessChannel } from './channel.ts';
+import { probeFailureMessage } from './mcp-probe-failure.ts';
 
 const ENTRY = fileURLToPath(new URL('./mcp-probe-worker.ts', import.meta.url));
 export const McpProbeTool = z.strictObject({
@@ -43,6 +44,7 @@ export function probeMcp(options: {
         requestId?: number;
         challenge?: unknown;
         tools?: unknown;
+        failure?: unknown;
       };
       if (stopping) return;
       if (frame.type === 'ready')
@@ -65,7 +67,8 @@ export function probeMcp(options: {
         const parsed = z.array(McpProbeTool).max(128).safeParse(frame.tools);
         if (parsed.success) result = parsed.data;
         else stop('MCP probe returned an invalid tool list');
-      } else stop('MCP probe failed');
+      } else
+        stop(frame.type === 'failed' ? probeFailureMessage(frame.failure) : 'MCP probe failed');
     });
     channel.onExit((code, confirmed) => {
       clearTimeout(timer);

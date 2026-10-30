@@ -642,7 +642,22 @@
     "notWithSubscription": "구독 로그인으로는 쓸 수 없습니다. 이 프로필에서 다른 모델을 고르세요.",
     "changeModel": "모델 바꾸기",
     "fileHint": "고급: 같은 설정이 .corral/config.json에 있습니다.",
-    "editModels": "모델 편집"
+    "editModels": "모델 편집",
+    "configured": "설정됨",
+    "testConnection": "연결 확인",
+    "connectionTestHint": "모델을 호출하지 않고 모델 목록 주소에 연결해요. 연결 성공이 모델 실행을 보장하지는 않아요.",
+    "imageSupported": "이미지 지원",
+    "textOnly": "텍스트 전용",
+    "imageUnknown": "이미지 지원 미확인",
+    "connectionTest": {
+      "connected": "접속 주소가 응답했어요.",
+      "authentication": "인증 정보가 없거나 거부되었어요. 키를 확인한 뒤 다시 연결하세요.",
+      "rateLimit": "요청이 제한되었어요. 잠시 후 다시 확인하세요.",
+      "server": "접속 주소를 일시적으로 사용할 수 없어요. 나중에 재시도하세요.",
+      "redirect": "다른 주소로 이동하라는 응답을 받았어요. 설정한 주소를 확인하세요.",
+      "unsupported": "이 주소가 연결 확인을 지원하지 않아요. API 기본 주소를 확인하세요.",
+      "connection": "연결할 수 없어요. 주소, 네트워크, 로컬 서버를 확인하세요."
+    }
   },
   "MessageBody": {
     "copyCode": "코드 복사",
@@ -2160,7 +2175,10 @@
     "terminal": "터미널이 이 작업 사본을 사용하고 있습니다. 터미널을 열어 직접 중지한 뒤 다시 보내세요.",
     "terminalUncertain": "터미널 종료가 확인되지 않아 작업 사본을 보호하고 있습니다. 터미널 제어와 진단 정보를 열고 호스트의 프로세스를 확인하세요. 재접속이나 사본 삭제는 종료를 증명하지 않습니다.",
     "diagnostics": "진단 정보",
-    "openTerminal": "터미널 제어 열기"
+    "openTerminal": "터미널 제어 열기",
+    "image": "이 모델의 이미지 입력 지원이 확인되지 않았어요. 이미지를 빼거나 이미지를 지원하는 모델을 선택하세요.",
+    "capability": "현재 환경에서 지원하지 않는 기능이 필요한 작업이에요. 진단 내용을 확인한 뒤 다시 시도하세요.",
+    "chooseImageModel": "이미지 지원 모델 선택"
   },
   "Harness": {
     "heading": "작업 방식",
@@ -2677,7 +2695,17 @@
     "browserExecutable": "설치된 Chromium 실행 파일",
     "browserReady": "HTTP 준비 응답에 있어야 할 문구",
     "browserDevCommand": "등록할 개발 서버 명령",
-    "configureMcpFirst": "인증과 실행 신뢰는 MCP 서버 설정에서 관리합니다. 준비한 서버의 도구를 여기서 확인하고 선택하세요."
+    "configureMcpFirst": "인증과 실행 신뢰는 MCP 서버 설정에서 관리합니다. 준비한 서버의 도구를 여기서 확인하고 선택하세요.",
+    "probeFailure": {
+      "connection": "MCP 서버가 연결을 거부했어요. 서버를 실행하고 주소와 포트를 확인한 뒤 다시 연결하세요.",
+      "dns": "MCP 서버 이름을 찾을 수 없어요. 주소와 네트워크를 확인한 뒤 다시 연결하세요.",
+      "timeout": "MCP 서버가 제한 시간 안에 응답하지 않았어요. 서버 실행 상태를 확인한 뒤 다시 연결하세요.",
+      "authentication": "MCP 서버가 인증을 거부했어요. 다시 로그인하거나 인증 정보를 바꾼 뒤 연결하세요.",
+      "rateLimit": "MCP 서버가 요청을 제한하고 있어요. 잠시 후 다시 연결하세요.",
+      "server": "MCP 서버를 일시적으로 사용할 수 없어요. 복구된 뒤 다시 연결하세요.",
+      "protocol": "MCP 서버가 요청을 거부했어요. 접속 주소와 전송 방식을 확인하세요.",
+      "unknown": "MCP 연결 확인에 실패했어요. 서버, 전송 방식, 실행 설정을 확인한 뒤 다시 연결하세요."
+    }
   },
   "Navigation": {
     "app": "앱",
@@ -4235,7 +4263,9 @@
     "records": "회의록 · 플랜 · 작업 인계",
     "minutesReady": "비서가 회의록과 플랜을 정리했습니다.",
     "viewMinutes": "회의록과 플랜 검토",
-    "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요."
+    "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요.",
+    "expandRecords": "기록 넓게 보기",
+    "compactRecords": "기록 접어 보기"
   },
   "MeetingsDecisions": {
     "decisionLabel": "결정 v{number} · {goal}",
@@ -4442,6 +4472,24 @@
       "REVISION_CONFLICT": "대상이 바뀌었습니다. 현재 상태를 확인한 뒤 다시 시도하세요.",
       "CAPABILITY_DENIED": "허용되지 않은 작업입니다. 기록된 이유를 확인하세요.",
       "LIMIT_REACHED": "이 작업이 한도에 도달했습니다."
+    },
+    "provider": {
+      "AUTH": "모델 제공자가 인증 정보를 거부했어요.",
+      "QUOTA": "모델 계정의 사용 한도를 초과했어요.",
+      "RATE_LIMIT": "모델 제공자가 요청 속도를 제한하고 있어요.",
+      "CONTEXT_OVERFLOW": "요청이 이 모델의 문맥 한도를 넘었어요.",
+      "SERVER": "모델 제공자를 일시적으로 사용할 수 없어요.",
+      "TRANSPORT": "모델 제공자에 연결할 수 없어요.",
+      "CANCELLED": "모델 요청이 취소되었어요."
+    },
+    "recovery": {
+      "AUTH": "설정 → 모델에서 다시 연결하거나 API 키를 바꾼 뒤 재시도하세요.",
+      "QUOTA": "계정의 사용 한도를 확인하거나 다른 모델을 선택한 뒤 재시도하세요.",
+      "RATE_LIMIT": "잠시 기다렸다가 재시도하세요. 바로 반복하면 제한이 길어질 수 있어요.",
+      "CONTEXT_OVERFLOW": "메시지를 줄이거나 필요한 내용만 담아 새 대화를 시작하세요.",
+      "SERVER": "제공자가 복구될 때까지 기다리거나 다른 모델을 선택한 뒤 재시도하세요.",
+      "TRANSPORT": "네트워크와 접속 주소를 확인하세요. 로컬 모델 서버가 필요하면 실행한 뒤 재시도하세요.",
+      "CANCELLED": "준비되면 메시지를 다시 보내세요."
     }
   }
 }

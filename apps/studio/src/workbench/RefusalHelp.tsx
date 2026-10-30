@@ -65,7 +65,11 @@ export function RefusalHelp({
       className="flex flex-col gap-1.5 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs"
     >
       <p className="text-danger">{t(kind)}</p>
-      {kind === 'terminal' || kind === 'terminalUncertain' || kind === 'busy' ? (
+      {kind === 'terminal' ||
+      kind === 'terminalUncertain' ||
+      kind === 'busy' ||
+      kind === 'image' ||
+      kind === 'capability' ? (
         <details>
           <summary>{t('diagnostics')}</summary>
           <p className="text-muted-foreground wrap-anywhere" title={code}>
@@ -99,9 +103,9 @@ export function RefusalHelp({
             {t('openTerminal')}
           </Button>
         ) : null}
-        {kind === 'signin' || kind === 'profile' ? (
+        {kind === 'signin' || kind === 'profile' || kind === 'image' ? (
           <Button size="compact" render={<Link {...navigation.link('models')} />}>
-            {t('connect')}
+            {t(kind === 'image' ? 'chooseImageModel' : 'connect')}
           </Button>
         ) : null}
         {kind === 'network' && onRetry ? (

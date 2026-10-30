@@ -48,7 +48,10 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: any) => <a href="#run">{children}</a>,
   useRouter: () => ({ invalidate: async () => {} }),
 }));
-vi.mock('@corral/react', () => ({ SafeMarkdown: ({ text }: any) => <p>{text}</p> }));
+vi.mock('@corral/react', () => ({
+  SafeMarkdown: ({ text }: any) => <p>{text}</p>,
+  FailureNotice: ({ message }: any) => <p data-testid="provider-failure">{message}</p>,
+}));
 vi.mock('@corral/react/design-kit', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@corral/react/design-kit')>()),
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
@@ -765,4 +768,54 @@ it('does not update an archived meeting that disappeared before the restore clic
   await act(async () => f.button('restoreSession')?.click());
   expect(repository.updateSession).not.toHaveBeenCalled();
   expect(f.container.textContent).toContain('notFound');
+});
+
+it('lets readers expand the records area without losing the message composer', async () => {
+  const f = await mount(
+    view({
+      minutes: [
+        {
+          minutesId: 'm1',
+          roundId: 'round_1',
+          createdAt: 'x',
+          error: null,
+          document: {
+            issues: ['A long record'],
+            claims: [],
+            agreements: [],
+            remainingDissent: [],
+            unverifiedFacts: [],
+            candidates: [],
+          },
+        },
+      ],
+    }),
+  );
+  const records = f.container.querySelector<HTMLDetailsElement>('details[aria-label="records"]')!;
+  records.open = true;
+  expect(f.button('expandRecords')?.getAttribute('aria-pressed')).toBe('false');
+  await act(async () => f.button('expandRecords')?.click());
+  expect(f.button('compactRecords')?.getAttribute('aria-pressed')).toBe('true');
+  expect(records.querySelector('.overflow-y-auto')).toBeNull();
+  expect(f.box.isConnected).toBe(true);
+  await act(async () => f.button('compactRecords')?.click());
+  expect(records.querySelector('.overflow-y-auto')).not.toBeNull();
+});
+
+it('uses the shared recovery explanation for recorded provider failures', async () => {
+  const f = await mount(
+    view({
+      rounds: [
+        {
+          ...view().rounds[0]!,
+          answers: [
+            { ...answer('p2', 'failed'), detail: 'the model request failed: HTTP 401 (AUTH)' },
+          ],
+        },
+      ],
+    }),
+  );
+  expect(f.container.querySelector('[data-testid="provider-failure"]')?.textContent).toContain(
+    'HTTP 401 (AUTH)',
+  );
 });

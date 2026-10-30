@@ -15,7 +15,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(aside?: React.ReactNode) {
+async function render(aside?: React.ReactNode, expandedHeader = false) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
     'ResizeObserver',
@@ -44,6 +44,8 @@ async function render(aside?: React.ReactNode) {
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <ChatView
           sessionId="session"
+          header={<p>Meeting records</p>}
+          expandedHeader={expandedHeader}
           items={[{ id: 'entry', content: <p>reply</p> }]}
           composer={<textarea aria-label="request" />}
           aside={aside}
@@ -144,4 +146,12 @@ it('follows growing replies, keeps following after a message click, and pauses f
   height = 1200;
   await resize();
   expect(top).toBe(1000);
+});
+
+it('expanded records use the reading area while retaining the composer and mounted conversation', async () => {
+  const container = await render(undefined, true);
+  const timeline = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+  expect(timeline?.hidden).toBe(true);
+  expect(timeline?.textContent).toContain('reply');
+  expect(container.querySelector('textarea[aria-label="request"]')?.closest('[hidden]')).toBeNull();
 });
