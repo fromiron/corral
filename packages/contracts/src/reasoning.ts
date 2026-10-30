@@ -97,6 +97,10 @@ export const ReasoningWire = z.strictObject({
 });
 export type ReasoningWire = z.infer<typeof ReasoningWire>;
 
+/** Decision-only APIs Corral can ask when the local judge abstains (features/decision-apis.md). */
+export const DecisionApiId = z.enum(['jev', 'openai-decisions']);
+export type DecisionApiId = z.infer<typeof DecisionApiId>;
+
 export const ReasoningApplySettings = z.strictObject({
   enabled: z.boolean(),
   maxCalls: z.int().min(0).max(100),
@@ -104,7 +108,7 @@ export const ReasoningApplySettings = z.strictObject({
   version: z.string().max(200).nullable(),
   /** The external judge asked when the local judge abstains; fixed when the run starts. */
   external: z
-    .strictObject({ provider: z.literal('jev'), model: z.string().min(1).max(100) })
+    .strictObject({ provider: DecisionApiId, model: z.string().min(1).max(100) })
     .optional(),
 });
 export type ReasoningApplySettings = z.infer<typeof ReasoningApplySettings>;

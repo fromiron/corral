@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DecisionAnswer,
+  DecisionApiId,
   ModelRequestIntent,
   ReasoningApplySettings,
   ReasoningResolution,
@@ -50,7 +51,7 @@ describe('reasoning records', () => {
   });
 });
 
-describe('external judgment (Jev)', () => {
+describe('external judgment (decision APIs)', () => {
   it('records an escalated request and where its level came from', () => {
     const resolution = {
       requested: { mode: 'auto' },
@@ -67,7 +68,7 @@ describe('external judgment (Jev)', () => {
     expect(ReasoningResolution.safeParse({ ...resolution, escalated: false }).success).toBe(false);
   });
 
-  it('fixes the external judge at run start, and only Jev', () => {
+  it('fixes the external judge at run start, and only a supported decision API', () => {
     const apply = {
       enabled: true,
       maxCalls: 4,
@@ -76,6 +77,9 @@ describe('external judgment (Jev)', () => {
       external: { provider: 'jev', model: 'jev-latest' },
     };
     expect(ReasoningApplySettings.parse(apply)).toEqual(apply);
+    const openai = { ...apply, external: { provider: 'openai-decisions', model: 'gpt-6-luna' } };
+    expect(ReasoningApplySettings.parse(openai)).toEqual(openai);
+    expect(DecisionApiId.options).toEqual(['jev', 'openai-decisions']);
     expect(
       ReasoningApplySettings.safeParse({ ...apply, external: { provider: 'other', model: 'x' } })
         .success,

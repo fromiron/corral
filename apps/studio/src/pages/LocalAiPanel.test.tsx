@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { LocalAiView } from '@corral/client';
+import type { DecisionApiView, LocalAiView } from '@corral/client';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -18,15 +18,11 @@ const view = (overrides: Partial<LocalAiView> = {}): LocalAiView => ({
   downloadBytes: 198 * MB,
   progress: null,
   error: null,
-  external: {
-    provider: 'jev',
-    model: 'jev-latest',
-    enabled: false,
-    keyConfigured: false,
-    revision: 'r1',
-  },
+  external: { provider: null, model: null, revision: 'r1' },
   ...overrides,
 });
+
+const noApis = () => Promise.resolve([]);
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -76,7 +72,9 @@ it('installs from settings, shows progress, and tells the page when the model is
   const installLocalAi = vi
     .fn()
     .mockResolvedValue(view({ state: 'installing', progress: { received: 0, total: 198 * MB } }));
-  fixture.services = { models: { localAi, installLocalAi, cancelLocalAiInstall: vi.fn() } };
+  fixture.services = {
+    models: { localAi, installLocalAi, cancelLocalAiInstall: vi.fn(), decisionApis: noApis },
+  };
   const onInstalled = vi.fn();
   const container = await render(onInstalled);
   expect(container.textContent).toContain('EmbeddingGemma 2 Text 270M');
@@ -104,7 +102,9 @@ it('cancels back to not installed, and shows a failure with the install button a
   const installing = view({ state: 'installing', progress: { received: 0, total: 198 * MB } });
   const localAi = vi.fn().mockResolvedValueOnce(installing).mockResolvedValue(installing);
   const cancelLocalAiInstall = vi.fn().mockResolvedValue(view());
-  fixture.services = { models: { localAi, installLocalAi: vi.fn(), cancelLocalAiInstall } };
+  fixture.services = {
+    models: { localAi, installLocalAi: vi.fn(), cancelLocalAiInstall, decisionApis: noApis },
+  };
   const container = await render();
   await act(async () => button(container, 'Cancel install')?.click());
   expect(cancelLocalAiInstall).toHaveBeenCalledTimes(1);
@@ -140,53 +140,83 @@ it('offers no install where local AI cannot run, and says so when status cannot 
   );
 });
 
-it('asks Jev only after the person opts in, and never shows the saved key', async () => {
-  const KEY = 'ts-secret-key-0123456789';
-  const external = view().external;
-  const enabled = { ...external, enabled: true, revision: 'r2' };
-  const setExternalJudge = vi.fn().mockResolvedValue(view({ external: enabled }));
-  const setExternalJudgeKey = vi
-    .fn()
-    .mockResolvedValue(view({ external: { ...enabled, keyConfigured: true } }));
-  const deleteExternalJudgeKey = vi.fn().mockResolvedValue(view({ external: enabled }));
+const apis = (openaiKey: boolean): DecisionApiView[] => [
+  { id: 'jev', provider: 'TypeSafe', model: 'jev-latest', keyConfigured: false },
+  { id: 'openai-decisions', provider: 'OpenAI', model: 'gpt-6-luna', keyConfigured: openaiKey },
+];
+const options = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="option"]')].map((node) => node.textContent);
+
+it('offers only decision APIs with a key, and saves the choice with the config revision', async () => {
+  const chosen = view({
+    external: { provider: 'openai-decisions', model: 'gpt-6-luna', revision: 'r2' },
+  });
+  const setExternalJudge = vi.fn().mockResolvedValue(chosen);
   fixture.services = {
     models: {
       localAi: vi.fn().mockResolvedValue(view()),
+      decisionApis: vi.fn().mockResolvedValue(apis(true)),
       installLocalAi: vi.fn(),
       cancelLocalAiInstall: vi.fn(),
       setExternalJudge,
-      setExternalJudgeKey,
-      deleteExternalJudgeKey,
     },
   };
   const container = await render();
-  expect(container.textContent).toContain('TypeSafe has published no retention policy');
+  expect(container.textContent).toContain('It never gets files, keys, or run IDs');
   const mode = container.querySelector<HTMLButtonElement>(
     'button[role="combobox"][aria-label="When the local judge is unsure"]',
   );
   expect(mode?.textContent).toContain('Use medium');
   await act(async () => mode?.click());
-  const jev = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
-    node.textContent?.includes('Ask Jev'),
+  expect(options()).toEqual(['Use medium', 'Ask OpenAI Decisions']);
+  const openai = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (node) => node.textContent === 'Ask OpenAI Decisions',
   );
-  expect(jev).toBeDefined();
-  await act(async () => jev?.click());
-  expect(setExternalJudge).toHaveBeenCalledWith(true, 'r1');
-  expect(container.textContent).toContain('Add a TypeSafe API key to ask Jev');
+  await act(async () => openai?.click());
+  expect(setExternalJudge).toHaveBeenCalledWith('openai-decisions', 'r1');
+  expect(mode?.textContent).toContain('Ask OpenAI Decisions');
 
-  const input = container.querySelector<HTMLInputElement>('input[type="password"]');
-  expect(input).not.toBeNull();
-  await act(async () => {
-    if (!input) return;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, KEY);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await act(async () => button(container, 'Save key')?.click());
-  expect(setExternalJudgeKey).toHaveBeenCalledWith(KEY);
-  expect(container.textContent).toContain('TypeSafe API key saved');
-  expect(container.innerHTML).not.toContain(KEY);
+  await act(async () => mode?.click());
+  const off = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (node) => node.textContent === 'Use medium',
+  );
+  setExternalJudge.mockResolvedValue(
+    view({ external: { provider: null, model: null, revision: 'r3' } }),
+  );
+  await act(async () => off?.click());
+  expect(setExternalJudge).toHaveBeenLastCalledWith(null, 'r2');
+});
 
-  await act(async () => button(container, 'Remove key')?.click());
-  expect(deleteExternalJudgeKey).toHaveBeenCalledTimes(1);
-  expect(container.querySelector<HTMLInputElement>('input[type="password"]')?.value).toBe('');
+it('says where to add a key when no decision API has one, and keeps a chosen one without a key', async () => {
+  fixture.services = {
+    models: {
+      localAi: vi.fn().mockResolvedValue(view()),
+      decisionApis: vi.fn().mockResolvedValue(apis(false)),
+      installLocalAi: vi.fn(),
+      cancelLocalAiInstall: vi.fn(),
+      setExternalJudge: vi.fn(),
+    },
+  };
+  const container = await render();
+  expect(container.textContent).toContain('Add a key under Decision APIs');
+
+  fixture.services = {
+    models: {
+      localAi: vi
+        .fn()
+        .mockResolvedValue(
+          view({ external: { provider: 'jev', model: 'jev-latest', revision: 'r1' } }),
+        ),
+      decisionApis: vi.fn().mockResolvedValue(apis(false)),
+      installLocalAi: vi.fn(),
+      cancelLocalAiInstall: vi.fn(),
+      setExternalJudge: vi.fn(),
+    },
+  };
+  const chosen = await render();
+  expect(
+    chosen.querySelector('button[role="combobox"][aria-label="When the local judge is unsure"]')
+      ?.textContent,
+  ).toContain('Ask TypeSafe Jev');
+  expect(chosen.textContent).toContain('TypeSafe Jev has no key');
 });

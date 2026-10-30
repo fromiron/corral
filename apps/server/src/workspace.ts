@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { DecisionApiId } from '@corral/contracts';
 import {
   type InstallationPolicy,
   installationPolicy,
@@ -143,10 +144,10 @@ export function writeReasoningApply(root: string, apply: boolean, expectedRevisi
   return writeReasoningEffort(root, expectedRevision, (current) => ({ ...current, apply }));
 }
 
-/** Automatic reasoning's external judge; null turns it and other external providers off. */
+/** Automatic reasoning's decision API; null turns it and other external providers off. */
 export function writeExternalJudge(
   root: string,
-  external: { provider: 'jev'; model: string } | null,
+  external: { provider: DecisionApiId; model: string } | null,
   expectedRevision: string,
 ) {
   return writeReasoningEffort(root, expectedRevision, ({ external: _, ...current }) => ({

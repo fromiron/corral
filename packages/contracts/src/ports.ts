@@ -22,7 +22,7 @@ import type {
 } from './harness.ts';
 import type { MeetingRunOrigin } from './meeting.ts';
 import type { McpChallenge } from './project-tools.ts';
-import type { ReasoningInput, ReasoningResolution } from './reasoning.ts';
+import type { DecisionApiId, ReasoningInput, ReasoningResolution } from './reasoning.ts';
 import type {
   RuntimeCheckpointRecord,
   RuntimeCheckpointState,
@@ -289,12 +289,12 @@ export interface DecisionCancellation {
 }
 
 /**
- * A paid outside judge asked once when the local judge abstains, in live runs that opted in.
+ * A decision API asked once when the local judge abstains, in live runs that chose it.
  * A failure rejects with an Error whose `cause` is `provider_error`, `timeout`,
  * `invalid_response` or `unavailable`; messages carry neither the key nor the request text.
  */
 export interface ExternalEffortJudge {
-  readonly provider: 'jev';
+  readonly provider: DecisionApiId;
   /** True, or why it cannot be asked (no key). Read without I/O. */
   available(): true | string;
   judge(

@@ -1,4 +1,5 @@
 import {
+  DecisionApiId,
   Identifier,
   ProfileContextOverrides,
   type RunLimits,
@@ -148,9 +149,9 @@ export const WorkspaceConfig = z.strictObject({
         providers: z.array(Identifier).min(1).max(2),
         maxCalls: z.int().min(0).max(100).optional(),
         allowExternal: z.boolean().optional(),
-        /** Asked when automatic reasoning's local judge abstains; needs allowExternal. */
+        /** The decision API asked when automatic reasoning's local judge abstains. */
         external: z
-          .strictObject({ provider: z.literal('jev'), model: z.string().min(1).max(100) })
+          .strictObject({ provider: DecisionApiId, model: z.string().min(1).max(100) })
           .optional(),
       }),
     })

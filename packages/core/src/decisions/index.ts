@@ -1,6 +1,7 @@
 import {
   type AgentStartInput,
   DecisionAnswer,
+  type DecisionApiId,
   type DecisionFailureReason,
   type DecisionProvider,
   type DecisionProviderSnapshot,
@@ -33,8 +34,8 @@ export interface JudgmentConfig {
       maxCalls?: number;
       /** External providers are refused unless the workspace opted in. */
       allowExternal?: boolean;
-      /** Automatic reasoning's external judge, asked only with allowExternal. */
-      external?: { provider: 'jev'; model: string };
+      /** The decision API automatic reasoning asks, only with allowExternal. */
+      external?: { provider: DecisionApiId; model: string };
     };
   };
 }

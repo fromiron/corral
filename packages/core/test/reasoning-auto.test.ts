@@ -29,7 +29,11 @@ async function setup(
   observe = false,
   maxModelConcurrency = 6,
   levels: ('low' | 'medium' | 'high' | 'xhigh')[] = ['low', 'medium', 'high'],
-  options: { externalJudge?: ExternalEffortJudge; external?: boolean; mode?: 'live' | 'mock' } = {},
+  options: {
+    externalJudges?: ExternalEffortJudge[];
+    external?: 'jev' | 'openai-decisions';
+    mode?: 'live' | 'mock';
+  } = {},
 ) {
   let observed = 0;
   const clock = new FakeClock();
@@ -90,12 +94,18 @@ async function setup(
           apply: true,
           ...(observe ? { maxCalls: 2 } : {}),
           ...(options.external
-            ? { allowExternal: true, external: { provider: 'jev' as const, model: 'jev-latest' } }
+            ? {
+                allowExternal: true,
+                external: {
+                  provider: options.external,
+                  model: options.external === 'jev' ? 'jev-latest' : 'gpt-6-luna',
+                },
+              }
             : {}),
         },
       },
     },
-    ...(options.externalJudge ? { externalJudge: options.externalJudge } : {}),
+    ...(options.externalJudges ? { externalJudges: options.externalJudges } : {}),
   });
   const team = linearCorral(['writer']);
   team.roles[0]!.reasoning = { mode: 'auto' };
@@ -395,10 +405,11 @@ describe('external judgment (Jev)', () => {
   function jev(
     answer: (cancellation: DecisionCancellation) => Promise<{ answer: string; model: string }>,
     available: true | string = true,
+    provider: ExternalEffortJudge['provider'] = 'jev',
   ) {
     const calls: Parameters<ExternalEffortJudge['judge']>[] = [];
     const judge: ExternalEffortJudge = {
-      provider: 'jev',
+      provider,
       available: () => available,
       judge: async (...args) => {
         calls.push(args);
@@ -415,8 +426,8 @@ describe('external judgment (Jev)', () => {
   it('asks Jev once when the local judge abstains, inside a recorded decision effect', async () => {
     const j = jev(async () => ({ answer: 'xhigh', model: 'jev-2026-09-15' }));
     const s = await setup(async () => abstained, false, 6, [...ladder], {
-      externalJudge: j.judge,
-      external: true,
+      externalJudges: [j.judge],
+      external: 'jev',
     });
     const permit = await s.host.prepareModelRequest(undefined, input);
     expect(permit.reasoning).toMatchObject({
@@ -445,6 +456,29 @@ describe('external judgment (Jev)', () => {
     s.command('cancel');
   });
 
+  it("asks only the decision API the workspace chose, with that API's model", async () => {
+    const typesafe = jev(async () => ({ answer: 'low', model: 'jev-latest' }));
+    const openai = jev(
+      async () => ({ answer: 'high', model: 'gpt-6-luna' }),
+      true,
+      'openai-decisions',
+    );
+    const s = await setup(async () => abstained, false, 6, [...ladder], {
+      externalJudges: [typesafe.judge, openai.judge],
+      external: 'openai-decisions',
+    });
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({
+      resolved: 'high',
+      source: 'external-model',
+      judgeVersion: 'gpt-6-luna',
+    });
+    expect(typesafe.calls).toHaveLength(0);
+    expect(openai.calls).toHaveLength(1);
+    expect(openai.calls[0]?.[1].model).toBe('gpt-6-luna');
+    s.command('cancel');
+  });
+
   it('never asks Jev when the local judge is clear, it is off, it has no key, or the run is mock', async () => {
     const clear = {
       answer: 'high',
@@ -460,8 +494,8 @@ describe('external judgment (Jev)', () => {
     for (const c of cases) {
       const j = jev(async () => ({ answer: 'low', model: 'jev-latest' }), c.available);
       const s = await setup(async () => c.decide, false, 6, [...ladder], {
-        externalJudge: j.judge,
-        external: c.external,
+        externalJudges: [j.judge],
+        ...(c.external ? { external: 'jev' as const } : {}),
         mode: c.mode,
       });
       const permit = await s.host.prepareModelRequest(undefined, input);
@@ -484,8 +518,8 @@ describe('external judgment (Jev)', () => {
         return { answer: c.answer ?? 'low', model: 'jev-latest' };
       });
       const s = await setup(async () => abstained, false, 6, [...ladder], {
-        externalJudge: j.judge,
-        external: true,
+        externalJudges: [j.judge],
+        external: 'jev',
       });
       const permit = await s.host.prepareModelRequest(undefined, input);
       expect(permit.reasoning).toMatchObject({
@@ -509,7 +543,7 @@ describe('external judgment (Jev)', () => {
       false,
       6,
       [...ladder],
-      { externalJudge: slowLocal.judge, external: true },
+      { externalJudges: [slowLocal.judge], external: 'jev' },
     );
     expect((await s.host.prepareModelRequest(undefined, input)).reasoning).toMatchObject({
       fallback: 'abstained',
@@ -529,8 +563,8 @@ describe('external judgment (Jev)', () => {
         }),
     );
     s = await setup(async () => abstained, false, 6, [...ladder], {
-      externalJudge: slowJev.judge,
-      external: true,
+      externalJudges: [slowJev.judge],
+      external: 'jev',
     });
     const request = s.host.prepareModelRequest(undefined, input);
     await asked.wait();
@@ -558,8 +592,8 @@ describe('external judgment (Jev)', () => {
         }),
     );
     const s = await setup(async () => abstained, false, 6, [...ladder], {
-      externalJudge: j.judge,
-      external: true,
+      externalJudges: [j.judge],
+      external: 'jev',
     });
     const request = s.host.prepareModelRequest(undefined, input);
     await asked.wait();

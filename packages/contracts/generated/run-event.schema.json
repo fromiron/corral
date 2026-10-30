@@ -3421,7 +3421,10 @@
                   "properties": {
                     "provider": {
                       "type": "string",
-                      "const": "jev"
+                      "enum": [
+                        "jev",
+                        "openai-decisions"
+                      ]
                     },
                     "model": {
                       "type": "string",

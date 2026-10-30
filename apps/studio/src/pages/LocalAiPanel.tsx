@@ -1,10 +1,9 @@
-import type { LocalAiView } from '@corral/client';
+import type { DecisionApiView, LocalAiView } from '@corral/client';
 import { Button, Select } from '@corral/react/design-kit';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
-import { ApiKeyInput } from './ApiKeyInput.tsx';
 
 const INSTALLED = new Set<LocalAiView['state']>(['idle', 'starting', 'ready']);
 const MB = 1_000_000;
@@ -158,7 +157,7 @@ export function LocalAiPanel({
   );
 }
 
-/** Asks Jev when the local judge abstains; the key is sent once and never shown again. */
+/** Which decision API to ask when the local judge abstains; keys live under Decision APIs. */
 function ExternalJudgeSettings({
   view,
   onView,
@@ -167,78 +166,72 @@ function ExternalJudgeSettings({
   onView(view: LocalAiView): void;
 }) {
   const t = useTranslations('LocalAi');
+  const names = useTranslations('DecisionApis');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
-  const [key, setKey] = useState('');
+  const [apis, setApis] = useState<DecisionApiView[]>([]);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const { external } = view;
-  const save = async (action: () => Promise<LocalAiView>, configChanged = false) => {
+
+  useEffect(() => {
+    let mounted = true;
+    void models?.decisionApis().then(
+      (value) => {
+        if (mounted) setApis(value);
+      },
+      () => {},
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [models]);
+
+  if (!models) return null;
+  const name = (id: DecisionApiView['id']) => names(`name.${id}`);
+  // A chosen API whose key was removed stays visible so the setting is not silently changed.
+  const offered = apis.filter((api) => api.keyConfigured || api.id === external.provider);
+  const chosenWithoutKey = apis.some((api) => api.id === external.provider && !api.keyConfigured);
+  const choose = async (mode: DecisionApiView['id'] | 'off') => {
     setBusy(true);
     setFailed(false);
     try {
-      onView(await action());
+      onView(await models.setExternalJudge(mode === 'off' ? null : mode, external.revision));
       // The reasoning switch saves the same config file; let it read the new revision.
-      if (configChanged) await refresh();
-      return true;
+      await refresh();
     } catch {
       setFailed(true);
-      return false;
     } finally {
       setBusy(false);
     }
   };
-  const saveKey = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!models || !key.trim()) return;
-    if (await save(() => models.setExternalJudgeKey(key.trim()))) setKey('');
-  };
-  if (!models) return null;
   return (
     <section className="settings-row" aria-labelledby="local-ai-external-heading">
       <div className="flex min-w-0 flex-col gap-2">
         <h3 id="local-ai-external-heading">{t('external.heading')}</h3>
         <p>{t('external.scope')}</p>
-        {external.keyConfigured ? (
-          <div className="flex items-center gap-2">
-            <p role="status">{t('external.keySaved')}</p>
-            <Button
-              variant="tertiary"
-              size="compact"
-              type="button"
-              disabled={busy}
-              onClick={() => void save(() => models.deleteExternalJudgeKey())}
-            >
-              {t('external.removeKey')}
-            </Button>
-          </div>
-        ) : (
-          <form onSubmit={saveKey} className="flex flex-col gap-1">
-            <div className="flex items-end gap-2">
-              <ApiKeyInput value={key} onChange={setKey} disabled={busy} />
-              <Button variant="secondary" type="submit" disabled={busy || !key.trim()}>
-                {t('external.saveKey')}
-              </Button>
-            </div>
-            <p>{external.enabled ? t('external.keyMissing') : t('external.keyHint')}</p>
-          </form>
-        )}
+        {external.provider && chosenWithoutKey ? (
+          <p>{t('external.chosenNoKey', { name: name(external.provider) })}</p>
+        ) : offered.length === 0 ? (
+          <p>{t('external.noKey')}</p>
+        ) : null}
         {failed ? (
           <p role="alert" className="text-danger">
             {t('external.saveFailed')}
           </p>
         ) : null}
       </div>
-      <Select
+      <Select<DecisionApiView['id'] | 'off'>
         label={t('external.mode')}
-        value={external.enabled ? 'jev' : 'off'}
+        value={external.provider ?? 'off'}
         disabled={busy}
-        onValueChange={(mode) =>
-          void save(() => models.setExternalJudge(mode === 'jev', external.revision), true)
-        }
+        onValueChange={(mode) => void choose(mode)}
         options={[
           { value: 'off', label: t('external.off') },
-          { value: 'jev', label: t('external.jev') },
+          ...offered.map((api) => ({
+            value: api.id,
+            label: t('external.ask', { name: name(api.id) }),
+          })),
         ]}
       />
     </section>

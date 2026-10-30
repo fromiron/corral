@@ -1395,14 +1395,20 @@ export interface LocalAiView {
   downloadBytes: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
-  /** Automatic reasoning's external judge: the workspace setting and whether a key is stored. */
+  /** The decision API the workspace asks when the local judge is unsure; null when none. */
   external: {
-    provider: 'jev';
-    model: string;
-    enabled: boolean;
-    keyConfigured: boolean;
+    provider: DecisionApiView['id'] | null;
+    model: string | null;
     revision: string;
   };
+}
+
+/** GET /decision-apis: judge-only APIs and whether a key is stored, never the key. */
+export interface DecisionApiView {
+  id: 'jev' | 'openai-decisions';
+  provider: string;
+  model: string;
+  keyConfigured: boolean;
 }
 
 export interface ModelProfileView {
@@ -1509,21 +1515,26 @@ export class ModelsApi {
   cancelLocalAiInstall(): Promise<LocalAiView> {
     return this.http.json('/local-ai/install', { method: 'DELETE' });
   }
-  setExternalJudge(enabled: boolean, revision: string): Promise<LocalAiView> {
+  setExternalJudge(provider: DecisionApiView['id'] | null, revision: string): Promise<LocalAiView> {
     return this.http.json('/local-ai/external-judge', {
       method: 'PUT',
-      body: JSON.stringify({ enabled, revision }),
+      body: JSON.stringify({ provider, revision }),
     });
   }
-  /** Stores the TypeSafe key server-side; the response says only that one is stored. */
-  setExternalJudgeKey(key: string): Promise<LocalAiView> {
-    return this.http.json('/local-ai/external-judge/api-key', {
+  decisionApis(): Promise<DecisionApiView[]> {
+    return this.http.json('/decision-apis');
+  }
+  /** Stores the key server-side; the response says only that one is stored. */
+  setDecisionApiKey(id: DecisionApiView['id'], key: string): Promise<DecisionApiView[]> {
+    return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
       method: 'PUT',
       body: JSON.stringify({ key }),
     });
   }
-  deleteExternalJudgeKey(): Promise<LocalAiView> {
-    return this.http.json('/local-ai/external-judge/api-key', { method: 'DELETE' });
+  deleteDecisionApiKey(id: DecisionApiView['id']): Promise<DecisionApiView[]> {
+    return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
+      method: 'DELETE',
+    });
   }
   profiles(): Promise<ModelProfileView[]> {
     return this.http.json('/model-profiles');

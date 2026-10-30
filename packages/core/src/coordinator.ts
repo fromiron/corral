@@ -367,8 +367,8 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** reasoning_effort judgment providers and workspace settings. Observe only. */
   judgments?: JudgmentConfig;
-  /** Asked when automatic reasoning's local judge abstains, in live runs that opted in. */
-  externalJudge?: ExternalEffortJudge;
+  /** Decision APIs; a live run asks the one it chose when the local judge abstains. */
+  externalJudges?: readonly ExternalEffortJudge[];
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -620,7 +620,7 @@ export class Coordinator {
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly judgments: JudgmentConfig | undefined;
-  private readonly externalJudge: ExternalEffortJudge | undefined;
+  private readonly externalJudges: readonly ExternalEffortJudge[];
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -675,7 +675,7 @@ export class Coordinator {
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
     this.judgments = deps.judgments;
-    this.externalJudge = deps.externalJudge;
+    this.externalJudges = deps.externalJudges ?? [];
     this.observers = [
       ...(deps.admission?.observers ?? []),
       ...(deps.judgments
@@ -3665,8 +3665,8 @@ export class Coordinator {
   }
 
   /**
-   * Automatic reasoning's external judge for one request: only in live runs that fixed it at
-   * start, while a key is configured. Each call is one decision effect, settled once.
+   * The decision API one request may ask: only in live runs that chose it at start, while its
+   * key is configured. Each call is one decision effect, settled once.
    */
   private externalConsult(
     run: LiveRun,
@@ -3674,14 +3674,8 @@ export class Coordinator {
     attemptNo: number,
   ): ExternalConsult | undefined {
     const wanted = run.snapshot.reasoningApply?.external;
-    const judge = this.externalJudge;
-    if (
-      run.snapshot.mode !== 'live' ||
-      !wanted ||
-      !judge ||
-      judge.provider !== wanted.provider ||
-      judge.available() !== true
-    )
+    const judge = wanted && this.externalJudges.find((j) => j.provider === wanted.provider);
+    if (run.snapshot.mode !== 'live' || !wanted || !judge || judge.available() !== true)
       return undefined;
     return {
       now: () => this.clock.monotonicMs(),

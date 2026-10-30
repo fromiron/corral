@@ -11,8 +11,8 @@ import {
 } from '@corral/local-intelligence';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it } from 'vitest';
+import { DecisionApis } from '../src/decision-apis.ts';
 import { startCorralServer } from '../src/index.ts';
-import { JevJudge } from '../src/jev.ts';
 import { FileCredentialStore } from '../src/models/credential-store.ts';
 
 const dirs: string[] = [];
@@ -28,7 +28,10 @@ const neverReady: HelperLauncher = (command) => {
   return { write() {}, onLine() {}, onExit() {}, kill: async () => {} };
 };
 
-async function serve(localIntelligence: LocalIntelligence | undefined, externalJudge?: JevJudge) {
+async function serve(
+  localIntelligence: LocalIntelligence | undefined,
+  decisionApis?: DecisionApis,
+) {
   const root = mkdtempSync(join(tmpdir(), 'corral-local-ai-'));
   dirs.push(root);
   const workspace = join(root, 'workspace');
@@ -45,7 +48,7 @@ async function serve(localIntelligence: LocalIntelligence | undefined, externalJ
     worktreeRoot: join(root, 'worktrees'),
     agents: new ScriptedAgentAdapter({ turns: 1 }),
     ...(localIntelligence ? { localIntelligence } : {}),
-    ...(externalJudge ? { externalJudge } : {}),
+    ...(decisionApis ? { decisionApis } : {}),
   });
   const login = await fetch(`${server.url}/api/v1/session`, {
     method: 'POST',
@@ -110,7 +113,7 @@ it.skipIf(!target)(
           downloadBytes: bundle.model.size + runtimeSize,
           progress: null,
           error: null,
-          external: expect.objectContaining({ provider: 'jev', enabled: false }),
+          external: expect.objectContaining({ provider: null }),
         },
       });
       expect(await call('/local-ai/install', 'POST')).toMatchObject({
@@ -176,71 +179,118 @@ it('refuses to install where local AI cannot run, and a server without it says s
   }
 });
 
-it('stores the TypeSafe key and the workspace Jev setting, and never returns the key', async () => {
-  const KEY = 'ts-secret-key-0123456789';
+it('connects decision APIs by key and lets the workspace choose one, never returning the key', async () => {
+  const KEY = 'decision-secret-key-0123456789';
   const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
   const keyDir = mkdtempSync(join(tmpdir(), 'corral-local-ai-keys-'));
   dirs.push(dataRoot, keyDir);
   const { server, call, root } = await serve(
     createLocalIntelligence({ root: dataRoot, env: {}, launch: neverReady }),
-    await JevJudge.open({ credentials: new FileCredentialStore(keyDir) }),
+    await DecisionApis.open({ credentials: new FileCredentialStore(keyDir) }),
   );
   const config = () =>
     JSON.parse(readFileSync(join(root, 'workspace', '.corral', 'config.json'), 'utf8')) as {
       decisions?: { reasoning_effort: Record<string, unknown> };
     };
   try {
+    expect(await call('/decision-apis')).toEqual({
+      status: 200,
+      body: [
+        { id: 'jev', provider: 'TypeSafe', model: 'jev-latest', keyConfigured: false },
+        { id: 'openai-decisions', provider: 'OpenAI', model: 'gpt-6-luna', keyConfigured: false },
+      ],
+    });
+    const saved = await call('/decision-apis/openai-decisions/api-key', 'PUT', { key: KEY });
+    expect(saved).toMatchObject({
+      status: 200,
+      body: [
+        { id: 'jev', keyConfigured: false },
+        { id: 'openai-decisions', keyConfigured: true },
+      ],
+    });
+    expect(JSON.stringify(saved.body)).not.toContain(KEY);
+    expect(await call('/decision-apis/openai-decisions/api-key', 'PUT', { key: '' })).toMatchObject(
+      { status: 400 },
+    );
+    expect(await call('/decision-apis/bogus/api-key', 'PUT', { key: KEY })).toMatchObject({
+      status: 404,
+    });
+
     const first = await call('/local-ai');
     expect(first.body.external).toEqual({
-      provider: 'jev',
-      model: 'jev-latest',
-      enabled: false,
-      keyConfigured: false,
+      provider: null,
+      model: null,
       revision: expect.any(String),
     });
+    expect(JSON.stringify(first.body)).not.toContain(KEY);
     const { revision } = first.body.external as { revision: string };
-
-    const saved = await call('/local-ai/external-judge/api-key', 'PUT', { key: KEY });
-    expect(saved).toMatchObject({ status: 200, body: { external: { keyConfigured: true } } });
-    expect(JSON.stringify(saved.body)).not.toContain(KEY);
-    expect(JSON.stringify((await call('/local-ai')).body)).not.toContain(KEY);
-    expect(await call('/local-ai/external-judge/api-key', 'PUT', { key: '' })).toMatchObject({
-      status: 400,
-    });
-
     expect(
-      await call('/local-ai/external-judge', 'PUT', { enabled: true, revision: 'stale' }),
+      await call('/local-ai/external-judge', 'PUT', {
+        provider: 'openai-decisions',
+        revision: 'stale',
+      }),
     ).toMatchObject({ status: 409 });
+    expect(
+      await call('/local-ai/external-judge', 'PUT', { provider: 'bogus', revision }),
+    ).toMatchObject({ status: 400 });
     expect(config().decisions).toBeUndefined();
-    const enabled = await call('/local-ai/external-judge', 'PUT', { enabled: true, revision });
-    expect(enabled).toMatchObject({ status: 200, body: { external: { enabled: true } } });
+    const chosen = await call('/local-ai/external-judge', 'PUT', {
+      provider: 'openai-decisions',
+      revision,
+    });
+    expect(chosen).toMatchObject({
+      status: 200,
+      body: { external: { provider: 'openai-decisions', model: 'gpt-6-luna' } },
+    });
     expect(config().decisions?.reasoning_effort).toMatchObject({
       allowExternal: true,
-      external: { provider: 'jev', model: 'jev-latest' },
+      external: { provider: 'openai-decisions', model: 'gpt-6-luna' },
     });
 
-    // Turning automatic reasoning on keeps the Jev setting.
+    // Turning automatic reasoning on keeps the chosen decision API.
     const reasoning = await call('/models/reasoning');
     await call('/models/reasoning', 'PUT', { apply: true, revision: reasoning.body.revision });
     expect(config().decisions?.reasoning_effort).toMatchObject({
       apply: true,
       allowExternal: true,
-      external: { provider: 'jev' },
+      external: { provider: 'openai-decisions' },
     });
 
     const off = await call('/local-ai/external-judge', 'PUT', {
-      enabled: false,
+      provider: null,
       revision: ((await call('/local-ai')).body.external as { revision: string }).revision,
     });
-    expect(off).toMatchObject({ status: 200, body: { external: { enabled: false } } });
+    expect(off).toMatchObject({ status: 200, body: { external: { provider: null } } });
     expect(config().decisions?.reasoning_effort).toMatchObject({ allowExternal: false });
     expect(config().decisions?.reasoning_effort.external).toBeUndefined();
 
-    expect(await call('/local-ai/external-judge/api-key', 'DELETE')).toMatchObject({
+    expect(await call('/decision-apis/openai-decisions/api-key', 'DELETE')).toMatchObject({
       status: 200,
-      body: { external: { keyConfigured: false } },
+      body: [{ id: 'jev' }, { id: 'openai-decisions', keyConfigured: false }],
     });
     expect(readFileSync(join(keyDir, 'credentials.json'), 'utf8')).not.toContain(KEY);
+  } finally {
+    await server.close();
+  }
+});
+
+it('stores no decision API key on a server without real models', async () => {
+  const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
+  dirs.push(dataRoot);
+  const { server, call } = await serve(
+    createLocalIntelligence({ root: dataRoot, env: {}, launch: neverReady }),
+  );
+  try {
+    expect(await call('/decision-apis')).toMatchObject({
+      status: 200,
+      body: [
+        { id: 'jev', keyConfigured: false },
+        { id: 'openai-decisions', keyConfigured: false },
+      ],
+    });
+    expect(
+      await call('/decision-apis/jev/api-key', 'PUT', { key: 'decision-secret-key-0123456789' }),
+    ).toMatchObject({ status: 403, body: { error: { code: 'CAPABILITY_DENIED' } } });
   } finally {
     await server.close();
   }

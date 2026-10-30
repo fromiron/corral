@@ -100,6 +100,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { DecisionApis, decisionApiList, decisionApiModel } from './decision-apis.ts';
 import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
@@ -117,7 +118,6 @@ import { ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
-import { JEV_MODEL, JevJudge } from './jev.ts';
 import { MeetingHandoffService, registerMeetingHandoffRoutes } from './meeting-handoffs.ts';
 import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
@@ -190,8 +190,8 @@ export interface ServerOptions {
   decisionProviders?: DecisionProvider[];
   /** The local AI engine and its `local-model` effort judge; the server closes it on shutdown. */
   localIntelligence?: LocalIntelligence;
-  /** Automatic reasoning's external judge; live servers otherwise open one on their credentials. */
-  externalJudge?: JevJudge;
+  /** Decision APIs and their keys; live servers otherwise open them on their credentials. */
+  decisionApis?: DecisionApis;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -590,10 +590,10 @@ async function createCorralServer(
   };
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
-  const externalJudge =
-    options.externalJudge ??
+  const decisionApis =
+    options.decisionApis ??
     (options.live
-      ? await JevJudge.open({
+      ? await DecisionApis.open({
           credentials: options.live.credentials,
           attempts: modelAttempts,
           now: () => clock.nowIso(),
@@ -664,7 +664,7 @@ async function createCorralServer(
     policy: workspace.policy,
     sessionId: backendSessionId,
     judgments: judgmentConfig,
-    ...(externalJudge ? { externalJudge } : {}),
+    ...(decisionApis ? { externalJudges: decisionApis.judges() } : {}),
   });
   registry?.configureRequests({
     store: modelAttempts,
@@ -1156,13 +1156,12 @@ async function createCorralServer(
     fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
   const localAiView = (local: LocalIntelligence, status = local.status()) => {
     const wanted = workspace.config.decisions?.reasoning_effort;
+    const chosen = wanted?.allowExternal ? wanted.external : undefined;
     return {
       ...status,
       external: {
-        provider: 'jev' as const,
-        model: wanted?.external?.model ?? JEV_MODEL,
-        enabled: wanted?.allowExternal === true && wanted.external?.provider === 'jev',
-        keyConfigured: externalJudge?.keyConfigured() ?? false,
+        provider: chosen?.provider ?? null,
+        model: chosen?.model ?? null,
         revision: configRevision(workspace.root),
       },
     };
@@ -1182,12 +1181,15 @@ async function createCorralServer(
   app.put('/api/v1/local-ai/external-judge', async (request, reply) => {
     if (!local) return noLocalAi(reply);
     const parsed = z
-      .strictObject({ enabled: z.boolean(), revision: z.string().min(1) })
+      .strictObject({ provider: z.string().min(1).max(64).nullable(), revision: z.string().min(1) })
       .safeParse(request.body);
-    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'invalid external judge setting');
+    const chosen =
+      parsed.success && parsed.data.provider ? decisionApiModel(parsed.data.provider) : null;
+    if (!parsed.success || (parsed.data.provider && !chosen))
+      return fail(reply, 'SCHEMA_INVALID', 'invalid external judge setting');
     const changed = writeExternalJudge(
       workspace.root,
-      parsed.data.enabled ? { provider: 'jev', model: JEV_MODEL } : null,
+      chosen ? { provider: chosen.id, model: chosen.model } : null,
       parsed.data.revision,
     );
     if (!changed.ok)
@@ -1200,21 +1202,29 @@ async function createCorralServer(
     judgmentConfig.settings = judgmentSettings(changed.config);
     return localAiView(local);
   });
-  app.put('/api/v1/local-ai/external-judge/api-key', async (request, reply) => {
-    if (!local) return noLocalAi(reply);
-    if (!externalJudge)
-      return fail(reply, 'CAPABILITY_DENIED', 'the external judge needs live models');
+
+  // ── decision APIs (features/decision-apis.md) ─────────────────────
+  type DecisionApiParams = { Params: { id: string } };
+  const listDecisionApis = () => decisionApis?.list() ?? decisionApiList();
+  app.get('/api/v1/decision-apis', async () => listDecisionApis());
+  const knownApi = (id: string) => decisionApiModel(id)?.id ?? null;
+  app.put<DecisionApiParams>('/api/v1/decision-apis/:id/api-key', async (request, reply) => {
+    const id = knownApi(request.params.id);
+    if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
+    if (!decisionApis)
+      return fail(reply, 'CAPABILITY_DENIED', 'decision API keys need a server with real models');
     const parsed = z
       .strictObject({ key: z.string().trim().min(1).max(4096) })
       .safeParse(request.body);
-    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'enter a TypeSafe API key');
-    await externalJudge.setKey(parsed.data.key);
-    return localAiView(local);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'enter an API key');
+    await decisionApis.setKey(id, parsed.data.key);
+    return decisionApis.list();
   });
-  app.delete('/api/v1/local-ai/external-judge/api-key', async (_request, reply) => {
-    if (!local) return noLocalAi(reply);
-    await externalJudge?.deleteKey();
-    return localAiView(local);
+  app.delete<DecisionApiParams>('/api/v1/decision-apis/:id/api-key', async (request, reply) => {
+    const id = knownApi(request.params.id);
+    if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
+    await decisionApis?.deleteKey(id);
+    return listDecisionApis();
   });
 
   // ── model settings ────────────────────────────────────────────────

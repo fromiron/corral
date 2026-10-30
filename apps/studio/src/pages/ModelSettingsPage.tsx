@@ -11,6 +11,7 @@ import {
 import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
+import { DecisionApiSettings } from './DecisionApiSettings.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { LocalAiPanel } from './LocalAiPanel.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
@@ -29,12 +30,14 @@ export function ModelSettingsPage() {
   const tr = useTranslations('Reasoning');
   const tu = useTranslations('ModelUsage');
   const tl = useTranslations('LocalAi');
+  const td = useTranslations('DecisionApis');
   const { models, mode, live } = useServices();
   const { profiles, providers, catalog, config, refresh, error, loading } =
     useModelSettings(models);
   const [editing, setEditing] = useState(false);
   // A finished local AI install changes what automatic reasoning can use.
   const [localAiInstalls, setLocalAiInstalls] = useState(0);
+  const [decisionApiChanges, setDecisionApiChanges] = useState(0);
 
   return (
     <ModelSettingsRefresh value={refresh}>
@@ -63,6 +66,7 @@ export function ModelSettingsPage() {
                   { id: 'models-images', label: tim('heading') },
                   { id: 'models-reasoning', label: tr('workspaceHeading') },
                   { id: 'models-local-ai', label: tl('heading') },
+                  { id: 'models-decision-apis', label: td('heading') },
                   { id: 'models-usage', label: tu('heading') },
                 ]}
               />
@@ -126,8 +130,13 @@ export function ModelSettingsPage() {
               <div id="models-local-ai" tabIndex={-1} className="outline-none">
                 {/* Both panels save the workspace config; each re-reads after the other saves. */}
                 <LocalAiPanel
-                  key={config?.revision}
+                  key={`${config?.revision}:${decisionApiChanges}`}
                   onInstalled={() => setLocalAiInstalls((count) => count + 1)}
+                />
+              </div>
+              <div id="models-decision-apis" tabIndex={-1} className="outline-none">
+                <DecisionApiSettings
+                  onChanged={() => setDecisionApiChanges((count) => count + 1)}
                 />
               </div>
               <ModelUsagePanel />
