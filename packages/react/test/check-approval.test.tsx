@@ -277,3 +277,37 @@ async function renderCorralTool(name: string, args: Record<string, unknown>) {
     </IntlProvider>,
   );
 }
+
+it.each([false, true])(
+  'keeps the exact decision criteria visible before approving in compact=%s',
+  async (compact) => {
+    const decide = vi.fn(async () => ({ status: 'applied' }) as Receipt);
+    const session = sessionStore({
+      projection: projectionWith({
+        status: 'awaiting_user',
+        approvals: {
+          decision: {
+            approvalId: 'decision',
+            kind: 'user_action',
+            subjectVersionIds: ['draft_v2'],
+            criteriaVersionId: 'criteria_pinned',
+            status: 'pending',
+          },
+        },
+      }),
+      artifactTexts: {
+        criteria_pinned: 'Cite the source of every claim.\nKeep the reviewed version.',
+      },
+      resolveApproval: decide,
+    });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <ApprovalPanel session={session} compact={compact} onOpenArtifact={() => {}} />
+      </IntlProvider>,
+    );
+    expect(screen.getByText('Cite the source of every claim.')).toBeVisible();
+    expect(screen.getByText('Keep the reviewed version.')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this version' }));
+    await vi.waitFor(() => expect(decide).toHaveBeenCalledWith('decision', 'approve'));
+  },
+);

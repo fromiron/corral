@@ -2,6 +2,21 @@ import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { expect, test } from './harness.ts';
 
+const modeLabels = {
+  live: 'Live models (uses your sign-in)',
+  mock: 'Simulated (no model or extension calls)',
+};
+
+async function chooseMode(page: Page, value: keyof typeof modeLabels) {
+  const mode = page.getByRole('combobox', { name: 'Agents', exact: true });
+  await mode.click();
+  await page.getByRole('option', { name: modeLabels[value], exact: true }).click();
+  // The kit acknowledges the selected row before closing. Wait for that popup to
+  // close so the next explicit choice opens it, instead of toggling it closed.
+  await expect(mode).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('listbox')).toBeHidden();
+}
+
 async function importTeam(page: Page, id: string) {
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
   await page.getByRole('tab', { name: /^Teams/ }).click();
@@ -40,17 +55,23 @@ test.describe('explicit live selection', () => {
   }) => {
     await corral.open('/');
     await importTeam(page, 'team-a');
-    await page.getByRole('combobox', { name: 'Agents', exact: true }).selectOption('live');
+    await chooseMode(page, 'live');
     await page.reload();
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toHaveValue('live');
+    await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toContainText(
+      modeLabels.live,
+    );
     const path = new URL(page.url()).pathname;
     await corral.restart();
     await corral.open(path);
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toHaveValue('live');
+    await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toContainText(
+      modeLabels.live,
+    );
     await importTeam(page, 'team-b');
-    await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toHaveValue('mock');
+    await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toContainText(
+      modeLabels.mock,
+    );
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);
   });
 });
@@ -134,14 +155,14 @@ test.describe('ordered explicit mode choices', () => {
         response.request().postDataJSON().mode === 'mock',
     );
     const mode = page.getByRole('combobox', { name: 'Agents', exact: true });
-    await mode.selectOption('live');
+    await chooseMode(page, 'live');
     await first;
-    await mode.selectOption('mock');
-    await expect(mode).toHaveValue('mock');
+    await chooseMode(page, 'mock');
+    await expect(mode).toContainText(modeLabels.mock);
     release();
     await Promise.all([liveSaved, mockSaved]);
     await page.reload();
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-    await expect(mode).toHaveValue('mock');
+    await expect(mode).toContainText(modeLabels.mock);
   });
 });

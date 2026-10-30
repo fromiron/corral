@@ -43,8 +43,11 @@ test('keyboard alone adds, selects, moves, connects, deletes, undoes and steers 
   await expect(agent).not.toHaveAttribute('style', before ?? '');
   await activate(page, page.getByRole('button', { name: 'Remove connection to Output' }));
   await tabTo(page, page.getByLabel('From out'));
-  await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('From out')).toContainText('Output');
   await activate(page, page.getByRole('button', { name: 'Connect', exact: true }));
   await expect(page.getByText('Ready to run.')).toBeVisible();
   await tabTo(page, page.getByRole('tab', { name: 'Design', exact: true }));

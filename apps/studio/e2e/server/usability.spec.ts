@@ -1,7 +1,6 @@
-import type { CorralDefinition } from '@corral/contracts';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { templateForWorkspace } from '../../src/demo/templates.ts';
+import { type DemoTemplate, templateForWorkspace } from '../../src/demo/templates.ts';
 import { panelTab, requestBox, selectSessionTeam } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
@@ -9,10 +8,7 @@ const request = requestBox;
 const timeline = (page: Page) => page.getByTestId('chat-timeline');
 
 async function openResultsList(page: Page) {
-  const show = page.getByRole('banner').getByRole('button', { name: 'Show the panel' });
-  if (await show.isVisible()) await show.click();
-  await page.getByRole('button', { name: 'Open pane', exact: true }).first().click();
-  await page.getByRole('menuitem', { name: 'Results', exact: true }).click();
+  await panelTab(page, 'Results');
   return page.getByRole('tabpanel', { name: 'Execution history', exact: true });
 }
 
@@ -31,13 +27,50 @@ async function session(page: Page, corral: Harness, definition = linearCorral(['
   await selectSessionTeam(page, definition.name);
 }
 
+// These assertions concern a saved graph's review loop, not the composer team's chat runtime.
+async function graphSession(page: Page, corral: Harness, template: DemoTemplate) {
+  await corral.open('/');
+  const started = await page.evaluate(async ({ definition, layout }) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const call = async (path: string, body: unknown) => {
+      const response = await fetch(`/api/v1${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`Fixture ${path}: ${response.status}`);
+      return response.json();
+    };
+    const { record } = await call('/corrals', { definition, layout });
+    const { session } = await call('/sessions', {
+      projectId: 'default',
+      title: 'Review the release plan',
+      corralId: record.corralId,
+    });
+    const result = await call('/runs', {
+      schemaVersion: '0.1',
+      commandId: 'usability-saved-graph',
+      mode: 'mock',
+      sessionId: session.sessionId,
+      corralId: record.corralId,
+      definitionRevision: record.definitionRevision,
+    });
+    if (!result.runId) throw new Error('Expected an accepted saved graph start');
+    return { sessionId: session.sessionId as string, runId: result.runId as string };
+  }, template);
+  await corral.open(`/sessions/${started.sessionId}`);
+  return started;
+}
+
 test('UX-015-01 new-session drafts survive team setup and become an editable first request', async ({
   page,
   corral,
 }) => {
   await corral.open('/');
   await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await page.getByLabel('Purpose').fill('Keep this purpose through team setup');
+  await page
+    .getByRole('textbox', { name: 'Purpose', exact: true })
+    .fill('Keep this purpose through team setup');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .getByRole('article')
@@ -47,9 +80,11 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
-  if (!(await page.getByLabel('Purpose').isVisible()))
+  if (!(await page.getByRole('textbox', { name: 'Purpose', exact: true }).isVisible()))
     await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await expect(page.getByLabel('Purpose')).toHaveValue('Keep this purpose through team setup');
+  await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
+    'Keep this purpose through team setup',
+  );
   let release!: () => void,
     entered!: () => void,
     creates = 0;
@@ -72,10 +107,12 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
       response.url().endsWith('/api/v1/sessions') && response.request().method() === 'POST',
   );
   await page.getByRole('link', { name: 'New session', exact: true }).click();
-  await expect(page.getByLabel('Purpose')).toHaveValue('Keep this purpose through team setup');
+  await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
+    'Keep this purpose through team setup',
+  );
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await committed;
-  await expect(page.getByLabel('Purpose')).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toBeDisabled();
   await expect(page.getByRole('combobox', { name: 'Corral', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Shortcuts', exact: true }).click();
@@ -127,7 +164,7 @@ test.describe('instruction delivery', () => {
         ?.status;
     await expect.poll(status).toBe('queued');
     // The first UI poll must observe queued before the run resumes (the reproduced stale-state bug).
-    await page.waitForTimeout(2300);
+    await expect(page.getByTestId('delivery')).toContainText('Waiting for the next model request');
     await page.getByRole('button', { name: 'Resume run', exact: true }).click();
     await expect.poll(status).toBe('delivered');
     await expect(page.getByTestId('delivery')).toContainText('Included in a model request');
@@ -139,23 +176,24 @@ test.describe('instruction delivery', () => {
 
 test.describe('long multi-agent output', () => {
   test.use({
-    agentReply: `# Release plan\n\n${'long-reference-'.repeat(250)}\n\n${'A recorded result.\n\n'.repeat(80)}`,
+    agentReply: {
+      reply: () =>
+        `# Release plan\n\n${'long-reference-'.repeat(250)}\n\n${'A recorded result.\n\n'.repeat(80)}`,
+      beforeReply: async (_turn, input) => {
+        if (input.nodeId === 'write' && input.round === 2)
+          throw new Error('Fixture writer failed after the first recorded review');
+      },
+    },
   });
   test('UX-015-03/04/05 failed work exposes its reason, review and every partial result', async ({
     page,
     corral,
   }) => {
-    const definition = structuredClone(
-      templateForWorkspace('research-team', 'audit_team').definition,
-    ) as CorralDefinition;
-    definition.limits.maxModelCalls = 12;
-    await session(page, corral, definition);
-    await request(page).fill('Review this release plan');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    const template = templateForWorkspace('research-team', 'audit_team');
+    const { runId } = await graphSession(page, corral, template);
     await expect(
       timeline(page).getByRole('note').filter({ hasText: 'Not finished (Failed)' }),
     ).toBeVisible({ timeout: 20000 });
-    const runId = corral.server.coordinator.listRuns()[0]?.runId as string;
     const projection = corral.server.coordinator.getSnapshot(runId).projection;
     expect(Object.keys(projection.reviews).length).toBeGreaterThan(0);
     await expect(timeline(page).getByTestId('run-reason')).toContainText('failed');
@@ -169,17 +207,28 @@ test.describe('long multi-agent output', () => {
     expect(bounds.content).toBeLessThanOrEqual(bounds.width);
     const panel = await openResultsList(page);
     await expect(panel).toContainText('Partial results');
-    for (const artifact of Object.values(projection.artifacts))
-      await expect(
-        panel
-          .getByRole('button')
-          .filter({ hasText: `${artifact.name} v${artifact.version}` })
-          .first(),
-      ).toBeVisible();
     await expect(panel.getByText('No results yet.')).toHaveCount(0);
+    await panel
+      .getByRole('button', { name: /^Partial results / })
+      .first()
+      .click();
+    const results = page.getByTestId('run-results');
+    for (const summary of await results.locator('details > summary').all()) await summary.click();
+    for (const artifact of Object.values(projection.artifacts)) {
+      const author = projection.executionOrder.indexOf(artifact.authorExecutionId) + 1;
+      await results
+        .getByRole('navigation', { name: 'Results', exact: true })
+        .getByRole('button')
+        .filter({ hasText: `${artifact.name} v${artifact.version}` })
+        .filter({ hasText: new RegExp(`execution ${author}(?:\\D|$)`) })
+        .click();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get('result'))
+        .toBe(artifact.artifactVersionId);
+    }
 
     // A failed reload must not claim that completed work has no artifacts.
-    await page.getByRole('tab', { name: 'Files', exact: true }).click();
+    await panelTab(page, 'Conversation');
     await page.route('**/api/v1/runs/*/snapshot', (route) => route.abort());
     await openResultsList(page);
     await page.reload();
@@ -196,6 +245,7 @@ test('UX-015-04 older results remain reachable after ten runs', async ({ page, c
   await session(page, corral);
   let firstRun = '';
   for (let index = 0; index < 11; index++) {
+    const previous = new Set(corral.server.coordinator.listRuns().map((run) => run.runId));
     await request(page).fill(`Result ${index + 1}`);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect
@@ -204,25 +254,33 @@ test('UX-015-04 older results remain reachable after ten runs', async ({ page, c
           corral.server.coordinator.listRuns().filter((run) => run.status === 'succeeded').length,
       )
       .toBe(index + 1);
-    if (index === 0) firstRun = corral.server.coordinator.listRuns()[0]?.runId as string;
-    await expect(page.getByRole('combobox', { name: 'What this is' })).toContainText('Follow-up');
+    const completed = corral.server.coordinator.listRuns().find((run) => !previous.has(run.runId));
+    if (!completed) throw new Error('Expected the newly completed run');
+    if (index === 0) firstRun = completed.runId;
+    // Wait for this run in the UI before composing again; a backend completion alone can
+    // still leave the composer observing the previous active run and queue the request.
+    await expect(
+      timeline(page).getByRole('region', { name: completed.runId, exact: true }),
+    ).toContainText('Succeeded');
+    await expect(
+      page.getByText('Send to: new run in this session · follow-up', { exact: true }),
+    ).toBeVisible();
   }
   const panel = await openResultsList(page);
-  await expect(panel.getByRole('button').filter({ hasText: firstRun })).toHaveCount(0);
+  const firstResult = panel.getByRole('button', { name: / · Run #1 · / }).first();
+  await expect(firstResult).toHaveCount(0);
   await panel.getByRole('button', { name: 'Show 1 earlier runs' }).click();
-  await expect(panel.getByRole('button').filter({ hasText: firstRun })).toHaveCount(1);
+  await expect(firstResult).toBeVisible();
+  await firstResult.click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(firstRun);
 });
 
 test('UX-015-07 approvals name exact versions and keep review inside the session', async ({
   page,
   corral,
 }) => {
-  const definition = templateForWorkspace('research-team', 'approval_team')
-    .definition as CorralDefinition;
-  await session(page, corral, definition);
+  await graphSession(page, corral, templateForWorkspace('research-team', 'approval_team'));
   const sessionUrl = new URL(page.url()).pathname;
-  await request(page).fill('Review the release plan and request approval.');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
   // the dock exposes the request; the execution panel owns the one response form.
   await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 15000 });
   await page.getByTestId('action-required').getByRole('link').click();

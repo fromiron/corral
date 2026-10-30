@@ -4,14 +4,14 @@
 :root,
 .light:not(.react-flow),
 .dark:not(.react-flow) {
-  /* Small status text and focus need stronger contrast on the light surfaces. */
+  /* Small secondary/status text and focus need stronger contrast on light surfaces. */
   --destructive: light-dark(#b91c1c, #fca5a5);
   --destructive-contrast: light-dark(#ffffff, #171717);
   --success: light-dark(#166534, #86efac);
   --warning: light-dark(#92400e, #fcd34d);
   --info: light-dark(#1d4ed8, #93c5fd);
   --focus-ring: light-dark(#2563eb, #6b97ff);
-  --muted-foreground: light-dark(#737373, #b8b8b8);
+  --muted-foreground: light-dark(#666666, #b8b8b8);
 
   --primary: var(--foreground);
   --primary-foreground: var(--background);
@@ -169,6 +169,10 @@
 }
 
 @media (forced-colors: active) {
+  [data-slot="menu-popup"] {
+    outline: 1px solid CanvasText;
+  }
+
   [data-slot="input-control"]:has(:focus-visible),
   [data-slot="textarea-control"]:has(:focus-visible),
   [data-slot="select-trigger"]:focus-visible,

@@ -19,13 +19,13 @@ it('Git is a separate session pane and keeps its project/session identity', () =
   });
 });
 
-it('composer links override remembered history without making composer focus sticky', () => {
+it('composer and bare session links open the conversation while explicit links retain their target', () => {
   const remembered = { panel: 'run', run: 'run_old', view: 'run', execution: 'old_call' };
   const compose = validateSessionSearch({ compose: true });
   expect(compose).toEqual({ compose: true });
   expect(validateSessionSearch({ compose: false })).toEqual({});
   expect(resolveSessionSearch(compose, remembered)).toEqual({ compose: true });
-  expect(resolveSessionSearch({}, { ...remembered, compose: true })).toEqual(remembered);
+  expect(resolveSessionSearch({}, { ...remembered, compose: true })).toEqual({});
   expect(patchSessionSearch(compose, { panel: 'files' })).toEqual({ panel: 'files' });
   expect(patchSessionSearch(compose, { panel: undefined })).toEqual({});
   expect(patchSessionSearch(compose, { view: 'results' })).toEqual({ view: 'results' });
@@ -271,4 +271,16 @@ it('message search opens its exact conversation without inheriting a saved run o
   expect(
     resolveSessionSearch({ message: 'entry_found' }, { panel: 'run', run: 'run_old' }),
   ).toEqual({ message: 'entry_found' });
+});
+
+it('a clean session URL never inherits a stored subview while a tab URL retains its target', () => {
+  const remembered = {
+    panel: 'run',
+    run: 'run_old',
+    view: 'results',
+    result: 'answer_old',
+  } as const;
+  expect(resolveSessionSearch({}, remembered)).toEqual({});
+  expect(resolveSessionSearch({}, { panel: 'changes' })).toEqual({});
+  expect(resolveSessionSearch(remembered, {})).toEqual(remembered);
 });

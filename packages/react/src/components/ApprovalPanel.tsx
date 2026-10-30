@@ -35,7 +35,7 @@ export function ApprovalPanel({
   onOpenArtifact: (artifactVersionId: string) => void;
   /** Placement around the cards; nothing is drawn while no approval waits. */
   className?: string;
-  /** A one-row strip beside what is being read (the results view): no explanations. */
+  /** A compact strip beside the result; exact subjects and decision criteria remain visible. */
   compact?: boolean;
   /** The session composer already presents the current plan; detail views retain it. */
   showPlan?: boolean;
@@ -234,8 +234,8 @@ export function ApprovalPanel({
                 ))}
               </div>
             )}
-            {criteria && !compact ? (
-              <div className="text-muted-foreground">
+            {criteria ? (
+              <div className={`text-muted-foreground ${compact ? 'w-full' : ''}`}>
                 {t('criteria')}
                 <ul className="list-disc pl-5">
                   {criteria.split('\n').map((line) => (

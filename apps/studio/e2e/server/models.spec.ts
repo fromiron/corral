@@ -61,7 +61,8 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   corral.fake?.answerWith('Live answer from the model.');
   await corral.open('/');
   await agentToOutput(page);
-  await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+  await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Settings → Models');
@@ -121,7 +122,10 @@ test.describe('a borrowed Codex CLI login', () => {
 
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
-    await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+    await page
+      .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
+      .click();
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer through the Codex login.');
@@ -154,7 +158,8 @@ test('an API key typed under Models runs live, is never shown, and can be remove
 
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await agentToOutput(page);
-  await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+  await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
@@ -195,7 +200,10 @@ test.describe('a keyless OpenAI-compatible endpoint', () => {
 
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
-    await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+    await page
+      .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
+      .click();
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer from the local model.');
@@ -345,7 +353,7 @@ test.describe('editing models on the Models page', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    const apply = page.getByRole('checkbox', {
+    const apply = page.getByRole('switch', {
       name: 'Let the local judge choose reasoning effort in all projects on this server',
     });
     await expect(apply).toBeEnabled();
@@ -443,7 +451,7 @@ test.describe('editing models on the Models page', () => {
     await page.getByRole('option', { name: 'Ollama', exact: true }).click();
     await editor.getByRole('combobox', { name: 'Model of model-b', exact: true }).click();
     await page.getByRole('option', { name: 'llama3.2', exact: true }).click();
-    await editor.getByRole('checkbox', { name: 'Linux isolation · model-b' }).check();
+    await editor.getByRole('switch', { name: 'Linux isolation · model-b' }).click();
     await editor.getByRole('button', { name: 'Save models' }).click();
 
     await expect(page.getByRole('region', { name: 'Edit models' })).toHaveCount(0);
@@ -453,7 +461,7 @@ test.describe('editing models on the Models page', () => {
     await page.reload();
     await expect(page.getByTestId('profile-model-a')).toContainText('openai/gpt-test-b');
     await page.getByRole('button', { name: 'Edit models' }).click();
-    await expect(page.getByRole('checkbox', { name: 'Linux isolation · model-b' })).toBeChecked();
+    await expect(page.getByRole('switch', { name: 'Linux isolation · model-b' })).toBeChecked();
     expect(corral.errors).toEqual([]);
   });
 
@@ -502,7 +510,7 @@ test('profile context preview, explicit zero, round-trip and a concurrent reason
     (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
   );
   await page
-    .getByRole('checkbox', {
+    .getByRole('switch', {
       name: 'Let the local judge choose reasoning effort in all projects on this server',
     })
     .click();
