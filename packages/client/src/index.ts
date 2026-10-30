@@ -1379,6 +1379,24 @@ export interface ReasoningSettings {
   revision: string;
 }
 
+/** GET /local-ai: the local AI bundle for the settings panel's install. */
+export interface LocalAiView {
+  release: string;
+  modelName: string;
+  state:
+    | 'unsupported'
+    | 'missing'
+    | 'stale'
+    | 'installing'
+    | 'idle'
+    | 'starting'
+    | 'ready'
+    | 'error';
+  downloadBytes: number | null;
+  progress: { received: number; total: number } | null;
+  error: string | null;
+}
+
 export interface ModelProfileView {
   profileId: string;
   provider: string;
@@ -1473,6 +1491,15 @@ export class ModelsApi {
       method: 'PUT',
       body: JSON.stringify({ apply, revision }),
     });
+  }
+  localAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai');
+  }
+  installLocalAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai/install', { method: 'POST' });
+  }
+  cancelLocalAiInstall(): Promise<LocalAiView> {
+    return this.http.json('/local-ai/install', { method: 'DELETE' });
   }
   profiles(): Promise<ModelProfileView[]> {
     return this.http.json('/model-profiles');

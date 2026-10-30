@@ -180,6 +180,14 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 | DELETE /model-auth/:provider/login | — | 진행 중 로그인 취소 |
 | DELETE /model-auth/:provider | — | 로그아웃. 저장한 자격 증명 삭제 |
 
+로컬 AI 설치. 설치 규칙은 [로컬 AI](features/local-intelligence.md)가 정한다. 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED`다.
+
+| Method/path | 요청 | 응답·효과 |
+|---|---|---|
+| GET /local-ai | — | release, modelName, state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null) |
+| POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
+| DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다 |
+
 SSE는 영속 이벤트(`event: domain`, `id: runSeq`) 외에 모델 출력 조각을 `event: stream`으로 보낸다. 이 frame에는 id가 없어 재접속 cursor를 움직이지 않고, 저장하지 않으며, 나중에 연결한 구독자에게 다시 보내지 않는다. live 실행 전에 로그인이 없으면 `POST /runs`는 403 `CAPABILITY_DENIED`다.
 
 `POST /runs`는 `CreateRunRequest`만 받는다(정의 본문을 직접 보내면 400). 같은 commandId의 재전송은 200과 처음 receipt, 새 Run은 201이다. 두 번째 활성 Run은 409 `RUN_ALREADY_ACTIVE`다. `PUT /corrals/:id`는 `If-Match`에 기준 definition revision이 없으면 400, 다르면 409 `REVISION_CONFLICT`다. 명령 응답의 HTTP 상태는 receipt를 따른다: 거절은 오류 코드의 상태, `accepted`·`queued`는 202, 그 밖은 200이다.

@@ -137,3 +137,25 @@ export function servedBodies(bundle: Bundle = testBundle()) {
     [bundle.runtime.targets['linux-x64']!.url]: WHEEL,
   };
 }
+
+/** Effort weights for the test bundle's 4-dim model. */
+export function testWeights(baseModelSha256 = testBundle().model.sha256) {
+  return {
+    schemaVersion: 1,
+    version: 'test-weights',
+    labels: ['low', 'medium', 'high', 'xhigh'],
+    dims: 4,
+    baseModelSha256,
+    preprocessVersion: 'effort-text-v1',
+    task: 'classification',
+    weights: [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+    ],
+    bias: [0, 2, 0, 0],
+    temperature: 1,
+    abstainBelow: 0.5,
+  };
+}

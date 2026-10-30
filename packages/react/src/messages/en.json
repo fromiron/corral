@@ -2533,7 +2533,7 @@
     "enableApply": "Let the local judge choose reasoning effort in all projects on this server",
     "applyHint": "After saving, applies to roles set to automatic in newly started runs on this Corral server workspace. Running runs and fixed reasoning settings stay unchanged.",
     "ready": "Ready",
-    "installHint": "Local judge unavailable. Install with {command}. Until then automatic roles use medium.",
+    "installHint": "Local judge unavailable; see Local AI below. Until then automatic roles use medium.",
     "settingsError": "Could not read or save settings. Reload and try again.",
     "unrecorded": "Reasoning not recorded",
     "payload": "Payload verified",
@@ -2571,6 +2571,26 @@
     },
     "appliedHeading": "Applied reasoning by request",
     "observeHeading": "Observe-only judgments (not applied)"
+  },
+  "LocalAi": {
+    "heading": "Local AI",
+    "state": {
+      "unsupported": "Not available in this environment",
+      "missing": "Not installed",
+      "stale": "Update needed",
+      "installing": "Installing",
+      "idle": "Ready",
+      "starting": "Starting",
+      "ready": "Ready",
+      "error": "Error"
+    },
+    "download": "Downloads about {size} MB for the local judge.",
+    "progress": "{percent}% · {received} / {total} MB",
+    "install": "Install",
+    "update": "Update",
+    "cancel": "Cancel install",
+    "loadFailed": "Could not load local AI status. Reload and try again.",
+    "actionFailed": "Could not change the install. Try again."
   },
   "Resources": {
     "skills": "Skills",

@@ -29,6 +29,7 @@ export {
 export {
   bundledEffortWeights,
   createLocalIntelligence,
+  type LocalAiStatus,
   type LocalIntelligence,
   type LocalIntelligenceOptions,
 } from './factory.ts';

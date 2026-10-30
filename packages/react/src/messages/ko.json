@@ -2533,7 +2533,7 @@
     "enableApply": "이 서버의 모든 프로젝트에서 로컬 판정기가 추론 노력을 고르도록 허용",
     "applyHint": "저장 후 이 Corral 서버 작업공간에서 새로 시작하는 Run의 자동 추론 역할에 적용됩니다. 진행 중인 Run과 고정 추론 설정은 변경하지 않습니다.",
     "ready": "사용 가능",
-    "installHint": "로컬 판정기 없음 · 터미널에서 {command}로 설치하세요. 설치 전에는 보통 단계으로 실행됩니다.",
+    "installHint": "로컬 판정기 사용 불가 · 아래 로컬 AI를 확인하세요. 그동안 자동 역할은 보통 단계로 실행됩니다.",
     "settingsError": "설정을 저장하거나 읽지 못했습니다. 새로고침 후 다시 시도하세요.",
     "unrecorded": "추론 설정 미기록",
     "payload": "요청 확인",
@@ -2571,6 +2571,26 @@
     },
     "appliedHeading": "요청별 추론 적용 기록",
     "observeHeading": "관찰 전용 판정 (요청에 미적용)"
+  },
+  "LocalAi": {
+    "heading": "로컬 AI",
+    "state": {
+      "unsupported": "이 환경에서 사용할 수 없음",
+      "missing": "설치 안 됨",
+      "stale": "업데이트 필요",
+      "installing": "설치 중",
+      "idle": "사용 가능",
+      "starting": "준비 중",
+      "ready": "사용 가능",
+      "error": "오류"
+    },
+    "download": "로컬 판정기에 쓸 약 {size} MB를 내려받습니다.",
+    "progress": "{percent}% · {received} / {total} MB",
+    "install": "설치",
+    "update": "업데이트",
+    "cancel": "설치 취소",
+    "loadFailed": "로컬 AI 상태를 읽지 못했습니다. 새로고침 후 다시 시도하세요.",
+    "actionFailed": "설치를 바꾸지 못했습니다. 다시 시도하세요."
   },
   "Resources": {
     "skills": "스킬",

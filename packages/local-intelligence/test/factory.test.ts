@@ -4,30 +4,9 @@ import { bundledManifest } from '../src/bundle.ts';
 import { requestInput } from '../src/effort/preprocess.ts';
 import { bundledEffortWeights, createLocalIntelligence } from '../src/factory.ts';
 import { fakeLauncher, flush, markInstalled } from './fake-helper.ts';
-import { tempDir, testBundle } from './helpers.ts';
+import { tempDir, testBundle, testWeights as weights } from './helpers.ts';
 
 const never: DecisionCancellation = { aborted: false, onCancel: () => () => {} };
-
-function weights(baseModelSha256 = testBundle().model.sha256) {
-  return {
-    schemaVersion: 1,
-    version: 'test-weights',
-    labels: ['low', 'medium', 'high', 'xhigh'],
-    dims: 4,
-    baseModelSha256,
-    preprocessVersion: 'effort-text-v1',
-    task: 'classification',
-    weights: [
-      [1, 0, 0, 0],
-      [0, 1, 0, 0],
-      [0, 0, 1, 0],
-      [0, 0, 0, 1],
-    ],
-    bias: [0, 2, 0, 0],
-    temperature: 1,
-    abstainBelow: 0.5,
-  };
-}
 
 describe('local intelligence factory', () => {
   it('wires the engine and the effort judge for this machine and starts nothing until used', async () => {

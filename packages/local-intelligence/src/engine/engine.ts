@@ -3,6 +3,7 @@
 // result; the slot is freed when the helper actually answers, so two computations never overlap.
 // Device changes and shutdown refuse waiting work and end the helper process.
 import { createHash } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DecisionCancellation, Scheduler } from '@corral/contracts';
 import { type Bundle, bundledManifest } from '../bundle.ts';
@@ -314,6 +315,8 @@ export class LocalEmbeddingEngine {
   private launch(backend: Backend, generation: number): Promise<HelperProcess> {
     const dir = bundleDir(this.options.root, this.bundle);
     const runtime = this.bundle.runtime.targets[this.options.target!]!;
+    // LiteRT-LM refuses a cache folder that does not exist.
+    mkdirSync(join(dir, 'cache'), { recursive: true });
     const helper = (this.options.launch ?? spawnHelper)({
       executable: this.options.helperPath!,
       args: [

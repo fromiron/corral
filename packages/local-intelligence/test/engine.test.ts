@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DecisionCancellation } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
@@ -80,6 +81,8 @@ describe('local embedding engine', () => {
       '--api-minor',
       '0',
     ]);
+    // LiteRT-LM refuses a cache folder that does not exist; a fresh install has none.
+    expect(existsSync(join(dir, 'cache'))).toBe(true);
     expect(engine.status().state).toBe('starting');
     helper.ready();
     await flush();

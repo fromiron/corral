@@ -1137,6 +1137,22 @@ async function createCorralServer(
     return reasoningSettings();
   });
 
+  // ── local AI install (settings panel) ─────────────────────────────
+  const noLocalAi = (reply: FastifyReply) =>
+    fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
+  app.get('/api/v1/local-ai', async (_request, reply) =>
+    local ? local.status() : noLocalAi(reply),
+  );
+  app.post('/api/v1/local-ai/install', async (_request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (local.status().state === 'unsupported')
+      return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
+    return reply.code(202).send(local.install());
+  });
+  app.delete('/api/v1/local-ai/install', async (_request, reply) =>
+    local ? local.cancelInstall() : noLocalAi(reply),
+  );
+
   // ── model settings ────────────────────────────────────────────────
   // Providers and models to choose from; never credentials or sign-in status.
   app.get('/api/v1/model-catalog', async () => registry?.catalog() ?? []);
