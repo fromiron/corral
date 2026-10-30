@@ -246,6 +246,35 @@ function ProviderCard({
           {t('endpoint', { host: provider.endpoint })}
         </p>
       ) : null}
+      {provider.endpoint ? (
+        <div className="flex flex-col items-start gap-2 text-xs">
+          <p className="text-muted-foreground">{t('connectionTestHint')}</p>
+          <Button
+            variant="tertiary"
+            size="compact"
+            disabled={busy || !revision}
+            onClick={() =>
+              revision &&
+              void act(
+                () => models?.testEndpoint(provider.providerId, revision) ?? Promise.resolve(),
+              )
+            }
+          >
+            {t('testConnection')}
+          </Button>
+          {provider.connectionTest ? (
+            <p role="status">
+              {t(`connectionTest.${provider.connectionTest.kind}`)}
+              {' · '}
+              {format.dateTime(new Date(provider.connectionTest.checkedAt), {
+                hour: 'numeric',
+                minute: 'numeric',
+              })}
+              {provider.connectionTest.status ? ` · HTTP ${provider.connectionTest.status}` : ''}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {provider.endpointChanged ? (
         <p role="alert" className="text-xs text-danger">
           {t('endpointChanged')}
@@ -390,7 +419,14 @@ function ProfilesTable({
                 {profile.profileId} · {profile.provider}/{profile.modelId}
               </p>
               <p>
-                {t('context')} {tokens(profile.contextWindow)} · {t('maxOutput')}{' '}
+                {t(
+                  profile.imageInput === true
+                    ? 'imageSupported'
+                    : profile.imageInput === false
+                      ? 'textOnly'
+                      : 'imageUnknown',
+                )}{' '}
+                · {t('context')} {tokens(profile.contextWindow)} · {t('maxOutput')}{' '}
                 {tokens(profile.maxOutputTokens)}
               </p>
             </div>
@@ -410,7 +446,7 @@ function ProfilesTable({
                 {!profile.available
                   ? t('unknownModel')
                   : profile.keyConfigured
-                    ? t('ready')
+                    ? t('configured')
                     : t('needsSignIn')}
               </p>
             )}

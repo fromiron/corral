@@ -32,13 +32,20 @@ export function TerminalActivity({ sessionId }: { sessionId: string }) {
 
 function TerminalActivityState({ sessionId, store }: { sessionId: string; store: TerminalStore }) {
   const t = useTranslations('Terminals');
-  const running = useStore(
-    store,
-    (state) =>
-      state.sessions[sessionId]?.list?.terminals.some((terminal) => terminal.state === 'running') ??
-      false,
-  );
-  return running ? <StatusDot status="running" label={t('runningTab')} /> : null;
+  const activity = useStore(store, (state) => {
+    const terminals = state.sessions[sessionId]?.list?.terminals;
+    return terminals?.some((terminal) => terminal.state === 'uncertain')
+      ? 'uncertain'
+      : terminals?.some((terminal) => terminal.state === 'running')
+        ? 'running'
+        : null;
+  });
+  return activity ? (
+    <StatusDot
+      status={activity === 'uncertain' ? 'warning' : 'running'}
+      label={t(activity === 'uncertain' ? 'uncertainTab' : 'runningTab')}
+    />
+  ) : null;
 }
 
 interface TerminalContextProps {
@@ -256,6 +263,7 @@ function SessionTerminals({
         </p>
       ) : null}
       {hasWriter ? <p className="text-xs text-muted-foreground">{t('writerHint')}</p> : null}
+      {hasWriter ? <p className="text-xs text-muted-foreground">{t('releaseHint')}</p> : null}
       {!list?.available && !session?.loading ? (
         <div className="text-xs text-muted-foreground">
           <p>{t('unavailable')}</p>

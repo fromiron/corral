@@ -67,6 +67,7 @@ export {
   type MeetingDecisionsServiceDeps,
   recordMeetingMinutes,
 } from './meeting-decisions.ts';
+export type { PartialOutput, RuntimeSnapshot } from './partial-output.ts';
 export * from './profile-context.ts';
 export * from './projection.ts';
 export { fixedReasoning } from './reasoning.ts';

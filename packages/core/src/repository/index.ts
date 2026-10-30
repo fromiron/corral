@@ -19,6 +19,8 @@ import {
   RunInput,
   type TextAttachment,
 } from '@corral/contracts';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 import { validTextAttachments } from '../attachments.ts';
 import { canonicalJson } from '../canonical-json.ts';
@@ -337,6 +339,11 @@ export function planSessionUpdate(
       error: 'invalid',
       message: `A session title has 1 to ${TITLE_MAX} characters.`,
     };
+  const pinOnly =
+    change.pinned !== undefined &&
+    Object.entries(change).every(
+      ([key, value]) => value === undefined || key === 'pinned' || key === 'expectedRevision',
+    );
   return {
     ok: true,
     session: {
@@ -351,7 +358,7 @@ export function planSessionUpdate(
         ? {}
         : { archivedAt: change.archived ? (current.archivedAt ?? now) : null }),
       revision: current.revision + 1,
-      updatedAt: now,
+      updatedAt: pinOnly ? current.updatedAt : now,
     },
   };
 }
@@ -507,6 +514,26 @@ export function planSessionEntry(
   };
 }
 
+/** A saved queue item has one start identity across tabs; model/history changes cannot clone it. */
+export function queuedSessionCommandId(sessionId: string, entry: SessionEntry): string {
+  return (
+    entry.commandId ??
+    `queue_${bytesToHex(
+      sha256(
+        utf8ToBytes(
+          canonicalJson({
+            sessionId,
+            entryId: entry.entryId,
+            text: entry.text,
+            attachments: entry.attachments ?? [],
+            permissionMode: entry.permissionMode ?? null,
+          }),
+        ),
+      ),
+    )}`
+  );
+}
+
 export function planSessionEntryUpdate(
   current: WorkSession | null,
   sessionId: string,
@@ -518,8 +545,27 @@ export function planSessionEntryUpdate(
     return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
   if (change.refusal != null && !CommandError.safeParse(change.refusal).success)
     return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
-  if (!current.entries.some((e) => e.entryId === entryId))
+  const entry = current.entries.find((e) => e.entryId === entryId);
+  if (!entry)
     return { ok: false, error: 'not_found', message: `Session ${sessionId} has no ${entryId}.` };
+  if (
+    entry.intent === 'queue' &&
+    entry.state !== 'queued' &&
+    !(entry.state !== 'started' && change.state === 'started' && change.runId)
+  ) {
+    const same = (['state', 'runId', 'detail', 'refusal', 'auto'] as const).every(
+      (key) =>
+        change[key] === undefined ||
+        canonicalJson(change[key] ?? null) === canonicalJson(entry[key] ?? null),
+    );
+    return same
+      ? { ok: true, session: current }
+      : {
+          ok: false,
+          error: 'revision_conflict',
+          message: 'The queued request already has a different outcome. Refresh the session.',
+        };
+  }
   return {
     ok: true,
     session: {

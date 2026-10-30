@@ -1,11 +1,14 @@
 import type { Schedule, ScheduleDraft, ScheduledOccurrence } from '@corral/contracts';
-import type { ProjectSummary, WorkSession } from '@corral/core';
+import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
+import { StatusBadge } from '@corral/react';
 import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
-import { useLocale } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import { schedulesApi } from '../schedules-api.ts';
 import { useServices } from '../services.tsx';
+import { watchRefresh } from '../workbench/refresh.ts';
+import { scheduleHistoryStatus } from '../workbench/scheduledRuns.ts';
 
 function scheduleDraft(schedule: Schedule): ScheduleDraft {
   const {
@@ -22,8 +25,9 @@ function scheduleDraft(schedule: Schedule): ScheduleDraft {
 
 /** Server-owned schedules; no renderer timer dispatches work. */
 export function ScheduledPage() {
-  const { repository, models, mode, live } = useServices();
+  const { repository, models, mode, live, transport } = useServices();
   const ko = useLocale().startsWith('ko');
+  const t = useTranslations('Schedules');
   const text = (en: string, kr: string) => (ko ? kr : en);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [sessions, setSessions] = useState<WorkSession[]>([]);
@@ -31,6 +35,9 @@ export function ScheduledPage() {
   const [profiles, setProfiles] = useState<string[]>([]);
   const [selected, setSelected] = useState<Schedule | null>(null);
   const [history, setHistory] = useState<ScheduledOccurrence[]>([]);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [savedEnabled, setSavedEnabled] = useState<boolean | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<ScheduleDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,7 +50,6 @@ export function ScheduledPage() {
     if (mode !== 'server') return;
     let active = true;
     void Promise.all([
-      schedulesApi.list(),
       repository.listProjects().then(async (projects) => {
         if (active) setProjects(projects.filter((project) => !project.archivedAt));
         return (
@@ -58,9 +64,8 @@ export function ScheduledPage() {
       }),
       models?.profiles() ?? Promise.resolve([]),
     ])
-      .then(([result, available, configured]) => {
+      .then(([available, configured]) => {
         if (!active) return;
-        setSchedules(result.schedules);
         setSessions(available);
         setProfiles(configured.map((profile) => profile.profileId));
         setLoaded(true);
@@ -73,28 +78,28 @@ export function ScheduledPage() {
     };
   }, [repository, models, mode]);
   const selectedId = selected?.id;
+  const selectedRevision = selected?.revision;
   useEffect(() => {
     if (mode !== 'server') return;
-    let active = true;
-    const timer = setInterval(() => {
-      void Promise.all([
-        schedulesApi.list(),
-        selectedId ? schedulesApi.history(selectedId) : Promise.resolve(null),
-      ])
-        .then(([result, records]) => {
-          if (!active) return;
-          setSchedules(result.schedules);
-          if (records) setHistory(records.occurrences);
-        })
-        .catch((cause) => {
-          if (active) setError(cause.message);
-        });
+    void selectedRevision;
+    const watcher = watchRefresh(async (current) => {
+      try {
+        const [result, records, latestRuns] = await Promise.all([
+          schedulesApi.list(),
+          selectedId ? schedulesApi.history(selectedId) : Promise.resolve(null),
+          transport.listRuns(),
+        ]);
+        if (!current()) return;
+        setSchedules(result.schedules);
+        setRuns(latestRuns);
+        if (records) setHistory(records.occurrences);
+        setReadError(null);
+      } catch (cause) {
+        if (current()) setReadError(cause instanceof Error ? cause.message : String(cause));
+      }
     }, 3000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [mode, selectedId]);
+    return watcher.dispose;
+  }, [mode, selectedId, selectedRevision, transport]);
   const perform = async (action: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -108,18 +113,16 @@ export function ScheduledPage() {
     }
   };
   const edit = (schedule: Schedule) => {
+    setSavedEnabled(null);
     setSelected(schedule);
     setDraft(scheduleDraft(schedule));
     setHistory([]);
-    void schedulesApi
-      .history(schedule.id)
-      .then((result) => setHistory(result.occurrences))
-      .catch((cause) => setError(cause.message));
   };
   const create = () => {
     const session = sessions[0];
     if (!session) return;
     setSelected(null);
+    setSavedEnabled(null);
     setHistory([]);
     setDraft({
       title: '',
@@ -146,6 +149,7 @@ export function ScheduledPage() {
         ? await schedulesApi.update(selected, draft)
         : await schedulesApi.create(draft);
       edit(saved);
+      setSavedEnabled(saved.enabled);
     });
   };
   const ids = useId();
@@ -181,6 +185,11 @@ export function ScheduledPage() {
             'Create an Auto session in a project first.',
             '프로젝트에서 Auto 세션을 먼저 만들어 주세요.',
           )}
+        </p>
+      ) : null}
+      {readError ? (
+        <p role="alert" className="text-sm text-danger">
+          {readError}
         </p>
       ) : null}
       {error ? (
@@ -498,6 +507,11 @@ export function ScheduledPage() {
               </>
             ) : null}
           </div>
+          {savedEnabled !== null && !dirty ? (
+            <p role="status" className="text-sm">
+              {t(savedEnabled ? 'savedEnabled' : 'savedDisabled')}
+            </p>
+          ) : null}
           {dirty ? (
             <p className="text-xs text-muted-foreground">
               {text(
@@ -518,8 +532,18 @@ export function ScheduledPage() {
             {history.map((entry) => (
               <li key={entry.id} className="py-2 text-sm">
                 <span>
-                  {new Date(entry.dueAt).toLocaleString()} · {entry.status}
+                  {new Date(entry.dueAt).toLocaleString()} ·{' '}
+                  {t('dispatch', { status: t(`occurrence.${entry.status}`) })}
                 </span>
+                {entry.runId ? (
+                  <span className="ml-2">
+                    {scheduleHistoryStatus(entry, runs) ? (
+                      <StatusBadge status={scheduleHistoryStatus(entry, runs) ?? ''} />
+                    ) : (
+                      t('unavailable')
+                    )}
+                  </span>
+                ) : null}
                 {entry.detail ? (
                   <p className="text-xs text-muted-foreground">{entry.detail}</p>
                 ) : null}
@@ -532,7 +556,7 @@ export function ScheduledPage() {
                       <Link
                         to="/sessions/$sessionId"
                         params={{ sessionId: selected.sessionId }}
-                        search={{ view: 'run', run: entry.runId }}
+                        search={{ panel: 'run', view: 'run', run: entry.runId }}
                       />
                     }
                   >

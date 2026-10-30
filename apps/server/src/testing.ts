@@ -43,6 +43,8 @@ export function fakeOpenAI(
     /** Label the models as the Responses API, so they report reasoning levels. */
     reasoningApi?: boolean;
     imageInput?: boolean;
+    /** Deterministic slow streaming for cancellation and follow-scroll browser tests. */
+    tokensPerSecond?: number;
   } = {},
 ) {
   const seen = {
@@ -91,6 +93,7 @@ export function fakeOpenAI(
   };
   const faux = createFauxCore({
     provider: 'openai',
+    tokensPerSecond: options.tokensPerSecond,
     ...(options.reasoningApi ? { api: 'openai-responses' } : {}),
     models: [
       {
@@ -286,10 +289,24 @@ export function fakeOpenAI(
         return fauxAssistantMessage(text);
       },
       (context) => {
-        const written =
-          [...JSON.stringify(context.messages).matchAll(/artv_[a-f0-9]{32}/g)].at(-1)?.[0] ?? '';
+        const result = context.messages.findLast(
+          (message) => message.role === 'toolResult' && message.toolName === 'write_artifact',
+        );
+        const content =
+          result?.role === 'toolResult' && !result.isError
+            ? result.content.find((part) => part.type === 'text')
+            : undefined;
+        const payload: unknown = content ? JSON.parse(content.text) : null;
+        if (
+          !payload ||
+          typeof payload !== 'object' ||
+          !('artifactVersionId' in payload) ||
+          typeof payload.artifactVersionId !== 'string' ||
+          !payload.artifactVersionId
+        )
+          throw new Error('Fake answer requires a successful write_artifact result');
         return fauxAssistantMessage(
-          [fauxToolCall('submit_result', { artifactVersionIds: [written] })],
+          [fauxToolCall('submit_result', { artifactVersionIds: [payload.artifactVersionId] })],
           { stopReason: 'toolUse' },
         );
       },

@@ -232,9 +232,10 @@ it('changes only display density while keeping results and required attention ou
   expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
   for (const chatDensity of ['results', 'basic', 'detailed'] as const) {
     await act(async () => preferences.setState({ chatDensity }));
-    const action = f.container.querySelector('[data-testid="run-required-action"]');
+    const action = f.container.querySelector('[data-testid="approval-approval"]');
     expect(action).not.toBeNull();
     expect(action?.closest('details')).toBeNull();
+    expect(action?.textContent).toContain('Continue with this version');
     expect(f.container.textContent).toContain('failed_tool');
     expect(f.container.querySelector('[data-testid="team-activity"]')?.textContent).toContain(
       'Execution failed visibly',
@@ -476,4 +477,28 @@ it('a delegate’s streaming text stays out of the lead’s answer', async () =>
   const live = f.container.querySelector('[data-testid="live-text"]');
   expect(live?.textContent).toContain('Lead draft');
   expect(live?.textContent).not.toContain('Delegate notes');
+});
+
+it('uses safe Markdown during streaming and retains the incomplete prefix after cancellation', async () => {
+  const f = await render('running');
+  const text = '**Saved prefix**\n\n```ts\nconst value = "<script>safe</script>";\n';
+  await act(async () =>
+    fixture.store?.setState({ streams: { call: { text, next: 2, broken: false } } }),
+  );
+  expect(f.container.querySelector('[data-testid="live-text"] strong')?.textContent).toBe(
+    'Saved prefix',
+  );
+  expect(f.container.querySelector('script')).toBeNull();
+  await act(async () =>
+    fixture.store?.setState({
+      projection: { ...f.projection, status: 'cancelled', output: null, artifacts: {} },
+    }),
+  );
+  expect(f.container.querySelector('[data-testid="live-text"]')?.textContent).toContain(
+    'Incomplete response',
+  );
+  expect(f.container.querySelector('[data-testid="live-text"] strong')?.textContent).toBe(
+    'Saved prefix',
+  );
+  expect(f.container.querySelector('[data-testid="chat-result"]')).toBeNull();
 });

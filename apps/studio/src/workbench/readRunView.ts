@@ -1,4 +1,4 @@
-import { openRunArchive, type RuntimeTransport } from '@corral/core';
+import { openRunArchive, type RuntimeSnapshot, type RuntimeTransport } from '@corral/core';
 import type { RunSessionState } from '@corral/react';
 
 type HistoryReader = (runId: string) => Promise<unknown>;
@@ -52,7 +52,7 @@ async function loadRunView(
   details: boolean,
 ) {
   if (!details) {
-    const [{ projection }, definition] = await Promise.all([
+    const [{ projection, partialOutputs }, definition] = await Promise.all([
       transport.getSnapshot(runId),
       transport.getRunDefinition(runId),
     ]);
@@ -62,15 +62,16 @@ async function loadRunView(
       projection,
       definition,
       events: [],
-      streams: {},
+      streams: partialStreams(partialOutputs),
       artifactTexts: {},
       streamError: null,
     };
   }
-  const archive = openRunArchive(await readHistory(runId));
+  const [history, snapshot] = await Promise.all([readHistory(runId), transport.getSnapshot(runId)]);
+  const archive = openRunArchive(history);
   if (archive.visibility !== 'private' || archive.runId !== runId)
     throw new Error('The run history does not match this turn.');
-  const streams: RunSessionState['streams'] = {};
+  const streams = partialStreams(snapshot.partialOutputs);
   for (const call of Object.values(archive.projection.modelCalls)) {
     const text = call.responseRef ? archive.artifacts[call.responseRef] : undefined;
     if (text !== undefined)
@@ -85,4 +86,19 @@ async function loadRunView(
     artifactTexts: archive.artifacts,
     streamError: null,
   };
+}
+
+function partialStreams(outputs: RuntimeSnapshot['partialOutputs']): RunSessionState['streams'] {
+  return Object.fromEntries(
+    Object.entries(outputs ?? {}).map(([id, output]) => [
+      id,
+      {
+        text: output.text,
+        next: output.next,
+        broken: false,
+        partial: true,
+        truncated: output.truncated,
+      },
+    ]),
+  );
 }

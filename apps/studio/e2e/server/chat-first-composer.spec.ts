@@ -107,8 +107,11 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   ).toBe(1);
   expect(await savedCorrals(page)).toEqual([]);
 
+  // Reload keeps both the session identity and explicit conversation intent (compose=true).
+  const beforeReload = new URL(page.url());
+  expect(beforeReload.pathname).toBe(path);
   await page.reload();
-  await expect(page).toHaveURL(new RegExp(`${path}$`));
+  await expect(page).toHaveURL(beforeReload.href);
   await expect(page.getByTestId('chat-timeline')).toContainText(prompt);
   expect((await session(page)).title).toBe(prompt);
   await expect(page.getByTestId('chat-result')).toContainText(

@@ -22,7 +22,7 @@ import {
 import { Button, Input, Select } from '@corral/react/design-kit';
 import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
 import { ReactFlowProvider } from '@xyflow/react';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
@@ -232,7 +232,12 @@ function Editor({
   const [inspector, setInspector] = useState<'design' | 'run'>(
     startFrom || guide ? 'run' : 'design',
   );
-  const showDesign = useCallback(() => setInspector('design'), []);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const inspectorId = useId();
+  const showDesign = useCallback(() => {
+    setInspector('design');
+    setInspectorOpen(true);
+  }, []);
   useEffect(() => {
     if (selectedNodeId) showDesign();
   }, [selectedNodeId, showDesign]);
@@ -391,6 +396,15 @@ function Editor({
               </span>
               <EditorToolbar />
               {toolbar}
+              <Button
+                variant="tertiary"
+                size="compact"
+                aria-controls={inspectorId}
+                aria-expanded={inspectorOpen}
+                onClick={() => setInspectorOpen((open) => !open)}
+              >
+                {t(inspectorOpen ? 'hideTools' : 'showTools')}
+              </Button>
               <div className="ml-auto flex items-center gap-2">
                 <MarkdownAgentImport
                   editor={editor}
@@ -405,7 +419,7 @@ function Editor({
                   size="compact"
                   type="button"
                   onClick={() => void save()}
-                  disabled={saving}
+                  disabled={saving || !dirty}
                 >
                   {saving ? t('saving') : t('save')}
                 </Button>
@@ -419,7 +433,7 @@ function Editor({
                 </p>
               ) : null}
             </div>
-            <main className="editor-layout grid min-h-0">
+            <main className="editor-layout grid min-h-0" data-tools-open={inspectorOpen}>
               <aside className="editor-palette flex min-h-0 flex-col gap-6 overflow-auto border-r border-line p-3">
                 <NodePalette />
                 <ValidationPanel />
@@ -428,7 +442,11 @@ function Editor({
                 <CorralCanvas onNodeSelect={showDesign} />
                 <CanvasNotice />
               </div>
-              <aside className="editor-inspector flex min-h-0 min-w-0 flex-col overflow-auto border-l border-line">
+              <aside
+                id={inspectorId}
+                hidden={!inspectorOpen}
+                className="editor-inspector flex min-h-0 min-w-0 flex-col overflow-auto border-l border-line"
+              >
                 {!inSession ? (
                   <div className="sticky top-0 z-10 border-b border-line bg-surface p-2">
                     <TabRow

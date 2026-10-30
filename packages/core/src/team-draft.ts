@@ -17,6 +17,12 @@ export interface TeamWording {
   criteria: { direct: string; sources: string };
   /** Labels of the steps the pattern adds. */
   labels: TeamLabels;
+  /** Recognized local task: inspect evidence, write findings, independently verify. */
+  securityReview?: {
+    name: string;
+    roles: Pick<TeamWording['roles'], 'researcher' | 'writer' | 'reviewer'>;
+    criteria: { evidence: string; verification: string; approval: string };
+  };
 }
 
 export interface TeamLabels {
@@ -42,6 +48,11 @@ const RESEARCH =
 const WRITING =
   /\b(write|writing|draft\w*|report\w*|article\w*|essay\w*|post|announcement\w*|proposal\w*|document\w*|blog\w*|summar\w*|e-?mail\w*|letter\w*|review\w*|plan)\b|작성|글|보고서|문서|안내문|제안서|기획|요약|검토|이메일|편지/i;
 
+const SECURITY = /\b(security|vulnerabilit\w*)\b|보안|취약점/i;
+const PULL_REQUEST = /\b(pull[ -]?request|pr)\b|풀\s*리퀘스트|풀\s*리퀘/i;
+const REVIEW = /\b(review\w*|check\w*|audit\w*)\b|검토|검사|확인|점검/i;
+const SUGGESTED_NAME_LENGTH = 48;
+
 const SLOTS: Record<TeamPattern, TeamSlot[]> = {
   single: ['worker'],
   write_review: ['planner', 'writer', 'reviewer'],
@@ -59,21 +70,31 @@ function cut(text: string, max: number): string {
 export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | null {
   const brief = goal.trim();
   if (!brief) return null;
-  const pattern: TeamPattern = RESEARCH.test(brief)
-    ? 'research_write_review'
-    : WRITING.test(brief)
-      ? 'write_review'
-      : 'single';
+  const securityReview = SECURITY.test(brief) && PULL_REQUEST.test(brief) && REVIEW.test(brief);
+  const task = securityReview ? wording.securityReview : undefined;
+  const pattern: TeamPattern =
+    securityReview || RESEARCH.test(brief)
+      ? 'research_write_review'
+      : WRITING.test(brief)
+        ? 'write_review'
+        : 'single';
   const firstLine = brief.split('\n')[0]?.replace(/\s+/g, ' ') ?? brief;
+  const firstSentence = firstLine.split(/[.!?](?:\s|$)/)[0] || firstLine;
   return {
-    name: cut(firstLine, TEAM_LIMITS.name),
+    name: task?.name ?? cut(firstSentence, SUGGESTED_NAME_LENGTH),
     pattern,
     brief: cut(brief, TEAM_LIMITS.brief),
     criteria:
-      pattern === 'single'
+      (task ? Object.values(task.criteria) : undefined) ??
+      (pattern === 'single'
         ? [wording.criteria.direct]
-        : [wording.criteria.direct, wording.criteria.sources],
-    roles: SLOTS[pattern].map((slot) => ({ slot, ...wording.roles[slot] })),
+        : [wording.criteria.direct, wording.criteria.sources]),
+    roles: SLOTS[pattern].map((slot) => ({
+      slot,
+      ...(task && slot in task.roles
+        ? task.roles[slot as keyof typeof task.roles]
+        : wording.roles[slot]),
+    })),
     ...(pattern === 'single' ? {} : { reviewRounds: 2 }),
     finalApproval: pattern !== 'single',
   };

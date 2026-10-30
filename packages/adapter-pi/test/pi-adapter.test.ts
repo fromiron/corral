@@ -349,6 +349,8 @@ describe('worker lifecycle and protocol checks', () => {
   });
 
   it.each([
+    ['Connection error.', 'TRANSPORT'],
+    ['fetch failed', 'TRANSPORT'],
     [
       JSON.stringify({
         code: 'SERVER',

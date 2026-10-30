@@ -49,7 +49,7 @@ test('signing in from Settings shows status and expiry, never the token', async 
     timeout: 10_000,
   });
   await expect(openai).toContainText('Current token valid until');
-  await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+  await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
   expect(await page.content()).not.toContain('secret');
   expect(corral.errors).toEqual([]);
 });
@@ -61,7 +61,8 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   corral.fake?.answerWith('Live answer from the model.');
   await corral.open('/');
   await agentToOutput(page);
-  await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+  await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Settings → Models');
@@ -113,7 +114,7 @@ test.describe('a borrowed Codex CLI login', () => {
     // Signing out of Codex happens in Codex; a Corral sign-in can take over instead.
     await expect(openai.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
     await expect(openai.getByRole('button', { name: 'Sign in to Corral instead' })).toBeVisible();
-    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+    await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
     const content = await page.content();
     expect(content).not.toContain(FAKE_CODEX_ACCESS);
     expect(content).not.toContain('secret');
@@ -121,7 +122,10 @@ test.describe('a borrowed Codex CLI login', () => {
 
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
-    await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+    await page
+      .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
+      .click();
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer through the Codex login.');
@@ -149,12 +153,13 @@ test('an API key typed under Models runs live, is never shown, and can be remove
   await expect(openai.getByTestId('auth-status')).toContainText('Using the API key you entered');
   // The key field gives way to "Remove key"; the key is not kept in the page.
   await expect(openai.getByLabel('API key')).toHaveCount(0);
-  await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+  await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
   expect(await page.content()).not.toContain('sk-e2e-entered-secret');
 
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await agentToOutput(page);
-  await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+  await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+  await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
@@ -191,11 +196,14 @@ test.describe('a keyless OpenAI-compatible endpoint', () => {
     await expect(local).toContainText(new URL(corral.endpoint?.baseUrl ?? '').host);
     await expect(local.getByLabel('API key')).toHaveCount(0);
     await expect(local.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
-    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+    await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
 
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await agentToOutput(page);
-    await page.getByLabel('Agents').selectOption({ label: 'Live models (uses your sign-in)' });
+    await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
+    await page
+      .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
+      .click();
     await page.getByRole('tab', { name: 'Test run', exact: true }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer from the local model.');
@@ -345,7 +353,7 @@ test.describe('editing models on the Models page', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    const apply = page.getByRole('checkbox', {
+    const apply = page.getByRole('switch', {
       name: 'Let the local judge choose reasoning effort in all projects on this server',
     });
     await expect(apply).toBeEnabled();
@@ -443,7 +451,7 @@ test.describe('editing models on the Models page', () => {
     await page.getByRole('option', { name: 'Ollama', exact: true }).click();
     await editor.getByRole('combobox', { name: 'Model of model-b', exact: true }).click();
     await page.getByRole('option', { name: 'llama3.2', exact: true }).click();
-    await editor.getByRole('checkbox', { name: 'Linux isolation · model-b' }).check();
+    await editor.getByRole('switch', { name: 'Linux isolation · model-b' }).click();
     await editor.getByRole('button', { name: 'Save models' }).click();
 
     await expect(page.getByRole('region', { name: 'Edit models' })).toHaveCount(0);
@@ -453,7 +461,7 @@ test.describe('editing models on the Models page', () => {
     await page.reload();
     await expect(page.getByTestId('profile-model-a')).toContainText('openai/gpt-test-b');
     await page.getByRole('button', { name: 'Edit models' }).click();
-    await expect(page.getByRole('checkbox', { name: 'Linux isolation · model-b' })).toBeChecked();
+    await expect(page.getByRole('switch', { name: 'Linux isolation · model-b' })).toBeChecked();
     expect(corral.errors).toEqual([]);
   });
 
@@ -502,7 +510,7 @@ test('profile context preview, explicit zero, round-trip and a concurrent reason
     (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
   );
   await page
-    .getByRole('checkbox', {
+    .getByRole('switch', {
       name: 'Let the local judge choose reasoning effort in all projects on this server',
     })
     .click();

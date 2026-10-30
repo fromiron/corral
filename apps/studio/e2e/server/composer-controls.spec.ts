@@ -46,7 +46,9 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
     await route.continue();
   });
   await chip.click();
-  await page.getByRole('menuitemradio', { name: 'OpenAI · Test B', exact: true }).click();
+  await page
+    .getByRole('menuitemradio', { name: 'OpenAI · Test BImages supported', exact: true })
+    .click();
   await expect(chip).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   expect(saved).toHaveLength(1);
@@ -74,7 +76,9 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await expect(page.getByTestId('reasoning-not-supported')).toBeVisible();
   await chip.click();
-  await page.getByRole('menuitemradio', { name: 'OpenAI · Test A', exact: true }).click();
+  await page
+    .getByRole('menuitemradio', { name: 'OpenAI · Test AImages supported', exact: true })
+    .click();
   await expect(chip).toContainText('Test A · Low');
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
   await page.route('**/api/v1/sessions/*', async (route) =>
@@ -86,7 +90,9 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
       : route.continue(),
   );
   await chip.click();
-  await page.getByRole('menuitemradio', { name: 'OpenAI · Test B', exact: true }).click();
+  await page
+    .getByRole('menuitemradio', { name: 'OpenAI · Test BImages supported', exact: true })
+    .click();
   await expect(page.getByRole('alert').filter({ hasText: 'Fixture save conflict' })).toBeVisible();
   await expect(chip).toContainText('Test A · Low');
   await expect(requestBox(page)).toHaveValue('Keep this request');

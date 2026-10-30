@@ -50,9 +50,15 @@ test('compares runs with readable narrow figures and accessible identities', asy
 
   const fullRunId = new URL(page.url()).searchParams.get('a');
   if (!fullRunId) throw new Error('Comparison run is missing');
-  const identity = table.locator('thead details').first();
-  await identity.locator('summary').focus();
+  const identity = table
+    .getByRole('columnheader')
+    .filter({ has: page.getByRole('button') })
+    .first();
+  const disclosure = identity.getByRole('button');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await disclosure.focus();
   await page.keyboard.press('Enter');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   await expect(identity.locator('code')).toHaveText(fullRunId);
   await expect(identity.locator('code')).toBeVisible();
   const expandedBounds = await table.boundingBox();

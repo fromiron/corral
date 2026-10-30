@@ -64,6 +64,7 @@ export function ChatView({
   header,
   aside,
   centerEmpty = false,
+  expandedHeader = false,
 }: {
   sessionId: string;
   messageId?: string | undefined;
@@ -71,6 +72,8 @@ export function ChatView({
   items: { id: string; content: ReactNode }[];
   composer: ReactNode;
   header?: ReactNode;
+  /** Read a long header (meeting records) without displacing the composer. */
+  expandedHeader?: boolean;
   /**
    * Widgets that float in the margin right of the conversation and stay put while it scrolls
    *; index.css hides them when the margin cannot hold them.
@@ -79,7 +82,7 @@ export function ChatView({
   centerEmpty?: boolean;
 }) {
   const t = useTranslations('Desktop');
-  const centered = centerEmpty && items.length === 0;
+  const centered = centerEmpty && items.length === 0 && !expandedHeader;
   const timeline = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -133,6 +136,7 @@ export function ChatView({
       /* A missing preference does not block the conversation. */
     }
     position.current = () => {
+      if (box.hidden) return;
       const { items, rows, virtualized } = current.current;
       const anchor = restoreAnchor.current ?? (!follow.current ? readingAnchor.current : null);
       if (anchor && items.some((item) => item.id === anchor.id)) {
@@ -155,6 +159,7 @@ export function ChatView({
       setAtEnd(box.scrollHeight - box.scrollTop - box.clientHeight < 48);
     };
     const remember = () => {
+      if (box.hidden) return;
       try {
         sessionStorage.setItem(
           key,
@@ -196,7 +201,11 @@ export function ChatView({
   });
   const jumped = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
-    if (!messageId || jumped.current === messageId) return;
+    if (!messageId) {
+      jumped.current = undefined;
+      return;
+    }
+    if (jumped.current === messageId) return;
     const index = items.findIndex((item) => item.id === messageId);
     if (index < 0) return;
     follow.current = false;
@@ -212,6 +221,20 @@ export function ChatView({
     readingAnchor.current = null;
     follow.current = false;
   };
+  const readPosition = () => {
+    const box = timeline.current;
+    if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
+    follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    const top = box.getBoundingClientRect().top;
+    const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+      (item) => item.getBoundingClientRect().bottom > top,
+    );
+    readingAnchor.current =
+      !follow.current && row
+        ? { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top }
+        : null;
+    setAtEnd(follow.current);
+  };
 
   return (
     <div
@@ -220,39 +243,36 @@ export function ChatView({
       className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col ${centered ? 'overflow-y-auto' : 'overflow-clip'}`}
     >
       {header ? (
-        <div className="shrink-0 px-5 pt-3 has-[>div:empty]:hidden">
+        <div
+          className={`px-5 pt-3 has-[>div:empty]:hidden ${expandedHeader ? 'min-h-0 flex-1 overflow-y-auto' : 'shrink-0'}`}
+        >
           <div className="mx-auto w-full max-w-(--chat-content-max-width)">{header}</div>
         </div>
       ) : null}
       <section
         ref={timeline}
+        hidden={expandedHeader}
         data-testid="chat-timeline"
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the scrolling conversation must be keyboard reachable
         tabIndex={0}
         aria-label={t('conversation')}
         className={`chat-timeline min-h-0 overscroll-contain ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
         onWheel={stopRestoring}
-        onPointerDown={stopRestoring}
+        onPointerDown={(event) => {
+          // A scrollbar drag is navigation; clicking message actions is not.
+          if (event.target === event.currentTarget) stopRestoring();
+          // Hit testing can scroll an older action into view before the scroll event.
+          // Read that position before focus renders can move the target under the pointer.
+          else readPosition();
+        }}
+        onTouchMove={stopRestoring}
         onKeyDown={(event) => {
           if (
             ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)
           )
             stopRestoring();
         }}
-        onScroll={() => {
-          const box = timeline.current;
-          if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
-          follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-          const top = box.getBoundingClientRect().top;
-          const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
-            (item) => item.getBoundingClientRect().bottom > top,
-          );
-          readingAnchor.current =
-            !follow.current && row
-              ? { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top }
-              : null;
-          setAtEnd(follow.current);
-        }}
+        onScroll={readPosition}
       >
         <div
           ref={content}
@@ -277,6 +297,10 @@ export function ChatView({
                     aria-setsize={items.length}
                     data-index={index}
                     data-chat-item={item.id}
+                    aria-current={item.id === messageId ? 'location' : undefined}
+                    className={
+                      item.id === messageId ? 'rounded-lg ring-2 ring-focus-ring' : undefined
+                    }
                     ref={virtualized ? rows.measureElement : undefined}
                     onFocusCapture={() => setFocused(item.id)}
                     onBlurCapture={(event) => {
@@ -308,7 +332,7 @@ export function ChatView({
         data-testid="chat-composer"
         className={`chat-composer relative flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-4 pt-2 pb-4 sm:px-5 ${centered ? 'mb-auto' : ''}`}
       >
-        {!atEnd ? (
+        {!expandedHeader && !atEnd ? (
           <div className="pointer-events-none absolute right-5 bottom-full z-20 pb-3">
             <Button
               aria-label={t('toLatest')}

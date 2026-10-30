@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { queuedSessionCommandId } from '@corral/core';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
@@ -278,4 +279,41 @@ it('cancels a committed conversation start like any auto start', async () => {
   expect(cancelled.body.cancellation.error).toBeUndefined();
   s.releaseWorker();
   await expect.poll(() => s.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
+});
+
+it('coalesces two tabs starting one queued item and refuses a conflicting snapshot without another run', async () => {
+  const s = await setup();
+  const commandId = queuedSessionCommandId(s.sessionId, {
+    entryId: 'entry_shared',
+    intent: 'queue',
+    text: 'Answer the short question.',
+    state: 'queued',
+    createdAt: '2026-10-29T00:00:00Z',
+    runId: null,
+    executionId: null,
+    detail: null,
+  });
+  const choice = s.holdChoice();
+  const first = s.json('/runs/auto', s.request(commandId));
+  await choice.entered;
+  const second = s.json('/runs/auto', s.request(commandId));
+  const conflicting = await s.json('/runs/auto', {
+    ...s.request(commandId),
+    choice: { modelProfile: 'model-b' },
+  });
+  expect(conflicting.status).toBe(409);
+  expect(conflicting.body.receipt.error.code).toBe('IDEMPOTENCY_CONFLICT');
+  choice.release();
+  const [started, repeated] = await Promise.all([first, second]);
+  expect(started.body.runId).toBeTruthy();
+  expect(repeated.body.runId).toBe(started.body.runId);
+  s.releaseWorker();
+  await vi.waitFor(() =>
+    expect(
+      s.server.coordinator.listRuns().find((run) => run.runId === started.body.runId)?.status,
+    ).toBe('succeeded'),
+  );
+  const late = await s.json('/runs/auto', s.request(commandId));
+  expect(late.body.runId).toBe(started.body.runId);
+  expect(s.server.coordinator.listRuns()).toHaveLength(1);
 });

@@ -44,3 +44,39 @@ it('explains the legacy scope-cancelled settlement without showing its code by d
     ),
   ).toBeVisible();
 });
+
+it.each([
+  ['HTTP 401 (AUTH)', 'The model provider rejected the credentials.'],
+  ['HTTP 429 (RATE_LIMIT)', 'The model provider is limiting requests.'],
+  ['HTTP 503 (SERVER)', 'The model provider is temporarily unavailable.'],
+  ['TRANSPORT', 'The model provider could not be reached.'],
+])('explains the sanitized provider failure %s without requiring diagnostics', (reason, label) => {
+  render(
+    <IntlProvider locale="en" messages={en}>
+      <FailureNotice message={`the model request failed: ${reason}`} />
+    </IntlProvider>,
+  );
+  expect(screen.getByText(label)).toBeVisible();
+});
+
+it('keeps a Korean recovery action visible while retaining the safe diagnostic in a fold', () => {
+  const { container } = render(
+    <IntlProvider locale="ko" messages={ko}>
+      <FailureNotice message="the model request failed: HTTP 401 (AUTH)" />
+    </IntlProvider>,
+  );
+  expect(screen.getByText('모델 제공자가 인증 정보를 거부했어요.')).toBeVisible();
+  expect(
+    screen.getByText('설정 → 모델에서 다시 연결하거나 API 키를 바꾼 뒤 재시도하세요.'),
+  ).toBeVisible();
+  expect(container.querySelector('details')).not.toHaveAttribute('open');
+});
+
+it('does not treat arbitrary diagnostic text as a trusted provider classification', () => {
+  render(
+    <IntlProvider locale="en" messages={en}>
+      <FailureNotice message="raw response AUTH HTTP 401" />
+    </IntlProvider>,
+  );
+  expect(screen.getByText(en.Failure.unknown)).toBeVisible();
+});

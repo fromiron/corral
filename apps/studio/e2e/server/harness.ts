@@ -123,6 +123,7 @@ function watchErrors(page: Page): string[] {
 
 export const test = base.extend<{
   replyDelayMs: number;
+  streamTokensPerSecond: number;
   live: boolean;
   codexLogin: boolean;
   reasoningApi: boolean;
@@ -132,6 +133,7 @@ export const test = base.extend<{
   corral: Harness;
 }>({
   replyDelayMs: [50, { option: true }],
+  streamTokensPerSecond: [0, { option: true }],
   live: [false, { option: true }],
   /** Lay a Codex CLI login for the fake OpenAI to borrow. */
   codexLogin: [false, { option: true }],
@@ -145,6 +147,7 @@ export const test = base.extend<{
     {
       page,
       replyDelayMs,
+      streamTokensPerSecond,
       live,
       codexLogin,
       reasoningApi,
@@ -168,6 +171,7 @@ export const test = base.extend<{
           ...(codexLogin ? { codexLogin: {} } : {}),
           reasoningApi,
           imageInput,
+          tokensPerSecond: streamTokensPerSecond,
         })
       : null;
     const endpoint = compatibleEndpoint ? await startCompatibleEndpoint() : null;

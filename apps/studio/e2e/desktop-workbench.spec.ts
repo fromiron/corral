@@ -65,10 +65,11 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   await settings.getByRole('button', { name: 'Close settings', exact: true }).click();
   expect(await originalInput?.evaluate((node: HTMLTextAreaElement) => node.selectionStart)).toBe(4);
   await expect(page).toHaveURL(workUrl);
-  await expect(page.getByRole('tab', { name: 'Run', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tab', { name: 'Execution history', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await expect(input).toHaveValue('Preserve this follow-up draft');
   expect(
     (await new AxeBuilder({ page }).analyze()).violations
@@ -78,6 +79,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
         nodes: finding.nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
       })),
   ).toEqual([]);
+  await panelTab(page, 'Conversation');
   const before = await composer.boundingBox();
   await page.getByTestId('chat-timeline').evaluate((node) => {
     node.scrollTop = 0;
@@ -86,10 +88,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   expect(after?.y).toBe(before?.y);
   expect((after?.y ?? 0) + (after?.height ?? 0)).toBeLessThanOrEqual(800);
   await page.setViewportSize({ width: 390, height: 844 });
-  const back = page
-    .getByTestId('dock-toolbar')
-    .getByRole('button', { name: 'Back to conversation', exact: true });
-  if (await back.isVisible()) await back.click();
+  await panelTab(page, 'Conversation');
   await expect(input).toBeVisible();
   await expect(input).toHaveValue('Preserve this follow-up draft');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -109,11 +108,15 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link the example folder', exact: true }).click();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tab', { name: 'Files', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page
+    .getByRole('tablist', { name: 'Session views' })
+    .getByRole('tab', { name: 'Files', exact: true })
+    .click();
   await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
   await expect(
     page
@@ -125,13 +128,17 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   await expect(requestBox(page)).toHaveValue('@README.md:L1 Desktop workbench');
   await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await page
+    .getByRole('tablist', { name: 'Session views' })
+    .getByRole('tab', { name: 'Files', exact: true })
+    .click();
   // #87: an original-folder file has one read-only preview in Files, kept across panes; the
   // dock's document tabs are the only tab strip.
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Open src/version.ts', exact: true }).click();
   await expect(page.getByRole('region', { name: 'src/version.ts', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toHaveCount(0);
+  await panelTab(page, 'Conversation');
   const request = requestBox(page);
   await request.fill('@version');
   await expect(page.getByRole('listbox', { name: 'References' })).toBeVisible();

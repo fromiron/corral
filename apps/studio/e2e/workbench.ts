@@ -30,9 +30,9 @@ export async function startSession(page: Page, purpose: string) {
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }
 
-/** The request box (a combobox: it opens the `/` and `@` menus). */
+/** The mounted request box; hidden views are included for draft-preservation assertions. */
 export const requestBox = (page: Page) =>
-  page.getByRole('combobox', { name: 'Request', exact: true });
+  page.getByRole('combobox', { name: 'Request', exact: true, includeHidden: true });
 
 /** Chooses the team for the next turn from the composer's team chip. */
 export async function selectSessionTeam(page: Page, name: string) {
@@ -52,15 +52,25 @@ export async function slash(page: Page, command: string) {
   await box.press('Enter');
 }
 
-/** Opens a session pane by its tab, showing the side panes first when they are hidden. */
+/** Opens an existing session view, or its contextual file pane through the command palette. */
 export async function panelTab(page: Page, name: string) {
-  const show = page.getByRole('banner').getByRole('button', { name: 'Show the panel' });
-  if (await show.isVisible()) await show.click();
-  const tab = page.getByRole('tab', { name, exact: true });
-  // A new layout opens only the conversation's linked panes; others open from an area's menu.
-  if (!(await tab.count())) {
-    await page.getByRole('button', { name: 'Open pane', exact: true }).first().click();
-    await page.getByRole('menuitem', { name, exact: true }).click();
+  const views = page.getByRole('tablist', { name: 'Session views', exact: true });
+  await expect(views).toBeVisible();
+  const primary = name === 'Run' ? 'Execution history' : name;
+  if (['Conversation', 'Execution history', 'Changes'].includes(primary)) {
+    const tab = views.getByRole('tab', { name: primary, exact: true });
+    if (primary !== 'Changes' || (await tab.count())) {
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      return;
+    }
   }
-  await tab.click();
+  // File work may not have a primary tab until first opened. The palette is always reachable.
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox', { name: 'Search commands' }).fill(`Open ${name}`);
+  await palette
+    .getByRole('option')
+    .filter({ has: page.getByText(`Open ${name}`, { exact: true }) })
+    .click();
 }

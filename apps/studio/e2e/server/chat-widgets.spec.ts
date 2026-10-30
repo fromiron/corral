@@ -1,7 +1,7 @@
 import type { RunEvent } from '@corral/contracts';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Deterministic provider responses exercise the production adapter, Coordinator,
@@ -60,6 +60,48 @@ async function send(page: Page, text: string) {
   await requestBox(page).fill(text);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
 }
+
+test('plain completion is announced once and opening history is silent', async ({
+  page,
+  corral,
+}) => {
+  const finish = gate();
+  corral.fake?.setResponses([
+    async () => {
+      await finish.waiting;
+      return fauxAssistantMessage('The requested review is complete.');
+    },
+  ]);
+  try {
+    await session(page, corral);
+    await send(page, 'Review the current state.');
+    const dock = page.getByTestId('composer-dock');
+    await expect(dock.getByText('Running', { exact: true })).toBeVisible();
+    await expect(
+      page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
+    ).toHaveCount(0);
+    finish.release();
+    await expect(
+      dock.locator('[aria-live="polite"]').filter({ hasText: 'Run status: Succeeded' }),
+    ).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId('app-sidebar')
+        .getByText(/Succeeded/)
+        .first(),
+    ).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('chat-timeline')).toContainText(
+      'The requested review is complete.',
+    );
+    await expect(
+      page.getByTestId('composer-dock').locator('[aria-live="polite"]'),
+    ).not.toContainText(['Run status: Succeeded']);
+    expect(corral.errors).toEqual([]);
+  } finally {
+    finish.release();
+  }
+});
 
 test('live plans, context, manual collapse and an answer use the primary session flow', async ({
   page,
@@ -120,7 +162,10 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(plan.getByRole('listitem')).toHaveCount(5);
     await expect(page.getByTestId('run-monitor')).toHaveCount(0);
 
-    const widgets = page.getByTestId('session-summary-card');
+    const overview = page.getByRole('button', { name: 'Overview', exact: true });
+    await overview.click();
+    const summaryPopup = page.getByTestId('session-summary-popup');
+    const widgets = summaryPopup.getByTestId('session-summary-card');
     await expect(widgets).toBeVisible();
     expect(await widgets.evaluate((node) => !!node.closest('[data-testid="chat-timeline"]'))).toBe(
       false,
@@ -128,7 +173,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     expect(await plan.evaluate((node) => !!node.closest('[data-testid="chat-timeline"]'))).toBe(
       false,
     );
-    const context = page.getByTestId('context-usage-chip');
+    const context = widgets.getByTestId('context-usage-chip');
     await expect(context).toBeVisible();
     await context.click();
     const inspector = page.getByTestId('context-inspector');
@@ -139,6 +184,8 @@ test('live plans, context, manual collapse and an answer use the primary session
     await page.keyboard.press('Escape');
     await expect(inspector).toBeHidden();
     await expect(context).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(summaryPopup).toBeHidden();
     expect(
       subscriptions.filter((path) => path.includes(`/runs/${current(corral).runId}/events`)),
     ).toHaveLength(1);
@@ -181,7 +228,11 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(page.getByTestId('action-required')).toBeVisible();
     // Faux responses do not serialize a provider request or invoke onPayload.
     // Their assembled context must not be promoted to a complete measurement.
+    await overview.click();
+    await expect(context).toBeVisible();
     await expect(context).not.toContainText(/Context about \d+%/);
+    await page.keyboard.press('Escape');
+    await expect(summaryPopup).toBeHidden();
     await page
       .getByTestId('action-required')
       .getByText('Go to the request', { exact: true })
@@ -190,6 +241,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
     await question.getByRole('button', { name: 'Send answer' }).click();
+    await panelTab(page, 'Conversation');
     await expect(page.getByTestId('chat-result')).toContainText('ready for review');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     await expect(toggle).toContainText('2/7 done');
@@ -279,7 +331,9 @@ test.describe('serialized provider context', () => {
       0,
     );
     expect(usage?.usedTokens).toBe(usage?.parts.reduce((total, part) => total + part.tokens, 0));
-    const context = page.getByTestId('context-usage-chip');
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    const summaryPopup = page.getByTestId('session-summary-popup');
+    const context = summaryPopup.getByTestId('context-usage-chip');
     await expect(context).toContainText(
       `Context about ${Math.round(((usage?.usedTokens ?? 0) / 8000) * 100)}%`,
     );
@@ -299,6 +353,9 @@ test.describe('serialized provider context', () => {
       );
     }
     await page.keyboard.press('Escape');
+    await expect(inspector).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(summaryPopup).toBeHidden();
     await page.getByTestId('action-required').getByRole('link').click();
     const question = page.getByRole('form', { name: 'Waiting for your answer' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');

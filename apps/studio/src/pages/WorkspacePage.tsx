@@ -46,7 +46,7 @@ import { StartMeeting } from '../workbench/NewMeeting.tsx';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
-import { sessionListState } from '../workbench/sessionList.ts';
+import { latestSessionRun, sessionListState } from '../workbench/sessionList.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
@@ -908,6 +908,7 @@ function StartSession({
 
 /** The project's work sessions: pinned first, searchable. */
 function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSummary[] }) {
+  const status = useTranslations('Status');
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
   const ago = useSessionAge();
@@ -990,41 +991,47 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul aria-label={t('heading')} className="flex flex-col">
-          {shown.map((x) => (
-            <li key={x.sessionId} className="flex items-center gap-2">
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: x.sessionId }}
-                className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
-              >
-                <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {[
-                    x.pinned ? t('pinned') : null,
-                    x.archivedAt ? t('archived') : null,
-                    t(`listState.${sessionListState(x, runs)}`),
-                    t('runCount', {
-                      count: runs.filter((r) => r.sessionId === x.sessionId).length,
-                    }),
-                    tw('updated', { time: ago(x.updatedAt) }),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </span>
-              </Link>
-              {x.archivedAt || sessionListState(x, runs) === 'empty' ? (
-                <Button
-                  variant="ghost"
-                  size="compact"
-                  disabled={archiving !== null}
-                  aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', { title: x.title })}
-                  onClick={() => void setArchived(x, !x.archivedAt)}
+          {shown.map((x) => {
+            const latest = latestSessionRun(x, runs);
+            return (
+              <li key={x.sessionId} className="flex items-center gap-2">
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: x.sessionId }}
+                  search={{ compose: true }}
+                  className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
                 >
-                  {t(x.archivedAt ? 'restoreSession' : 'archive')}
-                </Button>
-              ) : null}
-            </li>
-          ))}
+                  <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {[
+                      x.pinned ? t('pinned') : null,
+                      x.archivedAt ? t('archived') : null,
+                      latest ? status(latest.status) : t(`listState.${sessionListState(x, runs)}`),
+                      t('runCount', {
+                        count: runs.filter((r) => r.sessionId === x.sessionId).length,
+                      }),
+                      tw('updated', { time: ago(x.updatedAt) }),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </Link>
+                {x.archivedAt || sessionListState(x, runs) === 'empty' ? (
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    disabled={archiving !== null}
+                    aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', {
+                      title: x.title,
+                    })}
+                    onClick={() => void setArchived(x, !x.archivedAt)}
+                  >
+                    {t(x.archivedAt ? 'restoreSession' : 'archive')}
+                  </Button>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
       {archivedCount > 0 ? (

@@ -27,8 +27,8 @@ import type {
   SessionIntent,
   WorkSession,
 } from '@corral/core';
-import { validTextAttachments } from '@corral/core';
-import { runResults, StatusBadge, useCancelConfirmation } from '@corral/react';
+import { queuedSessionCommandId, validTextAttachments } from '@corral/core';
+import { MessageBody, runResults, StatusBadge, useCancelConfirmation } from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -159,6 +159,7 @@ import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
+import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import {
   EDIT_REQUEST,
@@ -170,6 +171,7 @@ import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
+import { isScheduledRequest } from '../workbench/scheduledRuns.ts';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -177,6 +179,7 @@ import {
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
+import { TerminalWriterNotice } from '../workbench/TerminalWriterNotice.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
@@ -186,6 +189,7 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
+import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { WorkFolderNotice } from '../workbench/WorkFolderNotice.tsx';
 import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx';
@@ -203,44 +207,6 @@ import { useRemembered } from './Workbench.tsx';
 
 const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
 
-/** The session's runs, kept current while one is working. */
-function useSessionRuns(sessionId: string, selectedRunId?: string) {
-  const { transport } = useServices();
-  const [all, setAll] = useState<RunSummary[]>([]);
-  const [tick, setTick] = useState(0);
-  // Unreachable server: run states are unknown, not finished.
-  const [lost, setLost] = useState(false);
-  const refresh = useCallback(() => setTick((n) => n + 1), []);
-  useEffect(() => {
-    void tick;
-    void sessionId;
-    void selectedRunId;
-    let live = true;
-    transport.listRuns().then(
-      (runs) => {
-        if (!live) return;
-        setAll(runs);
-        setLost(false);
-      },
-      () => live && setLost(true),
-    );
-    return () => {
-      live = false;
-    };
-  }, [transport, tick, sessionId, selectedRunId]);
-  const runs = all
-    .filter((r) => r.sessionId === sessionId)
-    .reverse()
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  const active = runs.findLast((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
-  useEffect(() => {
-    if (!active && !lost) return;
-    const timer = setInterval(refresh, 1500);
-    return () => clearInterval(timer);
-  }, [active, lost, refresh]);
-  return { runs, active, refresh, lost };
-}
-
 /**
  * Context panes follow the session URL; document tabs keep their explicit workspace target.
  * Stores own editing and execution state independently of dock placement.
@@ -248,6 +214,13 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
 /** a meeting has its own chat; every other session keeps the work view. */
 export function SessionPage() {
   const { session } = sessionRoute.useLoaderData();
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = `${session.title} · Corral Studio`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [session.title]);
   return session.meeting ? (
     <MeetingPage key={session.sessionId} session={session} />
   ) : (
@@ -287,7 +260,12 @@ function WorkSessionPage() {
     });
   }, [urlViewKey, viewKey, navigate]);
   const router = useRouter();
-  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
+  const { runs, active, refresh, lost } = useSessionRuns(
+    session.sessionId,
+    search.run,
+    session.revision,
+    session.entries,
+  );
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
@@ -1051,9 +1029,12 @@ function WorkTab({
         messageId={messageId}
         header={
           <>
-            <MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />
+            <MeetingHandoffLinks
+              key={`handoffs:${session.sessionId}`}
+              sessionId={session.sessionId}
+            />
             <WorkFolderNotice
-              key={session.sessionId}
+              key={`folder:${session.sessionId}`}
               sessionId={session.sessionId}
               revision={runs.map((run) => `${run.runId}:${run.status}`).join(',')}
               onSetup={() => onPanel('changes')}
@@ -1384,7 +1365,11 @@ function EntryCard({
     dateStyle: 'short',
   });
   // A plain follow-up needs no label; queue, instruction and question say what they were.
-  const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
+  const label = isScheduledRequest(entry)
+    ? t('scheduledRequest')
+    : entry.intent === 'next'
+      ? null
+      : t(`intentShort.${entry.intent}`);
   // what an auto request ran with; not a team the person chose.
   const auto = entry.auto
     ? [
@@ -1429,7 +1414,14 @@ function EntryCard({
             </AccordionItem>
           </Accordion>
         ) : null}
-        <p>{entry.text}</p>
+        <MessageBody
+          text={entry.text}
+          actions={
+            entry.intent !== 'steer' ? (
+              <EditAsNewRequest onClick={() => editRequest(entry.text, entry)} />
+            ) : undefined
+          }
+        />
         {entry.attachments?.length ? <TextAttachmentList attachments={entry.attachments} /> : null}
         {entry.images?.length ? (
           <ImageAttachmentList sessionId={sessionId} images={entry.images} />
@@ -1576,7 +1568,7 @@ function RunCard({
     >
       <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         {/* a working or finished turn speaks through its process and answer. */}
-        {nested && (run.status === 'succeeded' || run.status === 'running') ? (
+        {nested && ['created', 'validating', 'running', 'succeeded'].includes(run.status) ? (
           <span className="sr-only">
             <StatusBadge status={run.status} />
           </span>
@@ -1743,6 +1735,7 @@ export function Composer({
   const tc = useTranslations('Composer');
   const format = useFormatter();
   const contextMessages = useTranslations('Context');
+  const materialMessages = useTranslations('Materials');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
   const services = useServices();
@@ -1758,6 +1751,7 @@ export function Composer({
   );
   const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
   const textFiles = useRef<HTMLInputElement>(null);
@@ -1865,8 +1859,9 @@ export function Composer({
     if (session.entries.length === 0) input.current?.focus();
   }, [session.entries.length]);
   const ownActive =
-    runs.find((run) => run.runId === selectedRunId && !TERMINAL_RUN_STATUSES.has(run.status)) ??
-    null;
+    active?.sessionId === session.sessionId && !TERMINAL_RUN_STATUSES.has(active.status)
+      ? active
+      : null;
   const [confirmStop, setConfirmStop] = useCancelConfirmation(
     ownActive?.runId ?? null,
     ownActive?.status === 'cancelling',
@@ -1883,9 +1878,9 @@ export function Composer({
   // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
   // the first receipt instead of starting a second run.
   const pending = useRef(pendingSessionCommands.get(session.sessionId) ?? null);
-  const commandFor = (key: string) => {
+  const commandFor = (key: string, commandId?: string) => {
     if (pending.current?.key !== key) {
-      pending.current = { key, commandId: newCommandId() };
+      pending.current = { key, commandId: commandId ?? newCommandId() };
       pendingSessionCommands.set(session.sessionId, pending.current);
     }
     return pending.current.commandId;
@@ -2608,7 +2603,23 @@ export function Composer({
       ...(resend ? (entry.images ?? []) : []),
     ];
     try {
-      const commandId = commandFor(entryCommandKey(entry, resend));
+      if (!resend) {
+        const current = await repository.getSession(session.sessionId);
+        const persisted = current?.entries.find((item) => item.entryId === entry.entryId);
+        if (
+          persisted?.state !== 'queued' ||
+          queuedSessionCommandId(session.sessionId, persisted) !==
+            queuedSessionCommandId(session.sessionId, entry)
+        ) {
+          await router.invalidate();
+          onChange();
+          return;
+        }
+      }
+      const commandId = commandFor(
+        entryCommandKey(entry, resend),
+        resend ? undefined : queuedSessionCommandId(session.sessionId, entry),
+      );
       const {
         runId,
         detail,
@@ -2616,6 +2627,14 @@ export function Composer({
         auto,
         cancelError,
       } = await startNext(entry.text, commandId, queuedReferences, entry.permissionMode);
+      if (!resend && commandError?.code === 'IDEMPOTENCY_CONFLICT') {
+        // Another tab can have a different model/history snapshot of the same queue item.
+        // Its original receipt owns the outcome, including while that start is pending.
+        setError(detail ?? commandError.message);
+        await router.invalidate();
+        onChange();
+        return;
+      }
       const outcome = {
         state: runId ? ('started' as const) : ('refused' as const),
         runId,
@@ -2971,6 +2990,7 @@ export function Composer({
       <ComposerSurface.Host>
         <ComposerPlan />
         <section aria-label={t('requestLabel')} className="flex flex-col gap-1 p-2">
+          {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
           {viewingOtherRun ? (
             <Banner data-testid="viewed-run-warning" status="warning" size="compact">
               <BannerTitle>
@@ -3237,6 +3257,14 @@ export function Composer({
                 >
                   {tc('attachText')}
                 </MenuItem>
+                {mode === 'server' ? (
+                  <MenuItem
+                    disabled={attachments.length >= TEXT_ATTACHMENT_MAX_COUNT}
+                    onClick={() => setMaterialsOpen(true)}
+                  >
+                    {materialMessages('attachPlaceholder')}
+                  </MenuItem>
+                ) : null}
               </MenuPopup>
             </Menu>
 
@@ -3436,6 +3464,29 @@ export function Composer({
           {error}
         </p>
       ) : null}
+      <Dialog open={materialsOpen} onOpenChange={setMaterialsOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{materialMessages('attachPlaceholder')}</DialogTitle>
+            <DialogDescription>{materialMessages('hint')}</DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            {materialsOpen ? (
+              <ProjectMaterialPicker
+                key={attachmentEpoch}
+                projectId={session.projectId}
+                value={attachments}
+                onChange={(value) => {
+                  setAttachments(value);
+                  setMaterialsOpen(false);
+                }}
+                onBusyChange={setAttachmentsBusy}
+                disabled={busy || (intent !== 'next' && intent !== 'queue')}
+              />
+            ) : null}
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
       <Dialog open={modelsOpen} onOpenChange={setModelsOpen}>
         <DialogPopup>
           <DialogHeader>
@@ -3685,5 +3736,14 @@ function ModelAssignments({
         );
       })}
     </ul>
+  );
+}
+
+function EditAsNewRequest({ onClick }: { onClick(): void }) {
+  const t = useTranslations('MessageBody');
+  return (
+    <Button size="compact" variant="ghost" onClick={onClick}>
+      {t('editAsNew')}
+    </Button>
   );
 }

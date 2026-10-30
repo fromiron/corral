@@ -232,9 +232,11 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('link', { name: 'Connect in Work styles', exact: true }).click();
     await expect(page).toHaveURL(/settings=harness/);
     await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
-    const replacement = page
-      .getByRole('checkbox', { name: 'Use skill writing', exact: true })
-      .and(page.locator(':not(:checked)'));
+    const replacement = page.getByRole('checkbox', {
+      name: 'Use skill writing',
+      exact: true,
+      checked: false,
+    });
     await replacement.click();
     const confirm = page.getByRole('dialog', { name: 'Confirm change', exact: true });
     await expect(confirm).toContainText('Replace 1 previous');

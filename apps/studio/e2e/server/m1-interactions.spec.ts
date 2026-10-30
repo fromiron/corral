@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { requestBox } from '../workbench.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -65,7 +65,6 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await corral.open('/');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  const url = page.url();
   await page.getByRole('button', { name: 'Model', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Reasoning effort', exact: true }).hover();
   await page.getByRole('menuitemradio', { name: 'Low', exact: true }).click();
@@ -84,6 +83,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
     ),
   });
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
+  const url = page.url();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/settings=general/);
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
@@ -93,12 +93,12 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('action-required')).toBeVisible();
-  await page.getByTestId('action-required').getByRole('link').click();
-  const question = page.getByRole('form', { name: 'Waiting for your answer' });
-  await expect(question).toHaveCount(1);
   await expect(
     page.getByTestId('composer-work-plan').getByText('Read attachment and answer', { exact: true }),
   ).toBeVisible();
+  await page.getByTestId('action-required').getByRole('link').click();
+  const question = page.getByRole('form', { name: 'Waiting for your answer' });
+  await expect(question).toHaveCount(1);
   const answer = question.getByRole('textbox', { name: 'Your answer' });
   await answer.fill('A table');
   expect(
@@ -116,6 +116,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   ).toBe(true);
   await expect(question).toBeVisible();
   await question.getByRole('button', { name: 'Send answer' }).click();
+  await panelTab(page, 'Conversation');
   await expect(page.getByTestId('chat-result')).toContainText('Attachment verified');
   await expect.poll(() => current().projection.status).toBe('succeeded');
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);

@@ -80,3 +80,18 @@ it('classifies current terminal ownership from structured fields independently o
     }),
   ).toBe('terminalUncertain');
 });
+
+it('distinguishes unsupported image input from missing credentials', () => {
+  expect(
+    refusalKind({
+      code: 'CAPABILITY_DENIED',
+      message: 'this model has no confirmed image input support',
+    }),
+  ).toBe('image');
+  expect(
+    refusalKind({
+      code: 'CAPABILITY_DENIED',
+      message: 'Linux worker isolation is unavailable on this OS',
+    }),
+  ).toBe('capability');
+});

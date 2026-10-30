@@ -9,7 +9,7 @@ import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { composerDraftRevision, writeComposerDraft } from './sessionDraft.ts';
-import { TerminalPanel } from './TerminalPanel.tsx';
+import { TerminalActivity, TerminalPanel } from './TerminalPanel.tsx';
 import type { TerminalSelection, TerminalStore } from './terminals/store.ts';
 
 const fixture = vi.hoisted(() => ({
@@ -127,6 +127,23 @@ it('another controller is read-only until an explicit takeover', () => {
   expect(html).toContain('Another view controls input');
   expect(html).toContain('Take over input');
   expect(html).not.toContain('Release input');
+});
+
+it('distinguishes input control release from the protected working copy', () => {
+  const html = render({ ...terminal, controller: null });
+  expect(html).toContain('Releasing input only disconnects this view’s keyboard');
+  expect(html).toContain('Stop terminal');
+});
+
+it('marks unconfirmed termination in the terminal tab without implying it is running', () => {
+  render({ ...terminal, state: 'uncertain' });
+  const html = renderToStaticMarkup(
+    <IntlProvider locale="en" messages={messages}>
+      <TerminalActivity sessionId="session" />
+    </IntlProvider>,
+  );
+  expect(html).toContain('Terminal termination needs confirmation');
+  expect(html).not.toContain('Terminal running');
 });
 
 it('the terminal escape action focuses a control outside its input', async () => {

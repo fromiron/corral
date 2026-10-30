@@ -73,7 +73,8 @@ export function providerFailure(
             ? 'SERVER'
             : /abort|cancel/i.test(text)
               ? 'CANCELLED'
-              : /ECONNREFUSED|ENOTFOUND|connect timeout/i.test(text)
+              : /ECONNREFUSED|ENOTFOUND|connect timeout/i.test(text) ||
+                  /^(?:Connection error\.|fetch failed)$/i.test(text)
                 ? 'TRANSPORT'
                 : 'UNKNOWN';
   const requestId = response?.headers.get('x-request-id') ?? response?.headers.get('request-id');

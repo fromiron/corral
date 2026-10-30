@@ -12,6 +12,30 @@ it('identifies Hive exhausted balance as quota and preserves safe metadata', () 
   ).toEqual({ code: 'QUOTA', status: 405, retryAfterMs: 2000, requestId: 'req-1' });
 });
 
+it('keeps HTTP failure classifications ahead of a generic SDK connection message', () => {
+  for (const [status, code] of [
+    [401, 'AUTH'],
+    [429, 'RATE_LIMIT'],
+    [503, 'SERVER'],
+  ] as const) {
+    expect(providerFailure('Connection error.', { status, headers: new Headers() })).toEqual({
+      code,
+      status,
+      retryAfterMs: null,
+      requestId: null,
+    });
+  }
+});
+
+it('does not infer a connection failure from arbitrary provider response text', () => {
+  expect(providerFailure('Response: Connection error. credential=private-key')).toEqual({
+    code: 'UNKNOWN',
+    status: null,
+    retryAfterMs: null,
+    requestId: null,
+  });
+});
+
 it('retries only explicit transient errors before content and accounts each failed attempt', async () => {
   const opened: number[] = [],
     waits: number[] = [],

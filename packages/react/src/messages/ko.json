@@ -305,6 +305,7 @@
     "giveCriteria": "검토 기준 입력 추가"
   },
   "Run": {
+    "permissionSettings": "다음 실행의 도구 규칙",
     "heading": "실행",
     "scopeSaved": "먼저 팀을 저장한 뒤 별도 실행을 시작합니다. 대화에는 추가되지 않습니다.",
     "scopeDraft": "이 초안으로 별도 실행을 시작합니다. 대화에는 추가되지 않습니다.",
@@ -404,8 +405,26 @@
     "receiptExecution": "실행 하나에 보낸 명령",
     "cancelNotSent": "아직 취소 요청을 보내지 않았습니다. 이 실행을 중지하려면 아래에서 확인하세요."
   },
+  "Schedules": {
+    "dispatch": "시작 요청: {status}",
+    "occurrence": {
+      "dispatching": "시작 요청 중",
+      "started": "시작됨",
+      "missed": "예약 시각 놓침",
+      "overlap": "이전 실행 중으로 건너뜀",
+      "refused": "거절됨",
+      "interrupted": "시작 요청 중단"
+    },
+    "savedEnabled": "활성 상태로 저장했어요. 다음 예약 시각에 실행합니다.",
+    "savedDisabled": "비활성 상태로 저장했어요. 활성화하기 전까지 실행하지 않습니다.",
+    "resultTitle": "예약 실행 종료",
+    "result": "예약 실행: {status}",
+    "openRun": "실행 열기",
+    "dismiss": "닫기",
+    "unavailable": "현재 실행 상태를 확인할 수 없어요"
+  },
   "Status": {
-    "created": "생성됨",
+    "created": "시작 중…",
     "validating": "확인 중",
     "running": "진행 중",
     "pausing": "일시정지 중",
@@ -515,7 +534,9 @@
     "openRun": "실행 상세 열기",
     "backToSession": "세션으로 돌아가기",
     "appliesNextRun": "저장한 변경은 세션의 다음 실행부터 적용돼요. 이미 시작한 실행은 그대로예요.",
-    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다."
+    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다.",
+    "showTools": "팀 도구 열기",
+    "hideTools": "팀 도구 접기"
   },
   "RunPage": {
     "retry": "실행 다시 불러오기",
@@ -639,7 +660,34 @@
     "notWithSubscription": "구독 로그인으로는 쓸 수 없습니다. 이 프로필에서 다른 모델을 고르세요.",
     "changeModel": "모델 바꾸기",
     "fileHint": "고급: 같은 설정이 .corral/config.json에 있습니다.",
-    "editModels": "모델 편집"
+    "editModels": "모델 편집",
+    "configured": "설정됨",
+    "testConnection": "연결 확인",
+    "connectionTestHint": "모델을 호출하지 않고 모델 목록 주소에 연결해요. 연결 성공이 모델 실행을 보장하지는 않아요.",
+    "imageSupported": "이미지 지원",
+    "textOnly": "텍스트 전용",
+    "imageUnknown": "이미지 지원 미확인",
+    "connectionTest": {
+      "connected": "접속 주소가 응답했어요.",
+      "authentication": "인증 정보가 없거나 거부되었어요. 키를 확인한 뒤 다시 연결하세요.",
+      "rateLimit": "요청이 제한되었어요. 잠시 후 다시 확인하세요.",
+      "server": "접속 주소를 일시적으로 사용할 수 없어요. 나중에 재시도하세요.",
+      "redirect": "다른 주소로 이동하라는 응답을 받았어요. 설정한 주소를 확인하세요.",
+      "unsupported": "이 주소가 연결 확인을 지원하지 않아요. API 기본 주소를 확인하세요.",
+      "connection": "연결할 수 없어요. 주소, 네트워크, 로컬 서버를 확인하세요."
+    }
+  },
+  "MessageBody": {
+    "copyCode": "코드 복사",
+    "copyMessage": "메시지 복사",
+    "copied": "복사됨",
+    "copyFailed": "복사하지 못했습니다. 텍스트를 선택해 직접 복사하세요.",
+    "showMore": "메시지 전체 보기",
+    "showLess": "메시지 접기",
+    "plainText": "일반 텍스트",
+    "editAsNew": "새 요청으로 편집",
+    "interrupted": "미완성 응답 — 생성이 중단되었습니다",
+    "truncated": "수신된 앞부분만 남아 있습니다."
   },
   "Markdown": {
     "imageNotLoaded": "이미지를 불러오지 않음: {alt} ({host})",
@@ -1173,6 +1221,28 @@
         "loop": "검토 루프",
         "decision": "검토 판정",
         "output": "출력"
+      },
+      "securityReview": {
+        "name": "PR 보안 검토",
+        "roles": {
+          "researcher": {
+            "name": "보안 검토자",
+            "duty": "PR의 보안 문제를 검토하고 해당 코드, 근거, 영향, 불확실성을 기록한다. 접근할 수 없는 코드를 확인한 것처럼 말하지 않는다."
+          },
+          "writer": {
+            "name": "검토 결과 작성자",
+            "duty": "근거를 바탕으로 보안 검토 결과를 간결하게 요약한다. 확인한 문제와 미검증 우려를 구분하고 수정안을 설명한다."
+          },
+          "reviewer": {
+            "name": "독립 검증자",
+            "duty": "제공된 코드와 근거로 각 보안 발견 사항을 독립적으로 다시 확인한다. 뒷받침되지 않은 주장을 거절하고 구체적인 수정을 요청한다."
+          }
+        },
+        "criteria": {
+          "evidence": "보안 발견 사항마다 해당 코드와 근거를 명시하고 코드나 맥락이 없으면 밝힌다.",
+          "verification": "발견 사항을 독립적으로 검증하고 확인한 문제와 미검증 우려를 구분한다.",
+          "approval": "사용자가 승인할 수 있는 간결한 요약과 수정안을 제공한다."
+        }
       }
     }
   },
@@ -1365,6 +1435,7 @@
     "actions": "{name} 작업"
   },
   "Sessions": {
+    "scheduledRequest": "예약 실행 요청",
     "notFound": "이 세션을 더 이상 열 수 없습니다.",
     "heading": "세션",
     "new": "새 세션",
@@ -1669,7 +1740,8 @@
     "removalComments": "보내지 않은 검토 의견 {count, plural, other {#개}}",
     "removalUncertain": "결과를 모르는 파일 쓰기 {count, plural, other {#개}}",
     "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}",
-    "noCopyReadOnly": "작업 사본이 없어 읽기 전용입니다."
+    "noCopyReadOnly": "작업 사본이 없어 읽기 전용입니다.",
+    "operationDetails": "쓰기 상세 정보"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -1717,7 +1789,9 @@
       "partial": "일부 반영",
       "conflict": "반영 안 됨: 충돌",
       "reverted": "되돌림",
-      "failed": "실패"
+      "failed": "실패",
+      "partlyReverted": "일부 되돌림",
+      "notReverted": "되돌리지 않음: 반영 이후 파일이 변경됨"
     },
     "fileOutcome": {
       "planned": "계획",
@@ -1731,7 +1805,7 @@
     },
     "revert": "되돌리기",
     "revertNote": "반영한 그대로인 파일만 되돌립니다.",
-    "inboxHeading": "확인 필요",
+    "inboxHeading": "처리할 항목",
     "inbox": {
       "decision": "실행이 결정을 기다립니다",
       "queued": "대기 중인 다음 작업: {detail}",
@@ -1746,7 +1820,10 @@
     "retrySend": "같은 요청 결과 확인",
     "sendUnconfirmed": "요청 또는 기록 결과를 확인하지 못했습니다. 새로 보내기 전에 같은 요청의 결과를 확인하세요.",
     "modelsUnavailable": "모델 연결 정보를 아직 확인하지 못했습니다. 보내기 전에 모델 설정을 확인하세요.",
-    "inboxScope": "이 프로젝트의 보관하지 않은 세션에서 필요한 조치 수입니다. 한 세션에 여러 조치가 있을 수 있습니다."
+    "inboxScope": "이 프로젝트에서 보관되지 않은 세션의 처리할 항목이에요. 한 세션에 여러 항목이 있을 수 있으며, 실패한 세션 수와는 달라요.",
+    "confirmRevert": "반영한 파일 되돌리기",
+    "confirmRevertNote": "원본 폴더의 다음 파일을 되돌립니다. 반영 후 Corral 외부에서 변경한 파일은 그대로 보존합니다. 되돌리기 전에 체크포인트를 저장합니다.",
+    "cancelRevert": "취소"
   },
   "Workbench": {
     "reviewFeedback": "변경 검토 · 수정 요청",
@@ -1761,7 +1838,7 @@
     "searchSessions": "대화 목록 필터",
     "sessions": "세션",
     "newSession": "새 세션",
-    "needsYou": "확인 필요 {count}",
+    "needsYou": "처리할 항목 ({count})",
     "teamLibrary": "팀 라이브러리",
     "allProjects": "모든 프로젝트",
     "models": "모델",
@@ -2117,7 +2194,10 @@
     "terminal": "터미널이 이 작업 사본을 사용하고 있습니다. 터미널을 열어 직접 중지한 뒤 다시 보내세요.",
     "terminalUncertain": "터미널 종료가 확인되지 않아 작업 사본을 보호하고 있습니다. 터미널 제어와 진단 정보를 열고 호스트의 프로세스를 확인하세요. 재접속이나 사본 삭제는 종료를 증명하지 않습니다.",
     "diagnostics": "진단 정보",
-    "openTerminal": "터미널 제어 열기"
+    "openTerminal": "터미널 제어 열기",
+    "image": "이 모델의 이미지 입력 지원이 확인되지 않았어요. 이미지를 빼거나 이미지를 지원하는 모델을 선택하세요.",
+    "capability": "현재 환경에서 지원하지 않는 기능이 필요한 작업이에요. 진단 내용을 확인한 뒤 다시 시도하세요.",
+    "chooseImageModel": "이미지 지원 모델 선택"
   },
   "Harness": {
     "heading": "작업 방식",
@@ -2634,7 +2714,17 @@
     "browserExecutable": "설치된 Chromium 실행 파일",
     "browserReady": "HTTP 준비 응답에 있어야 할 문구",
     "browserDevCommand": "등록할 개발 서버 명령",
-    "configureMcpFirst": "인증과 실행 신뢰는 MCP 서버 설정에서 관리합니다. 준비한 서버의 도구를 여기서 확인하고 선택하세요."
+    "configureMcpFirst": "인증과 실행 신뢰는 MCP 서버 설정에서 관리합니다. 준비한 서버의 도구를 여기서 확인하고 선택하세요.",
+    "probeFailure": {
+      "connection": "MCP 서버가 연결을 거부했어요. 서버를 실행하고 주소와 포트를 확인한 뒤 다시 연결하세요.",
+      "dns": "MCP 서버 이름을 찾을 수 없어요. 주소와 네트워크를 확인한 뒤 다시 연결하세요.",
+      "timeout": "MCP 서버가 제한 시간 안에 응답하지 않았어요. 서버 실행 상태를 확인한 뒤 다시 연결하세요.",
+      "authentication": "MCP 서버가 인증을 거부했어요. 다시 로그인하거나 인증 정보를 바꾼 뒤 연결하세요.",
+      "rateLimit": "MCP 서버가 요청을 제한하고 있어요. 잠시 후 다시 연결하세요.",
+      "server": "MCP 서버를 일시적으로 사용할 수 없어요. 복구된 뒤 다시 연결하세요.",
+      "protocol": "MCP 서버가 요청을 거부했어요. 접속 주소와 전송 방식을 확인하세요.",
+      "unknown": "MCP 연결 확인에 실패했어요. 서버, 전송 방식, 실행 설정을 확인한 뒤 다시 연결하세요."
+    }
   },
   "Navigation": {
     "app": "앱",
@@ -2729,7 +2819,9 @@
     "original": "원본 폴더",
     "workingCopy": "세션 작업 사본",
     "restoreOriginal": "원본 폴더 복구",
-    "requestUnavailable": "원래 요청을 찾을 수 없음"
+    "requestUnavailable": "원래 요청을 찾을 수 없음",
+    "unchanged": "이전 체크포인트 이후 변경 없음",
+    "alreadyMatches": "이미 이 체크포인트와 같은 상태입니다. 복원할 변경이 없습니다."
   },
   "RunStatus": {
     "environment": "환경",
@@ -2956,7 +3048,9 @@
     "actionApproval": "승인이 필요합니다",
     "actionQuestion": "질문이 기다리고 있습니다",
     "actionFailure": "실패를 확인해야 합니다",
-    "actionUnclear": "파일 효과가 불명확합니다",
+    "actionUnclear": "결과를 확인하지 못한 작업이 있어요",
+    "actionModelUnknown": "결과를 확인하지 못한 모델 요청이 있어요",
+    "runStatusAnnouncement": "실행 상태: {status}",
     "actionUsageUnknown": "사용량이 확인되지 않아 예산에 남아 있습니다",
     "actionStopUnconfirmed": "실행 종료가 확인되지 않았습니다",
     "actionMixed": "확인할 항목 {count}개",
@@ -3420,7 +3514,12 @@
     "diagnostics": "진단 정보",
     "stopped": "중지됨",
     "stopUnconfirmed": "중지를 시도했지만 종료를 확인하지 못했습니다. 작업 사본 보호를 유지합니다. 호스트 프로세스와 진단 정보를 확인하세요. 보호를 우회하려고 작업 사본을 삭제하지 마세요.",
-    "writerBusy": "다른 작업이 이 작업 사본을 사용하고 있습니다. 해당 작업을 중지하거나 끝날 때까지 기다린 뒤 터미널을 만드세요."
+    "writerBusy": "다른 작업이 이 작업 사본을 사용하고 있습니다. 해당 작업을 중지하거나 끝날 때까지 기다린 뒤 터미널을 만드세요.",
+    "releaseHint": "입력 제어권 놓기는 이 화면의 키보드 입력만 해제합니다. 터미널 프로세스가 종료될 때까지 작업 사본 점유는 유지됩니다.",
+    "uncertainTab": "터미널 종료 확인 필요",
+    "writerNotice": "터미널이 이 작업 사본을 점유하고 있습니다. 파일을 쓰는 요청을 보내려면 터미널을 종료하세요.",
+    "writerUncertainNotice": "터미널 종료가 확인되지 않았습니다. 프로세스 종료가 확인될 때까지 작업 사본 점유가 유지됩니다.",
+    "openControls": "터미널 제어 열기"
   },
   "Docking": {
     "fileViewer": "파일 뷰어",
@@ -4183,7 +4282,9 @@
     "records": "회의록 · 플랜 · 작업 인계",
     "minutesReady": "비서가 회의록과 플랜을 정리했습니다.",
     "viewMinutes": "회의록과 플랜 검토",
-    "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요."
+    "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요.",
+    "expandRecords": "기록 넓게 보기",
+    "compactRecords": "기록 접어 보기"
   },
   "MeetingsDecisions": {
     "decisionLabel": "결정 v{number} · {goal}",
@@ -4232,6 +4333,7 @@
     }
   },
   "MeetingsHandoff": {
+    "reload": "작업 인계 다시 불러오기",
     "open": "작업으로 넘기기",
     "serverRequired": "작업 인계는 Corral 서버에 연결했을 때 사용할 수 있습니다.",
     "scopeHint": "채택한 결정과 선택한 근거를 요청서로 넘깁니다. 대상 세션의 기본 Corral은 바뀌지 않습니다.",
@@ -4390,6 +4492,24 @@
       "REVISION_CONFLICT": "대상이 바뀌었습니다. 현재 상태를 확인한 뒤 다시 시도하세요.",
       "CAPABILITY_DENIED": "허용되지 않은 작업입니다. 기록된 이유를 확인하세요.",
       "LIMIT_REACHED": "이 작업이 한도에 도달했습니다."
+    },
+    "provider": {
+      "AUTH": "모델 제공자가 인증 정보를 거부했어요.",
+      "QUOTA": "모델 계정의 사용 한도를 초과했어요.",
+      "RATE_LIMIT": "모델 제공자가 요청 속도를 제한하고 있어요.",
+      "CONTEXT_OVERFLOW": "요청이 이 모델의 문맥 한도를 넘었어요.",
+      "SERVER": "모델 제공자를 일시적으로 사용할 수 없어요.",
+      "TRANSPORT": "모델 제공자에 연결할 수 없어요.",
+      "CANCELLED": "모델 요청이 취소되었어요."
+    },
+    "recovery": {
+      "AUTH": "설정 → 모델에서 다시 연결하거나 API 키를 바꾼 뒤 재시도하세요.",
+      "QUOTA": "계정의 사용 한도를 확인하거나 다른 모델을 선택한 뒤 재시도하세요.",
+      "RATE_LIMIT": "잠시 기다렸다가 재시도하세요. 바로 반복하면 제한이 길어질 수 있어요.",
+      "CONTEXT_OVERFLOW": "메시지를 줄이거나 필요한 내용만 담아 새 대화를 시작하세요.",
+      "SERVER": "제공자가 복구될 때까지 기다리거나 다른 모델을 선택한 뒤 재시도하세요.",
+      "TRANSPORT": "네트워크와 접속 주소를 확인하세요. 로컬 모델 서버가 필요하면 실행한 뒤 재시도하세요.",
+      "CANCELLED": "준비되면 메시지를 다시 보내세요."
     }
   }
 }

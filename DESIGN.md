@@ -3,7 +3,7 @@ name: Corral Neutral
 colors:
   primary: "#171717"
   secondary: "rgb(0 0 0 / 8%)"
-  muted-foreground: "#737373"
+  muted-foreground: "#666666"
   surface: "#FAFAFA"
   on-surface: "#171717"
   error: "#B91C1C"
@@ -74,7 +74,7 @@ The design kit is copied into this repository. Building Corral does not read ano
 | `surface-5` | #FFFFFF | #333333 | Dialog level above a page-level context |
 | `foreground` / `primary` | #171717 | #F5F5F5 | Main text and primary button fill |
 | `secondary` / `tint` | Black at 8% | White at 25% | Secondary button fill over the current surface |
-| `muted-foreground` | #737373 | #B8B8B8 | Secondary text and metadata |
+| `muted-foreground` | #666666 | #B8B8B8 | Secondary text and metadata |
 | `muted` | #F4F4F5 | #1E1E1E | Quiet backgrounds, never text |
 | `accent` | #E5E5E5 | #525252 | Neutral interactive emphasis, never a brand color |
 | `selected` | #D4D4D4 | #525252 | Selected item background |
@@ -86,7 +86,7 @@ The design kit is copied into this repository. Building Corral does not read ano
 
 `border` mixes 12% foreground into transparency. `hover`, `active`, `tint` and `tint-hover` are surface-relative overlays from the kit. Dialogs use the kit's black scrim: 40% in light mode and 80% in dark mode through `dialog-scrim`. Never use the dark theme's white interactive overlay as a page mask. Do not substitute the muted background token for secondary text. Primary actions use foreground on background; focus blue is not a second CTA style.
 
-The light status and focus values are deliberate Corral adjustments: the source kit's lighter status colors are unsuitable for small text on light surfaces. Dark secondary text is #B8B8B8 so it remains readable on the kit's elevated popup surfaces, including surface 8 (4.61:1 on #484848). Keep `destructive-contrast` for text on a filled error surface. Ordinary text targets at least 4.5:1 contrast; large text and essential control indicators target at least 3:1. Validate actual foreground/background pairs, including selected and highlighted states; the base palette ratio is not a full-screen contrast result.
+Light secondary text is #666666 to retain at least 4.5:1 contrast on the observed quiet and hovered surfaces (#F4F4F5 and #E8E8E8). The light status and focus values are deliberate Corral adjustments: the source kit's lighter status colors are unsuitable for small text on light surfaces. Dark secondary text is #B8B8B8 so it remains readable on the kit's elevated popup surfaces, including surface 8 (4.61:1 on #484848). Keep `destructive-contrast` for text on a filled error surface. Ordinary text targets at least 4.5:1 contrast; large text and essential control indicators target at least 3:1. Validate actual foreground/background pairs, including selected and highlighted states; the base palette ratio is not a full-screen contrast result.
 
 Theme choice supports light, dark and system. `light-dark()` resolves the palette; explicit `.light` and `.dark` scopes also select the matching overlay/shadow recipes. Monaco and xterm receive resolved sRGB colors through the shared theme-color helper because they parse their own colors.
 
@@ -128,7 +128,8 @@ The source kit keeps all eight elevation levels. Menus rise two levels and dialo
 | `Banner` | Status messages in the flow of the page: attention needed, blocked requests, models not ready, a decision waiting on a narrow run, and cautions. Compose `BannerTitle` and `BannerActions` with kit Buttons; a router link renders through Button's `render`. A banner whose message another live region already announces uses `role="note"`. Banners mount with their condition, without the kit's appear animation, so their text never empties while collapsing. |
 | Overview widgets | Cards that float in the empty margin right of the centered conversation and stay put while it scrolls. They never split the view or move the conversation; they show while the view is at least 75rem wide and are otherwise opened from the composer's Overview button. The container query measures the view, not the window. Each figure is a compact kit `Card` titled with an icon and caption, in a fixed order, shown only when it has something to say. A widget with a detail is the trigger of a kit `Popover` that opens beside it; Results and Changes navigate instead. Wrap the Card in the trigger, because Card keeps `onClick` for its stretched overlay, and lay out the title row inside `CardTitle`, whose hidden copy shares its grid cell. |
 | `ThinkingSteps` | The conversation's work log: the header folds a step per execution, a running execution is the active step, and each step's nested fold mounts its transcript on first open. |
-| `Switch`, `Checkbox` | `Switch` for a setting or option that applies directly. `Checkbox` composes one `CheckboxItem` in its own `CheckboxGroup` for a selection or confirmation; a flat list of choices composes `CheckboxGroup` directly. Both take a plain-text label, so put descriptions beside them. Native checkboxes are not used; schema question choices remain the documented exception. |
+| `Switch`, `Checkbox` | `Switch` for a setting or option that applies directly. `Checkbox` composes one `CheckboxItem` in its own `CheckboxGroup` for a selection or confirmation; a flat list of choices composes `CheckboxGroup` directly. Both take a plain-text label, so put descriptions beside them. A checkbox row alone owns focus and semantics; its visible inner primitive and generated input stay inert. Native checkboxes are not used; schema question choices remain the documented exception. |
+| `RadioGroup`, `RadioItem` | Each option has one visible focus owner and one announced radio state. Value-mode native plumbing stays fully hidden, including any generated inputs; it cannot create nested focus targets. Arrow keys select the next row, and Tab leaves the group. |
 | `Card` | Compose Header, Title, Description, Content, Action and Footer slots only when the content needs them. Cards are transparent by default; a surface or boundary must express grouping or selection. |
 | `Sidebar` | Compose the copied kit's Provider, Header, Content, Footer, Group and Menu primitives. Use its SearchField and WorkspaceTile for the app sidebar. Keep Corral's routes, virtualized sessions, collapse state and resize ownership. |
 | Settings navigation | Use the kit's settings-dialog composition: 13rem grouped icon sidebar with its own title, scrolling section content, close action, and a narrow-screen section selector. |

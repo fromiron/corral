@@ -101,7 +101,7 @@ function SearchResult({
                 result: source.artifactVersionId ?? undefined,
                 atSeq: source.artifactVersionId ? undefined : (source.sequence ?? undefined),
               }
-            : {}
+            : { compose: true }
       }
       onClick={onNavigate}
       className="block rounded fill-group p-2 hover:bg-subtle"

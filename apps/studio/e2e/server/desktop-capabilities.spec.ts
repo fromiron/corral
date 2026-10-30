@@ -224,10 +224,11 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const sessionId = new URL(page.url()).pathname.split('/').at(-1);
   if (!sessionId) throw new Error('The UI did not create a session');
-  await panelTab(page, 'Changes');
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   // The working copy offer sits beside the panel's empty state.
   await page.getByRole('button', { name: /Make a working copy from/ }).click();
   await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();
   await page
     .getByRole('option')
@@ -242,13 +243,17 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
 }
 
 async function approval(page: Page, name: string) {
-  await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 30000 });
-  await page.getByTestId('action-required').getByRole('link').click();
   const card = page
-    .getByTestId('run-monitor')
+    .getByTestId('chat-timeline')
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: `${name} · corral` });
   await expect(card).toBeVisible({ timeout: 30000 });
+  // The exact pending operation can be approved in its conversation turn.
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+  await expect(card.getByRole('link', { name: 'Tool rules for future runs' })).toHaveAttribute(
+    'href',
+    /\/settings\/harness\?returnTo=/,
+  );
   return card;
 }
 
@@ -376,9 +381,10 @@ test('Ask approves a real command and a read-bound Hashline edit in the managed 
     exitCode: 0,
     cleanupConfirmed: true,
   });
-  await panelTab(page, 'Changes');
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page.getByRole('link', { name: 'Review changes', exact: true }).click();
-  await expect(page).toHaveURL(/\/review/);
+  await expect.poll(() => new URL(page.url()).searchParams.get('review')).toBe('true');
+  await expect.poll(() => new URL(page.url()).searchParams.get('panel')).toBe('changes');
   await page.getByRole('button', { name: /command\.txt/ }).click();
   await expect(page.getByTestId('file-diff')).toContainText('created by run_command');
   await page.getByRole('button', { name: /README\.md/ }).click();
@@ -472,13 +478,16 @@ for (const cancelScope of ['run', 'command'] as const) {
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true);
-    const hidePanel = page.getByRole('banner').getByRole('button', { name: 'Hide the panel' });
-    await hidePanel.focus();
-    await hidePanel.press('Enter');
+    const views = page.getByRole('tablist', { name: 'Session views', exact: true });
+    const conversation = views.getByRole('tab', { name: 'Conversation', exact: true });
+    const files = views.getByRole('tab', { name: 'Files', exact: true });
+    await conversation.focus();
+    await conversation.press('Enter');
     await expect(commands).not.toBeVisible();
-    const showPanel = page.getByRole('banner').getByRole('button', { name: 'Show the panel' });
-    await expect(showPanel).toBeFocused();
-    await showPanel.press('Enter');
+    await expect(conversation).toBeFocused();
+    await conversation.press('ArrowRight');
+    await expect(files).toBeFocused();
+    await files.press('Enter');
     await expect(commands).toBeVisible();
     await commands.getByText('Output', { exact: true }).focus();
     await page.keyboard.press('Enter');
@@ -548,6 +557,11 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect(commandApproval).toContainText('node command-write.mjs');
   expect(existsSync(join(first.worktree, 'command.txt'))).toBe(false);
   await commandApproval.getByRole('button', { name: 'Allow once', exact: true }).click();
+  await page
+    .getByTestId('chat-timeline')
+    .getByTestId('run-required-action')
+    .getByRole('link', { name: 'Go to the request', exact: true })
+    .click();
   await expect(page.getByTestId('run-monitor')).toContainText(
     'Fixture A is waiting for your answer.',
     { timeout: 30000 },
@@ -587,8 +601,9 @@ test('a session writer and another session’s writer keep separate controls', a
   await page.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Independent writer C');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await panelTab(page, 'Changes');
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page.getByRole('button', { name: /Make a working copy from/ }).click();
+  await panelTab(page, 'Conversation');
   await requestBox(page).fill('Hold C in this separate working copy.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => status('C'), { timeout: 30000 }).toBe('awaiting_user');

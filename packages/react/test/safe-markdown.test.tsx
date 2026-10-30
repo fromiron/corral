@@ -63,3 +63,29 @@ describe('SafeMarkdown', () => {
     expect(view.querySelector('code')?.textContent).toBe('code');
   });
 });
+
+it('labels and highlights fenced source while keeping its exact copyable text', () => {
+  const source = 'const message: string = "<script>safe</script>";\n';
+  const view = show(`\`\`\`ts\n${source}\`\`\``);
+  expect(view.querySelector('pre code')?.textContent).toBe(source);
+  expect(view.querySelectorAll('pre code span').length).toBeGreaterThan(0);
+  expect(view.querySelector('button')?.getAttribute('aria-label')).toBe('Copy code');
+  expect(view.querySelector('[data-code-language]')?.textContent).toBe('ts');
+  expect(view.querySelector('script')).toBeNull();
+});
+
+it('keeps unfinished fences and unknown languages as safe readable source', () => {
+  const view = show('```unknown\n<script>alert(1)</script>\n');
+  expect(view.querySelector('pre code')?.textContent).toBe('<script>alert(1)</script>\n');
+  expect(view.querySelector('pre code span')).toBeNull();
+  expect(view.querySelector('script')).toBeNull();
+});
+
+it.each(['/* '.repeat(30_000), `"${'\\"'.repeat(30_000)}`])(
+  'consumes unterminated code tokens once through the end of source',
+  (source) => {
+    const view = show(`\`\`\`ts\n${source}\n\`\`\``);
+    expect(view.querySelector('pre code')?.textContent).toBe(`${source}\n`);
+    expect(view.querySelectorAll('pre code span')).toHaveLength(1);
+  },
+);
