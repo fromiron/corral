@@ -38,6 +38,7 @@ it('keeps session, Origin and CSRF checks while isolating interactive frames fro
     port: 0,
   });
   const origin = server.url;
+  expect((await fetch(`${origin}/api/v1/terminals/attention`)).status).toBe(401);
   const login = await fetch(`${origin}/api/v1/session`, {
     method: 'POST',
     headers: { origin, 'content-type': 'application/json' },
@@ -53,6 +54,7 @@ it('keeps session, Origin and CSRF checks while isolating interactive frames fro
     return fetch(url, { ...init, headers });
   };
   const repository = new RestCorralRepository({ baseUrl: origin, fetch: browserFetch });
+  expect(await new TerminalsApi({ baseUrl: origin, fetch: browserFetch }).attention()).toEqual([]);
   const created = await repository.createSession({
     projectId: 'default',
     title: 'Terminal transport',

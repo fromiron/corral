@@ -475,7 +475,7 @@
     "empty": "No teams yet.",
     "storedLocally": "Teams are saved in this browser only, and executions last until you reload.",
     "notPersistent": "This browser does not allow saving. Teams last until you close this tab.",
-    "revisions": "Definition r{definition} · Layout r{layout} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
+    "revisions": "Team version {definition} · Layout version {layout} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
     "updated": "Saved {time}",
     "open": "Open",
     "duplicate": "Duplicate",
@@ -522,7 +522,7 @@
   },
   "Editor": {
     "name": "Team name",
-    "revisions": "Definition r{definition} · Layout r{layout}",
+    "revisions": "Team version {definition} · Layout version {layout}",
     "unsaved": "Unsaved changes",
     "saved": "All changes saved",
     "save": "Save",
@@ -1324,7 +1324,10 @@
     "notFound": "Run {runId} could not be found.",
     "choose": "Compare {count} runs",
     "select": "Select run {runId} to compare",
-    "back": "Back to Corrals"
+    "back": "Back to project home",
+    "chooseRuns": "Choose two runs",
+    "chooseRunsHint": "Choose two runs from the project’s Runs list to compare their results.",
+    "unnamedRun": "Run"
   },
   "GettingStarted": {
     "heading": "Getting started",
@@ -1590,7 +1593,9 @@
       "cancelled": "Cancelled"
     },
     "restoreNamed": "Restore session: {title}",
-    "listSessionUnavailable": "This session is no longer available."
+    "listSessionUnavailable": "This session is no longer available.",
+    "terminalNeedsAttention": "Terminal needs attention",
+    "hideWorkingCopyNotice": "Hide working copy notice"
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1800,7 +1805,7 @@
       "conflict": "Conflict",
       "failed": "Failed",
       "reverted": "Reverted",
-      "revert_conflict": "Changed since: left as is",
+      "revert_conflict": "Not reverted: changed after applying",
       "uncertain": "Unknown"
     },
     "revert": "Revert",
@@ -1814,7 +1819,8 @@
       "check_failed": "Latest check failed: {detail}",
       "unreviewed": "{detail} file writes since “Mark working copy as read” (separate from approval)",
       "recipe_stopped": "Review stopped: {detail}",
-      "lsp_proposal": "Language server proposals awaiting review ({detail})"
+      "lsp_proposal": "Language server proposals awaiting review ({detail})",
+      "uncertain_terminal": "Terminal termination needs confirmation"
     },
     "open": "Open",
     "retrySend": "Check the same request",
@@ -2147,7 +2153,8 @@
     "teamNoneHint": "One assistant answers; it calls subagents only when you ask.",
     "teamAutoHint": "The assistant leads planner, researcher, writer and reviewer agents when the work benefits.",
     "teamCorralHint": "The assistant leads this Corral's roles, using its flow as guidance.",
-    "teamCorralGroup": "Corral"
+    "teamCorralGroup": "Corral",
+    "attachmentHash": "Content hash (SHA-256)"
   },
   "Commands": {
     "newSession": "New session",
@@ -2724,7 +2731,8 @@
       "server": "The MCP server is temporarily unavailable. Retry when it recovers.",
       "protocol": "The MCP server rejected the request. Check the endpoint address and transport.",
       "unknown": "The MCP connection test failed. Check the server, transport, and launch settings, then test again."
-    }
+    },
+    "internalSkillName": "Internal skill name"
   },
   "Navigation": {
     "app": "App",
@@ -3519,7 +3527,21 @@
     "uncertainTab": "Terminal termination needs confirmation",
     "writerNotice": "A terminal is holding this working copy. Stop it before sending a request that writes files.",
     "writerUncertainNotice": "Terminal termination has not been confirmed. The working copy stays reserved until the process is confirmed stopped.",
-    "openControls": "Open terminal controls"
+    "openControls": "Open terminal controls",
+    "recheckTermination": "Stop and verify",
+    "diagnosticReason": {
+      "session_not_ready": "The terminal process did not finish opening its own session.",
+      "identity_unavailable": "Corral could not verify which process owns this terminal.",
+      "identity_changed": "The terminal process identity changed before ownership could be confirmed.",
+      "process_exited": "The terminal process exited before ownership could be recorded.",
+      "startup_failed": "The terminal could not start.",
+      "cleanup_unconfirmed": "Corral could not confirm that the terminal process and its children have stopped.",
+      "receipt_unavailable": "Corral could not confirm the terminal’s recovery record.",
+      "host_restart_required": "This terminal record cannot prove whether its process has stopped."
+    },
+    "diagnosticCheck": "The working copy remains protected. Choose Stop and verify; if termination stays unconfirmed, inspect the host process and diagnostic details.",
+    "diagnosticHostRestart": "Save work on the host computer, restart its operating system, then choose Stop and verify. Restarting only the Corral app is insufficient.",
+    "diagnosticEnded": "Review the diagnostic details before creating another terminal."
   },
   "Docking": {
     "fileViewer": "File viewer",
@@ -4445,7 +4467,8 @@
     "statCache": "cache hit {share}",
     "statCacheUnreported": "cache not reported",
     "statSession": "Session total",
-    "statDefinition": "Turns are runs. Steps count the lead agent’s tool operations and child executions, not model calls. Tokens sum reported input and output from finished model calls; unreported usage is excluded and cached input is not added again."
+    "statDefinition": "Turns are runs. Steps count the lead agent’s tool operations and child executions, not model calls. Tokens sum reported input and output from finished model calls; unreported usage is excluded and cached input is not added again.",
+    "artifactTarget": "{name} · v{version}"
   },
   "RunMonitor": {
     "views": "Execution views",
@@ -4511,5 +4534,12 @@
       "TRANSPORT": "Check the network and endpoint address. Start the local model server if needed, then retry.",
       "CANCELLED": "Send the message again when you are ready."
     }
+  },
+  "RunIdentity": {
+    "unnamed": "Run",
+    "number": "Run #{number}",
+    "details": "Run details",
+    "open": "Open {name}",
+    "select": "Compare {name}"
   }
 }

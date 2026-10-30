@@ -152,10 +152,12 @@ export function notificationTarget(value: unknown): {
   kind: string;
   sessionId: string;
   runId: string | null;
+  terminalId?: string;
 } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (Object.keys(value).some((key) => !['kind', 'sessionId', 'runId'].includes(key))) return null;
-  const { kind, sessionId, runId } = value as Record<string, unknown>;
+  if (Object.keys(value).some((key) => !['kind', 'sessionId', 'runId', 'terminalId'].includes(key)))
+    return null;
+  const { kind, sessionId, runId, terminalId } = value as Record<string, unknown>;
   const identifier = (id: unknown): id is string =>
     typeof id === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(id);
   if (
@@ -164,6 +166,7 @@ export function notificationTarget(value: unknown): {
       'decision',
       'queued',
       'uncertain_write',
+      'uncertain_terminal',
       'integration',
       'check_failed',
       'unreviewed',
@@ -172,10 +175,18 @@ export function notificationTarget(value: unknown): {
     ].includes(kind) ||
     !identifier(sessionId) ||
     !(runId === null || identifier(runId)) ||
-    ((kind === 'decision' || kind === 'recipe_stopped') && !runId)
+    ((kind === 'decision' || kind === 'recipe_stopped') && !runId) ||
+    (kind === 'uncertain_terminal'
+      ? !identifier(terminalId) || runId !== null
+      : Object.hasOwn(value, 'terminalId'))
   )
     return null;
-  return { kind, sessionId, runId };
+  return {
+    kind,
+    sessionId,
+    runId,
+    ...(kind === 'uncertain_terminal' ? { terminalId: terminalId as string } : {}),
+  };
 }
 
 /** Up to five absolute workspace paths, the newest first, without repeats. */

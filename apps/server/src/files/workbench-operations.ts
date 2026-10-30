@@ -148,6 +148,19 @@ export class WorkbenchOperations {
     );
   }
 
+  /** Records recovery evidence without changing ownership or an already settled receipt. */
+  updateTerminalEvidence(operationId: string, generation: string, result: unknown): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE workbench_operations SET result_json=?,updated_at=?
+         WHERE operation_id=? AND kind='terminal' AND state IN ('running','uncertain')
+           AND json_extract(result_json, '$.terminal.generation')=?`,
+        )
+        .run(JSON.stringify(result), this.clock.nowIso(), operationId, generation).changes === 1
+    );
+  }
+
   /** Command receipts may complete after their debugger has released its process owner. */
   updateDebugResult(operationId: string, result: unknown): boolean {
     return (

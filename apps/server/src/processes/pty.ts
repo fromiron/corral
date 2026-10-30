@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   type HostProcessReservation,
+  linuxBootId,
   reserveHostProcessGroup,
   restoreHostProcessGroupReservation,
 } from '@corral/adapter-pi/processes';
@@ -13,6 +14,7 @@ import {
   type TerminalAck,
   TerminalControllerChange,
   TerminalCreate,
+  type TerminalDiagnostic,
   type TerminalEvent,
   TerminalIdentity,
   TerminalInput,
@@ -25,16 +27,32 @@ import {
 import { canonicalJson, ToolRefusal } from '@corral/core';
 import type { IPty, IPtyForkOptions } from 'node-pty';
 import type { WorkbenchOperations } from '../files/workbench-operations.ts';
-import { capturePtySession, cleanupPtySession, type PtySessionIdentity } from './pty-session.ts';
+import {
+  cleanupPtyLaunch,
+  cleanupPtySession,
+  observePtyLaunch,
+  PtyIdentityError,
+  type PtyLaunchEvidence,
+  type PtySessionIdentity,
+  waitForPtySession,
+} from './pty-session.ts';
 import { commandEnvironment, listShells, type ShellInfo } from './shells.ts';
 
 type Pty = Pick<IPty, 'pid' | 'write' | 'resize' | 'kill' | 'onData' | 'onExit'>;
 type Spawn = (file: string, args: string[], options: IPtyForkOptions) => Pty;
-type StoredTerminal = { kind: 'terminal'; terminal: TerminalView; identity?: PtySessionIdentity };
+type StoredTerminal = {
+  kind: 'terminal';
+  terminal: TerminalView;
+  identity?: PtySessionIdentity;
+  launch?: PtyLaunchEvidence;
+  startupDiagnostic?: TerminalDiagnostic;
+};
 type Listener = (event: TerminalStreamMessage) => void;
 type Entry = {
   view: TerminalView;
   identity?: PtySessionIdentity;
+  launch?: PtyLaunchEvidence;
+  startupDiagnostic?: TerminalDiagnostic;
   child?: Pty;
   reservation?: HostProcessReservation;
   home?: string;
@@ -47,6 +65,7 @@ type Entry = {
   completion: Promise<void>;
   resolveCompletion: () => void;
   settling?: Promise<void>;
+  recovering?: Promise<void>;
   cancelRetention?: () => void;
 };
 
@@ -59,8 +78,11 @@ export interface PtyRuntimeOptions {
   prepare(input: TerminalCreate): Promise<string>;
   shells?: () => Promise<ShellInfo[]>;
   spawn?: Spawn;
-  capture?: typeof capturePtySession;
+  capture?: (pid: number, owner: string) => PtySessionIdentity | Promise<PtySessionIdentity>;
+  bootId?: typeof linuxBootId;
+  observeLaunch?: typeof observePtyLaunch;
   cleanup?: typeof cleanupPtySession;
+  cleanupLaunch?: typeof cleanupPtyLaunch;
   newGeneration?: () => string;
   timers?: Scheduler;
   historyBytes?: number;
@@ -235,19 +257,10 @@ export class PtyRuntime {
     entry.stopped = true;
     if (!['exited', 'failed'].includes(entry.view.state)) entry.view.stopped = true;
     if (entry.view.state === 'uncertain') {
-      if (entry.identity && (await (this.options.cleanup ?? cleanupPtySession)(entry.identity))) {
-        entry.reservation?.releaseConfirmed();
-        entry.view.state = 'exited';
-        entry.view.controller = null;
-        entry.view.error = null;
-        this.options.operations.reconcileTerminal(terminalId, this.stored(entry));
-        this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
-      } else {
-        entry.view.error = entry.identity
-          ? 'Terminal process cleanup is still unconfirmed; ownership is retained'
-          : 'Terminal process identity is unavailable; ownership cannot be safely released';
-        this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
-      }
+      entry.recovering ??= this.recoverUncertain(entry).finally(() => {
+        delete entry.recovering;
+      });
+      await entry.recovering;
     } else if (entry.child) {
       await this.settle(entry);
     } else if (entry.view.state === 'starting' || entry.view.state === 'stopping') {
@@ -300,6 +313,8 @@ export class PtyRuntime {
             target: entry.view.target,
             generation: entry.view.generation,
           });
+        await entry.settling;
+        await entry.recovering;
         entry.cancelRetention?.();
         entry.listeners.clear();
         entry.events = [];
@@ -338,6 +353,8 @@ export class PtyRuntime {
         controller: null,
       });
       entry.identity = stored.identity;
+      entry.launch = stored.launch;
+      entry.startupDiagnostic = stored.startupDiagnostic;
       entry.resolveCompletion();
       this.entries.set(terminalId, entry);
     }
@@ -408,7 +425,59 @@ export class PtyRuntime {
       kind: 'terminal',
       terminal: entry.view,
       ...(entry.identity ? { identity: entry.identity } : {}),
+      ...(entry.launch ? { launch: entry.launch } : {}),
+      ...(entry.startupDiagnostic ? { startupDiagnostic: entry.startupDiagnostic } : {}),
     };
+  }
+
+  private async recoverUncertain(entry: Entry) {
+    if (!entry.identity && !entry.launch) {
+      const bootId = (this.options.bootId ?? linuxBootId)();
+      if (!bootId) throw new ToolRefusal('RESOURCE_CAPACITY', 'Host boot identity is unavailable');
+      entry.launch = { bootId, owner: entry.view.generation };
+      entry.view.diagnostic = { phase: 'recovery', code: 'host_restart_required' };
+      if (
+        !this.options.operations.updateTerminalEvidence(
+          entry.view.terminalId,
+          entry.view.generation,
+          this.stored(entry),
+        )
+      )
+        throw new ToolRefusal('REVISION_CONFLICT', 'terminal recovery receipt changed');
+    }
+    const confirmed = await this.cleanup(entry).catch(() => false);
+    if (confirmed) {
+      entry.view.state = 'exited';
+      entry.view.controller = null;
+      entry.view.error = null;
+      this.options.operations.reconcileTerminal(entry.view.terminalId, this.stored(entry));
+      entry.reservation?.releaseConfirmed();
+      if (entry.home) await rm(entry.home, { recursive: true, force: true }).catch(() => {});
+    } else {
+      const legacy = !entry.identity && !entry.launch?.pid;
+      entry.view.diagnostic = {
+        phase: 'recovery',
+        code: legacy ? 'host_restart_required' : 'cleanup_unconfirmed',
+      };
+      entry.view.error = legacy
+        ? 'This older terminal has no process identity. Save work and restart the host operating system, then check termination again. Restarting Corral alone does not prove cleanup.'
+        : 'Terminal process cleanup is still unconfirmed; ownership is retained';
+      if (
+        !this.options.operations.updateTerminalEvidence(
+          entry.view.terminalId,
+          entry.view.generation,
+          this.stored(entry),
+        )
+      )
+        throw new ToolRefusal('REVISION_CONFLICT', 'terminal recovery receipt changed');
+    }
+    this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+  }
+
+  private cleanup(entry: Entry): Promise<boolean> {
+    if (entry.identity) return (this.options.cleanup ?? cleanupPtySession)(entry.identity);
+    if (entry.launch) return (this.options.cleanupLaunch ?? cleanupPtyLaunch)(entry.launch);
+    return Promise.resolve(!entry.child);
   }
 
   private async launch(entry: Entry, input: TerminalCreate) {
@@ -434,6 +503,11 @@ export class PtyRuntime {
       env.CORRAL_PROCESS_OWNER = owner;
       env.TERM = 'xterm-256color';
       const args = shell.id === 'bash' ? ['--noprofile', '--norc', '-i'] : ['-i'];
+      const bootId = (this.options.bootId ?? linuxBootId)();
+      if (!bootId) throw new PtyIdentityError('identity_unavailable');
+      entry.launch = { bootId, owner };
+      if (!this.options.operations.updateRunning(input.operationId, this.stored(entry)))
+        throw new Error('receipt changed');
       entry.child = spawn(shell.executable, args, {
         cwd,
         env: env as Record<string, string>,
@@ -441,24 +515,47 @@ export class PtyRuntime {
         rows: input.rows,
         name: 'xterm-256color',
       });
-      entry.identity = (this.options.capture ?? capturePtySession)(entry.child.pid, owner);
-      entry.view.state = 'running';
-      if (!this.options.operations.updateRunning(input.operationId, this.stored(entry)))
-        throw new Error('receipt changed');
+      entry.launch = (this.options.observeLaunch ?? observePtyLaunch)(
+        entry.child.pid,
+        owner,
+        bootId,
+      );
       entry.child.onData((data) => this.event(entry, { type: 'output', data }));
       entry.child.onExit(({ exitCode }) => {
         entry.view.exitCode = exitCode;
+        if (entry.view.state === 'starting' && !entry.stopped) {
+          entry.failed = true;
+          entry.view.diagnostic = { phase: 'startup', code: 'process_exited' };
+          entry.startupDiagnostic = entry.view.diagnostic;
+        }
         void this.settle(entry);
       });
+      if (!this.options.operations.updateRunning(input.operationId, this.stored(entry)))
+        throw new Error('receipt changed');
+      const capture = this.options.capture
+        ? this.options.capture(entry.child.pid, owner)
+        : waitForPtySession(entry.launch, this.options.timers);
+      entry.identity = capture instanceof Promise ? await capture : capture;
+      if (entry.stopped || entry.view.state !== 'starting') {
+        await this.settle(entry);
+        return;
+      }
+      entry.view.state = 'running';
+      if (!this.options.operations.updateRunning(input.operationId, this.stored(entry)))
+        throw new Error('receipt changed');
       this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
-    } catch {
+    } catch (error) {
+      if (entry.stopped) {
+        await this.settle(entry);
+        return;
+      }
       entry.failed = true;
       entry.view.error = 'Terminal startup failed';
-      if (entry.child && !entry.identity) {
-        try {
-          entry.child.kill();
-        } catch {}
-      }
+      entry.startupDiagnostic ??= {
+        phase: 'startup',
+        code: error instanceof PtyIdentityError ? error.code : 'startup_failed',
+      };
+      entry.view.diagnostic ??= entry.startupDiagnostic;
       await this.settle(entry);
     }
   }
@@ -469,13 +566,12 @@ export class PtyRuntime {
     entry.view.controller = null;
     this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
     entry.settling = (async () => {
-      let confirmed = !entry.child;
-      if (entry.identity)
-        confirmed = await (this.options.cleanup ?? cleanupPtySession)(entry.identity).catch(
-          () => false,
-        );
+      const confirmed = entry.child ? await this.cleanup(entry).catch(() => false) : true;
       entry.view.state = !confirmed ? 'uncertain' : entry.failed ? 'failed' : 'exited';
-      if (!confirmed) entry.view.error = 'Terminal process cleanup is unconfirmed';
+      if (!confirmed) {
+        entry.view.error = 'Terminal process cleanup is unconfirmed';
+        entry.view.diagnostic ??= { phase: 'cleanup', code: 'cleanup_unconfirmed' };
+      }
       if (confirmed) {
         entry.reservation?.releaseConfirmed();
         if (entry.home) await rm(entry.home, { recursive: true, force: true }).catch(() => {});
@@ -496,6 +592,7 @@ export class PtyRuntime {
       } catch {
         entry.view.state = 'uncertain';
         entry.view.error = 'Terminal receipt could not be saved';
+        entry.view.diagnostic = { phase: 'cleanup', code: 'receipt_unavailable' };
       }
       this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
       entry.resolveCompletion();

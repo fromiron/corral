@@ -1,3 +1,4 @@
+import type { RunSummary } from '@corral/core';
 import { TIDY_EVENT } from '@corral/react';
 import { Button, Kbd } from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
@@ -10,7 +11,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
   type AppCommand,
@@ -44,6 +45,7 @@ import {
   useSettingsNavigation,
 } from './workbench/navigation.ts';
 import { usePreferences } from './workbench/preferences.ts';
+import { loadRunIdentities, runIdentity, runIdentityText } from './workbench/runIdentity.ts';
 import { SessionSearchDialog } from './workbench/SessionSearchDialog.tsx';
 import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
 
@@ -326,11 +328,15 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
   const tw = useTranslations('Workspace');
   const tp = useTranslations('Projects');
   const ts = useTranslations('SessionSearch');
+  const ti = useTranslations('RunIdentity');
+  const status = useTranslations('Status');
+  const format = useFormatter();
   const navigate = useNavigate();
   const services = useServices();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [dynamic, setDynamic] = useState<AppCommand[]>([]);
+  const [runDetails, setRunDetails] = useState<Record<string, RunSummary>>({});
   const registered = useRegisteredCommands();
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -344,8 +350,17 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       services.repository.listProjects(),
       services.repository.listSessions(currentProject()),
     ]).then(
-      ([corrals, runs, projects, sessions]) => {
+      async ([corrals, runs, projects, sessions]) => {
+        const shownRuns = runs.slice(0, 20);
+        const identities = await loadRunIdentities(
+          shownRuns,
+          runs,
+          sessions,
+          (id) => services.transport.getRunDefinition(id),
+          false,
+        );
         if (!live) return;
+        setRunDetails(Object.fromEntries(shownRuns.map((run) => [`run:${run.runId}`, run])));
         setDynamic([
           ...sessions
             .filter((x) => !x.archivedAt)
@@ -389,12 +404,18 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
                 navigate({ to: '/corrals/$corralId/edit', params: { corralId: c.corralId } }),
             }),
           ),
-          ...runs.slice(0, 20).map(
+          ...shownRuns.map(
             (r): AppCommand => ({
               id: `run:${r.runId}`,
-              title: t('openRun', { runId: r.runId }),
+              title: ti('open', {
+                name: runIdentityText(
+                  identities[r.runId] ?? runIdentity(r, runs, sessions, null, false),
+                  ti('unnamed'),
+                  (number) => ti('number', { number }),
+                ),
+              }),
               group: t('groups.runs'),
-              keywords: [r.status],
+              keywords: [r.status, r.runId],
               run: () => navigate({ to: '/runs/$runId', params: { runId: r.runId } }),
             }),
           ),
@@ -405,7 +426,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     return () => {
       live = false;
     };
-  }, [services, navigate, t, tp]);
+  }, [services, navigate, t, tp, ti]);
 
   const commands = useMemo<AppCommand[]>(() => {
     const fromTemplate = WORKSPACE_TEMPLATES.map(
@@ -504,6 +525,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     grouped.set(command.group, [...(grouped.get(command.group) ?? []), command]);
   const shown = [...grouped.values()].flat();
   const current = Math.min(active, Math.max(0, shown.length - 1));
+  const selectedRun = runDetails[shown[current]?.id ?? ''];
   const runCommand = async (command: AppCommand | undefined) => {
     if (!command || command.disabled) return;
     onClose();
@@ -574,6 +596,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
             <p className="px-2 pt-2 pb-1 text-2xs font-medium text-muted-foreground">{group}</p>
             {list.map((command) => {
               const index = shown.indexOf(command);
+              const run = runDetails[command.id];
               return (
                 <div
                   key={command.id}
@@ -592,7 +615,18 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
                     index === current ? 'bg-subtle' : ''
                   } ${command.disabled ? 'opacity-50' : ''}`}
                 >
-                  <span className="min-w-0 flex-1 truncate">{command.title}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{command.title}</span>
+                    {run ? (
+                      <span className="block text-xs text-muted-foreground">
+                        {status(run.status)} ·{' '}
+                        {format.dateTime(new Date(run.startedAt), {
+                          dateStyle: 'short',
+                          timeStyle: 'medium',
+                        })}
+                      </span>
+                    ) : null}
+                  </span>
                   {command.disabled && command.hint ? (
                     <span className="text-2xs text-muted-foreground">{command.hint}</span>
                   ) : command.slash ? (
@@ -607,6 +641,15 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
           </div>
         ))}
       </div>
+      {selectedRun ? (
+        <details
+          key={selectedRun.runId}
+          className="border-t border-line px-3 py-2 text-xs text-muted-foreground"
+        >
+          <summary>{ti('details')}</summary>
+          <code className="select-text break-all">{selectedRun.runId}</code>
+        </details>
+      ) : null}
     </Modal>
   );
 }

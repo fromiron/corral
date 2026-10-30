@@ -13,6 +13,7 @@ export type ProcessRow =
       id: string;
       name: string;
       target: string | null;
+      artifact?: { name: string; version: number };
       status: 'requested' | 'allowed' | 'blocked' | 'finished' | 'failed' | 'cancelled';
     }
   | { kind: 'agent'; id: string; label: string; status: string };
@@ -83,11 +84,16 @@ export function buildTurnProcess(
             live: !projection?.modelCalls[pendingReply]?.finished && running,
           });
         pendingReply = null;
+        const target = targetOf(payload.validatedArgs);
+        const artifact = name === 'read_artifact' && target ? projection?.artifacts[target] : null;
         const tool: Extract<ProcessRow, { kind: 'tool' }> = {
           kind: 'tool',
           id: payload.toolCallId as string,
           name,
-          target: targetOf(payload.validatedArgs),
+          target,
+          ...(artifact
+            ? { artifact: { name: firstLine(artifact.name), version: artifact.version } }
+            : {}),
           status: 'requested',
         };
         tools.set(tool.id, tool);

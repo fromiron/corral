@@ -100,7 +100,8 @@ export function TurnProcess({
               : row.status === 'failed'
                 ? t('failed')
                 : null;
-        return [name, row.target, state].filter(Boolean).join(' · ');
+        const target = row.artifact ? t('artifactTarget', row.artifact) : row.target;
+        return [name, target, state].filter(Boolean).join(' · ');
       }
       case 'agent':
         return t('agentStatus', {
