@@ -389,17 +389,29 @@ export function WorkingCopyPanel({
 }
 
 /** What needs a person in this project; it empties as things are handled. */
-export function InboxSection({ projectId }: { projectId: string }) {
+export function InboxSection({
+  projectId,
+  onItems,
+}: {
+  projectId: string;
+  onItems?: (items: InboxItemView[]) => void;
+}) {
   const t = useTranslations('Review');
   const tr = useTranslations('Recipe');
   const { workspaces } = useServices();
   const [items, setItems] = useState<InboxItemView[]>([]);
   useEffect(() => {
+    setItems([]);
+    onItems?.([]);
     if (!workspaces) return;
     let live = true;
     const load = () =>
       workspaces.inbox(projectId).then(
-        (list) => live && setItems(list),
+        (list) => {
+          if (!live) return;
+          setItems(list);
+          onItems?.(list);
+        },
         () => {},
       );
     void load();
@@ -408,7 +420,7 @@ export function InboxSection({ projectId }: { projectId: string }) {
       live = false;
       clearInterval(timer);
     };
-  }, [workspaces, projectId]);
+  }, [workspaces, projectId, onItems]);
   if (items.length === 0) return null;
   return (
     <section
@@ -435,7 +447,16 @@ export function InboxSection({ projectId }: { projectId: string }) {
                     : (item.detail ?? ''),
               })}
             </span>
-            {item.kind === 'recipe_stopped' && item.runId ? (
+            {item.kind === 'uncertain_terminal' && item.terminalId ? (
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId: item.sessionId }}
+                search={{ panel: 'terminal', terminal: item.terminalId }}
+                className="text-xs underline"
+              >
+                {t('open')}
+              </Link>
+            ) : item.kind === 'recipe_stopped' && item.runId ? (
               <Link to="/runs/$runId" params={{ runId: item.runId }} className="text-xs underline">
                 {t('open')}
               </Link>

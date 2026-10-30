@@ -1,3 +1,4 @@
+import type { InboxItemView } from '@corral/client';
 import {
   type CorralSummary,
   DEFAULT_PROJECT_ID,
@@ -5,7 +6,7 @@ import {
   type RunSummary,
   type WorkSession,
 } from '@corral/core';
-import { arrangeDraft, draftLayout, emptyDraft, importDocuments, StatusBadge } from '@corral/react';
+import { arrangeDraft, draftLayout, emptyDraft, importDocuments } from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -18,7 +19,6 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
-  Checkbox,
   InputField,
   InputGroup,
   KitButton,
@@ -45,8 +45,13 @@ import { createFromTemplate, WORKSPACE_TEMPLATES, type WorkspaceTemplateId } fro
 import { StartMeeting } from '../workbench/NewMeeting.tsx';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
+import { RunList } from '../workbench/RunList.tsx';
 import { writeDraft } from '../workbench/sessionDraft.ts';
-import { latestSessionRun, sessionListState } from '../workbench/sessionList.ts';
+import {
+  latestSessionRun,
+  sessionListState,
+  uncertainSessionTerminal,
+} from '../workbench/sessionList.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
 import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
@@ -76,6 +81,7 @@ export function WorkspacePage() {
   const router = useRouter();
   const navigate = useNavigate();
   const [errors, setErrors] = useState<string[]>([]);
+  const [inboxItems, setInboxItems] = useState<InboxItemView[]>([]);
   const importInput = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [copyTemplate, setCopyTemplate] = useState<WorkspaceTemplateId | null>(null);
@@ -337,37 +343,7 @@ export function WorkspacePage() {
       {runs.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('runsEmpty')}</p>
       ) : (
-        <ul className="flex flex-col" aria-labelledby="runs-heading">
-          {runs.map((run) => {
-            const corral = corrals.find((c) => c.corralId === run.corralId);
-            return (
-              <li
-                key={run.runId}
-                className="flex flex-wrap items-center gap-3 border-b border-line/50 py-2 text-sm last:border-b-0"
-              >
-                <Checkbox
-                  label={tc('select', { runId: run.runId })}
-                  checked={picked.includes(run.runId)}
-                  onToggle={() => pick(run.runId, !picked.includes(run.runId))}
-                />
-                <StatusBadge status={run.status} />
-                <Link
-                  to="/runs/$runId"
-                  params={{ runId: run.runId }}
-                  className="font-mono text-xs hover:underline"
-                >
-                  {run.runId}
-                </Link>
-                <span className="text-xs text-muted-foreground">
-                  {corral?.name ?? run.corralId} ·{' '}
-                  {t('runStarted', {
-                    time: ago(run.startedAt),
-                  })}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <RunList runs={runs} sessions={sessions} picked={picked} onPick={pick} />
       )}
     </section>
   );
@@ -390,7 +366,7 @@ export function WorkspacePage() {
                 <GettingStarted runs={runs.length} projectId={projectId} />
               </>
             )}
-            <InboxSection projectId={projectId} />
+            <InboxSection projectId={projectId} onItems={setInboxItems} />
             {errors.length > 0 ? (
               <div
                 role="alert"
@@ -405,7 +381,7 @@ export function WorkspacePage() {
               </div>
             ) : null}
             <ProjectTabs
-              sessions={<SessionList sessions={sessions} runs={runs} />}
+              sessions={<SessionList sessions={sessions} runs={runs} attention={inboxItems} />}
               teams={teamsPanel}
               folder={<WorkFolderSection projectId={projectId} />}
               materials={<ProjectMaterials key={projectId} projectId={projectId} />}
@@ -453,10 +429,16 @@ function ProjectTabs({
   // A saved tab or an explicit library link is an intentional choice. First visits start
   // with conversations; designing a Corral is never a prerequisite for sending a request.
   const tab: ProjectTab =
-    location === 'corrals' ? 'teams' : saved && tabs.includes(saved) ? saved : 'sessions';
+    location === 'corrals'
+      ? 'teams'
+      : location === 'runs'
+        ? 'runs'
+        : saved && tabs.includes(saved)
+          ? saved
+          : 'sessions';
   const chooseTab = (value: ProjectTab) => {
     setTab(value);
-    if (location === 'corrals')
+    if (location === 'corrals' || location === 'runs')
       void navigate({ hash: '', search: (search) => search, replace: true });
   };
   const refs = useRef<Partial<Record<ProjectTab, HTMLButtonElement | null>>>({});
@@ -907,7 +889,15 @@ function StartSession({
 }
 
 /** The project's work sessions: pinned first, searchable. */
-function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSummary[] }) {
+function SessionList({
+  sessions,
+  runs,
+  attention,
+}: {
+  sessions: WorkSession[];
+  runs: RunSummary[];
+  attention: InboxItemView[];
+}) {
   const status = useTranslations('Status');
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
@@ -944,7 +934,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
     .filter(
       (x) =>
         (showArchived || !x.archivedAt) &&
-        (stateFilter === 'all' || sessionListState(x, runs) === stateFilter) &&
+        (stateFilter === 'all' || sessionListState(x, runs, attention) === stateFilter) &&
         (!needle || `${x.title}\n${x.objective}`.toLowerCase().includes(needle)),
     )
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
@@ -993,20 +983,26 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
         <ul aria-label={t('heading')} className="flex flex-col">
           {shown.map((x) => {
             const latest = latestSessionRun(x, runs);
+            const terminal = uncertainSessionTerminal(x.sessionId, attention);
             return (
               <li key={x.sessionId} className="flex items-center gap-2">
                 <Link
                   to="/sessions/$sessionId"
                   params={{ sessionId: x.sessionId }}
-                  search={{ compose: true }}
+                  search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
                   className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
                 >
                   <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
+                  <span className="min-w-0 text-right text-xs text-muted-foreground">
                     {[
                       x.pinned ? t('pinned') : null,
                       x.archivedAt ? t('archived') : null,
-                      latest ? status(latest.status) : t(`listState.${sessionListState(x, runs)}`),
+                      terminal ? t('terminalNeedsAttention') : null,
+                      latest
+                        ? status(latest.status)
+                        : terminal
+                          ? null
+                          : t(`listState.${sessionListState(x, runs)}`),
                       t('runCount', {
                         count: runs.filter((r) => r.sessionId === x.sessionId).length,
                       }),
@@ -1016,7 +1012,7 @@ function SessionList({ sessions, runs }: { sessions: WorkSession[]; runs: RunSum
                       .join(' · ')}
                   </span>
                 </Link>
-                {x.archivedAt || sessionListState(x, runs) === 'empty' ? (
+                {x.archivedAt || sessionListState(x, runs, attention) === 'empty' ? (
                   <Button
                     variant="ghost"
                     size="compact"

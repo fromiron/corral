@@ -152,7 +152,7 @@ test.describe('saved team roles', () => {
         .first()
         .fill(`Writer r${revision}`);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
-      await expect(page.getByTestId('revisions')).toContainText(`Definition r${revision}`);
+      await expect(page.getByTestId('revisions')).toContainText(`Team version ${revision}`);
       await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
       await expect(page.getByRole('banner')).toContainText(`· r${revision}`);
       await expect(page.getByTestId('models-not-ready')).toContainText(

@@ -9,6 +9,9 @@ test('save a disabled schedule, run through Auto, and reopen its persisted histo
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await page.getByRole('link', { name: 'Schedules', exact: true }).click();
   await page.getByRole('button', { name: 'New schedule', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Project', exact: true })).toContainText(
+    'My project',
+  );
   await page.getByLabel('Title', { exact: true }).fill('Daily project review');
   await page.getByLabel('Request', { exact: true }).fill('Summarize the available information.');
   await expect(page.getByLabel('Enable scheduled runs')).not.toBeChecked();

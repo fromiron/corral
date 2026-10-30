@@ -1026,6 +1026,9 @@ export class TerminalsApi {
   constructor(options: HttpOptions) {
     this.http = new Http(options);
   }
+  attention(): Promise<InboxItemView[]> {
+    return this.http.json('/terminals/attention');
+  }
   private path(sessionId: string, terminalId?: string) {
     return `/sessions/${encodeURIComponent(sessionId)}/terminals${terminalId === undefined ? '' : `/${encodeURIComponent(terminalId)}`}`;
   }
@@ -2924,6 +2927,7 @@ export interface InboxItemView {
     | 'decision'
     | 'queued'
     | 'uncertain_write'
+    | 'uncertain_terminal'
     | 'integration'
     | 'check_failed'
     | 'unreviewed'
@@ -2933,4 +2937,6 @@ export interface InboxItemView {
   sessionTitle: string;
   runId: string | null;
   detail: string | null;
+  /** Present only for an uncertain terminal's read-only recovery link. */
+  terminalId?: string;
 }

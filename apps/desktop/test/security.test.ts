@@ -120,3 +120,22 @@ it('notification destinations accept identities only, without URLs or host selec
     runId: null,
   });
 });
+
+it('terminal notifications require an exact terminal identity and do not accept it on other kinds', async () => {
+  const { notificationTarget } = await import('../src/security.ts');
+  const target = {
+    kind: 'uncertain_terminal',
+    sessionId: 'session_a',
+    runId: null,
+    terminalId: 'pty_a',
+  };
+  expect(notificationTarget(target)).toEqual(target);
+  for (const value of [
+    { ...target, terminalId: undefined },
+    { ...target, terminalId: '../other' },
+    { ...target, terminalId: 'https://example.test' },
+    { ...target, runId: 'run_a' },
+    { ...target, kind: 'queued' },
+  ])
+    expect(notificationTarget(value)).toBeNull();
+});

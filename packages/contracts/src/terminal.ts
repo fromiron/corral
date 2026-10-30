@@ -46,6 +46,20 @@ export const TerminalController = z.strictObject({
   acceptedSequence: z.int().min(0),
 });
 export type TerminalController = z.infer<typeof TerminalController>;
+export const TerminalDiagnostic = z.strictObject({
+  phase: z.enum(['startup', 'cleanup', 'recovery']),
+  code: z.enum([
+    'session_not_ready',
+    'identity_unavailable',
+    'identity_changed',
+    'process_exited',
+    'startup_failed',
+    'cleanup_unconfirmed',
+    'receipt_unavailable',
+    'host_restart_required',
+  ]),
+});
+export type TerminalDiagnostic = z.infer<typeof TerminalDiagnostic>;
 export const TerminalView = z.strictObject({
   terminalId: Identifier,
   target: WorkspaceTarget,
@@ -62,6 +76,7 @@ export const TerminalView = z.strictObject({
   exitCode: z.int().nullable(),
   stopped: z.boolean().optional(),
   error: z.string().nullable(),
+  diagnostic: TerminalDiagnostic.optional(),
 });
 export type TerminalView = z.infer<typeof TerminalView>;
 export const TerminalList = z.strictObject({

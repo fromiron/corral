@@ -32,8 +32,10 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   corral,
 }) => {
   await corral.open('/');
+  const project = await api(page, '/projects', 'POST', { name: 'Unvisited terminal project' });
+  const projectId = project.project.projectId as string;
   const created = await api(page, '/sessions', 'POST', {
-    projectId: 'default',
+    projectId,
     title: 'Observed terminal owner',
   });
   const sessionId = created.session.sessionId as string;
@@ -42,10 +44,10 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
     terminalId: 'terminal_fixture',
     generation: 'generation_fixture',
     shellId: 'bash',
-    state: 'running',
+    state: 'uncertain',
     target: {
       hostId: 'fixture',
-      projectId: 'default',
+      projectId,
       bindingId: 'binding_fixture',
       sessionId,
       copyGeneration: 1,
@@ -62,6 +64,27 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
     error: null,
   };
   const mutations: string[] = [];
+  const attention = () =>
+    terminal.state === 'uncertain'
+      ? [
+          {
+            kind: 'uncertain_terminal',
+            sessionId,
+            sessionTitle: 'Observed terminal owner',
+            runId: null,
+            terminalId: terminal.terminalId,
+            detail: null,
+          },
+        ]
+      : [];
+  let projectInboxRead = false;
+  await page.route('**/api/v1/terminals/attention', (route) =>
+    route.fulfill({ json: attention() }),
+  );
+  await page.route(`**/api/v1/projects/${projectId}/inbox`, (route) => {
+    projectInboxRead = true;
+    return route.fulfill({ json: attention() });
+  });
   await page.route(`**/api/v1/sessions/${sessionId}/terminals**`, async (route) => {
     const request = route.request();
     if (request.method() !== 'GET') {
@@ -89,14 +112,70 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
       });
     }
   });
-  await corral.open(`/sessions/${sessionId}`);
+  // The global attention query must find this session before its project or terminal was opened.
+  await page.reload();
+  const sidebar = page.getByTestId('app-sidebar');
+  const attentionLink = sidebar.getByRole('link', {
+    name: /Observed terminal owner Terminal needs attention/,
+  });
+  const terminalPath = `/sessions/${sessionId}?panel=terminal&terminal=${terminal.terminalId}`;
+  await expect(attentionLink).toBeVisible();
+  await expect(attentionLink).toHaveAttribute('href', terminalPath);
+  expect(projectInboxRead).toBe(false);
+  expect(corral.server.coordinator.listRuns()).toEqual([]);
+  await attentionLink.click();
+  await expect(page).toHaveURL(`${corral.server.url}${terminalPath}`);
+  const panel = page.getByTestId('terminal-panel');
+  await expect(panel).toBeVisible();
+  await sidebar.getByRole('link', { name: 'Unvisited terminal project', exact: true }).click();
+  const inbox = page.getByRole('region', { name: 'Pending actions (1)', exact: true });
+  await expect(inbox).toContainText(
+    'Observed terminal owner · Terminal termination needs confirmation',
+  );
+  await page.getByRole('combobox', { name: 'Session status', exact: true }).click();
+  await page.getByRole('option', { name: 'Needs attention', exact: true }).click();
+  const sessionRow = page
+    .getByRole('list', { name: 'Sessions', exact: true })
+    .getByRole('link', { name: /Observed terminal owner/ });
+  await expect(sessionRow).toBeVisible();
+  await expect(sessionRow).toContainText('Terminal needs attention');
+  await expect(sessionRow).toHaveAttribute('href', terminalPath);
+  await expect(inbox.getByRole('link', { name: 'Open', exact: true })).toHaveAttribute(
+    'href',
+    terminalPath,
+  );
+  await inbox.getByRole('link', { name: 'Open', exact: true }).click();
+  await expect(page).toHaveURL(`${corral.server.url}${terminalPath}`);
+  await expect(panel).toBeVisible();
+  terminal = { ...terminal, state: 'running' };
+  await panel.getByRole('button', { name: 'Refresh terminals' }).click();
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   const notice = page.getByTestId('terminal-writer-notice');
   await expect(notice).toContainText('A terminal is holding this working copy');
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
-  const panel = page.getByTestId('terminal-panel');
   await expect(panel).toContainText('Releasing input only disconnects this view’s keyboard');
-  terminal = { ...terminal, state: 'uncertain', replayAvailable: false };
+  terminal = {
+    ...terminal,
+    state: 'uncertain',
+    replayAvailable: false,
+    error: 'Legacy terminal observation is missing',
+    diagnostic: { phase: 'recovery', code: 'host_restart_required' },
+  };
   await panel.getByRole('button', { name: 'Refresh terminals' }).click();
+  const recovery = panel.getByTestId('terminal-recovery-guidance');
+  await expect(recovery).toContainText('restart its operating system');
+  await expect(recovery).toContainText('Restarting only the Corral app is insufficient');
+  await expect(panel.getByRole('button', { name: 'Stop and verify', exact: true })).toBeEnabled();
+  await expect(
+    panel.getByText('Legacy terminal observation is missing', { exact: true }),
+  ).toBeHidden();
+  await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
+  await page.reload();
+  await expect(recovery).toContainText('운영체제를 재시작');
+  await expect(panel.getByRole('button', { name: '종료하고 확인', exact: true })).toBeEnabled();
+  await panel.screenshot({ path: test.info().outputPath('terminal-recovery-ko.png') });
+  await page.evaluate(() => localStorage.setItem('corral:locale', 'en'));
+  await page.reload();
   await expect(
     page.getByRole('tab').getByRole('img', { name: 'Terminal termination needs confirmation' }),
   ).toBeVisible();
@@ -104,7 +183,8 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await expect(notice).toContainText('termination has not been confirmed');
   await notice.screenshot({ path: test.info().outputPath('terminal-uncertain-notice.png') });
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
-  terminal = { ...terminal, state: 'exited', exitCode: 0 };
+  const { diagnostic: _diagnostic, ...ended } = terminal;
+  terminal = { ...ended, state: 'exited', exitCode: 0, error: null };
   await panel.getByRole('button', { name: 'Refresh terminals' }).click();
   await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   await expect(notice).toHaveCount(0);

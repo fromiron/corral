@@ -475,7 +475,7 @@
     "empty": "아직 팀이 없습니다.",
     "storedLocally": "팀은 이 브라우저에만 저장되며 실행 기록은 새로고침할 때 사라집니다.",
     "notPersistent": "이 브라우저에서는 저장할 수 없습니다. 탭을 닫으면 팀이 사라집니다.",
-    "revisions": "정의 r{definition} · 레이아웃 r{layout} · {nodes, plural, =0 {노드 없음} one {노드 #개} other {노드 #개}}",
+    "revisions": "팀 구성 버전 {definition} · 화면 배치 버전 {layout} · {nodes, plural, =0 {노드 없음} one {노드 #개} other {노드 #개}}",
     "updated": "{time} 저장",
     "open": "열기",
     "duplicate": "복제",
@@ -522,7 +522,7 @@
   },
   "Editor": {
     "name": "팀 이름",
-    "revisions": "정의 r{definition} · 레이아웃 r{layout}",
+    "revisions": "팀 구성 버전 {definition} · 화면 배치 버전 {layout}",
     "unsaved": "저장하지 않은 변경",
     "saved": "모두 저장됨",
     "save": "저장",
@@ -1324,7 +1324,10 @@
     "notFound": "실행 {runId}을 찾을 수 없습니다.",
     "choose": "실행 {count}개 비교",
     "select": "비교할 실행 {runId} 선택",
-    "back": "Corral 목록으로"
+    "back": "프로젝트 홈으로",
+    "chooseRuns": "실행 두 개 선택",
+    "chooseRunsHint": "프로젝트의 실행 목록에서 비교할 실행 두 개를 선택하세요.",
+    "unnamedRun": "실행"
   },
   "GettingStarted": {
     "heading": "시작하기",
@@ -1590,7 +1593,9 @@
       "cancelled": "취소됨"
     },
     "restoreNamed": "세션 되살리기: {title}",
-    "listSessionUnavailable": "이 세션을 더 이상 찾을 수 없습니다."
+    "listSessionUnavailable": "이 세션을 더 이상 찾을 수 없습니다.",
+    "terminalNeedsAttention": "터미널 확인 필요",
+    "hideWorkingCopyNotice": "작업 사본 안내 숨기기"
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",
@@ -1800,7 +1805,7 @@
       "conflict": "충돌",
       "failed": "실패",
       "reverted": "되돌림",
-      "revert_conflict": "그 뒤 바뀜: 그대로 둠",
+      "revert_conflict": "반영 후 변경되어 되돌리지 않음",
       "uncertain": "모름"
     },
     "revert": "되돌리기",
@@ -1814,7 +1819,8 @@
       "check_failed": "최근 검증 실패: {detail}",
       "unreviewed": "“작업 사본 읽음 표시” 이후 파일 쓰기 {detail}회 (승인과 별개)",
       "recipe_stopped": "검토 중단: {detail}",
-      "lsp_proposal": "검토 대기 중인 언어 서버 제안 ({detail})"
+      "lsp_proposal": "검토 대기 중인 언어 서버 제안 ({detail})",
+      "uncertain_terminal": "터미널 종료 확인이 필요해요"
     },
     "open": "열기",
     "retrySend": "같은 요청 결과 확인",
@@ -2147,7 +2153,8 @@
     "teamNoneHint": "어시스턴트 하나가 답하고, 요청할 때만 서브에이전트를 부릅니다.",
     "teamAutoHint": "어시스턴트가 필요할 때 기획·조사·작성·검토 에이전트를 이끕니다.",
     "teamCorralHint": "어시스턴트가 이 Corral의 역할들을 이끌고, 흐름은 참고로 씁니다.",
-    "teamCorralGroup": "Corral"
+    "teamCorralGroup": "Corral",
+    "attachmentHash": "내용 해시 (SHA-256)"
   },
   "Commands": {
     "newSession": "새 세션",
@@ -2724,7 +2731,8 @@
       "server": "MCP 서버를 일시적으로 사용할 수 없어요. 복구된 뒤 다시 연결하세요.",
       "protocol": "MCP 서버가 요청을 거부했어요. 접속 주소와 전송 방식을 확인하세요.",
       "unknown": "MCP 연결 확인에 실패했어요. 서버, 전송 방식, 실행 설정을 확인한 뒤 다시 연결하세요."
-    }
+    },
+    "internalSkillName": "내부 스킬 이름"
   },
   "Navigation": {
     "app": "앱",
@@ -3519,7 +3527,21 @@
     "uncertainTab": "터미널 종료 확인 필요",
     "writerNotice": "터미널이 이 작업 사본을 점유하고 있습니다. 파일을 쓰는 요청을 보내려면 터미널을 종료하세요.",
     "writerUncertainNotice": "터미널 종료가 확인되지 않았습니다. 프로세스 종료가 확인될 때까지 작업 사본 점유가 유지됩니다.",
-    "openControls": "터미널 제어 열기"
+    "openControls": "터미널 제어 열기",
+    "recheckTermination": "종료하고 확인",
+    "diagnosticReason": {
+      "session_not_ready": "터미널 프로세스가 독립 세션을 여는 작업을 마치지 못했습니다.",
+      "identity_unavailable": "이 터미널을 소유한 프로세스를 확인하지 못했습니다.",
+      "identity_changed": "소유권을 확인하기 전에 터미널 프로세스 정보가 바뀌었습니다.",
+      "process_exited": "소유권을 기록하기 전에 터미널 프로세스가 종료됐습니다.",
+      "startup_failed": "터미널을 시작하지 못했습니다.",
+      "cleanup_unconfirmed": "터미널 프로세스와 하위 프로세스가 모두 종료됐는지 확인하지 못했습니다.",
+      "receipt_unavailable": "터미널 복구 기록을 확인하지 못했습니다.",
+      "host_restart_required": "이 터미널 기록으로는 프로세스 종료 여부를 증명할 수 없습니다."
+    },
+    "diagnosticCheck": "작업 사본은 계속 보호됩니다. 종료하고 확인을 누르세요. 여전히 종료가 확인되지 않으면 호스트의 프로세스와 진단 정보를 확인하세요.",
+    "diagnosticHostRestart": "호스트 컴퓨터의 작업을 저장한 뒤 운영체제를 재시작하고 종료하고 확인을 누르세요. Corral 앱만 다시 시작해서는 확인할 수 없습니다.",
+    "diagnosticEnded": "새 터미널을 만들기 전에 진단 정보를 확인하세요."
   },
   "Docking": {
     "fileViewer": "파일 뷰어",
@@ -4445,7 +4467,8 @@
     "statCache": "캐시 적중 {share}",
     "statCacheUnreported": "캐시 보고 없음",
     "statSession": "세션 누계",
-    "statDefinition": "차례는 실행 수입니다. 단계는 주 에이전트의 도구 작업과 하위 실행 수이며 모델 호출 수와 다릅니다. 토큰은 끝난 모델 호출이 보고한 입력·출력의 합입니다. 미보고 사용량은 제외하고 캐시 입력은 다시 더하지 않습니다."
+    "statDefinition": "차례는 실행 수입니다. 단계는 주 에이전트의 도구 작업과 하위 실행 수이며 모델 호출 수와 다릅니다. 토큰은 끝난 모델 호출이 보고한 입력·출력의 합입니다. 미보고 사용량은 제외하고 캐시 입력은 다시 더하지 않습니다.",
+    "artifactTarget": "{name} · 버전 {version}"
   },
   "RunMonitor": {
     "views": "실행 보기",
@@ -4511,5 +4534,12 @@
       "TRANSPORT": "네트워크와 접속 주소를 확인하세요. 로컬 모델 서버가 필요하면 실행한 뒤 재시도하세요.",
       "CANCELLED": "준비되면 메시지를 다시 보내세요."
     }
+  },
+  "RunIdentity": {
+    "unnamed": "실행",
+    "number": "실행 #{number}",
+    "details": "실행 상세",
+    "open": "{name} 열기",
+    "select": "{name} 비교"
   }
 }

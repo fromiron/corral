@@ -144,7 +144,8 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET·POST /sessions/:id/decisions | `{from, to, decision, note}` | 승인·수정 요청. 작업 복사본이 바뀌면 `stale`. Studio는 정확한 from/to가 같은 판단만 현재 비교의 판단으로 표시 |
 | GET /sessions/:id/integration-plan?decisionId= | — | 파일별 apply·skip·conflict |
 | GET·POST /sessions/:id/integrations, POST …/:integrationId/revert | `{decisionId}` | 원본 폴더 반영·되돌리기, 파일별 결과 |
-| GET /projects/:id/inbox | — | 사람이 처리할 항목(결정 대기·대기열·결과 모르는 쓰기·반영 문제·검증 실패·검토 뒤 쓰기) |
+| GET /projects/:id/inbox | — | 사람이 처리할 항목(결정 대기·대기열·결과 모르는 쓰기·반영 문제·검증 실패·검토 뒤 쓰기). `kind: uncertain_terminal`은 현재 세션·binding·사본 세대와 일치하며 종료 미확인 writer를 보유한 터미널이고 `terminalId`를 포함한다. 이 식별자는 제어 화면 탐색용이며 명령 권한이 아니다. 다른 kind는 `terminalId`를 갖지 않는다. |
+| GET /terminals/attention | — | 인증된 현재 서버의 보관되지 않은 프로젝트·세션에서 `uncertain_terminal` 항목만 조회한다. 위 인박스와 같은 현재 writer·대상 검증을 사용하고 경로·프로세스 정보·터미널 출력은 포함하지 않는다. 사이드바가 다른 프로젝트의 막힌 세션도 표시하기 위한 읽기이며 복구를 실행하지 않는다. |
 | POST /projects | `{name, description?}` | 폴더 없는 새 프로젝트(이름 1–80자, 같은 이름 허용) |
 | PATCH /projects/:id | `{name?, description?, archived?, expectedRevision}` | 이름·설명·보관. 다른 revision `REVISION_CONFLICT`, 기본 프로젝트 보관·빈 이름 `SCHEMA_INVALID` |
 | DELETE /corrals/:id | — | 저장 정의 삭제. 이미 시작한 Run의 snapshot에는 영향 없음 |
