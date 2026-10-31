@@ -1,0 +1,536 @@
+{
+  "samplesSha256": "81beaf6c0557f1443f1d287bbff2d85d5ac1a3a32f496885ace7e44da40d4cfa",
+  "weightsSha256": "b2cbe3107fb051d9087efb661d9527a064a4a3d978c5c15736dc4801b05e9408",
+  "summary": [
+    {
+      "kind": "전체",
+      "baseline": {
+        "n": 72,
+        "exact": 0.16666666666666666,
+        "precision": 0.47222222222222193,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 72,
+        "exact": 0.5555555555555556,
+        "precision": 0.8055555555555556,
+        "recall": 0.6527777777777778
+      },
+      "learned": {
+        "n": 72,
+        "exact": 0.9305555555555556,
+        "precision": 0.9606481481481483,
+        "recall": 0.9652777777777778
+      }
+    },
+    {
+      "kind": "topic",
+      "baseline": {
+        "n": 12,
+        "exact": 0,
+        "precision": 0.3333333333333333,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 12,
+        "exact": 0.9166666666666666,
+        "precision": 0.9166666666666666,
+        "recall": 0.9166666666666666
+      },
+      "learned": {
+        "n": 12,
+        "exact": 0.9166666666666666,
+        "precision": 0.9166666666666666,
+        "recall": 0.9166666666666666
+      }
+    },
+    {
+      "kind": "followup",
+      "baseline": {
+        "n": 12,
+        "exact": 0,
+        "precision": 0.3333333333333333,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 12,
+        "exact": 0.3333333333333333,
+        "precision": 0.3333333333333333,
+        "recall": 0.3333333333333333
+      },
+      "learned": {
+        "n": 12,
+        "exact": 1,
+        "precision": 1,
+        "recall": 1
+      }
+    },
+    {
+      "kind": "example",
+      "baseline": {
+        "n": 12,
+        "exact": 0,
+        "precision": 0.3333333333333333,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 12,
+        "exact": 0.6666666666666666,
+        "precision": 0.6666666666666666,
+        "recall": 0.6666666666666666
+      },
+      "learned": {
+        "n": 12,
+        "exact": 1,
+        "precision": 1,
+        "recall": 1
+      }
+    },
+    {
+      "kind": "all",
+      "baseline": {
+        "n": 12,
+        "exact": 1,
+        "precision": 1,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 12,
+        "exact": 0,
+        "precision": 1,
+        "recall": 0.3333333333333333
+      },
+      "learned": {
+        "n": 12,
+        "exact": 1,
+        "precision": 1,
+        "recall": 1
+      }
+    },
+    {
+      "kind": "new-topic",
+      "baseline": {
+        "n": 12,
+        "exact": 0,
+        "precision": 0.3333333333333333,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 12,
+        "exact": 0.9166666666666666,
+        "precision": 0.9166666666666666,
+        "recall": 0.9166666666666666
+      },
+      "learned": {
+        "n": 12,
+        "exact": 0.9166666666666666,
+        "precision": 0.9166666666666666,
+        "recall": 0.9166666666666666
+      }
+    },
+    {
+      "kind": "analysis",
+      "baseline": {
+        "n": 6,
+        "exact": 0,
+        "precision": 0.3333333333333333,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 6,
+        "exact": 1,
+        "precision": 1,
+        "recall": 1
+      },
+      "learned": {
+        "n": 6,
+        "exact": 0.8333333333333334,
+        "precision": 0.9166666666666666,
+        "recall": 1
+      }
+    },
+    {
+      "kind": "compare",
+      "baseline": {
+        "n": 6,
+        "exact": 0,
+        "precision": 0.6666666666666666,
+        "recall": 1
+      },
+      "cosine": {
+        "n": 6,
+        "exact": 0,
+        "precision": 1,
+        "recall": 0.5
+      },
+      "learned": {
+        "n": 6,
+        "exact": 0.6666666666666666,
+        "precision": 0.9444444444444445,
+        "recall": 0.9166666666666666
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "pottery:en:topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "pottery:en:followup",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p2"]]
+    },
+    {
+      "id": "pottery:en:example",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p2"]]
+    },
+    {
+      "id": "pottery:en:all",
+      "wanted": ["p0", "p1", "p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p0", "p1", "p2"]]
+    },
+    {
+      "id": "pottery:en:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "pottery:ko:topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "pottery:ko:followup",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p2"]]
+    },
+    {
+      "id": "pottery:ko:example",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p2"], ["p2"]]
+    },
+    {
+      "id": "pottery:ko:all",
+      "wanted": ["p0", "p1", "p2"],
+      "predictions": [["p0", "p1", "p2"], ["p2"], ["p0", "p1", "p2"]]
+    },
+    {
+      "id": "pottery:ko:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "pottery:ja:topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "pottery:ja:followup",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p2"]]
+    },
+    {
+      "id": "pottery:ja:example",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p2"]]
+    },
+    {
+      "id": "pottery:ja:all",
+      "wanted": ["p0", "p1", "p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p0", "p1", "p2"]]
+    },
+    {
+      "id": "pottery:ja:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:en:topic",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:en:followup",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:en:example",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:en:all",
+      "wanted": ["p1", "p2", "p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p1", "p2", "p0"]]
+    },
+    {
+      "id": "astronomy:en:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ko:topic",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ko:followup",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p1"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ko:example",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p2"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ko:all",
+      "wanted": ["p1", "p2", "p0"],
+      "predictions": [["p1", "p2", "p0"], ["p1"], ["p1", "p2", "p0"]]
+    },
+    {
+      "id": "astronomy:ko:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ja:topic",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ja:followup",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p2"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ja:example",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "astronomy:ja:all",
+      "wanted": ["p1", "p2", "p0"],
+      "predictions": [["p1", "p2", "p0"], ["p2"], ["p1", "p2", "p0"]]
+    },
+    {
+      "id": "astronomy:ja:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p1", "p2", "p0"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "queue:en:topic",
+      "wanted": ["p0"],
+      "predictions": [["p2", "p0", "p1"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "queue:en:followup",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "queue:en:example",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "queue:en:all",
+      "wanted": ["p2", "p0", "p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p2", "p0", "p1"]]
+    },
+    {
+      "id": "queue:en:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p2", "p0", "p1"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "queue:ko:topic",
+      "wanted": ["p0"],
+      "predictions": [["p2", "p0", "p1"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "queue:ko:followup",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p2"], ["p1"]]
+    },
+    {
+      "id": "queue:ko:example",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "queue:ko:all",
+      "wanted": ["p2", "p0", "p1"],
+      "predictions": [["p2", "p0", "p1"], ["p0"], ["p2", "p0", "p1"]]
+    },
+    {
+      "id": "queue:ko:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p2", "p0", "p1"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "queue:ja:topic",
+      "wanted": ["p0"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "queue:ja:followup",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "queue:ja:example",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "queue:ja:all",
+      "wanted": ["p2", "p0", "p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p2", "p0", "p1"]]
+    },
+    {
+      "id": "queue:ja:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "css:en:topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "css:en:followup",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p2"], ["p2"]]
+    },
+    {
+      "id": "css:en:example",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p2"], ["p2"]]
+    },
+    {
+      "id": "css:en:all",
+      "wanted": ["p0", "p1", "p2"],
+      "predictions": [["p0", "p1", "p2"], ["p2"], ["p0", "p1", "p2"]]
+    },
+    {
+      "id": "css:en:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "css:ko:topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "css:ko:followup",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p2"]]
+    },
+    {
+      "id": "css:ko:example",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p2"]]
+    },
+    {
+      "id": "css:ko:all",
+      "wanted": ["p0", "p1", "p2"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p0", "p1", "p2"]]
+    },
+    {
+      "id": "css:ko:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "css:ja:topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "css:ja:followup",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p2"]]
+    },
+    {
+      "id": "css:ja:example",
+      "wanted": ["p2"],
+      "predictions": [["p0", "p1", "p2"], ["p2"], ["p2"]]
+    },
+    {
+      "id": "css:ja:all",
+      "wanted": ["p0", "p1", "p2"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0", "p1", "p2"]]
+    },
+    {
+      "id": "css:ja:new-topic",
+      "wanted": ["p0"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "discussion:library:ko:analysis",
+      "wanted": ["p1"],
+      "predictions": [["p1", "p2", "p0"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "discussion:library:ko:compare",
+      "wanted": ["p0", "p1"],
+      "predictions": [["p1", "p2", "p0"], ["p1"], ["p0", "p1"]]
+    },
+    {
+      "id": "discussion:library:en:analysis",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1", "p0"]]
+    },
+    {
+      "id": "discussion:library:en:compare",
+      "wanted": ["p0", "p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1", "p0"]]
+    },
+    {
+      "id": "discussion:attendance:ko:analysis",
+      "wanted": ["p1"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "discussion:attendance:ko:compare",
+      "wanted": ["p0", "p1"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0"]]
+    },
+    {
+      "id": "discussion:attendance:en:analysis",
+      "wanted": ["p1"],
+      "predictions": [["p1", "p2", "p0"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "discussion:attendance:en:compare",
+      "wanted": ["p0", "p1"],
+      "predictions": [["p1", "p2", "p0"], ["p1"], ["p1", "p0"]]
+    },
+    {
+      "id": "discussion:energy:ko:analysis",
+      "wanted": ["p1"],
+      "predictions": [["p2", "p0", "p1"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "discussion:energy:ko:compare",
+      "wanted": ["p0", "p1"],
+      "predictions": [["p2", "p0", "p1"], ["p0"], ["p0", "p1", "p2"]]
+    },
+    {
+      "id": "discussion:energy:en:analysis",
+      "wanted": ["p1"],
+      "predictions": [["p0", "p1", "p2"], ["p1"], ["p1"]]
+    },
+    {
+      "id": "discussion:energy:en:compare",
+      "wanted": ["p0", "p1"],
+      "predictions": [["p0", "p1", "p2"], ["p0"], ["p0", "p1"]]
+    }
+  ]
+}

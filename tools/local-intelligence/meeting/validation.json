@@ -1,0 +1,54 @@
+{
+  "samplesSha256": "81beaf6c0557f1443f1d287bbff2d85d5ac1a3a32f496885ace7e44da40d4cfa",
+  "score": 0.9523809523809524,
+  "candidates": [
+    {
+      "intentC": 1.0,
+      "rankC": 1.0,
+      "intentF1": 0.8392857142857143
+    },
+    {
+      "intentC": 1.0,
+      "rankC": 10.0,
+      "intentF1": 0.8392857142857143
+    },
+    {
+      "intentC": 1.0,
+      "rankC": 100.0,
+      "intentF1": 0.8392857142857143
+    },
+    {
+      "intentC": 10.0,
+      "rankC": 1.0,
+      "intentF1": 0.9195230998509687
+    },
+    {
+      "intentC": 10.0,
+      "rankC": 10.0,
+      "intentF1": 0.9195230998509687
+    },
+    {
+      "intentC": 10.0,
+      "rankC": 100.0,
+      "intentF1": 0.9195230998509687
+    },
+    {
+      "intentC": 100.0,
+      "rankC": 1.0,
+      "intentF1": 0.9419354838709677
+    },
+    {
+      "intentC": 100.0,
+      "rankC": 10.0,
+      "intentF1": 0.9419354838709677
+    },
+    {
+      "intentC": 100.0,
+      "rankC": 100.0,
+      "intentF1": 0.9419354838709677
+    }
+  ],
+  "train": 212,
+  "calibration": 72,
+  "selection": "macro average exact recipient-set match by context kind; calibration families only"
+}

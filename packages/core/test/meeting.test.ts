@@ -3,6 +3,7 @@ import {
   canonicalJson,
   type MeetingConfig,
   type MeetingRound,
+  type MeetingSelectionInput,
   SECRETARY_ID,
 } from '@corral/contracts';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
@@ -64,6 +65,7 @@ async function fixture(
     config?: MeetingConfig;
     random?: () => number;
     persistent?: boolean;
+    selectParticipants?: (input: MeetingSelectionInput) => Promise<string[] | null>;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -150,6 +152,7 @@ async function fixture(
       clock,
       newRoundId: () => `round_${++rounds}`,
       random: options.random ?? (() => 0.999),
+      ...(options.selectParticipants ? { selectParticipants: options.selectParticipants } : {}),
       ...(options.persistent
         ? {
             continuation: (
@@ -206,6 +209,69 @@ async function fixture(
 
 const brief = (input: AgentStartInput) =>
   input.inputs.find((item) => item.name === 'brief')?.text ?? '';
+
+describe('local meeting participant selection', () => {
+  it('uses posted conversation, selects only the recipient and reuses it on command replay', async () => {
+    const select = vi.fn(async (_input: MeetingSelectionInput) => ['tester']);
+    const f = await fixture({ selectParticipants: select });
+    await f.send('selected', 'How would you reproduce it?');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Tester']);
+    expect(await f.send('selected', 'How would you reproduce it?')).toMatchObject({ ok: true });
+    expect(select).toHaveBeenCalledTimes(1);
+    await f.send('followup', 'Why?');
+    await f.meetings.idle(f.sessionId);
+    expect(select.mock.calls[1]![0].history).toContainEqual({
+      participantId: 'tester',
+      text: 'Tester answers',
+    });
+    expect(f.seen).toHaveLength(2);
+    expect(await f.send('selected', 'How would you reproduce it?', ['tester'])).toMatchObject({
+      ok: false,
+      error: 'conflict',
+    });
+  });
+
+  it('explicit recipients bypass selection, including secretary requests', async () => {
+    const select = vi.fn(async () => ['tester']);
+    const f = await fixture({ selectParticipants: select });
+    await f.send('explicit', '@Builder Explain your view.');
+    await f.meetings.idle(f.sessionId);
+    await f.send('minutes_only', 'Summarize the discussion.', [SECRETARY_ID]);
+    await f.meetings.idle(f.sessionId);
+    expect(select).not.toHaveBeenCalled();
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Builder', 'Secretary']);
+  });
+
+  it.each([null, [], ['foreign'], [SECRETARY_ID], ['tester', 'tester']])(
+    'falls back safely on an unusable selection %j',
+    async (selected) => {
+      const f = await fixture({ selectParticipants: async () => selected });
+      await f.send('fallback', 'Compare your views.');
+      await f.meetings.idle(f.sessionId);
+      expect(f.seen).toHaveLength(CONFIG.participants.length);
+    },
+  );
+
+  it('does not apply a late selection after the session revision changes', async () => {
+    let release!: (ids: string[]) => void;
+    const pending = new Promise<string[]>((resolve) => {
+      release = resolve;
+    });
+    const select = vi.fn(() => pending);
+    const f = await fixture({ selectParticipants: select });
+    const sent = f.send('late_selection', 'Which approach fits?');
+    await vi.waitFor(() => expect(select).toHaveBeenCalledOnce());
+    const session = (await f.repository.getSession(f.sessionId))!;
+    await f.repository.updateSession(f.sessionId, {
+      expectedRevision: session.revision,
+      title: 'Changed',
+    });
+    release(['tester']);
+    expect(await sent).toMatchObject({ ok: false, error: 'conflict' });
+    expect(f.seen).toHaveLength(0);
+  });
+});
 
 describe('meeting messages', () => {
   it('each participant reuses its own completed context and receives only newly posted messages', async () => {

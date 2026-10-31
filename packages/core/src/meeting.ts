@@ -9,6 +9,7 @@ import {
   type MeetingRound,
   MeetingRoundRequest,
   type MeetingRunOrigin,
+  type MeetingSelectionInput,
   type MeetingState,
   type MeetingView,
   QueuedMeetingMessage,
@@ -30,6 +31,7 @@ export interface MeetingServiceDeps {
   clock: Clock;
   newRoundId(): string;
   random(): number;
+  selectParticipants?(input: MeetingSelectionInput): Promise<string[] | null>;
   continuation?(
     runId: string,
     sessionId: string,
@@ -248,7 +250,9 @@ export class MeetingService {
         if (previous)
           return previous.message === request.text &&
             (previous.mode === undefined || previous.mode === request.mode) &&
-            sameParticipants(previous.participantIds, participantIds) &&
+            (mentions.length
+              ? previous.kind !== 'all' && sameParticipants(previous.participantIds, participantIds)
+              : previous.kind === 'all') &&
             canonicalJson(previous.attachments ?? []) === canonicalJson(request.attachments ?? [])
             ? { ok: true, outcome: 'started', roundId: previous.roundId }
             : err('conflict', 'This command was already sent with different arguments.');
@@ -579,7 +583,47 @@ export class MeetingService {
     consumeQueue = false,
   ): Promise<MeetingResult> {
     const meeting = session.meeting!;
-    const participantIds = [...spec.participantIds];
+    let participantIds = [...spec.participantIds];
+    if (spec.kind === 'all' && spec.message && this.deps.selectParticipants) {
+      const history: { order: number; participantId: string | null; text: string }[] = [];
+      for (const past of meeting.rounds.slice(-6)) {
+        const index = meeting.rounds.indexOf(past);
+        if (past.message)
+          history.push({
+            order: roundOrder(past, index),
+            participantId: null,
+            text: past.message.slice(0, 2000),
+          });
+        const view = await this.roundView(session.sessionId, past);
+        for (const [n, answer] of view.answers.entries()) {
+          if (answer.status === 'answered' && answer.text)
+            history.push({
+              order: answerOrder(past, index, past.answers[n]!, n),
+              participantId: answer.participantId,
+              text: answer.text.slice(0, 2000),
+            });
+        }
+      }
+      const selected = await this.deps
+        .selectParticipants({
+          message: spec.message,
+          participants: meeting.config.participants.map(({ participantId, prompt }) => ({
+            participantId,
+            prompt,
+          })),
+          history: history
+            .sort((a, b) => a.order - b.order)
+            .slice(-12)
+            .map(({ participantId, text }) => ({ participantId, text })),
+        })
+        .catch(() => null);
+      if (
+        selected?.length &&
+        new Set(selected).size === selected.length &&
+        selected.every((id) => participantIds.includes(id))
+      )
+        participantIds = selected;
+    }
     for (let i = participantIds.length - 1; i > 0; i--) {
       const j = Math.floor(this.deps.random() * (i + 1));
       [participantIds[i], participantIds[j]] = [participantIds[j]!, participantIds[i]!];

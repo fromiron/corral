@@ -17,6 +17,13 @@ export const MeetingParticipant = z.strictObject({
 });
 export type MeetingParticipant = z.infer<typeof MeetingParticipant>;
 
+/** Local-only selection input: posted text and configured roles, never provider credentials. */
+export interface MeetingSelectionInput {
+  message: string;
+  participants: { participantId: string; prompt: string }[];
+  history: { participantId: string | null; text: string }[];
+}
+
 export const MeetingConfig = z
   .strictObject({
     version: z.literal(1),

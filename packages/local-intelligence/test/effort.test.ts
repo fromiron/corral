@@ -101,6 +101,40 @@ const expected = {
 };
 
 describe('effort classifier', () => {
+  it('loads a versioned hidden-layer head over the unchanged embedding', () => {
+    const raw = {
+      ...weights(),
+      schemaVersion: 2,
+      hidden: {
+        weights: [
+          [1, -1, 0, 0],
+          [0, 0, 1, -1],
+        ],
+        bias: [0, 0],
+      },
+      weights: [
+        [4, 0],
+        [0, 0],
+        [0, 6],
+        [0, 0],
+      ],
+    };
+    const classifier = loadEffortClassifier(raw, expected);
+    expect(classifier.judge(Float32Array.from([1, 0, 0, 0])).answer).toBe('low');
+    expect(classifier.judge(Float32Array.from([0, 0, 1, 0])).answer).toBe('high');
+    // ReLU discards the negative hidden unit instead of making its opposite class confident.
+    expect(classifier.judge(Float32Array.from([0, 1, 0, 0])).abstain).toBe(true);
+    expect(() =>
+      loadEffortClassifier({ ...raw, weights: [[1], [2], [3], [4]] }, expected),
+    ).toThrow();
+    expect(() =>
+      loadEffortClassifier({ ...raw, hidden: { ...raw.hidden, bias: [0] } }, expected),
+    ).toThrow();
+    expect(() =>
+      loadEffortClassifier({ ...raw, hidden: { weights: [[NaN, 0, 0, 0]], bias: [0] } }, expected),
+    ).toThrow();
+  });
+
   it('returns calibrated probabilities and abstains below the bundled threshold', () => {
     const classifier = loadEffortClassifier(weights(), expected);
     const clear = classifier.judge(Float32Array.from([0, 0, 1, 0]));

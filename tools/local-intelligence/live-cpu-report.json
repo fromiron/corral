@@ -1,0 +1,18 @@
+{
+  "device": "cpu",
+  "mode": "warm shared local CPU engine; three-participant authored meetings",
+  "effortWeightsSha256": "18f0e527fe8185dd6d43acd52520c00ae52194f30611d5a8c15e5796f56e682b",
+  "meetingWeightsSha256": "b2cbe3107fb051d9087efb661d9527a064a4a3d978c5c15736dc4801b05e9408",
+  "effort": {
+    "matched": 48,
+    "p50Ms": 64.17605700000013,
+    "p95Ms": 81.99593400000003,
+    "maxMs": 140.13542399999994
+  },
+  "meeting": {
+    "matched": 72,
+    "p50Ms": 0.23783199999979843,
+    "p95Ms": 246.73004200000014,
+    "maxMs": 566.5979649999999
+  }
+}

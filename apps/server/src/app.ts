@@ -675,6 +675,12 @@ async function createCorralServer(
   });
   // meeting rounds start each answer as its own Run through the same Coordinator.
   const meetings = new MeetingService({
+    ...(local
+      ? {
+          selectParticipants: (input: import('@corral/contracts').MeetingSelectionInput) =>
+            local.meeting.select(input),
+        }
+      : {}),
     continuation: (runId, sessionId, participantId, definition, mode) =>
       coordinator.meetingContinuation(runId, sessionId, participantId, definition.roles[0]!, mode),
     random: Math.random,

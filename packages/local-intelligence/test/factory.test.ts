@@ -70,7 +70,7 @@ describe('local intelligence factory', () => {
 
   it('ships effort weights trained for the bundled model', () => {
     const li = createLocalIntelligence({ root: tempDir(), env: {}, launch: fakeLauncher().launch });
-    expect(li.effort.version).toBe(`${bundledManifest().release}+effort-v1`);
+    expect(li.effort.version).toBe(`${bundledManifest().release}+effort-v2`);
     expect(bundledEffortWeights()).toMatchObject({
       dims: bundledManifest().embedding.dims,
       baseModelSha256: bundledManifest().model.sha256,

@@ -47,6 +47,10 @@ local.loadEffortClassifier(local.bundledEffortWeights(), {
   baseModelSha256: bundle.model.sha256,
   preprocessVersion: local.EFFORT_PREPROCESS_VERSION,
 });
+local.loadMeetingWeights(local.bundledMeetingWeights(), {
+  dims: bundle.embedding.dims,
+  baseModelSha256: bundle.model.sha256,
+});
 // The helper must run on this OS/arch: it parses its arguments and tries to load the runtime
 // library, which the user installs later, so a missing one is the expected protocol error.
 const helper = local.builtHelperPath();

@@ -8,6 +8,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
+import type { ReasoningInput } from '../../../packages/contracts/src/index.ts';
 import {
   builtHelperPath,
   bundledManifest,
@@ -41,7 +42,7 @@ const samples = raw
   .toString('utf8')
   .split('\n')
   .filter(Boolean)
-  .map((line) => JSON.parse(line) as { request: string });
+  .map((line) => JSON.parse(line) as { request: string; input?: ReasoningInput });
 const bundle = bundledManifest();
 const dims = bundle.embedding.dims;
 const engine = new LocalEmbeddingEngine({
@@ -58,7 +59,9 @@ const started = performance.now();
 let actualDevice: string | null = null;
 try {
   for (const [index, sample] of samples.entries()) {
-    const [vector] = await engine.embed(effortRequest(requestInput(sample.request)));
+    const [vector] = await engine.embed(
+      effortRequest(sample.input ?? requestInput(sample.request)),
+    );
     vectors.set(vector!, index * dims);
     if ((index + 1) % 500 === 0)
       console.error(

@@ -346,7 +346,7 @@ it.skipIf(!target)(
       );
       expect(await settings()).toMatchObject({
         available: true,
-        version: `${bundle.release}+effort-v1`,
+        version: `${bundle.release}+effort-v2`,
         reason: null,
       });
       expect(launches).toEqual([]);
