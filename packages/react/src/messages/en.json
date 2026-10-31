@@ -2533,7 +2533,7 @@
     "enableApply": "Let the local judge choose reasoning effort in all projects on this server",
     "applyHint": "After saving, applies to roles set to automatic in newly started runs on this Corral server workspace. Running runs and fixed reasoning settings stay unchanged.",
     "ready": "Ready",
-    "installHint": "Local judge unavailable. Install with {command}. Until then automatic roles use medium.",
+    "installHint": "Local judge unavailable; see Local AI below. Until then automatic roles use medium.",
     "settingsError": "Could not read or save settings. Reload and try again.",
     "unrecorded": "Reasoning not recorded",
     "payload": "Payload verified",
@@ -2551,7 +2551,8 @@
     "source": {
       "fixed": "Manual",
       "provider_default": "Provider default",
-      "local-model": "ONNX applied",
+      "local-model": "Local model applied",
+      "external-model": "External judge applied",
       "fallback": "Fallback",
       "compaction": "Compaction base"
     },
@@ -2566,10 +2567,61 @@
       "provider_error": "Judge error",
       "invalid_response": "Invalid answer",
       "limit": "Judgment limit",
-      "missing_input": "Missing input"
+      "missing_input": "Missing input",
+      "abstained": "Judge not confident"
     },
+    "escalated": "Jev asked",
     "appliedHeading": "Applied reasoning by request",
     "observeHeading": "Observe-only judgments (not applied)"
+  },
+  "LocalAi": {
+    "heading": "Local AI",
+    "state": {
+      "unsupported": "Not available in this environment",
+      "missing": "Not installed",
+      "stale": "Update needed",
+      "installing": "Installing",
+      "idle": "Ready",
+      "starting": "Starting",
+      "ready": "Ready",
+      "error": "Error"
+    },
+    "download": "Downloads about {size} MB for the local judge.",
+    "progress": "{percent}% · {received} / {total} MB",
+    "install": "Install",
+    "update": "Update",
+    "cancel": "Cancel install",
+    "loadFailed": "Could not load local AI status. Reload and try again.",
+    "actionFailed": "Could not change the install. Try again.",
+    "external": {
+      "heading": "External judge",
+      "mode": "When the local judge is unsure",
+      "off": "Use medium",
+      "ask": "Ask {name}",
+      "scope": "In live runs, the chosen decision API gets the same judge text the local AI reads: the current request, plan, recent tool calls, and the previous request and reply, each cut to a length limit. It never gets files, keys, or run IDs. Applies to this workspace from the next run.",
+      "noKey": "Add a key under Decision APIs to choose one. Until then unsure requests use medium.",
+      "chosenNoKey": "{name} has no key. Until you add one under Decision APIs, unsure requests use medium.",
+      "saveFailed": "Could not save the external judge setting. Reload and try again."
+    }
+  },
+  "DecisionApis": {
+    "heading": "Decision APIs",
+    "intro": "Judge-only APIs that automatic reasoning can ask when the local judge is unsure. Each uses its own API key, separate from model sign-ins and model keys.",
+    "name": {
+      "jev": "TypeSafe Jev",
+      "openai-decisions": "OpenAI Decisions"
+    },
+    "data": {
+      "jev": "TypeSafe's API documentation publishes no retention policy.",
+      "openai-decisions": "Connects with an OpenAI platform API key; Corral does not use your ChatGPT sign-in for it. OpenAI documents that API data is not used for training and that abuse-monitoring logs are kept for up to 30 days."
+    },
+    "keySaved": "Key saved",
+    "noKey": "No key",
+    "keyHint": "Kept on this computer, outside the workspace. Corral never shows it again.",
+    "saveKey": "Save key",
+    "removeKey": "Remove key",
+    "loadFailed": "Could not load decision APIs. Reload and try again.",
+    "saveFailed": "Could not save the key. Try again."
   },
   "Resources": {
     "skills": "Skills",

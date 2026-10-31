@@ -54,7 +54,14 @@ export type ReasoningInput = z.infer<typeof ReasoningInput>;
 export const ReasoningResolution = z.strictObject({
   requested: ReasoningPolicy,
   resolved: ReasoningLevel.nullable(),
-  source: z.enum(['fixed', 'provider_default', 'local-model', 'fallback', 'compaction']),
+  source: z.enum([
+    'fixed',
+    'provider_default',
+    'local-model',
+    'external-model',
+    'fallback',
+    'compaction',
+  ]),
   preparationId: Identifier,
   inputHash: z
     .string()
@@ -67,7 +74,8 @@ export const ReasoningResolution = z.strictObject({
     .array(z.enum(['low', 'medium', 'high', 'xhigh']))
     .max(4)
     .optional(),
-  policyVersion: z.literal('mixdog-relative-v1').optional(),
+  /** Earlier policy versions remain readable as recorded; new resolutions use corral-effort-v2. */
+  policyVersion: z.enum(['mixdog-relative-v1', 'corral-effort-v1', 'corral-effort-v2']).optional(),
   fallback: z
     .enum([
       'unavailable',
@@ -76,8 +84,11 @@ export const ReasoningResolution = z.strictObject({
       'invalid_response',
       'limit',
       'missing_input',
+      'abstained',
     ])
     .optional(),
+  /** Set when the external judge was asked, whatever it answered. */
+  escalated: z.literal(true).optional(),
 });
 export type ReasoningResolution = z.infer<typeof ReasoningResolution>;
 export const ReasoningWire = z.strictObject({
@@ -86,10 +97,18 @@ export const ReasoningWire = z.strictObject({
 });
 export type ReasoningWire = z.infer<typeof ReasoningWire>;
 
+/** Decision-only APIs Corral can ask when the local judge abstains (features/decision-apis.md). */
+export const DecisionApiId = z.enum(['jev', 'openai-decisions']);
+export type DecisionApiId = z.infer<typeof DecisionApiId>;
+
 export const ReasoningApplySettings = z.strictObject({
   enabled: z.boolean(),
   maxCalls: z.int().min(0).max(100),
   provider: z.literal('local-model'),
   version: z.string().max(200).nullable(),
+  /** The external judge asked when the local judge abstains; fixed when the run starts. */
+  external: z
+    .strictObject({ provider: DecisionApiId, model: z.string().min(1).max(100) })
+    .optional(),
 });
 export type ReasoningApplySettings = z.infer<typeof ReasoningApplySettings>;

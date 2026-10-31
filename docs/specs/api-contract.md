@@ -180,6 +180,18 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 | DELETE /model-auth/:provider/login | — | 진행 중 로그인 취소 |
 | DELETE /model-auth/:provider | — | 로그아웃. 저장한 자격 증명 삭제 |
 
+로컬 AI 설치. 설치 규칙은 [로컬 AI](features/local-intelligence.md)가 정한다. 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED`다.
+
+| Method/path | 요청 | 응답·효과 |
+|---|---|---|
+| GET /local-ai | — | release, modelName, state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), external(`{provider, model, revision}`: 작업공간이 고른 판정 API id와 모델, 고르지 않았으면 provider·model이 null) |
+| POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
+| DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다 |
+| PUT /local-ai/external-judge | `{provider, revision}` | 작업공간의 외부 판정에 쓸 판정 API id, 사용 안 함은 null. 모르는 id는 400, 설정 revision이 다르면 409. 응답은 GET /local-ai와 같다 |
+| GET /decision-apis | — | [판정 API](features/decision-apis.md) 목록: `{id, provider, model, keyConfigured}`. 키 값은 담지 않는다 |
+| PUT /decision-apis/:id/api-key | `{key}` | 판정 API 키 저장. 응답은 GET /decision-apis와 같다. 모르는 id는 404, 실제 모델이 없는 서버는 403 `CAPABILITY_DENIED` |
+| DELETE /decision-apis/:id/api-key | — | 판정 API 키 삭제. 응답은 GET /decision-apis와 같다 |
+
 SSE는 영속 이벤트(`event: domain`, `id: runSeq`) 외에 모델 출력 조각을 `event: stream`으로 보낸다. 이 frame에는 id가 없어 재접속 cursor를 움직이지 않고, 저장하지 않으며, 나중에 연결한 구독자에게 다시 보내지 않는다. live 실행 전에 로그인이 없으면 `POST /runs`는 403 `CAPABILITY_DENIED`다.
 
 `POST /runs`는 `CreateRunRequest`만 받는다(정의 본문을 직접 보내면 400). 같은 commandId의 재전송은 200과 처음 receipt, 새 Run은 201이다. 두 번째 활성 Run은 409 `RUN_ALREADY_ACTIVE`다. `PUT /corrals/:id`는 `If-Match`에 기준 definition revision이 없으면 400, 다르면 409 `REVISION_CONFLICT`다. 명령 응답의 HTTP 상태는 receipt를 따른다: 거절은 오류 코드의 상태, `accepted`·`queued`는 202, 그 밖은 200이다.
@@ -276,7 +288,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `tool.blocked` | toolCallId,reason |
 | `tool.started` | effectId,toolCallId |
 | `tool.finished` | resultRef,error |
-| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision |
+| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: requested,resolved,source,judged,ladder,policyVersion,judgeVersion,fallback,escalated). 자동 추론 규칙과 fallback 이유는 [로컬 AI](features/local-intelligence.md)가 정한다. 이전 실행의 `mixdog-relative-v1`은 읽기만 한다 |
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `budget.reserved` | reservationId,amount,scope |

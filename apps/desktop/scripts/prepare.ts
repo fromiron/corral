@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { helperFileName } from '../../../packages/local-intelligence/src/engine/helper.ts';
 import { candidateFiles, candidateHash } from '../../../tools/release/candidate.ts';
 import {
   assertRelocatableRuntime,
@@ -170,6 +171,29 @@ for (const path of internal) {
   );
   compile(path);
 }
+// The local AI helper is native: build it for this host from the pinned crates and ship it in the
+// deployed package's bin/, where the engine looks first.
+const localAi = [...internal].find(
+  (path) =>
+    JSON.parse(readFileSync(join(path, 'package.json'), 'utf8')).name ===
+    '@corral/local-intelligence',
+);
+assert(localAi, 'the server deployment must include @corral/local-intelligence');
+const helperCrate = join(root, 'packages/local-intelligence/helper');
+try {
+  execFileSync(
+    'cargo',
+    ['build', '--release', '--locked', '--manifest-path', join(helperCrate, 'Cargo.toml')],
+    { cwd: root, stdio: 'inherit', windowsHide: true },
+  );
+} catch (error) {
+  throw new Error('Building the local AI helper failed; it needs a Rust toolchain (cargo).', {
+    cause: error,
+  });
+}
+const helperName = helperFileName(target.platform);
+mkdirSync(join(localAi, 'bin'), { recursive: true });
+cpSync(join(helperCrate, 'target/release', helperName), join(localAi, 'bin', helperName));
 compile(join(desktop, 'src'), dist);
 cpSync(join(desktop, 'src/sidecar.mjs'), join(staging, 'server/sidecar.mjs'));
 // The server entry is also the deployed root package, not a dependency of itself.
@@ -239,5 +263,5 @@ writeFileSync(
   ),
 );
 console.log(
-  `Prepared ${target.platform} ${target.arch} runtime: Node ${NODE_VERSION}, SQLite, both Pi workers, ONNX/PTY runtime and Studio; ${inventory.files} physical files, zero links.`,
+  `Prepared ${target.platform} ${target.arch} runtime: Node ${NODE_VERSION}, SQLite, both Pi workers, local AI assets and helper, PTY runtime and Studio; ${inventory.files} physical files, zero links.`,
 );

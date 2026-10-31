@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>골드셋 라벨링</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f6f3;
+        --panel: #ffffff;
+        --ink: #1f1f1d;
+        --muted: #6b6a65;
+        --line: #dedcd5;
+        --accent: #2f5f8f;
+        --accent-ink: #ffffff;
+        --person: #edf2f7;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #191918;
+          --panel: #232322;
+          --ink: #ecebe6;
+          --muted: #a3a29b;
+          --line: #3a3a37;
+          --accent: #7fb0e0;
+          --accent-ink: #14202b;
+          --person: #27303a;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.6 system-ui, 'Noto Sans KR', sans-serif;
+      }
+      main {
+        max-width: 820px;
+        margin: 0 auto;
+        padding: 16px 16px 200px;
+      }
+      header {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      progress {
+        flex: 1;
+        height: 6px;
+        accent-color: var(--accent);
+      }
+      h1 {
+        margin: 12px 0 4px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .hint {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      section {
+        margin-bottom: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+      section > h2,
+      summary {
+        margin: 0 0 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      pre {
+        margin: 0;
+        max-height: 46vh;
+        overflow: auto;
+        font: inherit;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .call pre {
+        max-height: 22vh;
+        font: 12.5px/1.5 ui-monospace, monospace;
+      }
+      .turn {
+        margin-bottom: 8px;
+        padding: 6px 10px;
+        border-radius: 6px;
+      }
+      .turn.human {
+        background: var(--person);
+      }
+      .turn b {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      footer {
+        position: fixed;
+        inset: auto 0 0;
+        padding: 10px 16px 12px;
+        max-height: 55vh;
+        overflow: auto;
+        border-top: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-width: 788px;
+        margin: 0 auto;
+      }
+      button {
+        flex: 1 1 130px;
+        min-height: 44px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--ink);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      button small {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      button[aria-pressed='true'],
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: var(--accent-ink);
+      }
+      button[aria-pressed='true'] small,
+      button.primary small {
+        color: inherit;
+      }
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      kbd {
+        margin-right: 4px;
+        font: 12px ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <progress id="progress" max="1" value="0" aria-label="라벨링 진행률"></progress>
+        <span id="count"></span>
+      </header>
+      <div id="content" role="status" aria-live="polite">불러오는 중</div>
+    </main>
+    <footer><div class="actions" id="actions"></div></footer>
+    <script>
+      const LEVELS = [
+        ['low', '바로 답하거나 한두 단계로 끝남'],
+        ['medium', '몇 단계 추론이나 작은 변경'],
+        ['high', '여러 단계를 계획하고 검증'],
+        ['xhigh', '깊은 탐색이나 긴 추론'],
+      ];
+      const content = document.getElementById('content');
+      const actions = document.getElementById('actions');
+      let current = null;
+      let picked = new Set();
+      let keys = {};
+
+      const node = (tag, text, className) => {
+        const element = document.createElement(tag);
+        if (text !== undefined) element.textContent = text;
+        if (className) element.className = className;
+        return element;
+      };
+      const block = (title, text, open = true) => {
+        const area = node('section');
+        if (open) {
+          area.append(node('h2', title), node('pre', text));
+          return area;
+        }
+        const details = node('details');
+        details.append(node('summary', title), node('pre', text));
+        area.append(details);
+        return area;
+      };
+      const button = (key, label, note, run) => {
+        const element = node('button');
+        element.type = 'button';
+        const line = node('span');
+        line.append(node('kbd', key), label);
+        element.append(line);
+        if (note) element.append(node('small', note));
+        element.addEventListener('click', run);
+        keys[key.toLowerCase()] = run;
+        actions.append(element);
+        return element;
+      };
+      const send = async (path, body) => {
+        const response = await fetch(path, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(String(response.status));
+      };
+      const save = async (label) => {
+        await send('/api/label', { id: current.id, label });
+        await load();
+      };
+      const undo = async () => {
+        await send('/api/undo', {});
+        await load();
+      };
+
+      function showEffort(item) {
+        const step = item.stage === 'step';
+        content.append(
+          node('h1', step ? '이 실행 단계에 필요한 추론 수준' : '이 요청에 필요한 추론 수준'),
+          node('p', '제대로 처리할 수 있는 가장 낮은 수준을 고르세요.', 'hint'),
+          block('요청', item.request),
+        );
+        if (item.plan) content.append(block('직전 계획', item.plan));
+        for (const call of item.calls) {
+          const area = node('section', undefined, 'call');
+          area.append(
+            node('h2', `도구 호출: ${call.name}`),
+            node('pre', call.args),
+            node('h2', '결과'),
+            node('pre', call.result),
+          );
+          content.append(area);
+        }
+        if (item.prevRequest) content.append(block('이전 요청', item.prevRequest, false));
+        if (item.prev) content.append(block('이전 답변', item.prev, false));
+        LEVELS.forEach(([level, note], n) => button(String(n + 1), level, note, () => save(level)));
+        button('0', '판단 불가', '맥락이 부족함', () => save('unsure'));
+      }
+
+      function showMeeting(item) {
+        content.append(
+          node('h1', '이 메시지에 누가 답해야 하나요?'),
+          node('p', '답해야 할 참가자를 모두 고른 뒤 Enter로 저장하세요.', 'hint'),
+        );
+        if (item.history.length) {
+          const area = node('section');
+          area.append(node('h2', '이전 대화'));
+          for (const turn of item.history) {
+            const row = node('div', undefined, turn.human ? 'turn human' : 'turn');
+            row.append(node('b', turn.speaker), node('pre', turn.text));
+            area.append(row);
+          }
+          content.append(area);
+        }
+        content.append(block('새 메시지', item.message));
+        const toggles = new Map();
+        const refresh = () => {
+          for (const [id, element] of toggles)
+            element.setAttribute('aria-pressed', String(picked.has(id)));
+        };
+        item.participants.forEach((person, n) => {
+          const toggle = () => {
+            if (!picked.delete(person.participantId)) picked.add(person.participantId);
+            refresh();
+          };
+          toggles.set(
+            person.participantId,
+            button(String(n + 1), person.name, person.prompt || '역할 없음', toggle),
+          );
+        });
+        const everyone = () => {
+          picked = new Set(item.participants.map((p) => p.participantId));
+          refresh();
+        };
+        button('A', '전원', '', everyone);
+        button('0', '모호함', '정답을 정할 수 없음', () => save('ambiguous'));
+        const confirm = () => {
+          if (picked.size) save({ participantIds: [...picked] });
+        };
+        button('Enter', '저장', '', confirm).classList.add('primary');
+        refresh();
+      }
+
+      async function load() {
+        const state = await (await fetch('/api/next')).json();
+        document.getElementById('progress').max = state.total || 1;
+        document.getElementById('progress').value = state.done;
+        document.getElementById('count').textContent = `${state.done} / ${state.total}`;
+        content.replaceChildren();
+        actions.replaceChildren();
+        keys = {};
+        picked = new Set();
+        current = state.item;
+        if (!current) {
+          content.append(node('h1', '라벨링을 모두 마쳤습니다.'));
+        } else if (current.kind === 'effort') {
+          showEffort(current);
+        } else {
+          showMeeting(current);
+        }
+        button('U', '되돌리기', '직전 라벨 취소', undo);
+        window.scrollTo(0, 0);
+      }
+
+      // The buttons wrap at narrow widths, so the page always leaves room to scroll past them.
+      new ResizeObserver(([entry]) => {
+        document.querySelector('main').style.paddingBottom = `${entry.target.offsetHeight + 24}px`;
+      }).observe(document.querySelector('footer'));
+
+      document.addEventListener('keydown', (event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+        const run = keys[event.key.toLowerCase()];
+        if (!run) return;
+        event.preventDefault();
+        run();
+      });
+      load().catch(() => {
+        content.textContent = '불러오지 못했습니다. 서버를 확인하세요.';
+      });
+    </script>
+  </body>
+</html>

@@ -143,7 +143,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | judge install|status [--model-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | local-ai install|status [--data-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -165,7 +165,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         redact: { type: 'boolean', default: false },
         private: { type: 'boolean', default: false },
         archive: { type: 'string' },
-        'model-dir': { type: 'string' },
+        'data-dir': { type: 'string' },
         judgments: { type: 'boolean', default: false },
         json: { type: 'boolean', default: false },
         out: { type: 'string' },
@@ -181,7 +181,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
     }
     if (
       extra ||
-      !['dev', 'validate', 'run', 'inspect', 'export', 'judge', 'exec', 'eval'].includes(command)
+      !['dev', 'validate', 'run', 'inspect', 'export', 'local-ai', 'exec', 'eval'].includes(command)
     ) {
       io.write(usage);
       return 1;
@@ -190,7 +190,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
       throw new Error(
         'Model/effort options require exec auto; custom teams keep their own workflow',
       );
-    if (command === 'judge') return await judge(target, values['model-dir'], io);
+    if (command === 'local-ai') return await localAi(target, values['data-dir'], io);
     const workspace = resolve(io.cwd, values.workspace ?? '.');
     if (command === 'exec' || command === 'eval') {
       if (!target) {
@@ -435,24 +435,35 @@ function readInput(path: string, maximumBytes = 2 * 1024 * 1024): string {
 }
 
 /**
- * `corral judge install|status`: the local effort judge model lives in the OS's standard
- * per-user data directory. Installing downloads ≈185 MB from the release in the bundled
- * manifest and checks every file's size and sha256.
+ * `corral local-ai install|status`: the local AI bundle (embedding model and runtime library)
+ * lives in the OS's standard per-user data directory, one folder per release. Installing
+ * downloads ≈200 MB from the pinned URLs in the bundled manifest and checks every file's size
+ * and sha256.
  */
-async function judge(action: string | undefined, modelDir: string | undefined, io: CliIO) {
-  const { bundledManifest, defaultModelDir, installModel, installState } = await import(
-    '@corral/effort-judge'
-  );
-  const dir = modelDir ? resolve(io.cwd, modelDir) : defaultModelDir();
-  const manifest = bundledManifest();
+async function localAi(action: string | undefined, dataDir: string | undefined, io: CliIO) {
+  const {
+    bundleDir,
+    bundledManifest,
+    defaultLocalAiDir,
+    installBundle,
+    installState,
+    runtimeTarget,
+  } = await import('@corral/local-intelligence');
+  const root = dataDir ? resolve(io.cwd, dataDir) : defaultLocalAiDir();
+  const bundle = bundledManifest();
+  const target = runtimeTarget(bundle, process.platform, process.arch);
+  const dir = bundleDir(root, bundle);
+  const install = '`corral local-ai install`';
   if (action === 'status') {
-    const state = installState(dir, manifest);
+    const state = installState(root, target, bundle);
     io.write(
       state === 'current'
-        ? `${manifest.release} installed in ${dir}`
+        ? `${bundle.release} installed in ${dir}`
         : state === 'stale'
-          ? `an older release is installed in ${dir}; run \`corral judge install\``
-          : `not installed (${dir}); run \`corral judge install\``,
+          ? `an older release is installed in ${root}; run ${install}`
+          : state === 'unsupported'
+            ? `local AI has no runtime for ${process.platform}-${process.arch}`
+            : `not installed (${dir}); run ${install}`,
     );
     return 0;
   }
@@ -460,12 +471,20 @@ async function judge(action: string | undefined, modelDir: string | undefined, i
     io.write(usage);
     return 1;
   }
-  io.write(`Installing ${manifest.release} into ${dir}.`);
-  await installModel(dir, {
-    manifest,
-    onFile: (name, size) => io.write(`Downloading ${name} (${Math.round(size / 1e6)} MB).`),
+  if (!target) throw new Error(`local AI has no runtime for ${process.platform}-${process.arch}`);
+  io.write(`Installing ${bundle.release} into ${dir}.`);
+  let current = '';
+  await installBundle(root, {
+    bundle,
+    target,
+    signal: io.signal,
+    onProgress: ({ file, total }) => {
+      if (file === current) return;
+      current = file;
+      io.write(`Downloading ${file} (${Math.round(total / 1e6)} MB).`);
+    },
   });
-  io.write(`${manifest.release} installed.`);
+  io.write(`${bundle.release} installed.`);
   return 0;
 }
 
@@ -523,7 +542,7 @@ export function judgmentReport(projection: RunProjection): string {
 
 /** The local server without Studio: nothing is built or served (exec, eval). */
 async function startHeadless(values: { demo?: boolean }, workspace: string) {
-  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+  const { createLiveModels, defaultLocalIntelligence, startCorralServer } = await import(
     '@corral/server'
   );
   const { ScriptedAgentAdapter, simulatedReply } = await import('@corral/testkit');
@@ -531,7 +550,7 @@ async function startHeadless(values: { demo?: boolean }, workspace: string) {
     workspace,
     port: 0,
     agents: new ScriptedAgentAdapter({ turns: 2, reply: simulatedReply, appendNotes: false }),
-    decisionProviders: defaultDecisionProviders(),
+    localIntelligence: defaultLocalIntelligence(),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });
 }
@@ -561,7 +580,7 @@ async function startServer(
       );
     });
   }
-  const { createLiveModels, defaultDecisionProviders, startCorralServer } = await import(
+  const { createLiveModels, defaultLocalIntelligence, startCorralServer } = await import(
     '@corral/server'
   );
   const { ScriptedAgentAdapter, simulatedReply } = await import('@corral/testkit');
@@ -570,7 +589,7 @@ async function startServer(
     port,
     staticDir,
     allowSharedDevelopment,
-    decisionProviders: defaultDecisionProviders(),
+    localIntelligence: defaultLocalIntelligence(),
     agents: new ScriptedAgentAdapter({ turns: 2, reply: simulatedReply, appendNotes: false }),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });

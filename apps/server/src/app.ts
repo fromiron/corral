@@ -86,6 +86,7 @@ import {
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
+import type { LocalIntelligence } from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
   openDatabase,
@@ -99,6 +100,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { DecisionApis, decisionApiList, decisionApiModel } from './decision-apis.ts';
 import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
@@ -166,6 +168,7 @@ import {
   configRevision,
   prepareWorkspace,
   readWorkspaceConfig,
+  writeExternalJudge,
   writeModelConfig,
   writeReasoningApply,
 } from './workspace.ts';
@@ -183,8 +186,12 @@ function defaultWorktreeRoot(env: NodeJS.ProcessEnv = process.env): string {
 }
 export interface ServerOptions {
   workspace: string;
-  /** Judgment providers beyond the built-in local-heuristic@1, e.g. the local model. */
+  /** Judgment providers beyond the built-in local-heuristic@1 and the local AI judge. */
   decisionProviders?: DecisionProvider[];
+  /** The local AI engine and its `local-model` effort judge; the server closes it on shutdown. */
+  localIntelligence?: LocalIntelligence;
+  /** Decision APIs and their keys; live servers otherwise open them on their credentials. */
+  decisionApis?: DecisionApis;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -422,6 +429,8 @@ async function createCorralServer(
   resources: AsyncDisposableStack,
   closeResources: () => Promise<void>,
 ): Promise<CorralServer> {
+  const local = options.localIntelligence;
+  if (local) resources.defer(() => local.close());
   const host = options.host ?? '127.0.0.1';
   assertLoopback(host);
   const workspace = prepareWorkspace(options.workspace);
@@ -463,7 +472,11 @@ async function createCorralServer(
     );
     await registry.refreshStatus();
   }
-  const decisionProviders = [new LocalHeuristicProvider(), ...(options.decisionProviders ?? [])];
+  const decisionProviders = [
+    new LocalHeuristicProvider(),
+    ...(local ? [local.effort] : []),
+    ...(options.decisionProviders ?? []),
+  ];
   // A configured, installed provider loads ahead of the first judgment (the local model takes
   // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
   for (const id of new Set([
@@ -577,6 +590,15 @@ async function createCorralServer(
   };
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
+  const decisionApis =
+    options.decisionApis ??
+    (options.live
+      ? await DecisionApis.open({
+          credentials: options.live.credentials,
+          attempts: modelAttempts,
+          now: () => clock.nowIso(),
+        })
+      : undefined);
   const imageProfiles = new ImageProfileStore(db, () => registry);
   const imageGeneration = new ImageGenerationService(
     db,
@@ -642,6 +664,7 @@ async function createCorralServer(
     policy: workspace.policy,
     sessionId: backendSessionId,
     judgments: judgmentConfig,
+    ...(decisionApis ? { externalJudges: decisionApis.judges() } : {}),
   });
   registry?.configureRequests({
     store: modelAttempts,
@@ -652,6 +675,12 @@ async function createCorralServer(
   });
   // meeting rounds start each answer as its own Run through the same Coordinator.
   const meetings = new MeetingService({
+    ...(local
+      ? {
+          selectParticipants: (input: import('@corral/contracts').MeetingSelectionInput) =>
+            local.meeting.select(input),
+        }
+      : {}),
     continuation: (runId, sessionId, participantId, definition, mode) =>
       coordinator.meetingContinuation(runId, sessionId, participantId, definition.roles[0]!, mode),
     random: Math.random,
@@ -1089,14 +1118,15 @@ async function createCorralServer(
   });
 
   const reasoningSettings = () => {
+    // A bundle installed while the server runs counts from the next settings read.
+    local?.engine.refreshInstall();
     const provider = decisionProviders.find((p) => p.id === 'local-model' && p.privacy === 'local');
-    const availability = provider?.available();
+    const availability = provider?.available() ?? 'this server has no local AI';
     return {
       apply: workspace.config.decisions?.reasoning_effort.apply === true,
       available: availability === true,
       version: provider?.version ?? null,
-      reason:
-        availability === true ? null : 'Local judge is unavailable. Run corral judge install.',
+      reason: availability === true ? null : `Local AI is unavailable: ${availability}`,
       revision: configRevision(workspace.root),
     };
   };
@@ -1125,6 +1155,82 @@ async function createCorralServer(
         void provider.warmUp().catch(() => {});
     }
     return reasoningSettings();
+  });
+
+  // ── local AI (settings panel) ─────────────────────────────────────
+  const noLocalAi = (reply: FastifyReply) =>
+    fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
+  const localAiView = (local: LocalIntelligence, status = local.status()) => {
+    const wanted = workspace.config.decisions?.reasoning_effort;
+    const chosen = wanted?.allowExternal ? wanted.external : undefined;
+    return {
+      ...status,
+      external: {
+        provider: chosen?.provider ?? null,
+        model: chosen?.model ?? null,
+        revision: configRevision(workspace.root),
+      },
+    };
+  };
+  app.get('/api/v1/local-ai', async (_request, reply) =>
+    local ? localAiView(local) : noLocalAi(reply),
+  );
+  app.post('/api/v1/local-ai/install', async (_request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (local.status().state === 'unsupported')
+      return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
+    return reply.code(202).send(localAiView(local, local.install()));
+  });
+  app.delete('/api/v1/local-ai/install', async (_request, reply) =>
+    local ? localAiView(local, await local.cancelInstall()) : noLocalAi(reply),
+  );
+  app.put('/api/v1/local-ai/external-judge', async (request, reply) => {
+    if (!local) return noLocalAi(reply);
+    const parsed = z
+      .strictObject({ provider: z.string().min(1).max(64).nullable(), revision: z.string().min(1) })
+      .safeParse(request.body);
+    const chosen =
+      parsed.success && parsed.data.provider ? decisionApiModel(parsed.data.provider) : null;
+    if (!parsed.success || (parsed.data.provider && !chosen))
+      return fail(reply, 'SCHEMA_INVALID', 'invalid external judge setting');
+    const changed = writeExternalJudge(
+      workspace.root,
+      chosen ? { provider: chosen.id, model: chosen.model } : null,
+      parsed.data.revision,
+    );
+    if (!changed.ok)
+      return reply
+        .code(409)
+        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
+    workspace.config = changed.config;
+    workspace.configRevision = changed.revision;
+    registry?.setConfigRevision(changed.revision);
+    judgmentConfig.settings = judgmentSettings(changed.config);
+    return localAiView(local);
+  });
+
+  // ── decision APIs (features/decision-apis.md) ─────────────────────
+  type DecisionApiParams = { Params: { id: string } };
+  const listDecisionApis = () => decisionApis?.list() ?? decisionApiList();
+  app.get('/api/v1/decision-apis', async () => listDecisionApis());
+  const knownApi = (id: string) => decisionApiModel(id)?.id ?? null;
+  app.put<DecisionApiParams>('/api/v1/decision-apis/:id/api-key', async (request, reply) => {
+    const id = knownApi(request.params.id);
+    if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
+    if (!decisionApis)
+      return fail(reply, 'CAPABILITY_DENIED', 'decision API keys need a server with real models');
+    const parsed = z
+      .strictObject({ key: z.string().trim().min(1).max(4096) })
+      .safeParse(request.body);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'enter an API key');
+    await decisionApis.setKey(id, parsed.data.key);
+    return decisionApis.list();
+  });
+  app.delete<DecisionApiParams>('/api/v1/decision-apis/:id/api-key', async (request, reply) => {
+    const id = knownApi(request.params.id);
+    if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
+    await decisionApis?.deleteKey(id);
+    return listDecisionApis();
   });
 
   // ── model settings ────────────────────────────────────────────────

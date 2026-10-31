@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Coordinator, InProcessTransport, waitForProjection } from '@corral/core';
+import { bundledManifest, runtimeTarget } from '@corral/local-intelligence';
 import { startCorralServer } from '@corral/server';
 import { openReadOnlyDatabase, SqliteRunStore } from '@corral/storage-sqlite';
 import {
@@ -262,7 +263,19 @@ describe('CLI command/query parity', () => {
     expect((await done).status).toBe('cancelled');
   });
 
-  it('judge status reports where the model is and whether it is installed, without downloading', async () => {
+  it('the removed judge command is refused like any unknown command', async () => {
+    const output: string[] = [];
+    const io = {
+      cwd: workspace(),
+      write: (line: string) => output.push(line),
+      signal: new AbortController().signal,
+    };
+    expect(await runCli(['judge', 'status'], io)).toBe(1);
+    expect(output.join('\n')).toContain('local-ai install|status');
+    expect(output.join('\n')).not.toMatch(/judge install|--model-dir/);
+  });
+
+  it('local-ai status reports the release folder and whether it is installed, without downloading', async () => {
     const dir = workspace();
     const output: string[] = [];
     const io = {
@@ -270,14 +283,24 @@ describe('CLI command/query parity', () => {
       write: (line: string) => output.push(line),
       signal: new AbortController().signal,
     };
-    expect(await runCli(['judge', 'status', '--model-dir', dir], io)).toBe(0);
+    const bundle = bundledManifest();
+    const target = runtimeTarget(bundle, process.platform, process.arch);
+    expect(await runCli(['local-ai', 'status', '--data-dir', dir], io)).toBe(0);
+    if (!target) {
+      expect(output.join('\n')).toContain('no runtime');
+      return;
+    }
     expect(output.join('\n')).toContain('not installed');
-    expect(output.join('\n')).toContain(dir);
-    writeFileSync(join(dir, 'install.json'), JSON.stringify({ release: 'effort-judge-v6' }));
+    expect(output.join('\n')).toContain(join(dir, bundle.release));
+    mkdirSync(join(dir, bundle.release));
+    writeFileSync(
+      join(dir, bundle.release, 'install.json'),
+      JSON.stringify({ release: bundle.release, target }),
+    );
     output.length = 0;
-    expect(await runCli(['judge', 'status', '--model-dir', dir], io)).toBe(0);
-    expect(output.join('\n')).toContain('effort-judge-v6 installed');
-    expect(await runCli(['judge', 'remove'], io)).toBe(1);
+    expect(await runCli(['local-ai', 'status', '--data-dir', dir], io)).toBe(0);
+    expect(output.join('\n')).toContain(`${bundle.release} installed`);
+    expect(await runCli(['local-ai', 'remove'], io)).toBe(1);
   });
 });
 

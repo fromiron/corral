@@ -1,13 +1,14 @@
 import type { ModelProfileSnapshot, ReasoningPolicy, ReasoningResolution } from '@corral/contracts';
 import {
-  chooseReasoningLevel,
   DecisionAnswer,
   type DecisionCancellation,
   type DecisionProvider,
   EFFORT_LEVELS,
+  type EffortLevel,
   type ReasoningInput,
   type Scheduler,
 } from '@corral/contracts';
+import { lowEffortNeedsReview } from './reasoning-risk.ts';
 
 export function reasoningError(
   policy: ReasoningPolicy | undefined,
@@ -45,7 +46,39 @@ export function fixedReasoning(
   };
 }
 
-/** Timeout/cancel settles the waiter; the provider retains real worker occupancy until exit. */
+/** The judged level if the model supports it, else the nearest higher one, else the nearest lower. */
+function supportedLevel(level: EffortLevel, ladder: readonly EffortLevel[]): EffortLevel {
+  const rank = EFFORT_LEVELS.indexOf(level);
+  return ladder.find((l) => EFFORT_LEVELS.indexOf(l) >= rank) ?? ladder[ladder.length - 1]!;
+}
+
+const DEADLINE_MS = 3000;
+/** Less time than this left after the local judge is not worth an outside call. */
+const EXTERNAL_MIN_MS = 500;
+
+/** The external judge for one request, set only when the run may ask it (live, opted in, key). */
+export interface ExternalConsult {
+  /** Monotonic milliseconds, the clock the shared deadline is measured on. */
+  now(): number;
+  ask(
+    input: ReasoningInput,
+    cancellation: DecisionCancellation,
+  ): Promise<{ answer: string; model: string }>;
+}
+
+const failureReason = (error: unknown): NonNullable<ReasoningResolution['fallback']> => {
+  const cause = error instanceof Error ? error.cause : undefined;
+  return cause === 'timeout' || cause === 'invalid_response' || cause === 'unavailable'
+    ? cause
+    : 'provider_error';
+};
+
+/**
+ * `corral-effort-v2`: supported low–xhigh levels, with review of uncertain high-risk low calls. The
+ * 3 s deadline is set once and shared with the external judge asked when the local one abstains;
+ * timeout/cancel settles the waiter while the provider keeps its real occupancy until the
+ * computation ends.
+ */
 export async function automaticReasoning(
   input: ReasoningInput | undefined,
   base: ReasoningResolution,
@@ -54,6 +87,7 @@ export async function automaticReasoning(
   cancellation: DecisionCancellation,
   timers: Scheduler,
   limit: boolean,
+  external?: ExternalConsult,
 ): Promise<ReasoningResolution> {
   const fallback = (reason: NonNullable<ReasoningResolution['fallback']>): ReasoningResolution => ({
     ...base,
@@ -89,27 +123,31 @@ export async function automaticReasoning(
   };
   let off = () => {},
     stopTimer = () => {};
-  try {
-    const result = await Promise.race([
-      provider.decideRequest(input, signal).then(
+  const startedAt = external?.now();
+  const stopped = new Promise<{ kind: 'cancel' } | { kind: 'timeout' }>((resolve) => {
+    off = cancellation.onCancel(() => {
+      abort();
+      resolve({ kind: 'cancel' });
+    });
+    stopTimer = timers.after(DEADLINE_MS, () => {
+      abort();
+      resolve({ kind: 'timeout' });
+    });
+    if (cancellation.aborted) {
+      abort();
+      resolve({ kind: 'cancel' });
+    }
+  });
+  const settled = <T>(work: Promise<T>) =>
+    Promise.race([
+      work.then(
         (answer) => ({ kind: 'answer' as const, answer }),
         (error: unknown) => ({ kind: 'error' as const, error }),
       ),
-      new Promise<{ kind: 'cancel' } | { kind: 'timeout' }>((resolve) => {
-        off = cancellation.onCancel(() => {
-          abort();
-          resolve({ kind: 'cancel' });
-        });
-        stopTimer = timers.after(3000, () => {
-          abort();
-          resolve({ kind: 'timeout' });
-        });
-        if (cancellation.aborted) {
-          abort();
-          resolve({ kind: 'cancel' });
-        }
-      }),
+      stopped,
     ]);
+  try {
+    const result = await settled(provider.decideRequest(input, signal));
     if (cancellation.aborted || result.kind === 'cancel') throw new Error('reasoning cancelled');
     if (result.kind === 'timeout') return fallback('timeout');
     if (result.kind === 'error')
@@ -125,20 +163,47 @@ export async function automaticReasoning(
       answer.data.evidenceLevel !== 'model_probability'
     )
       return fallback('invalid_response');
-    const probabilities = answer.data.probabilities;
-    const choice = chooseReasoningLevel(EFFORT_LEVELS.map((level) => probabilities[level]));
     const ladder = EFFORT_LEVELS.filter((level) => candidates.includes(level));
-    const baseIndex = ladder.indexOf('medium');
-    if (baseIndex < 0) return fallback('unavailable');
-    const resolved = ladder[Math.max(0, Math.min(ladder.length - 1, baseIndex + choice - 1))];
+    if (!ladder.includes('medium')) return fallback('unavailable');
+    const policy = {
+      ladder,
+      policyVersion: 'corral-effort-v2' as const,
+      judgeVersion: provider.version,
+    };
+    if (
+      !answer.data.abstain &&
+      !lowEffortNeedsReview(answer.data.answer, answer.data.probabilities)
+    )
+      return {
+        ...base,
+        ...policy,
+        resolved: supportedLevel(answer.data.answer, ladder),
+        judged: answer.data.answer,
+        source: 'local-model',
+      };
+    if (
+      !external ||
+      startedAt === undefined ||
+      DEADLINE_MS - (external.now() - startedAt) < EXTERNAL_MIN_MS
+    )
+      return { ...fallback('abstained'), ...policy };
+    // One outside call inside what is left of the same deadline; no retry, no averaging.
+    const asked = await settled(external.ask(input, signal));
+    if (cancellation.aborted || asked.kind === 'cancel') throw new Error('reasoning cancelled');
+    const escalated = { ...policy, escalated: true as const };
+    if (asked.kind === 'timeout') return { ...fallback('timeout'), ...escalated };
+    if (asked.kind === 'error') return { ...fallback(failureReason(asked.error)), ...escalated };
+    const level = EFFORT_LEVELS.find((l) => l === asked.answer.answer);
+    const model = asked.answer.model;
+    if (!level || typeof model !== 'string' || !model || model.length > 200)
+      return { ...fallback('invalid_response'), ...escalated };
     return {
       ...base,
-      resolved: resolved ?? 'medium',
-      judged: EFFORT_LEVELS[choice] ?? 'medium',
-      ladder,
-      policyVersion: 'mixdog-relative-v1',
-      source: 'local-model',
-      judgeVersion: provider.version,
+      ...escalated,
+      judgeVersion: model,
+      resolved: supportedLevel(level, ladder),
+      judged: level,
+      source: 'external-model',
     };
   } finally {
     off();

@@ -444,7 +444,7 @@ MVP 자료는 등록한 text/Markdown와 안전하게 추출한 HTML text다. PD
 
 `DecisionProvider`와 Decision 노드의 `DecisionPolicy`는 다른 계약이다. provider는 질문 종류·버전·privacy·timeout을 선언하고 Coordinator는 선언하지 않은 질문을 보내지 않는다. off/observe는 요청을 바꾸지 않는 관찰 경로이며 기존 계약을 유지한다.
 
-ONNX 기반 로컬 판정과 역할별 요청 전 apply는 후속 구현이다. 초기의 “ONNX/적용은 후속” 설명으로 이를 미구현 취급하지 않는다.
+역할별 요청 전 판정 적용과 로컬 판정 엔진은 [로컬 AI 기능 명세](features/local-intelligence.md)를 따른다.
 
 `GraphRunner`와 `AgentAdapter`는 분리한다. LangGraph가 맡는 순회와 Pi가 맡는 모델/도구 세션을 변경해도 public command/event contract가 변하지 않게 한다. 다만 adapter 교체만으로 모든 프레임워크 내부를 관측할 수 있다고 약속하지 않는다.
 

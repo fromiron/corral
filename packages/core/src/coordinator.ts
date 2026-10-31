@@ -27,11 +27,13 @@ import {
   type DecisionCancellation,
   type DecisionNode,
   type DecisionProvider,
+  EFFORT_LEVELS,
   EffectiveHarnessSnapshot,
   type EventPayload,
   ExtensionUiNotice,
   ExtensionUiRequest,
   type ExtensionUiResult,
+  type ExternalEffortJudge,
   FILE_TOOLS,
   GenerateImageArgs,
   type HarnessBindingRef,
@@ -143,7 +145,12 @@ import { SESSION_CONVERSATION } from './history.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
 import { PartialOutputWriter, type RuntimeSnapshot, readPartialOutputs } from './partial-output.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
-import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
+import {
+  automaticReasoning,
+  type ExternalConsult,
+  fixedReasoning,
+  reasoningError,
+} from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun } from './run-plan.ts';
 import {
@@ -360,6 +367,8 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** reasoning_effort judgment providers and workspace settings. Observe only. */
   judgments?: JudgmentConfig;
+  /** Decision APIs; a live run asks the one it chose when the local judge abstains. */
+  externalJudges?: readonly ExternalEffortJudge[];
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -611,6 +620,7 @@ export class Coordinator {
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly judgments: JudgmentConfig | undefined;
+  private readonly externalJudges: readonly ExternalEffortJudge[];
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -665,6 +675,7 @@ export class Coordinator {
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
     this.judgments = deps.judgments;
+    this.externalJudges = deps.externalJudges ?? [];
     this.observers = [
       ...(deps.admission?.observers ?? []),
       ...(deps.judgments
@@ -1922,6 +1933,10 @@ export class Coordinator {
                 this.judgments.settings.reasoning_effort.maxCalls ??
                   definition.limits.maxModelCalls,
               ),
+              ...(this.judgments.settings.reasoning_effort.allowExternal &&
+              this.judgments.settings.reasoning_effort.external
+                ? { external: { ...this.judgments.settings.reasoning_effort.external } }
+                : {}),
             },
           }
         : {}),
@@ -3647,6 +3662,65 @@ export class Coordinator {
     this.publish(run, projection);
     notifyObservers(this.observers, projection, events, () => this.observerContext(run));
     return events;
+  }
+
+  /**
+   * The decision API one request may ask: only in live runs that chose it at start, while its
+   * key is configured. Each call is one decision effect, settled once.
+   */
+  private externalConsult(
+    run: LiveRun,
+    executionId: string,
+    attemptNo: number,
+  ): ExternalConsult | undefined {
+    const wanted = run.snapshot.reasoningApply?.external;
+    const judge = wanted && this.externalJudges.find((j) => j.provider === wanted.provider);
+    if (run.snapshot.mode !== 'live' || !wanted || !judge || judge.available() !== true)
+      return undefined;
+    return {
+      now: () => this.clock.monotonicMs(),
+      ask: async (input, cancellation) => {
+        const effectId = this.ids.next('effect');
+        this.commit(run, [
+          {
+            type: 'effect.admitted',
+            executionId,
+            payload: {
+              effectId,
+              kind: 'decision',
+              scope: executionId,
+              epoch: attemptNo,
+              reservationId: null,
+            },
+          },
+        ]);
+        const settle = (outcome: EventPayload<'effect.settled'>['outcome']) => {
+          if (
+            this.live.get(run.runId) === run &&
+            !TERMINAL_RUN_STATUSES.has(run.projection.status) &&
+            run.projection.effects[effectId]?.status === 'admitted'
+          )
+            this.commit(run, [
+              { type: 'effect.settled', executionId, payload: { effectId, outcome } },
+            ]);
+        };
+        const off = cancellation.onCancel(() => settle('cancelled'));
+        try {
+          const answer = await judge.judge(
+            input,
+            { model: wanted.model, owner: { runId: run.runId, executionId, effectId, attemptNo } },
+            cancellation,
+          );
+          settle(EFFORT_LEVELS.some((level) => level === answer.answer) ? 'succeeded' : 'failed');
+          return answer;
+        } catch (error) {
+          settle(cancellation.aborted ? 'cancelled' : 'failed');
+          throw error;
+        } finally {
+          off();
+        }
+      },
+    };
   }
 
   /** What observers may do: record decision facts while the run is open. */
@@ -7614,6 +7688,7 @@ export class Coordinator {
                 cancellation,
                 this.timers,
                 exhausted,
+                this.externalConsult(run, executionId, input.attemptNo),
               );
             } finally {
               run.boundaries.delete(executionId);

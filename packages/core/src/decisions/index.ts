@@ -1,6 +1,7 @@
 import {
   type AgentStartInput,
   DecisionAnswer,
+  type DecisionApiId,
   type DecisionFailureReason,
   type DecisionProvider,
   type DecisionProviderSnapshot,
@@ -33,6 +34,8 @@ export interface JudgmentConfig {
       maxCalls?: number;
       /** External providers are refused unless the workspace opted in. */
       allowExternal?: boolean;
+      /** The decision API automatic reasoning asks, only with allowExternal. */
+      external?: { provider: DecisionApiId; model: string };
     };
   };
 }
@@ -157,10 +160,13 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
       if (settings?.mode !== 'observe') return;
       const input = deps.startInputOf(context.runId, event.payload.executionId);
       if (!input) return;
+      // An automatic request was already judged by the local model before it was prepared.
+      const applied = event.payload.reasoning?.requested.mode === 'auto';
       const providers = settings.providers.flatMap((snapshot) => {
-        const provider = snapshot.available
-          ? deps.providers.find((p) => p.id === snapshot.id)
-          : undefined;
+        const provider =
+          snapshot.available && !(applied && snapshot.id === 'local-model')
+            ? deps.providers.find((p) => p.id === snapshot.id)
+            : undefined;
         return provider ? [provider] : [];
       });
       if (providers.length === 0) return;

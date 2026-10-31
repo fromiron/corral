@@ -3415,6 +3415,28 @@
                       "type": "null"
                     }
                   ]
+                },
+                "external": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "jev",
+                        "openai-decisions"
+                      ]
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -9316,6 +9338,7 @@
                     "fixed",
                     "provider_default",
                     "local-model",
+                    "external-model",
                     "fallback",
                     "compaction"
                   ]
@@ -9364,7 +9387,11 @@
                 },
                 "policyVersion": {
                   "type": "string",
-                  "const": "mixdog-relative-v1"
+                  "enum": [
+                    "mixdog-relative-v1",
+                    "corral-effort-v1",
+                    "corral-effort-v2"
+                  ]
                 },
                 "fallback": {
                   "type": "string",
@@ -9374,8 +9401,13 @@
                     "provider_error",
                     "invalid_response",
                     "limit",
-                    "missing_input"
+                    "missing_input",
+                    "abstained"
                   ]
+                },
+                "escalated": {
+                  "type": "boolean",
+                  "const": true
                 }
               },
               "required": [

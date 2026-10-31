@@ -36,8 +36,8 @@ const REVIEWED = new Set([
   'BlueOak-1.0.0',
   'CC0-1.0',
   '0BSD',
-  // type-fest via onnxruntime-node → global-agent → serialize-error. Either license is
-  // permissive; the MIT terms apply.
+  // type-fest via electron-builder → @electron/get → global-agent → serialize-error. Either
+  // license is permissive; the MIT terms apply.
   '(MIT OR CC0-1.0)',
   // electron-builder's argparse / filename utilities, reviewed for the Linux build tool graph.
   'Python-2.0',

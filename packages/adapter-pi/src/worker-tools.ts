@@ -310,6 +310,21 @@ export function systemPrompt(start: PromptStart): string {
     .join('\n\n');
 }
 
+const METADATA_HEADER = '[Corral assignment metadata]\n';
+
+/** The ids, criteria and limits at the top of an assignment: one JSON line for the model. */
+export function assignmentMetadata(metadata: string): string {
+  return `${METADATA_HEADER}${metadata}\n\n`;
+}
+
+/** The assignment without that block: the effort judge needs the task, not its bookkeeping. */
+export function withoutAssignmentMetadata(text: string): string {
+  const start = text.indexOf(METADATA_HEADER);
+  if (start < 0) return text;
+  const end = text.indexOf('\n\n', start + METADATA_HEADER.length);
+  return end < 0 ? text.slice(0, start) : text.slice(0, start) + text.slice(end + 2);
+}
+
 export function userPrompt(start: PromptStart): string {
   const round = start.round ? `This is round ${start.round} of a review loop.\n\n` : '';
   const target =
@@ -328,7 +343,7 @@ export function userPrompt(start: PromptStart): string {
     (start.conversation?.turns.length
       ? `The earlier messages are prior requests and answers from this work session${start.conversation.omittedTurns ? ` (${start.conversation.omittedTurns} older ${start.conversation.omittedTurns === 1 ? 'turn is' : 'turns are'} omitted)` : ''}. Answer the current request below. Revise an earlier answer only when the request asks for it.\n\n`
       : '') +
-    `[Corral assignment metadata]\n${metadata}\n\n` +
+    assignmentMetadata(metadata) +
     (start.item
       ? `This is isolated item ${start.item.index} of ${start.item.total}. Other items' inputs and outputs are not available. Worktree changes accumulate in order.\n\n`
       : '') +

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "release": "corral-local-ai-1",
+  "model": {
+    "name": "EmbeddingGemma 2 Text 270M",
+    "file": "embeddinggemma-2-text-270m.litertlm",
+    "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b90982095dc05c2bd162e4b954ee4dbac7/embeddinggemma-2-text-270m.litertlm",
+    "size": 164626432,
+    "sha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
+  },
+  "embedding": {
+    "dims": 768,
+    "maxInputTokens": 256
+  },
+  "runtime": {
+    "name": "litert-lm-api",
+    "version": "0.19.0",
+    "apiVersion": { "major": 1, "minor": 0 },
+    "targets": {
+      "linux-x64": {
+        "url": "https://files.pythonhosted.org/packages/73/07/f2817c145fd04983607d830259e620700638a426ed7b9dda50722a737c90/litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl",
+        "size": 33186371,
+        "sha256": "c5a8a9538acffbd01530eab812424c0e96a2c193b4b16b8f8df630a8d346be76",
+        "library": "liblitert-lm.so",
+        "files": {
+          "liblitert-lm.so": {
+            "member": "litert_lm/liblitert-lm.so",
+            "size": 85045000,
+            "sha256": "35175c60e0a9becef03b53fd0b3fc0ce3d25a0aa71168f13483ec9d59a9a6465"
+          }
+        }
+      },
+      "linux-arm64": {
+        "url": "https://files.pythonhosted.org/packages/6e/91/ce4712d1e97fb197433b687e1c900a4186e31d3d8442005d3e213f3b0e5c/litert_lm_api-0.19.0-py3-none-manylinux_2_27_aarch64.whl",
+        "size": 32194513,
+        "sha256": "1dc24e9a335c61ecc27df887eb56d8bae455a16351ebc716e4398a7089ab84bc",
+        "library": "liblitert-lm.so",
+        "files": {
+          "liblitert-lm.so": {
+            "member": "litert_lm/liblitert-lm.so",
+            "size": 84586392,
+            "sha256": "90295a758fc6a0d5b4fa6b8a49924062afaa024429448dcc6932199f9be079e3"
+          }
+        }
+      },
+      "darwin-arm64": {
+        "url": "https://files.pythonhosted.org/packages/ce/a1/8686d7c8323d15680c9d3c0a950c6349c03390d4f2c69180095075a1587c/litert_lm_api-0.19.0-py3-none-macosx_12_0_arm64.whl",
+        "size": 17222369,
+        "sha256": "6f2a517266fe4dcac451ce8f41c45c02ef08078a6589e5e0253197937e1f70a5",
+        "library": "liblitert-lm.dylib",
+        "files": {
+          "liblitert-lm.dylib": {
+            "member": "litert_lm/liblitert-lm.dylib",
+            "size": 50592112,
+            "sha256": "0e1eba3a125295322af745502fdfb3f76c57b012696c20744764e83b51baec9e"
+          }
+        }
+      },
+      "win32-x64": {
+        "url": "https://files.pythonhosted.org/packages/dc/aa/a987eeb80356d7b8550bd6826350cd9b4d1b84ab5d2925d53822b2e23d16/litert_lm_api-0.19.0-py3-none-win_amd64.whl",
+        "size": 27503843,
+        "sha256": "95d586194883daf7f298be7b97fe1ca16fc7b1c2839d08a7e182b1da48156d63",
+        "library": "litert-lm.dll",
+        "files": {
+          "litert-lm.dll": {
+            "member": "litert_lm/litert-lm.dll",
+            "size": 52784128,
+            "sha256": "aece59d4d7939ac551c5f05bb520185553ba594e2a41d3003499fb1adcf2a7dc"
+          },
+          "dxcompiler.dll": {
+            "member": "litert_lm/dxcompiler.dll",
+            "size": 17951808,
+            "sha256": "b86a738ece4c05dbe2d9bbb29668a2ccb28a0740773c9b027cdc61e8d07b4d75"
+          },
+          "dxil.dll": {
+            "member": "litert_lm/dxil.dll",
+            "size": 1503304,
+            "sha256": "058f2f52a680c38b223a5615b7df969def21f77e577562e5099d971dede992de"
+          }
+        }
+      }
+    }
+  }
+}

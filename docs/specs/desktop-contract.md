@@ -143,7 +143,7 @@ flowchart LR
 
 ### ABS-07 — 실제 Windows/macOS 앱과 앱 수명
 
-- Windows 패키지를 첫 사용 가능 단계에 둔다. `prepare.ts`의 Linux assert만 제거하지 말고 OS/arch별 bundled Node·native SQLite/ONNX·worker 경로·자산·서버 시작/종료를 검증한다.
+- Windows 패키지를 첫 사용 가능 단계에 둔다. `prepare.ts`의 Linux assert만 제거하지 말고 OS/arch별 bundled Node·native SQLite·로컬 AI 패키지 자산과 헬퍼 실행·worker 경로·서버 시작/종료를 검증한다.
 - Windows 설치형/portable, macOS dmg/zip, 기존 Linux AppImage를 release matrix로 관리한다. 실제 검증한 arch만 지원으로 표시한다.
 - 트레이는 기존 세션 목록/명령으로 열기·승인 대기 이동·실행 취소를 제공한다. 창 닫기와 앱 종료를 구분하고, 활성 Run이 있을 때의 종료 확인·숨기기 설정을 둔다.
 - 절전 방지는 활성 실행 수에 따라 하나의 blocker를 소유한다. 전부 종료/앱 종료 시 해제하고, 승인 대기나 일시정지 중 유지 여부를 설정으로 명시한다.

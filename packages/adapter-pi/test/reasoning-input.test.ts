@@ -2,6 +2,7 @@ import { ReasoningInput } from '@corral/contracts';
 import type { Context } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
 import { requestReasoningInput } from '../src/reasoning-input.ts';
+import { assignmentMetadata, withoutAssignmentMetadata } from '../src/worker-tools.ts';
 
 describe('private judge request input', () => {
   it('uses tool results and ordinary text, never hidden thinking', () => {
@@ -71,4 +72,62 @@ it('truncates supplementary Unicode by code points within the private IPC bounds
   expect(input.calls[0]!.result).toBe(`${emoji.repeat(2000)}\n…\n${emoji.repeat(1000)}`);
   expect(input.request).not.toMatch(/[\uD800-\uDFFF]/u);
   expect(input.calls[0]!.args).not.toMatch(/[\uD800-\uDFFF]/u);
+});
+
+it('gives the judge the task, not the assignment metadata in front of it', () => {
+  const metadata = JSON.stringify({
+    criteriaVersionId: 'av_criteria',
+    taskBrief: { inputHash: 'a'.repeat(64), limits: { maxSpawns: 12 }, sourceRefs: [] },
+    padding: 'x'.repeat(2000),
+  });
+  const prompt = `${assignmentMetadata(metadata)}## brief\n\nFix the typo in README`;
+  const context = {
+    messages: [
+      { role: 'user', content: prompt, timestamp: 1 },
+      { role: 'assistant', content: [{ type: 'text', text: 'Done' }], timestamp: 2 },
+      { role: 'user', content: prompt.replace('typo', 'second typo'), timestamp: 3 },
+    ],
+  } as Context;
+  const input = requestReasoningInput(context, 'turn', '', []);
+  expect(input.request).toBe('## brief\n\nFix the second typo in README');
+  expect(input.prevRequest).toBe('## brief\n\nFix the typo in README');
+  expect(withoutAssignmentMetadata('no metadata here')).toBe('no metadata here');
+});
+
+it('judges the request, not the Corral state message appended after it', () => {
+  const state = (n: number) => ({
+    role: 'user',
+    content: `[Corral current state]\n${JSON.stringify({ executionId: `exec_${n}`, limits: { maxSpawns: 12 } })}`,
+    timestamp: 0,
+  });
+  const brief = { role: 'user', content: '## brief\n\nFix the typo in README', timestamp: 1 };
+  const first = requestReasoningInput({ messages: [brief, state(1)] } as Context, 'turn', '', []);
+  expect(first).toMatchObject({ kind: 'turn', request: brief.content, prevRequest: '' });
+
+  const step = requestReasoningInput(
+    {
+      messages: [
+        brief,
+        {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'c1', name: 'write_artifact', arguments: {} }],
+          timestamp: 2,
+        },
+        {
+          role: 'toolResult',
+          toolCallId: 'c1',
+          toolName: 'write_artifact',
+          content: [{ type: 'text', text: 'saved' }],
+          timestamp: 3,
+        },
+        state(2),
+      ],
+    } as Context,
+    'turn',
+    '',
+    [],
+  );
+  expect(step).toMatchObject({ kind: 'step', request: brief.content, prevRequest: '' });
+  expect(step.calls.map((call) => call.name)).toEqual(['write_artifact']);
+  expect(JSON.stringify([first, step])).not.toContain('Corral current state');
 });

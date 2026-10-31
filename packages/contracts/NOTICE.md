@@ -1,1 +1,0 @@
-The expected-cost rule in `src/reasoning-cost.ts` is derived from Mixdog (Apache-2.0), moved from @corral/effort-judge so the Coordinator can select among supported levels. See `../effort-judge/NOTICE.md` and `../effort-judge/LICENSE-Apache-2.0.txt`.

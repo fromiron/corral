@@ -4,7 +4,6 @@ export {
   type ServerOptions,
   startCorralServer,
 } from './app.ts';
-export { defaultDecisionProviders } from './decision-providers.ts';
 export {
   type CodingEvalReport,
   evaluateCodingTools,
@@ -12,5 +11,6 @@ export {
   hashlineFixtureDriver,
 } from './evaluation-edits.ts';
 export { createLiveModels } from './live-models.ts';
+export { defaultLocalIntelligence } from './local-ai.ts';
 export * from './models/index.ts';
 export { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
