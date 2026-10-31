@@ -1,6 +1,6 @@
 # effort 분류기 학습
 
-자동 추론의 로컬 판정(`corral-effort-v1` 정책)에 쓰는 분류기를 만든다. 배포 가중치는 `effort-v2`이며 [v2 재현과 비교](v2.md)를 따른다. 아래 절차와 `train.ts`, `report.md`는 선형 기준 모델 `effort-v1`의 재현 자료다. 동작 규칙은 [로컬 AI 기능 명세](../../../docs/specs/features/local-intelligence.md)가 정하고, 제품 런타임은 이 디렉터리를 쓰지 않는다.
+자동 추론의 로컬 판정(`corral-effort-v2` 정책)에 쓰는 분류기를 만든다. 배포 가중치는 `effort-v2`이며 [v2 재현과 비교](v2.md)를 따른다. 아래 절차와 `train.ts`, `report.md`는 선형 기준 모델 `effort-v1`의 재현 자료다. 동작 규칙은 [로컬 AI 기능 명세](../../../docs/specs/features/local-intelligence.md)가 정하고, 제품 런타임은 이 디렉터리를 쓰지 않는다.
 
 | 파일 | 내용 |
 |---|---|

@@ -189,7 +189,7 @@ describe('automatic reasoning admission', () => {
       resolved: 'high',
       judged: 'high',
       ladder: ['low', 'medium', 'high'],
-      policyVersion: 'corral-effort-v1',
+      policyVersion: 'corral-effort-v2',
       judgeVersion: 'v6',
       kind: 'turn',
     });
@@ -339,12 +339,52 @@ it('observe does not judge an automatic request again, and apply uses the run li
   s.command('cancel');
 });
 
-describe('corral-effort-v1', () => {
+describe('corral-effort-v2', () => {
   const judged = (level: string, probabilities: Record<string, number>, extra = {}) => ({
     answer: level,
     probabilities,
     evidenceLevel: 'model_probability',
     ...extra,
+  });
+
+  it('reviews an uncertain low judgment when the distribution makes under-calling costly', async () => {
+    const s = await setup(async () =>
+      judged('low', { low: 0.55, medium: 0.05, high: 0.25, xhigh: 0.15 }),
+    );
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({
+      resolved: 'medium',
+      source: 'fallback',
+      fallback: 'abstained',
+      policyVersion: 'corral-effort-v2',
+    });
+    s.command('cancel');
+  });
+
+  it.each([
+    { probabilities: { low: 0.8, medium: 0.1, high: 0.05, xhigh: 0.05 }, resolved: 'low' },
+    { probabilities: { low: 0.6, medium: 0, high: 0.3, xhigh: 0.1 }, resolved: 'low' },
+    { probabilities: { low: 0.55, medium: 0.44, high: 0.01, xhigh: 0 }, resolved: 'low' },
+  ])(
+    'keeps a clear or lower-risk low judgment: $probabilities',
+    async ({ probabilities, resolved }) => {
+      const s = await setup(async () => judged('low', probabilities));
+      const permit = await s.host.prepareModelRequest(undefined, input);
+      expect(permit.reasoning).toMatchObject({ resolved, judged: 'low', source: 'local-model' });
+      s.command('cancel');
+    },
+  );
+
+  it('preserves a likely xhigh judgment even when a full expected-cost rule would lower it', async () => {
+    const s = await setup(
+      async () => judged('xhigh', { low: 0.1, medium: 0.2, high: 0.3, xhigh: 0.4 }),
+      false,
+      6,
+      ['low', 'medium', 'high', 'xhigh'],
+    );
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({ resolved: 'xhigh', judged: 'xhigh' });
+    s.command('cancel');
   });
 
   it('applies the most likely level, not an expected-cost choice', async () => {
@@ -371,7 +411,7 @@ describe('corral-effort-v1', () => {
         resolved: c.resolved,
         judged: c.level,
         ladder: c.levels,
-        policyVersion: 'corral-effort-v1',
+        policyVersion: 'corral-effort-v2',
       });
       s.command('cancel');
     }
@@ -386,7 +426,7 @@ describe('corral-effort-v1', () => {
       resolved: 'medium',
       source: 'fallback',
       fallback: 'abstained',
-      policyVersion: 'corral-effort-v1',
+      policyVersion: 'corral-effort-v2',
       judgeVersion: 'v6',
     });
     expect(permit.reasoning?.judged).toBeUndefined();
@@ -423,6 +463,34 @@ describe('external judgment (Jev)', () => {
       (effect) => effect.kind === 'decision',
     );
 
+  it('uses the existing opt-in external path once for a guarded low judgment', async () => {
+    const j = jev(async () => ({ answer: 'high', model: 'reviewed' }));
+    const s = await setup(
+      async () => ({
+        answer: 'low',
+        probabilities: { low: 0.55, medium: 0.05, high: 0.25, xhigh: 0.15 },
+        evidenceLevel: 'model_probability',
+      }),
+      false,
+      6,
+      [...ladder],
+      {
+        externalJudges: [j.judge],
+        external: 'jev',
+      },
+    );
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({
+      resolved: 'high',
+      source: 'external-model',
+      escalated: true,
+      policyVersion: 'corral-effort-v2',
+    });
+    expect(j.calls).toHaveLength(1);
+    expect(decisionEffects(s)).toHaveLength(1);
+    s.command('cancel');
+  });
+
   it('asks Jev once when the local judge abstains, inside a recorded decision effect', async () => {
     const j = jev(async () => ({ answer: 'xhigh', model: 'jev-2026-09-15' }));
     const s = await setup(async () => abstained, false, 6, [...ladder], {
@@ -436,7 +504,7 @@ describe('external judgment (Jev)', () => {
       source: 'external-model',
       escalated: true,
       judgeVersion: 'jev-2026-09-15',
-      policyVersion: 'corral-effort-v1',
+      policyVersion: 'corral-effort-v2',
     });
     expect(j.calls).toHaveLength(1);
     const [[sent, request] = []] = j.calls;

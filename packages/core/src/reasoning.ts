@@ -8,6 +8,7 @@ import {
   type ReasoningInput,
   type Scheduler,
 } from '@corral/contracts';
+import { lowEffortNeedsReview } from './reasoning-risk.ts';
 
 export function reasoningError(
   policy: ReasoningPolicy | undefined,
@@ -73,7 +74,7 @@ const failureReason = (error: unknown): NonNullable<ReasoningResolution['fallbac
 };
 
 /**
- * `corral-effort-v1`: the local judgment applied to the model's supported low–xhigh levels. The
+ * `corral-effort-v2`: supported low–xhigh levels, with review of uncertain high-risk low calls. The
  * 3 s deadline is set once and shared with the external judge asked when the local one abstains;
  * timeout/cancel settles the waiter while the provider keeps its real occupancy until the
  * computation ends.
@@ -166,10 +167,13 @@ export async function automaticReasoning(
     if (!ladder.includes('medium')) return fallback('unavailable');
     const policy = {
       ladder,
-      policyVersion: 'corral-effort-v1' as const,
+      policyVersion: 'corral-effort-v2' as const,
       judgeVersion: provider.version,
     };
-    if (!answer.data.abstain)
+    if (
+      !answer.data.abstain &&
+      !lowEffortNeedsReview(answer.data.answer, answer.data.probabilities)
+    )
       return {
         ...base,
         ...policy,

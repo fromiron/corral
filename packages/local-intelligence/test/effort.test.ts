@@ -191,6 +191,50 @@ describe('local effort provider', () => {
   }
   const cancellation: DecisionCancellation = { aborted: false, onCancel: () => () => {} };
 
+  it('warms a real classification embedding before reporting provider warm-up completion', async () => {
+    let complete!: (vectors: Float32Array[]) => void;
+    let entered!: () => void;
+    const embeddingStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pendingEmbedding = new Promise<Float32Array[]>((resolve) => {
+      complete = resolve;
+    });
+    const requests: EmbedRequest[] = [];
+    const judge = new LocalEffortProvider({
+      engine: {
+        available: () => true,
+        isReady: () => true,
+        warmUp: async () => {},
+        embed: (request) => {
+          requests.push(request);
+          entered();
+          return pendingEmbedding;
+        },
+      },
+      classifier: loadEffortClassifier(weights(), expected),
+      release: 'bundle-1',
+    });
+    let ready = false;
+    const warming = judge.warmUp().then(() => {
+      ready = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requests).toHaveLength(1);
+    await embeddingStarted;
+    expect(ready).toBe(false);
+    expect(requests[0]).toMatchObject({
+      task: 'classification',
+      priority: 'effort',
+      overflow: 'truncate',
+    });
+    expect(requests[0]!.texts).toEqual(['request: warm up']);
+    complete([Float32Array.from([0, 1, 0, 0])]);
+    await warming;
+    expect(ready).toBe(true);
+  });
+
   it('judges a full request input as a truncated classification embedding', async () => {
     const { judge, requests, signals } = provider([0, 0, 0, 1]);
     expect(judge.id).toBe('local-model');

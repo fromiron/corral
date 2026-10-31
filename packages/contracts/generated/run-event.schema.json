@@ -9389,7 +9389,8 @@
                   "type": "string",
                   "enum": [
                     "mixdog-relative-v1",
-                    "corral-effort-v1"
+                    "corral-effort-v1",
+                    "corral-effort-v2"
                   ]
                 },
                 "fallback": {

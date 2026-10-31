@@ -54,8 +54,11 @@ export class LocalEffortProvider implements DecisionProvider {
     return this.engine.available();
   }
 
-  warmUp(): Promise<void> {
-    return this.engine.warmUp();
+  async warmUp(): Promise<void> {
+    await this.engine.warmUp();
+    // Engine creation alone may leave lazy buffers/kernels for the first real judgment.
+    // A fixed, cached local input warms the path without observing a user's request.
+    await this.engine.embed(effortRequest(requestInput('warm up')));
   }
 
   decide(question: EffortQuestion, cancellation: DecisionCancellation) {
