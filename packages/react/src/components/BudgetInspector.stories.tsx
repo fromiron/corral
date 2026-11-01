@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, within } from 'storybook/test';
+import { expect, waitFor, within } from 'storybook/test';
 import { projectionWith, sessionStore } from '../stories/fixtures.tsx';
 import { BudgetInspector } from './BudgetInspector.tsx';
 
@@ -55,6 +55,11 @@ export const UnknownUsage: Story = {
     // Unknown usage retains its reservation and remains visibly unknown.
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Usage by request' }));
+    // The a11y check follows play; let the opened panel finish its opacity transition.
+    await waitFor(() => {
+      const content = canvas.getByRole('region', { name: 'Usage by request' }).firstElementChild;
+      expect(content && getComputedStyle(content).opacity).toBe('1');
+    });
     expect(canvas.getByTestId('budget-call-call_unknown')).toHaveTextContent('300');
     expect(canvas.getByTestId('budget-call-call_unknown')).toHaveTextContent(/unknown/i);
     expect(canvas.getByTestId('budget-call-call_known')).toHaveTextContent('100');

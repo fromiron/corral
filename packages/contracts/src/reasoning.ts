@@ -45,6 +45,7 @@ export const ReasoningInput = z.strictObject({
         name: z.string().max(128),
         args: z.string().max(320),
         result: z.string().max(6006),
+        status: z.enum(['completed', 'failed', 'pending']).optional(),
       }),
     )
     .max(3),

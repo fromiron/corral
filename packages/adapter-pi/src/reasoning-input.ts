@@ -1,6 +1,6 @@
 import type { ReasoningInput } from '@corral/contracts';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import type { Context } from '@earendil-works/pi-ai';
+import type { Context, ToolResultMessage } from '@earendil-works/pi-ai';
 import { isCorralState } from './request-record.ts';
 import { withoutAssignmentMetadata } from './worker-tools.ts';
 
@@ -39,17 +39,21 @@ export function requestReasoningInput(
     assistant?.role === 'assistant'
       ? assistant.content.filter((part) => part.type === 'toolCall')
       : [];
-  const calls = toolCalls.slice(0, 3).map((call) => ({
-    name: call.name.slice(0, 128),
-    args: head(JSON.stringify(call.arguments), 160),
-    result: resultWindow(
-      messages
-        .slice(assistantIndex + 1)
-        .filter((message) => message.role === 'toolResult' && message.toolCallId === call.id)
-        .map((message) => text(message.content))
-        .join('\n'),
-    ),
-  }));
+  const calls: ReasoningInput['calls'] = toolCalls.slice(0, 3).map((call) => {
+    const results = messages
+      .slice(assistantIndex + 1)
+      .filter(
+        (message): message is ToolResultMessage =>
+          message.role === 'toolResult' && message.toolCallId === call.id,
+      );
+    const latest = results.at(-1);
+    return {
+      name: call.name.slice(0, 128),
+      args: head(JSON.stringify(call.arguments), 160),
+      result: resultWindow(results.map((message) => text(message.content)).join('\n')),
+      status: !latest ? 'pending' : latest.isError === true ? 'failed' : 'completed',
+    };
+  });
   const step = assistantIndex > userIndex && calls.length > 0;
   const previous = messages.slice(0, userIndex).findLast((message) => message.role === 'assistant');
   return {

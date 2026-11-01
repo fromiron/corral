@@ -421,7 +421,7 @@ export class MeetingService {
 
   private nextRebuttal(meeting: MeetingState) {
     const last = meeting.rounds.at(-1);
-    if (!last || last.kind === 'secretary') return null;
+    if (!last || last.kind === 'secretary' || !last.participantIds.length) return null;
     const rebuttalNo = last.kind === 'rebuttal' ? (last.rebuttalNo ?? 0) + 1 : 1;
     return { basedOnRoundId: last.roundId, rebuttalNo };
   }
@@ -585,11 +585,13 @@ export class MeetingService {
     const meeting = session.meeting!;
     let participantIds = [...spec.participantIds];
     if (spec.kind === 'all' && spec.message && this.deps.selectParticipants) {
-      const history: { order: number; participantId: string | null; text: string }[] = [];
+      const history: { id: string; order: number; participantId: string | null; text: string }[] =
+        [];
       for (const past of meeting.rounds.slice(-6)) {
         const index = meeting.rounds.indexOf(past);
         if (past.message)
           history.push({
+            id: `${past.roundId}:message`,
             order: roundOrder(past, index),
             participantId: null,
             text: past.message.slice(0, 2000),
@@ -598,31 +600,46 @@ export class MeetingService {
         for (const [n, answer] of view.answers.entries()) {
           if (answer.status === 'answered' && answer.text)
             history.push({
+              id: `answer:${answer.runId}`,
               order: answerOrder(past, index, past.answers[n]!, n),
               participantId: answer.participantId,
               text: answer.text.slice(0, 2000),
             });
         }
       }
+      history.sort((a, b) => a.order - b.order);
       const selected = await this.deps
         .selectParticipants({
           message: spec.message,
-          participants: meeting.config.participants.map(({ participantId, prompt }) => ({
+          participants: meeting.config.participants.map(({ participantId, name, prompt }) => ({
             participantId,
+            name,
             prompt,
           })),
           history: history
-            .sort((a, b) => a.order - b.order)
             .slice(-12)
-            .map(({ participantId, text }) => ({ participantId, text })),
+            .map(({ id, participantId, text }) => ({ id, participantId, text })),
         })
         .catch(() => null);
       if (
-        selected?.length &&
+        selected !== null &&
         new Set(selected).size === selected.length &&
         selected.every((id) => participantIds.includes(id))
       )
         participantIds = selected;
+      else {
+        const allowed = participantIds.filter((id) => id !== SECRETARY_ID);
+        const replyTarget = spec.replyTo?.participantId;
+        const recent = history.findLast(
+          (entry) => entry.participantId !== null && allowed.includes(entry.participantId),
+        )?.participantId;
+        const turn = meeting.rounds.filter((past) => past.kind === 'all').length;
+        const fallback =
+          (replyTarget && allowed.includes(replyTarget) ? replyTarget : null) ??
+          recent ??
+          allowed[turn % allowed.length];
+        participantIds = fallback ? [fallback] : [];
+      }
     }
     for (let i = participantIds.length - 1; i > 0; i--) {
       const j = Math.floor(this.deps.random() * (i + 1));

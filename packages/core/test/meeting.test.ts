@@ -2,8 +2,9 @@ import {
   type AgentStartInput,
   canonicalJson,
   type MeetingConfig,
-  type MeetingRound,
+  MeetingRound,
   type MeetingSelectionInput,
+  MeetingView,
   SECRETARY_ID,
 } from '@corral/contracts';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
@@ -221,10 +222,17 @@ describe('local meeting participant selection', () => {
     expect(select).toHaveBeenCalledTimes(1);
     await f.send('followup', 'Why?');
     await f.meetings.idle(f.sessionId);
-    expect(select.mock.calls[1]![0].history).toContainEqual({
-      participantId: 'tester',
-      text: 'Tester answers',
-    });
+    expect(select.mock.calls[1]![0].history).toEqual([
+      { id: 'round_1:message', participantId: null, text: 'How would you reproduce it?' },
+      { id: `answer:${f.seen[0]!.runId}`, participantId: 'tester', text: 'Tester answers' },
+    ]);
+    expect(select.mock.calls[0]![0].participants).toEqual(
+      CONFIG.participants.map(({ participantId, name, prompt }) => ({
+        participantId,
+        name,
+        prompt,
+      })),
+    );
     expect(f.seen).toHaveLength(2);
     expect(await f.send('selected', 'How would you reproduce it?', ['tester'])).toMatchObject({
       ok: false,
@@ -243,15 +251,114 @@ describe('local meeting participant selection', () => {
     expect(f.seen.map((input) => input.role.name)).toEqual(['Builder', 'Secretary']);
   });
 
-  it.each([null, [], ['foreign'], [SECRETARY_ID], ['tester', 'tester']])(
+  it.each([null, ['foreign'], [SECRETARY_ID], ['tester', 'tester']])(
     'falls back safely on an unusable selection %j',
     async (selected) => {
       const f = await fixture({ selectParticipants: async () => selected });
       await f.send('fallback', 'Compare your views.');
       await f.meetings.idle(f.sessionId);
-      expect(f.seen).toHaveLength(CONFIG.participants.length);
+      expect(f.seen.map((input) => input.role.name)).toEqual(['Architect']);
     },
   );
+
+  it('persists explicit silence, replays it without judging, and starts no Run or rebuttal', async () => {
+    const select = vi.fn(async () => []);
+    const f = await fixture({ selectParticipants: select });
+    expect(await f.send('silent', 'Do not reply yet.')).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    const view = (await f.meetings.view(f.sessionId))!;
+    expect(MeetingView.safeParse(view).success).toBe(true);
+    expect(view.rounds[0]).toMatchObject({ kind: 'all', participantIds: [], answers: [] });
+    expect(view.rebuttal).toBeNull();
+    expect(await f.rebut('no_rebuttal')).toMatchObject({ ok: false, error: 'invalid' });
+    expect(await f.send('silent', 'Do not reply yet.')).toMatchObject({ ok: true });
+    expect(select).toHaveBeenCalledOnce();
+    expect(f.seen).toHaveLength(0);
+  });
+
+  it('allows empty recipients only for a silent general message with no answer records', () => {
+    const round = {
+      roundId: 'r',
+      commandId: 'c',
+      kind: 'all',
+      message: 'Wait.',
+      basedOnRoundId: null,
+      rebuttalNo: null,
+      participantIds: [],
+      answers: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      stoppedAt: null,
+    };
+    expect(MeetingRound.safeParse(round).success).toBe(true);
+    for (const kind of ['mention', 'secretary', 'rebuttal'])
+      expect(MeetingRound.safeParse({ ...round, kind }).success).toBe(false);
+    expect(
+      MeetingRound.safeParse({
+        ...round,
+        answers: [{ participantId: 'tester', runId: null, state: 'queued', detail: null }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('falls back to the latest permitted completed speaker when the selector fails', async () => {
+    const select = vi.fn(async () => {
+      throw new Error('unavailable');
+    });
+    const f = await fixture({ selectParticipants: select });
+    await f.send('first', 'Your view?', ['builder']);
+    await f.meetings.idle(f.sessionId);
+    await f.send('minutes', 'Summarize.', [SECRETARY_ID]);
+    await f.meetings.idle(f.sessionId);
+    await f.send('followup', 'Why?');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Builder', 'Secretary', 'Builder']);
+  });
+
+  it('rotates the persisted fallback when nobody has completed a reply, including after recreation', async () => {
+    const f = await fixture({
+      selectParticipants: async () => null,
+      onStart: async () => {
+        throw new Error('offline');
+      },
+    });
+    await f.send('first', 'First idea?');
+    await f.meetings.idle(f.sessionId);
+    const service = f.service();
+    await service.send(f.sessionId, {
+      kind: 'message',
+      commandId: 'second',
+      mode: 'mock',
+      text: 'Another idea?',
+    });
+    await service.idle(f.sessionId);
+    await service.send(f.sessionId, {
+      kind: 'message',
+      commandId: 'third',
+      mode: 'mock',
+      text: 'Next idea?',
+    });
+    await service.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder', 'Tester']);
+  });
+
+  it('does not expose running answers or future messages to the selector', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const select = vi.fn(async (_input: MeetingSelectionInput) => ['tester']);
+    const f = await fixture({ selectParticipants: select, onStart: () => held });
+    try {
+      await f.send('first', 'First question.');
+      await f.send('second', 'Second question.');
+      expect(select.mock.calls[1]![0].history).toEqual([
+        { id: 'round_1:message', participantId: null, text: 'First question.' },
+      ]);
+    } finally {
+      release();
+    }
+    await f.meetings.idle(f.sessionId);
+  });
 
   it('does not apply a late selection after the session revision changes', async () => {
     let release!: (ids: string[]) => void;

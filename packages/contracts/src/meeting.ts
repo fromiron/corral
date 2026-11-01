@@ -20,8 +20,8 @@ export type MeetingParticipant = z.infer<typeof MeetingParticipant>;
 /** Local-only selection input: posted text and configured roles, never provider credentials. */
 export interface MeetingSelectionInput {
   message: string;
-  participants: { participantId: string; prompt: string }[];
-  history: { participantId: string | null; text: string }[];
+  participants: { participantId: string; name?: string; prompt: string }[];
+  history: { id?: string; participantId: string | null; text: string }[];
 }
 
 export const MeetingConfig = z
@@ -65,7 +65,7 @@ export const MeetingAnswer = z.strictObject({
 });
 export type MeetingAnswer = z.infer<typeof MeetingAnswer>;
 
-export const MeetingRound = z.strictObject({
+const MeetingRoundFields = z.strictObject({
   roundId: Identifier,
   commandId: Identifier,
   mode: z.enum(['mock', 'live']).optional(),
@@ -80,10 +80,19 @@ export const MeetingRound = z.strictObject({
   /** Legacy reply-request lineage, retained for existing records and command replay. */
   basedOnRoundId: Identifier.nullable(),
   rebuttalNo: z.int().min(1).nullable(),
-  participantIds: z.array(Identifier).min(1).max(6),
+  participantIds: z.array(Identifier).max(6),
   answers: z.array(MeetingAnswer).max(6),
   createdAt: z.string(),
   stoppedAt: z.string().nullable(),
+});
+const validRoundRecipients = (round: {
+  kind: string;
+  participantIds: string[];
+  answers: unknown[];
+}) => round.participantIds.length > 0 || (round.kind === 'all' && round.answers.length === 0);
+
+export const MeetingRound = MeetingRoundFields.refine(validRoundRecipients, {
+  message: 'Only a general message with no answers may have no recipients',
 });
 export type MeetingRound = z.infer<typeof MeetingRound>;
 
@@ -264,10 +273,14 @@ export const MeetingView = z.strictObject({
   revision: z.int().min(1),
   config: MeetingConfig,
   rounds: z.array(
-    MeetingRound.omit({ answers: true }).extend({
-      active: z.boolean(),
-      answers: z.array(MeetingAnswerView),
-    }),
+    MeetingRoundFields.omit({ answers: true })
+      .extend({
+        active: z.boolean(),
+        answers: z.array(MeetingAnswerView),
+      })
+      .refine(validRoundRecipients, {
+        message: 'Only a general message with no answers may have no recipients',
+      }),
   ),
   queued: QueuedMeetingMessage.nullable(),
   minutes: z.array(MeetingMinutes).optional(),
