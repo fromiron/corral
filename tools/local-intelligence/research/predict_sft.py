@@ -23,7 +23,7 @@ def main():
     if a.split=='final':
         with (Path(a.data)/'final-exposures.jsonl').open('a') as f:f.write(json.dumps({'run':a.run,'at':time.time(),'dataHash':hashlib.sha256(source.read_bytes()).hexdigest()})+'\n')
     rows=[r for line in source.read_text().splitlines() if (r:=json.loads(line))['task']==task or task=='joint']
-    if a.split=='fit-dev':rows=fit_dev_rows(rows,metadata)
+    if a.split=='fit-dev':rows=fit_dev_rows(rows,metadata,source_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     model,tokenizer=load(args['models'],args.get('family','qwen35'));model=PeftModel.from_pretrained(model,run/'adapter').cuda().eval();torch.set_num_threads(6)
     if tokenizer.pad_token_id is None:tokenizer.pad_token=tokenizer.eos_token
     report={'split':a.split,'task':task,'run':a.run,'sourceSha256':hashlib.sha256(source.read_bytes()).hexdigest(),'predictions':[]}

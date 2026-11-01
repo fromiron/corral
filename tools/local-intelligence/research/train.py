@@ -143,6 +143,7 @@ def main():
     p.add_argument('--objective',choices=['ce','ordinal'],default='ce')
     p.add_argument('--tokens',type=int,default=1024);p.add_argument('--seed',type=int,default=41)
     p.add_argument('--dev-fold',type=int,choices=range(5),default=0)
+    p.add_argument('--holdout-manifest',help='explicit F-only group folds bound to exact fit.jsonl bytes')
     p.add_argument('--lr',type=float,default=1e-5);p.add_argument('--epochs',type=int,default=3)
     p.add_argument('--rank',type=int,default=8);p.add_argument('--batch',type=int,default=2)
     p.add_argument('--width',type=int,default=64)
@@ -151,14 +152,21 @@ def main():
     if (out/'complete.json').exists():raise ValueError('run is already complete; do not overwrite it')
     torch.manual_seed(args.seed);random.seed(args.seed);np.random.seed(args.seed)
     torch.set_num_threads(6)
-    allfit=read(Path(args.data)/'fit.jsonl',args.task)
+    source=(Path(args.data)/'fit.jsonl').read_bytes();source_hash=hashlib.sha256(source).hexdigest()
+    all_rows=[json.loads(line) for line in source.decode().splitlines()]
+    allfit=[r for r in all_rows if r['task']==args.task]
     groups=sorted({r['group'] for r in allfit})
     if len(groups)<3:raise ValueError('at least three independent fit groups required')
-    devgroups=fit_dev_groups(allfit,args.dev_fold)
+    holdout_hash=None
+    if args.holdout_manifest:
+        holdout_bytes=Path(args.holdout_manifest).read_bytes();holdout_hash=hashlib.sha256(holdout_bytes).hexdigest()
+        devgroups=fit_dev_groups(all_rows,args.dev_fold,holdout_manifest=json.loads(holdout_bytes),fit_sha256=source_hash)&{r['group'] for r in allfit}
+    else:devgroups=fit_dev_groups(allfit,args.dev_fold)
     train=[r for r in allfit if r['group'] not in devgroups];dev=[r for r in allfit if r['group'] in devgroups]
-    if not train:raise ValueError('empty fit subset')
+    if not train or not dev:raise ValueError('empty fit or dev subset')
     manifest=json.loads((Path(args.data)/'manifest.json').read_text())
-    (out/'run.json').write_text(json.dumps({'args':vars(args),'dataset':manifest,'trainGroups':sorted(set(r['group'] for r in train)),'devGroups':sorted(devgroups)},indent=2))
+    (out/'run.json').write_text(json.dumps({'args':vars(args),'dataset':manifest,'trainGroups':sorted(set(r['group'] for r in train)),'devGroups':sorted(devgroups),
+        'fitSourceSha256':source_hash,'holdoutManifestSha256':holdout_hash},indent=2))
     backbone=Backbone(args.models,args.family);backbone.tune('frozen')
     head=(EffortHead(backbone.dims,args.width) if args.task=='effort' else MeetingHead(backbone.dims,args.width or 64)).cuda()
     frozen=args.tune=='frozen'

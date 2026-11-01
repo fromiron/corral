@@ -6,6 +6,11 @@ participants in a general group conversation. A shared model is one candidate.
 The [protocol](protocol.md) owns the split rules, teacher requirements, resource
 limits, and promotion gates. These tools do not replace the default weights.
 
+Work is currently stopped at the user's request. The first experiment is
+complete; the follow-up data, partial generation, unfinished training and exact
+resume boundaries are recorded in [the stopping checkpoint](phase2/checkpoint.md).
+No follow-up trained candidate is available and no experiment remains running.
+
 ## Evidence boundaries
 
 - Teacher agreement is not executable task success or human ground truth.

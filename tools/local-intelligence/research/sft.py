@@ -79,14 +79,22 @@ def main():
     p.add_argument('--epochs',type=int,default=3);p.add_argument('--lr',type=float,default=3e-5);p.add_argument('--rank',type=int,default=16)
     p.add_argument('--seed',type=int,default=41)
     p.add_argument('--dev-fold',type=int,choices=range(5),default=0)
+    p.add_argument('--holdout-manifest',help='explicit F-only group folds bound to exact fit.jsonl bytes')
     p.add_argument('--fit-all',action='store_true',help='refit a previously selected fixed recipe on F only, using the final epoch')
     p.add_argument('--augment',help='fit-only permutation variants; sample one view per step so update counts stay matched')
     args=p.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
     if (out/'complete.json').exists():raise ValueError('completed SFT run exists')
     torch.manual_seed(args.seed);rng=random.Random(args.seed);torch.set_num_threads(6)
-    rows=[r for line in (Path(args.data)/'fit.jsonl').read_text().splitlines() if (r:=json.loads(line))['task']==args.task or args.task=='joint']
+    source=(Path(args.data)/'fit.jsonl').read_bytes();source_hash=hashlib.sha256(source).hexdigest()
+    all_rows=[json.loads(line) for line in source.decode().splitlines()]
+    rows=[r for r in all_rows if r['task']==args.task or args.task=='joint']
     validate_fit_rows(rows)
-    devgroups=set() if args.fit_all else fit_dev_groups(rows,args.dev_fold)
+    holdout_hash=None
+    if args.holdout_manifest:
+        if args.fit_all:raise ValueError('explicit holdout cannot be combined with full-F refit')
+        holdout_bytes=Path(args.holdout_manifest).read_bytes();holdout_hash=hashlib.sha256(holdout_bytes).hexdigest()
+        devgroups=fit_dev_groups(all_rows,args.dev_fold,holdout_manifest=json.loads(holdout_bytes),fit_sha256=source_hash)&{r['group'] for r in rows}
+    else:devgroups=set() if args.fit_all else fit_dev_groups(rows,args.dev_fold)
     train=[r for r in rows if r['group'] not in devgroups];dev=[r for r in rows if r['group'] in devgroups]
     if not train or (not args.fit_all and not dev):raise ValueError('fit and independent fit-dev groups required')
     variants={};augment_rng=random.Random(args.seed+101)
@@ -106,7 +114,8 @@ def main():
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})
     opt=torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],lr=args.lr,weight_decay=.01)
     (out/'run.json').write_text(json.dumps({'args':vars(args),'trainGroups':sorted(set(r['group'] for r in train)),'devGroups':sorted(devgroups),
-        'trainCount':len(train),'devCount':len(dev),'format':'pretrained LM head, non-thinking short-answer SFT','targets':targets},indent=2))
+        'trainCount':len(train),'devCount':len(dev),'format':'pretrained LM head, non-thinking short-answer SFT','targets':targets,
+        'fitSourceSha256':source_hash,'holdoutManifestSha256':holdout_hash},indent=2))
     best=-1;history=[];started=time.monotonic()
     if dev:(out/'zero-shot-dev.json').write_text(json.dumps(evaluate(model,tokenizer,dev,args.tokens),indent=2))
     for epoch in range(args.epochs):
