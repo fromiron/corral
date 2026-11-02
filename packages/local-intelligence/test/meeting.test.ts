@@ -80,6 +80,55 @@ describe('meeting selector', () => {
     await expect(selector.select({ ...input, history: [] })).resolves.toEqual(['a']);
   });
 
+  it('lets a silent participant whose role fits win against someone who already spoke', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({
+        question: [1, 0, 0],
+        'Ann\nrole a': [0.6, 0.8, 0],
+        'answer a': [0.6, 0.8, 0],
+        'Bo\nrole b': [0.9, 0.436, 0],
+      }),
+      'release',
+    );
+    await expect(
+      selector.select({ ...input, history: [{ participantId: 'a', text: 'answer a' }] }),
+    ).resolves.toEqual(['b']);
+  });
+
+  it('keeps the speaker when their own turn is closer than a silent role', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({
+        question: [1, 0, 0],
+        'Ann\nrole a': [0.8, 0.6, 0],
+        'answer a': [1, 0, 0],
+        'Bo\nrole b': [0.9, 0.436, 0],
+      }),
+      'release',
+    );
+    await expect(
+      selector.select({ ...input, history: [{ participantId: 'a', text: 'answer a' }] }),
+    ).resolves.toEqual(['a']);
+  });
+
+  it('reads nothing into the name of someone with no role and no turns', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({
+        question: [1, 0, 0],
+        Bo: [1, 0, 0],
+        'Ann\nrole a': [0, 1, 0],
+        'answer a': [0, 1, 0],
+      }),
+      'release',
+    );
+    await expect(
+      selector.select({
+        ...input,
+        participants: [input.participants[0]!, { participantId: 'b', name: 'Bo', prompt: '' }],
+        history: [{ participantId: 'a', text: 'answer a' }],
+      }),
+    ).resolves.toEqual(['a']);
+  });
+
   it('embeds a repeated text once and keeps no meeting text', async () => {
     const fake = engine({ question: [1, 0, 0] });
     const selector = new LocalMeetingSelector(fake, 'release');
