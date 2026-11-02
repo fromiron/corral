@@ -104,11 +104,30 @@ it('starts a general chat with distinct model names and optional blank roles', a
   ]);
 });
 
+it('saves what the person calls each participant, and leaves it out when blank', async () => {
+  const f = await mount([profile('connected')]);
+  const aliases = [
+    ...f.container.querySelectorAll<HTMLInputElement>('fieldset input:not([required])'),
+  ];
+  const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input[required]')];
+  expect(aliases).toHaveLength(3);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      aliases[0],
+      ` 루나, Luna ,luna,, ${names[0]!.value} `,
+    );
+    aliases[0]!.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const meeting = await submit(f);
+  expect(meeting?.participants[0]?.aliases).toEqual(['루나', 'Luna']);
+  expect(meeting?.participants[1]).not.toHaveProperty('aliases');
+});
+
 it('development roles are explicit and stay editable', async () => {
   const f = await mount([profile('connected')]);
   expect(f.button('applyDevelopmentRoles')).toBeDefined();
   await act(async () => f.button('applyDevelopmentRoles')!.click());
-  const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input')];
+  const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input[required]')];
   expect(names.map((input) => input.value)).toEqual([
     'template.architect.name',
     'template.builder.name',
@@ -141,7 +160,7 @@ it('changing models updates only automatic names', async () => {
     { ...profile('first'), label: 'First model' },
     { ...profile('second'), label: 'Second model' },
   ]);
-  const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input')];
+  const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input[required]')];
   const models = [...f.container.querySelectorAll<HTMLSelectElement>('fieldset select')];
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(

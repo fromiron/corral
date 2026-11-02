@@ -9,7 +9,7 @@ import { LocalEffortProvider } from './effort/provider.ts';
 import { type Device, type EngineState, LocalEmbeddingEngine } from './engine/engine.ts';
 import { builtHelperPath, type HelperLauncher, spawnHelper } from './engine/helper.ts';
 import { BundleInstaller, type InstallProgressView } from './installer.ts';
-import { LocalMeetingSelector, loadMeetingWeights } from './meeting/selector.ts';
+import { LocalMeetingSelector } from './meeting/selector.ts';
 import { cpuThreads, defaultLocalAiDir, runtimeTarget } from './platform.ts';
 
 export interface LocalIntelligenceOptions {
@@ -20,7 +20,6 @@ export interface LocalIntelligenceOptions {
   env?: NodeJS.ProcessEnv;
   bundle?: Bundle;
   effortWeights?: unknown;
-  meetingWeights?: unknown;
   launch?: HelperLauncher;
   /** Downloads for the settings panel's install. */
   fetchFn?: typeof fetch;
@@ -63,10 +62,6 @@ export function bundledEffortWeights(): unknown {
   return JSON.parse(readFileSync(new URL('../weights/effort-v2.json', import.meta.url), 'utf8'));
 }
 
-export function bundledMeetingWeights(): unknown {
-  return JSON.parse(readFileSync(new URL('../weights/meeting-v1.json', import.meta.url), 'utf8'));
-}
-
 export function createLocalIntelligence(options: LocalIntelligenceOptions = {}): LocalIntelligence {
   const bundle = options.bundle ?? bundledManifest();
   const platform = options.platform ?? process.platform;
@@ -94,13 +89,7 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
   const meeting: LocalIntelligence['meeting'] = {
     async select(input) {
       if (engine.available() !== true) return null;
-      meetingSelector ??= new LocalMeetingSelector(
-        engine,
-        loadMeetingWeights(options.meetingWeights ?? bundledMeetingWeights(), {
-          dims: bundle.embedding.dims,
-          baseModelSha256: bundle.model.sha256,
-        }),
-      );
+      meetingSelector ??= new LocalMeetingSelector(engine, bundle.release);
       return meetingSelector.select(input);
     },
   };

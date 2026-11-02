@@ -4283,6 +4283,8 @@
     "defaultTitle": "Meeting",
     "participants": "Participants",
     "participantName": "Participant {number} name",
+    "participantAliases": "Participant {number} nicknames (optional)",
+    "participantAliasesHint": "Separate nicknames with commas. Calling a participant by name or nickname in a message asks them to answer.",
     "participantRole": "Participant {number} role (optional)",
     "participantModel": "Participant {number} model",
     "removeParticipant": "Remove participant {number}",

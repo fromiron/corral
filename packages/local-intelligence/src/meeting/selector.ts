@@ -1,142 +1,45 @@
+import { createHash } from 'node:crypto';
 import type { DecisionCancellation, MeetingSelectionInput, Scheduler } from '@corral/contracts';
 import type { EffortEngine } from '../effort/provider.ts';
 
-export const MEETING_PREPROCESS_VERSION = 'meeting-text-v1';
-export interface MeetingWeights {
-  schemaVersion: 1;
-  version: string;
-  dims: number;
-  baseModelSha256: string;
-  preprocessVersion: string;
-  /** topic, followup, all, compare; separate from reasoning difficulty. */
-  intent: { weights: number[][]; bias: number[] };
-  rank: { weights: number[]; bias: number };
-  allThreshold: number;
-  minimumScore: number;
-  minimumMargin: number;
+export const MEETING_PREPROCESS_VERSION = 'meeting-text-v2';
+/** The share of a score that comes from name and role; the rest is the person's own turns. */
+const ROLE_WEIGHT = 0.25;
+/** Enough for a six-person meeting's roles and history several times over. */
+const CACHED_VECTORS = 512;
+
+const clean = (text: string) => [...text.trim()].slice(0, 1800).join('');
+
+/** The message, then each participant's name and role and the turns they actually posted. */
+export function meetingTexts(input: MeetingSelectionInput) {
+  return {
+    message: clean(input.message),
+    participants: input.participants.map((person) => ({
+      participantId: person.participantId,
+      role: clean([person.name, person.prompt].filter(Boolean).join('\n')),
+      turns: input.history
+        .filter((turn) => turn.participantId === person.participantId)
+        .map((turn) => clean(turn.text))
+        .filter(Boolean),
+    })),
+  };
 }
 
-const numbers = (value: unknown, length: number): value is number[] =>
-  Array.isArray(value) &&
-  value.length === length &&
-  value.every((n) => typeof n === 'number' && Number.isFinite(n));
-export function loadMeetingWeights(
-  raw: unknown,
-  expected: { dims: number; baseModelSha256: string },
-): MeetingWeights {
-  const w = raw as MeetingWeights;
-  if (
-    w?.schemaVersion !== 1 ||
-    typeof w.version !== 'string' ||
-    w.dims !== expected.dims ||
-    w.baseModelSha256 !== expected.baseModelSha256 ||
-    w.preprocessVersion !== MEETING_PREPROCESS_VERSION ||
-    !Array.isArray(w.intent?.weights) ||
-    w.intent.weights.length !== 4 ||
-    !w.intent.weights.every((row) => numbers(row, expected.dims)) ||
-    !numbers(w.intent.bias, 4) ||
-    !numbers(w.rank?.weights, 6) ||
-    !Number.isFinite(w.rank.bias) ||
-    ![w.allThreshold, w.minimumScore, w.minimumMargin].every(
-      (n) => Number.isFinite(n) && n >= 0 && n <= 1,
-    )
-  )
-    throw new Error('meeting weights do not match the embedding or selection format');
-  return w;
+/** One participant by role and history similarity; a tie keeps the roster order. */
+export function closestParticipant(
+  scores: { participantId: string; role: number; history: number }[],
+): string {
+  const blended = scores.map(
+    ({ role, history }) => ROLE_WEIGHT * role + (1 - ROLE_WEIGHT) * history,
+  );
+  return scores[blended.indexOf(Math.max(...blended))]!.participantId;
 }
 
-/** IDs/names are not semantic features. Each slot remains present even if its text is empty. */
-export function meetingTexts(input: MeetingSelectionInput): string[] {
-  const clean = (text: string) => [...text.trim()].slice(0, 1800).join('');
-  return [
-    clean(input.message),
-    ...input.participants.map((p) => clean(p.prompt)),
-    ...input.participants.map((p) =>
-      clean(input.history.findLast((h) => h.participantId === p.participantId)?.text ?? ''),
-    ),
-  ];
-}
 const dot = (a: ArrayLike<number>, b: ArrayLike<number>) => {
   let sum = 0;
   for (let i = 0; i < a.length; i++) sum += a[i]! * b[i]!;
   return sum;
 };
-const softmax = (values: number[]) => {
-  const top = Math.max(...values),
-    exp = values.map((v) => Math.exp(v - top));
-  const total = exp.reduce((a, b) => a + b, 0);
-  return exp.map((v) => v / total);
-};
-
-export function meetingFeatures(
-  input: MeetingSelectionInput,
-  vectors: Float32Array[],
-  weights: MeetingWeights,
-) {
-  if (
-    vectors.length !== 1 + input.participants.length * 2 ||
-    vectors.some((v) => v.length !== weights.dims || !v.every(Number.isFinite))
-  )
-    throw new Error('meeting embedding dimensions do not match');
-  const query = vectors[0]!;
-  const intent = softmax(
-    weights.intent.weights.map((row, n) => dot(row, query) + weights.intent.bias[n]!),
-  );
-  const lastSpeaker = input.history.findLast((h) => h.participantId !== null)?.participantId;
-  const texts = meetingTexts(input);
-  const similarities = input.participants.map((p, n) => {
-    const role = texts[n + 1] ? dot(query, vectors[n + 1]!) : 0;
-    const reply = texts[n + 1 + input.participants.length]
-      ? dot(query, vectors[n + 1 + input.participants.length]!)
-      : 0;
-    return { role, reply, last: Number(lastSpeaker === p.participantId) };
-  });
-  const average = (pick: (s: (typeof similarities)[number]) => number) =>
-    similarities.reduce((sum, s) => sum + pick(s), 0) / similarities.length;
-  const roleMean = average((s) => s.role),
-    replyMean = average((s) => s.reply),
-    bestMean = average((s) => Math.max(s.role, s.reply));
-  const topical = intent[0]! + intent[3]!;
-  const features = similarities.map(({ role, reply, last }) => {
-    return [
-      (reply - replyMean) * topical,
-      (role - roleMean) * topical,
-      (reply - replyMean) * intent[1]!,
-      last * intent[1]!,
-      (Math.max(role, reply) - bestMean) * topical,
-      intent[3]!,
-    ];
-  });
-  return { intent, features };
-}
-
-export function selectMeetingVectors(
-  input: MeetingSelectionInput,
-  vectors: Float32Array[],
-  weights: MeetingWeights,
-): string[] | null {
-  const { intent, features } = meetingFeatures(input, vectors, weights);
-  if (intent[2]! >= weights.allThreshold) return input.participants.map((p) => p.participantId);
-  if (
-    !input.participants.some((p) => p.prompt.trim()) &&
-    !input.history.some((h) => h.participantId !== null && h.text.trim())
-  )
-    return null;
-  const ranked = features
-    .map((f, n) => ({
-      id: input.participants[n]!.participantId,
-      score: 1 / (1 + Math.exp(-(dot(f, weights.rank.weights) + weights.rank.bias))),
-    }))
-    .sort((a, b) => b.score - a.score);
-  const best = ranked[0];
-  const selected = ranked.filter((candidate) => candidate.score >= weights.minimumScore);
-  const next = ranked[selected.length];
-  return best &&
-    selected.length &&
-    selected[selected.length - 1]!.score - (next?.score ?? 0) >= weights.minimumMargin
-    ? selected.map((candidate) => candidate.id)
-    : null;
-}
 
 const realTimers: Scheduler = {
   after(ms, fn) {
@@ -144,18 +47,55 @@ const realTimers: Scheduler = {
     return () => clearTimeout(timer);
   },
 };
+
 export class LocalMeetingSelector {
   private readonly engine: EffortEngine;
-  private readonly weights: MeetingWeights;
+  private readonly release: string;
   private readonly timers: Scheduler;
-  constructor(engine: EffortEngine, weights: MeetingWeights, timers: Scheduler = realTimers) {
+  /** Keyed by a hash so that no meeting text stays in memory; oldest use goes first. */
+  private readonly vectors = new Map<string, Float32Array>();
+
+  constructor(engine: EffortEngine, release: string, timers: Scheduler = realTimers) {
     this.engine = engine;
-    this.weights = weights;
+    this.release = release;
     this.timers = timers;
+  }
+
+  private async vector(text: string, cancellation: DecisionCancellation) {
+    const key = createHash('sha256')
+      .update(`classification\0${MEETING_PREPROCESS_VERSION}\0${this.release}\0${text}`)
+      .digest('hex');
+    const known = this.vectors.get(key);
+    if (known) {
+      this.vectors.delete(key);
+      this.vectors.set(key, known);
+      return known;
+    }
+    const [vector] = await this.engine.embed(
+      { texts: [text], task: 'classification', overflow: 'truncate', priority: 'meeting' },
+      cancellation,
+    );
+    if (!vector || !vector.every(Number.isFinite)) throw new Error('unusable meeting embedding');
+    this.vectors.set(key, vector);
+    if (this.vectors.size > CACHED_VECTORS) {
+      for (const oldest of this.vectors.keys()) {
+        this.vectors.delete(oldest);
+        break;
+      }
+    }
+    return vector;
   }
 
   async select(input: MeetingSelectionInput): Promise<string[] | null> {
     if (this.engine.available() !== true || input.participants.length < 2) return null;
+    const { message, participants } = meetingTexts(input);
+    // Nothing but display names tells ordinary participants apart.
+    if (
+      !message ||
+      (!input.participants.some((p) => p.prompt.trim()) &&
+        !participants.some((p) => p.turns.length))
+    )
+      return null;
     const abort = new AbortController();
     const stop = this.timers.after(1500, () => abort.abort());
     const cancellation: DecisionCancellation = {
@@ -168,20 +108,20 @@ export class LocalMeetingSelector {
       },
     };
     try {
-      const vectors: Float32Array[] = [];
-      for (const text of meetingTexts(input)) {
-        if (!text) {
-          vectors.push(new Float32Array(this.weights.dims));
-          continue;
-        }
-        const [vector] = await this.engine.embed(
-          { texts: [text], task: 'classification', overflow: 'truncate', priority: 'meeting' },
-          cancellation,
-        );
-        if (abort.signal.aborted || !vector) return null;
-        vectors.push(vector);
+      const query = await this.vector(message, cancellation);
+      const similarity = async (text: string) => dot(query, await this.vector(text, cancellation));
+      const scores = [];
+      for (const { participantId, role, turns } of participants) {
+        const roleScore = role ? await similarity(role) : 0;
+        const turnScores = [];
+        for (const turn of turns) turnScores.push(await similarity(turn));
+        scores.push({
+          participantId,
+          role: roleScore,
+          history: turnScores.length ? Math.max(...turnScores) : 0,
+        });
       }
-      return selectMeetingVectors(input, vectors, this.weights);
+      return abort.signal.aborted ? null : [closestParticipant(scores)];
     } catch {
       return null;
     } finally {

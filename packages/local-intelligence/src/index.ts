@@ -28,7 +28,6 @@ export {
 } from './engine/helper.ts';
 export {
   bundledEffortWeights,
-  bundledMeetingWeights,
   createLocalIntelligence,
   type LocalAiStatus,
   type LocalIntelligence,
@@ -44,12 +43,10 @@ export {
 } from './install.ts';
 export { cleanupLegacyJudge } from './legacy.ts';
 export {
+  closestParticipant,
   LocalMeetingSelector,
-  loadMeetingWeights,
   MEETING_PREPROCESS_VERSION,
-  type MeetingWeights,
   meetingTexts,
-  selectMeetingVectors,
 } from './meeting/selector.ts';
 export {
   cpuThreads,

@@ -4283,6 +4283,8 @@
     "defaultTitle": "회의",
     "participants": "참가자",
     "participantName": "참가자 {number} 이름",
+    "participantAliases": "참가자 {number} 호칭 (선택)",
+    "participantAliasesHint": "호칭은 쉼표로 나눠 적습니다. 메시지에서 이름이나 호칭으로 부르면 그 참가자가 답합니다.",
     "participantRole": "참가자 {number} 역할 (선택)",
     "participantModel": "참가자 {number} 모델",
     "removeParticipant": "참가자 {number} 빼기",
