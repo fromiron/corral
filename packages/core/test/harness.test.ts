@@ -1646,6 +1646,37 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(outOfRange.ok).toBe(false);
     s.done.open();
   });
+  it('read measures offsets against the whole worktree file', async () => {
+    const selected: EffectiveHarnessSnapshot = {
+      ...snapshot,
+      policy: 'strict',
+      resources: [],
+      allowedTools: ['read'],
+    };
+    const text = Array.from({ length: 600 }, (_, n) => `line ${n}`).join('\n');
+    const execute = vi.fn(async () => ({ path: 'large.ts', text, sha256: 'e'.repeat(64) }));
+    const s = setup(true, selected, { files: { available: () => true, execute }, fileTools: true });
+    await s.started.wait();
+    await s.host().reportHarness!({
+      ok: true,
+      snapshotHash: selected.snapshotHash,
+      tools: [{ ...descriptor, name: 'read', source: 'corral' }],
+      diagnostics: [],
+    });
+    const inside = await s
+      .host()
+      .invokeTool({ name: 'read', args: { path: 'large.ts', offset: 550, limit: 10 } });
+    expect(inside.ok).toBe(true);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'read', args: { path: 'large.ts' } }),
+      expect.anything(),
+    );
+    const beyond = await s
+      .host()
+      .invokeTool({ name: 'read', args: { path: 'large.ts', offset: 601 } });
+    expect(beyond.ok).toBe(false);
+    s.done.open();
+  });
   it('rejects an unresolved profile before creating a Run', () => {
     const s = setup(false);
     expect(s.result.runId).toBeNull();

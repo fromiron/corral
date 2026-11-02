@@ -9431,7 +9431,7 @@ export class Coordinator {
           if (!this.files) throw new ToolRefusal('CAPABILITY_DENIED', 'worktree unavailable');
           result = await this.files.execute(
             {
-              name: 'read_file',
+              name: 'read',
               args: { path },
               runId: run.runId,
               executionId,

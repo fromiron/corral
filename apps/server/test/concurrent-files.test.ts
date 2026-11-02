@@ -76,6 +76,9 @@ it('parallel reader pins writer input; same tree rejects second writer; other tr
       args: { path: 'a.txt' },
     };
     expect(await service.execute(input, cancel)).toMatchObject({ text: 'before\n' });
+    expect(await service.execute({ ...input, name: 'read' }, cancel)).toMatchObject({
+      text: 'before\n',
+    });
     expect((await service.readPreviewSnapshot('reader', 'a.txt'))?.toString()).toBe('before\n');
     expect(await service.readPreviewSnapshot('writer', 'a.txt')).toBeNull();
     expect(await service.currentTreeForRun('reader')).toBe(await service.startBaseline('writer'));
