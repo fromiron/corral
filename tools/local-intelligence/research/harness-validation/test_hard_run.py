@@ -114,5 +114,43 @@ class Freeze(unittest.TestCase):
         self.assertEqual(hard_run.stage_plan({'stages': {'C': ['a']}}, 'C', 'gpt-6-luna'), ['a'])
 
 
+class DeepSeekLevels(unittest.TestCase):
+    def test_stage_d_compares_the_levels_deepseek_offers(self):
+        self.assertEqual(hard_run.stage_levels('D'), ('low', 'high', 'max'))
+
+    def test_the_gpt_stages_keep_their_levels(self):
+        for stage in 'ABC':
+            self.assertEqual(hard_run.stage_levels(stage), hard_run.EFFORTS)
+
+    def test_only_stage_d_uses_the_deepseek_connection(self):
+        self.assertEqual(hard_run.stage_provider('D'), hard_run.SMOKE)
+        for stage in 'ABC':
+            self.assertIsNone(hard_run.stage_provider(stage))
+
+    def test_a_response_is_not_cut_at_the_endpoint_default(self):
+        [model] = hard_run.SMOKE['modelProviders'][0]['models']
+        self.assertEqual(model['maxOutput'], 16384)
+
+    def row(self, task, effort, passed, state='complete'):
+        return {'task': task, 'effort': effort, 'state': state, 'passed': passed,
+                'wallSeconds': 10, 'totalTokens': 100}
+
+    def test_the_report_names_what_passed_at_one_level_only(self):
+        rows = [self.row('a', 'low', False), self.row('a', 'high', False), self.row('a', 'max', True),
+                self.row('b', 'low', True), self.row('b', 'high', True), self.row('b', 'max', True)]
+        report = hard_run.level_report(rows, ('low', 'high', 'max'))
+        self.assertEqual(report['onlyAt'], {'low': [], 'high': [], 'max': ['a']})
+        self.assertEqual(report['levels']['max']['passed'], 2)
+        self.assertEqual(report['levels']['low']['passed'], 1)
+
+    def test_an_unsettled_run_leaves_the_report_incomplete(self):
+        rows = [self.row('a', 'low', False, 'unsettled'), self.row('a', 'high', True)]
+        self.assertFalse(hard_run.level_report(rows, ('low', 'high'))['complete'])
+
+    def test_the_report_says_it_decides_nothing(self):
+        report = hard_run.level_report([self.row('a', 'low', True)], ('low',))
+        self.assertEqual(report['gateEvidence'], False)
+
+
 if __name__ == '__main__':
     unittest.main()

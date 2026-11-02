@@ -7,6 +7,7 @@
     "runDeadlineMs": 3600000
   },
   "efforts": ["medium", "xhigh"],
+  "deepseekEfforts": ["low", "high", "max"],
   "stages": {
     "A": [
       "swe-pytest-dev__pytest-10356",
@@ -55,18 +56,26 @@
       "corral-4a49c840",
       "corral-451bcf57",
       "corral-dfdf14f9"
+    ],
+    "D": [
+      "swe-pytest-dev__pytest-10356",
+      "swe-sphinx-doc__sphinx-9461",
+      "swe-pydata__xarray-6992",
+      "corral-72d69c58",
+      "corral-d6edb54b",
+      "corral-9ca48b98"
     ]
   },
   "rejectedByPreflight": ["corral-9045f9ff", "corral-ef0df212"],
   "hashes": {
-    "tools/local-intelligence/research/protocol.md": "52a0054d0edcc0e0eceed9ee9395d9fb25aef61e240bdecbe4aaf641911d2cee",
+    "tools/local-intelligence/research/protocol.md": "f377ea9dcecc2a6fe4f560a3f1aaf3938e9e1f99a4b2f094f9ea691377ff1841",
     "tools/local-intelligence/research/coding_gate.py": "d35d9d92e087ef5f055c1fb0f2355fba44217d8fd35003f695b55036b1970ab3",
     "tools/local-intelligence/research/evaluation.py": "8aa61815af03af8c4d0108fabfc51b1d73d4dce74f3b4e4075fabeef9a44198b",
     "tools/local-intelligence/research/harness-validation/hard-tasks.json": "49c98e2aaaad138934e912ee5713798d313f2481a9f0959c5784abad125576d5",
-    "tools/local-intelligence/research/harness-validation/hard_run.py": "dacd11ecbc346f9b0e645f7cec2ce86cc140e9fd3869d74561e32d37b6101ffb",
+    "tools/local-intelligence/research/harness-validation/hard_run.py": "15e48099c30e0f9e49b10e84fe994da0eea32cd7cf11571bf4404ea2c39437fc",
     "tools/local-intelligence/research/harness-validation/sandbox.py": "97b0682ce5a87c6e5b0d3014c7250d62a4268381f91466cb75d9dd674aee22f9",
     "tools/local-intelligence/research/harness-validation/swe_report.py": "6a0571ad0b7146734bb06fde9c72ba4df2a0847c44da5cc180e5e6639e94511b",
-    "tools/local-intelligence/research/harness-validation/driver.ts": "2e5caa1ba64c6f5af66f5ac0cf4dbfeacc78fa736899e460dca13096204d3881",
+    "tools/local-intelligence/research/harness-validation/driver.ts": "4ed150ada5e44fd7e6c65b65de482f0b54fcc40d0dabfe39467b243fb70e76e2",
     "tools/local-intelligence/research/harness-validation/worker-patch.ts": "53accd16c34088b9a7506474dfda45083d4df319550d0f516d38bb7e98a9db8d"
   }
 }

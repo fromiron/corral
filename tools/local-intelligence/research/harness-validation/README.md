@@ -115,8 +115,13 @@ python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --report --stage A --model gpt
 ```
 
 `--dry-run` starts Corral on one task of each kind and stops before any provider
-call. `--smoke` spends one DeepSeek run to prove the path end to end, at `high`
-because Hive offers neither medium nor xhigh, and its results never enter a
-stage. A live stage spends the subscription, so each one needs explicit approval
+call. `--smoke` spends one DeepSeek run to prove the path end to end, at the level
+`--effort` names, and its results never enter a stage.
+
+Stage D (`--live --stage D --model deepseek-v4.1-flash`) runs stage A's tasks on
+DeepSeek at low, high and max. The API has no medium or xhigh, so its report says
+`gateEvidence: false` and the screening decision ignores it.
+
+A live stage spends money or the subscription, so each one needs explicit approval
 first. A started run is never replayed, and a run that did not settle stops the
 stage for review.

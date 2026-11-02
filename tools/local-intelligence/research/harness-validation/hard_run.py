@@ -34,12 +34,17 @@ TASKS_PER_KIND = 12
 # 103GB were free before the images; layers shared between them make their listed sizes overcount.
 FREE_BYTES_FLOOR = 43_000_000_000
 EFFORTS = ('medium', 'xhigh')
-STAGE_MODELS = {'A': 'gpt-6.1-sol', 'B': 'gpt-6.1-sol', 'C': 'gpt-6-luna'}
+# DeepSeek has neither of those, so stage D is context for the screen and never its evidence.
+DEEPSEEK_EFFORTS = ('low', 'high', 'max')
+DEEPSEEK = 'deepseek-v4.1-flash'
+STAGE_MODELS = {'A': 'gpt-6.1-sol', 'B': 'gpt-6.1-sol', 'C': 'gpt-6-luna', 'D': DEEPSEEK}
 PROVIDER = 'openai-codex'
 SMOKE = {'provider': 'hive', 'model': 'deepseek-ai/deepseek-v4.1-flash-1017',
          'modelProviders': [{'id': 'hive', 'name': 'Hive', 'baseUrl': 'https://api-cdn.thehive.ai/api/v3',
                              'access': 'api_key',
-                             'models': [{'id': 'deepseek-ai/deepseek-v4.1-flash-1017'}]}]}
+                             # The endpoint default of 4096 cuts off a long final response.
+                             'models': [{'id': 'deepseek-ai/deepseek-v4.1-flash-1017',
+                                         'maxOutput': 16384}]}]}
 SMOKE_LIMITS = {'maxModelCalls': 30, 'maxOutputTokens': 32000, 'modelTimeoutMs': 180000,
                 'runDeadlineMs': 900000}
 # Twice the product's calls because each sandbox command costs an extra one, and the installation's
@@ -311,7 +316,9 @@ def freeze(root, manifest):
         raise ValueError('the images leave too little disk')
     swe, corral = chosen['swe-bench-verified'], chosen['corral-commit']
     return {'version': 1, 'limits': LIMITS, 'efforts': list(EFFORTS),
-            'stages': {'A': swe[:3] + corral[:3], 'B': swe + corral, 'C': swe[:6] + corral[:6]},
+            'deepseekEfforts': list(DEEPSEEK_EFFORTS),
+            'stages': {'A': swe[:3] + corral[:3], 'B': swe + corral, 'C': swe[:6] + corral[:6],
+                       'D': swe[:3] + corral[:3]},
             'rejectedByPreflight': rejected,
             'hashes': {path: file_hash(CHECKOUT / path) for path in FROZEN_FILES}}
 
@@ -328,22 +335,46 @@ def stage_plan(frozen, stage, model):
     return frozen['stages'][stage]
 
 
+def stage_levels(stage):
+    return DEEPSEEK_EFFORTS if stage == 'D' else EFFORTS
+
+
+def stage_provider(stage):
+    return SMOKE if stage == 'D' else None
+
+
 def live(root, stage, model):
     frozen = json.loads(FROZEN.read_text())
     verify_frozen(frozen)
     results = []
     for task_id in stage_plan(frozen, stage, model):
         task = json.loads((root / 'outcomes/hard/tasks' / task_id / 'task.json').read_text())
-        efforts = list(EFFORTS)
+        efforts = list(stage_levels(stage))
         random.Random(f'{task_id}:{model}:hard-v1').shuffle(efforts)
         for effort in efforts:
-            result = trial(root, task, model, effort, frozen['limits'], check_argv(root, task))
+            result = trial(root, task, model, effort, frozen['limits'], check_argv(root, task),
+                           stage_provider(stage))
             results.append(result)
             print(json.dumps({key: result.get(key) for key in ('id', 'effort', 'state', 'passed', 'wallSeconds')}),
                   flush=True)
             if result['state'] != 'complete':
                 raise RuntimeError('a run did not settle; review it before spending more')
     return results
+
+
+def level_report(rows, levels):
+    passed = {(row['task'], row['effort']) for row in rows if row['state'] == 'complete' and row['passed']}
+    tasks = sorted({row['task'] for row in rows})
+    summary = {level: {'runs': sum(row['effort'] == level for row in rows),
+                       'passed': sum(key[1] == level for key in passed),
+                       'wallSeconds': sum(row['wallSeconds'] for row in rows if row['effort'] == level),
+                       'totalTokens': sum(row['totalTokens'] for row in rows if row['effort'] == level)}
+               for level in levels}
+    only = {level: [task for task in tasks if (task, level) in passed
+                    and not any((task, other) in passed for other in levels if other != level)]
+            for level in levels}
+    return {'gateEvidence': False, 'complete': all(row['state'] == 'complete' for row in rows),
+            'levels': summary, 'onlyAt': only}
 
 
 def report(root, model, stage):
@@ -353,12 +384,14 @@ def report(root, model, stage):
     tasks = json.loads(FROZEN.read_text())['stages'][stage]
     rows = []
     for task_id in tasks:
-        for effort in EFFORTS:
+        for effort in stage_levels(stage):
             path = root / 'outcomes/hard/trials' / model / task_id / effort / 'receipt.json'
             receipt = json.loads(path.read_text()) if path.exists() else {'state': 'unsettled'}
             rows.append({'task': task_id, 'model': model, 'effort': effort, 'state': receipt['state'],
                          'passed': receipt.get('passed', False), 'wallSeconds': receipt.get('wallSeconds', 0),
                          'totalTokens': receipt.get('totalTokens', 0)})
+    if stage == 'D':
+        return level_report(rows, stage_levels(stage))
     return screening_report(rows, tasks=tasks, model=model)
 
 
@@ -372,6 +405,7 @@ def main():
     mode.add_argument('--report', action='store_true')
     mode.add_argument('--smoke', metavar='TASK', help='one DeepSeek run to prove the path, never a result')
     parser.add_argument('--stage', choices=sorted(STAGE_MODELS))
+    parser.add_argument('--effort', choices=DEEPSEEK_EFFORTS, default='high')
     parser.add_argument('--model')
     args = parser.parse_args()
     os.umask(0o077)
@@ -399,7 +433,7 @@ def main():
         if task['id'] in json.loads(FROZEN.read_text())['stages']['B']:
             raise ValueError('a smoke stays outside the frozen tasks')
         preflight(root, task)
-        result = trial(root, task, 'deepseek-smoke', 'high', SMOKE_LIMITS, check_argv(root, task), SMOKE)
+        result = trial(root, task, 'deepseek-smoke', args.effort, SMOKE_LIMITS, check_argv(root, task), SMOKE)
         print(json.dumps({key: result.get(key) for key in (
             'id', 'state', 'status', 'passed', 'grade', 'wallSeconds', 'physicalProviderRequests', 'totalTokens')}))
     elif args.live:

@@ -46,7 +46,8 @@ interface TrialOptions {
     runDeadlineMs: number;
   };
 }
-type Effort = 'medium' | 'high' | 'xhigh';
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+type Effort = (typeof EFFORTS)[number];
 const SMOKE = {
   provider: CODEX_PROVIDER,
   model: 'gpt-6.1-sol',
@@ -71,7 +72,7 @@ export async function runHarnessTrial(
   effort: Effort,
   prepareOnly = false,
 ) {
-  assert(['medium', 'high', 'xhigh'].includes(effort));
+  assert(EFFORTS.includes(effort));
   const task = 'repository' in fixture ? fixture : null;
   // Read only when task is null.
   const smoke = fixture as WorkerFixture;
@@ -206,8 +207,9 @@ export async function runHarnessTrial(
       ...(task ? {} : { maxRetries: 0 }),
       onPayload: async (payload, selected) => {
         const prepared = (await streamOptions?.onPayload?.(payload, selected)) ?? payload;
-        const actual = (prepared as { reasoning?: { effort?: unknown } }).reasoning?.effort;
-        if (codex) assert(actual === effort, 'serialized reasoning effort differs from requested');
+        const body = prepared as { reasoning?: { effort?: unknown }; reasoning_effort?: unknown };
+        const actual = codex ? body.reasoning?.effort : body.reasoning_effort;
+        assert(actual === effort, 'serialized reasoning effort differs from requested');
         assert(wires.length < physicalCap, 'physical provider request budget exhausted');
         const wire = {
           request: wires.length + 1,
@@ -503,13 +505,13 @@ export async function runHarnessTrial(
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [input, output, runRoot, effort, mode] = process.argv.slice(2);
   assert(input && output && runRoot);
-  assert(effort === 'medium' || effort === 'high' || effort === 'xhigh');
+  assert(EFFORTS.includes(effort as Effort));
   assert(mode === undefined || mode === '--prepare-only');
   await runHarnessTrial(
     JSON.parse(readFileSync(input, 'utf8')),
     output,
     runRoot,
-    effort,
+    effort as Effort,
     mode === '--prepare-only',
   );
 }
