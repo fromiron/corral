@@ -1,38 +1,4 @@
 export { type Bundle, bundledManifest, validBundle } from './bundle.ts';
-export { DecisionEngineError, LocalDecisionEngine } from './decision/engine.ts';
-export {
-  type CalibratedEffortAnswer,
-  type DecisionEffortProviderOptions,
-  type DecisionEngineLike,
-  type DecisionMeetingSelectorOptions,
-  type EffortCalibration,
-  LocalDecisionEffortProvider,
-  LocalDecisionMeetingSelector,
-} from './decision/providers.ts';
-export {
-  type CompactMeetingInput,
-  compactMeetingInput,
-  type DecisionMeetingSelectionInput,
-  type EffortInput,
-  formatDecisionPrompt,
-  type MeetingInput,
-  renderEffort,
-  renderMeeting,
-  toEffortInput,
-} from './decision/text.ts';
-export type {
-  DecisionBackend,
-  DecisionEngineOptions,
-  DecisionEngineState,
-  DecisionEngineStatus,
-  DecisionErrorCode,
-  DecisionInput,
-  DecisionInputMetadata,
-  DecisionLevel,
-  DecisionRequestOptions,
-  DecisionResult,
-  FourScores,
-} from './decision/types.ts';
 export {
   type EffortClassifier,
   type EffortJudgment,
@@ -64,14 +30,9 @@ export {
   bundledEffortWeights,
   bundledMeetingWeights,
   createLocalIntelligence,
-  type DecisionModelIdentity,
   type LocalAiStatus,
-  type LocalDecisionOverride,
-  type LocalDecisionStatus,
-  type LocalEffortPort,
   type LocalIntelligence,
   type LocalIntelligenceOptions,
-  type LocalMeetingPort,
 } from './factory.ts';
 export {
   bundleDir,

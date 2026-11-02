@@ -1,4 +1,0 @@
-# Optional training acceleration. Original pilot environment intentionally omitted these.
-flash-linear-attention==0.6.0
-fla-core==0.6.0
-einops==0.8.2

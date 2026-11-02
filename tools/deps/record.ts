@@ -2,10 +2,8 @@
 // For every direct, non-workspace dependency: exact version, license, registry integrity,
 // publish date, engines and peer ranges, and the workspace packages that use it.
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { nativeEvidence } from './native.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 type Manifest = Record<
@@ -32,33 +30,15 @@ const direct = new Map<
 >();
 const evidencePath = join(ROOT, 'docs/dependency-lock.json');
 const previous = existsSync(evidencePath) ? JSON.parse(readFileSync(evidencePath, 'utf8')) : {};
-if (process.argv.includes('--native')) {
-  const source = process.argv[process.argv.indexOf('--native') + 1];
-  if (!source) throw new Error('a native build evidence report is required');
-  const helperHash = createHash('sha256')
-    .update(readFileSync(join(ROOT, 'packages/local-intelligence/decision-helper/main.cpp')))
-    .digest('hex');
-  const nativeDependencies = nativeEvidence(JSON.parse(readFileSync(source, 'utf8')), helperHash);
-  writeFileSync(evidencePath, `${JSON.stringify({ ...previous, nativeDependencies }, null, 2)}\n`);
-  console.log(`recorded ${nativeDependencies.dependencies.length} native source dependencies`);
-  process.exit(0);
-}
 // Offline classifier training is Python-only; record its separately pinned tool environment
 // without refreshing unrelated npm records or adding it to the shipped Node runtime.
 if (process.argv.includes('--training')) {
-  const requirementsFiles = [
-    'tools/local-intelligence/training-requirements.txt',
-    'tools/local-intelligence/research/mgte-requirements.txt',
-    'tools/local-intelligence/research/fast-requirements.txt',
-  ];
-  const sources = new Map<string, string[]>();
-  for (const file of requirementsFiles) {
-    for (const pin of readFileSync(join(ROOT, file), 'utf8').trim().split('\n')) {
-      if (!pin.trim() || pin.trimStart().startsWith('#')) continue;
-      sources.set(pin, [...(sources.get(pin) ?? []), file]);
-    }
-  }
-  const pins = [...sources.keys()];
+  const pins = readFileSync(
+    join(ROOT, 'tools/local-intelligence/training-requirements.txt'),
+    'utf8',
+  )
+    .trim()
+    .split('\n');
   const trainingDependencies = await Promise.all(
     pins.map(async (pin) => {
       const [name, version] = pin.split('==');
@@ -83,7 +63,6 @@ if (process.argv.includes('--training')) {
         name,
         version,
         scope: 'offline-training',
-        usedBy: sources.get(pin),
         source,
         license: view.info.license_expression || view.info.license,
         sourceSha256: view.urls.find((file) => file.packagetype === 'sdist')?.digests.sha256,
@@ -160,7 +139,6 @@ const out = {
   ...(reviewedSources.length ? { reviewedSources } : {}),
   ...(reviewedPrereleases ? { reviewedPrereleases } : {}),
   ...(previous.trainingDependencies ? { trainingDependencies: previous.trainingDependencies } : {}),
-  ...(previous.nativeDependencies ? { nativeDependencies: previous.nativeDependencies } : {}),
 };
 writeFileSync(evidencePath, `${JSON.stringify(out, null, 2)}\n`);
 console.log(`recorded ${records.length} direct dependencies`);
