@@ -76,6 +76,7 @@ async function setup(
   await service.createWorktree('session_1', 'default');
   const call = (
     name:
+      | 'read'
       | 'read_file'
       | 'write_file'
       | 'delete_file'
@@ -124,6 +125,69 @@ describe('file broker', () => {
       const second = await s.call('read_file', { path: 'large.txt', offset: first.nextOffset });
       expect(String(first.text) + String(second.text)).toBe(text);
       await s.call('write_file', { path: 'large.txt', text: 'reviewed replacement' });
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+  it('read gives the worker a whole large file, and that is enough to edit it', async () => {
+    const s = await setup();
+    try {
+      const root = s.service.copyOf('session_1')!.worktree;
+      const text = `${'first\n'.repeat(4000)}last\n`;
+      writeFileSync(join(root, 'large.txt'), text);
+      expect((await s.call('read', { path: 'large.txt' })).text).toBe(text);
+      const edit = (oldText: string, newText: string) =>
+        s.call('edit', { path: 'large.txt', edits: [{ oldText, newText }] });
+      await edit('last', 'final');
+      await edit('final', 'end');
+      expect(readFileSync(join(root, 'large.txt'), 'utf8')).toBe(`${'first\n'.repeat(4000)}end\n`);
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+  it('read and edit do not authorize replacing content the worker was not shown', async () => {
+    const s = await setup();
+    try {
+      const root = s.service.copyOf('session_1')!.worktree;
+      writeFileSync(join(root, 'large.txt'), `${'first\n'.repeat(4000)}last\n`);
+      await s.call('read', { path: 'large.txt' });
+      await expect(s.call('write', { path: 'large.txt', content: 'overwrite' })).rejects.toThrow(
+        /read/,
+      );
+      await s.call('edit', { path: 'large.txt', edits: [{ oldText: 'last', newText: 'end' }] });
+      await expect(s.call('write', { path: 'large.txt', content: 'overwrite' })).rejects.toThrow(
+        /read/,
+      );
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+  it('a read of part of a file does not outlive a change to it', async () => {
+    const s = await setup();
+    try {
+      const root = s.service.copyOf('session_1')!.worktree;
+      writeFileSync(join(root, 'large.txt'), `${'first\n'.repeat(4000)}last\n`);
+      await s.call('read', { path: 'large.txt' });
+      writeFileSync(join(root, 'large.txt'), `${'second\n'.repeat(4000)}last\n`);
+      await expect(
+        s.call('edit', { path: 'large.txt', edits: [{ oldText: 'last', newText: 'end' }] }),
+      ).rejects.toThrow(/changed since/);
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+  it('edit still needs a read of the file', async () => {
+    const s = await setup();
+    try {
+      const root = s.service.copyOf('session_1')!.worktree;
+      writeFileSync(join(root, 'large.txt'), 'last\n');
+      await expect(
+        s.call('edit', { path: 'large.txt', edits: [{ oldText: 'last', newText: 'end' }] }),
+      ).rejects.toThrow(/read large.txt/);
     } finally {
       await s.service.dispose();
       s.db.close();
