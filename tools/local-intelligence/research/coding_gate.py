@@ -14,7 +14,7 @@ from evaluation import _confidence, paired_outcome_report
 SUCCESS_MARGIN = .05
 REQUIRED_FAMILIES = 110
 SCREEN_RATE = .05
-SCREEN_EFFORTS = ('medium', 'xhigh')
+SCREEN_EFFORTS = ('medium', 'high', 'xhigh')
 TABLE_FAMILIES = (24, 48, 72, 110, 150, 200, 300, 400)
 
 
@@ -97,7 +97,7 @@ def coding_gate_report(trials, *, expected_groups, confidence=.95, resamples=100
 
 
 def screening_report(rows, *, tasks, model):
-    """One model, one medium and one xhigh run per frozen task. Failed runs stay in the denominator."""
+    """One model, one run per level per frozen task. Failed runs stay in the denominator."""
     tasks = list(tasks)
     runs = {}
     for row in rows:
@@ -107,22 +107,26 @@ def screening_report(rows, *, tasks, model):
         if key in runs:
             raise ValueError('duplicate run; a started run is never replayed')
         runs[key] = row
-    counts = dict.fromkeys(['both', 'xhighOnly', 'mediumOnly', 'neither', 'invalid'], 0)
+    counts = dict.fromkeys(['all', 'highRaised', 'xhighOnly', 'mediumOnly', 'mixed', 'none', 'invalid'], 0)
     for task in tasks:
-        pair = [runs.get((task, effort)) for effort in SCREEN_EFFORTS]
-        if None in pair:
-            raise ValueError('every task needs both levels')
-        medium, xhigh = pair
-        if medium['state'] != 'complete' or xhigh['state'] != 'complete':
+        trio = [runs.get((task, effort)) for effort in SCREEN_EFFORTS]
+        if None in trio:
+            raise ValueError('every task needs every level')
+        medium, high, xhigh = trio
+        if any(row['state'] != 'complete' for row in trio):
             counts['invalid'] += 1
-        elif medium['passed'] and xhigh['passed']:
-            counts['both'] += 1
-        elif xhigh['passed']:
+        elif medium['passed'] and high['passed'] and xhigh['passed']:
+            counts['all'] += 1
+        elif high['passed'] and not medium['passed']:
+            counts['highRaised'] += 1
+        elif xhigh['passed'] and not medium['passed']:
             counts['xhighOnly'] += 1
-        elif medium['passed']:
+        elif medium['passed'] and not high['passed'] and not xhigh['passed']:
             counts['mediumOnly'] += 1
+        elif medium['passed']:
+            counts['mixed'] += 1
         else:
-            counts['neither'] += 1
+            counts['none'] += 1
     by_effort = {}
     for effort in SCREEN_EFFORTS:
         selected = [runs[task, effort] for task in tasks]
@@ -132,16 +136,21 @@ def screening_report(rows, *, tasks, model):
             'totalWallSeconds': sum(row['wallSeconds'] for row in selected),
             'totalTokens': sum(row['totalTokens'] for row in selected),
         }
-    rate = counts['xhighOnly'] / len(tasks)
-    return {'model': model, 'tasks': len(tasks), **counts, 'xhighOnlyRate': rate,
-            'reachesThreshold': rate >= SCREEN_RATE, 'byEffort': by_effort}
+    high_rate = counts['highRaised'] / len(tasks)
+    xhigh_rate = counts['xhighOnly'] / len(tasks)
+    return {'model': model, 'tasks': len(tasks), **counts, 'highRaisedRate': high_rate,
+            'xhighOnlyRate': xhigh_rate, 'highReachesThreshold': high_rate >= SCREEN_RATE,
+            'xhighReachesThreshold': xhigh_rate >= SCREEN_RATE, 'byEffort': by_effort}
 
 
 def screening_decision(sol, luna=None):
     """The fixed Phase 2 rule; an unsettled run stops it instead of counting as no difference."""
-    if sol['invalid'] or (luna and luna['invalid']):
+    models = [sol, luna] if luna else [sol]
+    if any(model['invalid'] for model in models):
         return 'incomplete'
-    if sol['reachesThreshold'] or (luna and luna['reachesThreshold']):
+    if any(model['highReachesThreshold'] for model in models):
+        return 'try-constant-high'
+    if any(model['xhighReachesThreshold'] for model in models):
         return 'phase-3'
     return 'close-adaptive' if luna else 'run-stage-c'
 

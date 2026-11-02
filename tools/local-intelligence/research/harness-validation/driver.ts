@@ -227,6 +227,9 @@ export async function runHarnessTrial(
       },
     });
     void stream.result().then((result) => {
+      appendFileSync(join(output, 'stop-reasons.jsonl'), `${JSON.stringify(result.stopReason)}\n`, {
+        mode: 0o600,
+      });
       if (result.stopReason === 'error') {
         const message = result.errorMessage ?? '';
         save(join(output, 'provider-error-private.json'), { message });

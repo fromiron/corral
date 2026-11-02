@@ -1,6 +1,8 @@
 """No model calls: what a hard trial may run, keep and count."""
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -84,6 +86,32 @@ class Trials(unittest.TestCase):
                 out = self.reached(directory, kind)
                 self.assertEqual(hard_run.settled_state(out, {'status': 'failed'}), 'limited')
 
+    def test_a_response_cut_at_the_output_cap_says_nothing_about_the_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            (out / 'stop-reasons.jsonl').write_text('"toolUse"\n"length"\n')
+            self.assertEqual(hard_run.settled_state(out, {'status': 'failed'}), 'limited')
+
+    def test_a_cut_the_run_went_on_from_is_not_its_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            (out / 'stop-reasons.jsonl').write_text('"length"\n"stop"\n')
+            self.assertEqual(hard_run.settled_state(out, {'status': 'failed'}), 'complete')
+
+    def test_a_timed_out_call_says_nothing_about_the_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            event = {'type': 'cancel.requested', 'payload': {'reason': 'model_request_timeout'}}
+            (out / 'events.jsonl').write_text(json.dumps(event) + '\n')
+            self.assertEqual(hard_run.settled_state(out, {'status': 'cancelled'}), 'limited')
+
+    def test_a_cancel_for_another_reason_is_the_runs_own_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            event = {'type': 'cancel.requested', 'payload': {'reason': 'user'}}
+            (out / 'events.jsonl').write_text(json.dumps(event) + '\n')
+            self.assertEqual(hard_run.settled_state(out, {'status': 'cancelled'}), 'complete')
+
     def test_a_stuck_worker_is_the_tasks_own_end(self):
         with tempfile.TemporaryDirectory() as directory:
             out = self.reached(directory, 'no_progress')
@@ -146,9 +174,9 @@ class DeepSeekLevels(unittest.TestCase):
     def test_stage_d_compares_the_levels_deepseek_offers(self):
         self.assertEqual(hard_run.stage_levels('D'), ('low', 'high', 'max'))
 
-    def test_the_gpt_stages_keep_their_levels(self):
+    def test_the_gpt_stages_compare_medium_high_and_xhigh(self):
         for stage in 'ABC':
-            self.assertEqual(hard_run.stage_levels(stage), hard_run.EFFORTS)
+            self.assertEqual(hard_run.stage_levels(stage), ('medium', 'high', 'xhigh'))
 
     def test_only_stage_d_uses_the_deepseek_connection(self):
         self.assertEqual(hard_run.stage_provider('D'), hard_run.SMOKE)
@@ -157,7 +185,7 @@ class DeepSeekLevels(unittest.TestCase):
 
     def test_a_response_is_not_cut_at_the_endpoint_default(self):
         [model] = hard_run.SMOKE['modelProviders'][0]['models']
-        self.assertEqual(model['maxOutput'], 16384)
+        self.assertEqual(model['maxOutput'], 65536)
 
     def row(self, task, effort, passed, state='complete'):
         return {'task': task, 'effort': effort, 'state': state, 'passed': passed,
@@ -184,6 +212,66 @@ class DeepSeekLevels(unittest.TestCase):
     def test_the_report_says_it_decides_nothing(self):
         report = hard_run.level_report([self.row('a', 'low', True)], ('low',))
         self.assertEqual(report['gateEvidence'], False)
+
+
+class ParallelRuns(unittest.TestCase):
+    def test_one_job_keeps_the_plan_order(self):
+        started = []
+
+        def run(task, effort):
+            started.append((task, effort))
+            return {'state': 'complete'}
+
+        plan = [('a', 'low'), ('a', 'high'), ('b', 'max')]
+        self.assertEqual(len(hard_run.run_plan(plan, run, 1)), 3)
+        self.assertEqual(started, plan)
+
+    def test_jobs_run_at_the_same_time(self):
+        together = threading.Barrier(2, timeout=5)
+
+        def run(task, effort):
+            together.wait()
+            return {'state': 'complete'}
+
+        self.assertEqual(len(hard_run.run_plan([('a', 'low'), ('a', 'max')], run, 2)), 2)
+
+    def test_an_unsettled_run_starts_no_more_and_those_under_way_finish(self):
+        started = []
+        second_running = threading.Event()
+
+        def run(task, effort):
+            started.append(task)
+            if task == 'a':
+                second_running.wait(5)
+                return {'state': 'invalid'}
+            second_running.set()
+            time.sleep(.05)
+            return {'state': 'complete'}
+
+        results = hard_run.run_plan([(task, 'low') for task in 'abcd'], run, 2)
+        self.assertEqual(sorted(started), ['a', 'b'])
+        self.assertEqual(sorted(result['state'] for result in results), ['complete', 'invalid'])
+
+    def test_a_crash_starts_no_more(self):
+        started = []
+
+        def run(task, effort):
+            started.append(task)
+            raise OSError('docker is gone')
+
+        with self.assertRaisesRegex(OSError, 'docker'):
+            hard_run.run_plan([(task, 'low') for task in 'abc'], run, 1)
+        self.assertEqual(started, ['a'])
+
+    def test_a_run_under_way_elsewhere_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertTrue(hard_run.left_to_run(root, TASK, 'm', 'low'))
+            out = hard_run.trial_dir(root, TASK, 'm', 'low')
+            hard_run.save(out / 'started.json', {})
+            self.assertFalse(hard_run.left_to_run(root, TASK, 'm', 'low'))
+            hard_run.save(out / 'receipt.json', {})
+            self.assertTrue(hard_run.left_to_run(root, TASK, 'm', 'low'))
 
 
 if __name__ == '__main__':

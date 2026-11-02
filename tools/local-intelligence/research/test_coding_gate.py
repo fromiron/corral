@@ -22,11 +22,12 @@ def run(task, effort, passed, *, model='gpt-6.1-sol', state='complete', seconds=
             'passed': passed, 'wallSeconds': seconds, 'totalTokens': 1000}
 
 
-def pairs(medium, xhigh, *, offset=0, **options):
+def levels(medium, high, xhigh, *, offset=0, **options):
     rows = []
-    for index, (low, high) in enumerate(zip(medium, xhigh)):
+    for index, outcome in enumerate(zip(medium, high, xhigh)):
         task = f'task-{index + offset:02d}'
-        rows += [run(task, 'medium', low, **options), run(task, 'xhigh', high, **options)]
+        rows += [run(task, effort, passed, **options)
+                 for effort, passed in zip(('medium', 'high', 'xhigh'), outcome)]
     return rows
 
 
@@ -117,71 +118,112 @@ class Screening(unittest.TestCase):
         return screening_report(rows, tasks=[f'task-{index:02d}' for index in range(count)],
                                 model='gpt-6.1-sol')
 
-    def test_counts_each_task_by_outcome_pair(self):
-        rows = pairs([True, False, True, False], [True, True, False, False])
-        report = self.screen(rows, 4)
-        self.assertEqual(report['both'], 1)
+    def test_counts_each_task_by_its_outcomes(self):
+        rows = levels([True, False, False, False, True, True, True, False],
+                      [True, True, True, False, False, True, False, False],
+                      [True, True, False, True, False, False, True, False])
+        report = self.screen(rows, 8)
+        self.assertEqual(report['all'], 1)
+        self.assertEqual(report['highRaised'], 2)
         self.assertEqual(report['xhighOnly'], 1)
         self.assertEqual(report['mediumOnly'], 1)
-        self.assertEqual(report['neither'], 1)
+        self.assertEqual(report['mixed'], 2)
+        self.assertEqual(report['none'], 1)
 
-    def test_one_of_twenty_four_stays_below_the_threshold(self):
-        rows = pairs([False] + [True] * 23, [True] * 24)
+    def test_a_task_high_raises_is_not_xhigh_only(self):
+        report = self.screen(levels([False], [True], [True]), 1)
+        self.assertEqual(report['highRaised'], 1)
+        self.assertEqual(report['xhighOnly'], 0)
+
+    def test_one_high_raised_of_twenty_four_stays_below_the_threshold(self):
+        rows = levels([False] + [True] * 23, [True] * 24, [True] * 24)
+        report = self.screen(rows, 24)
+        self.assertAlmostEqual(report['highRaisedRate'], 1 / 24)
+        self.assertFalse(report['highReachesThreshold'])
+
+    def test_two_high_raised_of_twenty_four_reach_it(self):
+        rows = levels([False, False] + [True] * 22, [True] * 24, [True] * 24)
+        report = self.screen(rows, 24)
+        self.assertTrue(report['highReachesThreshold'])
+        self.assertFalse(report['xhighReachesThreshold'])
+
+    def test_one_xhigh_only_of_twenty_four_stays_below_the_threshold(self):
+        rows = levels([False] + [True] * 23, [False] + [True] * 23, [True] * 24)
         report = self.screen(rows, 24)
         self.assertAlmostEqual(report['xhighOnlyRate'], 1 / 24)
-        self.assertFalse(report['reachesThreshold'])
+        self.assertFalse(report['xhighReachesThreshold'])
 
-    def test_two_of_twenty_four_reach_it(self):
-        rows = pairs([False, False] + [True] * 22, [True] * 24)
-        self.assertTrue(self.screen(rows, 24)['reachesThreshold'])
+    def test_two_xhigh_only_of_twenty_four_reach_it(self):
+        rows = levels([False, False] + [True] * 22, [False, False] + [True] * 22, [True] * 24)
+        report = self.screen(rows, 24)
+        self.assertTrue(report['xhighReachesThreshold'])
+        self.assertFalse(report['highReachesThreshold'])
 
     def test_a_failed_run_stays_in_the_denominator(self):
-        rows = pairs([False] * 24, [False] * 24)
+        rows = levels([False] * 24, [False] * 24, [False] * 24)
         report = self.screen(rows, 24)
-        self.assertEqual(report['neither'], 24)
+        self.assertEqual(report['none'], 24)
         self.assertEqual(report['tasks'], 24)
 
-    def test_an_unsettled_run_is_invalid_and_never_a_gain(self):
-        rows = pairs([True, True], [True, True])
-        rows[0].update(state='invalid', passed=False)
-        report = self.screen(rows, 2)
-        self.assertEqual(report['invalid'], 1)
-        self.assertEqual(report['xhighOnly'], 0)
-        self.assertEqual(report['both'], 1)
+    def test_an_unsettled_run_at_any_level_is_invalid_and_never_a_gain(self):
+        for level in range(3):
+            rows = levels([False, True], [True, True], [True, True])
+            rows[level].update(state='invalid', passed=False)
+            report = self.screen(rows, 2)
+            self.assertEqual(report['invalid'], 1)
+            self.assertEqual(report['highRaised'], 0)
+            self.assertEqual(report['xhighOnly'], 0)
+            self.assertEqual(report['all'], 1)
 
-    def test_every_task_needs_both_levels(self):
-        rows = pairs([True, True], [True, True])[:-1]
-        with self.assertRaisesRegex(ValueError, 'both levels'):
+    def test_every_task_needs_every_level(self):
+        rows = levels([True, True], [True, True], [True, True])
+        del rows[-2]
+        with self.assertRaisesRegex(ValueError, 'every level'):
             self.screen(rows, 2)
 
+    def test_each_level_is_reported(self):
+        report = self.screen(levels([True], [False], [True]), 1)
+        self.assertEqual(list(report['byEffort']), ['medium', 'high', 'xhigh'])
+        self.assertEqual(report['byEffort']['high']['passed'], 0)
+
     def test_a_repeated_run_is_refused(self):
-        rows = pairs([True], [True])
+        rows = levels([True], [True], [True])
         with self.assertRaisesRegex(ValueError, 'duplicate'):
             self.screen(rows + rows[:1], 1)
 
     def test_an_unexpected_task_is_refused(self):
         with self.assertRaisesRegex(ValueError, 'frozen'):
-            self.screen(pairs([True, True], [True, True]), 1)
+            self.screen(levels([True, True], [True, True], [True, True]), 1)
 
 
 class Decision(unittest.TestCase):
-    screen = staticmethod(lambda reaches, invalid=0: {'reachesThreshold': reaches, 'invalid': invalid})
+    screen = staticmethod(lambda high=False, xhigh=False, invalid=0: {
+        'highReachesThreshold': high, 'xhighReachesThreshold': xhigh, 'invalid': invalid})
 
-    def test_a_gain_on_sol_goes_on_to_phase_three(self):
-        self.assertEqual(screening_decision(self.screen(True)), 'phase-3')
+    def test_a_high_gain_tries_constant_high_before_any_judge(self):
+        self.assertEqual(screening_decision(self.screen(high=True)), 'try-constant-high')
+        self.assertEqual(screening_decision(self.screen(high=True, xhigh=True)), 'try-constant-high')
+
+    def test_a_high_gain_on_luna_alone_counts(self):
+        self.assertEqual(screening_decision(self.screen(), self.screen(high=True)), 'try-constant-high')
+
+    def test_an_xhigh_gain_on_sol_goes_on_to_phase_three(self):
+        self.assertEqual(screening_decision(self.screen(xhigh=True)), 'phase-3')
 
     def test_no_gain_on_sol_needs_luna_before_closing(self):
-        self.assertEqual(screening_decision(self.screen(False)), 'run-stage-c')
+        self.assertEqual(screening_decision(self.screen()), 'run-stage-c')
 
     def test_no_gain_on_both_closes_adaptive_judging(self):
-        self.assertEqual(screening_decision(self.screen(False), self.screen(False)), 'close-adaptive')
+        self.assertEqual(screening_decision(self.screen(), self.screen()), 'close-adaptive')
 
-    def test_a_gain_on_luna_alone_goes_on(self):
-        self.assertEqual(screening_decision(self.screen(False), self.screen(True)), 'phase-3')
+    def test_an_xhigh_gain_on_luna_alone_goes_on(self):
+        self.assertEqual(screening_decision(self.screen(), self.screen(xhigh=True)), 'phase-3')
 
     def test_invalid_runs_block_any_decision(self):
-        self.assertEqual(screening_decision(self.screen(True, 1)), 'incomplete')
-        self.assertEqual(screening_decision(self.screen(False), self.screen(False, 1)), 'incomplete')
+        self.assertEqual(screening_decision(self.screen(high=True, invalid=1)), 'incomplete')
+        self.assertEqual(screening_decision(self.screen(xhigh=True, invalid=1)), 'incomplete')
+        self.assertEqual(screening_decision(self.screen(), self.screen(invalid=1)), 'incomplete')
+        self.assertEqual(screening_decision(self.screen(high=True), self.screen(invalid=1)), 'incomplete')
 
 
 if __name__ == '__main__':

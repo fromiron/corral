@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Hard coding tasks through the real Corral path. Hidden tests grade, and each stage is a live spend."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 from run import digest, save
@@ -33,8 +35,8 @@ FROZEN_FILES = ('tools/local-intelligence/research/protocol.md',
 TASKS_PER_KIND = 12
 # 103GB were free before the images; layers shared between them make their listed sizes overcount.
 FREE_BYTES_FLOOR = 43_000_000_000
-EFFORTS = ('medium', 'xhigh')
-# DeepSeek has neither of those, so stage D is context for the screen and never its evidence.
+EFFORTS = ('medium', 'high', 'xhigh')
+# DeepSeek folds medium and xhigh into high, so stage D is context for the screen and never its evidence.
 DEEPSEEK_EFFORTS = ('low', 'high', 'max')
 DEEPSEEK = 'deepseek-v4.1-flash'
 STAGE_MODELS = {'A': 'gpt-6.1-sol', 'B': 'gpt-6.1-sol', 'C': 'gpt-6-luna', 'D': DEEPSEEK}
@@ -42,13 +44,14 @@ PROVIDER = 'openai-codex'
 SMOKE = {'provider': 'hive', 'model': 'deepseek-ai/deepseek-v4.1-flash-1017',
          'modelProviders': [{'id': 'hive', 'name': 'Hive', 'baseUrl': 'https://api-cdn.thehive.ai/api/v3',
                              'access': 'api_key',
-                             # The endpoint default of 4096 cuts off a long final response.
+                             # Reasoning counts as output, and on a hard task one response passed
+                             # 16384 at low. The provider documents no maximum.
                              'models': [{'id': 'deepseek-ai/deepseek-v4.1-flash-1017',
-                                         'maxOutput': 16384}]}]}
+                                         'maxOutput': 65536}]}]}
 SMOKE_LIMITS = {'maxModelCalls': 30, 'maxOutputTokens': 32000, 'modelTimeoutMs': 180000,
                 'runDeadlineMs': 900000}
 # A stage run ends when the task does: high levels often pass any fixed count, and stopping there
-# would read as a failed task. Only one call can time out. No cap per call.
+# would read as a failed task. Only one call can time out, or one response reach the model's cap.
 LIMITS = {'modelTimeoutMs': 300000}
 # These end a runaway run, which then counts as unsettled and stops the stage for review.
 REQUEST_GUARD = 1000
@@ -238,15 +241,23 @@ def guards(limits):
 def spent_a_limit(out):
     path = out / 'events.jsonl'
     events = map(json.loads, path.read_text().splitlines()) if path.exists() else ()
-    return any(event.get('type') == 'limit.reached'
-               and event['payload'].get('limitKind') in SPENDING_LIMITS for event in events)
+    return any((event.get('type') == 'limit.reached'
+                and event['payload'].get('limitKind') in SPENDING_LIMITS)
+               or (event.get('type') == 'cancel.requested'
+                   and event['payload'].get('reason') == 'model_request_timeout') for event in events)
+
+
+def ended_on_a_cut_response(out):
+    path = out / 'stop-reasons.jsonl'
+    stops = path.read_text().splitlines() if path.exists() else []
+    return bool(stops) and json.loads(stops[-1]) == 'length'
 
 
 def settled_state(out, result):
-    """A provider failure, a host failure or a spent limit says nothing about the task."""
+    """A provider failure, a host failure or a limit of any kind says nothing about the task."""
     if not result or (out / 'provider-error.json').exists():
         return 'invalid'
-    return 'limited' if spent_a_limit(out) else 'complete'
+    return 'limited' if spent_a_limit(out) or ended_on_a_cut_response(out) else 'complete'
 
 
 def worker_patch(out):
@@ -361,22 +372,60 @@ def stage_provider(stage):
     return SMOKE if stage == 'D' else None
 
 
-def live(root, stage, model):
+def left_to_run(root, task, model, effort):
+    """A run started and not finished belongs to the process that started it."""
+    out = trial_dir(root, task, model, effort)
+    return (out / 'receipt.json').exists() or not (out / 'started.json').exists()
+
+
+def run_plan(plan, run, jobs):
+    """Runs start in plan order. An unsettled run starts no more, and those under way finish."""
+    remaining = iter(plan)
+    lock = threading.Lock()
+    halted = threading.Event()
+    results = []
+
+    def work():
+        while not halted.is_set():
+            with lock:
+                item = next(remaining, None)
+            if item is None:
+                return
+            try:
+                result = run(*item)
+            except BaseException:
+                halted.set()
+                raise
+            results.append(result)
+            if result['state'] != 'complete':
+                halted.set()
+
+    with ThreadPoolExecutor(jobs) as pool:
+        for future in [pool.submit(work) for _ in range(jobs)]:
+            future.result()
+    return results
+
+
+def live(root, stage, model, jobs=1):
     frozen = json.loads(FROZEN.read_text())
     verify_frozen(frozen)
-    results = []
+    plan = []
     for task_id in stage_plan(frozen, stage, model):
         task = json.loads((root / 'outcomes/hard/tasks' / task_id / 'task.json').read_text())
         efforts = list(stage_levels(stage))
         random.Random(f'{task_id}:{model}:hard-v1').shuffle(efforts)
-        for effort in efforts:
-            result = trial(root, task, model, effort, frozen['limits'], check_argv(root, task),
-                           stage_provider(stage))
-            results.append(result)
-            print(json.dumps({key: result.get(key) for key in ('id', 'effort', 'state', 'passed', 'wallSeconds')}),
-                  flush=True)
-            if result['state'] != 'complete':
-                raise RuntimeError('a run did not settle; review it before spending more')
+        plan += [(task, effort) for effort in efforts if jobs == 1 or left_to_run(root, task, model, effort)]
+
+    def run(task, effort):
+        result = trial(root, task, model, effort, frozen['limits'], check_argv(root, task),
+                       stage_provider(stage))
+        print(json.dumps({key: result.get(key) for key in ('id', 'effort', 'state', 'passed', 'wallSeconds')}),
+              flush=True)
+        return result
+
+    results = run_plan(plan, run, jobs)
+    if any(result['state'] != 'complete' for result in results):
+        raise RuntimeError('a run did not settle; review it before spending more')
     return results
 
 
@@ -422,6 +471,7 @@ def main():
     mode.add_argument('--live', action='store_true')
     mode.add_argument('--report', action='store_true')
     mode.add_argument('--smoke', metavar='TASK', help='one DeepSeek run to prove the path, never a result')
+    parser.add_argument('--jobs', type=int, default=1, help='live runs at a time; wall times get noisier')
     parser.add_argument('--stage', choices=sorted(STAGE_MODELS))
     parser.add_argument('--effort', choices=DEEPSEEK_EFFORTS, default='high')
     parser.add_argument('--model')
@@ -456,7 +506,7 @@ def main():
         print(json.dumps({key: result.get(key) for key in (
             'id', 'state', 'status', 'passed', 'grade', 'wallSeconds', 'physicalProviderRequests', 'totalTokens')}))
     elif args.live:
-        live(root, args.stage, args.model)
+        live(root, args.stage, args.model, args.jobs)
     else:
         print(json.dumps(report(root, args.model, args.stage), indent=2))
 

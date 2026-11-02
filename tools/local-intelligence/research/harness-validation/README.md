@@ -108,8 +108,15 @@ process itself runs on the host as in the smoke.
 
 A stage run has no limit on calls, output or time, because high levels often pass
 any fixed count and a stop there would read as a failed task. Guards at 1,000
-requests and six hours only end a runaway run. A run stopped by a guard or by a
-spending limit is unsettled, not failed, and stops the stage for review.
+requests and six hours only end a runaway run. One response can still reach the
+model's output cap (65,536 tokens on DeepSeek, where reasoning counts as output)
+and one call five minutes. A run stopped by a guard, a spending limit, a response
+cut at the cap or a timed-out call is unsettled, not failed, and stops the stage
+for review. A cut the run went on from is not its end.
+
+`--jobs N` runs N at a time in the same order and leaves alone a run another
+process has under way. An unsettled run starts no more, and those under way
+finish. Runs share the machine, so their wall times get noisier.
 
 ```sh
 python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --preflight-only
@@ -124,7 +131,7 @@ call. `--smoke` spends one DeepSeek run to prove the path end to end, at the lev
 `--effort` names, and its results never enter a stage.
 
 Stage D (`--live --stage D --model deepseek-v4.1-flash`) runs stage A's tasks on
-DeepSeek at low, high and max. The API has no medium or xhigh, so its report says
+DeepSeek at low, high and max. The API folds medium and xhigh into high, so its report says
 `gateEvidence: false` and the screening decision ignores it.
 
 A live stage spends money or the subscription, so each one needs explicit approval
