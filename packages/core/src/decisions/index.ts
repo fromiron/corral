@@ -28,6 +28,8 @@ export interface JudgmentConfig {
     reasoning_effort: {
       mode: 'off' | 'observe';
       apply?: boolean;
+      /** What automatic reasoning does; unset means medium. */
+      policy?: 'medium' | 'judged';
       /** Provider ids, at most two (two = side-by-side comparison, plan v0.1 §11). */
       providers: readonly string[];
       /** Judgment calls per run; default the run's model request limit, at most 100. */

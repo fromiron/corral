@@ -228,13 +228,11 @@ it('says where to add a key when no decision API has one, and keeps a chosen one
 
   fixture.services = {
     models: {
-      localAi: vi
-        .fn()
-        .mockResolvedValue(
-          view({
-            external: { provider: 'jev', model: 'jev-latest', policy: 'judged', revision: 'r1' },
-          }),
-        ),
+      localAi: vi.fn().mockResolvedValue(
+        view({
+          external: { provider: 'jev', model: 'jev-latest', policy: 'judged', revision: 'r1' },
+        }),
+      ),
       decisionApis: vi.fn().mockResolvedValue(apis(false)),
       installLocalAi: vi.fn(),
       cancelLocalAiInstall: vi.fn(),
