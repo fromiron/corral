@@ -25,12 +25,15 @@ export function meetingTexts(input: MeetingSelectionInput) {
   };
 }
 
-/** One participant by role and history similarity; a tie keeps the roster order. */
+/**
+ * One participant by role and history similarity; a tie keeps the roster order. Someone without
+ * turns has `history: null` and stands on their role, or whoever spoke first would keep every turn.
+ */
 export function closestParticipant(
-  scores: { participantId: string; role: number; history: number }[],
+  scores: { participantId: string; role: number; history: number | null }[],
 ): string {
-  const blended = scores.map(
-    ({ role, history }) => ROLE_WEIGHT * role + (1 - ROLE_WEIGHT) * history,
+  const blended = scores.map(({ role, history }) =>
+    history === null ? role : ROLE_WEIGHT * role + (1 - ROLE_WEIGHT) * history,
   );
   return scores[blended.indexOf(Math.max(...blended))]!.participantId;
 }
@@ -111,14 +114,15 @@ export class LocalMeetingSelector {
       const query = await this.vector(message, cancellation);
       const similarity = async (text: string) => dot(query, await this.vector(text, cancellation));
       const scores = [];
-      for (const { participantId, role, turns } of participants) {
+      for (const [index, { participantId, role, turns }] of participants.entries()) {
         const roleScore = role ? await similarity(role) : 0;
         const turnScores = [];
         for (const turn of turns) turnScores.push(await similarity(turn));
         scores.push({
           participantId,
-          role: roleScore,
-          history: turnScores.length ? Math.max(...turnScores) : 0,
+          // A name alone says nothing about what someone can answer.
+          role: turns.length || input.participants[index]!.prompt.trim() ? roleScore : 0,
+          history: turnScores.length ? Math.max(...turnScores) : null,
         });
       }
       return abort.signal.aborted ? null : [closestParticipant(scores)];
