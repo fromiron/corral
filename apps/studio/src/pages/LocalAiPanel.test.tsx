@@ -18,7 +18,7 @@ const view = (overrides: Partial<LocalAiView> = {}): LocalAiView => ({
   downloadBytes: 198 * MB,
   progress: null,
   error: null,
-  external: { provider: null, model: null, revision: 'r1' },
+  external: { provider: null, model: null, policy: 'judged', revision: 'r1' },
   ...overrides,
 });
 
@@ -149,7 +149,12 @@ const options = () =>
 
 it('offers only decision APIs with a key, and saves the choice with the config revision', async () => {
   const chosen = view({
-    external: { provider: 'openai-decisions', model: 'gpt-6-luna', revision: 'r2' },
+    external: {
+      provider: 'openai-decisions',
+      model: 'gpt-6-luna',
+      policy: 'judged',
+      revision: 'r2',
+    },
   });
   const setExternalJudge = vi.fn().mockResolvedValue(chosen);
   fixture.services = {
@@ -181,10 +186,31 @@ it('offers only decision APIs with a key, and saves the choice with the config r
     (node) => node.textContent === 'Use medium',
   );
   setExternalJudge.mockResolvedValue(
-    view({ external: { provider: null, model: null, revision: 'r3' } }),
+    view({ external: { provider: null, model: null, policy: 'judged', revision: 'r3' } }),
   );
   await act(async () => off?.click());
   expect(setExternalJudge).toHaveBeenLastCalledWith(null, 'r2');
+});
+
+it('says the external judge is not used while automatic reasoning runs at medium', async () => {
+  const services = (policy: 'medium' | 'judged') => ({
+    models: {
+      localAi: vi
+        .fn()
+        .mockResolvedValue(
+          view({ external: { provider: null, model: null, policy, revision: 'r1' } }),
+        ),
+      decisionApis: vi.fn().mockResolvedValue(apis(true)),
+      installLocalAi: vi.fn(),
+      cancelLocalAiInstall: vi.fn(),
+      setExternalJudge: vi.fn(),
+    },
+  });
+  fixture.services = services('medium');
+  expect((await render()).textContent).toContain('so this choice is not used');
+  for (const cleanup of cleanups.splice(0)) cleanup();
+  fixture.services = services('judged');
+  expect((await render()).textContent).not.toContain('so this choice is not used');
 });
 
 it('says where to add a key when no decision API has one, and keeps a chosen one without a key', async () => {
@@ -205,7 +231,9 @@ it('says where to add a key when no decision API has one, and keeps a chosen one
       localAi: vi
         .fn()
         .mockResolvedValue(
-          view({ external: { provider: 'jev', model: 'jev-latest', revision: 'r1' } }),
+          view({
+            external: { provider: 'jev', model: 'jev-latest', policy: 'judged', revision: 'r1' },
+          }),
         ),
       decisionApis: vi.fn().mockResolvedValue(apis(false)),
       installLocalAi: vi.fn(),

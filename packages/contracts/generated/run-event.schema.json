@@ -3396,6 +3396,13 @@
                 "enabled": {
                   "type": "boolean"
                 },
+                "policy": {
+                  "type": "string",
+                  "enum": [
+                    "medium",
+                    "judged"
+                  ]
+                },
                 "maxCalls": {
                   "type": "integer",
                   "minimum": 0,
@@ -9390,7 +9397,8 @@
                   "enum": [
                     "mixdog-relative-v1",
                     "corral-effort-v1",
-                    "corral-effort-v2"
+                    "corral-effort-v2",
+                    "corral-effort-v3"
                   ]
                 },
                 "fallback": {
@@ -9402,7 +9410,8 @@
                     "invalid_response",
                     "limit",
                     "missing_input",
-                    "abstained"
+                    "abstained",
+                    "policy"
                   ]
                 },
                 "escalated": {

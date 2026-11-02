@@ -1,4 +1,5 @@
 import {
+  AutomaticReasoningPolicy,
   DecisionApiId,
   Identifier,
   ProfileContextOverrides,
@@ -146,6 +147,8 @@ export const WorkspaceConfig = z.strictObject({
       reasoning_effort: z.strictObject({
         mode: z.enum(['off', 'observe']),
         apply: z.boolean().optional(),
+        /** What automatic reasoning does; unset means medium. */
+        policy: AutomaticReasoningPolicy.optional(),
         providers: z.array(Identifier).min(1).max(2),
         maxCalls: z.int().min(0).max(100).optional(),
         allowExternal: z.boolean().optional(),
@@ -158,6 +161,10 @@ export const WorkspaceConfig = z.strictObject({
     .optional(),
 });
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfig>;
+
+/** The automatic reasoning policy new runs start with. */
+export const reasoningApplyPolicy = (config: WorkspaceConfig): AutomaticReasoningPolicy =>
+  config.decisions?.reasoning_effort.policy ?? 'medium';
 
 /** The workspace's judgment settings; none configured means off. */
 export function judgmentSettings(config: WorkspaceConfig) {

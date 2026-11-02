@@ -220,6 +220,7 @@ it('connects decision APIs by key and lets the workspace choose one, never retur
     expect(first.body.external).toEqual({
       provider: null,
       model: null,
+      policy: 'medium',
       revision: expect.any(String),
     });
     expect(JSON.stringify(first.body)).not.toContain(KEY);
@@ -295,6 +296,76 @@ it('stores no decision API key on a server without real models', async () => {
     await server.close();
   }
 });
+
+it.skipIf(!target).each([
+  ['medium', undefined, false],
+  ['judged', 'judged', true],
+])(
+  'the %s policy decides whether apply needs the judge loaded',
+  async (policy, configured, loads) => {
+    const root = mkdtempSync(join(tmpdir(), 'corral-local-ai-'));
+    dirs.push(root);
+    const workspace = join(root, 'workspace');
+    mkdirSync(join(workspace, '.corral'), { recursive: true });
+    writeFileSync(
+      join(workspace, '.corral', 'config.json'),
+      JSON.stringify({
+        schemaVersion: '0.1',
+        decisions: {
+          reasoning_effort: {
+            mode: 'off',
+            providers: ['local-model'],
+            apply: true,
+            ...(configured ? { policy: configured } : {}),
+          },
+        },
+      }),
+    );
+    const dataRoot = join(root, 'local-ai');
+    mkdirSync(bundleDir(dataRoot, bundle), { recursive: true });
+    writeFileSync(
+      join(bundleDir(dataRoot, bundle), 'install.json'),
+      JSON.stringify({ release: bundle.release, target }),
+    );
+    launches.length = 0;
+    const localIntelligence = createLocalIntelligence({
+      root: dataRoot,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+      launch: neverReady,
+    });
+    const token = 'test-bootstrap-token-0123456789abcdef';
+    const server = await startCorralServer({
+      workspace,
+      port: 0,
+      bootstrapToken: token,
+      worktreeRoot: join(root, 'worktrees'),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+      localIntelligence,
+    });
+    try {
+      const login = await fetch(`${server.url}/api/v1/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: server.url },
+        body: JSON.stringify({ token }),
+      });
+      const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+      const read = async (path: string) =>
+        (await fetch(`${server.url}/api/v1${path}`, {
+          headers: { origin: server.url, cookie },
+        }).then((response) => response.json())) as {
+          policy?: string;
+          external?: { policy: string };
+        };
+      expect(await read('/models/reasoning')).toMatchObject({ policy });
+      expect(await read('/local-ai')).toMatchObject({ external: { policy } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(launches.length > 0).toBe(loads);
+    } finally {
+      await server.close();
+      launches.length = 0;
+    }
+  },
+);
 
 it.skipIf(!target)(
   'reasoning settings see a bundle installed while the server runs, and stopping closes the engine',

@@ -184,7 +184,7 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /local-ai | — | release, modelName, state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), external(`{provider, model, revision}`: 작업공간이 고른 판정 API id와 모델, 고르지 않았으면 provider·model이 null) |
+| GET /local-ai | — | release, modelName, state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), external(`{provider, model, policy, revision}`: 작업공간이 고른 판정 API id와 모델, 고르지 않았으면 provider·model이 null. policy는 자동 추론 정책 `medium`·`judged`) |
 | POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
 | DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다 |
 | PUT /local-ai/external-judge | `{provider, revision}` | 작업공간의 외부 판정에 쓸 판정 API id, 사용 안 함은 null. 모르는 id는 400, 설정 revision이 다르면 409. 응답은 GET /local-ai와 같다 |

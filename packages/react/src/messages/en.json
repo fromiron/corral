@@ -2531,6 +2531,7 @@
     "saved": "Role default",
     "workspaceHeading": "Automatic effort choice · server-wide",
     "enableApply": "Let the local judge choose reasoning effort in all projects on this server",
+    "enableMedium": "Run automatic roles at medium in all projects on this server",
     "applyHint": "After saving, applies to roles set to automatic in newly started runs on this Corral server workspace. Running runs and fixed reasoning settings stay unchanged.",
     "ready": "Ready",
     "installHint": "Local judge unavailable; see Local AI below. Until then automatic roles use medium.",
@@ -2568,7 +2569,8 @@
       "invalid_response": "Invalid answer",
       "limit": "Judgment limit",
       "missing_input": "Missing input",
-      "abstained": "Judge not confident"
+      "abstained": "Judge not confident",
+      "policy": "Default policy"
     },
     "escalated": "Jev asked",
     "appliedHeading": "Applied reasoning by request",
@@ -2600,6 +2602,7 @@
       "ask": "Ask {name}",
       "scope": "In live runs, the chosen decision API gets the same judge text the local AI reads: the current request, plan, recent tool calls, and the previous request and reply, each cut to a length limit. It never gets files, keys, or run IDs. Applies to this workspace from the next run.",
       "noKey": "Add a key under Decision APIs to choose one. Until then unsure requests use medium.",
+      "policyMedium": "Automatic reasoning runs at medium without judging for now, so this choice is not used.",
       "chosenNoKey": "{name} has no key. Until you add one under Decision APIs, unsure requests use medium.",
       "saveFailed": "Could not save the external judge setting. Reload and try again."
     }

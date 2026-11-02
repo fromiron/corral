@@ -1,4 +1,10 @@
-import type { ModelProfileSnapshot, ReasoningPolicy, ReasoningResolution } from '@corral/contracts';
+import type {
+  AutomaticReasoningPolicy,
+  ModelProfileSnapshot,
+  ReasoningApplySettings,
+  ReasoningPolicy,
+  ReasoningResolution,
+} from '@corral/contracts';
 import {
   DecisionAnswer,
   type DecisionCancellation,
@@ -52,6 +58,11 @@ function supportedLevel(level: EffortLevel, ladder: readonly EffortLevel[]): Eff
   return ladder.find((l) => EFFORT_LEVELS.indexOf(l) >= rank) ?? ladder[ladder.length - 1]!;
 }
 
+/** A run recorded without a policy started before medium became the default. */
+export const reasoningPolicyOf = (
+  apply: ReasoningApplySettings | undefined,
+): AutomaticReasoningPolicy => apply?.policy ?? 'judged';
+
 const DEADLINE_MS = 3000;
 /** Less time than this left after the local judge is not worth an outside call. */
 const EXTERNAL_MIN_MS = 500;
@@ -74,14 +85,15 @@ const failureReason = (error: unknown): NonNullable<ReasoningResolution['fallbac
 };
 
 /**
- * `corral-effort-v2`: supported low–xhigh levels, with review of uncertain high-risk low calls. The
- * 3 s deadline is set once and shared with the external judge asked when the local one abstains;
- * timeout/cancel settles the waiter while the provider keeps its real occupancy until the
- * computation ends.
+ * `corral-effort-v3`: medium, with no judge. The judged policy keeps `corral-effort-v2`: supported
+ * low–xhigh levels, with review of uncertain high-risk low calls. Its 3 s deadline is set once and
+ * shared with the external judge asked when the local one abstains; timeout/cancel settles the
+ * waiter while the provider keeps its real occupancy until the computation ends.
  */
 export async function automaticReasoning(
   input: ReasoningInput | undefined,
   base: ReasoningResolution,
+  applied: AutomaticReasoningPolicy,
   provider: DecisionProvider | undefined,
   candidates: readonly string[],
   cancellation: DecisionCancellation,
@@ -96,6 +108,7 @@ export async function automaticReasoning(
     fallback: reason,
   });
   if (input?.kind === 'compaction') return { ...base, resolved: 'medium', source: 'compaction' };
+  if (applied === 'medium') return { ...fallback('policy'), policyVersion: 'corral-effort-v3' };
   if (limit) return fallback('limit');
   if (!input) return fallback('missing_input');
   if (

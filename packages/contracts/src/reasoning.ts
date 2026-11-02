@@ -75,8 +75,10 @@ export const ReasoningResolution = z.strictObject({
     .array(z.enum(['low', 'medium', 'high', 'xhigh']))
     .max(4)
     .optional(),
-  /** Earlier policy versions remain readable as recorded; new resolutions use corral-effort-v2. */
-  policyVersion: z.enum(['mixdog-relative-v1', 'corral-effort-v1', 'corral-effort-v2']).optional(),
+  /** Earlier policy versions remain readable as recorded. v3 is medium, v2 the judged policy. */
+  policyVersion: z
+    .enum(['mixdog-relative-v1', 'corral-effort-v1', 'corral-effort-v2', 'corral-effort-v3'])
+    .optional(),
   fallback: z
     .enum([
       'unavailable',
@@ -86,6 +88,7 @@ export const ReasoningResolution = z.strictObject({
       'limit',
       'missing_input',
       'abstained',
+      'policy',
     ])
     .optional(),
   /** Set when the external judge was asked, whatever it answered. */
@@ -102,8 +105,14 @@ export type ReasoningWire = z.infer<typeof ReasoningWire>;
 export const DecisionApiId = z.enum(['jev', 'openai-decisions']);
 export type DecisionApiId = z.infer<typeof DecisionApiId>;
 
+/** medium asks no judge; judged keeps the local judge and its external check. */
+export const AutomaticReasoningPolicy = z.enum(['medium', 'judged']);
+export type AutomaticReasoningPolicy = z.infer<typeof AutomaticReasoningPolicy>;
+
 export const ReasoningApplySettings = z.strictObject({
   enabled: z.boolean(),
+  /** Fixed when the run starts; a run recorded without it keeps judging. */
+  policy: AutomaticReasoningPolicy.optional(),
   maxCalls: z.int().min(0).max(100),
   provider: z.literal('local-model'),
   version: z.string().max(200).nullable(),

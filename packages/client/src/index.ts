@@ -1373,6 +1373,7 @@ export interface ProviderAuthView {
 
 export interface ReasoningSettings {
   apply: boolean;
+  policy: 'medium' | 'judged';
   available: boolean;
   version: string | null;
   reason: string | null;
@@ -1399,6 +1400,8 @@ export interface LocalAiView {
   external: {
     provider: DecisionApiView['id'] | null;
     model: string | null;
+    /** The automatic reasoning policy; medium never asks the decision API. */
+    policy: ReasoningSettings['policy'];
     revision: string;
   };
 }

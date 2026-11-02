@@ -16,6 +16,22 @@ const summary = (call: Call, locale: 'en' | 'ko' = 'en') => {
 };
 
 describe('ReasoningSummary', () => {
+  it('says a medium request came from the default policy, not a failed judge', () => {
+    const medium = summary({
+      reasoning: {
+        requested: { mode: 'auto' },
+        resolved: 'medium',
+        source: 'fallback',
+        fallback: 'policy',
+        policyVersion: 'corral-effort-v3',
+        preparationId: 'prep_1',
+      },
+      reasoningWire: { kind: 'effort', value: 'medium' },
+    });
+    expect(medium.textContent).toContain('Default policy');
+    expect(medium.textContent).not.toContain('Judge');
+  });
+
   it('names a local model judgment and an abstained one', () => {
     const judged = summary({
       reasoning: {
