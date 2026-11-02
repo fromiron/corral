@@ -61,7 +61,9 @@ export function providerFailure(
       : Number.isFinite(Number(after))
         ? Math.max(0, Number(after) * 1000)
         : Math.max(0, Date.parse(after) - now);
-  const code = /insufficient_quota|quota.exceed|credit|billing|account.balance/i.test(text)
+  const code = /insufficient_quota|quota.exceed|usage.limit|credit|billing|account.balance/i.test(
+    text,
+  )
     ? 'QUOTA'
     : status === 401 || status === 403
       ? 'AUTH'

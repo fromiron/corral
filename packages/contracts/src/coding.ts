@@ -4,6 +4,7 @@ import { ResourcePath } from './harness.ts';
 
 export type BrokerFileToolName =
   | FileToolName
+  | 'read'
   | 'edit'
   | 'write'
   | 'read_hashline'
