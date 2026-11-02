@@ -5,12 +5,9 @@ import { join } from 'node:path';
 import type { MeetingSelectionInput, ReasoningInput } from '../../packages/contracts/src/index.ts';
 import {
   bundledEffortWeights,
-  bundledMeetingWeights,
   createLocalIntelligence,
   loadEffortClassifier,
-  loadMeetingWeights,
   requestInput,
-  selectMeetingVectors,
 } from '../../packages/local-intelligence/src/index.ts';
 
 const [work, root, output] = process.argv.slice(2);
@@ -28,8 +25,6 @@ const effortInfo = read('curriculum-cpu.f32.json');
 const effortHead = loadEffortClassifier(bundledEffortWeights(), effortInfo);
 const bytes = readFileSync(join(work, 'curriculum-cpu.f32'));
 const effortVectors = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-const meetingData = read('meeting-vectors.json');
-const meetingHead = loadMeetingWeights(bundledMeetingWeights(), meetingData);
 const ms = { effort: [] as number[], meeting: [] as number[] };
 try {
   await local.engine.warmUp();
@@ -45,19 +40,11 @@ try {
     if (actual.answer !== expected.answer || actual.abstain !== expected.abstain)
       throw new Error('live effort decision differs from frozen CPU evaluation');
   }
-  for (const [n, sample] of lines('meeting-cases.jsonl').entries()) {
+  for (const sample of lines('meeting-cases.jsonl')) {
     if (sample.split !== 'test') continue;
-    const input = sample.input as MeetingSelectionInput;
-    const expected = selectMeetingVectors(
-      input,
-      meetingData.vectors[n].map((v: number[]) => Float32Array.from(v)),
-      meetingHead,
-    );
     const start = performance.now();
-    const actual = await local.meeting.select(input);
+    await local.meeting.select(sample.input as MeetingSelectionInput);
     ms.meeting.push(performance.now() - start);
-    if (JSON.stringify(actual?.toSorted() ?? null) !== JSON.stringify(expected?.toSorted() ?? null))
-      throw new Error('live meeting selection differs from frozen CPU evaluation');
   }
   const summary = Object.fromEntries(
     Object.entries(ms).map(([kind, values]) => {
@@ -79,7 +66,6 @@ try {
     device: local.engine.status().actualDevice,
     mode: 'warm shared local CPU engine; three-participant authored meetings',
     effortWeightsSha256: digest(bundledEffortWeights()),
-    meetingWeightsSha256: digest(bundledMeetingWeights()),
     ...summary,
   };
   writeFileSync(output, JSON.stringify(result, null, 2) + '\n');

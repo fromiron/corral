@@ -14,7 +14,7 @@
   - OpenAI Decisions: API 데이터를 학습에 쓰지 않고 남용 모니터링 로그를 최대 30일 보관한다고 문서에 적혀 있다.
   - 문서에 없는 정책은 지어내지 않는다.
 
-자동 추론에서 어느 판정 API를 쓸지는 로컬 AI 패널의 "외부 판정 보완"에서 고른다(사용 안 함 / 키가 있는 판정 API). 언제 부르고 답을 어떻게 적용하는지는 [로컬 AI](local-intelligence.md#외부-판정)가 정한다.
+자동 추론에서 어느 판정 API를 쓸지는 로컬 AI 패널의 "외부 판정 보완"에서 고른다(사용 안 함 / 키가 있는 판정 API). 자동 추론의 기본 정책은 판정 API를 부르지 않고, `judged` 정책에서만 쓴다. 언제 부르고 답을 어떻게 적용하는지는 [로컬 AI](local-intelligence.md#외부-판정)가 정한다.
 
 ## 계약
 
@@ -60,11 +60,11 @@ When 사용자가 판정 API 섹션에서 OpenAI Decisions 키를 저장한다
 Then 목록에는 키가 있다는 사실만 보이고 응답 어디에도 키 값이 없다
 And 모델 설정의 OpenAI 로그인과 키는 바뀌지 않는다
 
-Given 모델 설정에 OpenAI 키나 ChatGPT 로그인만 있고 판정 API 키는 없다
+Given 자동 추론 정책이 judged이고 모델 설정에 OpenAI 키나 ChatGPT 로그인만 있고 판정 API 키는 없다
 When 로컬 판정이 보류한 요청을 준비한다
 Then OpenAI Decisions를 부르지 않고 요청은 medium으로 나간다
 
-Given 작업공간이 OpenAI Decisions를 외부 판정으로 골랐다
+Given 정책이 judged이고 작업공간이 OpenAI Decisions를 외부 판정으로 골랐다
 When OpenAI가 질문에 refusal로 답한다
 Then 요청은 medium으로 나가고 fallback 이유는 invalid_response이며 기록은 failed다
 

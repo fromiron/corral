@@ -1,3 +1,4 @@
+import type { MeetingSelectionInput } from '../../../packages/contracts/src/index.ts';
 import type { MeetingInput } from './data.ts';
 
 /** An explicitly supplied runtime view is authoritative, even if its text is empty. */
@@ -15,6 +16,18 @@ export function effortBaselineInput(row: { oldText?: unknown; runtimeView?: unkn
   }
   if (typeof row.oldText !== 'string') throw new Error('legacy effort text must be a string');
   return { text: row.oldText, source: 'oldText' as const };
+}
+
+/** The message, every role, then each person's latest turn; each slot stays even if empty. */
+export function legacyCosineTexts(input: MeetingSelectionInput) {
+  const clean = (text: string) => [...text.trim()].slice(0, 1800).join('');
+  return [
+    clean(input.message),
+    ...input.participants.map((p) => clean(p.prompt)),
+    ...input.participants.map((p) =>
+      clean(input.history.findLast((h) => h.participantId === p.participantId)?.text ?? ''),
+    ),
+  ];
 }
 
 export function meetingCosineInputs(input: MeetingInput) {

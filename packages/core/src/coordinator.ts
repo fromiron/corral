@@ -150,6 +150,7 @@ import {
   type ExternalConsult,
   fixedReasoning,
   reasoningError,
+  reasoningPolicyOf,
 } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun } from './run-plan.ts';
@@ -1923,6 +1924,7 @@ export class Coordinator {
         ? {
             reasoningApply: {
               enabled: true,
+              policy: this.judgments.settings.reasoning_effort.policy ?? 'medium',
               provider: 'local-model' as const,
               version:
                 this.judgments.providers.find(
@@ -7668,8 +7670,9 @@ export class Coordinator {
                 return () => listeners.delete(fn);
               },
             };
-            const exhausted = run.reasoningCalls >= run.reasoningMaxCalls;
-            if (!exhausted) run.reasoningCalls++;
+            const policy = reasoningPolicyOf(run.snapshot.reasoningApply);
+            const exhausted = policy === 'judged' && run.reasoningCalls >= run.reasoningMaxCalls;
+            if (policy === 'judged' && !exhausted) run.reasoningCalls++;
             run.boundaries.add(executionId);
             try {
               reasoning = await automaticReasoning(
@@ -7683,6 +7686,7 @@ export class Coordinator {
                     ? { inputHash: hashOf(privateInput), kind: privateInput.kind }
                     : {}),
                 },
+                policy,
                 run.reasoningProvider,
                 input.model.reasoning?.levels ?? ['low', 'medium', 'high', 'xhigh'],
                 cancellation,

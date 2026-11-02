@@ -81,6 +81,7 @@ import {
   type ProjectResult,
   parseWorkspaceConfig,
   planRun,
+  reasoningApplyPolicy,
   type SaveResult,
   SessionEntryAuto,
   type SessionResult,
@@ -479,9 +480,13 @@ async function createCorralServer(
   ];
   // A configured, installed provider loads ahead of the first judgment (the local model takes
   // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
+  const observed = judgmentSettings(workspace.config).reasoning_effort;
   for (const id of new Set([
-    ...judgmentSettings(workspace.config).reasoning_effort.providers,
-    ...(workspace.config.decisions?.reasoning_effort.apply ? ['local-model'] : []),
+    ...(observed.mode === 'observe' ? observed.providers : []),
+    ...(workspace.config.decisions?.reasoning_effort.apply &&
+    reasoningApplyPolicy(workspace.config) === 'judged'
+      ? ['local-model']
+      : []),
   ])) {
     const provider = decisionProviders.find((p) => p.id === id) as
       | (DecisionProvider & { warmUp?: () => Promise<unknown> })
@@ -1127,6 +1132,7 @@ async function createCorralServer(
     const availability = provider?.available() ?? 'this server has no local AI';
     return {
       apply: workspace.config.decisions?.reasoning_effort.apply === true,
+      policy: reasoningApplyPolicy(workspace.config),
       available: availability === true,
       version: provider?.version ?? null,
       reason: availability === true ? null : `Local AI is unavailable: ${availability}`,
@@ -1148,7 +1154,7 @@ async function createCorralServer(
     workspace.configRevision = changed.revision;
     registry?.setConfigRevision(changed.revision);
     judgmentConfig.settings = judgmentSettings(changed.config);
-    if (parsed.data.apply) {
+    if (parsed.data.apply && reasoningApplyPolicy(changed.config) === 'judged') {
       const provider = decisionProviders.find((p) => p.id === 'local-model');
       if (
         provider?.available() === true &&
@@ -1171,6 +1177,7 @@ async function createCorralServer(
       external: {
         provider: chosen?.provider ?? null,
         model: chosen?.model ?? null,
+        policy: reasoningApplyPolicy(workspace.config),
         revision: configRevision(workspace.root),
       },
     };

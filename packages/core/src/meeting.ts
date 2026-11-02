@@ -17,6 +17,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import { validTextAttachments } from './attachments.ts';
+import { readMeetingAddress } from './meeting-address.ts';
 import { recordMeetingMinutes, SECRETARY_MINUTES_INSTRUCTIONS } from './meeting-decisions.ts';
 import { formatMeetingEvidence } from './meeting-evidence.ts';
 import type { CorralRepository, SessionResult, WorkSession } from './repository/index.ts';
@@ -584,7 +585,11 @@ export class MeetingService {
   ): Promise<MeetingResult> {
     const meeting = session.meeting!;
     let participantIds = [...spec.participantIds];
-    if (spec.kind === 'all' && spec.message && this.deps.selectParticipants) {
+    const message = spec.kind === 'all' ? spec.message : null;
+    const address = message ? readMeetingAddress(message, meeting.config.participants) : null;
+    if (address) participantIds = participantIds.filter((id) => !address.excluded.includes(id));
+    if (address?.participantIds.length) participantIds = address.participantIds;
+    else if (message && this.deps.selectParticipants) {
       const history: { id: string; order: number; participantId: string | null; text: string }[] =
         [];
       for (const past of meeting.rounds.slice(-6)) {
@@ -610,12 +615,10 @@ export class MeetingService {
       history.sort((a, b) => a.order - b.order);
       const selected = await this.deps
         .selectParticipants({
-          message: spec.message,
-          participants: meeting.config.participants.map(({ participantId, name, prompt }) => ({
-            participantId,
-            name,
-            prompt,
-          })),
+          message,
+          participants: meeting.config.participants
+            .filter(({ participantId }) => participantIds.includes(participantId))
+            .map(({ participantId, name, prompt }) => ({ participantId, name, prompt })),
           history: history
             .slice(-12)
             .map(({ id, participantId, text }) => ({ id, participantId, text })),

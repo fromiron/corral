@@ -4,15 +4,15 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { lowEffortNeedsReview } from '../../../packages/core/src/reasoning-risk.ts';
 import {
   bundledEffortWeights,
-  bundledMeetingWeights,
   createLocalIntelligence,
   EFFORT_PREPROCESS_VERSION,
   loadEffortClassifier,
-  meetingTexts,
+  MEETING_PREPROCESS_VERSION,
 } from '../../../packages/local-intelligence/src/index.ts';
 import {
   effortBaselineInput,
   historyCosineReferences,
+  legacyCosineTexts,
   meetingCosineInputs,
   ROLE_HISTORY_WEIGHTS,
 } from './baseline-inputs.ts';
@@ -36,9 +36,7 @@ const identity = {
   inputSha256: createHash('sha256').update(bytes).digest('hex'),
   baseModelSha256: ai.bundle.model.sha256,
   weightsSha256: createHash('sha256').update(JSON.stringify(weights)).digest('hex'),
-  meetingWeightsSha256: createHash('sha256')
-    .update(JSON.stringify(bundledMeetingWeights()))
-    .digest('hex'),
+  meetingPreprocessVersion: MEETING_PREPROCESS_VERSION,
   sourceSha256: createHash('sha256')
     .update(readFileSync(new URL(import.meta.url)))
     .digest('hex'),
@@ -101,7 +99,7 @@ try {
       const legacyCosineStarted = performance.now();
       const vectors: Float32Array[] = [];
       let legacyEmbeddingRequests = 0;
-      for (const text of meetingTexts(input)) {
+      for (const text of legacyCosineTexts(input)) {
         if (text) legacyEmbeddingRequests++;
         const [vector] = text
           ? await ai.engine.embed({
@@ -190,7 +188,7 @@ writeFileSync(
   JSON.stringify(
     {
       ...identity,
-      policy: 'corral-effort-v2; meeting-v1 with legacy all fallback',
+      policy: 'corral-effort-v2; role and history cosine with legacy all fallback',
       source: 'shipped native CPU engine, external judgment disabled',
       effortInputPolicy: 'prefer explicit runtimeView.legacyText; otherwise oldText',
       referenceVersion: 'meeting-cosine-full-roles-last12-v1',

@@ -97,18 +97,6 @@ function setup(
     root,
     bundle,
     effortWeights: testWeights(),
-    meetingWeights: {
-      schemaVersion: 1,
-      version: 'old-meeting',
-      dims: 4,
-      baseModelSha256: bundle.model.sha256,
-      preprocessVersion: 'meeting-text-v1',
-      intent: { weights: Array.from({ length: 4 }, () => [0, 0, 0, 0]), bias: [0, 0, 10, 0] },
-      rank: { weights: [0, 0, 0, 0, 0, 0], bias: 0 },
-      allThreshold: 0.8,
-      minimumScore: 0.5,
-      minimumMargin: 0.1,
-    },
     launch: legacy.launch,
     env: {},
     platform: 'linux',
@@ -133,12 +121,12 @@ describe('explicit decision factory override', () => {
     await expect(
       li.effort.decideRequest(requestInput('Inspect'), cancellation),
     ).resolves.toMatchObject({ answer: 'medium' });
-    await expect(li.meeting.select(selection)).resolves.toEqual(['a', 'b']);
+    await expect(li.meeting.select(selection)).resolves.toEqual(['a']);
     expect(embed.mock.calls.flatMap(([request]) => request.texts)).toEqual([
       'request: Inspect',
       'Ask the reviewer',
-      'implementation',
-      'review',
+      'Author\nimplementation',
+      'Reviewer\nreview',
     ]);
     await li.close();
     expect(selected.close).not.toHaveBeenCalled();
@@ -156,12 +144,14 @@ describe('explicit decision factory override', () => {
         li.effort.decideRequest(requestInput('Inspect'), cancellation),
       ).resolves.toMatchObject({ answer: role === 'effort' ? 'high' : 'medium' });
       await expect(li.meeting.select(selection)).resolves.toEqual(
-        role === 'meeting' ? ['b'] : ['a', 'b'],
+        role === 'meeting' ? ['b'] : ['a'],
       );
       expect(selected.decide).toHaveBeenCalledTimes(1);
       expect(selected.decide.mock.calls[0]?.[0].op).toBe(role);
       expect(embed.mock.calls.flatMap(([request]) => request.texts)).toEqual(
-        role === 'effort' ? ['Ask the reviewer', 'implementation', 'review'] : ['request: Inspect'],
+        role === 'effort'
+          ? ['Ask the reviewer', 'Author\nimplementation', 'Reviewer\nreview']
+          : ['request: Inspect'],
       );
       await li.close();
       expect(selected.close).toHaveBeenCalledTimes(1);

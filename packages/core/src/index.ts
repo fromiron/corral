@@ -70,7 +70,7 @@ export {
 export type { PartialOutput, RuntimeSnapshot } from './partial-output.ts';
 export * from './profile-context.ts';
 export * from './projection.ts';
-export { fixedReasoning } from './reasoning.ts';
+export { fixedReasoning, reasoningPolicyOf } from './reasoning.ts';
 export * from './repository/index.ts';
 export { reviewCriteriaHash } from './review-recipe.ts';
 export * from './run-plan.ts';

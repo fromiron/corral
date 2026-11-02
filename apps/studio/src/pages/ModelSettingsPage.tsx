@@ -505,7 +505,7 @@ function ReasoningSettingsPanel() {
       <div>
         <h3>{t('workspaceHeading')}</h3>
         <p>{t('applyHint')}</p>
-        {settings ? (
+        {settings?.policy === 'judged' ? (
           <p>{settings.available ? `${settings.version} · ${t('ready')}` : t('installHint')}</p>
         ) : null}
         {error ? (
@@ -515,7 +515,7 @@ function ReasoningSettingsPanel() {
         ) : null}
       </div>
       <Switch
-        label={t('enableApply')}
+        label={t(settings?.policy === 'judged' ? 'enableApply' : 'enableMedium')}
         checked={settings?.apply ?? false}
         disabled={!settings || busy}
         onToggle={async () => {

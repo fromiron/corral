@@ -4,10 +4,11 @@ import type {
   DecisionProvider,
   ExternalEffortJudge,
   ReasoningInput,
+  ReasoningPolicy,
 } from '@corral/contracts';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
-import { Coordinator, SPEC_HARD_CAPS } from '../src/index.ts';
+import { Coordinator, reasoningPolicyOf, SPEC_HARD_CAPS } from '../src/index.ts';
 
 const input: ReasoningInput = {
   kind: 'turn',
@@ -33,6 +34,10 @@ async function setup(
     externalJudges?: ExternalEffortJudge[];
     external?: 'jev' | 'openai-decisions';
     mode?: 'live' | 'mock';
+    /** `configured: false` leaves the workspace setting out. */
+    policy?: 'medium' | 'judged';
+    configured?: boolean;
+    reasoning?: ReasoningPolicy;
   } = {},
 ) {
   let observed = 0;
@@ -92,6 +97,7 @@ async function setup(
           mode: observe ? 'observe' : 'off',
           providers: observe ? ['local-model'] : [],
           apply: true,
+          ...(options.configured === false ? {} : { policy: options.policy ?? 'judged' }),
           ...(observe ? { maxCalls: 2 } : {}),
           ...(options.external
             ? {
@@ -108,7 +114,7 @@ async function setup(
     ...(options.externalJudges ? { externalJudges: options.externalJudges } : {}),
   });
   const team = linearCorral(['writer']);
-  team.roles[0]!.reasoning = { mode: 'auto' };
+  team.roles[0]!.reasoning = options.reasoning ?? { mode: 'auto' };
   const start = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start',
@@ -337,6 +343,196 @@ it('observe does not judge an automatic request again, and apply uses the run li
   expect(s.observed()).toBe(0);
   expect(s.coordinator.getSnapshot(s.runId).projection.decisions).toEqual({});
   s.command('cancel');
+});
+
+describe('corral-effort-v3', () => {
+  const xhigh = {
+    answer: 'xhigh',
+    probabilities: { low: 0, medium: 0, high: 0, xhigh: 1 },
+    evidenceLevel: 'model_probability',
+  };
+  const counted = () => {
+    const calls = { judge: 0, external: 0 };
+    return {
+      calls,
+      decide: async () => {
+        calls.judge++;
+        return xhigh;
+      },
+      externalJudges: [
+        {
+          provider: 'jev',
+          available: () => true,
+          judge: async () => {
+            calls.external++;
+            return { answer: 'xhigh', model: 'jev-1' };
+          },
+        },
+      ] satisfies ExternalEffortJudge[],
+    };
+  };
+
+  it.each([
+    ['left unset', { configured: false }],
+    ['set to medium', { policy: 'medium' as const }],
+  ])('requests medium with no judge or external call when the policy is %s', async (_name, how) => {
+    const { calls, decide, externalJudges } = counted();
+    const s = await setup(decide, false, 6, ['low', 'medium', 'high', 'xhigh'], {
+      ...how,
+      external: 'jev',
+      externalJudges,
+    });
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({
+      requested: { mode: 'auto' },
+      resolved: 'medium',
+      source: 'fallback',
+      fallback: 'policy',
+      policyVersion: 'corral-effort-v3',
+      kind: 'turn',
+    });
+    expect(permit.reasoning?.judgeVersion).toBeUndefined();
+    expect(permit.reasoning?.judged).toBeUndefined();
+    expect(calls).toEqual({ judge: 0, external: 0 });
+    s.command('cancel');
+  });
+
+  it('fixes the policy in the run when it starts', async () => {
+    const started = await setup(counted().decide, false, 6, undefined, { configured: false });
+    expect(started.coordinator.getRunSnapshot(started.runId)?.reasoningApply).toMatchObject({
+      policy: 'medium',
+    });
+    started.command('cancel');
+    const judged = await setup(counted().decide);
+    expect(judged.coordinator.getRunSnapshot(judged.runId)?.reasoningApply).toMatchObject({
+      policy: 'judged',
+    });
+    judged.command('cancel');
+  });
+
+  it('lets a run recorded without a policy keep judging', () => {
+    expect(reasoningPolicyOf(undefined)).toBe('judged');
+    expect(
+      reasoningPolicyOf({ enabled: true, maxCalls: 1, provider: 'local-model', version: null }),
+    ).toBe('judged');
+    expect(
+      reasoningPolicyOf({
+        enabled: true,
+        maxCalls: 1,
+        provider: 'local-model',
+        version: null,
+        policy: 'medium',
+      }),
+    ).toBe('medium');
+  });
+
+  it('keeps the compaction record', async () => {
+    const { calls, decide } = counted();
+    const s = await setup(decide, false, 6, undefined, { configured: false });
+    const permit = await s.host.prepareModelRequest(undefined, { ...input, kind: 'compaction' });
+    expect(permit.reasoning).toMatchObject({ resolved: 'medium', source: 'compaction' });
+    expect(permit.reasoning?.fallback).toBeUndefined();
+    expect(calls.judge).toBe(0);
+    s.command('cancel');
+  });
+
+  it('still judges and records v2 under the judged policy', async () => {
+    const { calls, decide } = counted();
+    const s = await setup(decide, false, 6, ['low', 'medium', 'high', 'xhigh'], {
+      policy: 'judged',
+    });
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({
+      resolved: 'xhigh',
+      source: 'local-model',
+      policyVersion: 'corral-effort-v2',
+    });
+    expect(calls.judge).toBe(1);
+    s.command('cancel');
+  });
+
+  it('leaves a manual level alone', async () => {
+    const { calls, decide } = counted();
+    const s = await setup(decide, false, 6, ['low', 'medium', 'high', 'xhigh'], {
+      configured: false,
+      reasoning: { mode: 'fixed', level: 'high' },
+    });
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({ resolved: 'high', source: 'fixed' });
+    expect(permit.reasoning?.policyVersion).toBeUndefined();
+    expect(calls.judge).toBe(0);
+    s.command('cancel');
+  });
+
+  it('observes without applying and leaves the run its judge calls', async () => {
+    const { calls, decide } = counted();
+    const s = await setup(decide, true, 6, undefined, { configured: false });
+    for (let n = 1; n <= 3; n++) {
+      const permit = await s.host.prepareModelRequest(undefined, input);
+      expect(permit.reasoning).toMatchObject({ resolved: 'medium', fallback: 'policy' });
+      for (let i = 0; i < 100; i++) await Promise.resolve();
+    }
+    expect(calls.judge).toBe(0);
+    // maxCalls 2 is what the observer may spend, so preparing requests took none of it.
+    expect(s.observed()).toBe(2);
+    s.command('cancel');
+  });
+
+  it('admits no model request after the run is cancelled', async () => {
+    const s = await setup(counted().decide, false, 6, undefined, { configured: false });
+    const request = s.host.prepareModelRequest(undefined, input).then(
+      () => 'admitted',
+      () => 'cancelled',
+    );
+    s.command('cancel');
+    expect(await request).toBe('cancelled');
+    expect(Object.keys(s.coordinator.getSnapshot(s.runId).projection.modelCalls)).toHaveLength(0);
+  });
+
+  it('discards a preparation that a directive overtook', async () => {
+    const s = await setup(counted().decide, false, 6, undefined, { configured: false });
+    const request = s.host.prepareModelRequest(undefined, input).then(
+      () => 'admitted',
+      (error: Error) => error.message,
+    );
+    s.command('steer');
+    expect(await request).toContain('REASONING_STALE');
+    s.command('cancel');
+  });
+
+  it('holds the request through a pause and discards it if a directive arrives meanwhile', async () => {
+    const s = await setup(counted().decide, false, 6, undefined, { configured: false });
+    let settled = false;
+    const request = s.host
+      .prepareModelRequest(undefined, input)
+      .then(
+        () => 'admitted',
+        (error: Error) => error.message,
+      )
+      .finally(() => {
+        settled = true;
+      });
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      runId: s.runId,
+      commandId: 'pause',
+      type: 'pause',
+      payload: { scope: 'run' },
+    });
+    for (let n = 0; n < 20; n++) await Promise.resolve();
+    expect(settled).toBe(false);
+    s.command('steer');
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      runId: s.runId,
+      commandId: 'resume',
+      type: 'resume',
+      payload: { scope: 'run' },
+    });
+    expect(await request).toBe('REASONING_STALE');
+    expect(Object.keys(s.coordinator.getSnapshot(s.runId).projection.modelCalls)).toHaveLength(0);
+    s.command('cancel');
+  });
 });
 
 describe('corral-effort-v2', () => {

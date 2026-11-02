@@ -32,9 +32,8 @@ A linear classifier trained by Corral on embeddings of text from these datasets
 No dataset text is included in this package.
 
 The `effort-v2` weights also use authored multilingual coding scenarios in
-`tools/local-intelligence/effort/curriculum.tsv`. The `meeting-v1` selection weights use authored
-conversation scenarios in `tools/local-intelligence/meeting/`. These additions are original
-project material under the repository's MIT license; they are synthetic, not private user logs.
+`tools/local-intelligence/effort/curriculum.tsv`. These additions are original project material
+under the repository's MIT license; they are synthetic, not private user logs.
 
 ## Downloaded at install time, not part of this package
 

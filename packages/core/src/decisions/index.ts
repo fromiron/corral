@@ -28,6 +28,8 @@ export interface JudgmentConfig {
     reasoning_effort: {
       mode: 'off' | 'observe';
       apply?: boolean;
+      /** What automatic reasoning does; unset means medium. */
+      policy?: 'medium' | 'judged';
       /** Provider ids, at most two (two = side-by-side comparison, plan v0.1 §11). */
       providers: readonly string[];
       /** Judgment calls per run; default the run's model request limit, at most 100. */
@@ -160,8 +162,9 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
       if (settings?.mode !== 'observe') return;
       const input = deps.startInputOf(context.runId, event.payload.executionId);
       if (!input) return;
-      // An automatic request was already judged by the local model before it was prepared.
-      const applied = event.payload.reasoning?.requested.mode === 'auto';
+      // Under the judged policy the local model already judged this request before it was prepared.
+      const reasoning = event.payload.reasoning;
+      const applied = reasoning?.requested.mode === 'auto' && reasoning.fallback !== 'policy';
       const providers = settings.providers.flatMap((snapshot) => {
         const provider =
           snapshot.available && !(applied && snapshot.id === 'local-model')

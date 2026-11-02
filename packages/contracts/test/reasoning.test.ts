@@ -31,6 +31,23 @@ describe('reasoning records', () => {
     );
   });
 
+  it('records the medium policy and keeps guarded low records readable', () => {
+    expect(
+      ReasoningResolution.safeParse({
+        ...base,
+        resolved: 'medium',
+        source: 'fallback',
+        fallback: 'policy',
+        policyVersion: 'corral-effort-v3',
+      }).success,
+    ).toBe(true);
+    const settings = { enabled: true, maxCalls: 4, provider: 'local-model', version: null };
+    for (const policy of ['medium', 'judged'])
+      expect(ReasoningApplySettings.safeParse({ ...settings, policy }).success).toBe(true);
+    expect(ReasoningApplySettings.safeParse(settings).success).toBe(true);
+    expect(ReasoningApplySettings.safeParse({ ...settings, policy: 'high' }).success).toBe(false);
+  });
+
   it('names an abstained judgment as its own fallback reason', () => {
     expect(
       ReasoningResolution.safeParse({

@@ -6,6 +6,10 @@ participants in a general group conversation. A shared model is one candidate.
 The [protocol](protocol.md) owns the split rules, teacher requirements, resource
 limits, and promotion gates. These tools do not replace the default weights.
 
+The completed frozen evaluations reproduce at commit `f8b9b084`, which still has
+`meeting-v1` and the baseline files their manifests pin. Later commits replace
+that selector, so the pinned hash checks in those final scripts fail on purpose.
+
 Work is currently stopped at the user's request. The first experiment is
 complete; the follow-up data, partial generation, unfinished training and exact
 resume boundaries are recorded in [the stopping checkpoint](phase2/checkpoint.md).

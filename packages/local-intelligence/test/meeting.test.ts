@@ -1,49 +1,119 @@
 import type { MeetingSelectionInput } from '@corral/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  LocalMeetingSelector,
-  loadMeetingWeights,
-  selectMeetingVectors,
-} from '../src/meeting/selector.ts';
+import type { EffortEngine } from '../src/effort/provider.ts';
+import { closestParticipant, LocalMeetingSelector, meetingTexts } from '../src/meeting/selector.ts';
 
 afterEach(() => vi.useRealTimers());
 
-const raw = {
-  schemaVersion: 1,
-  version: 'meeting-test',
-  dims: 3,
-  baseModelSha256: 'a'.repeat(64),
-  preprocessVersion: 'meeting-text-v1',
-  intent: {
-    weights: [
-      [5, 0, 0],
-      [0, 5, 0],
-      [0, 0, 5],
-      [0, 0, 0],
-    ],
-    bias: [0, 0, 0, -5],
-  },
-  rank: { weights: [8, 8, 0, 8, 0, 0], bias: -4 },
-  allThreshold: 0.8,
-  minimumScore: 0.5,
-  minimumMargin: 0.1,
-};
-const expected = { dims: 3, baseModelSha256: 'a'.repeat(64) };
 const input: MeetingSelectionInput = {
   message: 'question',
   participants: [
-    { participantId: 'a', prompt: 'role a' },
-    { participantId: 'b', prompt: 'role b' },
+    { participantId: 'a', name: 'Ann', prompt: 'role a' },
+    { participantId: 'b', name: 'Bo', prompt: 'role b' },
   ],
   history: [
+    { participantId: null, text: 'an earlier question' },
     { participantId: 'a', text: 'answer a' },
     { participantId: 'b', text: 'answer b' },
+    { participantId: 'b', text: 'second answer b' },
   ],
 };
-const v = (xs: number[][]) => xs.map((x) => Float32Array.from(x));
+
+/** An engine that embeds each text as the vector the test gave it. */
+function engine(vectors: Record<string, number[]>, fallback = [0, 0, 1]) {
+  const embed = vi.fn(async ({ texts }: { texts: string[] }) => [
+    Float32Array.from(vectors[texts[0]!] ?? fallback),
+  ]);
+  return {
+    embed,
+    available: () => true,
+    isReady: () => true,
+    warmUp: async () => {},
+  } as unknown as EffortEngine & { embed: typeof embed };
+}
 
 describe('meeting selector', () => {
-  it('bounds a slow local selection and aborts its pending embedding', async () => {
+  it('uses the name, the role and only the turns each participant posted', () => {
+    const { message, participants } = meetingTexts(input);
+    expect(message).toBe('question');
+    expect(participants).toEqual([
+      { participantId: 'a', role: 'Ann\nrole a', turns: ['answer a'] },
+      { participantId: 'b', role: 'Bo\nrole b', turns: ['answer b', 'second answer b'] },
+    ]);
+  });
+
+  it("weighs a person's own turns above their role and keeps the roster order on a tie", () => {
+    expect(
+      closestParticipant([
+        { participantId: 'a', role: 1, history: 0 },
+        { participantId: 'b', role: 0, history: 0.5 },
+      ]),
+    ).toBe('b');
+    expect(
+      closestParticipant([
+        { participantId: 'a', role: 0.5, history: 0.5 },
+        { participantId: 'b', role: 0.5, history: 0.5 },
+      ]),
+    ).toBe('a');
+  });
+
+  it('picks the participant whose closest turn matches the message', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({
+        question: [1, 0, 0],
+        'Ann\nrole a': [1, 0, 0],
+        'Bo\nrole b': [0, 1, 0],
+        'answer a': [0, 1, 0],
+        'answer b': [0, 1, 0],
+        'second answer b': [1, 0, 0],
+      }),
+      'release',
+    );
+    await expect(selector.select(input)).resolves.toEqual(['b']);
+  });
+
+  it('scores a participant with no posted turns by their role alone', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({ question: [1, 0, 0], 'Ann\nrole a': [1, 0, 0], 'Bo\nrole b': [0, 1, 0] }),
+      'release',
+    );
+    await expect(selector.select({ ...input, history: [] })).resolves.toEqual(['a']);
+  });
+
+  it('embeds a repeated text once and keeps no meeting text', async () => {
+    const fake = engine({ question: [1, 0, 0] });
+    const selector = new LocalMeetingSelector(fake, 'release');
+    await selector.select(input);
+    const first = fake.embed.mock.calls.length;
+    expect(first).toBe(6);
+    await selector.select(input);
+    expect(fake.embed.mock.calls.length).toBe(first);
+    await selector.select({ ...input, message: 'a new question' });
+    expect(fake.embed.mock.calls.length).toBe(first + 1);
+    const held = JSON.stringify([
+      ...(selector as unknown as { vectors: Map<string, Float32Array> }).vectors.keys(),
+    ]);
+    expect(held).not.toContain('answer');
+    expect(held).not.toContain('question');
+  });
+
+  it('does not reuse vectors from another release', async () => {
+    const fake = engine({ question: [1, 0, 0] });
+    await new LocalMeetingSelector(fake, 'one').select(input);
+    const first = fake.embed.mock.calls.length;
+    await new LocalMeetingSelector(fake, 'two').select(input);
+    expect(fake.embed.mock.calls.length).toBe(first * 2);
+  });
+
+  it('forgets the oldest vectors beyond its bound', async () => {
+    const fake = engine({ question: [1, 0, 0] });
+    const selector = new LocalMeetingSelector(fake, 'release');
+    for (let n = 0; n < 600; n++) await selector.select({ ...input, message: `message ${n}` });
+    const held = (selector as unknown as { vectors: Map<string, Float32Array> }).vectors;
+    expect(held.size).toBeLessThanOrEqual(512);
+  });
+
+  it('bounds a slow local selection, aborts its pending embedding and uses no partial result', async () => {
     vi.useFakeTimers();
     let cancelled = false;
     const selector = new LocalMeetingSelector(
@@ -59,7 +129,7 @@ describe('meeting selector', () => {
             });
           }),
       },
-      loadMeetingWeights(raw, expected),
+      'release',
     );
     const pending = selector.select(input);
     await vi.advanceTimersByTimeAsync(1500);
@@ -71,105 +141,35 @@ describe('meeting selector', () => {
     const embed = vi.fn();
     const selector = new LocalMeetingSelector(
       { available: () => 'not installed', isReady: () => false, warmUp: async () => {}, embed },
-      loadMeetingWeights(raw, expected),
+      'release',
     );
     await expect(selector.select(input)).resolves.toBeNull();
     expect(embed).not.toHaveBeenCalled();
   });
-  it('uses semantic relevance for a topic and the posted speaker for a follow-up', () => {
-    const weights = loadMeetingWeights(raw, expected);
-    expect(
-      selectMeetingVectors(
-        input,
-        v([
-          [1, 0, 0],
-          [1, 0, 0],
-          [0, 0, 1],
-          [1, 0, 0],
-          [0, 0, 1],
-        ]),
-        weights,
-      ),
-    ).toEqual(['a']);
-    expect(
-      selectMeetingVectors(
-        input,
-        v([
-          [0, 1, 0],
-          [1, 0, 0],
-          [0, 0, 1],
-          [1, 0, 0],
-          [0, 0, 1],
-        ]),
-        weights,
-      ),
-    ).toEqual(['b']);
-    expect(
-      selectMeetingVectors(
-        input,
-        v([
-          [0, 0, 1],
-          [1, 0, 0],
-          [0, 0, 1],
-          [1, 0, 0],
-          [0, 0, 1],
-        ]),
-        weights,
-      ),
-    ).toEqual(['a', 'b']);
-  });
 
-  it('abstains when no role or posted answer can distinguish ordinary participants', () => {
-    const empty = {
+  it('abstains when no role or posted turn can tell ordinary participants apart', async () => {
+    const fake = engine({});
+    const selector = new LocalMeetingSelector(fake, 'release');
+    const blank = {
       ...input,
       participants: input.participants.map((p) => ({ ...p, prompt: '' })),
-      history: [],
+      history: [{ participantId: null, text: 'only the person spoke' }],
     };
-    expect(
-      selectMeetingVectors(
-        empty,
-        v([
-          [1, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ]),
-        loadMeetingWeights(raw, expected),
-      ),
-    ).toBeNull();
+    await expect(selector.select(blank)).resolves.toBeNull();
+    expect(fake.embed).not.toHaveBeenCalled();
   });
 
-  it('can select two related perspectives without inviting an unrelated participant', () => {
-    const group = {
-      ...input,
-      participants: [...input.participants, { participantId: 'c', prompt: 'unrelated' }],
-    };
-    const weights = loadMeetingWeights({ ...raw, rank: { ...raw.rank, bias: -2 } }, expected);
-    expect(
-      selectMeetingVectors(
-        group,
-        v([
-          [1, 0, 0],
-          [1, 0, 0],
-          [1, 0, 0],
-          [0, 0, 1],
-          [1, 0, 0],
-          [1, 0, 0],
-          [0, 0, 0],
-        ]),
-        weights,
-      )?.toSorted(),
-    ).toEqual(['a', 'b']);
+  it('has nothing to choose with one candidate', async () => {
+    const fake = engine({});
+    const selector = new LocalMeetingSelector(fake, 'release');
+    await expect(
+      selector.select({ ...input, participants: input.participants.slice(0, 1) }),
+    ).resolves.toBeNull();
+    expect(fake.embed).not.toHaveBeenCalled();
   });
 
-  it('rejects mismatched, nonfinite or malformed weights and vectors', () => {
-    expect(() => loadMeetingWeights(raw, { ...expected, dims: 768 })).toThrow();
-    expect(() =>
-      loadMeetingWeights({ ...raw, rank: { weights: [NaN], bias: 0 } }, expected),
-    ).toThrow();
-    expect(() =>
-      selectMeetingVectors(input, v([[1, 0, 0]]), loadMeetingWeights(raw, expected)),
-    ).toThrow();
+  it('treats a nonfinite embedding as no judgment', async () => {
+    const selector = new LocalMeetingSelector(engine({ question: [Number.NaN, 0, 0] }), 'release');
+    await expect(selector.select(input)).resolves.toBeNull();
   });
 });

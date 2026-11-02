@@ -210,6 +210,7 @@ function ExternalJudgeSettings({
       <div className="flex min-w-0 flex-col gap-2">
         <h3 id="local-ai-external-heading">{t('external.heading')}</h3>
         <p>{t('external.scope')}</p>
+        {external.policy === 'medium' ? <p>{t('external.policyMedium')}</p> : null}
         {external.provider && chosenWithoutKey ? (
           <p>{t('external.chosenNoKey', { name: name(external.provider) })}</p>
         ) : offered.length === 0 ? (

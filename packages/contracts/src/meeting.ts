@@ -11,6 +11,8 @@ export const SECRETARY_ID = 'secretary';
 export const MeetingParticipant = z.strictObject({
   participantId: Identifier,
   name: z.string().trim().min(1).max(40),
+  /** What the person also calls them; messages may address them by these as by the name. */
+  aliases: z.array(z.string().trim().min(1).max(40)).max(8).optional(),
   /** Optional role guidance; an empty string means an ordinary chat participant. */
   prompt: z.string().trim().max(4000),
   modelProfile: Identifier,
@@ -33,21 +35,24 @@ export const MeetingConfig = z
       prompt: z.string().trim().min(1).max(4000).optional(),
     }),
   })
-  .refine(
-    ({ participants }) =>
+  .refine(({ participants }) => {
+    const calledBy = (p: MeetingParticipant) =>
+      [p.name, ...(p.aliases ?? [])].map((name) => name.toLowerCase());
+    const callings = participants.flatMap(calledBy);
+    return (
       new Set(participants.map((p) => p.participantId.toLowerCase())).size ===
         participants.length &&
-      new Set(participants.map((p) => p.name.toLowerCase())).size === participants.length &&
+      new Set(callings).size === callings.length &&
       participants.every(
         (p) =>
           ![SECRETARY_ID, '비서'].includes(p.participantId.toLowerCase()) &&
-          ![SECRETARY_ID, '비서'].includes(p.name.toLowerCase()) &&
+          !calledBy(p).some((name) => [SECRETARY_ID, '비서'].includes(name)) &&
           !participants.some(
-            (other) => other !== p && other.participantId.toLowerCase() === p.name.toLowerCase(),
+            (other) => other !== p && calledBy(p).includes(other.participantId.toLowerCase()),
           ),
-      ),
-    'Participants need distinct IDs and names, and none may be the secretary',
-  );
+      )
+    );
+  }, 'Participants need distinct IDs, names and aliases, and none may be the secretary');
 export type MeetingConfig = z.infer<typeof MeetingConfig>;
 
 /** What was recorded when a round asked one participant; its progress is the Run's. */
