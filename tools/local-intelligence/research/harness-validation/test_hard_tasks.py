@@ -109,5 +109,107 @@ class Stages(unittest.TestCase):
         self.assertLessEqual(set(stages['C']), set(stages['B']))
 
 
+class TestInterface(unittest.TestCase):
+    TASK = {'id': 'corral-x', 'kind': 'corral-commit', 'request': 'fix: keep drafts\n\nKeep them.',
+            'commit': 'after', 'parent': 'before', 'tests': ['app/src/a.test.ts']}
+
+    def note(self, before, after, diff=None, task=None):
+        files = {'before': before, 'after': after}
+        return hard_tasks.interface_note(task or self.TASK, lambda rev, path: files[rev].get(path), diff or {})
+
+    def test_static_and_dynamic_imports_are_read_and_types_are_not(self):
+        source = """import { a, b as c, type T } from './x.ts';
+import type { U } from './y.ts';
+import d from './z.ts';
+const { e } = await import('../src/w.ts');"""
+        self.assertEqual(hard_tasks.imported_names(source), {
+            ('a', './x.ts'), ('b', './x.ts'), ('default', './z.ts'), ('e', '../src/w.ts')})
+
+    def test_a_dynamic_import_stops_at_its_own_braces(self):
+        source = """it('says "no"', async () => {
+  const run = 1;
+  const { report } = await import('../src/index.ts');
+});"""
+        self.assertEqual(hard_tasks.imported_names(source), {('report', '../src/index.ts')})
+
+    def test_a_default_import_of_a_file_the_start_has_is_left_out(self):
+        files = {'app/src/a.test.ts': "import messages from './en.json';", 'app/src/en.json': '{}'}
+        self.assertEqual(self.note(files, files), '')
+
+    def test_a_default_import_of_a_new_file_is_disclosed(self):
+        note = self.note({}, {'app/src/a.test.ts': "import team from './team.json';", 'app/src/team.json': '{}'})
+        self.assertIn('app/src/team.json: default export', note)
+
+    def test_a_new_module_is_disclosed_with_its_file_and_declaration(self):
+        note = self.note({'app/src/a.test.ts': ''}, {
+            'app/src/a.test.ts': "import { place } from './menu.ts';",
+            'app/src/menu.ts': 'export function place(top: number): number {\n  return top;\n}\n'})
+        self.assertIn('app/src/menu.ts: export function place(top: number): number', note)
+        self.assertNotIn('return top', note)
+
+    def test_a_name_the_start_has_but_does_not_export_is_disclosed(self):
+        note = self.note({'app/src/menu.ts': 'function place() {}\n'}, {
+            'app/src/a.test.ts': "const { place } = await import('./menu.ts');",
+            'app/src/menu.ts': 'export function place() {}\n'})
+        self.assertIn('export function place()', note)
+
+    def test_a_name_the_start_already_exports_is_left_out(self):
+        files = {'app/src/a.test.ts': "import { place } from './menu.ts';",
+                 'app/src/menu.ts': 'export const place = 1;\n'}
+        self.assertEqual(self.note(files, files), '')
+
+    def test_a_name_exported_through_another_module_is_left_out(self):
+        files = {'app/src/a.test.ts': "import { place } from './index.ts';",
+                 'app/src/index.ts': "export * from './menu.ts';\n",
+                 'app/src/menu.ts': 'export { place };\nconst place = 1;\n'}
+        self.assertEqual(self.note(files, files), '')
+
+    def test_a_declaration_across_lines_is_kept_whole(self):
+        note = self.note({}, {
+            'app/src/a.test.ts': "import { place } from './menu.ts';",
+            'app/src/menu.ts': 'export function place(\n  top: number,\n  room: number,\n): number {\n  return 1;\n}\n'})
+        self.assertIn('export function place( top: number, room: number, ): number', note)
+
+    def test_a_package_import_finds_its_source(self):
+        note = self.note({}, {'app/src/a.test.ts': "import { place } from '@corral/core';",
+                              'packages/core/src/index.ts': 'export const place = 1;\n'})
+        self.assertIn('packages/core/src/index.ts: export const place = 1', note)
+
+    def test_a_library_and_a_test_helper_are_left_out(self):
+        note = self.note({}, {'app/src/a.test.ts': "import { it } from 'vitest';\nimport { fake } from './test/fake.ts';",
+                              'app/src/test/fake.ts': 'export const fake = 1;\n'})
+        self.assertEqual(note, '')
+
+    def test_new_text_the_tests_check_is_disclosed(self):
+        diff = {'app/src/a.test.ts': ["expect(text).toContain('Not collected: the run ended first');"],
+                'app/src/menu.ts': ["return 'Not collected: the run ended first';"]}
+        self.assertIn('- Not collected: the run ended first', self.note({}, {}, diff))
+
+    def test_text_the_start_has_is_left_out(self):
+        diff = {'app/src/a.test.ts': ["expect(text).toContain('Already there');"],
+                'app/src/menu.ts': ["return 'Already there';"]}
+        self.assertEqual(self.note({'app/src/menu.ts': "'Already there'"}, {}, diff), '')
+
+    def test_text_the_request_gives_is_left_out(self):
+        task = {**self.TASK, 'request': 'fix: say Keep it safe'}
+        diff = {'app/src/a.test.ts': ["expect(text).toContain('Keep it safe');"],
+                'app/src/menu.ts': ["return 'Keep it safe';"]}
+        self.assertEqual(self.note({}, {}, diff, task), '')
+
+    def test_test_only_text_is_left_out(self):
+        self.assertEqual(self.note({}, {}, {'app/src/a.test.ts': ["const title = 'A fixture title';"]}), '')
+
+    def test_the_note_replaces_an_older_note(self):
+        files = {'after': {'app/src/a.test.ts': "import { place } from './menu.ts';",
+                           'app/src/menu.ts': 'export const place = 1;\n'}, 'before': {}}
+        read = lambda rev, path: files[rev].get(path)
+        once = hard_tasks.with_interface(self.TASK, read, {})
+        self.assertIn(hard_tasks.INTERFACE_HEADING, once['request'])
+        self.assertEqual(hard_tasks.with_interface(once, read, {}), once)
+
+    def test_a_task_with_nothing_to_add_keeps_its_request(self):
+        self.assertEqual(hard_tasks.with_interface(self.TASK, lambda rev, path: None, {}), self.TASK)
+
+
 if __name__ == '__main__':
     unittest.main()

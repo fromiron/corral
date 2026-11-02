@@ -118,6 +118,11 @@ for review. A cut the run went on from is not its end.
 process has under way. An unsettled run starts no more, and those under way
 finish. Runs share the machine, so their wall times get noisier.
 
+A Corral commit message rarely names what its tests import, and a worker cannot
+guess it. `hard_tasks.py --disclose` adds to each Corral request the values the
+tests import that the starting code does not export, and the new text they check.
+It reads the commit and its tests, never an outcome.
+
 ```sh
 python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --preflight-only
 python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --dry-run
