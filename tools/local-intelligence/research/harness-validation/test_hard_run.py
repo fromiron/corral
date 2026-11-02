@@ -174,9 +174,9 @@ class DeepSeekLevels(unittest.TestCase):
     def test_stage_d_compares_the_levels_deepseek_offers(self):
         self.assertEqual(hard_run.stage_levels('D'), ('low', 'high', 'max'))
 
-    def test_the_gpt_stages_compare_medium_high_and_xhigh(self):
+    def test_the_gpt_stages_compare_low_through_xhigh(self):
         for stage in 'ABC':
-            self.assertEqual(hard_run.stage_levels(stage), ('medium', 'high', 'xhigh'))
+            self.assertEqual(hard_run.stage_levels(stage), ('low', 'medium', 'high', 'xhigh'))
 
     def test_only_stage_d_uses_the_deepseek_connection(self):
         self.assertEqual(hard_run.stage_provider('D'), hard_run.SMOKE)

@@ -14,7 +14,7 @@ from evaluation import _confidence, paired_outcome_report
 SUCCESS_MARGIN = .05
 REQUIRED_FAMILIES = 110
 SCREEN_RATE = .05
-SCREEN_EFFORTS = ('medium', 'high', 'xhigh')
+SCREEN_EFFORTS = ('low', 'medium', 'high', 'xhigh')
 TABLE_FAMILIES = (24, 48, 72, 110, 150, 200, 300, 400)
 
 
@@ -107,15 +107,19 @@ def screening_report(rows, *, tasks, model):
         if key in runs:
             raise ValueError('duplicate run; a started run is never replayed')
         runs[key] = row
-    counts = dict.fromkeys(['all', 'highRaised', 'xhighOnly', 'mediumOnly', 'mixed', 'none', 'invalid'], 0)
+    counts = dict.fromkeys(['all', 'highRaised', 'xhighOnly', 'mediumOnly', 'mixed', 'none', 'invalid',
+                            'lowLost'], 0)
     for task in tasks:
-        trio = [runs.get((task, effort)) for effort in SCREEN_EFFORTS]
-        if None in trio:
+        task_runs = [runs.get((task, effort)) for effort in SCREEN_EFFORTS]
+        if None in task_runs:
             raise ValueError('every task needs every level')
-        medium, high, xhigh = trio
-        if any(row['state'] != 'complete' for row in trio):
+        low, medium, high, xhigh = task_runs
+        if any(row['state'] != 'complete' for row in task_runs):
             counts['invalid'] += 1
-        elif medium['passed'] and high['passed'] and xhigh['passed']:
+            continue
+        if not low['passed'] and (medium['passed'] or high['passed'] or xhigh['passed']):
+            counts['lowLost'] += 1
+        if medium['passed'] and high['passed'] and xhigh['passed']:
             counts['all'] += 1
         elif high['passed'] and not medium['passed']:
             counts['highRaised'] += 1

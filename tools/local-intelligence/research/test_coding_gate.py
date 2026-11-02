@@ -22,12 +22,12 @@ def run(task, effort, passed, *, model='gpt-6.1-sol', state='complete', seconds=
             'passed': passed, 'wallSeconds': seconds, 'totalTokens': 1000}
 
 
-def levels(medium, high, xhigh, *, offset=0, **options):
+def levels(medium, high, xhigh, *, low=None, offset=0, **options):
     rows = []
-    for index, outcome in enumerate(zip(medium, high, xhigh)):
+    for index, outcome in enumerate(zip(low or medium, medium, high, xhigh)):
         task = f'task-{index + offset:02d}'
         rows += [run(task, effort, passed, **options)
-                 for effort, passed in zip(('medium', 'high', 'xhigh'), outcome)]
+                 for effort, passed in zip(('low', 'medium', 'high', 'xhigh'), outcome)]
     return rows
 
 
@@ -166,7 +166,7 @@ class Screening(unittest.TestCase):
         self.assertEqual(report['tasks'], 24)
 
     def test_an_unsettled_run_at_any_level_is_invalid_and_never_a_gain(self):
-        for level in range(3):
+        for level in range(4):
             rows = levels([False, True], [True, True], [True, True])
             rows[level].update(state='invalid', passed=False)
             report = self.screen(rows, 2)
@@ -183,8 +183,24 @@ class Screening(unittest.TestCase):
 
     def test_each_level_is_reported(self):
         report = self.screen(levels([True], [False], [True]), 1)
-        self.assertEqual(list(report['byEffort']), ['medium', 'high', 'xhigh'])
+        self.assertEqual(list(report['byEffort']), ['low', 'medium', 'high', 'xhigh'])
         self.assertEqual(report['byEffort']['high']['passed'], 0)
+
+    def test_low_is_reported_and_stays_out_of_the_rule(self):
+        report = self.screen(levels([True] * 24, [True] * 24, [True] * 24, low=[False] * 24), 24)
+        self.assertEqual(report['lowLost'], 24)
+        self.assertEqual(report['all'], 24)
+        self.assertFalse(report['highReachesThreshold'])
+        self.assertFalse(report['xhighReachesThreshold'])
+
+    def test_a_task_no_level_passes_is_not_low_lost(self):
+        report = self.screen(levels([False], [False], [False]), 1)
+        self.assertEqual(report['lowLost'], 0)
+        self.assertEqual(report['none'], 1)
+
+    def test_low_passing_alone_is_not_low_lost(self):
+        report = self.screen(levels([False], [False], [False], low=[True]), 1)
+        self.assertEqual(report['lowLost'], 0)
 
     def test_a_repeated_run_is_refused(self):
         rows = levels([True], [True], [True])

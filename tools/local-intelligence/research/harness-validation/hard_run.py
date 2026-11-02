@@ -35,7 +35,7 @@ FROZEN_FILES = ('tools/local-intelligence/research/protocol.md',
 TASKS_PER_KIND = 12
 # 103GB were free before the images; layers shared between them make their listed sizes overcount.
 FREE_BYTES_FLOOR = 43_000_000_000
-EFFORTS = ('medium', 'high', 'xhigh')
+EFFORTS = ('low', 'medium', 'high', 'xhigh')
 # DeepSeek folds medium and xhigh into high, so stage D is context for the screen and never its evidence.
 DEEPSEEK_EFFORTS = ('low', 'high', 'max')
 DEEPSEEK = 'deepseek-v4.1-flash'
