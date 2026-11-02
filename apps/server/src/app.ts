@@ -488,6 +488,9 @@ async function createCorralServer(
       | undefined;
     if (provider?.available() === true) void provider.warmUp?.().catch(() => {});
   }
+  // A meeting-only decision model can own a different engine from the effort provider.
+  // Its fixed-input warmup must not depend on effort being enabled or installed.
+  if (local?.meeting.warmUp) void local.meeting.warmUp().catch(() => {});
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // linked folders, session worktrees and the file broker.

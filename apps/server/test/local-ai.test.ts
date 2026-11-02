@@ -10,7 +10,7 @@ import {
   runtimeTarget,
 } from '@corral/local-intelligence';
 import { ScriptedAgentAdapter } from '@corral/testkit';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { DecisionApis } from '../src/decision-apis.ts';
 import { startCorralServer } from '../src/index.ts';
 import { FileCredentialStore } from '../src/models/credential-store.ts';
@@ -88,6 +88,29 @@ function heldFetch() {
   }) as typeof fetch;
   return { fetchFn, requested, aborted };
 }
+
+it.each([false, true])(
+  'prewarms an optional meeting judge independently of unavailable effort (failure=%s)',
+  async (fails) => {
+    const dataRoot = mkdtempSync(join(tmpdir(), 'corral-meeting-warmup-'));
+    dirs.push(dataRoot);
+    const base = createLocalIntelligence({ root: dataRoot, env: {}, launch: neverReady });
+    expect(base.effort.available()).not.toBe(true);
+    const warmUp = vi.fn(async () => {
+      if (fails) throw new Error('meeting warmup failed');
+    });
+    const { server, call } = await serve({
+      ...base,
+      meeting: { select: async () => null, warmUp },
+    });
+    try {
+      expect((await call('/local-ai')).status).toBe(200);
+      expect(warmUp).toHaveBeenCalledTimes(1);
+    } finally {
+      await server.close();
+    }
+  },
+);
 
 it.skipIf(!target)(
   'the settings panel installs through the server once, and cancel or shutdown stops it',
