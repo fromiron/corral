@@ -31,8 +31,10 @@ restores the original tests and runs with no network or home mount. A modified
 test file invalidates success even when the original tests pass.
 
 The live budget is ten worker executions (five cases × medium/high × one
-repeat), at most twelve physical provider requests per execution, 12 logical
-model calls, 24,576 output tokens, and 240 seconds per run. Failed executions
+repeat), at most twelve physical provider requests per execution. The definition
+also names 12 logical model calls, 24,576 output tokens, and 240 seconds per run,
+but without `executionPolicy.budget` Corral runs unlimited and does not apply
+them, so the driver's physical request cap is what bounded this smoke. Failed executions
 remain in the denominator. A started execution is never silently retried.
 There are no teacher or reviewer calls in this slice. Medium/high refer only
 to the evaluated worker, with the effort fixed across that entire run.
@@ -72,3 +74,49 @@ This evidence is separate from hidden-test, no-tools next-response trials.
 Five visible-test coding tasks can demonstrate real Corral tool and completion
 paths, but cannot establish an optimal effort policy or general task-success
 rate. Meeting participant selection is outside this validation.
+
+## Hard tasks
+
+`protocol.md` owns the screening rule and `coding_gate.py` its arithmetic. This
+section is how the runs happen. `hard_tasks.py` orders 15 SWE-bench Verified
+tasks and the 14 Corral fix commits that qualify, from task content only, into
+`hard-tasks.json`. The 45 hard SWE-bench tasks span 8 repositories, so a
+repository supplies at most two. A qualifying commit starts with `fix`, keeps a
+message body that states the task, changes at least 3 files including a source
+file and a Vitest file, and changes no dependency file. Commits with a single
+source file come after all the others and are used only as replacements.
+
+`hard_run.py --preflight-only` gives each task an environment and takes the
+first 12 of each kind whose reference passes and whose starting code fails, in
+that order, into `hard-set.json` with the hashes of every file a run depends on.
+`--live` refuses a stage when any of those files changed. SWE-bench verdicts
+come from the official grader in `swebench-requirements.txt`, and SWE-bench stays
+evaluation-only. A Corral task passes when every test in the commit's own test
+files passes on the commit's versions of them. Those tests can be stricter than
+the fix they cover, for example by naming a new label, which counts against both
+levels alike.
+
+The worker sees a one-commit repository with no history and no hidden test. It
+keeps the strict policy of the smoke. `run_command` needs trusted-native, which
+would run model-written commands on this host next to the credentials, so
+commands go through one registered check instead: the worker writes a script
+under `.harness/commands/` and `sandbox.py` runs the newest one in a throwaway
+copy with no network and no home, in Docker for SWE-bench and bubblewrap for
+Corral. Each command costs an extra model call, which the limits allow for, so
+token and time totals compare levels with each other and do not predict a normal
+Corral session. The model process itself runs on the host as in the smoke.
+
+```sh
+python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --preflight-only
+python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --dry-run
+python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --smoke <task-id>
+python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --live --stage A --model gpt-6.1-sol
+python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --report --stage A --model gpt-6.1-sol
+```
+
+`--dry-run` starts Corral on one task of each kind and stops before any provider
+call. `--smoke` spends one DeepSeek run to prove the path end to end, at `high`
+because Hive offers neither medium nor xhigh, and its results never enter a
+stage. A live stage spends the subscription, so each one needs explicit approval
+first. A started run is never replayed, and a run that did not settle stops the
+stage for review.

@@ -1,0 +1,273 @@
+{
+  "version": 1,
+  "seed": "corral-hard-tasks-v1",
+  "tasksPerKind": 12,
+  "repositoryCap": 2,
+  "selection": "Ordered from task content before any run. The first tasks of each kind that pass preflight form the set, in this order.",
+  "datasetSha256": "030cfd7f2a704c4c0226e7f104c725a3b41230b1d3517f9c915ad7ea5be3fa25",
+  "order": [
+    {
+      "id": "swe-pytest-dev__pytest-10356",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-10356@sha256:363458d4698f5d985f6476d189d3f1cf902253cd9518705fd395516cd30138da",
+      "compressedBytes": 1029229619,
+      "repository": "pytest-dev/pytest",
+      "instanceId": "pytest-dev__pytest-10356",
+      "baseCommit": "3c1534944cbd34e8a41bc9e76818018fadefc9a1",
+      "difficulty": "1-4 hours",
+      "taskSha256": "b62518326513d6eadc76d6abaee23f384c1167432d28a280ee362fcab6f2bb15"
+    },
+    {
+      "id": "swe-sphinx-doc__sphinx-9461",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-9461@sha256:5927ba1f035f87117341343035f83150ab5a57fbdbaf49db13a36b809baaa8c7",
+      "compressedBytes": 1100701679,
+      "repository": "sphinx-doc/sphinx",
+      "instanceId": "sphinx-doc__sphinx-9461",
+      "baseCommit": "939c7bb7ff7c53a4d27df067cea637540f0e1dad",
+      "difficulty": "1-4 hours",
+      "taskSha256": "4a2598a0c610429bc4d304d538361ee3126868fbda1768032ee48b7e042e1240"
+    },
+    {
+      "id": "swe-pydata__xarray-6992",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.pydata_1776_xarray-6992@sha256:a70eb8c7e98b984c8c9a75c8e165d564d2f0bd16c1717320dbab40f771691112",
+      "compressedBytes": 1929541446,
+      "repository": "pydata/xarray",
+      "instanceId": "pydata__xarray-6992",
+      "baseCommit": "45c0a114e2b7b27b83c9618bc05b36afac82183c",
+      "difficulty": ">4 hours",
+      "taskSha256": "4984b6b1115cabc0158f4a6ae89ea143dd00fd811f8fbdfb31ef686f8779f76c"
+    },
+    {
+      "id": "swe-sympy__sympy-13878",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.sympy_1776_sympy-13878@sha256:d0796de4f7c4749e36e32b043edc2c98b3c6f7127691af37c325944726aa7d0a",
+      "compressedBytes": 1068638528,
+      "repository": "sympy/sympy",
+      "instanceId": "sympy__sympy-13878",
+      "baseCommit": "7b127bdf71a36d85216315f80c1b54d22b060818",
+      "difficulty": ">4 hours",
+      "taskSha256": "4e90070f496d352be68600d3642d8b45e98e7403e419406220e5b006349ac0b4"
+    },
+    {
+      "id": "swe-pylint-dev__pylint-4551",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-4551@sha256:910cb070fc5e1c02b715b561c2f5783bb5f5e5935d9a169b4c91bdcfdd015f52",
+      "compressedBytes": 1085475476,
+      "repository": "pylint-dev/pylint",
+      "instanceId": "pylint-dev__pylint-4551",
+      "baseCommit": "99589b08de8c5a2c6cc61e13a37420a868c80599",
+      "difficulty": "1-4 hours",
+      "taskSha256": "6100f32aa3077dd3b86a118f4ce6e2cfe1ceb5953dbb4f375aef8466aec4a7f3"
+    },
+    {
+      "id": "swe-django__django-16263",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.django_1776_django-16263@sha256:82700a720fd444baafe5b0a83a16784dad712f8da1dc2c2b7070a5c6650e0739",
+      "compressedBytes": 1212969700,
+      "repository": "django/django",
+      "instanceId": "django__django-16263",
+      "baseCommit": "321ecb40f4da842926e1bc07e11df4aabe53ca4b",
+      "difficulty": "1-4 hours",
+      "taskSha256": "7de5881a03fddafdecd5be7b1a50563aac2413e4d6bcfcc2ac757548540626ab"
+    },
+    {
+      "id": "swe-scikit-learn__scikit-learn-25102",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-25102@sha256:a867569ffda421d052245801f98064f13460291d06f439b2e6a05ab7c3135d57",
+      "compressedBytes": 1884151378,
+      "repository": "scikit-learn/scikit-learn",
+      "instanceId": "scikit-learn__scikit-learn-25102",
+      "baseCommit": "f9a1cf072da9d7375d6c2163f68a6038b13b310f",
+      "difficulty": "1-4 hours",
+      "taskSha256": "4f6b0e7e5bf3637cab3b4d8de202314f14a3d18372fd4274a52e7db3fadf0439"
+    },
+    {
+      "id": "swe-astropy__astropy-13398",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.astropy_1776_astropy-13398@sha256:49cfb8e47c492fac9570ee66f8d5e4a7aa2a2516e18cf5663aa73e5b352b670a",
+      "compressedBytes": 1134229392,
+      "repository": "astropy/astropy",
+      "instanceId": "astropy__astropy-13398",
+      "baseCommit": "6500928dc0e57be8f06d1162eacc3ba5e2eff692",
+      "difficulty": "1-4 hours",
+      "taskSha256": "fea993714de1606c93138918d60a47f076566c0727d1a96de40e4bd1dbb25597"
+    },
+    {
+      "id": "swe-pytest-dev__pytest-6197",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-6197@sha256:5dbfbcf23210a5a0ccdc4dbf1a55c894255b28fe6c56c13c9a4724d6c13bab4e",
+      "compressedBytes": 1024542212,
+      "repository": "pytest-dev/pytest",
+      "instanceId": "pytest-dev__pytest-6197",
+      "baseCommit": "e856638ba086fcf5bebf1bebea32d5cf78de87b4",
+      "difficulty": "1-4 hours",
+      "taskSha256": "554024b1680bc7c94a3814a79a34c2764c357aedf65b7572acb32706bb20877a"
+    },
+    {
+      "id": "swe-sphinx-doc__sphinx-7590",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.sphinx-doc_1776_sphinx-7590@sha256:5c86dab7120b83b3bdb4af86743a3910da328029ed92183477fe9865ea76cb2f",
+      "compressedBytes": 1097420074,
+      "repository": "sphinx-doc/sphinx",
+      "instanceId": "sphinx-doc__sphinx-7590",
+      "baseCommit": "2e506c5ab457cba743bb47eb5b8c8eb9dd51d23d",
+      "difficulty": ">4 hours",
+      "taskSha256": "a4885b9bd06149d2929a4ea26d05c12b513ee029dc48f44cd5c6f2ca10d917ea"
+    },
+    {
+      "id": "swe-pydata__xarray-3993",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.pydata_1776_xarray-3993@sha256:701fb2a4aa664b5762bb554652e7557c637bcb498462065688d7d86dfb6aaa2b",
+      "compressedBytes": 2050010331,
+      "repository": "pydata/xarray",
+      "instanceId": "pydata__xarray-3993",
+      "baseCommit": "8cc34cb412ba89ebca12fc84f76a9e452628f1bc",
+      "difficulty": "1-4 hours",
+      "taskSha256": "e925603320899b3b3afaba3cd124babbe624a660687f942a3dad1488558d2005"
+    },
+    {
+      "id": "swe-sympy__sympy-18199",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.sympy_1776_sympy-18199@sha256:3fbc4ff81609eecb1f26540433cbc24b8f6e5454472545e19180137e51883e3e",
+      "compressedBytes": 1083312079,
+      "repository": "sympy/sympy",
+      "instanceId": "sympy__sympy-18199",
+      "baseCommit": "ba80d1e493f21431b4bf729b3e0452cd47eb9566",
+      "difficulty": "1-4 hours",
+      "taskSha256": "6975ec4d3b5832cefaa3bb6e813ac6f187abe9b341690bab615249d2d1b9f687"
+    },
+    {
+      "id": "swe-pylint-dev__pylint-8898",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.pylint-dev_1776_pylint-8898@sha256:a78e6034f627c1ae69c67b5a25ae5420192afb7279a4fd032a74095752e707d7",
+      "compressedBytes": 1043399619,
+      "repository": "pylint-dev/pylint",
+      "instanceId": "pylint-dev__pylint-8898",
+      "baseCommit": "1f8c4d9eb185c16a2c1d881c054f015e1c2eb334",
+      "difficulty": "1-4 hours",
+      "taskSha256": "a7db313b01843a90f6336c4599b24c99bd8f7658035bd820e84f91c382365006"
+    },
+    {
+      "id": "swe-django__django-11400",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.django_1776_django-11400@sha256:513ed50493a651e0fa171b199872b57c81fedba92bf1a1a8fdad8976dc47dd33",
+      "compressedBytes": 1152601271,
+      "repository": "django/django",
+      "instanceId": "django__django-11400",
+      "baseCommit": "1f8382d34d54061eddc41df6994e20ee38c60907",
+      "difficulty": "1-4 hours",
+      "taskSha256": "bbae34fbfacd1da025117420fd11afbbe5c9dc04c35a25477d3643542a0c2dde"
+    },
+    {
+      "id": "swe-astropy__astropy-13579",
+      "kind": "swe-bench-verified",
+      "image": "swebench/sweb.eval.x86_64.astropy_1776_astropy-13579@sha256:f3dc11a37649430d6a7a3aac4858477db8f19d9a941f056f875e8e566066ffe3",
+      "compressedBytes": 1134305276,
+      "repository": "astropy/astropy",
+      "instanceId": "astropy__astropy-13579",
+      "baseCommit": "0df94ff7097961e92fd7812036a24b145bc13ca8",
+      "difficulty": "1-4 hours",
+      "taskSha256": "fb97c5fe3691c9bb77a9997aff80d2ba058efdf13b31c39311b3737da18ee5aa"
+    },
+    {
+      "id": "corral-72d69c58",
+      "kind": "corral-commit",
+      "commit": "72d69c58676e8febbd01473195c30aea36b3c62b",
+      "parent": "5d3457da548738f6de5d9b326ac8a9f70bb4f603",
+      "taskSha256": "ec1c63cdd8636cfb234d785d060ab8a389fb4b4f9bfd8930b0c2b5341609b7a7"
+    },
+    {
+      "id": "corral-d6edb54b",
+      "kind": "corral-commit",
+      "commit": "d6edb54bc044e31223a5cf97a1ca15d93127d52d",
+      "parent": "613096b7f18a53459a491a6cceba3b6237e2b5fb",
+      "taskSha256": "9a990cf0988762badf7b34516ed0e9eacd7e20f2947cffef95db0ef151262674"
+    },
+    {
+      "id": "corral-9ca48b98",
+      "kind": "corral-commit",
+      "commit": "9ca48b98f7bcc3e1df1d43a0471807ad0a83cf63",
+      "parent": "18d3290a16e22744b32ac26897329dd0970946d5",
+      "taskSha256": "19d3aaa8f8ff4453ca7b6bb64f79004b2b34e4cdc780e2b4b6d8756eeeb99a52"
+    },
+    {
+      "id": "corral-4a49c840",
+      "kind": "corral-commit",
+      "commit": "4a49c840584e66cc659ff7e2ba8ab5b898601012",
+      "parent": "52f525766694b6b1eff44b4cc4eb21168eb74843",
+      "taskSha256": "8e7ecbb5008502105f9b222f3cc5d047d069f6d5450d2677eadf8c3b5842af6c"
+    },
+    {
+      "id": "corral-451bcf57",
+      "kind": "corral-commit",
+      "commit": "451bcf57d8fe29434d8ae37413f1841c31b33b60",
+      "parent": "3347d70124cfe06251fa1ae5767631c01c331e0c",
+      "taskSha256": "33f5f09ce0526651277d6e135f27f0f00350dd1965faadaac9455a98735a1959"
+    },
+    {
+      "id": "corral-dfdf14f9",
+      "kind": "corral-commit",
+      "commit": "dfdf14f905a223fce5fb083885020123ab2b265b",
+      "parent": "1e47f127326c27a6a8b1a6b8cae62cc073b27119",
+      "taskSha256": "c1eb4146f240f12d0b3854cd4c9d42d685b181fdc8d3f8370753429a6709e287"
+    },
+    {
+      "id": "corral-81a64d83",
+      "kind": "corral-commit",
+      "commit": "81a64d834b3c7a2a4971b896762afe975f1f61de",
+      "parent": "fdb6fa3907ad27e6573eb5e7bd6fef809c622604",
+      "taskSha256": "f40d1687623f5f8073ca8dd710c39c3332ed21e7b08f638d52f5140235ce464e"
+    },
+    {
+      "id": "corral-b6a8d277",
+      "kind": "corral-commit",
+      "commit": "b6a8d277793edc1f59c0635b9cb2db764cc7ccd8",
+      "parent": "ef059db43eee89d9f5ca0fbb1718da8945ab7996",
+      "taskSha256": "85f81919e69f6c234aa9a6036fc91c0f44d0aac2ec841ba7103d6ad246e203ab"
+    },
+    {
+      "id": "corral-fdb6fa39",
+      "kind": "corral-commit",
+      "commit": "fdb6fa3907ad27e6573eb5e7bd6fef809c622604",
+      "parent": "764ff924359c296e33ca97706a39d8e74264cb17",
+      "taskSha256": "5e010aa6ddf09d9a85ea8f83d231ef0e233d62433e451ce6c40eaa7073b418e0"
+    },
+    {
+      "id": "corral-f3d592ca",
+      "kind": "corral-commit",
+      "commit": "f3d592ca69b9652e5699ee6786153dd9511b3824",
+      "parent": "fd08b9e7cb54e005f58f97effc8823658c6b191f",
+      "taskSha256": "383ef682bed67e7b75a93e5c30d68b6c22c403bdf8b2506ce2c9128e987c4548"
+    },
+    {
+      "id": "corral-9045f9ff",
+      "kind": "corral-commit",
+      "commit": "9045f9ffbc207e41d9c523eaa91e4a325e9ecd93",
+      "parent": "22ac802a1941a181215c9362b06ca33d01aecf7f",
+      "taskSha256": "14ada94a4c7fce12be0584ae7f8d48caf57269f6235b5491b7bbef528745c743"
+    },
+    {
+      "id": "corral-6dcfb18d",
+      "kind": "corral-commit",
+      "commit": "6dcfb18d59c7810526192042ea94b3294a96cd72",
+      "parent": "0669eb95d4984f0fcc883d138ddf7212c2660770",
+      "taskSha256": "1200b9555ffcf016c1a82f4ce1044dd08994e4f1c01b2914ccf36240f54436b8"
+    },
+    {
+      "id": "corral-ef0df212",
+      "kind": "corral-commit",
+      "commit": "ef0df212d041787923f8440cfe4383e269d757ca",
+      "parent": "a1d211b42767aa68de4fd6f30b384b0c4268331d",
+      "taskSha256": "5157b556b83cf541975be53675c104f3da42e207473deaa2149d66176ffafad4"
+    },
+    {
+      "id": "corral-c83a0428",
+      "kind": "corral-commit",
+      "commit": "c83a0428961aea330a50eca9181b9133c7fe5ed8",
+      "parent": "0b83c343c64a6f275391e05a5a6180df26b7c529",
+      "taskSha256": "56e23ffddb1599b9cec5ba66563a40435ba9b5572406e6c2a8500db6195a3d54"
+    }
+  ]
+}

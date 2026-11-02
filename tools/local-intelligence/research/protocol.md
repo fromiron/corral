@@ -32,7 +32,21 @@ Compare independent task tuning, a shared tuned encoder with separate heads, and
 
 Meeting: explicit recipients/mentions win; secretary remains explicit-only. Distinguish eligible, excluded, one/set/all/none. Ambiguity chooses one suitable participant, not everybody. Explicit none or no permitted participants yields no run. Inference-failure fallback chooses an allowed reply target, then recent conversational participant, then stable round-robin. Record fallback separately. Compare with current selector, all, last speaker and cosine. Promotion requires +5pp valid-dispatch success over the strongest reference with group 95% CI excluding zero, no regression on natural exclusions, and all explicit-constraint tests passing.
 
-Effort: preserve task success while reducing cost. Compare fixed low/medium/high, current policy and candidate on 200 independent executable task/step snapshots, twice at supported levels. Pilot outcomes used for recipe decisions are excluded from the fresh final cohort. Freeze success checks before outputs. Main gate: paired one-sided 95% success delta lower bound >= -2pp versus fixed high, >=10% total-token reduction with CI excluding zero. Report medium/current comparisons, raw labels, applied decisions, severe under/over calls, latency and reported usage. Outcome runs may use low/medium; all teachers/verifiers remain high+.
+Effort: constant medium is the reference, because it is the shipped automatic behavior (`corral-effort-v3`). `coding_gate.py` holds both steps below, and neither changes after its first run.
+
+Screening asks whether the level changes real outcomes, with no judge and no training. The tasks are frozen in `harness-validation/hard-tasks.json` from content only: 12 SWE-bench Verified tasks and 12 Corral fix commits. Each runs once at medium and once at xhigh with the same limits. Stage A is the 3 lowest ranks of each kind on GPT-6.1 Sol, stage B all 24 on Sol, stage C the 6 lowest ranks of each kind on GPT-6 Luna, run only when B stays under the line. An xhigh-only task passes at xhigh and fails at medium. At 5% of tasks or more on either model, add tasks and repeats and build a judge. Under 5% on both, close adaptive judging: constant medium with manual raises is the final behavior, and `judged` and the judge weights are removed. Medium-only tasks are reported beside it because they show what one run's noise looks like. A run that fails stays in the denominator, and limits are failures. A run that did not settle (transport, quota, host) blocks the decision instead of counting as no difference. One run per task sees little: 1 of 24 stays under the line, and a true rate of 10% shows one or none 29% of the time, 15% shows it 11%, 20% shows it 3%.
+
+Promotion of a judge needs 110 independent executable families outside the screening set, two paired repeats per policy. The primary metric is wall seconds per success, with failed runs in the numerator: a policy that only raises effort is credited with the failures it avoids, and giving up early buys nothing. Its reduction against constant medium needs a paired whole-family 95% interval above zero. Success needs a paired one-sided 95% lower bound of at least -5pp. Reported total tokens are always reported and do not gate. Freeze success checks before outputs; pilot outcomes used for recipe decisions are excluded from the final cohort. Report raw labels, applied decisions, severe under/over calls, latency and reported usage. Outcome runs may use any level; all teachers/verifiers remain high+.
+
+Success lower bound in percentage points by families with a net loss and no offsetting gains (`python coding_gate.py`). At 110 families one net loss passes -5pp and two do not; gains relax the bound. This is why the earlier -2pp gate at 200 families failed on a single loss.
+
+| Families | 0 lost | 1 lost | 2 lost | 3 lost |
+|---:|---:|---:|---:|---:|
+| 24 | -14.2 | -21.1 | -27.0 | -32.4 |
+| 72 | -5.0 | -7.5 | -9.7 | -11.7 |
+| 110 | -3.3 | -5.0 | -6.4 | -7.8 |
+| 200 | -1.8 | -2.8 | -3.6 | -4.3 |
+| 400 | -0.9 | -1.4 | -1.8 | -2.2 |
 
 Existing total deadlines remain effort 3s / meeting 1.5s. Measure CPU/GPU cold/warm/contention and 2/4/6-participant meetings. Initial product cap: 1.5GB downloaded artifacts and 3GB additional resident memory. Prefer the smaller/faster candidate when quality differs by <=1pp without statistical separation. Quantized/native inference must repeat the gate. Insufficient evidence means experimental status, not a default-weight replacement.
 

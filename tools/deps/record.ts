@@ -50,6 +50,7 @@ if (process.argv.includes('--training')) {
     'tools/local-intelligence/training-requirements.txt',
     'tools/local-intelligence/research/mgte-requirements.txt',
     'tools/local-intelligence/research/fast-requirements.txt',
+    'tools/local-intelligence/research/harness-validation/swebench-requirements.txt',
   ];
   const sources = new Map<string, string[]>();
   for (const file of requirementsFiles) {
