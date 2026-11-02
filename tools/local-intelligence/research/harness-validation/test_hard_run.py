@@ -72,7 +72,24 @@ class Trials(unittest.TestCase):
             hard_run.save(out / 'provider-error.json', {'category': 'unclassified-provider-error'})
             self.assertEqual(hard_run.settled_state(out, {'status': 'failed'}), 'invalid')
 
-    def test_a_limit_is_a_task_failure(self):
+    def reached(self, directory, kind):
+        out = Path(directory)
+        event = {'type': 'limit.reached', 'payload': {'limitKind': kind}}
+        (out / 'events.jsonl').write_text(json.dumps(event) + '\n')
+        return out
+
+    def test_a_spending_limit_says_nothing_about_the_task(self):
+        for kind in ('model_calls', 'output_tokens', 'deadline'):
+            with tempfile.TemporaryDirectory() as directory:
+                out = self.reached(directory, kind)
+                self.assertEqual(hard_run.settled_state(out, {'status': 'failed'}), 'limited')
+
+    def test_a_stuck_worker_is_the_tasks_own_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = self.reached(directory, 'no_progress')
+            self.assertEqual(hard_run.settled_state(out, {'status': 'cancelled'}), 'complete')
+
+    def test_a_run_that_ends_by_itself_is_complete(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(hard_run.settled_state(Path(directory), {'status': 'failed'}), 'complete')
 
@@ -86,11 +103,22 @@ class Limits(unittest.TestCase):
         # The installation refuses a budgeted call above 4096 tokens, which xhigh alone can pass.
         self.assertNotIn('maxOutputTokensPerCall', hard_run.LIMITS)
 
-    def test_limits_stay_within_the_installation_caps(self):
-        self.assertLessEqual(hard_run.LIMITS['maxModelCalls'], 100)
-        self.assertLessEqual(hard_run.LIMITS['maxOutputTokens'], 256000)
+    def test_a_stage_run_may_take_as_long_as_the_task_needs(self):
+        # High levels often pass any fixed count, and such a stop would read as a failed task.
+        for field in ('maxModelCalls', 'maxOutputTokens', 'runDeadlineMs'):
+            self.assertNotIn(field, hard_run.LIMITS)
+
+    def test_a_single_call_stays_within_the_installation_cap(self):
         self.assertLessEqual(hard_run.LIMITS['modelTimeoutMs'], 300000)
-        self.assertLessEqual(hard_run.LIMITS['runDeadlineMs'], 3600000)
+
+    def test_a_stage_run_only_has_guards_against_a_runaway(self):
+        self.assertEqual(hard_run.guards(hard_run.LIMITS), {
+            'physicalRequests': hard_run.REQUEST_GUARD, 'wallMs': hard_run.WALL_GUARD_MS})
+        self.assertGreaterEqual(hard_run.REQUEST_GUARD, 1000)
+
+    def test_a_smoke_keeps_its_small_bounds(self):
+        self.assertEqual(hard_run.guards(hard_run.SMOKE_LIMITS), {
+            'physicalRequests': 60, 'wallMs': hard_run.SMOKE_LIMITS['runDeadlineMs']})
 
 
 class Freeze(unittest.TestCase):
@@ -146,6 +174,12 @@ class DeepSeekLevels(unittest.TestCase):
     def test_an_unsettled_run_leaves_the_report_incomplete(self):
         rows = [self.row('a', 'low', False, 'unsettled'), self.row('a', 'high', True)]
         self.assertFalse(hard_run.level_report(rows, ('low', 'high'))['complete'])
+
+    def test_a_limited_run_counts_as_neither_passed_nor_settled(self):
+        rows = [self.row('a', 'max', True, 'limited'), self.row('a', 'high', True)]
+        report = hard_run.level_report(rows, ('high', 'max'))
+        self.assertFalse(report['complete'])
+        self.assertEqual(report['levels']['max']['passed'], 0)
 
     def test_the_report_says_it_decides_nothing(self):
         report = hard_run.level_report([self.row('a', 'low', True)], ('low',))

@@ -39,12 +39,15 @@ interface TrialOptions {
   /** Workspace entries a provider outside the built-in catalog needs. */
   modelProviders?: unknown[];
   limits: {
-    maxModelCalls: number;
-    maxOutputTokens: number;
+    maxModelCalls?: number;
+    maxOutputTokens?: number;
     maxOutputTokensPerCall?: number;
     modelTimeoutMs: number;
-    runDeadlineMs: number;
+    runDeadlineMs?: number;
   };
+  /** Where a task run is stopped as a runaway, since it may have no limit of its own. */
+  physicalRequests?: number;
+  wallMs?: number;
 }
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 type Effort = (typeof EFFORTS)[number];
@@ -79,7 +82,7 @@ export async function runHarnessTrial(
   const options: TrialOptions = task?.options ?? SMOKE;
   const { provider, model: modelId, limits } = options;
   const codex = provider === CODEX_PROVIDER;
-  const physicalCap = task ? limits.maxModelCalls * 2 : limits.maxModelCalls;
+  const physicalCap = options.physicalRequests ?? limits.maxModelCalls!;
   if (!task) {
     assert(/^outcome-00(?:0\d|1\d)-\d{2}$/.test(fixture.id), 'development fixtures only');
     assert(effort !== 'xhigh', 'the smoke compares medium and high');
@@ -377,7 +380,10 @@ export async function runHarnessTrial(
     }
     const transport = new InProcessTransport(server.coordinator);
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), limits.runDeadlineMs + 10000);
+    const timer = setTimeout(
+      () => abort.abort(),
+      (options.wallMs ?? limits.runDeadlineMs!) + 10000,
+    );
     const stop = () => abort.abort();
     process.once('SIGTERM', stop);
     process.once('SIGINT', stop);

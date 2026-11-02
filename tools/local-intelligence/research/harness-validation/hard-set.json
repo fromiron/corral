@@ -1,10 +1,7 @@
 {
   "version": 1,
   "limits": {
-    "maxModelCalls": 80,
-    "maxOutputTokens": 256000,
-    "modelTimeoutMs": 300000,
-    "runDeadlineMs": 3600000
+    "modelTimeoutMs": 300000
   },
   "efforts": ["medium", "xhigh"],
   "deepseekEfforts": ["low", "high", "max"],
@@ -68,14 +65,14 @@
   },
   "rejectedByPreflight": ["corral-9045f9ff", "corral-ef0df212"],
   "hashes": {
-    "tools/local-intelligence/research/protocol.md": "f377ea9dcecc2a6fe4f560a3f1aaf3938e9e1f99a4b2f094f9ea691377ff1841",
+    "tools/local-intelligence/research/protocol.md": "5d402f3233e66c0767c887880ed99e95ac46096b21457809c1158cb480a24c74",
     "tools/local-intelligence/research/coding_gate.py": "d35d9d92e087ef5f055c1fb0f2355fba44217d8fd35003f695b55036b1970ab3",
     "tools/local-intelligence/research/evaluation.py": "8aa61815af03af8c4d0108fabfc51b1d73d4dce74f3b4e4075fabeef9a44198b",
     "tools/local-intelligence/research/harness-validation/hard-tasks.json": "49c98e2aaaad138934e912ee5713798d313f2481a9f0959c5784abad125576d5",
-    "tools/local-intelligence/research/harness-validation/hard_run.py": "15e48099c30e0f9e49b10e84fe994da0eea32cd7cf11571bf4404ea2c39437fc",
+    "tools/local-intelligence/research/harness-validation/hard_run.py": "2be01be12a6f6060d6b6cd0f1e8e42f12cb8adfa6b5b32b18ae5cb7bb704e0e0",
     "tools/local-intelligence/research/harness-validation/sandbox.py": "97b0682ce5a87c6e5b0d3014c7250d62a4268381f91466cb75d9dd674aee22f9",
     "tools/local-intelligence/research/harness-validation/swe_report.py": "6a0571ad0b7146734bb06fde9c72ba4df2a0847c44da5cc180e5e6639e94511b",
-    "tools/local-intelligence/research/harness-validation/driver.ts": "4ed150ada5e44fd7e6c65b65de482f0b54fcc40d0dabfe39467b243fb70e76e2",
+    "tools/local-intelligence/research/harness-validation/driver.ts": "dcde1c37cb409692548786525e8405737bdb088d54b27da59ae034d0057f961d",
     "tools/local-intelligence/research/harness-validation/worker-patch.ts": "53accd16c34088b9a7506474dfda45083d4df319550d0f516d38bb7e98a9db8d"
   }
 }

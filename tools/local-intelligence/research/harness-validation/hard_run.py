@@ -47,10 +47,13 @@ SMOKE = {'provider': 'hive', 'model': 'deepseek-ai/deepseek-v4.1-flash-1017',
                                          'maxOutput': 16384}]}]}
 SMOKE_LIMITS = {'maxModelCalls': 30, 'maxOutputTokens': 32000, 'modelTimeoutMs': 180000,
                 'runDeadlineMs': 900000}
-# Twice the product's calls because each sandbox command costs an extra one, and the installation's
-# whole output cap, so a level is not failed for spending more reasoning. No cap per call.
-LIMITS = {'maxModelCalls': 80, 'maxOutputTokens': 256000, 'modelTimeoutMs': 300000,
-          'runDeadlineMs': 3600000}
+# A stage run ends when the task does: high levels often pass any fixed count, and stopping there
+# would read as a failed task. Only one call can time out. No cap per call.
+LIMITS = {'modelTimeoutMs': 300000}
+# These end a runaway run, which then counts as unsettled and stops the stage for review.
+REQUEST_GUARD = 1000
+WALL_GUARD_MS = 6 * 3600 * 1000
+SPENDING_LIMITS = {'model_calls', 'output_tokens', 'deadline'}
 TEST_SECONDS = 600
 EVAL_SECONDS = 1500
 GUIDANCE = {
@@ -226,9 +229,24 @@ def trial_dir(root, task, model, effort):
     return root / 'outcomes/hard/trials' / model / task['id'] / effort
 
 
+def guards(limits):
+    calls = limits.get('maxModelCalls')
+    return {'physicalRequests': calls * 2 if calls else REQUEST_GUARD,
+            'wallMs': limits.get('runDeadlineMs', WALL_GUARD_MS)}
+
+
+def spent_a_limit(out):
+    path = out / 'events.jsonl'
+    events = map(json.loads, path.read_text().splitlines()) if path.exists() else ()
+    return any(event.get('type') == 'limit.reached'
+               and event['payload'].get('limitKind') in SPENDING_LIMITS for event in events)
+
+
 def settled_state(out, result):
-    """A task can fail at its limits; a provider or host failure says nothing about the task."""
-    return 'invalid' if not result or (out / 'provider-error.json').exists() else 'complete'
+    """A provider failure, a host failure or a spent limit says nothing about the task."""
+    if not result or (out / 'provider-error.json').exists():
+        return 'invalid'
+    return 'limited' if spent_a_limit(out) else 'complete'
 
 
 def worker_patch(out):
@@ -261,7 +279,7 @@ def trial(root, task, model, effort, limits, check, provider=None):
         return json.loads(receipt_path.read_text())
     if (out / 'started.json').exists():
         return {'id': task['id'], 'model': model, 'effort': effort, 'state': 'unsettled', 'passed': False}
-    options = {**(provider or {'provider': PROVIDER, 'model': model}), 'limits': limits}
+    options = {**(provider or {'provider': PROVIDER, 'model': model}), 'limits': limits, **guards(limits)}
     save(out / 'worker-input.json', worker_input(task, env_dir(root, task) / 'repo', check, options))
     request = {'id': task['id'], 'model': model, 'effort': effort, 'startedAt': time.time(),
                'taskHash': digest(task), 'driverHash': file_hash(HERE / 'driver.ts')}
@@ -273,7 +291,7 @@ def trial(root, task, model, effort, limits, check, provider=None):
     with (out / 'stdout.log').open('w') as stdout, (out / 'stderr.log').open('w') as stderr:
         process = subprocess.Popen(command, stdout=stdout, stderr=stderr, start_new_session=True)
         try:
-            process.wait(timeout=limits['runDeadlineMs'] / 1000 + 120)
+            process.wait(timeout=guards(limits)['wallMs'] / 1000 + 120)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGTERM)
             try:
@@ -422,7 +440,8 @@ def main():
             shutil.rmtree(out, ignore_errors=True)
             shutil.rmtree(root / 'runs/hard/dry-run' / task_id, ignore_errors=True)
             out.mkdir(parents=True, mode=0o700)
-            options = {'provider': PROVIDER, 'model': 'gpt-6.1-sol', 'limits': frozen['limits']}
+            options = {'provider': PROVIDER, 'model': 'gpt-6.1-sol', 'limits': frozen['limits'],
+                       **guards(frozen['limits'])}
             save(out / 'worker-input.json',
                  worker_input(task, env_dir(root, task) / 'repo', check_argv(root, task), options))
             subprocess.run([os.environ.get('CORRAL_RESEARCH_NODE', 'node'), str(HERE / 'driver.ts'),

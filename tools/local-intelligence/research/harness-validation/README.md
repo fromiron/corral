@@ -102,9 +102,14 @@ would run model-written commands on this host next to the credentials, so
 commands go through one registered check instead: the worker writes a script
 under `.harness/commands/` and `sandbox.py` runs the newest one in a throwaway
 copy with no network and no home, in Docker for SWE-bench and bubblewrap for
-Corral. Each command costs an extra model call, which the limits allow for, so
-token and time totals compare levels with each other and do not predict a normal
-Corral session. The model process itself runs on the host as in the smoke.
+Corral. Each command costs an extra model call, so token and time totals compare
+levels with each other and do not predict a normal Corral session. The model
+process itself runs on the host as in the smoke.
+
+A stage run has no limit on calls, output or time, because high levels often pass
+any fixed count and a stop there would read as a failed task. Guards at 1,000
+requests and six hours only end a runaway run. A run stopped by a guard or by a
+spending limit is unsettled, not failed, and stops the stage for review.
 
 ```sh
 python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --preflight-only
