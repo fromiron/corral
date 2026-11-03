@@ -204,28 +204,28 @@
       "kind": "corral-commit",
       "commit": "451bcf57d8fe29434d8ae37413f1841c31b33b60",
       "parent": "3347d70124cfe06251fa1ae5767631c01c331e0c",
-      "taskSha256": "ba5a32363156d88898c1abfffc03a786aad22ffac18adba7183d6529d65d58b9"
+      "taskSha256": "0f66fc54fa6aaa2292d13e11914b925d657024b97591739612eaa302fb3c045d"
     },
     {
       "id": "corral-dfdf14f9",
       "kind": "corral-commit",
       "commit": "dfdf14f905a223fce5fb083885020123ab2b265b",
       "parent": "1e47f127326c27a6a8b1a6b8cae62cc073b27119",
-      "taskSha256": "7efe902cea031dc42ec86e3675d7a4539b2daeb9d032aa5fe2fe4e50f9de199d"
+      "taskSha256": "77d6fa55a0db73d886169decaf1c0ed61107252109e175079c14265518c43814"
     },
     {
       "id": "corral-81a64d83",
       "kind": "corral-commit",
       "commit": "81a64d834b3c7a2a4971b896762afe975f1f61de",
       "parent": "fdb6fa3907ad27e6573eb5e7bd6fef809c622604",
-      "taskSha256": "33511abe27922028f61cfdcc51819247c585c47d0034ea3176fa37b5828bae5f"
+      "taskSha256": "8feee3230a66bc40cd8e6ff3b3323917a545289515453bf2c2dd1435dfa1b2ab"
     },
     {
       "id": "corral-b6a8d277",
       "kind": "corral-commit",
       "commit": "b6a8d277793edc1f59c0635b9cb2db764cc7ccd8",
       "parent": "ef059db43eee89d9f5ca0fbb1718da8945ab7996",
-      "taskSha256": "8029506628cf7d8a144af6a16e7e67e9542b2eae0e9bd96a5b7fba2eb14afb32"
+      "taskSha256": "0c5165d7ae180b885ed6f35078058b97ecb4f2999bf7e7610d0bd1aec95f5fc7"
     },
     {
       "id": "corral-fdb6fa39",
@@ -239,7 +239,7 @@
       "kind": "corral-commit",
       "commit": "f3d592ca69b9652e5699ee6786153dd9511b3824",
       "parent": "fd08b9e7cb54e005f58f97effc8823658c6b191f",
-      "taskSha256": "b6681a77a00bf8d67466895d729b87faa8acb7d638a651f29730dd562c36f527"
+      "taskSha256": "f312e77d1bccf8eee3f822e2cae820debbae565ff752ae062c1dbe9072e69d50"
     },
     {
       "id": "corral-9045f9ff",

@@ -121,9 +121,18 @@ finish. Runs share the machine, so their wall times get noisier.
 A Corral commit message rarely names what its tests import, and a worker cannot
 guess it. `hard_tasks.py --disclose` adds to each Corral request the values the
 tests import that the starting code does not export, the new exported types their
-declarations name, and the new text and numbers the tests check, each with the file
-that adds it. It reads the commit and its tests, never an outcome. It also records
-the commit's other files under a test directory, which go to grading with its tests.
+declarations name, a changed declaration of a value they import, the new translation
+keys they read, and the new text and numbers they check, each with the file that
+adds it. It reads the commit and its tests, never an outcome. It also records the
+commit's other files under a test directory, which go to grading with its tests.
+`contract-notes.json` holds what no rule can read, written from the tests alone.
+
+Preflight grades a reference through the path a submission takes, so a test that
+needs a file grading lacks fails there. A receipt counts only for the task and driver
+it ran: `--live` refuses to reuse any other, and `--report` calls it `stale`. Set such
+a run aside with its folder under `runs/hard`, or the rerun stops at the clone.
+`--live` also refuses uncommitted tracked changes, because a run loads the product
+from this checkout, and a private task that differs from the manifest.
 
 ```sh
 python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --preflight-only

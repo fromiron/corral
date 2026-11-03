@@ -23,6 +23,7 @@ SOURCE_FILE = re.compile(r'\.tsx?$')
 NOT_SOURCE = re.compile(r'(^|/)(test|tests|e2e)/|\.(test|spec)\.tsx?$|\.d\.ts$')
 DEPENDENCY_FILE = re.compile(r'(^|/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^patches/')
 TEST_DIRECTORY = re.compile(r'(^|/)tests?/')
+CONTRACT_NOTES = Path(__file__).resolve().parent / 'contract-notes.json'
 INTERFACE_START = 'The tests use the names'
 INTERFACE_HEADING = (f'{INTERFACE_START}, text and numbers below, each with the file that holds it. '
                      'They add to the description above and do not replace it.')
@@ -34,8 +35,12 @@ DECLARED = r'^(?:async\s+)?(?:function\*?|const|let|class|enum)\s+{}\b'
 TYPE_DECLARATION = re.compile(r'^export\s+(?:interface|type)\s+(\w+)', re.M)
 STRING = re.compile(r"""'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\\n]|\\.)*)`""")
 NUMBER = re.compile(r'(?<![\w.])\d{2,}(?![\w.])')
+MESSAGE_FILE = re.compile(r'(^|/)messages/en\.json$')
+MESSAGE_KEY = re.compile(r"""(?:\bmessages\.|['"`])([A-Z]\w*)\.(\w+)""")
 MIN_TEXT_CHARS = 4
-MAX_DECLARATION_LINES = 12
+MAX_DECLARATION_LINES = 40
+# A brace after one of these opens a type, not a body.
+TYPE_POSITION = (':', '|', '&', ',', '<')
 
 
 def rank(value):
@@ -149,14 +154,18 @@ def module_file(importer, module, read):
 
 def declaration(source, start):
     """A declaration up to the start of its body, on one line."""
-    lines = []
+    text = '\n'.join(source[start:].splitlines()[:MAX_DECLARATION_LINES])
     depth = 0
-    for line in source[start:].splitlines()[:MAX_DECLARATION_LINES]:
-        lines.append(line)
-        depth += sum(line.count(mark) for mark in '([') - sum(line.count(mark) for mark in ')]')
-        if depth <= 0:
-            break
-    return re.sub(r'(\s*(=>|=|\{))+$', '', ' '.join(' '.join(lines).split()).rstrip(';'))
+    end = len(text)
+    for index, mark in enumerate(text):
+        if not depth:
+            before = text[:index].rstrip()
+            ends_a_line = mark == '\n' and not (before.endswith(TYPE_POSITION) or text[index:].lstrip().startswith('|'))
+            if mark == ';' or ends_a_line or (mark == '{' and not before.endswith(TYPE_POSITION)):
+                end = index
+                break
+        depth += (mark in '([{') - (mark in ')]}')
+    return re.sub(r'(\s*(=>|=|\{))+$', '', ' '.join(text[:end].split()).rstrip(';'))
 
 
 def exported(read, path, name, seen=frozenset()):
@@ -203,6 +212,17 @@ def required_numbers(tests_added, source_added, source_before, request):
     return sorted((checked & set(NUMBER.findall(source_added))) - given, key=int)
 
 
+def required_keys(tests_added, diff):
+    """Translation keys the tests name and the fix adds, each with its file."""
+    found = set()
+    for path, lines in diff.items():
+        if MESSAGE_FILE.search(path):
+            added = '\n'.join(lines)
+            found |= {(path, f'{group}.{key}') for line in tests_added for group, key in MESSAGE_KEY.findall(line)
+                      if f'"{key}"' in added}
+    return sorted(found)
+
+
 def new_types(names, before, after):
     """The exported types a disclosed declaration names and the start lacks, each with its body."""
     found = set()
@@ -229,15 +249,18 @@ def interface_note(task, read, diff):
             if name == 'default':
                 if not old:
                     names.add((path, 'default export'))
-            elif not (old and exported(before, old, name)):
-                names.add(exported(after, path, name) or (path, name))
+            else:
+                now = exported(after, path, name) or (path, name)
+                then = old and exported(before, old, name)
+                if not then or then[1] != now[1]:
+                    names.add(now)
     names |= new_types(names, before, after)
     sources = [path for path in diff if not NOT_SOURCE.search(path)]
     added = [[line for test in task['tests'] for line in diff.get(test, [])],
              '\n'.join(line for path in sources for line in diff[path]),
              '\n'.join(before(path) or '' for path in sources), task['request']]
-    text, numbers = required_text(*added), required_numbers(*added)
-    if not names and not text and not numbers:
+    text, numbers, keys = required_text(*added), required_numbers(*added), required_keys(added[0], diff)
+    if not names and not text and not numbers and not keys:
         return ''
     holder = lambda value: next(path for path in sources if value in '\n'.join(diff[path]))
     sections = [INTERFACE_HEADING]
@@ -247,14 +270,20 @@ def interface_note(task, read, diff):
         sections.append('Text:\n' + '\n'.join(f'- {holder(line)}: {line}' for line in text))
     if numbers:
         sections.append('Numbers:\n' + '\n'.join(f'- {holder(line)}: {line}' for line in numbers))
+    if keys:
+        sections.append('Message keys:\n' + '\n'.join(f'- {path}: {key}' for path, key in keys))
     return '\n\n' + '\n\n'.join(sections)
 
 
-def with_interface(task, read, diff):
+def with_interface(task, read, diff, notes=None):
     base = task['request'].split(f'\n\n{INTERFACE_START}')[0]
     support = sorted(path for path in diff if TEST_DIRECTORY.search(path) and not VITEST_FILE.search(path))
     plain = {**task, 'request': base, 'support': support}
-    return {**plain, 'request': base + interface_note(plain, read, diff)}
+    note = interface_note(plain, read, diff)
+    written = (notes or {}).get(task['id'])
+    if written:
+        note = (note or f'\n\n{INTERFACE_HEADING}') + f'\n\nAlso:\n- {written}'
+    return {**plain, 'request': base + note}
 
 
 def revision_reader(repository):
@@ -301,11 +330,12 @@ def task_hash(task):
 def disclose(root, repository, out):
     """Rewrites the Corral requests in place. The SWE-bench tasks and the order stay as they are."""
     manifest = json.loads(out.read_text())
+    notes = json.loads(CONTRACT_NOTES.read_text())
     read = revision_reader(repository)
     for record in manifest['order']:
         if record['kind'] == 'corral-commit':
             path = root / 'outcomes/hard/tasks' / record['id'] / 'task.json'
-            task = with_interface(json.loads(path.read_text()), read, commit_diff(repository, record['commit']))
+            task = with_interface(json.loads(path.read_text()), read, commit_diff(repository, record['commit']), notes)
             private_save(path, task)
             record['taskSha256'] = task_hash(task)
     private_save(out, manifest)

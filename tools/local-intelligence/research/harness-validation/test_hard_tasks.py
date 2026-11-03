@@ -203,6 +203,81 @@ const { e } = await import('../src/w.ts');"""
     def test_test_only_text_is_left_out(self):
         self.assertEqual(self.note({}, {}, {'app/src/a.test.ts': ["const title = 'A fixture title';"]}), '')
 
+    def declared(self, source):
+        return hard_tasks.declaration(source, 0)
+
+    def test_a_return_type_on_its_own_lines_is_kept_and_the_body_left_out(self):
+        source = ('export function count(items: string[]): {\n  working: number;\n  groups: [Group, number][];\n'
+                  '} {\n  let working = 0;\n  return x;\n}\n')
+        self.assertEqual(self.declared(source),
+                         'export function count(items: string[]): { working: number; groups: [Group, number][]; }')
+
+    def test_a_union_return_type_is_kept(self):
+        source = 'export function find(): { a: 1 } | null {\n  return null;\n}\n'
+        self.assertEqual(self.declared(source), 'export function find(): { a: 1 } | null')
+
+    def test_a_union_on_the_following_lines_is_kept(self):
+        source = 'export function find():\n  | { a: 1 }\n  | null {\n  return null;\n}\n'
+        self.assertEqual(self.declared(source), 'export function find(): | { a: 1 } | null')
+
+    def test_a_generic_return_type_is_kept(self):
+        source = 'export function find(): Map<string, { a: 1 }> {\n  return x;\n}\n'
+        self.assertEqual(self.declared(source), 'export function find(): Map<string, { a: 1 }>')
+
+    def test_an_arrow_function_stops_at_its_body(self):
+        source = 'export const add = (a: number): { b: 1 } => {\n  return x;\n};\n'
+        self.assertEqual(self.declared(source), 'export const add = (a: number): { b: 1 }')
+
+    def test_an_object_value_stays_out(self):
+        self.assertEqual(self.declared('export const table = {\n  a: 1,\n};\n'), 'export const table')
+
+    def test_a_class_stops_at_its_body(self):
+        self.assertEqual(self.declared('export class A extends B {\n  x = 1;\n}\n'), 'export class A extends B')
+
+    def test_a_long_parameter_list_is_not_cut(self):
+        fields = ''.join(f'  field{index}: string;\n' for index in range(20))
+        source = f'export function make({{ a }}: {{\n{fields}}}): string {{\n  return a;\n}}\n'
+        declared = self.declared(source)
+        self.assertIn('field19: string;', declared)
+        self.assertTrue(declared.endswith('): string'))
+
+    def imported(self, before):
+        after = {'app/src/a.test.ts': "import { Held } from './held.tsx';",
+                 'app/src/held.tsx': ('export function Held({\n  target,\n}: {\n  target: Target;\n}) {\n'
+                                      '  return null;\n}\n')}
+        return self.note({'app/src/a.test.ts': "import { Held } from './held.tsx';",
+                          'app/src/held.tsx': before}, after)
+
+    def test_an_export_the_fix_redeclares_is_disclosed(self):
+        old = 'export function Held({\n  sessionId,\n}: {\n  sessionId: string;\n}) {\n  return null;\n}\n'
+        self.assertIn('target: Target', self.imported(old))
+
+    def test_an_export_the_fix_keeps_is_left_out(self):
+        same = 'export function Held({\n  target,\n}: {\n  target: Target;\n}) {\n  return null;\n}\n'
+        self.assertEqual(self.imported(same), '')
+
+    def keys(self, line, added='    "openRule": "Files open here",'):
+        return self.note({}, {}, {'app/src/a.test.ts': [line], 'packages/react/src/messages/en.json': [added]})
+
+    def test_a_new_translation_key_the_tests_read_is_disclosed(self):
+        note = self.keys('expect(text).toContain(messages.Files.openRule);')
+        self.assertIn('Message keys:\n- packages/react/src/messages/en.json: Files.openRule', note)
+
+    def test_a_new_translation_key_the_tests_name_is_disclosed(self):
+        note = self.keys("expect(text).toContain('Files.openRule');")
+        self.assertIn('packages/react/src/messages/en.json: Files.openRule', note)
+
+    def test_a_key_the_fix_does_not_add_is_left_out(self):
+        self.assertNotIn('Message keys', self.keys('expect(text).toContain(messages.Files.other);'))
+
+    def test_a_written_note_goes_in_after_the_rest(self):
+        task = hard_tasks.with_interface(self.TASK, lambda rev, path: None, {}, {'corral-x': 'Keep the order.'})
+        self.assertEqual(task['request'], f"{self.TASK['request']}\n\n{hard_tasks.INTERFACE_HEADING}\n\nAlso:\n- Keep the order.")
+
+    def test_a_written_note_for_another_task_is_left_out(self):
+        task = hard_tasks.with_interface(self.TASK, lambda rev, path: None, {}, {'corral-y': 'Other.'})
+        self.assertEqual(task['request'], self.TASK['request'])
+
     def test_a_new_type_a_disclosed_declaration_names_comes_whole(self):
         after = {'app/src/a.test.ts': "import { place } from './menu.ts';",
                  'app/src/menu.ts': ("export interface Placement {\n  position: 'fixed';\n  left: number;\n}\n\n"

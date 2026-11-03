@@ -1,0 +1,5 @@
+{
+  "corral-81a64d83": "`agentSummary` counts `active` as working and ignores ended statuses. `groups` holds `[group, count]` pairs for the groups that have agents, in the order paused, waitingApproval, waitingChildren, waitingMessage, starting, stopping. `ready` counts as starting and `cancelling` as stopping.",
+  "corral-b6a8d277": "`serializeComposerDraft` returns null for an empty draft and otherwise JSON that starts with `{\"v\":2`. `parseComposerDraft` reads anything else as a text draft, even text that starts with a brace. It turns an intent it does not know and a target that is not a string into null, and it keeps only well-formed references.",
+  "corral-dfdf14f9": "`documentTabLabel` returns the file name when no other open document shares it. When one does and the paths differ, it returns `name — folder`. When the path is the same and the document belongs to another session, it returns `name · ` followed by `otherSession(shortId)`, where shortId is the last 6 characters of the session id."
+}

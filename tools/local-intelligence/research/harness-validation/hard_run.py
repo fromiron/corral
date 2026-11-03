@@ -57,6 +57,8 @@ LIMITS = {'modelTimeoutMs': 300000}
 REQUEST_GUARD = 1000
 WALL_GUARD_MS = 6 * 3600 * 1000
 SPENDING_LIMITS = {'model_calls', 'output_tokens', 'deadline'}
+# What `timeout` returns when it ends a grader.
+TIMED_OUT = {124, 137}
 TEST_SECONDS = 600
 EVAL_SECONDS = 1500
 GUIDANCE = {
@@ -116,24 +118,23 @@ def hide_tests(task, env):
 
 def prepare_corral(root, task):
     env = env_dir(root, task)
-    if (env / 'ready.json').exists():
-        return env
-    shutil.rmtree(env, ignore_errors=True)
-    install = env / 'deps'
-    extract(task['parent'], install)
-    subprocess.run(['pnpm', 'install', '--frozen-lockfile', '--prefer-offline'], cwd=install, check=True,
-                   env=command_env(), capture_output=True)
-    # CLI tests serve the built Studio and would otherwise try to build it with no pnpm in the sandbox.
-    subprocess.run(['pnpm', '--filter', '@corral/studio', 'build'], cwd=install, check=True,
-                   env=command_env(), capture_output=True)
-    # What stays is only what the install made, so a file the worker deletes stays deleted.
-    tracked = subprocess.run(['git', '-C', str(CHECKOUT), 'ls-tree', '-r', '--name-only', '-z', task['parent']],
-                             check=True, capture_output=True, text=True).stdout
-    for path in filter(None, tracked.split('\0')):
-        (install / path).unlink(missing_ok=True)
-    extract(task['parent'], env / 'repo')
-    commit_tree(env / 'repo')
-    extract(task['commit'], env / 'fixed')
+    if not (env / 'ready.json').exists():
+        shutil.rmtree(env, ignore_errors=True)
+        install = env / 'deps'
+        extract(task['parent'], install)
+        subprocess.run(['pnpm', 'install', '--frozen-lockfile', '--prefer-offline'], cwd=install, check=True,
+                       env=command_env(), capture_output=True)
+        # CLI tests serve the built Studio and would otherwise try to build it with no pnpm in the sandbox.
+        subprocess.run(['pnpm', '--filter', '@corral/studio', 'build'], cwd=install, check=True,
+                       env=command_env(), capture_output=True)
+        # What stays is only what the install made, so a file the worker deletes stays deleted.
+        tracked = subprocess.run(['git', '-C', str(CHECKOUT), 'ls-tree', '-r', '--name-only', '-z', task['parent']],
+                                 check=True, capture_output=True, text=True).stdout
+        for path in filter(None, tracked.split('\0')):
+            (install / path).unlink(missing_ok=True)
+        extract(task['parent'], env / 'repo')
+        commit_tree(env / 'repo')
+        extract(task['commit'], env / 'fixed')
     save(env / 'ready.json', {'tests': hide_tests(task, env)})
     return env
 
@@ -176,11 +177,11 @@ def grade_corral(root, task, tree, out):
             'tests': total, 'failed': failed, 'failedSuites': result.get('numFailedTestSuites', 0)}
 
 
-def grade_swe(root, task, patch_text, out):
+def grade_swe(root, task, patch, out):
     """Apply the patch in the task's image, run its evaluation and take the official verdict."""
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True, mode=0o700)
-    (out / 'patch.diff').write_text(patch_text)
+    (out / 'patch.diff').write_bytes(patch)
     (out / 'eval.sh').write_text(f'#!/bin/bash\nset -uxo pipefail\n{task["evalScript"]}\n')
     script = ('cd /testbed && { [ ! -s /grade/patch.diff ] || git apply --verbose /grade/patch.diff; } '
               f'&& timeout -k 10 {EVAL_SECONDS} /bin/bash /grade/eval.sh')
@@ -194,24 +195,60 @@ def grade_swe(root, task, patch_text, out):
     return {'passed': bool(report['resolved']), 'exitCode': code, **report}
 
 
+def reference_patch(task):
+    """The commit without what grading holds back, the way a worker's patch arrives."""
+    def diff(*args):
+        return subprocess.run(['git', '--literal-pathspecs', '-C', str(CHECKOUT), 'diff', '--no-renames',
+                               task['parent'], task['commit'], *args], check=True, capture_output=True).stdout
+
+    held = {*task['tests'], *task['support']}
+    paths = [path for path in diff('--name-only', '-z').decode().split('\0') if path and path not in held]
+    return diff('--binary', '--', *paths) if paths else b''
+
+
+def grade_patch(root, task, patch, tree, out):
+    """A patch on the starting code with the held-back tests, the path every submission takes."""
+    shutil.rmtree(tree, ignore_errors=True)
+    subprocess.run(['git', 'clone', '-q', str(env_dir(root, task) / 'repo'), str(tree)], check=True,
+                   capture_output=True)
+    if patch:
+        applied = subprocess.run(['git', '-C', str(tree), 'apply', '--binary', '-'], input=patch,
+                                 capture_output=True, check=False)
+        if applied.returncode:
+            return {'passed': False, 'reason': 'patch did not apply'}
+    shutil.rmtree(tree / '.git')
+    return grade_corral(root, task, tree, out)
+
+
+def has_verdict(grade):
+    """A failing test or a suite the worker broke is a verdict; a grader that never got there is not."""
+    return not (grade.get('infraFailure') or grade.get('exitCode') in TIMED_OUT
+                or grade.get('reason') == 'patch did not apply'
+                or (grade.get('tests') == 0 and not grade.get('failedSuites')))
+
+
 def preflight(root, task):
     """The reference must pass and the starting code must fail before the task can spend anything."""
     out = root / 'outcomes/hard/preflight' / task['id']
     receipt_path = out / 'receipt.json'
     if receipt_path.exists():
-        return json.loads(receipt_path.read_text())
+        receipt = json.loads(receipt_path.read_text())
+        if receipt.get('taskHash') == digest(task):
+            return receipt
     if task['kind'] == 'swe-bench-verified':
         prepare_swe(root, task)
-        reference = grade_swe(root, task, task['goldPatch'], out / 'reference')
-        start = grade_swe(root, task, '', out / 'start')
+        reference = grade_swe(root, task, task['goldPatch'].encode(), out / 'reference')
+        start = grade_swe(root, task, b'', out / 'start')
         repeat = reference
     else:
-        env = prepare_corral(root, task)
-        reference = grade_corral(root, task, env / 'fixed', out / 'reference')
-        repeat = grade_corral(root, task, env / 'fixed', out / 'reference-repeat')
-        start = grade_corral(root, task, env / 'repo', out / 'start')
-    receipt = {'id': task['id'], 'reference': reference, 'repeat': repeat, 'start': start,
-               'valid': reference['passed'] and repeat['passed'] and not start['passed']}
+        prepare_corral(root, task)
+        patch, tree = reference_patch(task), out / 'graded-tree'
+        reference = grade_patch(root, task, patch, tree, out / 'reference')
+        repeat = grade_patch(root, task, patch, tree, out / 'reference-repeat')
+        start = grade_patch(root, task, b'', tree, out / 'start')
+        shutil.rmtree(tree, ignore_errors=True)
+    receipt = {'id': task['id'], 'taskHash': digest(task), 'reference': reference, 'repeat': repeat, 'start': start,
+               'valid': reference['passed'] and repeat['passed'] and not start['passed'] and has_verdict(start)}
     save(receipt_path, receipt)
     return receipt
 
@@ -244,13 +281,21 @@ def guards(limits):
             'wallMs': limits.get('runDeadlineMs', WALL_GUARD_MS)}
 
 
-def spent_a_limit(out):
+def run_events(out):
     path = out / 'events.jsonl'
-    events = map(json.loads, path.read_text().splitlines()) if path.exists() else ()
+    return list(map(json.loads, path.read_text().splitlines())) if path.exists() else []
+
+
+def spent_a_limit(out):
     return any((event.get('type') == 'limit.reached'
                 and event['payload'].get('limitKind') in SPENDING_LIMITS)
                or (event.get('type') == 'cancel.requested'
-                   and event['payload'].get('reason') == 'model_request_timeout') for event in events)
+                   and event['payload'].get('reason') == 'model_request_timeout') for event in run_events(out))
+
+
+def made_no_progress(out):
+    return any(event.get('type') == 'limit.reached' and event['payload'].get('limitKind') == 'no_progress'
+               for event in run_events(out))
 
 
 def ended_on_a_cut_response(out):
@@ -263,29 +308,59 @@ def settled_state(out, result):
     """A provider failure, a host failure or a limit of any kind says nothing about the task."""
     if not result or (out / 'provider-error.json').exists():
         return 'invalid'
-    return 'limited' if spent_a_limit(out) or ended_on_a_cut_response(out) else 'complete'
+    stopped = result.get('status') == 'cancelled' and not made_no_progress(out)
+    return 'limited' if stopped or spent_a_limit(out) or ended_on_a_cut_response(out) else 'complete'
+
+
+def graded_state(state, grade):
+    return 'invalid' if state == 'complete' and not has_verdict(grade) else state
 
 
 def worker_patch(out):
     path = out / 'patch.diff'
-    return path.read_text() if path.exists() else ''
+    return path.read_bytes() if path.exists() else b''
 
 
 def final_grade(root, task, out):
-    text = worker_patch(out)
+    patch = worker_patch(out)
     if task['kind'] == 'swe-bench-verified':
-        return grade_swe(root, task, text, out / 'grade')
-    env = env_dir(root, task)
-    tree = out / 'graded-tree'
-    shutil.rmtree(tree, ignore_errors=True)
-    subprocess.run(['git', 'clone', '-q', str(env / 'repo'), str(tree)], check=True, capture_output=True)
-    if text:
-        applied = subprocess.run(['git', '-C', str(tree), 'apply', '--binary', '-'], input=text.encode(),
-                                 capture_output=True, check=False)
-        if applied.returncode:
-            return {'passed': False, 'reason': 'patch did not apply'}
-    shutil.rmtree(tree / '.git')
-    return grade_corral(root, task, tree, out / 'grade')
+        return grade_swe(root, task, patch, out / 'grade')
+    return grade_patch(root, task, patch, out / 'graded-tree', out / 'grade')
+
+
+def same_run(receipt, task):
+    """A receipt counts only for the task and driver it ran."""
+    return (receipt.get('taskHash') == digest(task)
+            and receipt.get('driverHash') == file_hash(HERE / 'driver.ts'))
+
+
+def refuse_a_stale_receipt(root, task, model, effort):
+    path = trial_dir(root, task, model, effort) / 'receipt.json'
+    if path.exists() and not same_run(json.loads(path.read_text()), task):
+        raise ValueError(f'{task["id"]} {effort}: the receipt is from another task or driver; set it aside')
+
+
+def receipt_state(root, task, model, effort):
+    path = trial_dir(root, task, model, effort) / 'receipt.json'
+    if not path.exists():
+        return 'unsettled'
+    receipt = json.loads(path.read_text())
+    return receipt['state'] if same_run(receipt, task) else 'stale'
+
+
+def product_state(base=CHECKOUT):
+    """The product a run loads, since the driver imports it from this checkout."""
+    def git(*args):
+        return subprocess.run(['git', '-C', str(base), *args], check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    return {'productRevision': git('rev-parse', 'HEAD'),
+            'productDirty': bool(git('status', '--porcelain', '--untracked-files=no'))}
+
+
+def require_committed(product):
+    if product['productDirty']:
+        raise ValueError('commit the tracked changes first: a run loads its code from this checkout')
 
 
 def trial(root, task, model, effort, limits, check, provider=None):
@@ -293,13 +368,14 @@ def trial(root, task, model, effort, limits, check, provider=None):
     out.mkdir(parents=True, exist_ok=True, mode=0o700)
     receipt_path = out / 'receipt.json'
     if receipt_path.exists():
+        refuse_a_stale_receipt(root, task, model, effort)
         return json.loads(receipt_path.read_text())
     if (out / 'started.json').exists():
         return {'id': task['id'], 'model': model, 'effort': effort, 'state': 'unsettled', 'passed': False}
     options = {**(provider or {'provider': PROVIDER, 'model': model}), 'limits': limits, **guards(limits)}
     save(out / 'worker-input.json', worker_input(task, env_dir(root, task) / 'repo', check, options))
     request = {'id': task['id'], 'model': model, 'effort': effort, 'startedAt': time.time(),
-               'taskHash': digest(task), 'driverHash': file_hash(HERE / 'driver.ts')}
+               'taskHash': digest(task), 'driverHash': file_hash(HERE / 'driver.ts'), **product_state()}
     save(out / 'started.json', request)
     run_root = root / 'runs/hard' / model / task['id'] / effort
     command = [os.environ.get('CORRAL_RESEARCH_NODE', 'node'), str(HERE / 'driver.ts'),
@@ -318,8 +394,8 @@ def trial(root, task, model, effort, limits, check, provider=None):
                 process.wait()
     result_path = out / 'harness.json'
     result = json.loads(result_path.read_text()) if result_path.exists() else {}
-    state = settled_state(out, result)
     grade = final_grade(root, task, out) if result else {'passed': False, 'reason': 'no result'}
+    state = graded_state(settled_state(out, result), grade)
     usage = [row['normalized'] for row in result.get('usage', [])]
     receipt = {**request, 'completedAt': time.time(), 'elapsedSeconds': time.monotonic() - started,
                'exitCode': process.returncode, 'state': state, 'status': result.get('status'),
@@ -412,14 +488,25 @@ def run_plan(plan, run, jobs):
     return results
 
 
+def frozen_task(root, task_id, recorded):
+    task = json.loads((root / 'outcomes/hard/tasks' / task_id / 'task.json').read_text())
+    if digest(task) != recorded[task_id]:
+        raise ValueError(f'{task_id} differs from the manifest')
+    return task
+
+
 def live(root, stage, model, jobs=1):
     frozen = json.loads(FROZEN.read_text())
     verify_frozen(frozen)
+    require_committed(product_state())
+    recorded = {record['id']: record['taskSha256'] for record in json.loads(MANIFEST.read_text())['order']}
     plan = []
     for task_id in stage_plan(frozen, stage, model):
-        task = json.loads((root / 'outcomes/hard/tasks' / task_id / 'task.json').read_text())
+        task = frozen_task(root, task_id, recorded)
         efforts = list(stage_levels(stage))
         random.Random(f'{task_id}:{model}:hard-v1').shuffle(efforts)
+        for effort in efforts:
+            refuse_a_stale_receipt(root, task, model, effort)
         plan += [(task, effort) for effort in efforts if jobs == 1 or left_to_run(root, task, model, effort)]
 
     def run(task, effort):
@@ -457,10 +544,12 @@ def report(root, model, stage):
     tasks = json.loads(FROZEN.read_text())['stages'][stage]
     rows = []
     for task_id in tasks:
+        task = json.loads((root / 'outcomes/hard/tasks' / task_id / 'task.json').read_text())
         for effort in stage_levels(stage):
-            path = root / 'outcomes/hard/trials' / model / task_id / effort / 'receipt.json'
-            receipt = json.loads(path.read_text()) if path.exists() else {'state': 'unsettled'}
-            rows.append({'task': task_id, 'model': model, 'effort': effort, 'state': receipt['state'],
+            path = trial_dir(root, task, model, effort) / 'receipt.json'
+            receipt = json.loads(path.read_text()) if path.exists() else {}
+            rows.append({'task': task_id, 'model': model, 'effort': effort,
+                         'state': receipt_state(root, task, model, effort),
                          'passed': receipt.get('passed', False), 'wallSeconds': receipt.get('wallSeconds', 0),
                          'totalTokens': receipt.get('totalTokens', 0)})
     if stage == 'D':

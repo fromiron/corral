@@ -1,5 +1,6 @@
 """No model calls: what a hard trial may run, keep and count."""
 import json
+import subprocess
 import tempfile
 import threading
 import time
@@ -132,12 +133,17 @@ class Trials(unittest.TestCase):
             (out / 'events.jsonl').write_text(json.dumps(event) + '\n')
             self.assertEqual(hard_run.settled_state(out, {'status': 'cancelled'}), 'limited')
 
-    def test_a_cancel_for_another_reason_is_the_runs_own_end(self):
+    def test_a_cancel_from_outside_says_nothing_about_the_task(self):
+        for reason in ('interrupted by the user', 'evaluation requires a person'):
+            with tempfile.TemporaryDirectory() as directory:
+                out = Path(directory)
+                event = {'type': 'cancel.requested', 'payload': {'reason': reason}}
+                (out / 'events.jsonl').write_text(json.dumps(event) + '\n')
+                self.assertEqual(hard_run.settled_state(out, {'status': 'cancelled'}), 'limited')
+
+    def test_a_cancelled_run_with_no_reason_recorded_is_unsettled_too(self):
         with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            event = {'type': 'cancel.requested', 'payload': {'reason': 'user'}}
-            (out / 'events.jsonl').write_text(json.dumps(event) + '\n')
-            self.assertEqual(hard_run.settled_state(out, {'status': 'cancelled'}), 'complete')
+            self.assertEqual(hard_run.settled_state(Path(directory), {'status': 'cancelled'}), 'limited')
 
     def test_a_stuck_worker_is_the_tasks_own_end(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -151,6 +157,268 @@ class Trials(unittest.TestCase):
     def test_no_result_is_invalid(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(hard_run.settled_state(Path(directory), {}), 'invalid')
+
+
+class Verdicts(unittest.TestCase):
+    def test_a_failing_test_is_a_verdict(self):
+        self.assertTrue(hard_run.has_verdict({'passed': False, 'exitCode': 1, 'tests': 8, 'failed': 2,
+                                              'failedSuites': 1}))
+
+    def test_a_worker_that_breaks_every_suite_failed(self):
+        self.assertTrue(hard_run.has_verdict({'passed': False, 'exitCode': 1, 'tests': 0, 'failed': 0,
+                                              'failedSuites': 2}))
+
+    def test_a_grader_that_timed_out_has_none(self):
+        for code in (124, 137):
+            self.assertFalse(hard_run.has_verdict({'passed': False, 'exitCode': code, 'tests': 30,
+                                                   'failed': 0, 'failedSuites': 0}))
+
+    def test_a_grader_that_collected_nothing_has_none(self):
+        self.assertFalse(hard_run.has_verdict({'passed': False, 'exitCode': 0, 'tests': 0, 'failed': 0,
+                                               'failedSuites': 0}))
+
+    def test_an_official_infrastructure_failure_has_none(self):
+        self.assertFalse(hard_run.has_verdict({'passed': False, 'exitCode': 0, 'resolved': False,
+                                               'infraFailure': True}))
+
+    def test_an_official_failure_is_a_verdict(self):
+        self.assertTrue(hard_run.has_verdict({'passed': False, 'exitCode': 0, 'resolved': False,
+                                              'infraFailure': False}))
+
+    def test_a_patch_that_did_not_apply_has_none(self):
+        self.assertFalse(hard_run.has_verdict({'passed': False, 'reason': 'patch did not apply'}))
+
+    def test_no_verdict_leaves_a_complete_run_invalid(self):
+        grade = {'passed': False, 'exitCode': 124, 'tests': 0, 'failed': 0, 'failedSuites': 0}
+        self.assertEqual(hard_run.graded_state('complete', grade), 'invalid')
+
+    def test_a_verdict_leaves_the_state_alone(self):
+        grade = {'passed': False, 'exitCode': 1, 'tests': 4, 'failed': 1, 'failedSuites': 1}
+        self.assertEqual(hard_run.graded_state('complete', grade), 'complete')
+        self.assertEqual(hard_run.graded_state('limited', {'passed': False, 'exitCode': 124}), 'limited')
+
+
+class Receipts(unittest.TestCase):
+    def stored(self, root, **hashes):
+        receipt = {'state': 'complete', 'passed': True, **hashes}
+        hard_run.save(hard_run.trial_dir(root, TASK, 'm', 'low') / 'receipt.json', receipt)
+        return receipt
+
+    def current(self):
+        return {'taskHash': hard_run.digest(TASK), 'driverHash': hard_run.file_hash(hard_run.HERE / 'driver.ts')}
+
+    def test_a_receipt_of_the_same_run_is_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = self.stored(Path(directory), **self.current())
+            self.assertEqual(hard_run.trial(Path(directory), TASK, 'm', 'low', {}, []), receipt)
+
+    def test_a_receipt_of_another_task_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.stored(Path(directory), **{**self.current(), 'taskHash': 'old'})
+            with self.assertRaisesRegex(ValueError, 'set it aside'):
+                hard_run.trial(Path(directory), TASK, 'm', 'low', {}, [])
+
+    def test_a_receipt_of_another_driver_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.stored(Path(directory), **{**self.current(), 'driverHash': 'old'})
+            with self.assertRaisesRegex(ValueError, 'set it aside'):
+                hard_run.trial(Path(directory), TASK, 'm', 'low', {}, [])
+
+    def test_a_receipt_with_no_hashes_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.stored(Path(directory))
+            with self.assertRaisesRegex(ValueError, 'set it aside'):
+                hard_run.trial(Path(directory), TASK, 'm', 'low', {}, [])
+
+    def test_no_receipt_is_nothing_to_refuse(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hard_run.refuse_a_stale_receipt(Path(directory), TASK, 'm', 'low')
+
+    def test_the_report_calls_a_stale_receipt_stale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.stored(root, **{**self.current(), 'taskHash': 'old'})
+            self.assertEqual(hard_run.receipt_state(root, TASK, 'm', 'low'), 'stale')
+
+    def test_the_report_takes_the_state_of_a_matching_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.stored(root, **self.current())
+            self.assertEqual(hard_run.receipt_state(root, TASK, 'm', 'low'), 'complete')
+
+    def test_the_report_calls_a_missing_run_unsettled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(hard_run.receipt_state(Path(directory), TASK, 'm', 'low'), 'unsettled')
+
+
+class Preflight(unittest.TestCase):
+    PASSED = {'passed': True, 'exitCode': 0, 'resolved': True, 'infraFailure': False}
+    FAILED = {'passed': False, 'exitCode': 0, 'resolved': False, 'infraFailure': False}
+    SWE = {**TASK, 'goldPatch': 'gold\n'}
+
+    def run_it(self, root, *grades):
+        with patch.object(hard_run, 'prepare_swe'), patch.object(hard_run, 'grade_swe', side_effect=grades) as grade:
+            return hard_run.preflight(root, self.SWE), grade
+
+    def test_a_receipt_for_this_task_is_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, _ = self.run_it(root, self.PASSED, self.FAILED)
+            second, grade = self.run_it(root)
+            self.assertEqual(second, first)
+            grade.assert_not_called()
+
+    def test_a_receipt_for_another_task_is_redone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            receipt = {'valid': True, 'taskHash': 'old'}
+            hard_run.save(root / 'outcomes/hard/preflight' / TASK['id'] / 'receipt.json', receipt)
+            result, grade = self.run_it(root, self.FAILED, self.FAILED)
+            self.assertFalse(result['valid'])
+            self.assertEqual(grade.call_count, 2)
+
+    def test_a_start_with_no_verdict_proves_nothing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, _ = self.run_it(Path(directory), self.PASSED, {**self.FAILED, 'infraFailure': True})
+            self.assertFalse(result['valid'])
+
+    def test_a_gold_patch_goes_to_grading_as_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, grade = self.run_it(Path(directory), self.PASSED, self.FAILED)
+            self.assertEqual(grade.call_args_list[0].args[2], b'gold\n')
+            self.assertEqual(grade.call_args_list[1].args[2], b'')
+
+
+class PatchPath(unittest.TestCase):
+    def git(self, repository, *args):
+        return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
+                               '-c', 'core.autocrlf=false', '-C', str(repository), *args],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def repository(self, directory):
+        repository = Path(directory) / 'repository'
+        (repository / 'src').mkdir(parents=True)
+        (repository / 'test/fixtures').mkdir(parents=True)
+        (repository / 'src/[id].ts').write_bytes(b'one\r\ntwo\r\n')
+        (repository / 'test/a.test.ts').write_text('old test\n')
+        self.git(repository, 'init', '-q')
+        self.git(repository, 'add', '.')
+        self.git(repository, 'commit', '-qm', 'start')
+        parent = self.git(repository, 'rev-parse', 'HEAD')
+        (repository / 'src/[id].ts').write_bytes(b'one\r\nthree\r\n')
+        (repository / 'test/a.test.ts').write_text('new test\n')
+        (repository / 'test/fixtures/team.json').write_text('{}\n')
+        self.git(repository, 'add', '.')
+        self.git(repository, 'commit', '-qm', 'fix')
+        return repository, parent, self.git(repository, 'rev-parse', 'HEAD')
+
+    def task(self, parent, commit):
+        return {'id': 'corral-x', 'kind': 'corral-commit', 'parent': parent, 'commit': commit,
+                'tests': ['test/a.test.ts'], 'support': ['test/fixtures/team.json']}
+
+    def graded(self, directory, repository, task, patch_bytes):
+        env = Path(directory) / 'outcomes/hard/env' / task['id'] / 'repo'
+        self.git(Path(directory), 'clone', '-q', '-c', 'core.autocrlf=false', str(repository), str(env))
+        self.git(env, 'reset', '-q', '--hard', task['parent'])
+        seen = {}
+
+        def grade(root, task, tree, out):
+            seen['source'] = (tree / 'src/[id].ts').read_bytes()
+            seen['test'] = (tree / 'test/a.test.ts').read_text()
+            seen['fixture'] = (tree / 'test/fixtures/team.json').exists()
+            seen['git'] = (tree / '.git').exists()
+            return {'passed': True}
+
+        with patch.object(hard_run, 'grade_corral', side_effect=grade):
+            result = hard_run.grade_patch(Path(directory), task, patch_bytes, Path(directory) / 'tree',
+                                          Path(directory) / 'grade')
+        return result, seen
+
+    def test_the_reference_holds_the_source_and_not_the_tests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository, parent, commit = self.repository(directory)
+            with patch.object(hard_run, 'CHECKOUT', repository):
+                reference = hard_run.reference_patch(self.task(parent, commit))
+            self.assertIn(b'src/[id].ts', reference)
+            self.assertNotIn(b'a.test.ts', reference)
+            self.assertNotIn(b'team.json', reference)
+
+    def test_a_reference_reaches_grading_without_the_files_held_back(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository, parent, commit = self.repository(directory)
+            task = self.task(parent, commit)
+            with patch.object(hard_run, 'CHECKOUT', repository):
+                reference = hard_run.reference_patch(task)
+            result, seen = self.graded(directory, repository, task, reference)
+            self.assertEqual(result, {'passed': True})
+            self.assertEqual(seen, {'source': b'one\r\nthree\r\n', 'test': 'old test\n', 'fixture': False,
+                                    'git': False})
+
+    def test_a_patch_that_does_not_apply_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository, parent, commit = self.repository(directory)
+            result, _ = self.graded(directory, repository, self.task(parent, commit), b'not a patch\n')
+            self.assertEqual(result, {'passed': False, 'reason': 'patch did not apply'})
+
+    def test_a_worker_patch_keeps_its_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            (out / 'patch.diff').write_bytes(b'-one\r\n+two\r\n')
+            self.assertEqual(hard_run.worker_patch(out), b'-one\r\n+two\r\n')
+
+    def test_no_patch_is_empty_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(hard_run.worker_patch(Path(directory)), b'')
+
+
+class Freezing(unittest.TestCase):
+    def test_a_private_task_that_matches_the_manifest_loads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hard_run.save(root / 'outcomes/hard/tasks' / TASK['id'] / 'task.json', TASK)
+            self.assertEqual(hard_run.frozen_task(root, TASK['id'], {TASK['id']: hard_run.digest(TASK)}), TASK)
+
+    def test_a_private_task_that_differs_from_the_manifest_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hard_run.save(root / 'outcomes/hard/tasks' / TASK['id'] / 'task.json', {**TASK, 'request': 'Other.'})
+            with self.assertRaisesRegex(ValueError, 'differs from the manifest'):
+                hard_run.frozen_task(root, TASK['id'], {TASK['id']: hard_run.digest(TASK)})
+
+    def product(self, directory):
+        repository = Path(directory)
+        for args in (['init', '-q'], ['config', 'user.name', 't'], ['config', 'user.email', 't@example.invalid']):
+            subprocess.run(['git', '-C', directory, *args], check=True)
+        (repository / 'a.ts').write_text('one\n')
+        subprocess.run(['git', '-C', directory, 'add', '.'], check=True)
+        subprocess.run(['git', '-C', directory, 'commit', '-qm', 'start'], check=True)
+        return repository
+
+    def test_a_run_records_the_revision_it_loads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self.product(directory)
+            head = subprocess.run(['git', '-C', directory, 'rev-parse', 'HEAD'], check=True,
+                                  capture_output=True, text=True).stdout.strip()
+            self.assertEqual(hard_run.product_state(repository), {'productRevision': head, 'productDirty': False})
+
+    def test_an_edit_to_a_tracked_file_is_dirty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self.product(directory)
+            (repository / 'a.ts').write_text('two\n')
+            self.assertTrue(hard_run.product_state(repository)['productDirty'])
+
+    def test_an_untracked_file_is_not_product_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self.product(directory)
+            (repository / 'notes.md').write_text('mine\n')
+            self.assertFalse(hard_run.product_state(repository)['productDirty'])
+
+    def test_a_stage_refuses_a_dirty_checkout(self):
+        with self.assertRaisesRegex(ValueError, 'commit'):
+            hard_run.require_committed({'productRevision': 'a', 'productDirty': True})
+
+    def test_a_stage_starts_on_a_committed_checkout(self):
+        hard_run.require_committed({'productRevision': 'a', 'productDirty': False})
 
 
 class Limits(unittest.TestCase):
