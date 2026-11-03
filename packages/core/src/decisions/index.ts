@@ -1,6 +1,7 @@
 import {
   type AgentStartInput,
   DecisionAnswer,
+  type DecisionApiId,
   type DecisionFailureReason,
   type DecisionProvider,
   type DecisionProviderSnapshot,
@@ -27,12 +28,16 @@ export interface JudgmentConfig {
     reasoning_effort: {
       mode: 'off' | 'observe';
       apply?: boolean;
+      /** What automatic reasoning does; unset means medium. */
+      policy?: 'medium' | 'judged';
       /** Provider ids, at most two (two = side-by-side comparison, plan v0.1 §11). */
       providers: readonly string[];
       /** Judgment calls per run; default the run's model request limit, at most 100. */
       maxCalls?: number;
       /** External providers are refused unless the workspace opted in. */
       allowExternal?: boolean;
+      /** The decision API automatic reasoning asks, only with allowExternal. */
+      external?: { provider: DecisionApiId; model: string };
     };
   };
 }
@@ -157,10 +162,14 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
       if (settings?.mode !== 'observe') return;
       const input = deps.startInputOf(context.runId, event.payload.executionId);
       if (!input) return;
+      // Under the judged policy the local model already judged this request before it was prepared.
+      const reasoning = event.payload.reasoning;
+      const applied = reasoning?.requested.mode === 'auto' && reasoning.fallback !== 'policy';
       const providers = settings.providers.flatMap((snapshot) => {
-        const provider = snapshot.available
-          ? deps.providers.find((p) => p.id === snapshot.id)
-          : undefined;
+        const provider =
+          snapshot.available && !(applied && snapshot.id === 'local-model')
+            ? deps.providers.find((p) => p.id === snapshot.id)
+            : undefined;
         return provider ? [provider] : [];
       });
       if (providers.length === 0) return;

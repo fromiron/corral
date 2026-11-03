@@ -23,6 +23,19 @@ describe('workspace config and installation policy', () => {
     expect(limitViolations(DEFAULT_LIMITS, 2, SPEC_HARD_CAPS)).toEqual([]);
   });
 
+  it('accepts the automatic reasoning policy and leaves it optional', () => {
+    const decisions = (policy?: string) => ({
+      schemaVersion: '0.1',
+      decisions: {
+        reasoning_effort: { mode: 'off', providers: ['local-model'], ...(policy && { policy }) },
+      },
+    });
+    expect(parseWorkspaceConfig(decisions()).ok).toBe(true);
+    expect(parseWorkspaceConfig(decisions('medium')).ok).toBe(true);
+    expect(parseWorkspaceConfig(decisions('judged')).ok).toBe(true);
+    expect(parseWorkspaceConfig(decisions('high')).ok).toBe(false);
+  });
+
   it('lets an installation lower a cap but never raise one past the spec', () => {
     const lowered = parseWorkspaceConfig({ schemaVersion: '0.1', hardCaps: { maxModelCalls: 20 } });
     expect(lowered.ok && installationPolicy(lowered.config).maxModelCalls).toBe(20);

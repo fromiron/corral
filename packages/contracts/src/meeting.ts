@@ -11,11 +11,20 @@ export const SECRETARY_ID = 'secretary';
 export const MeetingParticipant = z.strictObject({
   participantId: Identifier,
   name: z.string().trim().min(1).max(40),
+  /** What the person also calls them; messages may address them by these as by the name. */
+  aliases: z.array(z.string().trim().min(1).max(40)).max(8).optional(),
   /** Optional role guidance; an empty string means an ordinary chat participant. */
   prompt: z.string().trim().max(4000),
   modelProfile: Identifier,
 });
 export type MeetingParticipant = z.infer<typeof MeetingParticipant>;
+
+/** Local-only selection input: posted text and configured roles, never provider credentials. */
+export interface MeetingSelectionInput {
+  message: string;
+  participants: { participantId: string; name?: string; prompt: string }[];
+  history: { id?: string; participantId: string | null; text: string }[];
+}
 
 export const MeetingConfig = z
   .strictObject({
@@ -26,21 +35,24 @@ export const MeetingConfig = z
       prompt: z.string().trim().min(1).max(4000).optional(),
     }),
   })
-  .refine(
-    ({ participants }) =>
+  .refine(({ participants }) => {
+    const calledBy = (p: MeetingParticipant) =>
+      [p.name, ...(p.aliases ?? [])].map((name) => name.toLowerCase());
+    const callings = participants.flatMap(calledBy);
+    return (
       new Set(participants.map((p) => p.participantId.toLowerCase())).size ===
         participants.length &&
-      new Set(participants.map((p) => p.name.toLowerCase())).size === participants.length &&
+      new Set(callings).size === callings.length &&
       participants.every(
         (p) =>
           ![SECRETARY_ID, '비서'].includes(p.participantId.toLowerCase()) &&
-          ![SECRETARY_ID, '비서'].includes(p.name.toLowerCase()) &&
+          !calledBy(p).some((name) => [SECRETARY_ID, '비서'].includes(name)) &&
           !participants.some(
-            (other) => other !== p && other.participantId.toLowerCase() === p.name.toLowerCase(),
+            (other) => other !== p && calledBy(p).includes(other.participantId.toLowerCase()),
           ),
-      ),
-    'Participants need distinct IDs and names, and none may be the secretary',
-  );
+      )
+    );
+  }, 'Participants need distinct IDs, names and aliases, and none may be the secretary');
 export type MeetingConfig = z.infer<typeof MeetingConfig>;
 
 /** What was recorded when a round asked one participant; its progress is the Run's. */
@@ -58,7 +70,7 @@ export const MeetingAnswer = z.strictObject({
 });
 export type MeetingAnswer = z.infer<typeof MeetingAnswer>;
 
-export const MeetingRound = z.strictObject({
+const MeetingRoundFields = z.strictObject({
   roundId: Identifier,
   commandId: Identifier,
   mode: z.enum(['mock', 'live']).optional(),
@@ -73,10 +85,19 @@ export const MeetingRound = z.strictObject({
   /** Legacy reply-request lineage, retained for existing records and command replay. */
   basedOnRoundId: Identifier.nullable(),
   rebuttalNo: z.int().min(1).nullable(),
-  participantIds: z.array(Identifier).min(1).max(6),
+  participantIds: z.array(Identifier).max(6),
   answers: z.array(MeetingAnswer).max(6),
   createdAt: z.string(),
   stoppedAt: z.string().nullable(),
+});
+const validRoundRecipients = (round: {
+  kind: string;
+  participantIds: string[];
+  answers: unknown[];
+}) => round.participantIds.length > 0 || (round.kind === 'all' && round.answers.length === 0);
+
+export const MeetingRound = MeetingRoundFields.refine(validRoundRecipients, {
+  message: 'Only a general message with no answers may have no recipients',
 });
 export type MeetingRound = z.infer<typeof MeetingRound>;
 
@@ -257,10 +278,14 @@ export const MeetingView = z.strictObject({
   revision: z.int().min(1),
   config: MeetingConfig,
   rounds: z.array(
-    MeetingRound.omit({ answers: true }).extend({
-      active: z.boolean(),
-      answers: z.array(MeetingAnswerView),
-    }),
+    MeetingRoundFields.omit({ answers: true })
+      .extend({
+        active: z.boolean(),
+        answers: z.array(MeetingAnswerView),
+      })
+      .refine(validRoundRecipients, {
+        message: 'Only a general message with no answers may have no recipients',
+      }),
   ),
   queued: QueuedMeetingMessage.nullable(),
   minutes: z.array(MeetingMinutes).optional(),

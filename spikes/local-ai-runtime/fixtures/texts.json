@@ -1,0 +1,146 @@
+[
+  {
+    "id": "ko-short-0",
+    "lang": "ko",
+    "size": "short",
+    "text": "request: 안녕, 오늘 고마웠어."
+  },
+  {
+    "id": "ko-short-1",
+    "lang": "ko",
+    "size": "short",
+    "text": "request: 이 함수 이름을 camelCase로 바꿔 줘."
+  },
+  {
+    "id": "ko-short-2",
+    "lang": "ko",
+    "size": "short",
+    "text": "request: 로그인 후 세션이 가끔 풀리는 원인을 찾아서 고쳐 줘. 재현은 새로고침을 빠르게 두 번 하면 돼."
+  },
+  {
+    "id": "ko-short-3",
+    "lang": "ko",
+    "size": "short",
+    "text": "request: 결제 모듈을 이벤트 소싱 구조로 옮기는 설계안을 만들고, 기존 데이터 마이그레이션과 롤백 절차까지 정리해 줘."
+  },
+  {
+    "id": "ko-medium",
+    "lang": "ko",
+    "size": "medium",
+    "text": "request: 결제 모듈을 이벤트 소싱 구조로 옮기는 설계안을 만들고, 기존 데이터 마이그레이션과 롤백 절차까지 정리해 줘.\n이전 요청: 테스트가 왜 실패하는지 봐 줘.\n이전 응답: socket.test.ts의 재연결 횟수가 기대값과 다릅니다.\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  },
+  {
+    "id": "ko-long",
+    "lang": "ko",
+    "size": "long",
+    "text": "request: 결제 모듈을 이벤트 소싱 구조로 옮기는 설계안을 만들고, 기존 데이터 마이그레이션과 롤백 절차까지 정리해 줘.\n이전 요청: 테스트가 왜 실패하는지 봐 줘.\n이전 응답: socket.test.ts의 재연결 횟수가 기대값과 다릅니다.\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```\ncall: read_file {\"path\":\"src/net/socket.ts\"}\nresult: 1 import { backoff } from './backoff';\n2 export class Socket {\n3   private timer?: NodeJS.Timeout;\n4   connect() { this.ws = new WebSocket(this.url); this.ws.onclose = () => this.retry(); }\n5   retry() { this.timer = setTimeout(() => this.connect(), backoff(this.attempt++)); }\n6 }\ncall: run {\"cmd\":\"pnpm vitest run test/socket.test.ts\"}\nresult: FAIL test/socket.test.ts > reconnects after sleep\nAssertionError: expected 1 reconnect, received 214\n at test/socket.test.ts:58:21\n```ts\nexport async function withBackoff<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  },
+  {
+    "id": "ja-short-0",
+    "lang": "ja",
+    "size": "short",
+    "text": "request: ありがとう、助かりました。"
+  },
+  {
+    "id": "ja-short-1",
+    "lang": "ja",
+    "size": "short",
+    "text": "request: このテストの名前を分かりやすく変えてください。"
+  },
+  {
+    "id": "ja-short-2",
+    "lang": "ja",
+    "size": "short",
+    "text": "request: ビルドが CI だけで失敗します。ローカルでは通るので、環境差分を調べて修正してください。"
+  },
+  {
+    "id": "ja-short-3",
+    "lang": "ja",
+    "size": "short",
+    "text": "request: 検索インデックスを差分更新に切り替える設計を考えて、整合性の検証方法と段階的な移行計画もまとめてください。"
+  },
+  {
+    "id": "ja-medium",
+    "lang": "ja",
+    "size": "medium",
+    "text": "request: 検索インデックスを差分更新に切り替える設計を考えて、整合性の検証方法と段階的な移行計画もまとめてください。\n前の依頼: テストが失敗する理由を見てください。\n前の応答: 再接続回数が期待値と一致しません。\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  },
+  {
+    "id": "ja-long",
+    "lang": "ja",
+    "size": "long",
+    "text": "request: 検索インデックスを差分更新に切り替える設計を考えて、整合性の検証方法と段階的な移行計画もまとめてください。\n前の依頼: テストが失敗する理由を見てください。\n前の応答: 再接続回数が期待値と一致しません。\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```\ncall: read_file {\"path\":\"src/net/socket.ts\"}\nresult: 1 import { backoff } from './backoff';\n2 export class Socket {\n3   private timer?: NodeJS.Timeout;\n4   connect() { this.ws = new WebSocket(this.url); this.ws.onclose = () => this.retry(); }\n5   retry() { this.timer = setTimeout(() => this.connect(), backoff(this.attempt++)); }\n6 }\ncall: run {\"cmd\":\"pnpm vitest run test/socket.test.ts\"}\nresult: FAIL test/socket.test.ts > reconnects after sleep\nAssertionError: expected 1 reconnect, received 214\n at test/socket.test.ts:58:21\n```ts\nexport async function withBackoff<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  },
+  {
+    "id": "en-short-0",
+    "lang": "en",
+    "size": "short",
+    "text": "request: thanks, that works."
+  },
+  {
+    "id": "en-short-1",
+    "lang": "en",
+    "size": "short",
+    "text": "request: Rename the variable `cnt` to `count` in utils.ts."
+  },
+  {
+    "id": "en-short-2",
+    "lang": "en",
+    "size": "short",
+    "text": "request: The websocket reconnect loop sometimes spins at 100% CPU after the laptop wakes from sleep. Find out why and fix it."
+  },
+  {
+    "id": "en-short-3",
+    "lang": "en",
+    "size": "short",
+    "text": "request: Design a multi-tenant permission model for the admin API, including migration of existing roles, audit logging, and a rollout plan with a kill switch."
+  },
+  {
+    "id": "en-medium",
+    "lang": "en",
+    "size": "medium",
+    "text": "request: Design a multi-tenant permission model for the admin API, including migration of existing roles, audit logging, and a rollout plan with a kill switch.\nprevious request: check why the tests fail.\nprevious reply: the reconnect count in socket.test.ts differs from the expectation.\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  },
+  {
+    "id": "en-long",
+    "lang": "en",
+    "size": "long",
+    "text": "request: Design a multi-tenant permission model for the admin API, including migration of existing roles, audit logging, and a rollout plan with a kill switch.\nprevious request: check why the tests fail.\nprevious reply: the reconnect count in socket.test.ts differs from the expectation.\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```\ncall: read_file {\"path\":\"src/net/socket.ts\"}\nresult: 1 import { backoff } from './backoff';\n2 export class Socket {\n3   private timer?: NodeJS.Timeout;\n4   connect() { this.ws = new WebSocket(this.url); this.ws.onclose = () => this.retry(); }\n5   retry() { this.timer = setTimeout(() => this.connect(), backoff(this.attempt++)); }\n6 }\ncall: run {\"cmd\":\"pnpm vitest run test/socket.test.ts\"}\nresult: FAIL test/socket.test.ts > reconnects after sleep\nAssertionError: expected 1 reconnect, received 214\n at test/socket.test.ts:58:21\n```ts\nexport async function withBackoff<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  },
+  {
+    "id": "code-short-0",
+    "lang": "code",
+    "size": "short",
+    "text": "request: `npm test` 돌려 줘"
+  },
+  {
+    "id": "code-short-1",
+    "lang": "code",
+    "size": "short",
+    "text": "request: fix this: `TypeError: Cannot read properties of undefined (reading 'map')` in `src/list.tsx:42`"
+  },
+  {
+    "id": "code-short-2",
+    "lang": "code",
+    "size": "short",
+    "text": "request: この SQL が遅いので速くして: `SELECT * FROM orders o JOIN users u ON u.id = o.user_id WHERE o.created_at > now() - interval '7 days' ORDER BY o.total DESC;`"
+  },
+  {
+    "id": "code-short-3",
+    "lang": "code",
+    "size": "short",
+    "text": "request: Refactor the retry helper so cancellation propagates through `withRetry(fn, { signal })`, add tests for late resolution after abort, and keep the public API."
+  },
+  {
+    "id": "code-medium",
+    "lang": "code",
+    "size": "medium",
+    "text": "request: Refactor the retry helper so cancellation propagates through `withRetry(fn, { signal })`, add tests for late resolution after abort, and keep the public API.\nprevious request: run the tests.\nprevious reply: 1 failed, 41 passed.\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  },
+  {
+    "id": "code-long",
+    "lang": "code",
+    "size": "long",
+    "text": "request: Refactor the retry helper so cancellation propagates through `withRetry(fn, { signal })`, add tests for late resolution after abort, and keep the public API.\nprevious request: run the tests.\nprevious reply: 1 failed, 41 passed.\nplan: inspect the code, reproduce, fix, add a regression test.\n```ts\nexport async function withRetry<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```\ncall: read_file {\"path\":\"src/net/socket.ts\"}\nresult: 1 import { backoff } from './backoff';\n2 export class Socket {\n3   private timer?: NodeJS.Timeout;\n4   connect() { this.ws = new WebSocket(this.url); this.ws.onclose = () => this.retry(); }\n5   retry() { this.timer = setTimeout(() => this.connect(), backoff(this.attempt++)); }\n6 }\ncall: run {\"cmd\":\"pnpm vitest run test/socket.test.ts\"}\nresult: FAIL test/socket.test.ts > reconnects after sleep\nAssertionError: expected 1 reconnect, received 214\n at test/socket.test.ts:58:21\n```ts\nexport async function withBackoff<T>(fn: () => Promise<T>, opts: { retries: number; signal?: AbortSignal }) {\n  let last: unknown;\n  for (let attempt = 0; attempt <= opts.retries; attempt++) {\n    if (opts.signal?.aborted) throw new Error('aborted');\n    try {\n      return await fn();\n    } catch (error) {\n      last = error;\n      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 100));\n    }\n  }\n  throw last;\n}\n```"
+  }
+]

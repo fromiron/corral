@@ -30,6 +30,57 @@ const direct = new Map<
 >();
 const evidencePath = join(ROOT, 'docs/dependency-lock.json');
 const previous = existsSync(evidencePath) ? JSON.parse(readFileSync(evidencePath, 'utf8')) : {};
+// Offline classifier training is Python-only; record its separately pinned tool environment
+// without refreshing unrelated npm records or adding it to the shipped Node runtime.
+if (process.argv.includes('--training')) {
+  const pins = readFileSync(
+    join(ROOT, 'tools/local-intelligence/training-requirements.txt'),
+    'utf8',
+  )
+    .trim()
+    .split('\n');
+  const trainingDependencies = await Promise.all(
+    pins.map(async (pin) => {
+      const [name, version] = pin.split('==');
+      if (!name || !version || !/^\d+\.\d+\.\d+$/.test(version))
+        throw new Error('training dependencies must be pinned');
+      const source = `https://pypi.org/pypi/${name}/${version}/json`;
+      const response = await fetch(source);
+      if (!response.ok) throw new Error(`training dependency metadata unavailable: ${name}`);
+      const view = (await response.json()) as {
+        info: {
+          version: string;
+          license: string;
+          license_expression?: string;
+          requires_python: string;
+          requires_dist: string[];
+          project_urls: Record<string, string>;
+        };
+        urls: { packagetype: string; digests: { sha256: string } }[];
+      };
+      if (view.info.version !== version) throw new Error('training dependency version differs');
+      return {
+        name,
+        version,
+        scope: 'offline-training',
+        source,
+        license: view.info.license_expression || view.info.license,
+        sourceSha256: view.urls.find((file) => file.packagetype === 'sdist')?.digests.sha256,
+        python: view.info.requires_python,
+        requires: view.info.requires_dist,
+        officialSources: view.info.project_urls,
+        nodeCompatibility:
+          'Not loaded by Node or included in the application runtime; Python >=3.11 training only.',
+      };
+    }),
+  );
+  writeFileSync(
+    evidencePath,
+    `${JSON.stringify({ ...previous, trainingDependencies }, null, 2)}\n`,
+  );
+  console.log(`recorded ${trainingDependencies.length} offline training dependencies`);
+  process.exit(0);
+}
 // Explicit, version-bound source reviews fill registry omissions; registry facts still win.
 const reviewedSources = (previous.reviewedSources ?? []) as {
   name: string;
@@ -87,6 +138,7 @@ const out = {
   dependencies: records,
   ...(reviewedSources.length ? { reviewedSources } : {}),
   ...(reviewedPrereleases ? { reviewedPrereleases } : {}),
+  ...(previous.trainingDependencies ? { trainingDependencies: previous.trainingDependencies } : {}),
 };
 writeFileSync(evidencePath, `${JSON.stringify(out, null, 2)}\n`);
 console.log(`recorded ${records.length} direct dependencies`);

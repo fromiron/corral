@@ -2,9 +2,75 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { MeetingView } from '@corral/contracts';
+import { createLocalIntelligence } from '@corral/local-intelligence';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
+
+it('uses the shared local selector through HTTP and preserves its choice on replay', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'corral-meeting-selection-'));
+  const token = 'test-bootstrap-token-0123456789abcdef';
+  const local = createLocalIntelligence({ root: join(root, 'ai'), env: {} });
+  const select = vi.fn(async () => ['second']);
+  local.meeting.select = select;
+  const server = await startCorralServer({
+    workspace: root,
+    worktreeRoot: join(root, 'copies'),
+    port: 0,
+    bootstrapToken: token,
+    localIntelligence: local,
+    agents: new ScriptedAgentAdapter({ turns: 1, collaborate: false, appendNotes: false }),
+  });
+  try {
+    const login = await fetch(`${server.url}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: server.url },
+      body: JSON.stringify({ token }),
+    });
+    const headers = {
+      cookie: (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
+      origin: server.url,
+      'content-type': 'application/json',
+      'x-corral-csrf': login.headers.get('x-corral-csrf') ?? '',
+    };
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`${server.url}/api/v1${path}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      expect(response.ok).toBe(true);
+      return response.json();
+    };
+    const { session } = await post('/sessions', {
+      projectId: 'default',
+      title: 'Ideas',
+      meeting: {
+        version: 1,
+        participants: [
+          { participantId: 'first', name: 'First', prompt: '', modelProfile: 'model-a' },
+          { participantId: 'second', name: 'Second', prompt: '', modelProfile: 'model-b' },
+        ],
+        secretary: { modelProfile: 'model-a' },
+      },
+    });
+    const path = `/sessions/${session.sessionId}/meeting/rounds`;
+    const request = {
+      commandId: 'choose_speaker',
+      kind: 'message',
+      mode: 'mock',
+      text: 'Explain that idea.',
+    };
+    const first = await post(path, request);
+    expect(first.view.rounds[0].participantIds).toEqual(['second']);
+    expect((await post(path, request)).roundId).toBe(first.roundId);
+    expect(select).toHaveBeenCalledOnce();
+    expect(server.coordinator.listRuns()).toHaveLength(1);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 it('a meeting is created, answers a round over HTTP, and its state only changes through rounds', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-meeting-routes-'));

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createLiveModels, defaultDecisionProviders, startCorralServer } from '@corral/server';
+import { createLiveModels, defaultLocalIntelligence, startCorralServer } from '@corral/server';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 
 // IPC is the only place the bootstrap capability leaves this process. Never print it.
@@ -27,7 +27,7 @@ const options = {
     turns: 2,
     beforeReply: () => new Promise((done) => setTimeout(done, 300)),
   }),
-  decisionProviders: defaultDecisionProviders(),
+  localIntelligence: defaultLocalIntelligence(),
   ...(mockOnly === 'true' ? {} : { live: createLiveModels() }),
 };
 try {

@@ -1,0 +1,36 @@
+{
+  "device": "cpu",
+  "trials": [
+    {
+      "mode": "engine-only",
+      "preparationMs": 148.33828400000002,
+      "firstJudgmentMs": 66.02579499999996
+    },
+    {
+      "mode": "forward-pass",
+      "preparationMs": 192.40715900000004,
+      "firstJudgmentMs": 53.111324999999965
+    },
+    {
+      "mode": "forward-pass",
+      "preparationMs": 196.83602099999996,
+      "firstJudgmentMs": 50.56787900000006
+    },
+    {
+      "mode": "engine-only",
+      "preparationMs": 139.1476110000001,
+      "firstJudgmentMs": 59.771921999999904
+    },
+    {
+      "mode": "engine-only",
+      "preparationMs": 138.157281,
+      "firstJudgmentMs": 54.344176999999945
+    },
+    {
+      "mode": "forward-pass",
+      "preparationMs": 189.63596899999993,
+      "firstJudgmentMs": 49.93706300000008
+    }
+  ],
+  "scope": "six alternating sequential local-engine starts; no simulated concurrent load"
+}

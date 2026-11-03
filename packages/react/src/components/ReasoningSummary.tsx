@@ -29,6 +29,7 @@ export function ReasoningSummary({
         : ''}
       {resolution.kind ? ` · ${t(`kind.${resolution.kind}`)}` : ''}
       {resolution.fallback ? ` (${t(`fallback.${resolution.fallback}`)})` : ''}
+      {resolution.escalated && resolution.source !== 'external-model' ? ` · ${t('escalated')}` : ''}
       {' · '}
       {t('payload')}:{' '}
       {call.reasoningWire ? (call.reasoningWire.value ?? t('omitted')) : t('unverified')}

@@ -1,14 +1,22 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bundledManifest, defaultModelDir } from '@corral/effort-judge';
+import {
+  bundleDir,
+  bundledManifest,
+  dataBase,
+  defaultLocalAiDir,
+  legacyJudgeDir,
+  runtimeTarget,
+} from '@corral/local-intelligence';
 import { linearCorral } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 
-// Issue #21: the server's own entry point (`pnpm serve`) registers the local judge model like
-// the CLI does. A stamp file stands in for an installed model: nothing is downloaded.
+// Issue #21: the server's own entry point (`pnpm serve`) registers the local AI effort judge like
+// the CLI does. A stamp file stands in for an installed bundle and a script that never becomes
+// ready stands in for the helper: nothing is downloaded and no model runs.
 
 const MAIN = join(import.meta.dirname, '..', 'src', 'main.ts');
 const children: ChildProcess[] = [];
@@ -29,15 +37,30 @@ const temp = () => {
   dirs.push(dir);
   return dir;
 };
-const modelEnv = (dataHome: string): NodeJS.ProcessEnv => ({
-  ...process.env,
-  XDG_DATA_HOME: dataHome,
-  LOCALAPPDATA: dataHome,
-  HOME: dataHome,
-  USERPROFILE: dataHome,
-});
+const modelEnv = (dataHome: string, helper?: string): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    XDG_DATA_HOME: dataHome,
+    LOCALAPPDATA: dataHome,
+    HOME: dataHome,
+    USERPROFILE: dataHome,
+  };
+  delete env.CORRAL_LOCAL_AI_HELPER;
+  return helper ? { ...env, CORRAL_LOCAL_AI_HELPER: helper } : env;
+};
 
-async function serve(dataHome: string) {
+/** Stays alive without ever saying it is ready, and exits when the server goes away. */
+function idleHelper(dir: string) {
+  const path = join(dir, 'idle-helper.mjs');
+  writeFileSync(
+    path,
+    `#!${process.execPath}\nprocess.stdin.on('end', () => process.exit(0));\nprocess.stdin.resume();\n`,
+  );
+  chmodSync(path, 0o755);
+  return path;
+}
+
+async function serve(dataHome: string, helper?: string) {
   const workspace = temp();
   mkdirSync(join(workspace, '.corral'));
   writeFileSync(
@@ -52,7 +75,7 @@ async function serve(dataHome: string) {
   const child = spawn(
     process.execPath,
     [MAIN, '--workspace', workspace, '--port', '0', '--no-live', '--mock-delay', '10'],
-    { env: modelEnv(dataHome), stdio: ['ignore', 'pipe', 'pipe'] },
+    { env: modelEnv(dataHome, helper), stdio: ['ignore', 'pipe', 'pipe'] },
   );
   children.push(child);
   const link = await new Promise<string>((resolve, reject) => {
@@ -80,8 +103,8 @@ async function serve(dataHome: string) {
   return { origin, headers };
 }
 
-async function decisionProviders(dataHome: string) {
-  const { origin, headers } = await serve(dataHome);
+async function decisionProviders(dataHome: string, helper?: string) {
+  const { origin, headers } = await serve(dataHome, helper);
   const saved = await fetch(`${origin}/api/v1/corrals`, {
     method: 'POST',
     headers,
@@ -116,23 +139,40 @@ async function decisionProviders(dataHome: string) {
   return decisions.reasoning_effort.providers;
 }
 
-describe('the server entry point registers the local judge model (#21)', () => {
-  it('an installed model is available to `pnpm serve`, with its release', async () => {
+const bundle = bundledManifest();
+const target = runtimeTarget(bundle, process.platform, process.arch);
+
+describe('the server entry point registers the local AI effort judge (#21)', () => {
+  it.skipIf(!target || process.platform === 'win32')(
+    'an installed bundle is available to `pnpm serve`, with its release and classifier',
+    async () => {
+      const dataHome = temp();
+      const root = defaultLocalAiDir(dataBase(modelEnv(dataHome), process.platform, dataHome));
+      mkdirSync(bundleDir(root, bundle), { recursive: true });
+      writeFileSync(
+        join(bundleDir(root, bundle), 'install.json'),
+        JSON.stringify({ release: bundle.release, target }),
+      );
+      const providers = await decisionProviders(dataHome, idleHelper(dataHome));
+      expect(providers.find((p) => p.id === 'local-model')).toMatchObject({
+        available: true,
+        version: `${bundle.release}+effort-v2`,
+      });
+    },
+    30_000,
+  );
+
+  it('starting removes the old judge model but keeps files Corral did not write', async () => {
     const dataHome = temp();
-    const modelDir = defaultModelDir(modelEnv(dataHome), process.platform, dataHome);
-    mkdirSync(modelDir, { recursive: true });
-    writeFileSync(
-      join(modelDir, 'install.json'),
-      JSON.stringify({ release: bundledManifest().release }),
-    );
-    const providers = await decisionProviders(dataHome);
-    expect(providers.find((p) => p.id === 'local-model')).toMatchObject({
-      available: true,
-      version: bundledManifest().release,
-    });
+    const old = legacyJudgeDir(dataBase(modelEnv(dataHome), process.platform, dataHome));
+    mkdirSync(old, { recursive: true });
+    for (const name of ['model.onnx', 'tokenizer.json', 'install.json', 'notes.txt'])
+      writeFileSync(join(old, name), 'x');
+    await serve(dataHome);
+    expect(readdirSync(old)).toEqual(['notes.txt']);
   }, 30_000);
 
-  it('without an installed model it is plainly unavailable, and the server still runs', async () => {
+  it('without an installed bundle it is plainly unavailable, and the server still runs', async () => {
     const providers = await decisionProviders(temp());
     expect(providers.find((p) => p.id === 'local-model')).toMatchObject({ available: false });
     expect(providers.find((p) => p.id === 'local-heuristic')).toMatchObject({ available: true });
