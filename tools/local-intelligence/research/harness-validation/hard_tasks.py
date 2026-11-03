@@ -22,14 +22,18 @@ VITEST_FILE = re.compile(r'\.test\.tsx?$')
 SOURCE_FILE = re.compile(r'\.tsx?$')
 NOT_SOURCE = re.compile(r'(^|/)(test|tests|e2e)/|\.(test|spec)\.tsx?$|\.d\.ts$')
 DEPENDENCY_FILE = re.compile(r'(^|/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^patches/')
-INTERFACE_HEADING = ('The tests use the names and text below. Use them exactly, even where the '
-                     'description above does not spell them out.')
+TEST_DIRECTORY = re.compile(r'(^|/)tests?/')
+INTERFACE_START = 'The tests use the names'
+INTERFACE_HEADING = (f'{INTERFACE_START}, text and numbers below, each with the file that holds it. '
+                     'They add to the description above and do not replace it.')
 STATIC_IMPORT = re.compile(r"""^\s*import\s+(?!type\s)(?:(\w+)\s*,?\s*)?(?:\{([^}]*)\}\s*)?from\s*['"]([^'"]+)['"]""", re.M)
 DYNAMIC_IMPORT = re.compile(r"""\{([^{}]*)\}\s*=\s*await\s+import\(\s*['"]([^'"]+)['"]\s*\)""")
 EXPORT_LIST = re.compile(r"""^export\s*(?:\{([^}]*)\}|(\*))\s*(?:from\s*['"]([^'"]+)['"])?""", re.M)
 EXPORTED = r'^export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|class|enum)\s+{}\b'
 DECLARED = r'^(?:async\s+)?(?:function\*?|const|let|class|enum)\s+{}\b'
+TYPE_DECLARATION = re.compile(r'^export\s+(?:interface|type)\s+(\w+)', re.M)
 STRING = re.compile(r"""'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\\n]|\\.)*)`""")
+NUMBER = re.compile(r'(?<![\w.])\d{2,}(?![\w.])')
 MIN_TEXT_CHARS = 4
 MAX_DECLARATION_LINES = 12
 
@@ -192,6 +196,25 @@ def required_text(tests_added, source_added, source_before, request):
     return sorted(found)
 
 
+def required_numbers(tests_added, source_added, source_before, request):
+    """New numbers the tests check: the fix adds them, and the request does not give them."""
+    checked = set(NUMBER.findall('\n'.join(line for line in tests_added if not line.lstrip().startswith('import '))))
+    given = set(NUMBER.findall(source_before)) | set(NUMBER.findall(request))
+    return sorted((checked & set(NUMBER.findall(source_added))) - given, key=int)
+
+
+def new_types(names, before, after):
+    """The exported types a disclosed declaration names and the start lacks, each with its body."""
+    found = set()
+    for path, what in names:
+        source = after(path) or ''
+        old = {match[1] for match in TYPE_DECLARATION.finditer(before(path) or '')}
+        for match in TYPE_DECLARATION.finditer(source):
+            if match[1] not in old and re.search(rf'\b{match[1]}\b', what):
+                found.add((path, ' '.join(source[match.start():].split('\n\n')[0].split())))
+    return found
+
+
 def interface_note(task, read, diff):
     """What the tests need that neither the commit message nor the starting code gives a worker."""
     before = lambda path: read(task['parent'], path)
@@ -208,23 +231,29 @@ def interface_note(task, read, diff):
                     names.add((path, 'default export'))
             elif not (old and exported(before, old, name)):
                 names.add(exported(after, path, name) or (path, name))
+    names |= new_types(names, before, after)
     sources = [path for path in diff if not NOT_SOURCE.search(path)]
-    text = required_text([line for test in task['tests'] for line in diff.get(test, [])],
-                         '\n'.join(line for path in sources for line in diff[path]),
-                         '\n'.join(before(path) or '' for path in sources), task['request'])
-    if not names and not text:
+    added = [[line for test in task['tests'] for line in diff.get(test, [])],
+             '\n'.join(line for path in sources for line in diff[path]),
+             '\n'.join(before(path) or '' for path in sources), task['request']]
+    text, numbers = required_text(*added), required_numbers(*added)
+    if not names and not text and not numbers:
         return ''
+    holder = lambda value: next(path for path in sources if value in '\n'.join(diff[path]))
     sections = [INTERFACE_HEADING]
     if names:
         sections.append('Names:\n' + '\n'.join(f'- {path}: {what}' for path, what in sorted(names)))
     if text:
-        sections.append('Text:\n' + '\n'.join(f'- {line}' for line in text))
+        sections.append('Text:\n' + '\n'.join(f'- {holder(line)}: {line}' for line in text))
+    if numbers:
+        sections.append('Numbers:\n' + '\n'.join(f'- {holder(line)}: {line}' for line in numbers))
     return '\n\n' + '\n\n'.join(sections)
 
 
 def with_interface(task, read, diff):
-    base = task['request'].split(f'\n\n{INTERFACE_HEADING}')[0]
-    plain = {**task, 'request': base}
+    base = task['request'].split(f'\n\n{INTERFACE_START}')[0]
+    support = sorted(path for path in diff if TEST_DIRECTORY.search(path) and not VITEST_FILE.search(path))
+    plain = {**task, 'request': base, 'support': support}
     return {**plain, 'request': base + interface_note(plain, read, diff)}
 
 

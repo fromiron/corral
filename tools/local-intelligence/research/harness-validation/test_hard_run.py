@@ -14,6 +14,33 @@ import sandbox
 TASK = {'id': 'swe-x', 'kind': 'swe-bench-verified', 'request': 'Fix it.', 'image': 'swebench/x@sha256:0'}
 
 
+class HiddenFiles(unittest.TestCase):
+    def fixed(self, directory, *paths):
+        env = Path(directory)
+        for path in paths:
+            (env / 'fixed' / path).parent.mkdir(parents=True, exist_ok=True)
+            (env / 'fixed' / path).write_text('kept\n')
+        return env
+
+    def test_a_fixture_the_tests_read_reaches_grading(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = self.fixed(directory, 'pkg/test/a.test.ts', 'pkg/test/fixtures/team.json')
+            task = {'tests': ['pkg/test/a.test.ts'], 'support': ['pkg/test/fixtures/team.json']}
+            self.assertEqual(hard_run.hide_tests(task, env), ['pkg/test/a.test.ts'])
+            self.assertEqual((env / 'hidden/pkg/test/fixtures/team.json').read_text(), 'kept\n')
+
+    def test_a_file_the_commit_removed_is_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = self.fixed(directory, 'pkg/test/a.test.ts')
+            task = {'tests': ['pkg/test/a.test.ts', 'pkg/test/gone.test.ts'], 'support': ['pkg/test/gone.json']}
+            self.assertEqual(hard_run.hide_tests(task, env), ['pkg/test/a.test.ts'])
+            self.assertFalse((env / 'hidden/pkg/test/gone.json').exists())
+
+    def test_a_commit_that_keeps_no_test_is_an_error(self):
+        with tempfile.TemporaryDirectory() as directory, self.assertRaises(ValueError):
+            hard_run.hide_tests({'tests': ['pkg/test/gone.test.ts'], 'support': []}, Path(directory))
+
+
 class Sandbox(unittest.TestCase):
     def test_newest_command_file_wins(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -120,8 +120,10 @@ finish. Runs share the machine, so their wall times get noisier.
 
 A Corral commit message rarely names what its tests import, and a worker cannot
 guess it. `hard_tasks.py --disclose` adds to each Corral request the values the
-tests import that the starting code does not export, and the new text they check.
-It reads the commit and its tests, never an outcome.
+tests import that the starting code does not export, the new exported types their
+declarations name, and the new text and numbers the tests check, each with the file
+that adds it. It reads the commit and its tests, never an outcome. It also records
+the commit's other files under a test directory, which go to grading with its tests.
 
 ```sh
 python hard_run.py --root "$CORRAL_RESEARCH_ROOT" --preflight-only

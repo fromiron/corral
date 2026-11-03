@@ -101,6 +101,19 @@ def env_dir(root, task):
     return root / 'outcomes/hard/env' / task['id']
 
 
+def hide_tests(task, env):
+    """The commit's tests and the files beside them that they read, held back for grading."""
+    tests = [path for path in task['tests'] if (env / 'fixed' / path).exists()]
+    if not tests:
+        raise ValueError('the commit keeps no test file')
+    for path in [*tests, *task['support']]:
+        if (env / 'fixed' / path).exists():
+            target = env / 'hidden' / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(env / 'fixed' / path, target)
+    return tests
+
+
 def prepare_corral(root, task):
     env = env_dir(root, task)
     if (env / 'ready.json').exists():
@@ -121,14 +134,7 @@ def prepare_corral(root, task):
     extract(task['parent'], env / 'repo')
     commit_tree(env / 'repo')
     extract(task['commit'], env / 'fixed')
-    tests = [path for path in task['tests'] if (env / 'fixed' / path).exists()]
-    if not tests:
-        raise ValueError('the commit keeps no test file')
-    for path in tests:
-        target = env / 'hidden' / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(env / 'fixed' / path, target)
-    save(env / 'ready.json', {'tests': tests})
+    save(env / 'ready.json', {'tests': hide_tests(task, env)})
     return env
 
 

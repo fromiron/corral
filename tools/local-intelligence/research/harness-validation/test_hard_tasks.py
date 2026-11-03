@@ -183,7 +183,11 @@ const { e } = await import('../src/w.ts');"""
     def test_new_text_the_tests_check_is_disclosed(self):
         diff = {'app/src/a.test.ts': ["expect(text).toContain('Not collected: the run ended first');"],
                 'app/src/menu.ts': ["return 'Not collected: the run ended first';"]}
-        self.assertIn('- Not collected: the run ended first', self.note({}, {}, diff))
+        self.assertIn('- app/src/menu.ts: Not collected: the run ended first', self.note({}, {}, diff))
+
+    def test_the_note_adds_to_the_request_and_never_replaces_it(self):
+        self.assertIn('do not replace', hard_tasks.INTERFACE_HEADING)
+        self.assertNotIn('Use them exactly', hard_tasks.INTERFACE_HEADING)
 
     def test_text_the_start_has_is_left_out(self):
         diff = {'app/src/a.test.ts': ["expect(text).toContain('Already there');"],
@@ -199,6 +203,63 @@ const { e } = await import('../src/w.ts');"""
     def test_test_only_text_is_left_out(self):
         self.assertEqual(self.note({}, {}, {'app/src/a.test.ts': ["const title = 'A fixture title';"]}), '')
 
+    def test_a_new_type_a_disclosed_declaration_names_comes_whole(self):
+        after = {'app/src/a.test.ts': "import { place } from './menu.ts';",
+                 'app/src/menu.ts': ("export interface Placement {\n  position: 'fixed';\n  left: number;\n}\n\n"
+                                     'export function place(top: number): Placement {\n  return x;\n}\n')}
+        note = self.note({}, after)
+        self.assertIn("- app/src/menu.ts: export interface Placement { position: 'fixed'; left: number; }", note)
+
+    def test_a_type_the_start_exports_is_left_out(self):
+        menu = 'export interface Placement {\n  left: number;\n}\n'
+        after = {'app/src/a.test.ts': "import { place } from './menu.ts';",
+                 'app/src/menu.ts': f'{menu}\nexport function place(top: number): Placement {{\n  return x;\n}}\n'}
+        self.assertNotIn('export interface Placement', self.note({'app/src/menu.ts': menu}, after))
+
+    def test_a_type_no_disclosed_declaration_names_is_left_out(self):
+        after = {'app/src/a.test.ts': "import { place } from './menu.ts';",
+                 'app/src/menu.ts': ('export interface Other {\n  left: number;\n}\n\n'
+                                     'export function place(top: number): string {\n  return x;\n}\n')}
+        self.assertNotIn('Other', self.note({}, after))
+
+    def test_new_numbers_the_tests_check_are_disclosed(self):
+        diff = {'app/src/a.test.ts': ['expect(place(1).maxHeight).toBe(96);'],
+                'app/src/menu.ts': ['maxHeight: Math.max(96, room),']}
+        self.assertIn('Numbers:\n- app/src/menu.ts: 96', self.note({}, {}, diff))
+
+    def test_a_number_the_start_has_is_left_out(self):
+        diff = {'app/src/a.test.ts': ['expect(height).toBe(96);'], 'app/src/menu.ts': ['const least = 96;']}
+        self.assertEqual(self.note({'app/src/menu.ts': 'const old = 96;'}, {}, diff), '')
+
+    def test_a_number_the_request_gives_is_left_out(self):
+        task = {**self.TASK, 'request': 'fix: keep at least 96 pixels'}
+        diff = {'app/src/a.test.ts': ['expect(height).toBe(96);'], 'app/src/menu.ts': ['const least = 96;']}
+        self.assertEqual(self.note({}, {}, diff, task), '')
+
+    def test_a_number_only_the_tests_use_is_left_out(self):
+        diff = {'app/src/a.test.ts': ['const input = { top: 600 };'], 'app/src/menu.ts': ['const least = 96;']}
+        self.assertEqual(self.note({}, {}, diff), '')
+
+    def test_a_single_digit_is_left_out(self):
+        diff = {'app/src/a.test.ts': ['expect(gap).toBe(8);'], 'app/src/menu.ts': ['const gap = 8;']}
+        self.assertEqual(self.note({}, {}, diff), '')
+
+    def test_a_number_inside_a_longer_one_or_a_name_is_left_out(self):
+        diff = {'app/src/a.test.ts': ['expect(h96).toBe(1296);'], 'app/src/menu.ts': ['const h96 = 96.5, w = 96;']}
+        self.assertEqual(self.note({}, {}, diff), '')
+
+    def test_files_beside_the_tests_go_with_them(self):
+        diff = {'pkg/test/fixtures/team.json': ['{}'], 'pkg/test/a.test.ts': ['x'], 'pkg/src/a.ts': ['x'],
+                'app/e2e/flow.spec.ts': ['x']}
+        task = hard_tasks.with_interface(self.TASK, lambda rev, path: None, diff)
+        self.assertEqual(task['support'], ['pkg/test/fixtures/team.json'])
+
+    def test_a_note_in_the_earlier_wording_is_replaced_too(self):
+        earlier = {**self.TASK, 'request': self.TASK['request'] + '\n\nThe tests use the names and text below. '
+                   'Use them exactly, even where the description above does not spell them out.\n\nText:\n- old'}
+        task = hard_tasks.with_interface(earlier, lambda rev, path: None, {})
+        self.assertEqual(task['request'], self.TASK['request'])
+
     def test_the_note_replaces_an_older_note(self):
         files = {'after': {'app/src/a.test.ts': "import { place } from './menu.ts';",
                            'app/src/menu.ts': 'export const place = 1;\n'}, 'before': {}}
@@ -208,7 +269,8 @@ const { e } = await import('../src/w.ts');"""
         self.assertEqual(hard_tasks.with_interface(once, read, {}), once)
 
     def test_a_task_with_nothing_to_add_keeps_its_request(self):
-        self.assertEqual(hard_tasks.with_interface(self.TASK, lambda rev, path: None, {}), self.TASK)
+        self.assertEqual(hard_tasks.with_interface(self.TASK, lambda rev, path: None, {}),
+                         {**self.TASK, 'support': []})
 
 
 if __name__ == '__main__':
