@@ -47,7 +47,7 @@ if (!samplesPath || !cpuPath) {
 }
 
 const bundle = bundledManifest();
-const dims = bundle.embedding.dims;
+const dims = bundle.models.effort.dims;
 const raw = readFileSync(samplesPath);
 const samplesSha256 = createHash('sha256').update(raw).digest('hex');
 const samples = raw
@@ -60,7 +60,7 @@ function vectors(path: string, device: string): Float32Array {
   const info = JSON.parse(readFileSync(`${path}.json`, 'utf8')) as EmbeddingInfo;
   const expected = {
     release: bundle.release,
-    baseModelSha256: bundle.model.sha256,
+    baseModelSha256: bundle.models.effort.sha256,
     preprocessVersion: EFFORT_PREPROCESS_VERSION,
     device,
     count: samples.length,
@@ -359,7 +359,7 @@ const output: EffortWeights = {
   version: VERSION,
   labels: [...LEVELS],
   dims,
-  baseModelSha256: bundle.model.sha256,
+  baseModelSha256: bundle.models.effort.sha256,
   preprocessVersion: EFFORT_PREPROCESS_VERSION,
   task: 'classification',
   weights: LEVELS.map((_, k) =>
@@ -376,7 +376,7 @@ writeFileSync(WEIGHTS, `${JSON.stringify(output)}\n`);
 
 const classifier = loadEffortClassifier(JSON.parse(readFileSync(WEIGHTS, 'utf8')), {
   dims,
-  baseModelSha256: bundle.model.sha256,
+  baseModelSha256: bundle.models.effort.sha256,
   preprocessVersion: EFFORT_PREPROCESS_VERSION,
 });
 const judgeAll = (set: number[], all: Float32Array) =>
@@ -515,7 +515,7 @@ const report = `# effort 분류기 검증 리포트 (${VERSION})
 
 \`train.ts\`가 생성한다. 손으로 고치지 않는다. 절차와 한계는 [README](README.md)에 있다.
 
-- 기반 모델: \`${bundle.model.file}\` (sha256 \`${bundle.model.sha256.slice(0, 12)}…\`), 번들 \`${bundle.release}\`, 전처리 \`${EFFORT_PREPROCESS_VERSION}\`
+- 기반 모델: \`${bundle.models.effort.file}\` (sha256 \`${bundle.models.effort.sha256.slice(0, 12)}…\`), 번들 \`${bundle.release}\`, 전처리 \`${EFFORT_PREPROCESS_VERSION}\`
 - 표본: ${samples.length}건 (sha256 \`${samplesSha256.slice(0, 12)}…\`). 학습 ${trainSet.length}, 보정 ${calibrationSet.length}, 테스트 ${testSet.length}, 평가 전용 ${evalSet.length}
 - 언어 방향 제거: ko, ja (학습 세트의 MMLU 번역 쌍 평균 차이)
 - 선택된 L2 계수: ${chosen.lambda} (보정 세트 macro-F1 ${candidates.map((c) => `${c.lambda}: ${num(c.score)}`).join(', ')})

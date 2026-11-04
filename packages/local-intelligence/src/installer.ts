@@ -1,6 +1,6 @@
 // The settings panel's install: one background install per server, with progress, cancellation
 // and the last failure, on top of installBundle.
-import type { Bundle } from './bundle.ts';
+import { type Bundle, MODEL_ROLES } from './bundle.ts';
 import { installBundle, installState } from './install.ts';
 
 export interface InstallProgressView {
@@ -21,6 +21,21 @@ export interface BundleInstallerOptions {
   fetchFn?: typeof fetch;
   /** Called after the release stamp is written. */
   onInstalled(): void;
+}
+
+function modelBytes(bundle: Bundle): number {
+  return MODEL_ROLES.reduce((sum, role) => sum + bundle.models[role].size, 0);
+}
+
+/** Bytes of the files installed before `file`: the models in manifest order, then the runtime. */
+function bytesBefore(bundle: Bundle, file: string): number {
+  if (file === 'runtime') return modelBytes(bundle);
+  let before = 0;
+  for (const role of MODEL_ROLES) {
+    if (bundle.models[role].file === file) return before;
+    before += bundle.models[role].size;
+  }
+  return before;
 }
 
 /** A failure the user can act on; filesystem errors carry local paths, so only their code. */
@@ -48,7 +63,7 @@ export class BundleInstaller {
       target && Object.hasOwn(bundle.runtime.targets, target)
         ? bundle.runtime.targets[target]
         : undefined;
-    return runtime ? bundle.model.size + runtime.size : null;
+    return runtime ? modelBytes(bundle) + runtime.size : null;
   }
 
   running(): boolean {
@@ -78,9 +93,9 @@ export class BundleInstaller {
       target,
       ...(fetchFn ? { fetchFn } : {}),
       signal: controller.signal,
-      // The model comes first; once the runtime downloads, the model is in place.
+      // The models come first, in manifest order, then the runtime.
       onProgress: ({ file, received }) => {
-        job.received = (file === 'runtime' ? bundle.model.size : 0) + received;
+        job.received = bytesBefore(bundle, file) + received;
       },
     })
       .then(

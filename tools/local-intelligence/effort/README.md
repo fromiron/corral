@@ -1,10 +1,11 @@
 # effort 분류기 학습
 
-자동 추론의 로컬 판정(`corral-effort-v2` 정책)에 쓰는 분류기를 만든다. 배포 가중치는 `effort-v2`이며 [v2 재현과 비교](v2.md)를 따른다. 아래 절차와 `train.ts`, `report.md`는 선형 기준 모델 `effort-v1`의 재현 자료다. 동작 규칙은 [로컬 AI 기능 명세](../../../docs/specs/features/local-intelligence.md)가 정하고, 제품 런타임은 이 디렉터리를 쓰지 않는다.
+자동 추론의 로컬 판정(`corral-effort-v4` 정책)에 쓰는 분류기를 만든다. 배포 가중치는 `effort-v4`이고 추론 판정 모델과 함께 [v4 구성과 평가](v4.md)에 정리했다. [v2 재현과 비교](v2.md)는 이전 가중치 `effort-v2`의 자료이고, 아래 절차와 `train.ts`, `report.md`는 선형 기준 모델 `effort-v1`의 재현 자료다. 동작 규칙은 [로컬 AI 기능 명세](../../../docs/specs/features/local-intelligence.md)가 정하고, 제품 런타임은 이 디렉터리를 쓰지 않는다.
 
 | 파일 | 내용 |
 |---|---|
-| [label-rubric.md](label-rubric.md) | 데이터셋의 기존 난이도 신호를 4단계로 옮기는 기준 |
+| [v4.md](v4.md) | 배포 가중치 `effort-v4`와 추론 판정 모델의 구성, 회귀 수치와 한계 |
+| [label-rubric.md](label-rubric.md) | 추론 수준과 열린/닫힌 요청의 기준, 기준 모델의 신호 대응 |
 | [datasets.md](datasets.md) | 출처, 고정 리비전, 라이선스, 표본 수, 제외한 것 |
 | [fetch.py](fetch.py) | 고정 리비전에서 표본(JSONL)을 만든다 |
 | [embed.ts](embed.ts) | 제품 엔진과 전처리로 표본을 임베딩한다 |
@@ -26,7 +27,7 @@ node tools/local-intelligence/effort/train.ts <work>/samples.jsonl <work>/cpu.f3
 
 - `<cache-dir>`과 `<work>`는 저장소 밖에 둔다. 원본과 표본은 커밋하지 않는다.
 - `fetch.py`는 받은 원본을 출처별 폴더에 캐시한다. TACO는 parquet의 필요한 열만 HTTP 범위 요청으로 읽는다.
-- `embed.ts`는 제품과 같은 `effortRequest(requestInput(요청))`으로 한 건씩 임베딩한다. 이 머신(RTX 3070, 6스레드 CPU)에서 16,123건에 GPU 약 3분, CPU 약 18분이 걸렸다.
+- `embed.ts`는 제품과 같은 `effortRequest(requestInput(요청))`으로 한 건씩 임베딩한다. 지금은 현재 추론 판정 모델과 `effort-text-v2`로 임베딩하므로, `effort-v1`을 그대로 재현하려면 Git 기록의 `corral-local-ai-1` 릴리스와 `effort-text-v1`이 필요하다. 이 머신(RTX 3070, 6스레드 CPU)에서 16,123건에 GPU 약 3분, CPU 약 18분이 걸렸다.
 - `train.ts`는 CPU 벡터로 학습과 보정을 하고, GPU 벡터는 장치 간 일치도만 잰다. 같은 입력이면 결과가 같다. 결과는 `packages/local-intelligence/weights/effort-v1.json`과 `report.md`에 쓴다.
 
 ## 절차
@@ -38,7 +39,7 @@ node tools/local-intelligence/effort/train.ts <work>/samples.jsonl <work>/cpu.f3
 5. 보류 기준: 보류한 요청은 medium으로 처리된다고 보고, 보정 세트에서 수준별 가중 평균 수준 오차의 합이 가장 작은 최대 확률 기준을 고른다. 임의 상수를 쓰지 않는다.
 6. 가중치 파일을 제품의 `loadEffortClassifier`로 다시 불러 테스트 세트와 평가 세트를 판정하고 리포트를 쓴다.
 
-가중치를 바꾸면 버전을 올린다. 전처리(`effort-text-v1`)나 기반 모델이 바뀌면 다시 임베딩하고 다시 학습해야 한다. 가중치 파일이 기반 모델 sha256, 차원, 전처리 버전을 담고 있어 맞지 않으면 엔진이 불러오지 않는다.
+가중치를 바꾸면 버전을 올린다. 전처리(현재 `effort-text-v2`)나 추론 판정 모델이 바뀌면 다시 임베딩하고 다시 학습해야 한다. 가중치 파일이 기반 모델 sha256, 차원, 전처리 버전을 담고 있어 맞지 않으면 엔진이 불러오지 않는다.
 
 ## 한계 (`effort-v1`)
 

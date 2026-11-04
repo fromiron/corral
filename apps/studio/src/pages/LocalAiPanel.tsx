@@ -93,9 +93,11 @@ export function LocalAiPanel({
           <h3 id="local-ai-heading">{t('heading')}</h3>
           {view ? (
             <>
-              <p role="status">
-                {view.modelName} · {t(`state.${view.state}`)}
-              </p>
+              <ul>
+                <li>{t('model.meeting', { name: view.models.meeting })}</li>
+                <li>{t('model.effort', { name: view.models.effort })}</li>
+              </ul>
+              <p role="status">{t(`state.${view.state}`)}</p>
               {canInstall && view.downloadBytes !== null ? (
                 <p>{t('download', { size: mb(view.downloadBytes) })}</p>
               ) : null}
@@ -210,7 +212,11 @@ function ExternalJudgeSettings({
       <div className="flex min-w-0 flex-col gap-2">
         <h3 id="local-ai-external-heading">{t('external.heading')}</h3>
         <p>{t('external.scope')}</p>
-        {external.policy === 'medium' ? <p>{t('external.policyMedium')}</p> : null}
+        {external.policy === 'medium' ? (
+          <p>{t('external.policyMedium')}</p>
+        ) : external.judgeAbstains ? null : (
+          <p>{t('external.judgeNeverAbstains')}</p>
+        )}
         {external.provider && chosenWithoutKey ? (
           <p>{t('external.chosenNoKey', { name: name(external.provider) })}</p>
         ) : offered.length === 0 ? (

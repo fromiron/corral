@@ -75,9 +75,15 @@ export const ReasoningResolution = z.strictObject({
     .array(z.enum(['low', 'medium', 'high', 'xhigh']))
     .max(4)
     .optional(),
-  /** Earlier policy versions remain readable as recorded. v3 is medium, v2 the judged policy. */
+  /** Earlier policy versions remain readable as recorded. v3 is medium, v4 the judged policy. */
   policyVersion: z
-    .enum(['mixdog-relative-v1', 'corral-effort-v1', 'corral-effort-v2', 'corral-effort-v3'])
+    .enum([
+      'mixdog-relative-v1',
+      'corral-effort-v1',
+      'corral-effort-v2',
+      'corral-effort-v3',
+      'corral-effort-v4',
+    ])
     .optional(),
   fallback: z
     .enum([

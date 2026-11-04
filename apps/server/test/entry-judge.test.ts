@@ -156,7 +156,7 @@ describe('the server entry point registers the local AI effort judge (#21)', () 
       const providers = await decisionProviders(dataHome, idleHelper(dataHome));
       expect(providers.find((p) => p.id === 'local-model')).toMatchObject({
         available: true,
-        version: `${bundle.release}+effort-v2`,
+        version: `${bundle.release}+effort-v4`,
       });
     },
     30_000,

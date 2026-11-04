@@ -1,7 +1,7 @@
 import type { DecisionCancellation, ReasoningInput } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import { type EffortWeights, loadEffortClassifier } from '../src/effort/classifier.ts';
-import { EFFORT_PREPROCESS_VERSION, effortText } from '../src/effort/preprocess.ts';
+import { EFFORT_PREPROCESS_VERSION, effortText, requestInput } from '../src/effort/preprocess.ts';
 import { LocalEffortProvider } from '../src/effort/provider.ts';
 import type { EmbedRequest } from '../src/engine/engine.ts';
 
@@ -26,7 +26,7 @@ function deepFreeze<T>(value: T): T {
 }
 
 describe('effort preprocessing', () => {
-  it('puts the current request first, then plan, recent calls and earlier turns', () => {
+  it('writes the judge text fields in order, with tool calls as supplied', () => {
     const text = effortText(
       input({
         kind: 'step',
@@ -36,39 +36,47 @@ describe('effort preprocessing', () => {
         plan: 'reproduce, then fix',
         calls: [
           { name: 'read_file', args: '{"path":"a.ts"}', result: 'old' },
-          { name: 'run', args: '{"cmd":"vitest"}', result: 'FAIL socket.test.ts' },
+          {
+            name: 'run',
+            args: '{"cmd":"vitest"}',
+            result: 'FAIL socket.test.ts',
+            status: 'failed',
+          },
+          { name: 'list', args: '', result: '' },
         ],
       }),
     );
     expect(text.split('\n')).toEqual([
-      'request: Fix the flaky reconnect test',
-      'plan: reproduce, then fix',
-      'call: run {"cmd":"vitest"}',
-      'result: FAIL socket.test.ts',
-      'call: read_file {"path":"a.ts"}',
-      'result: old',
-      'previous request: run the tests',
-      'previous reply: 1 failed, 41 passed',
+      'Task: choose the minimum reasoning effort for the NEXT coding response.',
+      'Stage: step',
+      'Current request: Fix the flaky reconnect test',
+      'Previous user request: run the tests',
+      'Previous reply: 1 failed, 41 passed',
+      'Current plan: reproduce, then fix',
+      'Tool 1: read_file; status: completed',
+      'Arguments: {"path":"a.ts"}',
+      'Observed output: old',
+      'Tool 2: run; status: failed',
+      'Arguments: {"cmd":"vitest"}',
+      'Observed output: FAIL socket.test.ts',
+      'Tool 3: list; status: completed',
+      'Observed output: ',
     ]);
+    expect(EFFORT_PREPROCESS_VERSION).toBe('effort-text-v2');
   });
 
-  it('caps each part, strips terminal escapes and leaves the input untouched', () => {
-    const original = input({
-      request: `\u001b[31mred\u001b[0m ${'가'.repeat(5000)}`,
-      prev: `${'x'.repeat(2000)}END`,
-      calls: [{ name: 'run', args: 'a'.repeat(400), result: `${'h'.repeat(3000)}TAIL` }],
-    });
+  it('leaves empty parts out, clips nothing and leaves the input untouched', () => {
+    const long = `start ${'가'.repeat(5000)} end`;
+    const original = input({ request: long, prev: '', plan: '' });
     const frozen = deepFreeze(structuredClone(original));
     const text = effortText(frozen);
     expect(frozen).toEqual(original);
-    const [request, call, result, previous] = text.split('\n');
-    expect(request!.startsWith('request: red 가')).toBe(true);
-    expect([...request!].length).toBeLessThanOrEqual('request: '.length + 1200);
-    expect([...call!].length).toBeLessThanOrEqual('call: run '.length + 160);
-    expect(result!.endsWith('TAIL')).toBe(true);
-    expect(previous!.endsWith('END')).toBe(true);
-    expect(text).not.toContain('\u001b');
-    expect(EFFORT_PREPROCESS_VERSION).toBe('effort-text-v1');
+    // The engine cuts at the model's token limit, keeping the start, so nothing is cut here.
+    expect(text.split('\n')).toEqual([
+      'Task: choose the minimum reasoning effort for the NEXT coding response.',
+      'Stage: turn',
+      `Current request: ${long}`,
+    ]);
   });
 });
 
@@ -99,6 +107,87 @@ const expected = {
   baseModelSha256: 'a'.repeat(64),
   preprocessVersion: EFFORT_PREPROCESS_VERSION,
 };
+
+// A two-head v3 fixture: LayerNorm, GELU hidden layer and output for the level, logistic openness.
+// Expected values come from an independent numpy computation of the same weights.
+const v3 = {
+  schemaVersion: 3,
+  version: 'effort-v3-test',
+  labels: ['low', 'medium', 'high', 'xhigh'],
+  dims: 4,
+  baseModelSha256: 'a'.repeat(64),
+  preprocessVersion: EFFORT_PREPROCESS_VERSION,
+  task: 'classification',
+  layerNorm: { weight: [1, 0.5, 2, 1], bias: [0, 0.1, -0.1, 0], eps: 1e-5 },
+  hidden: {
+    weights: [
+      [1, -1, 0.5, 0],
+      [0, 0.5, -1, 1],
+    ],
+    bias: [0.1, -0.2],
+    activation: 'gelu',
+  },
+  weights: [
+    [1, 0],
+    [0, 1],
+    [-1, 1],
+    [0.5, -0.5],
+  ],
+  bias: [0, 0, 0, 0],
+  temperature: 1,
+  abstainBelow: 0,
+  open: { weights: [2, 0, 0, -2], bias: -0.5, raiseAt: 0.55 },
+};
+
+describe('effort classifier v3: level and openness heads', () => {
+  it('raises an open request to high whatever the level head says', () => {
+    const classifier = loadEffortClassifier(v3, expected);
+    const judged = classifier.judge(Float32Array.from([0.6, -0.2, 0.3, 0.1]));
+    expect(judged.open).toBeCloseTo(0.622459, 5);
+    expect(judged.probabilities.low).toBeCloseTo(0.701492, 5);
+    expect(judged.probabilities.medium).toBeCloseTo(0.0612, 5);
+    expect(judged.probabilities.high).toBeCloseTo(0.005962, 5);
+    expect(judged.probabilities.xhigh).toBeCloseTo(0.231346, 5);
+    expect(judged.answer).toBe('high');
+    expect(judged.abstain).toBe(false);
+  });
+
+  it("takes the level head's top answer below the raise threshold and never abstains", () => {
+    const classifier = loadEffortClassifier(v3, expected);
+    const judged = classifier.judge(Float32Array.from([0.1, -0.2, 0.3, 0.6]));
+    expect(judged.open).toBeCloseTo(0.182426, 5);
+    expect(judged.probabilities.low).toBeCloseTo(0.340072, 5);
+    expect(judged.answer).toBe('low');
+    expect(judged.abstain).toBe(false);
+    expect(classifier.abstains).toBe(false);
+    // Exactly at the threshold counts as open.
+    const at = loadEffortClassifier(
+      { ...v3, open: { ...v3.open, raiseAt: judged.open! } },
+      expected,
+    );
+    expect(at.judge(Float32Array.from([0.1, -0.2, 0.3, 0.6])).answer).toBe('high');
+  });
+
+  it('refuses v3 weights with a missing or mis-sized part', () => {
+    const { open: _open, ...noOpen } = v3;
+    expect(() => loadEffortClassifier(noOpen, expected)).toThrow();
+    expect(() =>
+      loadEffortClassifier({ ...v3, open: { ...v3.open, weights: [1, 2, 3] } }, expected),
+    ).toThrow();
+    expect(() =>
+      loadEffortClassifier({ ...v3, open: { ...v3.open, raiseAt: 1.5 } }, expected),
+    ).toThrow();
+    expect(() =>
+      loadEffortClassifier({ ...v3, layerNorm: { ...v3.layerNorm, weight: [1, 1] } }, expected),
+    ).toThrow();
+    expect(() =>
+      loadEffortClassifier({ ...v3, hidden: { ...v3.hidden, activation: 'relu' } }, expected),
+    ).toThrow();
+    expect(() => loadEffortClassifier({ ...v3, layerNorm: undefined }, expected)).toThrow();
+    // Openness belongs to v3; older formats cannot carry it.
+    expect(() => loadEffortClassifier({ ...weights(), open: v3.open }, expected)).toThrow();
+  });
+});
 
 describe('effort classifier', () => {
   it('loads a versioned hidden-layer head over the unchanged embedding', () => {
@@ -144,6 +233,8 @@ describe('effort classifier', () => {
     expect(sum).toBeCloseTo(1, 10);
     const unclear = classifier.judge(Float32Array.from([0.1, 0.1, 0.12, 0.1]));
     expect(unclear.abstain).toBe(true);
+    expect(classifier.abstains).toBe(true);
+    expect(loadEffortClassifier(weights({ abstainBelow: 0 }), expected).abstains).toBe(false);
     const hotter = loadEffortClassifier(weights({ temperature: 4 }), expected);
     expect(hotter.judge(Float32Array.from([0, 0, 1, 0])).probabilities.high).toBeLessThan(
       clear.probabilities.high,
@@ -229,7 +320,7 @@ describe('local effort provider', () => {
       priority: 'effort',
       overflow: 'truncate',
     });
-    expect(requests[0]!.texts).toEqual(['request: warm up']);
+    expect(requests[0]!.texts).toEqual([effortText(requestInput('warm up'))]);
     complete([Float32Array.from([0, 1, 0, 0])]);
     await warming;
     expect(ready).toBe(true);
@@ -279,7 +370,7 @@ describe('local effort provider', () => {
       cancellation,
     );
     expect(observed).toMatchObject({ answer: 'low' });
-    expect(requests[0]!.texts).toEqual(['request: thanks']);
+    expect(requests[0]!.texts).toEqual([effortText(requestInput('thanks'))]);
     await expect(judge.decideRequest(input({ kind: 'compaction' }), cancellation)).rejects.toThrow(
       /compaction/,
     );

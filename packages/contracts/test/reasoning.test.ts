@@ -15,8 +15,13 @@ const base = {
 } as const;
 
 describe('reasoning records', () => {
-  it('records the guarded low policy without invalidating older decisions', () => {
-    for (const policyVersion of ['corral-effort-v2', 'corral-effort-v1', 'mixdog-relative-v1'])
+  it('records the judged v4 policy without invalidating older decisions', () => {
+    for (const policyVersion of [
+      'corral-effort-v4',
+      'corral-effort-v2',
+      'corral-effort-v1',
+      'mixdog-relative-v1',
+    ])
       expect(ReasoningResolution.safeParse({ ...base, policyVersion }).success).toBe(true);
   });
   it('records corral-effort-v1 judgments and still reads mixdog-relative-v1 runs', () => {

@@ -20,6 +20,7 @@ import { z } from 'zod';
 // model sign-ins, and are never returned, logged or put in an error or attempt record.
 
 const MAX_RESPONSE = 64 * 1024;
+const MAX_TEXT_CODE_POINTS = 4_096;
 const INSTRUCTIONS =
   'Choose how much reasoning effort an AI coding agent should spend on the request in the input. ' +
   'Judge how hard the request is, not how long it is.';
@@ -31,6 +32,15 @@ const CRITERIA = {
   xhigh:
     'Hard, open-ended problems: system design, subtle concurrency or correctness issues, or deep analysis.',
 } satisfies Record<(typeof EFFORT_LEVELS)[number], string>;
+
+/** The judge text's first code points; like the local judge, it keeps the start. */
+function judgeText(input: ReasoningInput): string {
+  const text = effortText(input);
+  let end = 0;
+  for (let n = 0; n < MAX_TEXT_CODE_POINTS && end < text.length; n++)
+    end += text.codePointAt(end)! > 0xffff ? 2 : 1;
+  return text.slice(0, end);
+}
 
 const count = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
@@ -203,7 +213,7 @@ class DecisionApiJudge implements ExternalEffortJudge {
     const key = await readKey(this.shared.credentials, this.spec.id);
     if (!key) throw failure(this.noKey, 'unavailable');
     if (cancellation.aborted) throw failure('the judgment was cancelled', 'cancelled');
-    const body = this.spec.body(effortText(input), request.model);
+    const body = this.spec.body(judgeText(input), request.model);
     const { owner } = request;
     const attempt: ModelAttempt = {
       version: 2,

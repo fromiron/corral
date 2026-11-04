@@ -195,7 +195,7 @@ describe('automatic reasoning admission', () => {
       resolved: 'high',
       judged: 'high',
       ladder: ['low', 'medium', 'high'],
-      policyVersion: 'corral-effort-v2',
+      policyVersion: 'corral-effort-v4',
       judgeVersion: 'v6',
       kind: 'turn',
     });
@@ -372,13 +372,25 @@ describe('corral-effort-v3', () => {
     };
   };
 
-  it.each([
-    ['left unset', { configured: false }],
-    ['set to medium', { policy: 'medium' as const }],
-  ])('requests medium with no judge or external call when the policy is %s', async (_name, how) => {
+  it('judges and records v4 when the policy is left unset', async () => {
+    const { calls, decide } = counted();
+    const s = await setup(decide, false, 6, ['low', 'medium', 'high', 'xhigh'], {
+      configured: false,
+    });
+    const permit = await s.host.prepareModelRequest(undefined, input);
+    expect(permit.reasoning).toMatchObject({
+      resolved: 'xhigh',
+      source: 'local-model',
+      policyVersion: 'corral-effort-v4',
+    });
+    expect(calls.judge).toBe(1);
+    s.command('cancel');
+  });
+
+  it('requests medium with no judge or external call when the policy is set to medium', async () => {
     const { calls, decide, externalJudges } = counted();
     const s = await setup(decide, false, 6, ['low', 'medium', 'high', 'xhigh'], {
-      ...how,
+      policy: 'medium',
       external: 'jev',
       externalJudges,
     });
@@ -398,16 +410,16 @@ describe('corral-effort-v3', () => {
   });
 
   it('fixes the policy in the run when it starts', async () => {
-    const started = await setup(counted().decide, false, 6, undefined, { configured: false });
+    const started = await setup(counted().decide, false, 6, undefined, { policy: 'medium' });
     expect(started.coordinator.getRunSnapshot(started.runId)?.reasoningApply).toMatchObject({
       policy: 'medium',
     });
     started.command('cancel');
-    const judged = await setup(counted().decide);
-    expect(judged.coordinator.getRunSnapshot(judged.runId)?.reasoningApply).toMatchObject({
+    const unset = await setup(counted().decide, false, 6, undefined, { configured: false });
+    expect(unset.coordinator.getRunSnapshot(unset.runId)?.reasoningApply).toMatchObject({
       policy: 'judged',
     });
-    judged.command('cancel');
+    unset.command('cancel');
   });
 
   it('lets a run recorded without a policy keep judging', () => {
@@ -428,7 +440,7 @@ describe('corral-effort-v3', () => {
 
   it('keeps the compaction record', async () => {
     const { calls, decide } = counted();
-    const s = await setup(decide, false, 6, undefined, { configured: false });
+    const s = await setup(decide, false, 6, undefined, { policy: 'medium' });
     const permit = await s.host.prepareModelRequest(undefined, { ...input, kind: 'compaction' });
     expect(permit.reasoning).toMatchObject({ resolved: 'medium', source: 'compaction' });
     expect(permit.reasoning?.fallback).toBeUndefined();
@@ -436,7 +448,7 @@ describe('corral-effort-v3', () => {
     s.command('cancel');
   });
 
-  it('still judges and records v2 under the judged policy', async () => {
+  it('still judges and records v4 under the judged policy', async () => {
     const { calls, decide } = counted();
     const s = await setup(decide, false, 6, ['low', 'medium', 'high', 'xhigh'], {
       policy: 'judged',
@@ -445,7 +457,7 @@ describe('corral-effort-v3', () => {
     expect(permit.reasoning).toMatchObject({
       resolved: 'xhigh',
       source: 'local-model',
-      policyVersion: 'corral-effort-v2',
+      policyVersion: 'corral-effort-v4',
     });
     expect(calls.judge).toBe(1);
     s.command('cancel');
@@ -466,7 +478,7 @@ describe('corral-effort-v3', () => {
 
   it('observes without applying and leaves the run its judge calls', async () => {
     const { calls, decide } = counted();
-    const s = await setup(decide, true, 6, undefined, { configured: false });
+    const s = await setup(decide, true, 6, undefined, { policy: 'medium' });
     for (let n = 1; n <= 3; n++) {
       const permit = await s.host.prepareModelRequest(undefined, input);
       expect(permit.reasoning).toMatchObject({ resolved: 'medium', fallback: 'policy' });
@@ -479,7 +491,7 @@ describe('corral-effort-v3', () => {
   });
 
   it('admits no model request after the run is cancelled', async () => {
-    const s = await setup(counted().decide, false, 6, undefined, { configured: false });
+    const s = await setup(counted().decide, false, 6, undefined, { policy: 'medium' });
     const request = s.host.prepareModelRequest(undefined, input).then(
       () => 'admitted',
       () => 'cancelled',
@@ -490,7 +502,7 @@ describe('corral-effort-v3', () => {
   });
 
   it('discards a preparation that a directive overtook', async () => {
-    const s = await setup(counted().decide, false, 6, undefined, { configured: false });
+    const s = await setup(counted().decide, false, 6, undefined, { policy: 'medium' });
     const request = s.host.prepareModelRequest(undefined, input).then(
       () => 'admitted',
       (error: Error) => error.message,
@@ -501,7 +513,7 @@ describe('corral-effort-v3', () => {
   });
 
   it('holds the request through a pause and discards it if a directive arrives meanwhile', async () => {
-    const s = await setup(counted().decide, false, 6, undefined, { configured: false });
+    const s = await setup(counted().decide, false, 6, undefined, { policy: 'medium' });
     let settled = false;
     const request = s.host
       .prepareModelRequest(undefined, input)
@@ -535,7 +547,7 @@ describe('corral-effort-v3', () => {
   });
 });
 
-describe('corral-effort-v2', () => {
+describe('corral-effort-v4', () => {
   const judged = (level: string, probabilities: Record<string, number>, extra = {}) => ({
     answer: level,
     probabilities,
@@ -543,17 +555,18 @@ describe('corral-effort-v2', () => {
     ...extra,
   });
 
-  it('reviews an uncertain low judgment when the distribution makes under-calling costly', async () => {
+  it('applies an uncertain low judgment as judged, with no low review', async () => {
     const s = await setup(async () =>
       judged('low', { low: 0.55, medium: 0.05, high: 0.25, xhigh: 0.15 }),
     );
     const permit = await s.host.prepareModelRequest(undefined, input);
     expect(permit.reasoning).toMatchObject({
-      resolved: 'medium',
-      source: 'fallback',
-      fallback: 'abstained',
-      policyVersion: 'corral-effort-v2',
+      resolved: 'low',
+      judged: 'low',
+      source: 'local-model',
+      policyVersion: 'corral-effort-v4',
     });
+    expect(permit.reasoning?.fallback).toBeUndefined();
     s.command('cancel');
   });
 
@@ -607,7 +620,7 @@ describe('corral-effort-v2', () => {
         resolved: c.resolved,
         judged: c.level,
         ladder: c.levels,
-        policyVersion: 'corral-effort-v2',
+        policyVersion: 'corral-effort-v4',
       });
       s.command('cancel');
     }
@@ -622,7 +635,7 @@ describe('corral-effort-v2', () => {
       resolved: 'medium',
       source: 'fallback',
       fallback: 'abstained',
-      policyVersion: 'corral-effort-v2',
+      policyVersion: 'corral-effort-v4',
       judgeVersion: 'v6',
     });
     expect(permit.reasoning?.judged).toBeUndefined();
@@ -659,7 +672,7 @@ describe('external judgment (Jev)', () => {
       (effect) => effect.kind === 'decision',
     );
 
-  it('uses the existing opt-in external path once for a guarded low judgment', async () => {
+  it('does not ask the decision API when the local judge answers, even an uncertain low', async () => {
     const j = jev(async () => ({ answer: 'high', model: 'reviewed' }));
     const s = await setup(
       async () => ({
@@ -677,13 +690,13 @@ describe('external judgment (Jev)', () => {
     );
     const permit = await s.host.prepareModelRequest(undefined, input);
     expect(permit.reasoning).toMatchObject({
-      resolved: 'high',
-      source: 'external-model',
-      escalated: true,
-      policyVersion: 'corral-effort-v2',
+      resolved: 'low',
+      source: 'local-model',
+      policyVersion: 'corral-effort-v4',
     });
-    expect(j.calls).toHaveLength(1);
-    expect(decisionEffects(s)).toHaveLength(1);
+    expect(permit.reasoning?.escalated).toBeUndefined();
+    expect(j.calls).toHaveLength(0);
+    expect(decisionEffects(s)).toHaveLength(0);
     s.command('cancel');
   });
 
@@ -700,7 +713,7 @@ describe('external judgment (Jev)', () => {
       source: 'external-model',
       escalated: true,
       judgeVersion: 'jev-2026-09-15',
-      policyVersion: 'corral-effort-v2',
+      policyVersion: 'corral-effort-v4',
     });
     expect(j.calls).toHaveLength(1);
     const [[sent, request] = []] = j.calls;

@@ -1,12 +1,13 @@
-// One embedding engine per server: a resident helper process that serves one request at a time.
-// Effort judgments go ahead of meeting batches. A caller that stops waiting only drops its
+// One embedding engine per server: a resident helper process that holds both models and serves
+// one request at a time. Effort judgments run on the effort model and go ahead of meeting
+// batches, which run on the meeting model. A caller that stops waiting only drops its
 // result; the slot is freed when the helper actually answers, so two computations never overlap.
 // Device changes and shutdown refuse waiting work and end the helper process.
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DecisionCancellation, Scheduler } from '@corral/contracts';
-import { type Bundle, bundledManifest } from '../bundle.ts';
+import { type Bundle, bundledManifest, type ModelRole } from '../bundle.ts';
 import { bundleDir, type InstallState, installState } from '../install.ts';
 import { type HelperLauncher, type HelperProcess, spawnHelper } from './helper.ts';
 
@@ -35,8 +36,15 @@ export interface EmbedRequest {
   task: EmbedTask;
   /** `truncate` keeps the first tokens; `chunk_average` covers long text in averaged chunks. */
   overflow: 'truncate' | 'chunk_average';
+  /** The asking feature: it sets the queue order and the model the texts run on. */
   priority: 'effort' | 'meeting';
 }
+
+/** Each feature has its own model; a request never runs on the other feature's model. */
+const MODEL_OF: Record<EmbedRequest['priority'], ModelRole> = {
+  effort: 'effort',
+  meeting: 'meeting',
+};
 
 export interface EngineStatus {
   state: EngineState;
@@ -249,15 +257,12 @@ export class LocalEmbeddingEngine {
   }
 
   private cacheKey(request: EmbedRequest, text: string) {
+    const model = this.bundle.models[MODEL_OF[request.priority]];
     return createHash('sha256')
       .update(
-        [
-          this.bundle.release,
-          request.task,
-          request.overflow,
-          this.bundle.embedding.dims,
-          text,
-        ].join('\u0000'),
+        [this.bundle.release, model.sha256, request.task, request.overflow, model.dims, text].join(
+          '\u0000',
+        ),
       )
       .digest('hex');
   }
@@ -317,19 +322,24 @@ export class LocalEmbeddingEngine {
     const runtime = this.bundle.runtime.targets[this.options.target!]!;
     // LiteRT-LM refuses a cache folder that does not exist.
     mkdirSync(join(dir, 'cache'), { recursive: true });
+    const { meeting, effort } = this.bundle.models;
     const helper = (this.options.launch ?? spawnHelper)({
       executable: this.options.helperPath!,
       args: [
         '--lib',
         join(dir, runtime.library),
-        '--model',
-        join(dir, this.bundle.model.file),
+        '--meeting-model',
+        join(dir, meeting.file),
+        '--meeting-max-input',
+        String(meeting.maxInputTokens),
+        '--effort-model',
+        join(dir, effort.file),
+        '--effort-max-input',
+        String(effort.maxInputTokens),
         '--backend',
         backend,
         '--threads',
         backend === 'cpu' ? String(this.options.threads) : '0',
-        '--max-input',
-        String(this.bundle.embedding.maxInputTokens),
         '--cache-dir',
         join(dir, 'cache'),
         '--api-major',
@@ -397,7 +407,9 @@ export class LocalEmbeddingEngine {
       if (message.type === 'error') job.reject(new Error(message.message));
       else if (
         message.embeddings.length !== job.request.texts.length ||
-        message.embeddings.some((vector) => vector.length !== this.bundle.embedding.dims)
+        message.embeddings.some(
+          (vector) => vector.length !== this.bundle.models[MODEL_OF[job.priority]].dims,
+        )
       )
         job.reject(new Error('the local AI helper returned an unexpected embedding shape'));
       else job.resolve(message.embeddings.map((vector) => Float32Array.from(vector)));
@@ -429,9 +441,10 @@ export class LocalEmbeddingEngine {
       this.helper.write(
         JSON.stringify({
           id: this.activeId,
+          model: MODEL_OF[job.priority],
           texts: job.request.texts,
           overflow: job.request.overflow,
-          dim: this.bundle.embedding.dims,
+          dim: this.bundle.models[MODEL_OF[job.priority]].dims,
         }),
       );
     } catch (error) {

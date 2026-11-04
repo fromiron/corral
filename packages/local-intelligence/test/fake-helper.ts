@@ -6,6 +6,7 @@ import { bundleDir } from '../src/install.ts';
 
 export interface SentRequest {
   id: number;
+  model: 'meeting' | 'effort';
   texts: string[];
   overflow: string;
   dim: number;
@@ -58,6 +59,15 @@ export class FakeHelper implements HelperProcess {
       type: 'result',
       id: request.id,
       embeddings: request.texts.map(() => Array.from({ length: request.dim }, () => fill)),
+    });
+  }
+  /** Answers request `index` with vectors of `size` values, whatever it asked for. */
+  emitResult(index: number, size: number) {
+    const request = this.sent[index]!;
+    this.emit({
+      type: 'result',
+      id: request.id,
+      embeddings: request.texts.map(() => Array.from({ length: size }, () => 0.5)),
     });
   }
   error(index = this.sent.length - 1, message = 'bad input') {

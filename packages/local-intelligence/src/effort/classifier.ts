@@ -1,10 +1,12 @@
-// A linear or one-hidden-layer classifier over the frozen embedding, with calibration and an
-// abstain threshold chosen on held-out data (tools/local-intelligence/effort). The weights only
-// fit the base model, embedding size and preprocessing they were trained with.
+// A classifier over the embedding: linear or one ReLU hidden layer (schema 1 and 2), or, in
+// schema 3, a LayerNorm + GELU level head with a logistic openness head. An open request (one with
+// no fixed end, where more thinking finds more) is raised to high; otherwise the level head's top
+// answer stands. The weights only fit the model, embedding size and preprocessing they were
+// trained with.
 import { EFFORT_LEVELS, type EffortLevel } from '@corral/contracts';
 
 export interface EffortWeights {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   version: string;
   labels: EffortLevel[];
   dims: number;
@@ -14,25 +16,52 @@ export interface EffortWeights {
   /** One row per label. */
   weights: number[][];
   bias: number[];
-  /** Optional ReLU hidden layer; its affine map includes training-time input normalization. */
-  hidden?: { weights: number[][]; bias: number[] };
+  /** Schema 3: LayerNorm over the embedding ahead of the hidden layer. */
+  layerNorm?: { weight: number[]; bias: number[]; eps: number };
+  /**
+   * Schema 2: optional ReLU hidden layer whose affine map includes training-time input
+   * normalization. Schema 3: required GELU (erf) hidden layer after the LayerNorm.
+   */
+  hidden?: { weights: number[][]; bias: number[]; activation?: 'gelu' };
   temperature: number;
   /** Below this top probability the judgment is withheld. */
   abstainBelow: number;
+  /** Schema 3: logistic openness over the embedding; at or above `raiseAt` the answer is high. */
+  open?: { weights: number[]; bias: number; raiseAt: number };
 }
 
 export interface EffortJudgment {
   answer: EffortLevel;
+  /** The level head's distribution, also when openness raised the answer. */
   probabilities: Record<EffortLevel, number>;
   abstain: boolean;
+  /** Schema 3: the probability that the request is open. */
+  open?: number;
 }
 
 export interface EffortClassifier {
   version: string;
+  /** False when the weights have no abstain threshold: every judgment answers. */
+  abstains: boolean;
   judge(vector: Float32Array): EffortJudgment;
 }
 
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
+const vectorOf = (value: unknown, length: number): value is number[] =>
+  Array.isArray(value) && value.length === length && value.every(finite);
+
+/** Abramowitz and Stegun 7.1.26; its error (under 1.5e-7) is far below the weights' precision. */
+function erf(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  const a = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * a);
+  const poly =
+    t *
+    (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+  return sign * (1 - poly * Math.exp(-a * a));
+}
+
+const gelu = (x: number) => 0.5 * x * (1 + erf(x / Math.SQRT2));
 
 export function loadEffortClassifier(
   raw: unknown,
@@ -40,7 +69,7 @@ export function loadEffortClassifier(
 ): EffortClassifier {
   const weights = raw as EffortWeights;
   if (
-    ![1, 2].includes(weights?.schemaVersion) ||
+    ![1, 2, 3].includes(weights?.schemaVersion) ||
     typeof weights.version !== 'string' ||
     weights.task !== 'classification'
   )
@@ -55,10 +84,30 @@ export function loadEffortClassifier(
     throw new Error('effort weights were trained for another base model');
   if (weights.preprocessVersion !== expected.preprocessVersion)
     throw new Error(`effort weights expect preprocessing ${weights.preprocessVersion}`);
+  const v3 = weights.schemaVersion === 3;
+  const { layerNorm, open } = weights;
+  if (
+    v3 !== Boolean(layerNorm) ||
+    v3 !== Boolean(open) ||
+    (layerNorm &&
+      (!vectorOf(layerNorm.weight, expected.dims) ||
+        !vectorOf(layerNorm.bias, expected.dims) ||
+        !finite(layerNorm.eps) ||
+        layerNorm.eps <= 0)) ||
+    (open &&
+      (!vectorOf(open.weights, expected.dims) ||
+        !finite(open.bias) ||
+        !finite(open.raiseAt) ||
+        open.raiseAt < 0 ||
+        open.raiseAt > 1))
+  )
+    throw new Error('effort openness or normalization weights are invalid');
   const hidden = weights.hidden;
+  if ((v3 && !hidden) || (hidden && hidden.activation !== (v3 ? 'gelu' : undefined)))
+    throw new Error('effort hidden weights are invalid');
   if (
     hidden &&
-    (weights.schemaVersion !== 2 ||
+    (weights.schemaVersion === 1 ||
       !Array.isArray(hidden.weights) ||
       hidden.weights.length < 1 ||
       hidden.weights.length > 128 ||
@@ -85,18 +134,34 @@ export function loadEffortClassifier(
     throw new Error('effort weights are invalid');
   const rows = weights.weights.map((row) => Float64Array.from(row));
   const hiddenRows = hidden?.weights.map((row) => Float64Array.from(row));
+  const activate = v3 ? gelu : (value: number) => Math.max(0, value);
+  const normalize = (vector: Float32Array): ArrayLike<number> => {
+    if (!layerNorm) return vector;
+    let mean = 0;
+    for (const value of vector) mean += value;
+    mean /= vector.length;
+    let variance = 0;
+    for (const value of vector) variance += (value - mean) ** 2;
+    const scale = 1 / Math.sqrt(variance / vector.length + layerNorm.eps);
+    return Float64Array.from(
+      vector,
+      (value, i) => (value - mean) * scale * layerNorm.weight[i]! + layerNorm.bias[i]!,
+    );
+  };
   return {
     version: weights.version,
+    abstains: weights.abstainBelow > 0,
     judge(vector) {
       if (vector.length !== weights.dims)
         throw new Error(`expected ${weights.dims} dimensions, got ${vector.length}`);
+      const input = normalize(vector);
       const features = hiddenRows
         ? Float64Array.from(hiddenRows, (row, unit) => {
             let value = hidden!.bias[unit]!;
-            for (let i = 0; i < row.length; i++) value += row[i]! * vector[i]!;
-            return Math.max(0, value);
+            for (let i = 0; i < row.length; i++) value += row[i]! * input[i]!;
+            return activate(value);
           })
-        : vector;
+        : input;
       const logits = rows.map((row, label) => {
         let sum = weights.bias[label]!;
         for (let i = 0; i < row.length; i++) sum += row[i]! * features[i]!;
@@ -109,15 +174,23 @@ export function loadEffortClassifier(
       let best = 0;
       for (let i = 1; i < probabilities.length; i++)
         if (probabilities[i]! > probabilities[best]!) best = i;
+      let openness: number | undefined;
+      if (open) {
+        let z = open.bias;
+        for (let i = 0; i < vector.length; i++) z += open.weights[i]! * vector[i]!;
+        openness = 1 / (1 + Math.exp(-z));
+      }
+      const raised = openness !== undefined && openness >= open!.raiseAt;
       return {
-        answer: EFFORT_LEVELS[best]!,
+        answer: raised ? 'high' : EFFORT_LEVELS[best]!,
         probabilities: {
           low: probabilities[0]!,
           medium: probabilities[1]!,
           high: probabilities[2]!,
           xhigh: probabilities[3]!,
         },
-        abstain: probabilities[best]! < weights.abstainBelow,
+        abstain: !raised && probabilities[best]! < weights.abstainBelow,
+        ...(openness === undefined ? {} : { open: openness }),
       };
     },
   };

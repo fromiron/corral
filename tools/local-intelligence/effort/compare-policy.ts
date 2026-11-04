@@ -2,12 +2,12 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { EffortLevel } from '../../../packages/contracts/src/index.ts';
+import { loadEffortClassifier } from '../../../packages/local-intelligence/src/effort/classifier.ts';
 import {
   effortExpectedCost,
   LOW_EFFORT_REVIEW_CEILING,
   lowEffortNeedsReview,
-} from '../../../packages/core/src/reasoning-risk.ts';
-import { loadEffortClassifier } from '../../../packages/local-intelligence/src/effort/classifier.ts';
+} from './reasoning-risk.ts';
 
 const [samplesPath, vectorPath, weightPath, output] = process.argv.slice(2);
 if (!samplesPath || !vectorPath || !weightPath || !output)

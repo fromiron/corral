@@ -108,12 +108,13 @@ it.skipIf(!target)(
         status: 200,
         body: {
           release: bundle.release,
-          modelName: bundle.model.name,
+          models: { meeting: bundle.models.meeting.name, effort: bundle.models.effort.name },
           state: 'missing',
-          downloadBytes: bundle.model.size + runtimeSize,
+          downloadBytes: bundle.models.meeting.size + bundle.models.effort.size + runtimeSize,
           progress: null,
           error: null,
-          external: expect.objectContaining({ provider: null }),
+          // The shipped judge never abstains, so the external judge is never asked.
+          external: expect.objectContaining({ provider: null, judgeAbstains: false }),
         },
       });
       expect(await call('/local-ai/install', 'POST')).toMatchObject({
@@ -124,20 +125,20 @@ it.skipIf(!target)(
         status: 202,
         body: { state: 'installing' },
       });
-      expect(held.requested).toEqual([bundle.model.url]);
+      expect(held.requested).toEqual([bundle.models.meeting.url]);
 
       expect(await call('/local-ai/install', 'DELETE')).toMatchObject({
         status: 200,
         body: { state: 'missing', progress: null, error: null },
       });
-      expect(held.aborted).toEqual([bundle.model.url]);
+      expect(held.aborted).toEqual([bundle.models.meeting.url]);
       expect(existsSync(join(bundleDir(dataRoot, bundle), 'install.json'))).toBe(false);
 
       expect(await call('/local-ai/install', 'POST')).toMatchObject({ status: 202 });
     } finally {
       await server.close();
     }
-    expect(held.aborted).toEqual([bundle.model.url, bundle.model.url]);
+    expect(held.aborted).toEqual([bundle.models.meeting.url, bundle.models.meeting.url]);
   },
 );
 
@@ -220,7 +221,8 @@ it('connects decision APIs by key and lets the workspace choose one, never retur
     expect(first.body.external).toEqual({
       provider: null,
       model: null,
-      policy: 'medium',
+      policy: 'judged',
+      judgeAbstains: false,
       revision: expect.any(String),
     });
     expect(JSON.stringify(first.body)).not.toContain(KEY);
@@ -298,8 +300,9 @@ it('stores no decision API key on a server without real models', async () => {
 });
 
 it.skipIf(!target).each([
-  ['medium', undefined, false],
+  ['medium', 'medium', false],
   ['judged', 'judged', true],
+  ['judged', undefined, true],
 ])(
   'the %s policy decides whether apply needs the judge loaded',
   async (policy, configured, loads) => {
@@ -417,7 +420,7 @@ it.skipIf(!target)(
       );
       expect(await settings()).toMatchObject({
         available: true,
-        version: `${bundle.release}+effort-v2`,
+        version: `${bundle.release}+effort-v4`,
         reason: null,
       });
       expect(launches).toEqual([]);

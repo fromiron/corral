@@ -44,7 +44,7 @@ const samples = raw
   .filter(Boolean)
   .map((line) => JSON.parse(line) as { request: string; input?: ReasoningInput });
 const bundle = bundledManifest();
-const dims = bundle.embedding.dims;
+const dims = bundle.models.effort.dims;
 const engine = new LocalEmbeddingEngine({
   root,
   bundle,
@@ -78,7 +78,7 @@ writeFileSync(`${out}.part`, new Uint8Array(vectors.buffer));
 renameSync(`${out}.part`, out);
 const info: EmbeddingInfo = {
   release: bundle.release,
-  baseModelSha256: bundle.model.sha256,
+  baseModelSha256: bundle.models.effort.sha256,
   preprocessVersion: EFFORT_PREPROCESS_VERSION,
   device,
   count: samples.length,
