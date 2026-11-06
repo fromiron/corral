@@ -57,7 +57,7 @@ async function finishedRun(
   const { runId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(page.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -68,13 +68,10 @@ test('a reload keeps the chosen execution and the saved layout', async ({ page, 
   await finishedRun(page, corral);
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(page.getByText('Layout from the saved team')).toBeVisible();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await page
-    .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Executions', exact: true })
-    .click();
-  await page
-    .getByRole('tree', { name: 'Executions', exact: true })
-    .getByRole('button', { name: /^Research Helper · exec_/ })
+    .getByTestId('run-activity')
+    .getByRole('button', { name: /^Research Helper\b/ })
     .first()
     .click();
   await expect(page).toHaveURL(/execution=exec_/);
@@ -83,10 +80,9 @@ test('a reload keeps the chosen execution and the saved layout', async ({ page, 
   await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();
   const reins = page.getByRole('region', { name: 'Reins', exact: true });
   await expect(reins).toContainText(`execution ${executionId}`);
-  await expect(page.getByTestId(`execution-${executionId}`)).toHaveAttribute(
-    'aria-current',
-    'true',
-  );
+  await expect(
+    page.getByTestId('run-activity').locator(`button[data-execution-id="${executionId}"]`),
+  ).toHaveAttribute('aria-pressed', 'true');
   expect(corral.errors).toEqual([]);
 });
 

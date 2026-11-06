@@ -138,40 +138,75 @@ it('a removed Corral still displays its run with an automatic layout', async () 
   );
 });
 
-it('a completed run opens its work flow unless a result was explicitly requested', async () => {
-  const graph = await mount('inline_team', null, {});
-  expect(graph.container.querySelector('[data-testid="run-flow"]')).not.toBeNull();
+it('a completed run opens its run summary column unless a result was explicitly requested', async () => {
+  const summary = await mount('inline_team', null, {});
+  const column = summary.container.querySelector('[data-testid="run-column"]');
+  expect(column).not.toBeNull();
+  expect(column?.querySelector('[data-testid="run-activity"]')).not.toBeNull();
+  const selected = column?.querySelector('[role="tab"][aria-selected="true"]');
+  expect(selected?.textContent).toContain('Activity');
+  // The tree is no longer its own column: the activity list chooses executions.
+  expect(summary.container.querySelector('[role="tree"]')).toBeNull();
   expect(
-    graph.container.querySelector('[data-testid="run-flow-tab"]')?.getAttribute('aria-selected'),
-  ).toBe('true');
-  expect(
-    graph.container.querySelector('[data-testid="results"]')?.closest('main')?.style.display,
+    summary.container.querySelector('[data-testid="results"]')?.closest('main')?.style.display,
   ).toBe('none');
   const result = await mount('inline_team', null, { view: 'results' });
   expect(result.container.querySelector('[data-testid="results"]')).not.toBeNull();
 });
 
-it('the selected Graph tab returns from the tree and result links keep the monitor mounted', async () => {
+it('the run and its results are two tabs of the page, not a toggle button', async () => {
+  const { container, navigations } = await mount('inline_team', null, {});
+  const views = container.querySelector('[role="tablist"][aria-label="Run page view"]');
+  const tabs = [...(views?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
+  expect(tabs).toHaveLength(2);
+  expect(tabs[0]?.textContent).toContain('Execution');
+  expect(tabs[1]?.textContent).toContain('Results');
+  expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+  await act(async () => tabs[1]?.click());
+  expect(navigations.at(-1)?.patch).toEqual({ view: 'results' });
+  expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
+  expect(container.querySelector('[data-testid="results"]')?.closest('main')?.style.display).toBe(
+    '',
+  );
+});
+
+it('secondary views switch under the summary and keep the graph mounted', async () => {
   const { container } = await mount('inline_team', null);
-  const click = async (text: string) => {
-    const button = [...container.querySelectorAll('button')].find((el) =>
-      el.textContent?.includes(text),
+  const tab = async (name: string) => {
+    const button = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
+      el.textContent?.includes(name),
     );
     expect(button).toBeDefined();
     await act(async () => button?.click());
   };
-  await click('Executions');
-  expect(container.querySelector('.run-layout')?.getAttribute('data-panel')).toBe('tree');
-  await click('Graph');
-  expect(container.querySelector('.run-layout')?.getAttribute('data-panel')).toBe('canvas');
+  await tab('Work flow');
+  expect(container.querySelector('[data-testid="run-flow"]')).not.toBeNull();
+  await tab('Graph');
   const graph = container.querySelector('[data-testid="layout"]');
-  await click('Results');
+  expect(graph).not.toBeNull();
+  await tab('Activity');
+  await tab('Graph');
   expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
-  await click('Approval evidence');
-  expect(container.querySelector('[data-testid="results"]')?.closest('main')?.style.display).toBe(
-    'none',
+});
+
+it('the right panel leads with what needs the person and opens execution details', async () => {
+  const { container } = await mount('inline_team', null);
+  const panel = () => container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  // jsdom has no container width: the narrow layout keeps the panel closed until asked. It stays
+  // mounted so a Reins draft or graph position survives the switch.
+  expect(panel()?.hidden).toBe(true);
+  const needs = container.querySelector('[data-testid="run-needs-you"]');
+  expect(needs?.closest('[data-testid="run-column"]')).not.toBeNull();
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((el) => el.textContent?.includes('Approval evidence'))
+      ?.click(),
   );
-  expect(container.querySelector('.run-layout')?.getAttribute('data-details')).toBe('true');
+  expect(panel()?.hidden).toBe(false);
+  expect(panel()?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  expect(panel()?.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe('Details');
+  // On a narrow container the opened panel takes the column's place.
+  expect(container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(true);
 });
 
 it('normalizes an old cursor URL and follows current state without replaying or disabling controls', async () => {

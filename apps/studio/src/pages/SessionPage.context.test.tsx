@@ -360,7 +360,7 @@ it('an explain draft with captured context requires an explicit follow-up choice
   );
 });
 
-it('keeps whole-run stop available while composing a queued next request in the single input', async () => {
+it('leaves whole-run stop to the top bar while composing a queued next request in the single input', async () => {
   const sessionId = 'stop_while_typing';
   writeComposerDraft(sessionId, {
     text: 'After this, summarize the result',
@@ -375,11 +375,12 @@ it('keeps whole-run stop available while composing a queued next request in the 
   expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
     'After this, summarize the result',
   );
-  const stop = f.container.querySelector<HTMLButtonElement>(
-    `button[aria-label="${messages.Reins.cancelRun}"]`,
+  // The live run's Cancel sits once in the top bar's run controls (DockRunControls), so the
+  // composer does not repeat it beside the draft.
+  const stops = [...f.container.querySelectorAll('button')].filter((button) =>
+    button.textContent?.includes(messages.Reins.cancelRun),
   );
-  expect(stop).not.toBeNull();
-  expect(stop?.disabled).toBe(false);
+  expect(stops).toHaveLength(0);
   expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
 });
 

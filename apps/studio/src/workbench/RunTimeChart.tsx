@@ -1,46 +1,130 @@
-import type { CorralDefinition, RunEvent } from '@corral/contracts';
+import {
+  type CorralDefinition,
+  type RunEvent,
+  TERMINAL_EXECUTION_STATUSES,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import { executionAgentStatus, executionIntervals } from '@corral/react';
+import { executionAgentStatus, executionIntervals, executionToolEntries } from '@corral/react';
 import {
   AgentLanes,
   type AgentLanesLabels,
+  type AgentMark,
+  Button,
   formatClock,
   type LaneAgent,
   type LaneHandoff,
+  TabItem,
+  TabPanel,
+  Tabs,
+  TabsList,
+  useNow,
 } from '@corral/react/design-kit';
-import { useMemo } from 'react';
+import { Folder, Globe, MessageCircle, Pencil, Users } from '@corral/react/icons';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
+import { RunTaskTimeline } from './RunTaskTimeline.tsx';
 
-/**
- * The run's observed time as the kit's swimlanes: one lane per agent node, every execution
- * (each retry and Loop round) its own span on it, waits tinted inside the span, and observed
- * delegations linked. The window runs from the first to the last record, so an unfinished span
- * stops at the last observation and a past view never runs to the present.
- */
-export function RunTimeChart({
-  events,
-  projection,
-  definition,
-  selected,
-  onSelect,
-}: {
+/** A replay draws the whole record in this long, however long the run took. */
+const REPLAY_MS = 4000;
+
+/** The kit icon a tool's name suggests; tools with no clear match show no mark. */
+const TOOL_ICONS: [RegExp, AgentMark][] = [
+  [/search|web|fetch|browse/i, Globe],
+  [/read|list|open|view/i, Folder],
+  [/write|edit|patch|create|submit/i, Pencil],
+  [/ask|question|message|reply/i, MessageCircle],
+  [/delegate|spawn|handoff|team/i, Users],
+];
+
+const REDUCED = '(prefers-reduced-motion: reduce)';
+/** Whether the person asked for less motion; a host without media queries counts as no. */
+function useReducedMotion() {
+  return useSyncExternalStore(
+    (change) => {
+      const query = window.matchMedia?.(REDUCED);
+      query?.addEventListener('change', change);
+      return () => query?.removeEventListener('change', change);
+    },
+    () => window.matchMedia?.(REDUCED).matches ?? false,
+    () => false,
+  );
+}
+
+interface TimeChartProps {
   events: RunEvent[];
   projection: RunProjection | null;
   definition: CorralDefinition;
   selected: string | undefined;
   onSelect: (executionId: string) => void;
-}) {
+}
+
+/** The run's observed time, by agent (swimlanes of executions) or by task (actual intervals). */
+export function RunTimeChart(props: TimeChartProps) {
+  const t = useTranslations('RunMonitor');
+  const [view, setView] = useState('agents');
+  return (
+    <Tabs value={view} onValueChange={setView}>
+      <div className="px-3 pt-3">
+        <TabsList aria-label={t('timeViews')}>
+          <TabItem value="agents" label={t('byAgent')} />
+          <TabItem value="tasks" label={t('byTask')} />
+        </TabsList>
+      </div>
+      <TabPanel value="agents">
+        <AgentTimeline {...props} />
+      </TabPanel>
+      <TabPanel value="tasks">
+        <RunTaskTimeline
+          events={props.events}
+          projection={props.projection}
+          definition={props.definition}
+        />
+      </TabPanel>
+    </Tabs>
+  );
+}
+
+/**
+ * The run's observed time as the kit's swimlanes: one lane per agent node, every execution
+ * (each retry and Loop round) its own span named by what it created and marked with the tools
+ * it used, waits tinted inside the span, and observed delegations linked. While the run is live
+ * the open spans grow to the present; once it ended the window stops at the last record, and a
+ * replay draws the record again from its start over the same window.
+ */
+function AgentTimeline({ events, projection, definition, selected, onSelect }: TimeChartProps) {
   const t = useTranslations('RunMonitor');
   const lanesText = useTranslations('RunMonitor.lanes');
   const status = useTranslations('Status');
   const format = useFormatter();
+  const reduce = useReducedMotion();
+  const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
+  const clock = useNow(1000, live);
   const rows = useMemo(() => executionIntervals(events), [events]);
+  const tools = useMemo(() => executionToolEntries(events), [events]);
+  const { created, authors } = useMemo(() => {
+    const names = new Map<string, string[]>();
+    const authors = new Map<string, { executionId: string; at: number }>();
+    for (const event of events) {
+      if (event.type !== 'artifact.version_created') continue;
+      const own = names.get(event.payload.authorExecutionId) ?? [];
+      if (!own.includes(event.payload.name)) own.push(event.payload.name);
+      names.set(event.payload.authorExecutionId, own);
+      authors.set(event.payload.artifactVersionId, {
+        executionId: event.payload.authorExecutionId,
+        at: Date.parse(event.recordedAt),
+      });
+    }
+    return { created: names, authors };
+  }, [events]);
   const labels = useMemo<Partial<AgentLanesLabels>>(
     () => ({
       running: (count) => lanesText('running', { count }),
       needsYou: (count) => lanesText('needsYou', { count }),
       needsYouChip: lanesText('needsYouChip'),
-      idle: lanesText('idle'),
+      // Every lane of an ended run is idle; saying so on each would be noise.
+      idle: live ? lanesText('idle') : '',
+      now: lanesText('now'),
       window: formatClock,
       tick: (ms) => lanesText('tick', { time: formatClock(ms) }),
       lane: (name) => name,
@@ -49,7 +133,7 @@ export function RunTimeChart({
       review: lanesText('review'),
       announce: (count) => lanesText('announce', { count }),
     }),
-    [lanesText],
+    [lanesText, live],
   );
   const board = useMemo(() => {
     if (!rows.length) return null;
@@ -61,26 +145,40 @@ export function RunTimeChart({
     ].filter((id, i, all) => all.indexOf(id) === i && rows.some((row) => row.nodeId === id));
     const agents: LaneAgent[] = order.map((nodeId) => {
       const lane = rows.filter((row) => row.nodeId === nodeId);
+      const name = definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
       const profile = projection?.executions[lane[0]?.executionId ?? '']?.modelProfile;
-      const model = profile ? projection?.modelProfiles[profile]?.modelId : undefined;
+      const model = profile ? (projection?.modelProfiles[profile]?.modelId ?? profile) : undefined;
       return {
         id: nodeId,
-        name: definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
+        name,
         ...(model ? { model } : {}),
         tasks: lane.map((row) => {
           const round = row.iterationId ? projection?.iterations[row.iterationId]?.no : null;
+          const used = [...new Set((tools.get(row.executionId) ?? []).map((tool) => tool.name))];
+          const marks = [
+            ...new Set(
+              used.flatMap((tool) => TOOL_ICONS.find(([pattern]) => pattern.test(tool))?.[1] ?? []),
+            ),
+          ].slice(0, 3);
+          const state = executionAgentStatus(row.status);
+          const statusLabel = status.has(row.status) ? status(row.status) : row.status;
+          const open = live && !TERMINAL_EXECUTION_STATUSES.has(row.status);
           return {
             id: row.executionId,
             label: [
               round ? t('iteration', { number: round }) : null,
-              t('attempt', { number: row.attemptNo }),
+              created.get(row.executionId)?.join(', ') || name,
+              row.attemptNo > 1 ? t('attempt', { number: row.attemptNo }) : null,
             ]
               .filter(Boolean)
               .join(' · '),
-            status: executionAgentStatus(row.status),
-            statusLabel: status.has(row.status) ? status(row.status) : row.status,
+            status: state,
+            statusLabel,
             startedAt: Date.parse(row.startedAt),
-            endedAt: Date.parse(row.endedAt),
+            ...(open ? {} : { endedAt: Date.parse(row.endedAt) }),
+            ...(marks.length ? { tools: marks } : {}),
+            ...(used.length ? { details: used } : {}),
+            ...(state === 'waiting' ? { ask: { title: statusLabel } } : {}),
             waits: row.segments
               .filter((segment) => segment.status.startsWith('waiting_'))
               .map((segment) => ({
@@ -99,20 +197,104 @@ export function RunTimeChart({
         ? [{ from: parent, to: row.executionId, fromAt: Date.parse(row.startedAt) }]
         : [];
     });
+    // Work handed over: an artifact runs from its creation on the author's span to the moment
+    // another execution read it or put it in its model input, once per pair of executions.
+    const linked = new Set(handoffs.map((link) => `${link.from}>${link.to}`));
+    for (const use of artifactUses(events)) {
+      const source = authors.get(use.versionId);
+      if (!source || source.executionId === use.executionId) continue;
+      if (!known.has(source.executionId) || !known.has(use.executionId)) continue;
+      const key = `${source.executionId}>${use.executionId}`;
+      if (linked.has(key)) continue;
+      linked.add(key);
+      handoffs.push({
+        from: source.executionId,
+        to: use.executionId,
+        fromAt: source.at,
+        toAt: use.at,
+      });
+    }
     return { start, end, agents, handoffs };
-  }, [rows, projection, definition, t, status]);
-  if (!board) return <p className="p-3 text-sm text-muted-foreground">{t('noIntervals')}</p>;
+  }, [rows, tools, created, authors, events, projection, definition, live, t, status]);
+
+  // The replay position, 0..1 of the record, or null when the board shows the record as is.
+  const [replay, setReplay] = useState<number | null>(null);
+  const replaying = replay !== null;
+  useEffect(() => {
+    if (!replaying) return;
+    let frame = 0;
+    let first: number | null = null;
+    const step = (at: number) => {
+      first ??= at;
+      const progress = (at - first) / REPLAY_MS;
+      if (progress >= 1) return setReplay(null);
+      setReplay(progress);
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [replaying]);
+  useEffect(() => {
+    if (live || reduce) setReplay(null);
+  }, [live, reduce]);
+
+  const shown = useMemo(() => {
+    if (!board || replay === null) return board;
+    const cutoff = board.start + (board.end - board.start) * replay;
+    const agents = board.agents.map((agent) => ({
+      ...agent,
+      tasks: agent.tasks.flatMap((task) => {
+        if (task.startedAt > cutoff) return [];
+        if ((task.endedAt ?? board.end) <= cutoff) return [task];
+        const { endedAt: _ended, ask: _ask, ...growing } = task;
+        return [
+          {
+            ...growing,
+            status: 'running' as const,
+            waits: (task.waits ?? [])
+              .filter((wait) => wait.startedAt < cutoff)
+              .map((wait) => ({ ...wait, endedAt: Math.min(wait.endedAt, cutoff) })),
+          },
+        ];
+      }),
+    }));
+    const visible = new Set(agents.flatMap((agent) => agent.tasks.map((task) => task.id)));
+    return {
+      ...board,
+      agents,
+      handoffs: board.handoffs.filter((link) => visible.has(link.from) && visible.has(link.to)),
+      cutoff,
+    };
+  }, [board, replay]);
+
+  if (!board || !shown)
+    return <p className="p-3 text-sm text-muted-foreground">{t('noIntervals')}</p>;
   const calls = rows.find((row) => row.executionId === selected)?.calls ?? [];
   const milliseconds = (value: number) =>
     t('milliseconds', { value: format.number(value, { maximumFractionDigits: 0 }) });
+  const now = 'cutoff' in shown ? shown.cutoff : live ? Math.max(clock, board.end) : board.end;
   return (
     <section aria-label={t('time')} className="flex h-full flex-col gap-3 overflow-auto p-3">
-      <p className="text-caption text-muted-foreground">{t('lifespanNote')}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-caption text-muted-foreground">{t('lifespanNote')}</p>
+        {live || reduce ? null : (
+          <Button
+            data-replay
+            variant="ghost"
+            size="compact"
+            aria-pressed={replaying}
+            onClick={() => setReplay(replaying ? null : 0)}
+          >
+            {replaying ? t('stopReplay') : t('replay')}
+          </Button>
+        )}
+      </div>
       <AgentLanes
-        agents={board.agents}
-        handoffs={board.handoffs}
+        agents={shown.agents}
+        handoffs={shown.handoffs}
         startAt={board.start}
-        now={board.end}
+        now={now}
+        {...(live ? {} : { endAt: board.end })}
         title={t('time')}
         selectedTaskId={selected ?? null}
         onSelectTask={onSelect}
@@ -130,4 +312,26 @@ export function RunTimeChart({
       ) : null}
     </section>
   );
+}
+
+/** Every observed use of an artifact version by an execution, in record order. */
+function artifactUses(events: readonly RunEvent[]) {
+  return events.flatMap((event) => {
+    const at = Date.parse(event.recordedAt);
+    if (event.type === 'artifact.read')
+      return [
+        {
+          versionId: event.payload.resolvedVersionId,
+          executionId: event.payload.consumerExecutionId,
+          at,
+        },
+      ];
+    if (event.type === 'model.request_prepared')
+      return event.payload.inputArtifactVersionIds.map((versionId) => ({
+        versionId,
+        executionId: event.payload.executionId,
+        at,
+      }));
+    return [];
+  });
 }

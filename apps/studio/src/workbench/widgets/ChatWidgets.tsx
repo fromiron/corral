@@ -33,7 +33,7 @@ import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
-import { actionCopy, type WidgetChip } from './selectors.ts';
+import { actionCopy, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -490,23 +490,29 @@ export function ComposerDock({ summary }: { summary?: ReactNode }) {
         data-testid="composer-status-pills"
         className="mb-2 flex min-w-0 flex-wrap items-center gap-1"
       >
-        <RunLink model={model} className={`${chipClass} bg-raised`}>
-          <Circle
-            size={12}
-            aria-hidden="true"
-            className={model.action.visible ? 'text-warning' : 'text-muted-foreground'}
-          />
-          <span>
-            {model.readState === 'error'
-              ? t('runUnavailable')
-              : model.readState === 'loading'
-                ? t('runLoading')
-                : model.plan.runStatus
-                  ? ts(model.plan.runStatus)
-                  : t('runUnavailable')}
-          </span>
-          {model.viewed ? <span className="text-2xs">{viewedLabel(model.viewed, t)}</span> : null}
-        </RunLink>
+        {composerShowsRunStatus({
+          runStatus: model.plan.runStatus,
+          readState: model.readState,
+          needsAction: model.action.visible,
+        }) ? (
+          <RunLink model={model} className={`${chipClass} bg-raised`}>
+            <Circle
+              size={12}
+              aria-hidden="true"
+              className={model.action.visible ? 'text-warning' : 'text-muted-foreground'}
+            />
+            <span>
+              {model.readState === 'error'
+                ? t('runUnavailable')
+                : model.readState === 'loading'
+                  ? t('runLoading')
+                  : model.plan.runStatus
+                    ? ts(model.plan.runStatus)
+                    : t('runUnavailable')}
+            </span>
+            {model.viewed ? <span className="text-2xs">{viewedLabel(model.viewed, t)}</span> : null}
+          </RunLink>
+        ) : null}
         {!model.plan.open && 'completed' in status ? (
           <Button
             variant="ghost"

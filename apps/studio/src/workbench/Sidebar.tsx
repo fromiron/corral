@@ -65,6 +65,7 @@ import {
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
+import { bySidebarOrder } from './sessionOrder.ts';
 import { useModelProfiles } from './useModels.ts';
 
 export function useCorralSidebar() {
@@ -268,9 +269,7 @@ export const Sidebar = memo(function Sidebar({
       if (needle && !sessions.length) continue;
       result.push({ kind: 'project', project });
       if (!needle && collapsed?.[project.projectId] === true) continue;
-      sessions.sort(
-        (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
-      );
+      sessions.sort(bySidebarOrder);
       for (const session of sessions) result.push({ kind: 'session', session });
       if (!sessions.length) result.push({ kind: 'empty', id: project.projectId });
     }

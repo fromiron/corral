@@ -98,6 +98,7 @@ import {
   SESSION_PANELS,
   type SessionPanel,
 } from '../workbench/panels/registry.ts';
+
 import {
   patchSessionSearch,
   resolveSessionSearch,
@@ -151,6 +152,7 @@ import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
+import { panelRunId } from '../workbench/panelRun.ts';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
@@ -196,6 +198,10 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
   const [tick, setTick] = useState(0);
   // Unreachable server: run states are unknown, not finished.
   const [lost, setLost] = useState(false);
+  // The selection the last answered listing was asked for: a run requested after it may be too
+  // new to be listed yet.
+  const [listedFor, setListedFor] = useState<string | null>(null);
+  const request = `${sessionId}:${selectedRunId ?? ''}`;
   const refresh = useCallback(() => setTick((n) => n + 1), []);
   useEffect(() => {
     void tick;
@@ -206,6 +212,7 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
       (runs) => {
         if (!live) return;
         setAll(runs);
+        setListedFor(request);
         setLost(false);
       },
       () => live && setLost(true),
@@ -213,7 +220,7 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
     return () => {
       live = false;
     };
-  }, [transport, tick, sessionId, selectedRunId]);
+  }, [transport, tick, sessionId, selectedRunId, request]);
   const runs = all
     .filter((r) => r.sessionId === sessionId)
     .reverse()
@@ -224,7 +231,7 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
     const timer = setInterval(refresh, 1500);
     return () => clearInterval(timer);
   }, [active, lost, refresh]);
-  return { runs, active, refresh, lost };
+  return { runs, active, refresh, lost, listed: listedFor === request };
 }
 
 /**
@@ -263,7 +270,7 @@ function WorkSessionPage() {
   }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
   const router = useRouter();
-  const { runs, active, refresh, lost } = useSessionRuns(session.sessionId, search.run);
+  const { runs, active, refresh, lost, listed } = useSessionRuns(session.sessionId, search.run);
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
@@ -362,7 +369,7 @@ function WorkSessionPage() {
     ),
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
     problems: () => <ProblemsPanel sessionId={session.sessionId} />,
-    run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
+    run: () => <RunPanel runs={runs} listed={listed} search={search} setSearch={setSearch} />,
   };
   const renderContext = (view: DockContextView, requestedView: DockContextView = view) => {
     if (view === 'chat')
@@ -470,7 +477,7 @@ function WorkSessionPage() {
       session.projectId,
       session.sessionId,
       view,
-      search.run ?? runs.at(-1)?.runId,
+      panelRunId(runs, search.run, listed),
     );
     return (
       <div key={target ? panelKey(services, target) : view} className="flex flex-col gap-3 p-3">
@@ -577,24 +584,26 @@ function WorkSessionPage() {
                 }}
                 controls={
                   active && panel !== 'run' ? (
-                    <DockRunControls
-                      key={active.runId}
-                      runId={active.runId}
-                      request={session.entries
-                        .find((entry) => entry.runId === active.runId)
-                        ?.text.slice(0, 80)}
-                      viewingOther={presentationRunId !== active.runId}
-                      onOpen={(run) =>
-                        showPanel({
-                          panel: 'run',
-                          run,
-                          view: 'run',
-                          execution: undefined,
-                          artifact: undefined,
-                          result: undefined,
-                        })
-                      }
-                    />
+                    <TopbarActions>
+                      <DockRunControls
+                        key={active.runId}
+                        runId={active.runId}
+                        request={session.entries
+                          .find((entry) => entry.runId === active.runId)
+                          ?.text.slice(0, 80)}
+                        viewingOther={presentationRunId !== active.runId}
+                        onOpen={(run) =>
+                          showPanel({
+                            panel: 'run',
+                            run,
+                            view: 'run',
+                            execution: undefined,
+                            artifact: undefined,
+                            result: undefined,
+                          })
+                        }
+                      />
+                    </TopbarActions>
                   ) : null
                 }
               />
@@ -1069,17 +1078,22 @@ function WorkTab({
 /** Run detail in the side panel: the chosen run (newest by default) with its own views. */
 function RunPanel({
   runs,
+  listed,
   search,
   setSearch,
 }: {
   runs: RunSummary[];
+  /** The run list has answered for the current selection. */
+  listed: boolean;
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
 }) {
   const tw = useTranslations('Workbench');
   const ts = useTranslations('Status');
-  const runId = search.run ?? runs.at(-1)?.runId;
+  const runId = panelRunId(runs, search.run, listed);
   if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
+  // A fallback run must not inherit the selection made inside the run that has gone.
+  const own = search.run === undefined || search.run === runId;
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
@@ -1111,13 +1125,17 @@ function RunPanel({
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
           embedded
-          search={{
-            atSeq: search.atSeq,
-            execution: search.execution,
-            artifact: search.artifact,
-            view: search.view ?? (search.result ? 'results' : 'run'),
-            result: search.result,
-          }}
+          search={
+            own
+              ? {
+                  atSeq: search.atSeq,
+                  execution: search.execution,
+                  artifact: search.artifact,
+                  view: search.view ?? (search.result ? 'results' : 'run'),
+                  result: search.result,
+                }
+              : { view: 'run' }
+          }
           setSearch={(patch, options) => setSearch({ run: runId, ...patch }, options)}
         />
       </div>
@@ -3073,29 +3091,17 @@ export function Composer({
   return (
     <ComposerSurface.Shell>
       <ComposerDock summary={<OverviewAccess />} />
-      {ownActive || choosingAuto ? (
+      {/* A live run's status and Cancel sit in the top bar; only the pre-run auto choice is cancelled here. */}
+      {choosingAuto ? (
         <div
           className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1"
           data-slot="composer-run-header"
         >
-          <div className="flex items-center gap-2 text-body">
-            <span>{tc('groupRun')}</span>
-            {ownActive ? <StatusBadge status={ownActive.status} /> : null}
-          </div>
-          <Tooltip
-            content={choosingAuto ? t('cancelAutoChoice') : tr('cancelRun')}
-            shortcut={choosingAuto ? undefined : shortcutLabel('run.stop')}
-          >
-            <Button
-              variant="tertiary"
-              size="compact"
-              aria-label={choosingAuto ? t('cancelAutoChoice') : tr('cancelRun')}
-              onClick={choosingAuto ? cancelAuto : requestStop}
-            >
-              <Square className="size-3.5 fill-current" />
-              {choosingAuto ? t('cancelAutoChoice') : tr('cancelRun')}
-            </Button>
-          </Tooltip>
+          <span className="text-body">{tc('groupRun')}</span>
+          <Button variant="tertiary" size="compact" onClick={cancelAuto}>
+            <Square className="size-3.5 fill-current" />
+            {t('cancelAutoChoice')}
+          </Button>
         </div>
       ) : null}
       <div className="mb-2 flex flex-wrap items-center gap-2">

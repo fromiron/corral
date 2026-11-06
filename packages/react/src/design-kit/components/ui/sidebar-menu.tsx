@@ -206,8 +206,42 @@ function useMenuScope(
   containerRef: RefObject<HTMLElement | null>,
   { focusRing = true }: MenuScopeOptions = {},
 ): MenuScope {
-  const { activeIndex, setActiveIndex, itemRects, isMeasured, session, handlers, registerItem } =
-    useFluidHover(containerRef, { isItemDisabled: rowSkipped });
+  const {
+    activeIndex,
+    setActiveIndex,
+    itemRects,
+    isMeasured,
+    session,
+    handlers,
+    registerItem,
+    measureItems,
+  } = useFluidHover(containerRef, { isItemDisabled: rowSkipped });
+
+  // A virtualized host moves rows by their inline position without resizing them, which no
+  // ResizeObserver reports. Re-measure when a row's own style changes so the active and hover
+  // backgrounds follow the row instead of staying where it used to be.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof MutationObserver === 'undefined') return;
+    let frame: number | null = null;
+    const observer = new MutationObserver((mutations) => {
+      const moved = mutations.some(
+        (m) =>
+          m.target instanceof HTMLElement &&
+          m.target.matches('[data-sidebar="menu-item"],[data-sidebar="menu-sub-item"]'),
+      );
+      if (!moved || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        measureItems();
+      });
+    });
+    observer.observe(container, { subtree: true, attributes: true, attributeFilter: ['style'] });
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [containerRef, measureItems]);
 
   const rowsRef = useRef<Set<HTMLElement>>(new Set());
   const rowButtonsRef = useRef<Map<HTMLElement, HTMLElement>>(new Map());

@@ -2819,10 +2819,6 @@
     },
     "unlimited": "Continue with no usage limits."
   },
-  "SessionTabs": {
-    "label": "Session tabs",
-    "close": "Close {title} tab"
-  },
   "SessionSearch": {
     "title": "Search sessions and results",
     "privacy": "Search stays in this local workspace. Private messages are included only when selected.",
@@ -3040,7 +3036,8 @@
       "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
       "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}",
       "fullBudget": "Open the run"
-    }
+    },
+    "planMore": "{count, plural, one {# more} other {# more}}"
   },
   "ModelImport": {
     "heading": "Import model settings",
@@ -3445,7 +3442,7 @@
     "terminal": "Terminal",
     "tools": "Tasks & preview",
     "activeRun": "Active run controls",
-    "openActiveRun": "Open active run",
+    "openActiveRun": "Open run",
     "activeRunTarget": "In progress: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
     "pendingActions": "{count, plural, one {# response needed} other {# responses needed}}",
@@ -4346,7 +4343,30 @@
       "tick": "+{time}",
       "needsYouLine": "needs you: {what}",
       "review": "Select",
-      "announce": "{count, plural, =0 {} one {# execution needs you} other {# executions need you}}"
+      "announce": "{count, plural, =0 {} one {# execution needs you} other {# executions need you}}",
+      "now": "Now"
+    },
+    "activity": "Activity",
+    "agentsSummary": "{count, plural, one {# agent} other {# agents}}",
+    "needsYou": "Needs your input",
+    "nothingNeedsYou": "Nothing needs you",
+    "nothingNeedsYouHint": "Questions and approvals from the agents show here.",
+    "showPanel": "Show side panel",
+    "hidePanel": "Hide side panel",
+    "results": "Results",
+    "replay": "Replay",
+    "stopReplay": "Stop replay",
+    "timeViews": "Timeline views",
+    "byAgent": "By agent",
+    "byTask": "By task",
+    "taskTimeline": {
+      "title": "Time per task",
+      "note": "Each task runs from its first assigned attempt to its completion. Planned times are not recorded, so only actual intervals are shown.",
+      "step": "Task",
+      "time": "Elapsed",
+      "row": "{label}: {status}, {took}",
+      "rowWaiting": "{label}: {status}",
+      "empty": "No tasks were recorded in this run."
     }
   },
   "RunFlow": {

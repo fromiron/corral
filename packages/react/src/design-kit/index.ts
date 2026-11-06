@@ -81,6 +81,12 @@ export {
   type ModelPickerReasoning,
 } from './components/agent/model-picker.tsx';
 export {
+  type PlanStep,
+  PlanVsActual,
+  type PlanVsActualLabels,
+  type PlanVsActualProps,
+} from './components/agent/plan-vs-actual.tsx';
+export {
   type ToolCall,
   ToolCallCard,
   ToolCallGroup,
@@ -181,6 +187,7 @@ export {
   type TabsListProps,
   type TabsProps,
 } from './components/ui/tabs.tsx';
+export { TabsSubtle, TabsSubtleItem, TabsSubtlePanel } from './components/ui/tabs-subtle.tsx';
 export {
   ThinkingStep,
   ThinkingStepDetails,

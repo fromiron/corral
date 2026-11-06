@@ -416,7 +416,7 @@ test('#74 a narrow run keeps the response reachable outside its detail tabs', as
   await expect(page).toHaveURL(/\/runs\//);
   await page.setViewportSize({ width: 501, height: 757 });
   const monitor = page.getByTestId('run-monitor');
-  await expect(monitor.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+  await expect(monitor.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -426,7 +426,7 @@ test('#74 a narrow run keeps the response reachable outside its detail tabs', as
   await expect(
     response.getByRole('button', { name: 'Continue with this version', exact: true }),
   ).toBeVisible();
-  await monitor.getByRole('button', { name: 'Details', exact: true }).click();
+  await monitor.getByRole('button', { name: 'Show side panel', exact: true }).click();
   await monitor.getByRole('tab', { name: 'Usage', exact: true }).click();
   await expect(
     response.getByRole('button', { name: 'Continue with this version', exact: true }),

@@ -3,6 +3,7 @@ import {
   AgentIdentity,
   type AgentStatus,
   AgentStatusLabel,
+  AgentSteeringPlan,
   Banner,
   BannerActions,
   BannerTitle,
@@ -31,8 +32,8 @@ import {
   FileDiff,
   FileText,
   LayoutGrid,
+  ListChecks,
   type LucideIcon,
-  Monitor,
 } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
 import type { ReactElement, ReactNode } from 'react';
@@ -43,7 +44,6 @@ import {
   chipClass,
   compactNumber,
   contextLabel,
-  EnvironmentDetail,
   RunLink,
 } from './ChatWidgets.tsx';
 import {
@@ -118,13 +118,19 @@ export function OverviewWidgets({ model }: { model: ChatWidgetModel }) {
       aria-label={t('heading')}
       className="flex flex-col gap-2 p-3"
     >
-      {overviewWidgets(model).map((widget) => (
+      {overviewWidgets({ ...model, plan: hasPlan(model) }).map((widget) => (
         <div key={widget} data-overview-widget={widget}>
           <Widget widget={widget} model={model} />
         </div>
       ))}
     </section>
   );
+}
+
+function hasPlan(model: ChatWidgetModel): boolean {
+  // Models built without a plan reader (tests, the empty state) carry no plan status.
+  const status = model.plan?.status;
+  return Boolean(status && 'plan' in status && status.plan?.items.length);
 }
 
 function Widget({ widget, model }: { widget: OverviewWidget; model: ChatWidgetModel }) {
@@ -134,7 +140,7 @@ function Widget({ widget, model }: { widget: OverviewWidget; model: ChatWidgetMo
   if (widget === 'results') return <ResultsWidget model={model} />;
   if (widget === 'changes') return <ChangesWidget model={model} />;
   if (widget === 'agents') return <AgentsWidget model={model} />;
-  if (widget === 'environment') return <EnvironmentWidget model={model} />;
+  if (widget === 'plan') return <PlanWidget model={model} />;
   return null;
 }
 
@@ -602,27 +608,45 @@ function agentStatus(status: string): AgentStatus {
   return 'waiting';
 }
 
-function EnvironmentWidget({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets.overview');
-  const tw = useTranslations('Widgets');
+/** The selected work plan at a glance: progress and each item's state, read-only. */
+function PlanWidget({ model }: { model: ChatWidgetModel }) {
+  const t = useTranslations('Widgets');
+  const status = model.plan.status;
+  if (!('plan' in status) || !status.plan) return null;
+  const items = status.plan.items;
+  const shown = items.slice(0, 5);
   return (
-    <Popover>
-      <div className="flex items-center gap-2 px-3">
-        <Monitor size={14} aria-hidden="true" />
-        <KitBadge color="gray">
-          {tw(model.environment === 'simulated' ? 'environmentSimulated' : 'environmentRestricted')}
-        </KitBadge>
-        <PopoverTrigger
-          data-testid="environment-chip"
-          render={<Button size="icon-compact" variant="ghost" />}
-          aria-label={t('openDetail', { name: t('environment') })}
-        >
-          <ChevronRight size={14} aria-hidden="true" />
-        </PopoverTrigger>
-      </div>
-      <PopoverPopup align="end" side="left" width="md">
-        <EnvironmentDetail model={model} />
-      </PopoverPopup>
-    </Popover>
+    <AgentCard data-testid="overview-plan" className="grid gap-2 p-3">
+      <p className="flex items-center gap-2 text-caption text-muted-foreground">
+        <ListChecks size={14} aria-hidden="true" />
+        <span>{t('planHeading')}</span>
+        <span className="ml-auto tabular-nums">
+          {t('planCount', { done: status.completed, total: status.total })}
+        </span>
+      </p>
+      <AgentSteeringPlan
+        steps={shown.map((item) => ({
+          id: item.id,
+          title: item.title,
+          status:
+            item.status === 'completed'
+              ? 'done'
+              : item.status === 'in_progress'
+                ? 'active'
+                : 'pending',
+        }))}
+        status={model.live ? 'running' : 'waiting'}
+        labels={{ plan: t('planHeading') }}
+        statusLabel={(state) =>
+          t(state === 'done' ? 'completed' : state === 'active' ? 'in_progress' : 'pending')
+        }
+        wrapTitles
+      />
+      {items.length > shown.length ? (
+        <p className="pl-6 text-caption text-muted-foreground">
+          {t('planMore', { count: items.length - shown.length })}
+        </p>
+      ) : null}
+    </AgentCard>
   );
 }

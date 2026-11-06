@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { WorkPlan } from '@corral/contracts';
 import { emptyProjection } from '@corral/core';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -337,4 +338,45 @@ it('names missing input reports rather than presenting the known-only sum as com
   const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
   expect(detail).toContain('100');
   expect(detail).toContain('1 completed call did not report input tokens');
+});
+
+it('shows the selected work plan at a glance and no environment widget', async () => {
+  const plan = WorkPlan.parse({
+    scope: 'execution',
+    executionId: 'exec_plan',
+    attemptNo: 1,
+    revision: 1,
+    criteriaVersionId: 'criteria_plan',
+    items: Array.from({ length: 7 }, (_, index) => ({
+      id: `item_${index + 1}`,
+      title: `Plan item ${index + 1}`,
+      status: index === 0 ? 'completed' : index === 1 ? 'in_progress' : 'pending',
+    })),
+  });
+  const container = await render(
+    model({
+      live: true,
+      environment: 'simulated',
+      chips: ['context', 'environment'],
+      plan: {
+        choices: [],
+        choose: vi.fn(),
+        status: {
+          state: 'ready',
+          plan,
+          total: 7,
+          completed: 1,
+          planFinished: false,
+          runFinished: false,
+        },
+      },
+    } as unknown as Partial<ChatWidgetModel>),
+  );
+  expect(widgets(container)).toEqual(['plan', 'results', 'context', 'usage']);
+  const widget = container.querySelector('[data-testid="overview-plan"]');
+  expect(widget?.textContent).toContain('1/7 done');
+  expect(widget?.textContent).toContain('Plan item 5');
+  expect(widget?.textContent).not.toContain('Plan item 6');
+  expect(widget?.textContent).toContain('2 more');
+  expect(container.querySelector('[data-testid="environment-chip"]')).toBeNull();
 });

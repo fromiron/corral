@@ -29,7 +29,7 @@ export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './component
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';
 export { ValidationPanel } from './components/ValidationPanel.tsx';
-export { WorkPlanPanel } from './components/WorkPlanPanel.tsx';
+export { primaryWorkPlan, useRunWorkPlan, WorkPlanPanel } from './components/WorkPlanPanel.tsx';
 export { StudioStoresProvider, useStudioStores } from './context.tsx';
 export * from './editor/model.ts';
 export {
@@ -96,7 +96,7 @@ export {
   type SessionCommand,
 } from './run/session.ts';
 export { useSteerTarget } from './run/steer-target.ts';
-export { buildTranscript, type TranscriptEntry } from './run/transcript.ts';
+export { buildTranscript, executionToolEntries, type TranscriptEntry } from './run/transcript.ts';
 export {
   buildTurnProcess,
   type ProcessRow,

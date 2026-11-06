@@ -13,7 +13,9 @@ import {
   type KeyboardEvent,
   useCallback,
   useId,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useNow } from '../../hooks/use-now.ts';
@@ -92,6 +94,8 @@ interface LaneHandoff {
   to: string;
   /** Where the curve leaves `from`, ms. Default its end (a delegation leaves when the child starts). */
   fromAt?: number;
+  /** Where the curve reaches `to`, ms. Default its start (work picked up mid-span lands there). */
+  toAt?: number;
 }
 
 /** Words the board shows; every default is the kit's English text. */
@@ -147,6 +151,8 @@ interface AgentLanesProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> 
   size?: SizeVariant;
   /** Fixed window start (ms): the board spans `startAt`..`now` with ticks counted from it. */
   startAt?: number;
+  /** Fixed window end (ms) with `startAt`; omitted, the window ends at `now`. */
+  endAt?: number;
   /** The selected span; it is `aria-pressed` and outlined. */
   selectedTaskId?: string | null;
   /** Makes each span select its task instead of opening the detail popover. */
@@ -156,6 +162,48 @@ interface AgentLanesProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> 
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Pixels between a span's edge and the trunk of a connector that turns into it. */
+const ELBOW_GAP = 10;
+
+interface ElbowEnd {
+  /** Where the hand-off happens on this span, px. */
+  x: number;
+  /** The span's vertical centre, px. */
+  y: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * A hand-off between overlapping spans at nearly one moment, drawn as a rounded elbow: a span
+ * that begins here is entered from the left at its middle, one that ends here is left to the
+ * right at its middle, and the other span is touched at its edge facing the gap. Several
+ * hand-offs at one moment share the vertical trunk, like branches of a tree.
+ */
+function elbow({ from, to, half }: { from: ElbowEnd; to: ElbowEnd; half: number }) {
+  const down = to.y > from.y ? 1 : -1;
+  const near = (a: number, b: number) => Math.abs(a - b) < 8;
+  if (near(to.x, to.start)) {
+    // Into a span that starts here: drop from the source's facing edge, then turn right.
+    const trunk = Math.max(2, to.start - ELBOW_GAP);
+    const top = from.y + down * half;
+    const r = Math.min(6, Math.abs(to.y - top) / 2);
+    return `M ${trunk} ${top} L ${trunk} ${to.y - down * r} Q ${trunk} ${to.y} ${trunk + r} ${to.y} L ${to.start} ${to.y}`;
+  }
+  if (from.end >= from.x - 1 && from.end <= to.x + 8) {
+    // Out of a span that ends here: leave to the right, then turn into the target's facing edge.
+    const trunk = from.end + ELBOW_GAP;
+    const edge = to.y - down * half;
+    const r = Math.min(6, Math.abs(edge - from.y) / 2);
+    return `M ${from.end} ${from.y} L ${trunk - r} ${from.y} Q ${trunk} ${from.y} ${trunk} ${from.y + down * r} L ${trunk} ${edge}`;
+  }
+  // Mid-span on both sides: a short S between the facing edges.
+  const top = from.y + down * half;
+  const bottom = to.y - down * half;
+  const mid = (top + bottom) / 2;
+  return `M ${from.x} ${top} C ${from.x} ${mid}, ${to.x} ${mid}, ${to.x} ${bottom}`;
+}
 
 const MIN = 60_000;
 
@@ -241,6 +289,7 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
       onOpenTask,
       size: sizeProp,
       startAt,
+      endAt,
       selectedTaskId = null,
       onSelectTask,
       labels: labelOverrides,
@@ -252,6 +301,19 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
   ) => {
     const uid = useId();
     const shape = useShape();
+    // Hand-offs are drawn in pixels, so their corners and offsets keep their shape at any width.
+    const spansRef = useRef<HTMLDivElement>(null);
+    const [laneWidth, setLaneWidth] = useState(1000);
+    useLayoutEffect(() => {
+      const el = spansRef.current;
+      if (!el) return;
+      const measure = () => setLaneWidth(el.clientWidth || 1000);
+      measure();
+      if (typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(measure);
+      observer.observe(el);
+      return () => observer.disconnect();
+    }, []);
     const size = useSize(sizeProp);
     const reduce = useReducedMotion() ?? false;
 
@@ -260,7 +322,7 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
     const now = nowProp ?? ticking;
     const labels = useMemo(() => ({ ...defaultLabels, ...labelOverrides }), [labelOverrides]);
     // A fixed start spans the whole record; otherwise the window trails `now`.
-    const span = startAt === undefined ? windowMs : Math.max(1, now - startAt);
+    const span = startAt === undefined ? windowMs : Math.max(1, (endAt ?? now) - startAt);
     const start = startAt ?? now - windowMs;
     const pct = useCallback((t: number) => ((t - start) / span) * 100, [start, span]);
 
@@ -487,6 +549,7 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
 
               {/* Spans */}
               <div
+                ref={spansRef}
                 className={cn(
                   'absolute inset-0 overflow-hidden',
                   // A trailing window fades its oldest edge; a fixed one starts at its first record.
@@ -496,7 +559,7 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
               >
                 <svg
                   className="pointer-events-none absolute inset-0 size-full overflow-visible"
-                  viewBox={`0 0 1000 ${height}`}
+                  viewBox={`0 0 ${laneWidth} ${height}`}
                   preserveAspectRatio="none"
                   aria-hidden
                 >
@@ -504,11 +567,32 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
                     const a = index.get(h.from);
                     const b = index.get(h.to);
                     if (!a || !b) return null;
-                    const x1 = pct(h.fromAt ?? a.task.endedAt ?? now) * 10;
-                    const x2 = pct(b.task.startedAt) * 10;
+                    const px = (at: number) => (pct(at) / 100) * laneWidth;
+                    const x1 = px(h.fromAt ?? a.task.endedAt ?? now);
+                    const x2 = px(h.toAt ?? b.task.startedAt);
                     const y1 = spanY(a.row, a.track);
                     const y2 = spanY(b.row, b.track);
-                    const dx = Math.max(12, Math.abs(x2 - x1) * 0.7);
+                    const d =
+                      y1 !== y2 && Math.abs(x2 - x1) < 40
+                        ? elbow({
+                            from: {
+                              x: x1,
+                              y: y1,
+                              start: px(a.task.startedAt),
+                              end: px(a.task.endedAt ?? now),
+                            },
+                            to: {
+                              x: x2,
+                              y: y2,
+                              start: px(b.task.startedAt),
+                              end: px(b.task.endedAt ?? now),
+                            },
+                            half: blockHeight(rowHeight) / 2,
+                          })
+                        : (() => {
+                            const dx = Math.max(12, Math.abs(x2 - x1) * 0.7);
+                            return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+                          })();
                     const live = isLive(b.task.status);
                     // A live hand-off flows (CSS `.flow-dash`, still under reduced
                     // motion); a settled one draws in once.
@@ -516,9 +600,9 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
                       <motion.path
                         key={`${h.from}-${h.to}`}
                         data-handoff={`${h.from}>${h.to}`}
-                        d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                        d={d}
                         fill="none"
-                        stroke={live ? 'var(--emphasis)' : 'var(--border)'}
+                        stroke={live ? 'var(--emphasis)' : 'var(--muted-foreground)'}
                         strokeWidth={1}
                         strokeDasharray="3 3"
                         vectorEffect="non-scaling-stroke"
@@ -526,7 +610,7 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
                         initial={
                           reduce ? false : live ? { opacity: 0 } : { pathLength: 0, opacity: 0 }
                         }
-                        animate={live ? { opacity: 0.8 } : { pathLength: 1, opacity: 1 }}
+                        animate={live ? { opacity: 0.8 } : { pathLength: 1, opacity: 0.6 }}
                         transition={spring.slow}
                       />
                     );
@@ -563,8 +647,12 @@ const AgentLanes = forwardRef<HTMLDivElement, AgentLanesProps>(
               </div>
 
               {/* Now marker */}
-              {anyLive && startAt === undefined && (
-                <span className="pointer-events-none absolute -top-1.5 right-0 w-0" aria-hidden>
+              {anyLive && (
+                <span
+                  className="pointer-events-none absolute -top-1.5 w-0"
+                  style={{ left: `${Math.min(100, pct(now))}%` }}
+                  aria-hidden
+                >
                   <span
                     className={cn(
                       size.type.micro,

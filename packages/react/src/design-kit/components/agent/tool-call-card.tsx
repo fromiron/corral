@@ -377,6 +377,11 @@ interface ToolCallCardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onTogg
   size?: SizeVariant;
   /** Visible strings; omitted ones keep the English defaults. */
   labels?: Partial<ToolCallLabels>;
+  /**
+   * `card` raises the call as its own surface (a call shown alone). `row` is a flat line for a
+   * call listed inside a group, which already frames its calls. @default "card"
+   */
+  variant?: 'card' | 'row';
 }
 
 const ToolCallCardBody = forwardRef<HTMLDivElement, Omit<ToolCallCardProps, 'size' | 'labels'>>(
@@ -388,12 +393,14 @@ const ToolCallCardBody = forwardRef<HTMLDivElement, Omit<ToolCallCardProps, 'siz
       onOpenChange,
       onRetry,
       resultCap = 220,
+      variant = 'card',
       className,
       ...props
     },
     ref,
   ) => {
     const size = useSize();
+    const shape = useShape();
     const icons = useIcons();
     const labels = useContext(LabelsContext);
     const resolveIcon = useResolveIcon();
@@ -417,12 +424,14 @@ const ToolCallCardBody = forwardRef<HTMLDivElement, Omit<ToolCallCardProps, 'siz
     const argsText = call.args !== undefined ? toJson(call.args) : undefined;
     const resultText = call.result !== undefined ? toJson(call.result) : undefined;
 
+    const row = variant === 'row';
+    const Frame = row ? 'div' : AgentCard;
     return (
-      <AgentCard
+      <Frame
         ref={ref}
         data-status={call.status}
         data-open={open || undefined}
-        className={className}
+        className={cn(row && 'min-w-0', className)}
         {...props}
       >
         <span className="sr-only" role="status" aria-live="polite">
@@ -434,7 +443,8 @@ const ToolCallCardBody = forwardRef<HTMLDivElement, Omit<ToolCallCardProps, 'siz
           aria-controls={bodyId}
           onClick={() => setOpen(!open)}
           className={cn(
-            'flex w-full min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors duration-80 hover:bg-hover',
+            'flex w-full min-w-0 items-center text-left transition-colors duration-80 hover:bg-hover',
+            row ? cn('gap-2 px-2 py-1', shape.bg) : 'gap-2.5 px-3.5 py-2.5',
             focusRingInset,
             size.type.body,
           )}
@@ -443,7 +453,7 @@ const ToolCallCardBody = forwardRef<HTMLDivElement, Omit<ToolCallCardProps, 'siz
             className="grid size-4 shrink-0 place-items-center text-muted-foreground"
             aria-hidden
           >
-            <Icon size={16} />
+            <Icon size={row ? 14 : 16} />
           </span>
           <span className="flex min-w-0 flex-1 items-baseline gap-2">
             <code
@@ -499,7 +509,13 @@ const ToolCallCardBody = forwardRef<HTMLDivElement, Omit<ToolCallCardProps, 'siz
           <Chevron open={open} />
         </button>
         <Collapse open={open} id={bodyId}>
-          <div className="grid gap-3.5 border-t border-border px-3.5 pt-3 pb-3.5">
+          <div
+            className={
+              row
+                ? 'grid gap-3 pt-1 pr-2 pb-2 pl-8'
+                : 'grid gap-3.5 border-t border-border px-3.5 pt-3 pb-3.5'
+            }
+          >
             {argsText !== undefined && (
               <div className="grid gap-1.5">
                 <SectionHead label={labels.arguments} copyText={argsText} />
@@ -567,7 +583,7 @@ const ToolCallCardBody = forwardRef<HTMLDivElement, Omit<ToolCallCardProps, 'siz
             </div>
           </div>
         </Collapse>
-      </AgentCard>
+      </Frame>
     );
   },
 );
@@ -701,10 +717,12 @@ const ToolCallGroupBody = forwardRef<HTMLDivElement, Omit<ToolCallGroupProps, 's
           <Chevron open={open} />
         </button>
         <Collapse open={open} id={listId}>
-          <div className="grid gap-2 pt-1.5 pb-0.5">
+          {/* The group frames its calls: flat rows on a rail under the tool stack, not raised cards. */}
+          <div className="mt-1 ml-[11px] grid gap-0.5 border-border border-l pb-0.5 pl-2">
             {calls.map((call) => (
               <ToolCallCard
                 key={call.id}
+                variant="row"
                 call={call}
                 defaultOpen={defaultOpenIds?.includes(call.id)}
                 onRetry={onRetry}

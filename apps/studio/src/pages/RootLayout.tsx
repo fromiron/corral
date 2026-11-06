@@ -46,7 +46,7 @@ import {
   workHref,
 } from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
-import { SessionTabs } from '../workbench/SessionTabs.tsx';
+import { useSessionJump } from '../workbench/SessionJump.tsx';
 import { SettingsDialog } from '../workbench/SettingsDialog.tsx';
 import {
   SettingsLeavePrompt,
@@ -116,6 +116,7 @@ function RootFrame() {
             sidebar.corrals.find((team) => team.corralId === selectedRun.corralId)?.projectId)
           : undefined));
   const project = sidebar.projects.find((item) => item.projectId === projectId) ?? data?.project;
+  useSessionJump(sidebar.sessions, projectId);
   const [lastWork, setLastWork] = useState<{ href: string; projectId?: string } | null>(null);
   const search = validateSettingsSearch(location.search);
   const settingsProjectId = sidebar.projects.find(
@@ -245,7 +246,6 @@ function RootFrame() {
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
-  const showLocation = !/^\/sessions\/[^/]+(?:\/|$)/.test(location.pathname);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -349,39 +349,34 @@ function RootFrame() {
                     <PanelLeft />
                   </Button>
                 </Tooltip>
-                {showLocation ? (
-                  <nav
-                    aria-label={tn('location')}
-                    className="flex min-w-0 items-center gap-1.5 text-ui"
-                  >
-                    {settings ? (
-                      <span className="shrink-0 text-muted-foreground">{td('settings')}</span>
-                    ) : narrow || !prefs.sidebarOpen ? (
-                      <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
-                    ) : project ? (
-                      <Link
-                        to="/projects/$projectId"
-                        params={{ projectId: project.projectId }}
-                        className="max-w-52 truncate text-muted-foreground hover:text-text"
-                      >
-                        {projectName(project, projectsText('defaultName'))}
-                      </Link>
-                    ) : null}
-                    {pageTitle ? (
-                      <>
-                        {settings || project ? (
-                          <span aria-hidden="true" className="text-muted-foreground/50">
-                            /
-                          </span>
-                        ) : null}
-                        <h2 className="truncate font-medium">{pageTitle}</h2>
-                      </>
-                    ) : null}
-                  </nav>
-                ) : (
-                  <h2 className="sr-only">{pageTitle}</h2>
-                )}
-                <SessionTabs sessions={sidebar.sessions} />
+                <nav
+                  aria-label={tn('location')}
+                  className="flex min-w-0 items-center gap-1.5 text-ui"
+                >
+                  {settings ? (
+                    <span className="shrink-0 text-muted-foreground">{td('settings')}</span>
+                  ) : narrow || !prefs.sidebarOpen ? (
+                    <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
+                  ) : project ? (
+                    <Link
+                      to="/projects/$projectId"
+                      params={{ projectId: project.projectId }}
+                      className="max-w-52 truncate text-muted-foreground hover:text-text"
+                    >
+                      {projectName(project, projectsText('defaultName'))}
+                    </Link>
+                  ) : null}
+                  {pageTitle ? (
+                    <>
+                      {settings || project ? (
+                        <span aria-hidden="true" className="text-muted-foreground/50">
+                          /
+                        </span>
+                      ) : null}
+                      <h2 className="truncate font-medium">{pageTitle}</h2>
+                    </>
+                  ) : null}
+                </nav>
                 {settings && activeRuns.length ? (
                   <Menu>
                     <MenuTrigger render={<Button variant="ghost" size="compact" />}>

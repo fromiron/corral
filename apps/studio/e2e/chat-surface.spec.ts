@@ -43,11 +43,11 @@ test('RESULT-03 default execution panel offers its actual results', async ({ pag
   await completedConversation(page);
   await panelTab(page, 'Execution history');
   const monitor = page.getByTestId('run-monitor');
-  await expect(monitor.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+  await expect(monitor.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  await monitor.getByRole('button', { name: 'Results', exact: true }).click();
+  await monitor.getByRole('tab', { name: 'Results', exact: true }).click();
   const results = monitor.getByRole('navigation', { name: 'Results', exact: true });
   await expect(results).toBeVisible();
   await expect(results.getByRole('button')).not.toHaveCount(0);

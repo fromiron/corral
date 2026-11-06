@@ -29,7 +29,7 @@ it('controls outside hidden panes retain and open the active run, not the histor
     await act(async () => {
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <DockRunControls runId="active-run" onOpen={onOpen} />
+          <DockRunControls runId="active-run" request="Summarize the report" onOpen={onOpen} />
         </IntlProvider>,
       );
     });
@@ -37,6 +37,13 @@ it('controls outside hidden panes retain and open the active run, not the histor
     expect(retainRun).toHaveBeenCalledWith('active-run');
     expect(open).toHaveBeenCalledWith('active-run');
     expect(container.textContent).toContain(messages.Reins.cancelRun);
+    // The breadcrumb already names the session: the request is the controls' description and
+    // tooltip, not another visible line beside the status.
+    const target = [...container.querySelectorAll('*')].find(
+      (el) => el.children.length === 0 && el.textContent?.includes('Summarize the report'),
+    );
+    expect(target?.classList.contains('sr-only')).toBe(true);
+    expect(container.querySelector('[data-testid="active-run-status"]')).not.toBeNull();
     const button = container.querySelector('[data-testid="dock-open-active-run"]');
     expect(button).not.toBeNull();
     await act(async () => (button as HTMLButtonElement).click());

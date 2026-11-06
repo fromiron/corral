@@ -142,9 +142,10 @@ describe('overview widget order', () => {
         usage: usageSummary(run(), limits),
         results: [{ id: 'r', label: 'draft v1' }],
         action: { needsUser: true },
+        plan: true,
         live: true,
       }),
-    ).toEqual(['attention', 'agents', 'results', 'changes', 'context', 'usage', 'environment']);
+    ).toEqual(['attention', 'plan', 'agents', 'results', 'changes', 'context', 'usage']);
   });
 
   it('puts results first after completion without treating a past failure as pending input', () => {
@@ -154,9 +155,17 @@ describe('overview widget order', () => {
         usage: usageSummary(run(), limits),
         results: [{ id: 'r', label: 'draft v1' }],
         action: { needsUser: false },
+        plan: true,
         live: false,
       }),
-    ).toEqual(['results', 'changes', 'agents', 'context', 'usage', 'environment']);
+    ).toEqual(['results', 'changes', 'plan', 'agents', 'context', 'usage']);
+  });
+
+  it('shows the plan only when there is one, and never an environment widget', () => {
+    expect(overviewWidgets({ ...base, chips: ['environment'], plan: false, live: true })).toEqual(
+      [],
+    );
+    expect(overviewWidgets({ ...base, plan: true, live: true })).toEqual(['plan']);
   });
 
   it('hides a widget with nothing to say', () => {

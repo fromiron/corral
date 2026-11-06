@@ -1,7 +1,7 @@
 import { type EventOf, RunEvent } from '@corral/contracts';
 import { applyEvent, emptyProjection } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { DecisionDetail, RunFlowView } from '../src/components/RunFlowView.tsx';
@@ -110,6 +110,21 @@ describe('causal execution interface', () => {
     expect(loadArtifact).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'research' }));
     expect(onSelectExecution).toHaveBeenCalledWith('research_1');
+  });
+
+  it('lists only artifacts that no relationship card already shows', () => {
+    const { session, definition } = fixture();
+    wrap(
+      <RunFlowView
+        {...{ session, definition }}
+        onOpenArtifact={vi.fn()}
+        onSelectExecution={vi.fn()}
+      />,
+    );
+    const list = screen.getByRole('region', { name: 'Created artifacts' });
+    // Notes is the card of the research → writer relationship, so it is not repeated here.
+    expect(within(list).queryByText('Notes')).toBeNull();
+    expect(within(list).getByText('Report')).toBeInTheDocument();
   });
 
   it('shows current model activity instead of marking a running agent unrecorded', () => {

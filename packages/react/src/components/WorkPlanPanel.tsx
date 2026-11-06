@@ -26,25 +26,9 @@ export function WorkPlanPanel({ session }: { session: RunSessionStore }) {
 function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: WorkPlanRef }) {
   const t = useTranslations('WorkPlan');
   const runId = useStore(session, (s) => s.runId);
-  const projection = useRunDisplay(session, (s) => s.projection);
   const bodies = useStore(session, (s) => s.artifactTexts);
   const [failedEvidence, setFailedEvidence] = useState<string | null>(null);
-  const { status, retry } = useWorkPlanSnapshot({
-    runId,
-    ref: view,
-    currentCriteriaVersionId: projection?.currentCriteriaVersionId,
-    currentAttemptNo: projection?.executions[view.executionId]?.attemptNo,
-    runStatus: projection?.status,
-    cacheScope: session,
-    text: bodies[view.bodyRef],
-    load: async (bodyRef, options) => {
-      if (session.getState().runId !== runId) return null;
-      await session.getState().loadArtifact(bodyRef, options);
-      return session.getState().runId === runId
-        ? (session.getState().artifactTexts[bodyRef] ?? null)
-        : null;
-    },
-  });
+  const { status, retry } = useRunWorkPlan(session, view);
   const plan = 'plan' in status ? status.plan : null;
   return (
     <details open className="rounded-lg fill-group p-3 text-sm">
@@ -130,4 +114,35 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
       ) : null}
     </details>
   );
+}
+
+/** The plan a run shows first: the team plan, else the most recently recorded execution plan. */
+export function primaryWorkPlan(
+  plans: Record<string, WorkPlanRef> | undefined,
+): WorkPlanRef | null {
+  const all = Object.values(plans ?? {});
+  return all.find((plan) => plan.scope === 'team') ?? all.at(-1) ?? null;
+}
+
+/** Reads and verifies one recorded work plan of the session's run, as the plan panel does. */
+export function useRunWorkPlan(session: RunSessionStore, view: WorkPlanRef | null) {
+  const runId = useStore(session, (s) => s.runId);
+  const projection = useRunDisplay(session, (s) => s.projection);
+  const bodies = useStore(session, (s) => s.artifactTexts);
+  return useWorkPlanSnapshot({
+    runId,
+    ref: view,
+    currentCriteriaVersionId: projection?.currentCriteriaVersionId,
+    currentAttemptNo: view ? projection?.executions[view.executionId]?.attemptNo : undefined,
+    runStatus: projection?.status,
+    cacheScope: session,
+    text: view ? bodies[view.bodyRef] : undefined,
+    load: async (bodyRef, options) => {
+      if (session.getState().runId !== runId) return null;
+      await session.getState().loadArtifact(bodyRef, options);
+      return session.getState().runId === runId
+        ? (session.getState().artifactTexts[bodyRef] ?? null)
+        : null;
+    },
+  });
 }

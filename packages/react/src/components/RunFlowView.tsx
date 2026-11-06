@@ -133,7 +133,9 @@ export function RunFlowView({
   const { groups, remaining } = useMemo(() => relationshipGroups(flow), [flow]);
   const [selected, setSelected] = useState<string | null>(null);
   const group = groups.find((entry) => entry.id === selected) ?? groups[0];
-  const artifacts = flow.nodes.filter((node) => node.kind === 'artifact');
+  // An artifact already shown as a relationship card is not listed a second time below.
+  const relayed = new Set(groups.flatMap((entry) => entry.cards.map((card) => card.artifact?.id)));
+  const artifacts = flow.nodes.filter((node) => node.kind === 'artifact' && !relayed.has(node.id));
   const agents = flow.nodes.filter((node) => node.kind === 'agent');
   if (!projection) return null;
   const stateLabel = (value: string) => (status.has(value) ? status(value) : t('unrecorded'));

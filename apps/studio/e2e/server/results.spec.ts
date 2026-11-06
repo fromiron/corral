@@ -45,14 +45,11 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
   }, definition);
   await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
-  await expect(page.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  await page
-    .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Results', exact: true })
-    .click();
+  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Results', exact: true }).click();
 }
 
 test('the Results view opens its result, and a reload keeps the chosen version', async ({

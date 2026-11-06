@@ -1,4 +1,5 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, type RunProjection } from '@corral/core';
 
 export function availableResultLinks(
@@ -690,26 +691,30 @@ export type OverviewWidget =
   | 'results'
   | 'changes'
   | 'agents'
-  | 'environment';
+  | 'plan';
 
-/** Put the current task ahead of telemetry, then lead with results after it ends. */
+/**
+ * Put the current task ahead of telemetry, then lead with results after it ends. The execution
+ * environment is not a widget: the composer status line and the Run screen state it.
+ */
 export function overviewWidgets(input: {
   chips: readonly WidgetChip[];
   usage: UsageSummary | null;
   results: readonly unknown[];
   live?: boolean;
   action?: { needsUser: boolean };
+  /** A work plan from the planning tool is selected and readable. */
+  plan?: boolean;
 }): OverviewWidget[] {
-  const shown = new Set<OverviewWidget>(input.chips);
+  const shown = new Set<string>(input.chips);
+  if (input.plan) shown.add('plan');
   if (input.action?.needsUser) shown.add('attention');
   if (input.usage) shown.add('usage');
   if (input.results.length) shown.add('results');
   const primary: OverviewWidget[] = input.live
-    ? ['attention', 'agents', 'results', 'changes']
-    : ['attention', 'results', 'changes', 'agents'];
-  return [...primary, 'context', 'usage', 'environment' as const].filter(
-    (widget): widget is OverviewWidget => shown.has(widget as OverviewWidget),
-  );
+    ? ['attention', 'plan', 'agents', 'results', 'changes']
+    : ['attention', 'results', 'changes', 'plan', 'agents'];
+  return [...primary, 'context' as const, 'usage' as const].filter((widget) => shown.has(widget));
 }
 
 export function visibleWidgets(input: {
@@ -823,4 +828,18 @@ export function viewedRun(input: {
     number: index + 1,
     total: input.runIds.length,
   };
+}
+
+/**
+ * Whether the composer shows its run status pill. A live run's status and controls belong to the
+ * top bar, so the pill appears only when the person is needed, when the state cannot be read,
+ * and for an ended run.
+ */
+export function composerShowsRunStatus(input: {
+  runStatus: string | null;
+  readState: 'empty' | 'loading' | 'ready' | 'error';
+  needsAction: boolean;
+}): boolean {
+  if (input.needsAction || input.readState === 'error') return true;
+  return input.runStatus !== null && (TERMINAL_RUN_STATUSES as Set<string>).has(input.runStatus);
 }

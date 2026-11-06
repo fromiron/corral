@@ -147,7 +147,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await page.getByRole('button', { name: 'View run', exact: true }).click();
   await page
     .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Details', exact: true })
+    .getByRole('button', { name: 'Show side panel', exact: true })
     .click();
   for (const card of ['environment', 'context', 'connections', 'changes'])
     await expect(page.getByTestId(`status-${card}`)).toBeVisible();

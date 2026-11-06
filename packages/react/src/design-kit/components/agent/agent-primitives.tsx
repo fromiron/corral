@@ -15,7 +15,7 @@ import type { IconComponent } from '../../lib/icon-context.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
 import { loop, spring } from '../../lib/springs.ts';
-import { surfaceClasses } from '../../lib/surface-classes.ts';
+import { SURFACE_BG } from '../../lib/surface-classes.ts';
 import { useSurface } from '../../lib/surface-context.tsx';
 import { cn } from '../../lib/utils.ts';
 import { Badge, type BadgeColor } from '../ui/badge.tsx';
@@ -227,7 +227,12 @@ AgentStatusBadge.displayName = 'AgentStatusBadge';
 
 // ─── Identity ────────────────────────────────────────────────────────────────
 
-/** Inline counterpart of `Elevated` (a span, so it can sit inside text). */
+/**
+ * Inline counterpart of `Elevated` (a span, so it can sit inside text). A mark this small takes the
+ * next surface's background with only the hairline of the first shadow step: the full drop ladder
+ * belongs to cards and popups, and on a 16–28px tile it reads as a heavier object than the card
+ * that holds it.
+ */
 function RaisedSpan({
   offset,
   className,
@@ -241,7 +246,7 @@ function RaisedSpan({
 }) {
   const level = Math.min(useSurface() + offset, 8);
   return (
-    <span className={cn(surfaceClasses(level), className)} style={style}>
+    <span className={cn(SURFACE_BG[level], 'shadow-surface-1', className)} style={style}>
       {children}
     </span>
   );

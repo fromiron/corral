@@ -53,7 +53,7 @@ test.describe('runtime continuation', () => {
     );
     await page.reload();
     const detail = page.getByTestId('run-monitor');
-    await detail.getByRole('button', { name: 'Details', exact: true }).click();
+    await detail.getByRole('button', { name: 'Show side panel', exact: true }).click();
     await detail.getByTestId('status-context').locator(':scope > summary').click();
     const recovery = detail.getByTestId('runtime-recovery');
     await expect(
@@ -112,7 +112,7 @@ test.describe('runtime continuation', () => {
     await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
     await page
       .getByTestId('run-monitor')
-      .getByRole('button', { name: 'Details', exact: true })
+      .getByRole('button', { name: 'Show side panel', exact: true })
       .click();
     await expect(
       page.getByTestId('run-monitor').getByRole('link', { name: 'Open the source Run' }),

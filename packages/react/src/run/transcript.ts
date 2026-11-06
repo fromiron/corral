@@ -145,47 +145,17 @@ export function buildTranscript(
       }
       case 'tool.requested': {
         if (event.payload.executionId !== executionId) break;
-        const tool: Extract<TranscriptEntry, { kind: 'tool' }> = {
-          kind: 'tool',
-          seq: event.runSeq,
-          toolCallId: event.payload.toolCallId,
-          name: event.payload.name,
-          status: 'requested',
-          detail: null,
-          resultRef: null,
-          args: event.payload.validatedArgs,
-        };
+        const tool = toolEntry(event);
         tools.set(tool.toolCallId, tool);
         entries.push(tool);
         break;
       }
-      case 'tool.allowed': {
-        const tool = tools.get(event.payload.toolCallId);
-        if (tool) tool.status = 'allowed';
-        break;
-      }
-      case 'tool.blocked': {
-        const tool = tools.get(event.payload.toolCallId);
-        if (tool) {
-          tool.status = 'blocked';
-          tool.detail = event.payload.reason;
-        }
-        break;
-      }
-      case 'tool.started': {
-        const tool = tools.get(event.payload.toolCallId);
-        if (tool) tool.startedAt = event.recordedAt;
-        break;
-      }
+      case 'tool.allowed':
+      case 'tool.blocked':
+      case 'tool.started':
       case 'tool.finished': {
         const tool = tools.get(event.payload.toolCallId);
-        if (tool) {
-          tool.status = event.payload.error ? 'failed' : 'finished';
-          tool.detail = event.payload.error;
-          tool.resultRef = event.payload.resultRef;
-          if (tool.startedAt)
-            tool.latencyMs = Math.max(0, Date.parse(event.recordedAt) - Date.parse(tool.startedAt));
-        }
+        if (tool) updateTool(tool, event);
         break;
       }
       case 'message.question_created': {
@@ -224,4 +194,72 @@ export function buildTranscript(
     }
   }
   return entries;
+}
+
+type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
+type ToolUpdate = Extract<
+  RunEvent,
+  { type: 'tool.allowed' | 'tool.blocked' | 'tool.started' | 'tool.finished' }
+>;
+
+function toolEntry(event: Extract<RunEvent, { type: 'tool.requested' }>): ToolEntry {
+  return {
+    kind: 'tool',
+    seq: event.runSeq,
+    toolCallId: event.payload.toolCallId,
+    name: event.payload.name,
+    status: 'requested',
+    detail: null,
+    resultRef: null,
+    args: event.payload.validatedArgs,
+  };
+}
+
+/** One tool lifecycle step, shared by the transcript and the per-execution activity list. */
+function updateTool(tool: ToolEntry, event: ToolUpdate): void {
+  switch (event.type) {
+    case 'tool.allowed':
+      tool.status = 'allowed';
+      return;
+    case 'tool.blocked':
+      tool.status = 'blocked';
+      tool.detail = event.payload.reason;
+      return;
+    case 'tool.started':
+      tool.startedAt = event.recordedAt;
+      return;
+    case 'tool.finished':
+      tool.status = event.payload.error ? 'failed' : 'finished';
+      tool.detail = event.payload.error;
+      tool.resultRef = event.payload.resultRef;
+      if (tool.startedAt)
+        tool.latencyMs = Math.max(0, Date.parse(event.recordedAt) - Date.parse(tool.startedAt));
+  }
+}
+
+/**
+ * Every execution's tool calls in one pass over the record, in request order, with the same
+ * lifecycle as the transcript. The activity list reads this instead of a transcript per execution.
+ */
+export function executionToolEntries(events: readonly RunEvent[]): Map<string, ToolEntry[]> {
+  const calls = new Map<string, ToolEntry>();
+  const byExecution = new Map<string, ToolEntry[]>();
+  for (const event of events) {
+    if (event.type === 'tool.requested') {
+      const tool = toolEntry(event);
+      calls.set(tool.toolCallId, tool);
+      const list = byExecution.get(event.payload.executionId) ?? [];
+      list.push(tool);
+      byExecution.set(event.payload.executionId, list);
+    } else if (
+      event.type === 'tool.allowed' ||
+      event.type === 'tool.blocked' ||
+      event.type === 'tool.started' ||
+      event.type === 'tool.finished'
+    ) {
+      const tool = calls.get(event.payload.toolCallId);
+      if (tool) updateTool(tool, event);
+    }
+  }
+  return byExecution;
 }
