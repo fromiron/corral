@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -10,6 +10,7 @@ import {
   KitButton as Button,
   KitChatMessage as ChatMessage,
   type ToolCall,
+  ToolCallCard,
   ToolCallGroup,
   type ToolCallLabels,
 } from '../design-kit/index.ts';
@@ -118,18 +119,12 @@ const toolStatus: Record<ToolEntry['status'], ToolCall['status']> = {
   cancelled: 'stopped',
 };
 
-export function ExecutionToolGroup({
-  tools,
-  onOpenArtifact,
-  activityState,
-}: {
-  tools: ToolEntry[];
-  onOpenArtifact?: (id: string) => void;
-  /** Current owner state for unfinished calls; finished/error observations stay unchanged. */
-  activityState?: { status: 'waiting' | 'stopped'; label: string };
-}) {
+type ActivityState = { status: 'waiting' | 'stopped'; label: string };
+
+/** The kit tool-call labels in this locale. */
+function useToolLabels() {
   const t = useTranslations('Transcript');
-  const labels = useMemo<Partial<ToolCallLabels>>(
+  return useMemo<Partial<ToolCallLabels>>(
     () => ({
       arguments: t('tools.arguments'),
       result: t('tools.result'),
@@ -150,17 +145,22 @@ export function ExecutionToolGroup({
     }),
     [t],
   );
-  const calls: ToolCall[] = tools.map((tool) => ({
+}
+
+const unfinished = (tool: ToolEntry) => tool.status === 'requested' || tool.status === 'allowed';
+
+/** A recorded call as a kit tool call. */
+function useToolCalls(
+  tools: ToolEntry[],
+  onOpenArtifact: ((id: string) => void) | undefined,
+  activityState: ActivityState | undefined,
+): ToolCall[] {
+  const t = useTranslations('Transcript');
+  return tools.map((tool) => ({
     id: tool.toolCallId,
     name: tool.name,
-    status:
-      activityState && (tool.status === 'requested' || tool.status === 'allowed')
-        ? activityState.status
-        : toolStatus[tool.status],
-    statusLabel:
-      activityState && (tool.status === 'requested' || tool.status === 'allowed')
-        ? activityState.label
-        : t(`tool.${tool.status}`),
+    status: activityState && unfinished(tool) ? activityState.status : toolStatus[tool.status],
+    statusLabel: activityState && unfinished(tool) ? activityState.label : t(`tool.${tool.status}`),
     args: tool.args,
     ...(tool.latencyMs !== undefined ? { latencyMs: tool.latencyMs } : {}),
     ...(tool.detail ? { error: tool.detail } : {}),
@@ -181,18 +181,91 @@ export function ExecutionToolGroup({
         }
       : {}),
   }));
+}
+
+export function ExecutionToolGroup({
+  tools,
+  onOpenArtifact,
+  activityState,
+}: {
+  tools: ToolEntry[];
+  onOpenArtifact?: (id: string) => void;
+  /** Current owner state for unfinished calls; finished/error observations stay unchanged. */
+  activityState?: ActivityState;
+}) {
+  const labels = useToolLabels();
+  const calls = useToolCalls(tools, onOpenArtifact, activityState);
   return (
     <ToolCallGroup
       calls={calls}
       labels={labels}
       size="compact"
-      label={
-        activityState &&
-        tools.some((tool) => tool.status === 'requested' || tool.status === 'allowed')
-          ? activityState.label
-          : undefined
-      }
+      label={activityState && tools.some(unfinished) ? activityState.label : undefined}
     />
+  );
+}
+
+/**
+ * An execution's calls as flat kit rows. Consecutive calls of one tool fold into a single
+ * `name ×N` group, open only while one of them runs or after one failed.
+ */
+export function ExecutionToolRows({
+  tools,
+  onOpenArtifact,
+  activityState,
+}: {
+  tools: ToolEntry[];
+  onOpenArtifact?: (id: string) => void;
+  activityState?: ActivityState;
+}) {
+  const labels = useToolLabels();
+  const calls = useToolCalls(tools, onOpenArtifact, activityState);
+  const runs: ToolCall[][] = [];
+  for (const call of calls) {
+    const last = runs.at(-1);
+    if (last && last[0]?.name === call.name) last.push(call);
+    else runs.push([call]);
+  }
+  return (
+    <div className="grid min-w-0 gap-0.5">
+      {runs.map((run) => {
+        const [first] = run;
+        if (!first) return null;
+        if (run.length === 1)
+          return (
+            <ToolCallCard
+              key={first.id}
+              variant="row"
+              call={first}
+              labels={labels}
+              size="compact"
+            />
+          );
+        return <RepeatedTool key={first.id} calls={run} labels={labels} />;
+      })}
+    </div>
+  );
+}
+
+/**
+ * Consecutive calls of one tool as one `name ×N` group. It stays open while a call runs or after
+ * one failed, and folds once they settle, until the person opens or closes it themselves.
+ */
+function RepeatedTool({ calls, labels }: { calls: ToolCall[]; labels: Partial<ToolCallLabels> }) {
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const hot = calls.some((call) => call.status === 'running' || call.status === 'error');
+  const [first] = calls;
+  return (
+    <div data-tool-repeat={first?.name}>
+      <ToolCallGroup
+        calls={calls}
+        labels={labels}
+        size="compact"
+        label={`${first?.name} ×${calls.length}`}
+        open={chosen ?? hot}
+        onOpenChange={setChosen}
+      />
+    </div>
   );
 }
 

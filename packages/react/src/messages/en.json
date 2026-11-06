@@ -566,7 +566,6 @@
     "working": "Working now: {labels}",
     "idle": "Nothing is running",
     "loopRound": "{label}: round {round} of {max}",
-    "tasks": "Tasks completed: {done} of {total}",
     "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
     "executions": "Executions",
     "nodeExecutions": "{label} executions",
@@ -608,7 +607,14 @@
     "starting": "Preparing to run",
     "cancelling": "Cancelling owned work",
     "unconfirmedRequests": "{count, plural, one {# model request: termination unconfirmed} other {# model requests: termination unconfirmed}}",
-    "elapsed": "Elapsed time"
+    "elapsed": "Elapsed time",
+    "copyRunId": "Copy run ID",
+    "runIdCopied": "Run ID copied",
+    "stats": {
+      "tasks": "{done}/{total} tasks",
+      "toolCalls": "{count, plural, one {# tool call} other {# tool calls}}",
+      "modelRequests": "{count, plural, one {# model request} other {# model requests}}"
+    }
   },
   "Timeline": {
     "heading": "Timeline",
@@ -4641,7 +4647,6 @@
       "now": "Now"
     },
     "activity": "Activity",
-    "agentsSummary": "{count, plural, one {# agent} other {# agents}}",
     "needsYou": "Needs your input",
     "nothingNeedsYou": "Nothing needs you",
     "nothingNeedsYouHint": "Questions and approvals from the agents show here.",

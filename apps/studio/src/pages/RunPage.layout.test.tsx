@@ -51,6 +51,7 @@ async function mount(
   corralId: string,
   record: CorralRecord | null,
   search: RunDetailSearch = { view: 'run' },
+  request?: string,
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -67,6 +68,8 @@ async function mount(
     ...emptyProjection('run_layout'),
     corralId,
     status: 'succeeded' as const,
+    startedAt: '2026-10-26T09:05:00.000Z',
+    endedAt: '2026-10-26T09:06:30.000Z',
   };
   const transport = {
     listRuns: async () => [],
@@ -92,6 +95,7 @@ async function mount(
     return (
       <RunDetail
         runId={projection.runId}
+        {...(request ? { request } : {})}
         search={selection}
         setSearch={(patch, options) => {
           navigations.push({ patch, options });
@@ -136,6 +140,31 @@ it('a removed Corral still displays its run with an automatic layout', async () 
   expect(repository.get).not.toHaveBeenCalled();
   expect(container.querySelector('[data-testid="layout"]')?.textContent).toContain(
     '"source":"auto"',
+  );
+});
+
+it('heads the run with its team, start and id over the request, then numbers without cost', async () => {
+  const { container } = await mount('inline_team', null, {}, 'Summarise the release');
+  const header = container.querySelector('[data-testid="run-header"]');
+  expect(header?.querySelector('h2')?.textContent).toBe('Summarise the release');
+  const meta = header?.querySelector('[data-run-meta]');
+  expect(meta?.textContent).toContain('Linear worker');
+  expect(meta?.textContent).toContain('9:05');
+  expect(meta?.textContent).toContain('run_layout');
+  expect(meta?.querySelector('button[aria-label="Copy run ID"]')).not.toBeNull();
+  const stats = header?.querySelector('[data-run-stats]');
+  expect(stats?.textContent).toContain('0/0 tasks');
+  expect(stats?.textContent).toContain('0 tool calls');
+  expect(stats?.textContent).toContain('0 model requests');
+  expect(stats?.textContent).toContain('1:30');
+  expect(header?.textContent).not.toMatch(/\$|cost/i);
+  // The run's own facts sit behind one disclosure, not in the heading lines.
+  expect(header?.querySelector('button[aria-expanded="false"]')?.textContent).toContain('Details');
+  // No per-agent summary card: the activity heads carry each execution's state.
+  expect(container.querySelector('[data-testid="run-summary-card"]')).toBeNull();
+  const unnamed = await mount('inline_team', null, {});
+  expect(unnamed.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
+    'Linear worker',
   );
 });
 

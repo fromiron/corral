@@ -374,7 +374,15 @@ function WorkSessionPage() {
     ),
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
     problems: () => <ProblemsPanel sessionId={session.sessionId} />,
-    run: () => <RunPanel runs={runs} listed={listed} search={search} setSearch={setSearch} />,
+    run: () => (
+      <RunPanel
+        runs={runs}
+        listed={listed}
+        entries={session.entries}
+        search={search}
+        setSearch={setSearch}
+      />
+    ),
   };
   const renderContext = (view: DockContextView, requestedView: DockContextView = view) => {
     if (view === 'chat')
@@ -1087,12 +1095,15 @@ function WorkTab({
 function RunPanel({
   runs,
   listed,
+  entries,
   search,
   setSearch,
 }: {
   runs: RunSummary[];
   /** The run list has answered for the current selection. */
   listed: boolean;
+  /** The session's turns: the request that started a run is its title. */
+  entries: WorkSession['entries'];
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
 }) {
@@ -1130,6 +1141,9 @@ function RunPanel({
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
           runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
+          request={
+            entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
+          }
           embedded
           search={
             own

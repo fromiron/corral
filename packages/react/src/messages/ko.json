@@ -566,7 +566,6 @@
     "working": "진행 중: {labels}",
     "idle": "진행 중인 작업 없음",
     "loopRound": "{label}: {max}회 중 {round}회차",
-    "tasks": "완료한 작업: {total}개 중 {done}개",
     "requests": "진행 중인 모델 요청 {count, plural, one {#개} other {#개}}",
     "executions": "실행",
     "nodeExecutions": "{label} 실행 목록",
@@ -608,7 +607,14 @@
     "starting": "실행 준비 중",
     "cancelling": "소유 작업 취소 중",
     "unconfirmedRequests": "모델 요청 {count}개: 종료 미확인",
-    "elapsed": "경과 시간"
+    "elapsed": "경과 시간",
+    "copyRunId": "실행 ID 복사",
+    "runIdCopied": "실행 ID를 복사함",
+    "stats": {
+      "tasks": "작업 {done}/{total}",
+      "toolCalls": "도구 호출 {count}회",
+      "modelRequests": "모델 요청 {count}회"
+    }
   },
   "Timeline": {
     "heading": "타임라인",
@@ -4641,7 +4647,6 @@
       "now": "지금"
     },
     "activity": "활동",
-    "agentsSummary": "에이전트 {count}",
     "needsYou": "확인 필요",
     "nothingNeedsYou": "지금 확인할 일이 없습니다",
     "nothingNeedsYouHint": "에이전트의 질문과 승인 요청이 여기에 보입니다.",

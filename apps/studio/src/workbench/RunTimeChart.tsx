@@ -9,7 +9,6 @@ import { executionAgentStatus, executionIntervals, executionToolEntries } from '
 import {
   AgentLanes,
   type AgentLanesLabels,
-  type AgentMark,
   Button,
   formatClock,
   type LaneAgent,
@@ -20,22 +19,13 @@ import {
   TabsList,
   useNow,
 } from '@corral/react/design-kit';
-import { Folder, Globe, MessageCircle, Pencil, Users } from '@corral/react/icons';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { RunTaskTimeline } from './RunTaskTimeline.tsx';
+import { toolMarks } from './toolMarks.ts';
 
 /** A replay draws the whole record in this long, however long the run took. */
 const REPLAY_MS = 4000;
-
-/** The kit icon a tool's name suggests; tools with no clear match show no mark. */
-const TOOL_ICONS: [RegExp, AgentMark][] = [
-  [/search|web|fetch|browse/i, Globe],
-  [/read|list|open|view/i, Folder],
-  [/write|edit|patch|create|submit/i, Pencil],
-  [/ask|question|message|reply/i, MessageCircle],
-  [/delegate|spawn|handoff|team/i, Users],
-];
 
 const REDUCED = '(prefers-reduced-motion: reduce)';
 /** Whether the person asked for less motion; a host without media queries counts as no. */
@@ -155,11 +145,7 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
         tasks: lane.map((row) => {
           const round = row.iterationId ? projection?.iterations[row.iterationId]?.no : null;
           const used = [...new Set((tools.get(row.executionId) ?? []).map((tool) => tool.name))];
-          const marks = [
-            ...new Set(
-              used.flatMap((tool) => TOOL_ICONS.find(([pattern]) => pattern.test(tool))?.[1] ?? []),
-            ),
-          ].slice(0, 3);
+          const marks = toolMarks(used).slice(0, 3);
           const state = executionAgentStatus(row.status);
           const statusLabel = status.has(row.status) ? status(row.status) : row.status;
           const open = live && !TERMINAL_EXECUTION_STATUSES.has(row.status);

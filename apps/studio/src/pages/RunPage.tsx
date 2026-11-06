@@ -45,8 +45,10 @@ import {
   TabsList,
   TabsSubtle,
   TabsSubtleItem,
+  ToolStack,
   useNow,
 } from '@corral/react/design-kit';
+import { Check, ChevronDown, Copy } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   Fragment,
@@ -54,11 +56,12 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useModelPrices } from '../prices.ts';
 import { projectOfRun, setCurrentProject } from '../projects.ts';
@@ -67,10 +70,11 @@ import { useServices } from '../services.tsx';
 import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
-import { RunActivity, RunSummaryCard } from '../workbench/RunActivity.tsx';
+import { RunActivity, RunPlanCard } from '../workbench/RunActivity.tsx';
 import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { runFlowChecks } from '../workbench/runFlowChecks.ts';
+import { toolMarks } from '../workbench/toolMarks.ts';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
@@ -104,8 +108,11 @@ export function RunDetail({
   setSearch,
   embedded = false,
   sessionId = null,
+  request = null,
 }: {
   sessionId?: string | null;
+  /** The request that started the run, when the caller knows it: the run's title. */
+  request?: string | null;
   runId: string;
   runNumber?: number;
   search: RunDetailSearch;
@@ -180,6 +187,7 @@ export function RunDetail({
       session={session}
       definition={definition}
       sessionId={sessionId ?? (recordSession?.runId === runId ? recordSession.sessionId : null)}
+      request={request}
       search={search}
       setSearch={setSearch}
       embedded={embedded}
@@ -230,8 +238,10 @@ function RunWorkspace({
   search,
   setSearch,
   embedded,
+  request,
 }: {
   runId: string;
+  request: string | null;
   runNumber: number | undefined;
   session: RunSessionStore;
   sessionId: string | null;
@@ -407,9 +417,10 @@ function RunWorkspace({
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
-      <RunSummary
+      <RunHeader
         session={session}
         definition={definition}
+        request={request}
         view={view}
         onView={(view) => setSearch({ view })}
       />
@@ -438,14 +449,7 @@ function RunWorkspace({
             className={`mx-auto grid w-full gap-5 px-6 py-5 ${monitor === 0 ? 'max-w-[760px]' : ''}`}
           >
             {sideShown ? null : needsYou(false)}
-            {projection ? (
-              <RunSummaryCard
-                events={events}
-                projection={projection}
-                definition={definition}
-                plan={plan}
-              />
-            ) : null}
+            {projection ? <RunPlanCard projection={projection} plan={plan} /> : null}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <TabsSubtle
                 idPrefix={`run-${runId}-view`}
@@ -774,25 +778,33 @@ function useSavedLayout(
  * Loop round, completed tasks and requests in flight. No percentage. Whole-run controls live
  * here and nowhere else on the page.
  */
-function RunSummary({
+/**
+ * The run's head, in the kit's agent-run order: who ran it, when and as which run; what was
+ * asked; then the numbers. The team link, start point and end reason open on request.
+ */
+function RunHeader({
   session,
   definition,
+  request,
   view = 'run',
   onView,
-  compact = false,
   readOnly = false,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
+  request: string | null;
   view?: RunPageView;
   onView?: (view: RunPageView) => void;
-  compact?: boolean;
   readOnly?: boolean;
 }) {
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
+  const m = useTranslations('RunMonitor');
+  const format = useFormatter();
   const projection = useRunDisplay(session, (s) => s.projection);
   const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
+  const [details, setDetails] = useState(false);
+  const detailsId = useId();
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -802,7 +814,9 @@ function RunSummary({
   ];
   const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
   const tasks = Object.values(projection.tasks);
-  const inFlight = Object.values(projection.modelCalls).filter((c) => !c.finished).length;
+  const calls = Object.values(projection.toolCalls);
+  const requests = Object.values(projection.modelCalls);
+  const inFlight = requests.filter((c) => !c.finished).length;
   const ended = TERMINAL_RUN_STATUSES.has(projection.status);
   const loops = definition.nodes.flatMap((node) =>
     node.type === 'loop' && projection.loopIterations[node.id]?.length
@@ -815,14 +829,12 @@ function RunSummary({
         ]
       : [],
   );
+  const team = definition.sourceTeam
+    ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
+    : definition.name;
   const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
-  const identity = [
-    compact ? null : (
-      <span key="run" className="min-w-0 break-all font-mono">
-        {projection.runId}
-      </span>
-    ),
-    corralId && savedTeam && !compact ? (
+  const facts = [
+    corralId && savedTeam ? (
       <Link
         key="team"
         to="/corrals/$corralId/edit"
@@ -831,10 +843,10 @@ function RunSummary({
       >
         {t('openCorral')}
       </Link>
-    ) : corralId && !definition.sourceTeam && savedTeam === false && !compact ? (
+    ) : corralId && !definition.sourceTeam && savedTeam === false ? (
       <span key="team">{t('unsavedTeam')}</span>
     ) : null,
-    projection.startedFrom && !compact ? (
+    projection.startedFrom ? (
       <span key="from">
         {t('startedFrom')}:{' '}
         <Link
@@ -850,74 +862,148 @@ function RunSummary({
         </Link>
       </span>
     ) : null,
+    projection.statusReason ? (
+      <span key="reason">
+        {tr('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+      </span>
+    ) : null,
   ];
-  const progress =
-    compact && projection.status === 'succeeded' && working.length === 0
-      ? []
-      : [
-          projection.status === 'cancelling' ? (
-            <span key="working">{t('cancelling')}</span>
-          ) : ended ? null : working.length ? (
-            <span key="working">{t('working', { labels: working.join(', ') })}</span>
-          ) : inFlight || waiting || projection.status === 'paused' ? null : (
-            <span key="working">{t('starting')}</span>
-          ),
-          waiting ? <span key="waiting">{t('waitingExecutions', { count: waiting })}</span> : null,
-          ...loops.map((text) => <span key={text}>{text}</span>),
-          inFlight ? (
-            <span key="requests">
-              {t(ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests', {
-                count: inFlight,
-              })}
-            </span>
-          ) : null,
-          compact ? null : (
-            <span key="tasks">
-              {t('tasks', {
-                done: tasks.filter((task) => task.status === 'completed').length,
-                total: tasks.length,
-              })}
-            </span>
-          ),
-          projection.statusReason && !(compact && projection.status === 'succeeded') ? (
-            <span key="reason">
-              {tr('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={labelOf} />
-            </span>
-          ) : null,
-        ];
+  // What is still moving; an ended run keeps only requests whose end was never confirmed.
+  const progress = [
+    projection.status === 'cancelling' ? (
+      <span key="working">{t('cancelling')}</span>
+    ) : ended ? null : working.length ? (
+      <span key="working">{t('working', { labels: working.join(', ') })}</span>
+    ) : inFlight || waiting || projection.status === 'paused' ? null : (
+      <span key="working">{t('starting')}</span>
+    ),
+    waiting ? <span key="waiting">{t('waitingExecutions', { count: waiting })}</span> : null,
+    ...loops.map((text) => <span key={text}>{text}</span>),
+    inFlight ? (
+      <span key="requests">
+        {t(ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests', {
+          count: inFlight,
+        })}
+      </span>
+    ) : null,
+  ];
+  const marks = toolMarks(calls.map((call) => call.name));
   return (
     <section
+      data-testid="run-header"
       aria-label={t('summary')}
-      className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3"
+      className="grid gap-2 border-b border-line px-6 py-4"
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 className="min-w-0 truncate text-title">
-            {definition.sourceTeam
-              ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
-              : definition.name}
-          </h2>
-          <span aria-live="polite" data-testid="run-status">
-            <AgentStatusText kind="run" status={projection.status} />
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <p
+          data-run-meta
+          className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-muted-foreground"
+        >
+          <span className="min-w-0 truncate">{team}</span>
+          {projection.startedAt ? (
+            <>
+              <MetaDot />
+              <time dateTime={projection.startedAt}>
+                {format.dateTime(new Date(projection.startedAt), {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </time>
+            </>
+          ) : null}
+          <MetaDot />
+          <span className="min-w-0 break-all font-mono">{projection.runId}</span>
+          <CopyRunId runId={projection.runId} />
+        </p>
+        <div className="flex max-w-full shrink-0 flex-wrap items-start justify-end gap-2">
+          {onView ? <ViewSwitch view={view} onView={onView} /> : null}
+          {readOnly ? null : (
+            <div className="max-h-28 w-[24rem] max-w-full overflow-auto">
+              <RunActions session={session} compact />
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h2 className="min-w-0 text-title [overflow-wrap:anywhere]">
+          {request ?? definition.name}
+        </h2>
+        <span aria-live="polite" data-testid="run-status">
+          <AgentStatusText kind="run" status={projection.status} />
+        </span>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        {marks.length ? <ToolStack tools={marks} max={5} size={20} /> : null}
+        <p
+          data-run-stats
+          className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-muted-foreground tabular-nums"
+        >
+          <span>
+            {t('stats.tasks', {
+              done: tasks.filter((task) => task.status === 'completed').length,
+              total: tasks.length,
+            })}
           </span>
+          <MetaDot />
+          <span>{t('stats.toolCalls', { count: calls.length })}</span>
           <RunElapsed
             startedAt={projection.startedAt}
             endedAt={projection.endedAt}
-            live={!readOnly && !TERMINAL_RUN_STATUSES.has(projection.status)}
+            live={!readOnly && !ended}
+            lead={<MetaDot />}
           />
-        </div>
-        <MetaLine items={identity} />
-        <MetaLine items={progress} />
+          <MetaDot />
+          <span>{t('stats.modelRequests', { count: requests.length })}</span>
+        </p>
+        {facts.some(Boolean) ? (
+          <Button
+            variant="ghost"
+            size="compact"
+            aria-expanded={details}
+            aria-controls={detailsId}
+            onClick={() => setDetails(!details)}
+            className="ml-auto"
+          >
+            {m('details')}
+            <ChevronDown
+              className={`size-3.5 transition-transform ${details ? 'rotate-180' : ''}`}
+            />
+          </Button>
+        ) : null}
       </div>
-      <div className="flex max-w-full shrink-0 flex-wrap items-start justify-end gap-2">
-        {onView ? <ViewSwitch view={view} onView={onView} /> : null}
-        {readOnly ? null : (
-          <div className="max-h-28 w-[24rem] max-w-full overflow-auto">
-            <RunActions session={session} compact />
-          </div>
-        )}
+      <MetaLine items={progress} />
+      <div id={detailsId} hidden={!details}>
+        <MetaLine items={facts} />
       </div>
     </section>
+  );
+}
+
+/** Copies the run's id; the icon turns into a check once it is on the clipboard. */
+function CopyRunId({ runId }: { runId: string }) {
+  const t = useTranslations('RunPage');
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-compact"
+        aria-label={t('copyRunId')}
+        onClick={() =>
+          void navigator.clipboard?.writeText(runId).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          )
+        }
+      >
+        {copied ? <Check /> : <Copy />}
+      </Button>
+      <span role="status" className="sr-only">
+        {copied ? t('runIdCopied') : ''}
+      </span>
+    </>
   );
 }
 
@@ -945,10 +1031,13 @@ function RunElapsed({
   startedAt,
   endedAt,
   live,
+  lead,
 }: {
   startedAt: string | null;
   endedAt: string | null;
   live: boolean;
+  /** Shown before the clock, only when there is one. */
+  lead?: ReactNode;
 }) {
   const t = useTranslations('RunPage');
   const now = useNow(1000, live && startedAt !== null);
@@ -957,10 +1046,13 @@ function RunElapsed({
   if (end === null) return null;
   const clock = formatClock(end - Date.parse(startedAt));
   return (
-    <span className="font-mono text-caption tabular-nums text-muted-foreground">
-      <span className="sr-only">{t('elapsed')} </span>
-      {clock}
-    </span>
+    <>
+      {lead}
+      <span className="tabular-nums">
+        <span className="sr-only">{t('elapsed')} </span>
+        {clock}
+      </span>
+    </>
   );
 }
 

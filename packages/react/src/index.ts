@@ -8,7 +8,11 @@ export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent, TIDY_EVENT } from './components/EditorToolbar.tsx';
 export { EffortJudgments } from './components/EffortJudgments.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
-export { ExecutionToolGroup, ExecutionTranscript } from './components/ExecutionTranscript.tsx';
+export {
+  ExecutionToolGroup,
+  ExecutionToolRows,
+  ExecutionTranscript,
+} from './components/ExecutionTranscript.tsx';
 export { FailureNotice } from './components/FailureNotice.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { InteractionPanel } from './components/InteractionPanel.tsx';

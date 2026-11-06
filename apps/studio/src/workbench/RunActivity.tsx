@@ -7,7 +7,7 @@ import {
 } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import {
-  ExecutionToolGroup,
+  ExecutionToolRows,
   executionAgentStatus,
   executionIntervals,
   executionToolEntries,
@@ -15,7 +15,6 @@ import {
 } from '@corral/react';
 import {
   AgentCard,
-  AgentIdentity,
   AgentStatusIcon,
   AgentStatusLabel,
   AgentSteeringPlan,
@@ -47,102 +46,47 @@ function useStatusText() {
 }
 
 /**
- * The top of the run column (the kit's AgentRun plan card): the work plan when the planning tool
- * recorded one, otherwise one line per agent node with its latest execution's state and time.
+ * The kit's AgentRun plan card, shown only when the planning tool recorded a work plan. Without
+ * one there is no card: the activity heads already give each execution's state.
  */
-export function RunSummaryCard({
-  events,
+export function RunPlanCard({
   projection,
-  definition,
   plan,
 }: {
-  events: readonly RunEvent[];
   projection: RunProjection;
-  definition: CorralDefinition;
   plan: { items: readonly PlanItem[] } | null;
 }) {
-  const t = useTranslations('RunMonitor');
   const tw = useTranslations('Widgets');
-  const statusText = useStatusText();
-  const durations = useIntervals(events);
+  if (!plan?.items.length) return null;
   const live = !TERMINAL_RUN_STATUSES.has(projection.status);
-  if (plan?.items.length) {
-    const done = plan.items.filter((item) => item.status === 'completed').length;
-    return (
-      <AgentCard data-testid="run-summary-card" className="grid gap-2 p-4">
-        <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
-          <AgentStatusIcon status={runAgentStatus(projection.status)} size={12} />
-          <span>{tw('planHeading')}</span>
-          <span className="ml-auto tabular-nums">
-            {tw('planCount', { done, total: plan.items.length })}
-          </span>
-        </p>
-        <AgentSteeringPlan
-          steps={plan.items.map((item) => ({
-            id: item.id,
-            title: item.title,
-            status:
-              item.status === 'completed'
-                ? 'done'
-                : item.status === 'in_progress'
-                  ? 'active'
-                  : 'pending',
-          }))}
-          status={live ? 'running' : 'waiting'}
-          labels={{ plan: tw('planHeading') }}
-          statusLabel={(state) =>
-            tw(state === 'done' ? 'completed' : state === 'active' ? 'in_progress' : 'pending')
-          }
-          wrapTitles
-        />
-      </AgentCard>
-    );
-  }
-  const latest = new Map<string, RunProjection['executions'][string]>();
-  for (const id of projection.executionOrder) {
-    const execution = projection.executions[id];
-    if (execution) latest.set(execution.nodeId, execution);
-  }
-  const nodes = [
-    ...definition.nodes.map((node) => node.id).filter((id) => latest.has(id)),
-    ...[...latest.keys()].filter((id) => !definition.nodes.some((node) => node.id === id)),
-  ];
-  if (!nodes.length) return null;
+  const done = plan.items.filter((item) => item.status === 'completed').length;
   return (
-    <AgentCard data-testid="run-summary-card" className="grid gap-3 p-4">
+    <AgentCard data-testid="run-plan-card" className="grid gap-2 p-4">
       <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
         <AgentStatusIcon status={runAgentStatus(projection.status)} size={12} />
-        <span>{t('agentsSummary', { count: nodes.length })}</span>
+        <span>{tw('planHeading')}</span>
+        <span className="ml-auto tabular-nums">
+          {tw('planCount', { done, total: plan.items.length })}
+        </span>
       </p>
-      <ul className="m-0 grid list-none gap-2 p-0">
-        {nodes.map((nodeId) => {
-          const execution = latest.get(nodeId);
-          if (!execution) return null;
-          const profile = projection.modelProfiles?.[execution.modelProfile];
-          const elapsed = durations.get(execution.executionId);
-          return (
-            <li key={nodeId} data-summary-node={nodeId}>
-              <AgentIdentity
-                name={definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId}
-                model={profile?.modelId ?? execution.modelProfile}
-                trailing={
-                  <span className="ml-auto inline-flex items-center gap-2">
-                    <AgentStatusLabel
-                      status={executionAgentStatus(execution.status)}
-                      label={statusText(execution.status)}
-                    />
-                    {elapsed !== undefined ? (
-                      <span className="text-caption text-muted-foreground tabular-nums">
-                        {formatClock(elapsed)}
-                      </span>
-                    ) : null}
-                  </span>
-                }
-              />
-            </li>
-          );
-        })}
-      </ul>
+      <AgentSteeringPlan
+        steps={plan.items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          status:
+            item.status === 'completed'
+              ? 'done'
+              : item.status === 'in_progress'
+                ? 'active'
+                : 'pending',
+        }))}
+        status={live ? 'running' : 'waiting'}
+        labels={{ plan: tw('planHeading') }}
+        statusLabel={(state) =>
+          tw(state === 'done' ? 'completed' : state === 'active' ? 'in_progress' : 'pending')
+        }
+        wrapTitles
+      />
     </AgentCard>
   );
 }
@@ -226,7 +170,7 @@ export function RunActivity({
             </button>
             {own.length ? (
               <div className="pl-8">
-                <ExecutionToolGroup
+                <ExecutionToolRows
                   tools={own}
                   {...(onOpenArtifact ? { onOpenArtifact } : {})}
                   {...toolState(execution.status, runEnded, statusText)}
