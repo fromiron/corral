@@ -4,6 +4,7 @@ import {
   Dialog,
   DialogPopup,
   DialogTitle,
+  Sidebar as KitSidebar,
   Menu,
   MenuItem,
   MenuPopup,
@@ -11,6 +12,8 @@ import {
   MenuRadioItem,
   MenuSeparator,
   MenuTrigger,
+  SidebarProvider,
+  type SidebarRailProps,
   Tooltip,
   TooltipProvider,
 } from '@corral/react/design-kit';
@@ -24,7 +27,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router';
-import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
 import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
@@ -245,7 +248,6 @@ function RootFrame() {
   const showLocation = !/^\/sessions\/[^/]+(?:\/|$)/.test(location.pathname);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  const drag = useRef<{ x: number; width: number } | null>(null);
   useEffect(() => {
     const media = matchMedia('(max-width: 1023px)');
     const update = () => {
@@ -273,14 +275,37 @@ function RootFrame() {
   useEffect(() => {
     if (!prefs.sidebarOpen) setMobileOpen(false);
   }, [prefs.sidebarOpen]);
+  const railProps: SidebarRailProps = {
+    role: 'separator',
+    'aria-label': tw('resizeSidebar'),
+    'aria-orientation': 'vertical',
+    'aria-valuenow': prefs.sidebarWidth,
+    'aria-valuemin': 220,
+    'aria-valuemax': 420,
+    tabIndex: 0,
+    tooltipContent: (
+      <span className="flex flex-col items-start gap-2">
+        <span className="[text-box:trim-both_cap_alphabetic]">{tw('sidebarResizeHint')}</span>
+        <span className="[text-box:trim-both_cap_alphabetic]">{tw('sidebarCollapseHint')}</span>
+      </span>
+    ),
+  };
   return (
     <TooltipProvider>
       <SettingsNavigationContext.Provider value={settingsNavigation}>
         <TopbarSlotContext.Provider value={slot}>
-          <div
-            className="app-shell"
+          <SidebarProvider
+            className="app-shell min-h-0"
             data-sidebar-open={prefs.sidebarOpen}
-            style={{ '--app-sidebar-width': `${prefs.sidebarWidth}px` } as CSSProperties}
+            persist={false}
+            shortcut={null}
+            mobileBreakpoint={0}
+            open={prefs.sidebarOpen}
+            onOpenChange={(sidebarOpen) => changePreferences({ sidebarOpen })}
+            width={`${prefs.sidebarWidth}px`}
+            onWidthChange={(width) => changePreferences({ sidebarWidth: Number.parseFloat(width) })}
+            minWidth={220}
+            maxWidth={420}
           >
             {narrow ? (
               <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -294,51 +319,17 @@ function RootFrame() {
                   {settings ? (
                     <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
                   ) : (
-                    <Sidebar model={sidebar} />
+                    <Sidebar model={sidebar} mobile />
                   )}
                 </DialogPopup>
               </Dialog>
+            ) : settings ? (
+              <KitSidebar railProps={railProps} className="h-full min-h-0">
+                <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
+              </KitSidebar>
             ) : (
-              <aside className="app-sidebar">
-                {settings ? (
-                  <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
-                ) : (
-                  <Sidebar model={sidebar} />
-                )}
-              </aside>
+              <Sidebar model={sidebar} railProps={railProps} />
             )}
-            {/* biome-ignore lint/a11y/useSemanticElements: WAI-ARIA window splitter */}
-            <div
-              role="separator"
-              aria-label={tw('resizeSidebar')}
-              aria-orientation="vertical"
-              tabIndex={0}
-              aria-valuenow={prefs.sidebarWidth}
-              aria-valuemin={220}
-              aria-valuemax={420}
-              className="app-sidebar-resizer"
-              onPointerDown={(e) => {
-                drag.current = { x: e.clientX, width: prefs.sidebarWidth };
-                e.currentTarget.setPointerCapture(e.pointerId);
-              }}
-              onPointerMove={(e) => {
-                if (drag.current)
-                  changePreferences({
-                    sidebarWidth: drag.current.width + e.clientX - drag.current.x,
-                  });
-              }}
-              onPointerUp={() => {
-                drag.current = null;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                  e.preventDefault();
-                  changePreferences({
-                    sidebarWidth: prefs.sidebarWidth + (e.key === 'ArrowRight' ? 16 : -16),
-                  });
-                }
-              }}
-            />
             <div className="app-main">
               {/* biome-ignore lint/a11y/noStaticElementInteractions: a title bar's double click is a pointer convenience; the window menu does the same */}
               <header className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
@@ -441,7 +432,7 @@ function RootFrame() {
                 currentProject={sidebar.current}
               />
             ) : null}
-          </div>
+          </SidebarProvider>
         </TopbarSlotContext.Provider>
       </SettingsNavigationContext.Provider>
     </TooltipProvider>

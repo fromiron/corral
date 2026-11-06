@@ -87,12 +87,22 @@ export const TenThousandEvents: Story = {
     expect(rows().length).toBeLessThan(60);
 
     // Filters: only what the reader asked for.
-    await userEvent.selectOptions(canvas.getByLabelText('Actor'), 'user');
+    await userEvent.click(canvas.getByRole('combobox', { name: 'Actor' }));
+    const page = within(canvasElement.ownerDocument.body);
+    await userEvent.click(await page.findByRole('option', { name: 'You' }));
+    // Base UI retains a hidden positioner after the kit's acknowledgement and exit.
+    await waitFor(() => expect(page.queryByRole('listbox')).toBeNull());
     await waitFor(() =>
       expect(canvas.getByTestId('timeline-count')).toHaveTextContent('1,050 events'),
     );
     for (const r of rows()) expect(r).toHaveTextContent('directive.accepted');
-    await userEvent.selectOptions(canvas.getByLabelText('Execution'), 'exec_0001');
+    await userEvent.click(canvas.getByRole('combobox', { name: 'Execution' }));
+    await userEvent.click(await page.findByRole('option', { name: 'exec_0001' }));
+    await waitFor(() => expect(page.queryByRole('listbox')).toBeNull());
+    await expect(canvas.getByRole('combobox', { name: 'Execution' })).toHaveFocus();
+    await waitFor(() =>
+      expect(canvas.getByTestId('timeline-count')).toHaveTextContent('350 events'),
+    );
     for (const r of rows()) expect(r).toHaveTextContent('exec_0001');
   },
 };

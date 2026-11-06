@@ -9,6 +9,9 @@ import {
   KitBadge as Badge,
   KitButton as Button,
   KitChatMessage as ChatMessage,
+  type ToolCall,
+  ToolCallGroup,
+  type ToolCallLabels,
 } from '../design-kit/index.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
@@ -71,16 +74,123 @@ export function ExecutionTranscript({
       className="flex min-h-0 flex-col gap-4 overflow-auto p-4 text-body"
     >
       {entries.length === 0 ? <p className="text-muted-foreground">{t('empty')}</p> : null}
-      {entries.map((entry) => (
-        <Entry
-          key={`${entry.kind}-${entry.seq}`}
-          entry={entry}
-          labelOf={labelOf}
-          {...(onOpenArtifact ? { onOpenArtifact } : {})}
-          compact={compact}
-        />
-      ))}
+      {groupTools(entries).map((entry) =>
+        Array.isArray(entry) ? (
+          <ExecutionToolGroup
+            key={`tools-${entry[0]?.seq}`}
+            tools={entry}
+            {...(onOpenArtifact ? { onOpenArtifact } : {})}
+          />
+        ) : (
+          <Entry
+            key={`${entry.kind}-${entry.seq}`}
+            entry={entry}
+            labelOf={labelOf}
+            {...(onOpenArtifact ? { onOpenArtifact } : {})}
+            compact={compact}
+          />
+        ),
+      )}
     </div>
+  );
+}
+
+type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
+
+/** Consecutive tool calls fold into one kit tool-call group. */
+function groupTools(entries: TranscriptEntry[]): (TranscriptEntry | ToolEntry[])[] {
+  const out: (TranscriptEntry | ToolEntry[])[] = [];
+  for (const entry of entries) {
+    const last = out.at(-1);
+    if (entry.kind === 'tool' && Array.isArray(last)) last.push(entry);
+    else out.push(entry.kind === 'tool' ? [entry] : entry);
+  }
+  return out;
+}
+
+const toolStatus: Record<ToolEntry['status'], ToolCall['status']> = {
+  requested: 'running',
+  allowed: 'running',
+  blocked: 'error',
+  finished: 'success',
+  failed: 'error',
+};
+
+export function ExecutionToolGroup({
+  tools,
+  onOpenArtifact,
+  activityState,
+}: {
+  tools: ToolEntry[];
+  onOpenArtifact?: (id: string) => void;
+  /** Current owner state for unfinished calls; finished/error observations stay unchanged. */
+  activityState?: { status: 'waiting' | 'stopped'; label: string };
+}) {
+  const t = useTranslations('Transcript');
+  const labels = useMemo<Partial<ToolCallLabels>>(
+    () => ({
+      arguments: t('tools.arguments'),
+      result: t('tools.result'),
+      error: t('tools.error'),
+      failed: t('tools.failed'),
+      errorFallback: t('tools.errorFallback'),
+      waiting: t('tools.waiting'),
+      noResult: t('tools.noResult'),
+      retry: t('tools.retry'),
+      copy: (section) => t('tools.copy', { section }),
+      copied: t('tools.copied'),
+      showAll: t('tools.showAll'),
+      showLess: t('tools.showLess'),
+      status: (name, status) => t('tools.status', { name, status }),
+      usingTools: t('tools.usingTools'),
+      usedTools: (count) => t('tools.usedTools', { count }),
+      failedCount: (count) => t('tools.failedCount', { count }),
+    }),
+    [t],
+  );
+  const calls: ToolCall[] = tools.map((tool) => ({
+    id: tool.toolCallId,
+    name: tool.name,
+    status:
+      activityState && (tool.status === 'requested' || tool.status === 'allowed')
+        ? activityState.status
+        : toolStatus[tool.status],
+    statusLabel:
+      activityState && (tool.status === 'requested' || tool.status === 'allowed')
+        ? activityState.label
+        : t(`tool.${tool.status}`),
+    args: tool.args,
+    ...(tool.latencyMs !== undefined ? { latencyMs: tool.latencyMs } : {}),
+    ...(tool.detail ? { error: tool.detail } : {}),
+    ...(tool.resultRef
+      ? {
+          resultContent:
+            tool.resultRef.startsWith('artv_') && onOpenArtifact ? (
+              <Button
+                variant="ghost"
+                onClick={() => onOpenArtifact(tool.resultRef as string)}
+                className="font-mono"
+              >
+                {tool.resultRef}
+              </Button>
+            ) : (
+              <code className="font-mono text-caption">{tool.resultRef}</code>
+            ),
+        }
+      : {}),
+  }));
+  return (
+    <ToolCallGroup
+      calls={calls}
+      labels={labels}
+      size="compact"
+      label={
+        activityState &&
+        tools.some((tool) => tool.status === 'requested' || tool.status === 'allowed')
+          ? activityState.label
+          : undefined
+      }
+    />
   );
 }
 
@@ -133,13 +243,15 @@ function Entry({
     case 'reply': {
       const body = (
         <ChatMessage from="assistant">
-          {entry.text ? (
+          {entry.bodyReleased ? (
+            <p className="text-muted-foreground">{t('retiredBody')}</p>
+          ) : entry.text ? (
             <SafeMarkdown text={entry.text} />
           ) : (
             <p className="text-muted-foreground">{t(entry.live ? 'waiting' : 'emptyReply')}</p>
           )}
           {entry.live ? <p className="text-muted-foreground">{t('streaming')}</p> : null}
-          {entry.broken ? <p className="text-warning">{t('gap')}</p> : null}
+          {entry.broken && !entry.bodyReleased ? <p className="text-warning">{t('gap')}</p> : null}
         </ChatMessage>
       );
       if (!compact) return body;
@@ -153,30 +265,7 @@ function Entry({
       );
     }
     case 'tool':
-      return (
-        <p className="flex flex-wrap items-center gap-2 text-caption">
-          <Badge className="font-mono">{entry.name}</Badge>
-          <span
-            className={
-              entry.status === 'blocked' || entry.status === 'failed'
-                ? 'text-danger'
-                : 'text-muted-foreground'
-            }
-          >
-            {t(`tool.${entry.status}`)}
-            {entry.detail ? `: ${entry.detail}` : ''}
-          </span>
-          {entry.resultRef?.startsWith('artv_') && onOpenArtifact ? (
-            <Button
-              variant="ghost"
-              onClick={() => onOpenArtifact(entry.resultRef as string)}
-              className="font-mono"
-            >
-              {entry.resultRef}
-            </Button>
-          ) : null}
-        </p>
-      );
+      return null;
     case 'question':
       return (
         <ChatMessage from="assistant">

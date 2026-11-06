@@ -1,17 +1,5 @@
 import type { AutoModelChoice } from '@corral/contracts';
-import {
-  Button,
-  Menu,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuSub,
-  MenuSubPopup,
-  MenuSubTrigger,
-  MenuTrigger,
-} from '@corral/react/design-kit';
-import { ChevronDown } from '@corral/react/icons';
+import { type ModelOption, ModelPicker, type ModelPickerChoice } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 import { reasoningFrom, reasoningValue } from './autoChoice.ts';
 import type { ProfileInfo } from './useModels.ts';
@@ -44,124 +32,105 @@ export function AutoModelMenu({
         ? t('reasoningRoute')
         : tq(value.reasoning?.mode ?? 'legacy');
   const visibleEffort = showReasoning && value.reasoning ? effort : null;
+  const fixedLevel = value.reasoning?.mode === 'fixed' ? value.reasoning.level : null;
   const description = [tc('nextRequest'), profile?.label ?? value.modelProfile, visibleEffort]
     .filter(Boolean)
     .join(' · ');
-  const options = [
-    { value: '', label: tq('legacy') },
+  const levels: ModelPickerChoice[] = (profile?.reasoningCapabilities?.levels ?? []).map(
+    (level) => ({
+      value: level,
+      label: tq(`level.${level}`),
+    }),
+  );
+  if (fixedLevel !== null && !levels.some((option) => option.value === fixedLevel))
+    levels.push({
+      value: fixedLevel,
+      label: `${effort} · ${tc('unsupportedReasoning')}`,
+      disabled: true,
+    });
+  const options: ModelPickerChoice[] = [
+    { value: '', label: tq('legacy'), shortLabel: tc('modelPicker.policyDefault') },
     {
       value: 'provider_default',
       label: tq('provider_default'),
       disabled: !profile?.reasoningCapabilities?.providerDefault,
     },
-    ...(profile?.reasoningCapabilities?.levels ?? []).map((level) => ({
-      value: level,
-      label: tq(`level.${level}`),
-    })),
+    ...levels,
     {
       value: 'auto',
       label: tq('auto'),
+      shortLabel: tc('modelPicker.policyAuto'),
       disabled: !profile?.reasoningCapabilities?.levels.includes('medium'),
     },
     {
       value: 'route',
       label: t('reasoningRoute'),
+      shortLabel: tc('modelPicker.policyRoute'),
       disabled: !profile?.reasoningCapabilities?.levels.includes('medium'),
     },
   ];
   const requested = reasoningValue(value.reasoning);
-  if (!options.some((option) => option.value === requested))
-    options.push({
-      value: requested,
-      label: `${effort} · ${tc('unsupportedReasoning')}`,
+  const models: ModelOption[] = profiles.map((item) => ({
+    id: item.profileId,
+    name: item.label,
+    description: item.available ? (item.modelId ?? item.profileId) : tc('modelPicker.unavailable'),
+  }));
+  if (!profile)
+    models.unshift({
+      id: value.modelProfile,
+      name: value.modelProfile,
+      description: tc('modelPicker.missing'),
       disabled: true,
     });
+
   return (
-    <Menu open={open} onOpenChange={onOpenChange}>
-      <MenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="compact"
-            className="h-auto min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full rounded-xl py-1 text-left whitespace-normal sm:rounded-full"
-            disabled={disabled}
-            aria-label={t('autoModel')}
-            aria-description={description}
-            title={description}
-          />
-        }
-      >
-        <span className="min-w-0 [overflow-wrap:anywhere]">
-          <span className="block text-2xs text-muted-foreground sm:mr-1.5 sm:inline">
-            {tc('nextRequest')}
-          </span>
-          <span>{profile?.label ?? value.modelProfile}</span>
-          {visibleEffort ? (
-            <span className="block text-xs text-muted-foreground sm:inline sm:text-inherit">
-              {' '}
-              · {visibleEffort}
-            </span>
-          ) : null}
-        </span>
-        <ChevronDown className="size-3.5 shrink-0" />
-      </MenuTrigger>
-      <MenuPopup align="start">
-        <MenuRadioGroup
-          aria-label={t('autoModel')}
-          value={value.modelProfile}
-          onValueChange={(modelProfile) =>
-            onChange({ ...value, modelProfile: String(modelProfile) })
-          }
-        >
-          {!profile ? (
-            <MenuRadioItem value={value.modelProfile} disabled>
-              {value.modelProfile}
-            </MenuRadioItem>
-          ) : null}
-          {profiles.map((profile) => (
-            <MenuRadioItem
-              key={profile.profileId}
-              value={profile.profileId}
-              closeOnClick
-              disabled={disabled}
-            >
-              {profile.label}
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
-        {showReasoning ? (
-          <>
-            <MenuSeparator />
-            <MenuSub>
-              <MenuSubTrigger>{tq('label')}</MenuSubTrigger>
-              <MenuSubPopup>
-                <MenuRadioGroup
-                  aria-label={tq('label')}
-                  value={requested}
-                  onValueChange={(next) => {
-                    const reasoning = reasoningFrom(String(next));
-                    onChange({
-                      modelProfile: value.modelProfile,
-                      ...(reasoning ? { reasoning } : {}),
-                    });
-                  }}
-                >
-                  {options.map((option) => (
-                    <MenuRadioItem
-                      key={option.value}
-                      value={option.value}
-                      disabled={disabled || option.disabled}
-                      closeOnClick
-                    >
-                      {option.label}
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
-              </MenuSubPopup>
-            </MenuSub>
-          </>
-        ) : null}
-      </MenuPopup>
-    </Menu>
+    <ModelPicker
+      models={models}
+      value={value.modelProfile}
+      onValueChange={(modelProfile) => {
+        if (!disabled) onChange({ ...value, modelProfile });
+      }}
+      open={open}
+      onOpenChange={onOpenChange}
+      disabled={disabled}
+      side="top"
+      align="end"
+      triggerDescription={description}
+      labels={{
+        model: t('autoModel'),
+        settings: tc('modelPicker.settings'),
+        trigger: () => t('autoModel'),
+        empty: tc('modelPicker.empty'),
+      }}
+      footerText={tc('nextRequest')}
+      reasoning={
+        showReasoning
+          ? {
+              label: tc('modelPicker.reasoning'),
+              ariaLabel: tq('label'),
+              value: requested,
+              options,
+              onValueChange: (next) => {
+                if (
+                  disabled ||
+                  !options.some((option) => option.value === next && !option.disabled)
+                )
+                  return;
+                const reasoning = reasoningFrom(next);
+                onChange({ modelProfile: value.modelProfile, ...(reasoning ? { reasoning } : {}) });
+              },
+              ...(value.reasoning?.mode === 'fixed'
+                ? {
+                    effort: {
+                      label: tc('modelPicker.effort'),
+                      value: value.reasoning.level,
+                      options: levels,
+                    },
+                  }
+                : {}),
+            }
+          : null
+      }
+    />
   );
 }

@@ -1,11 +1,13 @@
 export { type DiffLine, diffLines } from './artifacts/diff.ts';
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
+export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
 export { BudgetInspector } from './components/BudgetInspector.tsx';
 export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
 export { EditorToolbar, isTextEditingEvent, TIDY_EVENT } from './components/EditorToolbar.tsx';
 export { EffortJudgments } from './components/EffortJudgments.tsx';
-export { ExecutionTranscript } from './components/ExecutionTranscript.tsx';
+export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
+export { ExecutionToolGroup, ExecutionTranscript } from './components/ExecutionTranscript.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { InteractionPanel } from './components/InteractionPanel.tsx';
 export { NodeInspector } from './components/NodeInspector.tsx';
@@ -18,11 +20,12 @@ export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';
 export { type ComparedRun, RunComparison } from './components/RunComparison.tsx';
 export { RunControls } from './components/RunControls.tsx';
+export { DecisionDetail, type RunFlowCheck, RunFlowView } from './components/RunFlowView.tsx';
 export { isHtmlDocument, ResultReader, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
-export { StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
+export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';
 export { ValidationPanel } from './components/ValidationPanel.tsx';
@@ -45,6 +48,19 @@ export {
   type RunCostEstimate,
 } from './run/cost.ts';
 export { RunDisplayProvider, type RunDisplaySnapshot, useRunDisplay } from './run/display.tsx';
+export {
+  buildRunFlow,
+  type FlowEvidenceRef,
+  type RunFlow,
+  type RunFlowDecision,
+  type RunFlowEdge,
+  type RunFlowIteration,
+  type RunFlowLoop,
+  type RunFlowNode,
+  runFlowExecutionIterationId,
+  runFlowExecutionLoopId,
+  selectRunFlowIterations,
+} from './run/flow.ts';
 export {
   type ExecutionInterval,
   type ExecutionSegment,

@@ -1,5 +1,10 @@
-import type { ReasoningResolution, ReasoningWire, RunEvent } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import {
+  type ReasoningResolution,
+  type ReasoningWire,
+  type RunEvent,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
+import { canReadArtifactBody, type RunProjection } from '@corral/core';
 import type { StreamText } from './session.ts';
 
 // One execution's conversation, in commit order (roadmap UX-A3). Built only from committed
@@ -34,6 +39,8 @@ export type TranscriptEntry =
       text: string;
       live: boolean;
       broken: boolean;
+      /** The recorded response exists, but its body is no longer retained for reading. */
+      bodyReleased: boolean;
     }
   | {
       kind: 'tool';
@@ -43,6 +50,12 @@ export type TranscriptEntry =
       status: 'requested' | 'allowed' | 'blocked' | 'finished' | 'failed';
       detail: string | null;
       resultRef: string | null;
+      /** The validated arguments as recorded; large values are already size-and-hash stubs. */
+      args: Record<string, unknown>;
+      /** Recorded time of `tool.started`, when the call was observed to start. */
+      startedAt?: string;
+      /** From `tool.started` to `tool.finished`, only when both were recorded. */
+      latencyMs?: number;
     }
   | {
       kind: 'question';
@@ -113,14 +126,18 @@ export function buildTranscript(
         });
         // The reply follows its request, streaming until model.finished brings the final text.
         const stream = streams[call];
+        const responseRef = projection.modelCalls[call]?.responseRef;
+        const bodyReleased = Boolean(responseRef && !canReadArtifactBody(projection, responseRef));
         const reply = {
           kind: 'reply' as const,
           seq: event.runSeq,
           modelCallId: call,
           no: requests,
-          text: stream?.text ?? '',
-          live: !projection.modelCalls[call]?.finished,
+          text: bodyReleased ? '' : (stream?.text ?? ''),
+          live:
+            !projection.modelCalls[call]?.finished && !TERMINAL_RUN_STATUSES.has(projection.status),
           broken: stream?.broken ?? false,
+          bodyReleased,
         };
         replies.set(call, reply);
         entries.push(reply);
@@ -128,14 +145,15 @@ export function buildTranscript(
       }
       case 'tool.requested': {
         if (event.payload.executionId !== executionId) break;
-        const tool = {
-          kind: 'tool' as const,
+        const tool: Extract<TranscriptEntry, { kind: 'tool' }> = {
+          kind: 'tool',
           seq: event.runSeq,
           toolCallId: event.payload.toolCallId,
           name: event.payload.name,
-          status: 'requested' as Extract<TranscriptEntry, { kind: 'tool' }>['status'],
-          detail: null as string | null,
-          resultRef: null as string | null,
+          status: 'requested',
+          detail: null,
+          resultRef: null,
+          args: event.payload.validatedArgs,
         };
         tools.set(tool.toolCallId, tool);
         entries.push(tool);
@@ -154,12 +172,19 @@ export function buildTranscript(
         }
         break;
       }
+      case 'tool.started': {
+        const tool = tools.get(event.payload.toolCallId);
+        if (tool) tool.startedAt = event.recordedAt;
+        break;
+      }
       case 'tool.finished': {
         const tool = tools.get(event.payload.toolCallId);
         if (tool) {
           tool.status = event.payload.error ? 'failed' : 'finished';
           tool.detail = event.payload.error;
           tool.resultRef = event.payload.resultRef;
+          if (tool.startedAt)
+            tool.latencyMs = Math.max(0, Date.parse(event.recordedAt) - Date.parse(tool.startedAt));
         }
         break;
       }

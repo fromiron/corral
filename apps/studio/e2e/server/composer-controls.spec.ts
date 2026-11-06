@@ -32,10 +32,20 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await requestBox(page).fill('Keep this request');
   const chip = page.getByRole('button', { name: 'Model', exact: true });
+  const settings = page.getByRole('dialog', { name: 'Model settings', exact: true });
   await chip.click({ timeout: 3000 });
-  await page.getByRole('menuitem', { name: 'Reasoning effort', exact: true }).hover();
-  await page.getByRole('menuitemradio', { name: 'Low', exact: true }).click();
-  await expect(chip).toContainText('Low');
+  const policy = settings.getByRole('combobox', { name: 'Reasoning effort' });
+  await policy.click();
+  await page.getByRole('option', { name: 'Low', exact: true }).click();
+  await expect(policy).toHaveAttribute('aria-expanded', 'false');
+  await expect(settings.getByRole('tab', { name: 'Low', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(chip).toHaveAttribute('aria-description', /Low/);
+  await expect(settings).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(chip).toBeFocused();
   const saved: unknown[] = [];
   let release!: () => void;
   const pending = new Promise<void>((resolve) => (release = resolve));
@@ -46,7 +56,7 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
     await route.continue();
   });
   await chip.click();
-  await page.getByRole('menuitemradio', { name: 'OpenAI · Test B', exact: true }).click();
+  await settings.getByRole('option', { name: /^OpenAI · Test B/ }).click();
   await expect(chip).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   expect(saved).toHaveLength(1);
@@ -55,7 +65,9 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
   });
   release();
   await expect(chip).toBeEnabled();
-  await expect(chip).toContainText('Test B · Low');
+  await expect(chip).toContainText('Test B');
+  await expect(chip).toHaveAttribute('aria-description', /Low/);
+  await page.keyboard.press('Escape');
   await page.unroute('**/api/v1/sessions/*');
   await page.route('**/api/v1/model-profiles', async (route) => {
     const response = await route.fetch();
@@ -70,13 +82,16 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
     });
   });
   await page.reload();
-  await expect(chip).toContainText('Test B · Low');
+  await expect(chip).toContainText('Test B');
+  await expect(chip).toHaveAttribute('aria-description', /Low/);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await expect(page.getByTestId('reasoning-not-supported')).toBeVisible();
   await chip.click();
-  await page.getByRole('menuitemradio', { name: 'OpenAI · Test A', exact: true }).click();
-  await expect(chip).toContainText('Test A · Low');
+  await settings.getByRole('option', { name: /^OpenAI · Test A/ }).click();
+  await expect(chip).toContainText('Test A');
+  await expect(chip).toHaveAttribute('aria-description', /Low/);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+  await page.keyboard.press('Escape');
   await page.route('**/api/v1/sessions/*', async (route) =>
     route.request().method() === 'PATCH'
       ? route.fulfill({
@@ -86,20 +101,19 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
       : route.continue(),
   );
   await chip.click();
-  await page.getByRole('menuitemradio', { name: 'OpenAI · Test B', exact: true }).click();
+  await settings.getByRole('option', { name: /^OpenAI · Test B/ }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Fixture save conflict' })).toBeVisible();
-  await expect(chip).toContainText('Test A · Low');
+  await expect(chip).toContainText('Test A');
+  await expect(chip).toHaveAttribute('aria-description', /Low/);
   await expect(requestBox(page)).toHaveValue('Keep this request');
+  await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 390, height: 844 });
   await chip.press('Enter');
-  const effortMenu = page.getByRole('menuitem', { name: 'Reasoning effort', exact: true });
-  await effortMenu.focus();
-  await effortMenu.press('ArrowRight');
-  await expect(page.getByRole('menuitemradio', { name: 'Low', exact: true })).toHaveAttribute(
-    'aria-checked',
+  await expect(settings.getByRole('tablist', { name: 'Effort' })).toBeVisible();
+  await expect(settings.getByRole('tab', { name: 'Low', exact: true })).toHaveAttribute(
+    'aria-selected',
     'true',
   );
-  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(chip).toBeFocused();
 });

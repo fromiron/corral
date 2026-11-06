@@ -27,8 +27,10 @@ import {
   actionRequired,
   activityLine,
   agentActivity,
+  availableResultLinks,
   type ContextPresentation,
   changesPresentation,
+  currentAgentExecutions,
   effectAttention,
   fileChangeSignals,
   type PlanRef,
@@ -62,6 +64,8 @@ export interface ChatWidgetModel {
   changeAdditions: number | null;
   changeDeletions: number | null;
   agents: { total: number; working: number; waiting: number; failed: number } | null;
+  /** Current attempts only; the execution view retains retry history. */
+  agentRows: { id: string; name: string; status: string }[];
   tools: { id: string; name: string; tone: string }[];
   results: { id: string; label: string }[];
   environment: 'simulated' | 'restricted' | null;
@@ -396,9 +400,10 @@ function useChatWidgetState(
   );
   const currentTool = tools.find((row) => row.tone === 'running') ?? null;
   const listed = projection ? runResults(projection) : null;
-  const resultItems = (
-    listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? [])
-  ).map((item) => ({ id: item.artifactVersionId, label: `${item.name} v${item.version}` }));
+  const resultItems = availableResultLinks(
+    projection,
+    listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? []),
+  );
   useEffect(() => {
     if (!presentationRunId || !live || projection?.endedAt) return;
     const timer = setInterval(() => setNow(new Date().toISOString()), 1000);
@@ -418,7 +423,22 @@ function useChatWidgetState(
     }),
     runId: presentationRunId,
   };
-  const agents = agentActivity(executions);
+  const currentIds = new Set(
+    currentAgentExecutions(projection).map((execution) => execution.executionId),
+  );
+  const awaitingApproval = new Set(
+    Object.values(projection?.approvals ?? {}).flatMap((approval) =>
+      approval.status === 'pending' && approval.tool ? [approval.tool.executionId] : [],
+    ),
+  );
+  const currentAgents = executions
+    .filter((execution) => currentIds.has(execution.executionId))
+    .map((execution) =>
+      execution.status === 'active' && awaitingApproval.has(execution.executionId)
+        ? { ...execution, status: 'waiting_approval' }
+        : execution,
+    );
+  const agents = agentActivity(currentAgents);
   const simulated =
     projection?.mode === 'mock' || (mode === 'browser' && projection?.mode !== 'live');
   const restricted =
@@ -427,11 +447,11 @@ function useChatWidgetState(
   const chips = visibleWidgets({
     hasContext: Boolean(presentationRunId),
     agents: {
-      total: agents?.total ?? executions.length,
+      total: agents?.total ?? currentAgents.length,
       working: agents?.working ?? 0,
       waiting: agents?.waiting ?? 0,
       failed: agents?.failed ?? 0,
-      delegated: executions.length > 1,
+      delegated: currentAgents.length > 1,
     },
     toolCount: tools.length,
     resultCount: resultItems.length,
@@ -478,6 +498,11 @@ function useChatWidgetState(
     changeAdditions: changes?.kind === 'count' ? changes.additions : null,
     changeDeletions: changes?.kind === 'count' ? changes.deletions : null,
     agents,
+    agentRows: currentAgents.map((execution) => ({
+      id: execution.executionId,
+      name: execution.roleName,
+      status: execution.status,
+    })),
     tools,
     results: resultItems,
     environment: simulated ? 'simulated' : restricted ? 'restricted' : null,

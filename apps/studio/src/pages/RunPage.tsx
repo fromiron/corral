@@ -1,7 +1,7 @@
-import type { CorralDefinition, NodeLayout } from '@corral/contracts';
-import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { type CorralDefinition, type NodeLayout, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
+  AgentStatusText,
   ApprovalPanel,
   ArtifactViewer,
   BudgetInspector,
@@ -9,18 +9,16 @@ import {
   ExecutionTranscript,
   ExecutionTree,
   HarnessDetails,
-  historicalStreams,
   QuestionsPanel,
   ReinsPanel,
   RunActions,
   RunCanvas,
   type RunCanvasLayout,
-  RunDisplayProvider,
-  type RunDisplaySnapshot,
+  type RunFlowCheck,
+  RunFlowView,
   RunReason,
   RunResults,
   type RunSessionStore,
-  reconstructRunHistory,
   runCanvasLayout,
   runResults,
   StatusBadge,
@@ -36,32 +34,41 @@ import {
   AccordionItem,
   AccordionTrigger,
   Button,
-  Slider,
+  formatClock,
+  MetaDot,
   TabItem,
   TabPanel,
   Tabs,
   TabsList,
+  useNow,
 } from '@corral/react/design-kit';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
 import { useModelPrices } from '../prices.ts';
 import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
-import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
+import { runFlowChecks } from '../workbench/runFlowChecks.ts';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
 
-/** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins. */
+/** One run: observed work flow, execution details and Reins. */
 export function RunPage() {
   const services = useServices();
   const { runId } = runRoute.useParams();
@@ -103,6 +110,10 @@ export function RunDetail({
   const missing = useStore(session, (s) => s.missingRunId === runId);
   const error = useStore(session, (s) => s.streamError ?? s.definitionError);
   const definition = useStore(session, (s) => s.definition);
+  const [recordSession, setRecordSession] = useState<{
+    runId: string;
+    sessionId: string | null;
+  } | null>(null);
 
   // A direct link or a reload: follow the run from the runtime's record.
   useEffect(() => {
@@ -117,7 +128,10 @@ export function RunDetail({
     Promise.all([transport.listRuns(), repository.list()]).then(
       ([runs, corrals]) => {
         const run = runs.find((r) => r.runId === runId);
-        if (live && run) setCurrentProject(projectOfRun(run, corrals));
+        if (live && run) {
+          setCurrentProject(projectOfRun(run, corrals));
+          setRecordSession({ runId: run.runId, sessionId: run.sessionId });
+        }
       },
       () => {},
     );
@@ -133,9 +147,7 @@ export function RunDetail({
         <p role="status" className="text-sm text-muted-foreground">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
-        {activeRunId === runId && search.atSeq === undefined ? (
-          <RunActions session={session} />
-        ) : null}
+        {activeRunId === runId ? <RunActions session={session} /> : null}
         {error ? (
           <Button
             variant="tertiary"
@@ -157,7 +169,7 @@ export function RunDetail({
       key={runId}
       session={session}
       definition={definition}
-      sessionId={sessionId}
+      sessionId={sessionId ?? (recordSession?.runId === runId ? recordSession.sessionId : null)}
       search={search}
       setSearch={setSearch}
       embedded={embedded}
@@ -199,8 +211,6 @@ function ResultChoices({
   );
 }
 
-const NO_STREAMS = {};
-
 function RunWorkspace({
   runId,
   session,
@@ -220,40 +230,61 @@ function RunWorkspace({
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
-  const { execution, artifact, result, atSeq } = search;
-  const historical = atSeq !== undefined;
+  const { execution, artifact, result } = search;
   const view = search.view ?? (result ? 'results' : 'run');
-  const navigate = useNavigate();
   const Main = embedded ? 'div' : 'main';
-  const { previewUrl } = useServices();
-  const liveProjection = useStore(session, (s) => s.projection);
+  const { previewUrl, workspaces } = useServices();
+  const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
-  const history = useMemo(
-    () => (atSeq === undefined ? null : reconstructRunHistory(runId, events, atSeq)),
-    [runId, events, atSeq],
-  );
-  const completedStreams = useStore(
-    session,
-    useShallow((s) => (history ? historicalStreams(history.projection, s.streams) : NO_STREAMS)),
-  );
-  const display = useMemo<RunDisplaySnapshot | null>(
+  const checkReferences = useMemo(
     () =>
-      history
-        ? { projection: history.projection, events: history.events, streams: completedStreams }
-        : null,
-    [history, completedStreams],
+      [
+        ...new Set(
+          Object.values(projection?.workflowBranches ?? {}).flatMap((branch) =>
+            branch.evidenceRefs.filter((ref) => ref.kind === 'check').map((ref) => ref.id),
+          ),
+        ),
+      ]
+        .sort()
+        .join('|'),
+    [projection?.workflowBranches],
   );
-  const projection = display?.projection ?? liveProjection;
-  const head = events.at(-1)?.runSeq ?? 0;
-  const chooseSeq = (value: number | undefined) => setSearch({ atSeq: value }, { replace: true });
-  const savedTeam = useSavedTeam(liveProjection?.corralId);
-  const layout = useSavedLayout(definition, liveProjection?.corralId ?? null, savedTeam);
+  const [loadedChecks, setLoadedChecks] = useState<{ key: string; values: RunFlowCheck[] } | null>(
+    null,
+  );
+  const checkOwner = `${sessionId}:${runId}:${checkReferences}`;
+  useEffect(() => {
+    if (!workspaces || !sessionId || !checkReferences) return;
+    let active = true;
+    void workspaces
+      .verifications(sessionId)
+      .then((records) => {
+        if (active)
+          setLoadedChecks({
+            key: checkOwner,
+            values: runFlowChecks(records, runId, checkReferences.split('|')),
+          });
+      })
+      .catch(() => {
+        if (active) setLoadedChecks({ key: checkOwner, values: [] });
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspaces, sessionId, runId, checkReferences, checkOwner]);
+  const checks = loadedChecks?.key === checkOwner ? loadedChecks.values : [];
+
+  useEffect(() => {
+    if (search.atSeq !== undefined) setSearch({ atSeq: undefined }, { replace: true });
+  }, [search.atSeq, setSearch]);
+  const savedTeam = useSavedTeam(projection?.corralId);
+  const layout = useSavedLayout(definition, projection?.corralId ?? null, savedTeam);
   const prices = useModelPrices();
   const target = useSteerTarget(session, execution ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [panel, setPanel] = useState('canvas');
   const [detailOpen, setDetailOpen] = useState(Boolean(execution || artifact));
-  const [monitor, setMonitor] = useState('graph');
+  const [monitor, setMonitor] = useState('flow');
   const [detail, setDetail] = useState('overview');
   const trigger = useRef<HTMLElement | null>(null);
   const detailsButton = useRef<HTMLButtonElement>(null);
@@ -261,16 +292,15 @@ function RunWorkspace({
   const openedResponseRun = useRef<string | null>(null);
   const hasOutput = useStore(session, (s) => s.outputText !== null);
   useEffect(() => {
-    if (hasOutput && !historical) markRunReviewed();
-  }, [hasOutput, historical]);
+    if (hasOutput) markRunReviewed();
+  }, [hasOutput]);
   useEffect(() => {
     if (!execution && !artifact) return;
     setDetailOpen(true);
     setPanel('side');
   }, [execution, artifact]);
   useEffect(() => {
-    if (historical || !projection?.startedAt || openedResponseRun.current === projection.runId)
-      return;
+    if (!projection?.startedAt || openedResponseRun.current === projection.runId) return;
     openedResponseRun.current = projection.runId;
     // Only an existing decision at entry may move focus; later events leave editing alone.
     if (
@@ -283,7 +313,7 @@ function RunWorkspace({
       return;
     response.current?.focus({ preventScroll: true });
     response.current?.scrollIntoView({ block: 'nearest' });
-  }, [projection, session, execution, artifact, result, view, historical]);
+  }, [projection, session, execution, artifact, result, view]);
   const rememberTrigger = () => {
     trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   };
@@ -311,379 +341,272 @@ function RunWorkspace({
       (trigger.current?.isConnected ? trigger.current : detailsButton.current)?.focus(),
     );
   };
-  const startFrom =
-    savedTeam && !historical
-      ? (from: { runId: string; artifactVersionId: string }) =>
-          void navigate({
-            to: '/corrals/$corralId/edit',
-            params: { corralId: projection?.corralId ?? '' },
-            search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
-          })
-      : null;
   const highlightedNode =
     selectedNodeId ?? (execution ? (projection?.executions[execution]?.nodeId ?? null) : null);
-  const historicalExecution = execution ? projection?.executions[execution] : null;
-  const selectedTarget = historical
-    ? historicalExecution
-      ? {
-          executionId: historicalExecution.executionId,
-          nodeLabel:
-            definition.nodes.find((node) => node.id === historicalExecution.nodeId)?.label ??
-            historicalExecution.nodeId,
-          finished: TERMINAL_EXECUTION_STATUSES.has(historicalExecution.status),
-        }
-      : null
-    : execution
-      ? target
-      : null;
+  const selectedTarget = execution ? target : null;
   const results = projection ? runResults(projection) : null;
-  const selectedResultId = result ?? results?.defaultId ?? undefined;
 
   return (
-    <RunDisplayProvider snapshot={display}>
-      <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
-        <RunSummary
-          session={session}
-          definition={definition}
-          view={view}
-          readOnly={historical}
-          onView={(view) => setSearch({ view })}
-        />
-        <div className="shrink-0 border-b border-line p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-40 flex-1">
-              <Slider
-                size="compact"
-                label={m('cursor')}
-                min={0}
-                max={Math.max(1, head)}
-                step={1}
-                value={Math.min(atSeq ?? head, head)}
-                formatValue={(value) => m('record', { seq: value })}
-                disabled={head === 0}
-                onChange={(value) => chooseSeq(typeof value === 'number' ? value : value[0])}
-              />
-            </div>
-            <Button
-              variant="tertiary"
-              size="compact"
-              disabled={(atSeq ?? head) === 0}
-              onClick={() => chooseSeq(Math.max(0, (atSeq ?? head) - 1))}
-            >
-              {m('previous')}
-            </Button>
-            <Button
-              variant="tertiary"
-              size="compact"
-              disabled={!historical || atSeq >= head}
-              onClick={() => chooseSeq(Math.min(head, (atSeq ?? head) + 1))}
-            >
-              {m('next')}
-            </Button>
-            <Button
-              variant="secondary"
-              size="compact"
-              disabled={!historical}
-              onClick={() => chooseSeq(undefined)}
-            >
-              {m('latest')}
-            </Button>
-          </div>
-          {historical ? (
-            <p
-              role="status"
-              data-testid="history-mode"
-              className="mt-2 text-xs text-muted-foreground"
-            >
-              {m('historical', {
-                seq: atSeq,
-                visible: projection?.lastSeq ?? 0,
-                newer: Math.max(0, head - atSeq),
-              })}
-            </p>
-          ) : null}
-          {history?.status === 'loading' ? (
-            <p role="status" className="mt-2 text-xs text-warning">
-              {m('historyLoading', { seq: atSeq ?? 0, visible: history.projection.lastSeq })}
-            </p>
-          ) : null}
-          {history?.gap ? (
-            <p role="alert" className="mt-2 text-xs text-warning">
-              {m('historyGap', {
-                expected: history.gap.expectedSeq,
-                visible: history.projection.lastSeq,
-              })}
-            </p>
-          ) : null}
-        </div>
-        <fieldset disabled={historical} hidden={historical} className="m-0 min-w-0 border-0 p-0">
-          <div
-            ref={response}
-            data-run-response={projection?.runId}
-            tabIndex={-1}
-            className="shrink-0 outline-none"
-          >
-            <ApprovalPanel
-              session={session}
-              compact
-              showPlan={false}
-              onOpenArtifact={openArtifact}
-              className="shrink-0 border-b border-line px-3 py-2"
-            />
-          </div>
-        </fieldset>
-        <Main
-          style={view !== 'results' ? { display: 'none' } : undefined}
-          className="min-h-0 flex-1 overflow-auto"
+    <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
+      <RunSummary
+        session={session}
+        definition={definition}
+        view={view}
+        onView={(view) => setSearch({ view })}
+      />
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        <div
+          ref={response}
+          data-run-response={projection?.runId}
+          tabIndex={-1}
+          className="shrink-0 outline-none"
         >
-          <RunResults
+          <ApprovalPanel
             session={session}
-            selectedId={result ?? null}
-            onSelect={(id) => setSearch({ view: 'results', result: id })}
-            {...(previewUrl ? { previewUrl } : {})}
-            {...(startFrom ? { onStartFrom: startFrom } : {})}
+            compact
+            showPlan={false}
+            onOpenArtifact={openArtifact}
+            className="shrink-0 border-b border-line px-3 py-2"
           />
-          {sessionId && selectedResultId && projection?.artifacts[selectedResultId] ? (
-            <MessageBranch
-              runId={projection.runId}
-              artifactVersionId={selectedResultId}
-              disabled={historical || !TERMINAL_RUN_STATUSES.has(projection.status)}
+        </div>
+      </fieldset>
+      <Main
+        style={view !== 'results' ? { display: 'none' } : undefined}
+        className="min-h-0 flex-1 overflow-auto"
+      >
+        <RunResults
+          session={session}
+          selectedId={result ?? null}
+          onSelect={(id) => setSearch({ view: 'results', result: id })}
+          {...(previewUrl ? { previewUrl } : {})}
+        />
+      </Main>
+      <Tabs
+        style={view === 'results' ? { display: 'none' } : undefined}
+        value={monitor}
+        onValueChange={(value) => {
+          setMonitor(value);
+          setPanel('canvas');
+        }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="flex flex-wrap items-center gap-2 border-b border-line p-2">
+          <TabsList aria-label={m('views')}>
+            <TabItem
+              value="flow"
+              label={m('flow')}
+              data-testid="run-flow-tab"
+              onClick={() => setPanel('canvas')}
             />
-          ) : null}
-        </Main>
-        <Tabs
-          style={view === 'results' ? { display: 'none' } : undefined}
-          value={monitor}
-          onValueChange={(value) => {
-            setMonitor(value);
-            setPanel('canvas');
-          }}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="flex flex-wrap items-center gap-2 border-b border-line p-2">
-            <TabsList aria-label={m('views')}>
-              <TabItem value="graph" label={m('graph')} onClick={() => setPanel('canvas')} />
-              <TabItem value="time" label={m('time')} onClick={() => setPanel('canvas')} />
-              <TabItem value="events" label={m('events')} onClick={() => setPanel('canvas')} />
-            </TabsList>
-            <Button
-              variant="tertiary"
-              size="compact"
-              aria-pressed={panel === 'tree'}
-              onClick={() => setPanel(panel === 'tree' ? 'canvas' : 'tree')}
-            >
-              {t('executions')}
-            </Button>
-            <Button
-              ref={detailsButton}
-              variant="tertiary"
-              size="compact"
-              aria-pressed={detailOpen && panel !== 'tree'}
-              onClick={() => {
-                setDetailOpen(true);
-                setPanel('side');
-              }}
-            >
-              {m('details')}
-            </Button>
-          </div>
-          <Main className="run-layout min-h-0 flex-1" data-panel={panel} data-details={detailOpen}>
-            <aside
-              aria-label={t('executions')}
-              className="run-tree min-h-0 overflow-auto border-r border-line p-3"
-            >
-              <ExecutionTree
+            <TabItem value="graph" label={m('graph')} onClick={() => setPanel('canvas')} />
+            <TabItem value="time" label={m('time')} onClick={() => setPanel('canvas')} />
+            <TabItem value="events" label={m('events')} onClick={() => setPanel('canvas')} />
+          </TabsList>
+          <Button
+            variant="tertiary"
+            size="compact"
+            aria-pressed={panel === 'tree'}
+            onClick={() => setPanel(panel === 'tree' ? 'canvas' : 'tree')}
+          >
+            {t('executions')}
+          </Button>
+          <Button
+            ref={detailsButton}
+            variant="tertiary"
+            size="compact"
+            aria-pressed={detailOpen && panel !== 'tree'}
+            onClick={() => {
+              setDetailOpen(true);
+              setPanel('side');
+            }}
+          >
+            {m('details')}
+          </Button>
+        </div>
+        <Main className="run-layout min-h-0 flex-1" data-panel={panel} data-details={detailOpen}>
+          <aside
+            aria-label={t('executions')}
+            className="run-tree min-h-0 overflow-auto border-r border-line p-3"
+          >
+            <ExecutionTree
+              session={session}
+              onSteer={chooseExecution}
+              selectedExecutionId={execution ?? null}
+            />
+          </aside>
+          <div className="run-center relative min-h-0">
+            <TabPanel value="flow" keepMounted className="h-full overflow-auto p-3">
+              <RunFlowView
                 session={session}
-                onSteer={chooseExecution}
+                definition={definition}
+                checks={checks}
                 selectedExecutionId={execution ?? null}
+                onSelectExecution={chooseExecution}
+                onOpenArtifact={openArtifact}
               />
-            </aside>
-            <div className="run-center relative min-h-0">
-              <TabPanel value="graph" keepMounted className="h-full min-h-0">
-                {layout ? (
-                  <RunCanvas
+            </TabPanel>
+            <TabPanel value="graph" keepMounted className="h-full min-h-0">
+              {layout ? (
+                <RunCanvas
+                  session={session}
+                  definition={definition}
+                  layout={layout}
+                  selectedNodeId={highlightedNode}
+                  onSelectNode={(id) => {
+                    rememberTrigger();
+                    setSelectedNodeId(id);
+                    if (id) {
+                      setDetailOpen(true);
+                      setDetail('overview');
+                      setPanel('side');
+                      setSearch({ execution: undefined, artifact: undefined });
+                    }
+                  }}
+                />
+              ) : null}
+            </TabPanel>
+            <TabPanel value="time" keepMounted className="h-full min-h-0">
+              <RunTimeChart
+                events={events}
+                projection={projection}
+                definition={definition}
+                selected={execution}
+                onSelect={chooseExecution}
+              />
+            </TabPanel>
+            <TabPanel value="events" keepMounted className="h-full overflow-auto p-3">
+              <Timeline session={session} />
+            </TabPanel>
+          </div>
+          <aside
+            tabIndex={-1}
+            aria-label={m('details')}
+            className="run-side min-h-0 overflow-auto border-l border-line p-3 outline-none"
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-medium">{selectedTarget?.nodeLabel ?? m('details')}</h2>
+              <Button variant="ghost" size="compact" onClick={closeDetail}>
+                {m('closeDetails')}
+              </Button>
+            </div>
+            {execution && projection && !projection.executions[execution] ? (
+              <p role="alert">{t('executionMissing', { executionId: execution })}</p>
+            ) : null}
+            {selectedNodeId && projection ? (
+              <NodeExecutions
+                projection={projection}
+                definition={definition}
+                nodeId={selectedNodeId}
+                selectedExecutionId={execution ?? null}
+                onChoose={chooseExecution}
+                onClose={closeDetail}
+              />
+            ) : null}
+            <Tabs value={detail} onValueChange={setDetail}>
+              <div className="overflow-x-auto">
+                <TabsList aria-label={m('details')}>
+                  <TabItem value="overview" label={m('overview')} />
+                  <TabItem value="calls" label={m('calls')} />
+                  <TabItem value="usage" label={m('usage')} />
+                  <TabItem value="reins" label="Reins" />
+                </TabsList>
+              </div>
+              <TabPanel value="overview" keepMounted className="space-y-3 pt-3">
+                {artifact ? (
+                  <ArtifactViewer
                     session={session}
-                    definition={definition}
-                    layout={layout}
-                    selectedNodeId={highlightedNode}
-                    onSelectNode={(id) => {
-                      rememberTrigger();
-                      setSelectedNodeId(id);
-                      if (id) {
-                        setDetailOpen(true);
-                        setDetail('overview');
-                        setPanel('side');
-                        setSearch({ execution: undefined, artifact: undefined });
-                      }
+                    versionId={artifact}
+                    onOpen={openArtifact}
+                    onClose={() => {
+                      setSearch({ artifact: undefined });
+                      (trigger.current?.isConnected
+                        ? trigger.current
+                        : detailsButton.current
+                      )?.focus();
                     }}
+                  />
+                ) : results ? (
+                  <ResultChoices
+                    results={results}
+                    onOpen={(id) => setSearch({ view: 'results', result: id })}
+                  />
+                ) : null}
+                {sessionId && selectedTarget ? (
+                  <ExecutionEvidence
+                    session={session}
+                    sessionId={sessionId}
+                    executionId={selectedTarget.executionId}
+                    onOpenArtifact={openArtifact}
+                  />
+                ) : null}
+                <Accordion>
+                  {Object.keys(projection?.workPlans ?? {}).length > 0 ? (
+                    <AccordionItem value="plans">
+                      <AccordionTrigger>{m('workPlans')}</AccordionTrigger>
+                      <AccordionContent>
+                        <WorkPlanPanel session={session} />
+                      </AccordionContent>
+                    </AccordionItem>
+                  ) : null}
+                  {Object.keys(projection?.tasks ?? {}).length > 0 ? (
+                    <AccordionItem value="tasks">
+                      <AccordionTrigger>
+                        {t('tabs.tasks')} · {Object.keys(projection?.tasks ?? {}).length}
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="max-w-full overflow-x-auto">
+                          <TaskBoard session={session} onOpenArtifact={openArtifact} />
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ) : null}
+                  {Object.keys(projection?.questions ?? {}).length > 0 ? (
+                    <AccordionItem value="questions">
+                      <AccordionTrigger>
+                        {t('tabs.questions')} · {Object.keys(projection?.questions ?? {}).length}
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
+                      </AccordionContent>
+                    </AccordionItem>
+                  ) : null}
+                </Accordion>
+                {detailOpen && detail === 'overview' ? (
+                  <RunStatusCards
+                    session={session}
+                    sessionId={sessionId}
+                    executionId={execution ?? null}
                   />
                 ) : null}
               </TabPanel>
-              <TabPanel value="time" keepMounted className="h-full min-h-0">
-                <RunTimeChart
-                  events={display?.events ?? events}
-                  projection={projection}
-                  definition={definition}
-                  selected={execution}
-                  onSelect={chooseExecution}
-                />
-              </TabPanel>
-              <TabPanel value="events" keepMounted className="h-full overflow-auto p-3">
-                <Timeline session={session} selectedSeq={atSeq} onSelectSeq={chooseSeq} />
-              </TabPanel>
-            </div>
-            <aside
-              tabIndex={-1}
-              aria-label={m('details')}
-              className="run-side min-h-0 overflow-auto border-l border-line p-3 outline-none"
-            >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-medium">{selectedTarget?.nodeLabel ?? m('details')}</h2>
-                <Button variant="ghost" size="compact" onClick={closeDetail}>
-                  {m('closeDetails')}
-                </Button>
-              </div>
-              {execution && projection && !projection.executions[execution] ? (
-                <p role="alert">
-                  {historical
-                    ? m('executionMissingAt', { executionId: execution })
-                    : t('executionMissing', { executionId: execution })}
-                </p>
-              ) : null}
-              {selectedNodeId && projection ? (
-                <NodeExecutions
-                  projection={projection}
-                  definition={definition}
-                  nodeId={selectedNodeId}
-                  selectedExecutionId={execution ?? null}
-                  onChoose={chooseExecution}
-                  onClose={closeDetail}
-                />
-              ) : null}
-              <Tabs value={detail} onValueChange={setDetail}>
-                <div className="overflow-x-auto">
-                  <TabsList aria-label={m('details')}>
-                    <TabItem value="overview" label={m('overview')} />
-                    <TabItem value="calls" label={m('calls')} />
-                    <TabItem value="usage" label={m('usage')} />
-                    <TabItem value="reins" label="Reins" />
-                  </TabsList>
-                </div>
-                <TabPanel value="overview" keepMounted className="space-y-3 pt-3">
-                  {artifact ? (
-                    <ArtifactViewer
+              <TabPanel value="calls" keepMounted className="space-y-3 pt-3">
+                {selectedTarget ? (
+                  <div className="flex h-[50vh] min-h-40 flex-col">
+                    <ExecutionTranscript
                       session={session}
-                      versionId={artifact}
-                      onOpen={openArtifact}
-                      {...(startFrom ? { onStartFrom: startFrom } : {})}
-                      onClose={() => {
-                        setSearch({ artifact: undefined });
-                        (trigger.current?.isConnected
-                          ? trigger.current
-                          : detailsButton.current
-                        )?.focus();
-                      }}
-                    />
-                  ) : results ? (
-                    <ResultChoices
-                      results={results}
-                      onOpen={(id) => setSearch({ view: 'results', result: id })}
-                    />
-                  ) : null}
-                  {sessionId && artifact && projection?.artifacts[artifact] ? (
-                    <MessageBranch
-                      runId={projection.runId}
-                      artifactVersionId={artifact}
-                      disabled={historical || !TERMINAL_RUN_STATUSES.has(projection.status)}
-                    />
-                  ) : null}
-                  {!historical && sessionId && selectedTarget ? (
-                    <ExecutionEvidence
-                      session={session}
-                      sessionId={sessionId}
                       executionId={selectedTarget.executionId}
                       onOpenArtifact={openArtifact}
                     />
-                  ) : null}
-                  {historical ? (
-                    <p className="text-xs text-muted-foreground">{m('currentEvidence')}</p>
-                  ) : null}
-                  <Accordion>
-                    {Object.keys(projection?.workPlans ?? {}).length > 0 ? (
-                      <AccordionItem value="plans">
-                        <AccordionTrigger>{m('workPlans')}</AccordionTrigger>
-                        <AccordionContent>
-                          <WorkPlanPanel session={session} />
-                        </AccordionContent>
-                      </AccordionItem>
-                    ) : null}
-                    {Object.keys(projection?.tasks ?? {}).length > 0 ? (
-                      <AccordionItem value="tasks">
-                        <AccordionTrigger>
-                          {t('tabs.tasks')} · {Object.keys(projection?.tasks ?? {}).length}
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="max-w-full overflow-x-auto">
-                            <TaskBoard session={session} onOpenArtifact={openArtifact} />
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    ) : null}
-                    {Object.keys(projection?.questions ?? {}).length > 0 ? (
-                      <AccordionItem value="questions">
-                        <AccordionTrigger>
-                          {t('tabs.questions')} · {Object.keys(projection?.questions ?? {}).length}
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
-                        </AccordionContent>
-                      </AccordionItem>
-                    ) : null}
-                  </Accordion>
-                  {!historical && detailOpen && detail === 'overview' ? (
-                    <RunStatusCards
-                      session={session}
-                      sessionId={sessionId}
-                      executionId={execution ?? null}
-                    />
-                  ) : null}
-                </TabPanel>
-                <TabPanel value="calls" keepMounted className="space-y-3 pt-3">
-                  {selectedTarget ? (
-                    <div className="flex h-[50vh] min-h-40 flex-col">
-                      <ExecutionTranscript
-                        session={session}
-                        executionId={selectedTarget.executionId}
-                        onOpenArtifact={openArtifact}
-                      />
-                    </div>
-                  ) : (
-                    <p>{m('chooseExecution')}</p>
-                  )}
-                  <HarnessDetails session={session} />
-                </TabPanel>
-                <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
-                  <BudgetInspector session={session} prices={prices} />
-                  <EffortJudgments session={session} />
-                </TabPanel>
-                <TabPanel value="reins" keepMounted className="pt-3">
-                  {historical ? (
-                    <p className="text-xs text-muted-foreground">{m('readOnly')}</p>
-                  ) : null}
-                  <fieldset
-                    disabled={historical}
-                    hidden={historical}
-                    className="m-0 min-w-0 border-0 p-0"
-                  >
-                    <ReinsPanel session={session} target={execution ? target : null} />
-                  </fieldset>
-                </TabPanel>
-              </Tabs>
-            </aside>
-          </Main>
-        </Tabs>
-      </div>
-    </RunDisplayProvider>
+                  </div>
+                ) : (
+                  <p>{m('chooseExecution')}</p>
+                )}
+                <HarnessDetails session={session} />
+              </TabPanel>
+              <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
+                <BudgetInspector session={session} prices={prices} />
+                <EffortJudgments session={session} />
+              </TabPanel>
+              <TabPanel value="reins" keepMounted className="pt-3">
+                <fieldset className="m-0 min-w-0 border-0 p-0">
+                  <ReinsPanel session={session} target={execution ? target : null} />
+                </fieldset>
+              </TabPanel>
+            </Tabs>
+          </aside>
+        </Main>
+      </Tabs>
+    </div>
   );
 }
 
@@ -788,80 +711,141 @@ function RunSummary({
       : [],
   );
   const corralId = projection.corralId;
+  const identity = [
+    compact ? null : (
+      <span key="run" className="min-w-0 break-all font-mono">
+        {projection.runId}
+      </span>
+    ),
+    corralId && savedTeam && !compact ? (
+      <Link
+        key="team"
+        to="/corrals/$corralId/edit"
+        params={{ corralId }}
+        className="underline-offset-2 hover:underline"
+      >
+        {t('openCorral')}
+      </Link>
+    ) : corralId && savedTeam === false && !compact ? (
+      <span key="team">{t('unsavedTeam')}</span>
+    ) : null,
+    projection.startedFrom && !compact ? (
+      <span key="from">
+        {t('startedFrom')}:{' '}
+        <Link
+          to="/runs/$runId"
+          params={{ runId: projection.startedFrom.runId }}
+          search={{ artifact: projection.startedFrom.artifactVersionId }}
+          className="underline"
+        >
+          {t('startedFromLink', {
+            name: projection.startedFrom.artifactVersionId,
+            runId: projection.startedFrom.runId,
+          })}
+        </Link>
+      </span>
+    ) : null,
+  ];
+  const progress =
+    compact && projection.status === 'succeeded' && working.length === 0
+      ? []
+      : [
+          working.length ? (
+            <span key="working">{t('working', { labels: working.join(', ') })}</span>
+          ) : compact ? null : (
+            <span key="working">{t('idle')}</span>
+          ),
+          waiting ? <span key="waiting">{t('waitingExecutions', { count: waiting })}</span> : null,
+          ...loops.map((text) => <span key={text}>{text}</span>),
+          compact && inFlight === 0 ? null : (
+            <span key="requests">{t('requests', { count: inFlight })}</span>
+          ),
+          compact ? null : (
+            <span key="tasks">
+              {t('tasks', {
+                done: tasks.filter((task) => task.status === 'completed').length,
+                total: tasks.length,
+              })}
+            </span>
+          ),
+          projection.statusReason && !(compact && projection.status === 'succeeded') ? (
+            <span key="reason">
+              {tr('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+            </span>
+          ) : null,
+        ];
   return (
     <section
       aria-label={t('summary')}
-      className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-2"
+      className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3"
     >
-      <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          {onView ? <ViewSwitch view={view} onView={onView} /> : null}
-          <h2 className="text-base font-semibold">{definition.name}</h2>
-          {!compact ? (
-            <span className="font-mono text-xs text-muted-foreground">{projection.runId}</span>
-          ) : null}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h2 className="min-w-0 truncate text-title">{definition.name}</h2>
           <span aria-live="polite" data-testid="run-status">
-            <StatusBadge status={projection.status} />
+            <AgentStatusText kind="run" status={projection.status} />
           </span>
-          {corralId && savedTeam && !compact ? (
-            <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
-              {t('openCorral')}
-            </Link>
-          ) : corralId && savedTeam === false && !compact ? (
-            <span className="text-xs text-muted-foreground">{t('unsavedTeam')}</span>
-          ) : null}
-          {projection.startedFrom && !compact ? (
-            <span className="text-xs text-muted-foreground">
-              {t('startedFrom')}:{' '}
-              <Link
-                to="/runs/$runId"
-                params={{ runId: projection.startedFrom.runId }}
-                search={{ artifact: projection.startedFrom.artifactVersionId }}
-                className="underline"
-              >
-                {t('startedFromLink', {
-                  name: projection.startedFrom.artifactVersionId,
-                  runId: projection.startedFrom.runId,
-                })}
-              </Link>
-            </span>
-          ) : null}
+          <RunElapsed
+            startedAt={projection.startedAt}
+            endedAt={projection.endedAt}
+            live={!readOnly && !TERMINAL_RUN_STATUSES.has(projection.status)}
+          />
         </div>
-        {compact && projection.status === 'succeeded' && working.length === 0 ? null : (
-          <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-            <span>
-              {working.length
-                ? t('working', { labels: working.join(', ') })
-                : compact
-                  ? null
-                  : t('idle')}
-            </span>
-            {waiting ? <span>{t('waitingExecutions', { count: waiting })}</span> : null}
-            {loops.map((text) => (
-              <span key={text}>{text}</span>
-            ))}
-            {compact && inFlight === 0 ? null : <span>{t('requests', { count: inFlight })}</span>}
-            {compact ? null : (
-              <span>
-                {t('tasks', {
-                  done: tasks.filter((task) => task.status === 'completed').length,
-                  total: tasks.length,
-                })}
-              </span>
-            )}
-            {projection.statusReason && !(compact && projection.status === 'succeeded') ? (
-              <span>
-                {tr('reasonPrefix')}{' '}
-                <RunReason code={projection.statusReason} nodeLabel={labelOf} />
-              </span>
-            ) : null}
-          </p>
+        <MetaLine items={identity} />
+        <MetaLine items={progress} />
+      </div>
+      <div className="flex max-w-full shrink-0 flex-wrap items-start justify-end gap-2">
+        {onView ? <ViewSwitch view={view} onView={onView} /> : null}
+        {readOnly ? null : (
+          <div className="max-h-28 w-[24rem] max-w-full overflow-auto">
+            <RunActions session={session} compact />
+          </div>
         )}
       </div>
-      <div className="max-h-28 w-[24rem] max-w-full overflow-auto">
-        {readOnly ? null : <RunActions session={session} compact />}
-      </div>
     </section>
+  );
+}
+
+/** Caption-sized facts separated by the kit's meta dot; empty entries are skipped. */
+function MetaLine({ items }: { items: ReactNode[] }) {
+  const shown = items.filter(Boolean);
+  if (!shown.length) return null;
+  return (
+    <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-muted-foreground">
+      {shown.map((item, index) => (
+        <Fragment key={(item as ReactElement).key ?? index}>
+          {index > 0 ? <MetaDot /> : null}
+          {item}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * Run time as a clock. It ticks only while the latest view of a live run is shown; a past
+ * record without an observed end shows no clock rather than one running to the present.
+ */
+function RunElapsed({
+  startedAt,
+  endedAt,
+  live,
+}: {
+  startedAt: string | null;
+  endedAt: string | null;
+  live: boolean;
+}) {
+  const t = useTranslations('RunPage');
+  const now = useNow(1000, live && startedAt !== null);
+  if (!startedAt) return null;
+  const end = endedAt ? Date.parse(endedAt) : live ? now : null;
+  if (end === null) return null;
+  const clock = formatClock(end - Date.parse(startedAt));
+  return (
+    <span className="font-mono text-caption tabular-nums text-muted-foreground">
+      <span className="sr-only">{t('elapsed')} </span>
+      {clock}
+    </span>
   );
 }
 

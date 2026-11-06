@@ -1,5 +1,14 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
-import type { RunProjection } from '@corral/core';
+import { canReadArtifactBody, type RunProjection } from '@corral/core';
+
+export function availableResultLinks(
+  projection: RunProjection | null,
+  items: readonly { artifactVersionId: string; name: string; version: number }[],
+) {
+  return items
+    .filter((item) => canReadArtifactBody(projection, item.artifactVersionId))
+    .map((item) => ({ id: item.artifactVersionId, label: `${item.name} v${item.version}` }));
+}
 
 /** Shell services can change files after the launch tool has already finished. */
 export function fileChangeSignals(
@@ -489,6 +498,24 @@ export function effectAttention(projection: RunProjection | null) {
   };
 }
 
+/** One current attempt per task; retry history stays in the execution view. */
+export function currentAgentExecutions(projection: RunProjection | null) {
+  if (!projection) return [];
+  const latest = new Map<string, RunProjection['executions'][string]>();
+  for (const id of projection.executionOrder) {
+    const execution = projection.executions[id];
+    if (!execution) continue;
+    const previous = latest.get(execution.taskId);
+    if (!previous || previous.attemptNo <= execution.attemptNo)
+      latest.set(execution.taskId, execution);
+  }
+  return [...latest.values()].map((last) => {
+    const activeId = projection.tasks[last.taskId]?.activeExecutionId;
+    const active = activeId ? projection.executions[activeId] : undefined;
+    return active?.taskId === last.taskId && active.nodeId === last.nodeId ? active : last;
+  });
+}
+
 export function agentActivity(executions: ExecutionFact[]) {
   const waitingStatuses = new Set([
     'queued',
@@ -504,7 +531,7 @@ export function agentActivity(executions: ExecutionFact[]) {
     (execution) => !execution.ended && waitingStatuses.has(execution.status),
   ).length;
   const failed = executions.filter((execution) => execution.status === 'failed').length;
-  return executions.length > 1 || waiting > 0 || failed > 0
+  return executions.length > 1 || working > 0 || waiting > 0 || failed > 0
     ? { total: executions.length, working, waiting, failed }
     : null;
 }
@@ -545,6 +572,8 @@ export interface UsageSummary {
   perCall: number[];
   /** reported input of finished calls; null when none reported it. */
   input: UsageInput | null;
+  /** Completed calls without input usage; excluded from the known input total. */
+  inputUnreported: number;
 }
 
 export interface UsageInput {
@@ -580,6 +609,9 @@ export function usageSummary(
     callLimit: unlimited ? null : limits.maxModelCalls,
     perCall: perCall.slice(-PER_CALL_BARS),
     input: usageInput(projection),
+    inputUnreported: Object.values(projection.modelCalls).filter(
+      (call) => call.finished && call.usage?.inputTokens == null,
+    ).length,
   };
 }
 
@@ -651,19 +683,32 @@ export function sessionStats(
   };
 }
 
-export type OverviewWidget = 'context' | 'usage' | 'results' | 'changes' | 'agents' | 'environment';
+export type OverviewWidget =
+  | 'attention'
+  | 'context'
+  | 'usage'
+  | 'results'
+  | 'changes'
+  | 'agents'
+  | 'environment';
 
-/** The Overview's widgets in their fixed order; one with nothing to say is left out. */
+/** Put the current task ahead of telemetry, then lead with results after it ends. */
 export function overviewWidgets(input: {
   chips: readonly WidgetChip[];
   usage: UsageSummary | null;
   results: readonly unknown[];
+  live?: boolean;
+  action?: { needsUser: boolean };
 }): OverviewWidget[] {
   const shown = new Set<OverviewWidget>(input.chips);
+  if (input.action?.needsUser) shown.add('attention');
   if (input.usage) shown.add('usage');
   if (input.results.length) shown.add('results');
-  return (['context', 'usage', 'results', 'changes', 'agents', 'environment'] as const).filter(
-    (widget) => shown.has(widget),
+  const primary: OverviewWidget[] = input.live
+    ? ['attention', 'agents', 'results', 'changes']
+    : ['attention', 'results', 'changes', 'agents'];
+  return [...primary, 'context', 'usage', 'environment' as const].filter(
+    (widget): widget is OverviewWidget => shown.has(widget as OverviewWidget),
   );
 }
 
@@ -680,7 +725,13 @@ export function visibleWidgets(input: {
   if (input.environment && (input.environment.simulated || input.environment.restricted))
     chips.push('environment');
   const agents = input.agents;
-  if (agents.total > 1 || agents.delegated || agents.waiting > 0 || agents.failed > 0)
+  if (
+    agents.total > 1 ||
+    agents.delegated ||
+    agents.working > 0 ||
+    agents.waiting > 0 ||
+    agents.failed > 0
+  )
     chips.push('agents');
   if (input.changes) chips.push('changes');
   return chips;

@@ -1,7 +1,7 @@
 // The composer's text box with one menu for `/` commands and `@` references, after
 // keyboard first, IME safe. The renderer only reads names; picking a file grants nothing.
 import { rankFuzzy } from '@corral/core';
-import { Kbd } from '@corral/react/design-kit';
+import { type InputMessageInputProps, Kbd } from '@corral/react/design-kit';
 import { Bot, File, FileText, Folder, History, type LucideIcon, Slash } from '@corral/react/icons';
 import {
   type KeyboardEvent,
@@ -48,6 +48,7 @@ export function ComposerInput({
   inputRef,
   placeholder,
   label,
+  textareaProps,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -59,6 +60,8 @@ export function ComposerInput({
   inputRef: RefObject<HTMLTextAreaElement | null>;
   placeholder: string;
   label: string;
+  /** InputMessage owns field appearance, focus feedback and measured height. */
+  textareaProps?: InputMessageInputProps;
 }) {
   const t = useTranslations('Composer');
   const listId = useId();
@@ -139,12 +142,13 @@ export function ComposerInput({
   }, [open, selected, listId]);
 
   useLayoutEffect(() => {
+    if (textareaProps) return;
     const box = inputRef.current;
     if (!box) return;
     void value;
     box.style.height = 'auto';
     box.style.height = `${Math.min(240, box.scrollHeight)}px`;
-  }, [value, inputRef]);
+  }, [value, inputRef, textareaProps]);
 
   const put = (next: { text: string; caret: number }) => {
     onChange(next.text);
@@ -256,6 +260,7 @@ export function ComposerInput({
           )
         : null}
       <textarea
+        {...textareaProps}
         ref={inputRef}
         aria-label={label}
         role="combobox"
@@ -293,7 +298,10 @@ export function ComposerInput({
           }
           onKeyDown(e);
         }}
-        className="block max-h-60 min-h-11 w-full resize-none rounded-none border-0 bg-transparent px-2 py-2 text-subtitle outline-none placeholder:text-muted-foreground focus-visible:outline-none"
+        className={
+          textareaProps?.className ??
+          'block max-h-60 min-h-11 w-full resize-none rounded-none border-0 bg-transparent px-2 py-2 text-subtitle outline-none placeholder:text-muted-foreground focus-visible:outline-none'
+        }
       />
     </div>
   );

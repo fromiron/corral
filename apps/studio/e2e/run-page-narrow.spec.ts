@@ -14,7 +14,7 @@ async function finishedRun(page: import('@playwright/test').Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
-  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -25,19 +25,30 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   const monitor = page.getByTestId('run-monitor');
   const views = monitor.getByRole('tablist', { name: 'Execution views' });
   await expect(views).toBeVisible();
-  await expect(views.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('.react-flow')).toBeVisible();
+  const flow = monitor.getByRole('tabpanel', { name: 'Work flow', exact: true });
+  await expect(views.getByRole('tab', { name: 'Work flow' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(flow).toBeVisible();
+  await expect(graph(page)).toBeHidden();
   await expect(page.getByRole('region', { name: 'Reins', exact: true })).toBeHidden();
 
   await monitor.getByRole('button', { name: 'Executions', exact: true }).click();
   await expect(
     monitor.getByRole('complementary', { name: 'Executions', exact: true }),
   ).toBeVisible();
-  await expect(page.locator('.react-flow')).toBeHidden();
+  await expect(flow).toBeHidden();
+  await expect(graph(page)).toBeHidden();
   // Choosing a call opens its details; Reins remains an explicit tab.
-  await page.locator('li[data-execution-id]').first().getByRole('button').first().click();
+  await page
+    .getByRole('tree', { name: 'Executions', exact: true })
+    .getByRole('button', { name: / · exec_/ })
+    .first()
+    .click();
   await monitor.getByRole('tab', { name: 'Reins', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Reins', exact: true })).toBeVisible();
+  await expect(flow).toBeHidden();
 
   await monitor.getByRole('tab', { name: 'Overview', exact: true }).click();
   await expect(monitor.getByRole('tablist', { name: 'Details', exact: true })).toBeVisible();

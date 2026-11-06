@@ -98,7 +98,7 @@ describe('approvals and reviews in Studio', () => {
     await until(session, (p) => Object.values(p.approvals).some((a) => a.kind === 'final_output'));
   });
 
-  it('follows draft@1 → review@1 → draft@2, with the diff and the review verdict', async () => {
+  it('keeps recorded review evidence without opening older artifact bodies', async () => {
     const { session, projection } = await teamAwaitingApproval();
     const drafts = Object.values(projection.artifacts).filter((a) => a.name === 'draft');
     const [draft1, draft2] = drafts.sort((a, b) => a.version - b.version);
@@ -112,13 +112,11 @@ describe('approvals and reviews in Studio', () => {
     );
     const viewer = await screen.findByTestId('artifact-viewer');
     expect(viewer).toHaveTextContent('Version 2');
-    // It revises draft@1 and was written from review@1.
-    expect(within(viewer).getByRole('button', { name: draft1?.artifactVersionId })).toBeTruthy();
-    expect(within(viewer).getByRole('button', { name: review1?.reviewVersionId })).toBeTruthy();
-    fireEvent.click(within(viewer).getByRole('button', { name: /Compare with/ }));
-    await waitFor(() =>
-      expect(viewer.querySelector('[data-diff="removed"], [data-diff="added"]')).not.toBeNull(),
-    );
+    // The observed input remains as metadata; its older body is not a navigation target.
+    expect(viewer).toHaveTextContent(review1?.reviewVersionId ?? 'missing');
+    expect(within(viewer).queryByRole('button', { name: review1?.reviewVersionId })).toBeNull();
+    expect(within(viewer).queryByRole('button', { name: /Compare with|New run from/ })).toBeNull();
+    expect(viewer.querySelector('[data-diff]')).toBeNull();
 
     // A review renders as its verdict and issues, about the version it names.
     const reviewView = wrap(

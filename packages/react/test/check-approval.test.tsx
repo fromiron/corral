@@ -184,8 +184,8 @@ it('command approval leads with source and launch scope, keeps transport in disc
   expect(screen.getByText('Service')).toBeVisible();
   expect(screen.getByText('120 s')).toBeVisible();
   expect(screen.getByText(/TRANSPORT_ONLY_BASE64/)).not.toBeVisible();
-  fireEvent.click(screen.getByText('Tool identity and call fingerprint'));
-  expect(screen.getByText(/TRANSPORT_ONLY_BASE64/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Tool identity and call fingerprint' }));
+  await vi.waitFor(() => expect(screen.getByText(/TRANSPORT_ONLY_BASE64/)).toBeVisible());
   expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
 });
 
@@ -245,3 +245,15 @@ async function renderCorralTool(name: string, args: Record<string, unknown>) {
     </IntlProvider>,
   );
 }
+
+it('decides only from the approval buttons, never from Enter or Escape on the card', async () => {
+  const decide = setup(JSON.stringify(plan));
+  const card = await screen.findByTestId('approval-approval_check');
+  await screen.findByText('node check.mjs');
+  for (const target of [card, screen.getByText('node check.mjs')]) {
+    fireEvent.keyDown(target, { key: 'Enter' });
+    fireEvent.keyDown(target, { key: 'Escape' });
+  }
+  expect(decide).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Run this check once' })).toBeEnabled();
+});

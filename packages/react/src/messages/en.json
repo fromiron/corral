@@ -341,7 +341,18 @@
     "liveUnavailable": "Live models are unavailable. Connect them or choose simulated mode.",
     "definitionUnavailable": "Run settings are unavailable. Status updates remain connected.",
     "retryDefinition": "Reload settings",
-    "openControls": "Open controls"
+    "openControls": "Open controls",
+    "tree": {
+      "title": "Executions",
+      "count": "{count, plural, =0 {no executions} one {# execution} other {# executions}}",
+      "running": "{count} running",
+      "needsYou": "{count} needs you",
+      "failed": "{count} failed",
+      "needsYouList": "Executions that need you",
+      "failedList": "Failed executions",
+      "showBranch": "Show {count, plural, one {# execution} other {# executions}} under {name}",
+      "foldBranch": "Fold the executions under {name}"
+    }
   },
   "Reins": {
     "heading": "Reins",
@@ -433,7 +444,11 @@
     "answered": "Answered",
     "timed_out": "Timed out",
     "applied": "Applied",
-    "superseded": "Superseded"
+    "superseded": "Superseded",
+    "approved": "Approved",
+    "pending": "Pending",
+    "stale": "Outdated",
+    "error": "Error"
   },
   "Toolbar": {
     "undo": "Undo",
@@ -559,7 +574,8 @@
     "evidenceChecks": "Checks",
     "uncertainWrite": "outcome unknown",
     "evidenceCheckEarlier": "earlier version",
-    "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}"
+    "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}",
+    "elapsed": "Elapsed time"
   },
   "Timeline": {
     "heading": "Timeline",
@@ -653,6 +669,7 @@
     "paused": "The question timeout is paused. The whole-run deadline still applies."
   },
   "Artifact": {
+    "retired": "The body of this artifact is no longer available. Its creation and delivery relationships remain in the execution flow.",
     "downloadImage": "Download original PNG",
     "imageIntegrity": "Original image checksum",
     "imageUnavailable": "The generated image could not be loaded. Check your server session and try reopening this artifact.",
@@ -946,7 +963,26 @@
       "succeeded": "Finished",
       "failed": "Failed",
       "cancelled": "Cancelled"
-    }
+    },
+    "tools": {
+      "arguments": "Arguments",
+      "result": "Result",
+      "error": "Error",
+      "failed": "Failed",
+      "errorFallback": "The tool returned an error.",
+      "waiting": "Waiting for result…",
+      "noResult": "No result",
+      "retry": "Retry",
+      "copy": "Copy {section}",
+      "copied": "Copied",
+      "showAll": "Show all",
+      "showLess": "Show less",
+      "status": "{name} {status}",
+      "usingTools": "Using tools…",
+      "usedTools": "{count, plural, one {Used # tool} other {Used # tools}}",
+      "failedCount": "{count} failed"
+    },
+    "retiredBody": "Response body is no longer retained."
   },
   "Events": {
     "runStartedMock": "Run started (simulated agents)",
@@ -1257,6 +1293,7 @@
     "customizeCorral": "Customize a Corral (optional)"
   },
   "Results": {
+    "noCurrentResult": "No current final result is available.",
     "label": "Results",
     "kind": {
       "pending": "The run is still working. Results appear here as they are made.",
@@ -1752,7 +1789,11 @@
     "noCopyChanges": "Make a working copy to see file changes here.",
     "checksOnReview": "Run checks from the review screen.",
     "serverOnly": "File work, changes and checks need the local server.",
-    "runNumber": "Run {number}"
+    "runNumber": "Run {number}",
+    "sidebarNavigation": "Workspace",
+    "sidebarProjects": "Projects",
+    "sidebarResizeHint": "Drag or use arrow keys to resize",
+    "sidebarCollapseHint": "Click to collapse"
   },
   "Desktop": {
     "conversation": "Conversation",
@@ -1887,6 +1928,19 @@
     "densityDetailed": "Detailed activity"
   },
   "Composer": {
+    "modelPicker": {
+      "settings": "Model settings",
+      "unavailable": "Not connected",
+      "missing": "Unavailable profile",
+      "empty": "No model profiles",
+      "reasoning": "Reasoning",
+      "effort": "Effort",
+      "policyDefault": "Default",
+      "policyAuto": "Automatic",
+      "policyRoute": "Per request",
+      "demo": "Simulation",
+      "demoEmpty": "The demo runs without a live model."
+    },
     "nextRequest": "From next request",
     "commands": "Commands",
     "references": "References",
@@ -2984,6 +3038,7 @@
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "Not reported",
       "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
+      "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}",
       "fullBudget": "Open the run"
     }
   },
@@ -4239,9 +4294,18 @@
     "statSteps": "{count, plural, one {# step} other {# steps}}",
     "statTokens": "{tokens} tokens",
     "statCache": "cache hit {share}",
-    "statCacheUnreported": "cache not reported"
+    "statCacheUnreported": "cache not reported",
+    "request": "Model request {no}",
+    "requestPreparing": "Preparing response",
+    "requestGenerating": "Generating response",
+    "requestFinished": "Response complete",
+    "requestUnconfirmed": "Response completion not recorded",
+    "requestDetails": "Request details",
+    "toolDetails": "Tool details",
+    "agentDetails": "Agent activity"
   },
   "RunMonitor": {
+    "flow": "Work flow",
     "views": "Execution views",
     "graph": "Graph",
     "events": "Events",
@@ -4273,6 +4337,120 @@
     "model": "Model dispatch to finish",
     "tool": "Tool start to finish",
     "nonAgentNode": "This node has no separate agent execution. Its outcome appears in the graph and recorded results.",
-    "workPlans": "Work plans"
+    "workPlans": "Work plans",
+    "lanes": {
+      "running": "{count} running",
+      "needsYou": "{count} needs you",
+      "needsYouChip": "Needs you",
+      "idle": "Idle",
+      "tick": "+{time}",
+      "needsYouLine": "needs you: {what}",
+      "review": "Select",
+      "announce": "{count, plural, =0 {} one {# execution needs you} other {# executions need you}}"
+    }
+  },
+  "RunFlow": {
+    "title": "Work flow",
+    "description": "Who created each result, who used it, and which recorded decisions followed.",
+    "relationships": "Agent relationships",
+    "chooseRelationship": "Choose a relationship",
+    "relationship": "{from} → {to}: observed relationships",
+    "otherRelationships": "Related work",
+    "noRelationships": "No inter-agent relationship has been recorded yet.",
+    "artifacts": "Created artifacts",
+    "createdBy": "Created by {name}",
+    "open": "Open {name}",
+    "metadataOnly": "Creation and relationship record",
+    "observed": "Recorded relationship",
+    "unrecorded": "Not recorded",
+    "upNext": "Up next",
+    "executionInProgress": "Execution in progress",
+    "executionCount": "{count, plural, one {# execution} other {# executions}}",
+    "attempt": "{name} · attempt {attempt}",
+    "final": "Final result",
+    "decisions": "Decisions and evidence",
+    "branches": "Decision branches",
+    "noRecordedBranch": "No recorded branch",
+    "recordedBranch": "Recorded branch",
+    "selected": "Selected: {branch}",
+    "nextNode": "Next: {name}",
+    "evidence": "Evidence used",
+    "noEvidence": "No evidence reference was recorded for this decision.",
+    "reviewVerdict": "Review verdict: {verdict}",
+    "recordedAt": "Recorded {time}",
+    "relation": {
+      "author": "Created",
+      "read": "Read",
+      "input": "Included in model input",
+      "question": "Question sent",
+      "answer": "Answer returned",
+      "delegate": "Delegated task",
+      "review": "Reviewed",
+      "branch": "Selected branch",
+      "output": "Finalized"
+    },
+    "port": {
+      "out": "Output",
+      "body": "Loop body",
+      "next": "Next",
+      "pass": "Pass",
+      "revise": "Revise",
+      "approve": "Approve",
+      "reject": "Reject",
+      "yes": "Yes",
+      "no": "No",
+      "inconclusive": "Inconclusive"
+    },
+    "question": {
+      "review_verdict": "Does the review support proceeding?",
+      "required_tasks_submitted": "Are the required tasks complete?",
+      "human_approval": "Was this work approved?"
+    },
+    "evidenceKind": {
+      "artifact": "Artifact",
+      "review": "Review",
+      "approval": "Approval",
+      "check": "Check",
+      "task": "Task"
+    },
+    "reason": {
+      "required_tasks_completed": "Required tasks completed",
+      "tasks_unfinished": "Tasks remain unfinished",
+      "human_approval": "User approval decision",
+      "review_verdict": "Recorded review verdict",
+      "review_checks_failed": "Review checks require revision",
+      "criteria_changed": "Review criteria changed",
+      "inconclusive_review_approval": "Approval after an inconclusive review",
+      "external_policy": "External routing policy"
+    },
+    "attached": "Attached: {name}",
+    "round": "Round {round}",
+    "currentStatus": "Current status: {status}",
+    "reviewedArtifact": "Reviewed: {name}",
+    "taskOutputs": "Submitted: {names}",
+    "checkVerdict": "Check result: {verdict}",
+    "exitCode": "Exit code {code}",
+    "checkTimedOut": "Time limit exceeded",
+    "checkUnavailable": "Check details are unavailable. The recorded reference is preserved.",
+    "evidenceUnavailable": "Details for this recorded reference are unavailable.",
+    "verdict": {
+      "pass": "Pass",
+      "fail": "Fail",
+      "inconclusive": "Inconclusive",
+      "not_evaluated": "Not evaluated"
+    }
+  },
+  "RunLoop": {
+    "title": "{name} Loop",
+    "summary": "{count} observed rounds · max {max}",
+    "iterationLabel": "Round for {name}",
+    "current": "Current: round {no} · {outcome}",
+    "latest": "Follow latest round",
+    "noIterations": "No observed rounds",
+    "selected": "Viewing round {no} · {outcome}",
+    "unavailable": "This round is unavailable",
+    "metadataOnly": "Round selection shows relationships; current run controls stay active.",
+    "repeat": "Repeat {name}",
+    "exit": "Exit {name}"
   }
 }

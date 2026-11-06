@@ -1,29 +1,51 @@
+import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
 
-function handle(page: Page, nodeId: string, port: string) {
-  return page.locator(
-    `.react-flow__node[data-id="${nodeId}"] .react-flow__handle[data-handleid="${port}"]`,
+/** A saved one-agent Corral run, without rebuilding an unrelated graph through the UI. */
+async function finishedRun(page: Page, corral: { open(path?: string): Promise<void> }) {
+  const definition = linearCorral(['agent_1']);
+  definition.roles = definition.roles.map((role) => ({ ...role, name: 'Agent 1' }));
+  definition.nodes = definition.nodes.map((node) =>
+    node.id === 'agent_1' ? { ...node, label: 'Agent 1' } : node,
   );
-}
-
-/** A one-agent Corral run to its end, then its Run page. */
-async function finishedRun(page: Page) {
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team' }).click();
-  await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
-  await page.getByRole('button', { name: 'Add Agent' }).click();
-  await page.getByRole('button', { name: 'Add Output' }).click();
-  await handle(page, 'agent_1', 'out').dragTo(handle(page, 'output_1', 'in'));
-  await expect(page.getByText('Ready to run.')).toBeVisible();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  const runId = await page.evaluate(async (definition) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const call = async (path: string, body: unknown) => {
+      const response = await fetch(`/api/v1${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`setup ${path}: ${response.status}`);
+      return response.json();
+    };
+    const saved = await call('/corrals', {
+      definition,
+      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+    });
+    const session = (
+      await call('/sessions', {
+        projectId: 'default',
+        title: 'Results fixture',
+        corralId: saved.record.corralId,
+      })
+    ).session;
+    const started = await call('/runs', {
+      schemaVersion: '0.1',
+      commandId: 'results-fixture',
+      sessionId: session.sessionId,
+      corralId: saved.record.corralId,
+      definitionRevision: saved.record.definitionRevision,
+      mode: 'mock',
+    });
+    return started.runId as string;
+  }, definition);
+  await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
-  await page.getByRole('link', { name: 'Open execution page' }).click();
-  await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
-  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -38,7 +60,7 @@ test('the Results view opens its result, and a reload keeps the chosen version',
   corral,
 }) => {
   await corral.open('/');
-  await finishedRun(page);
+  await finishedRun(page, corral);
   await expect(page).toHaveURL(/view=results/);
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   const results = page.getByRole('navigation', { name: 'Results' });
@@ -64,12 +86,12 @@ test.describe('an HTML result', () => {
     corral,
   }) => {
     await corral.open('/');
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       const seen: unknown[] = [];
       (window as unknown as { seen: unknown[] }).seen = seen;
       window.addEventListener('message', (event) => seen.push(event.data));
     });
-    await finishedRun(page);
+    await finishedRun(page, corral);
     const frame = page.locator('iframe[title^="Preview of"]');
     await expect(frame).toHaveAttribute('sandbox', '');
     await expect(frame).toHaveAttribute('src', /\/artifact-versions\/[^/]+\/preview$/);
@@ -84,7 +106,7 @@ test.describe('an HTML result', () => {
     expect(await page.evaluate(() => (window as unknown as { seen: unknown[] }).seen)).toEqual([]);
 
     // The source is the text as written; Studio's own page runs none of it.
-    await page.getByText('Source', { exact: true }).click();
+    await page.getByRole('radio', { name: 'Source', exact: true }).click();
     await expect(page.getByTestId('result-body').locator('pre')).toContainText('<script>');
     expect(await page.evaluate(() => document.body.dataset.ran)).toBeUndefined();
     // The harness fails the test if the tracker image was requested.

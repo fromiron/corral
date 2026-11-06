@@ -141,7 +141,7 @@ function fixture() {
   return { definition, session, snapshot, live };
 }
 
-it('graph, tree, calls, results and usage read one prefix while future cache bodies stay hidden', async () => {
+it('a display prefix keeps its observed metadata without restoring retired or future artifact bodies', async () => {
   const { definition, session, snapshot } = fixture();
   const view = render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -174,7 +174,8 @@ it('graph, tree, calls, results and usage read one prefix while future cache bod
     within(screen.getByTestId('tree')).queryByTestId('execution-exec_future'),
   ).not.toBeInTheDocument();
   expect(await screen.findByText('PAST RESPONSE')).toBeInTheDocument();
-  expect(await screen.findByText('PAST RESULT')).toBeInTheDocument();
+  expect(screen.queryByText('PAST RESULT')).not.toBeInTheDocument();
+  expect(screen.getByText('No current final result is available.')).toBeInTheDocument();
   expect(screen.getByText('Confirmed output tokens').nextSibling).toHaveTextContent('42');
   for (const future of ['FUTURE RESPONSE', 'FUTURE RESULT', 'FUTURE OUTPUT', 'Future failure']) {
     expect(screen.queryByText(future)).not.toBeInTheDocument();

@@ -125,8 +125,17 @@ async function mount(
   initiallyActive: RunSummary | null,
   initialQueue: SessionEntry[] = [],
   runs: RunSummary[] = [],
+  selectedRunId: string | null = null,
+  mode: 'server' | 'browser' = 'server',
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  Element.prototype.getAnimations ??= () => [];
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -157,9 +166,12 @@ async function mount(
     updateSessionEntry: vi.fn(async () => ({ ok: true, session })),
   };
   const transport = {
+    getRunDefinition: vi.fn(async () => linearCorral(['writer'])),
     startRun: vi.fn(async (_command: unknown) => ({ runId: 'started', receipt: { error: null } })),
     getSnapshot: vi.fn(async () => ({
       projection: {
+        executionOrder: [],
+        executions: {},
         output: { artifactVersionIds: ['result'] },
         artifacts: { result: { name: 'Result', version: 1 } },
       },
@@ -176,7 +188,7 @@ async function mount(
     repository,
     transport,
     startAuto,
-    mode: 'server',
+    mode,
     live: false,
     workspaceId: 'host',
     workspaces: null,
@@ -195,7 +207,7 @@ async function mount(
             corrals={[team]}
             runs={runs}
             active={running}
-            selectedRunId={null}
+            selectedRunId={selectedRunId}
             queued={queued}
             onChange={() => {}}
             reference={null}
@@ -220,6 +232,14 @@ async function mount(
   };
   return { container, session, repository, transport, startAuto, startExplain, render, click };
 }
+
+it('exposes the demo model picker as simulation without pretending a model is connected', async () => {
+  const f = await mount('demo_picker', null, [], [], null, 'browser');
+  await f.click(messages.Sessions.autoModel);
+  expect(document.body.textContent).toContain(messages.Composer.modelPicker.demoEmpty);
+  expect(document.querySelector('[role="option"]')).toBeNull();
+  expect(document.querySelector('[role="switch"]')).toBeNull();
+});
 
 it('queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
   const sessionId = 'queue_capture';
@@ -338,4 +358,45 @@ it('an explain draft with captured context requires an explicit follow-up choice
     expect.objectContaining({ references: [captured], brief: 'Explain this capture' }),
     expect.anything(),
   );
+});
+
+it('keeps whole-run stop available while composing a queued next request in the single input', async () => {
+  const sessionId = 'stop_while_typing';
+  writeComposerDraft(sessionId, {
+    text: 'After this, summarize the result',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const ownRun = { ...active, sessionId };
+  const f = await mount(sessionId, ownRun, [], [ownRun], ownRun.runId);
+  expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
+  expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
+    'After this, summarize the result',
+  );
+  const stop = f.container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${messages.Reins.cancelRun}"]`,
+  );
+  expect(stop).not.toBeNull();
+  expect(stop?.disabled).toBe(false);
+  expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+});
+
+it('offers project references in the unified add menu instead of a second toolbar trigger', async () => {
+  const f = await mount('unified_add', null);
+  expect(
+    f.container.querySelector(`button[aria-label="${messages.Composer.addReference}"]`),
+  ).toBeNull();
+  await f.click(messages.Composer.attachmentActions);
+  let reference: HTMLElement | undefined;
+  await vi.waitFor(() => {
+    reference = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) =>
+      item.textContent?.includes(messages.Composer.addReference),
+    );
+    expect(reference).toBeDefined();
+  });
+  await act(async () => reference?.click());
+  expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('@');
+  expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
 });

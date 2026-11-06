@@ -7,7 +7,7 @@ export type DemoRequest = {
     type: 'request';
     id: number;
     method: M;
-    args: Parameters<RuntimeTransport[M]>;
+    args: Parameters<NonNullable<RuntimeTransport[M]>>;
   };
 }[DemoMethod];
 /** The demo work folder's calls the page may make (demo/workspace.ts). */

@@ -28,7 +28,7 @@ import type {
   WorkSession,
 } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
-import { runResults, StatusBadge } from '@corral/react';
+import { ExecutionSteering, runResults, StatusBadge } from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -45,6 +45,7 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
+  InputMessage,
   KitChatMessage,
   Menu,
   MenuItem,
@@ -56,12 +57,12 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
+  ModelPicker,
   Select,
   Switch,
   Tooltip,
 } from '@corral/react/design-kit';
 import {
-  ArrowUp,
   AtSign,
   Ellipsis,
   FileDiff,
@@ -988,6 +989,7 @@ function WorkTab({
   const loose = runs.filter((r) => !named.has(r.runId));
   const queued = session.entries.filter((e) => e.state === 'queued');
   const runChecks = useRunChecks(session.sessionId, runs);
+  const artifactMetadataVersion = runs.findLast((run) => run.status === 'succeeded')?.runId ?? '';
   const td = useTranslations('Desktop');
   return (
     <RunChecks.Provider value={runChecks}>
@@ -1008,13 +1010,20 @@ function WorkTab({
                   sessionId={session.sessionId}
                   entry={entry}
                   runs={runs}
+                  artifactMetadataVersion={artifactMetadataVersion}
                   onPanel={onPanel}
                 />
               ),
             })),
           ...loose.map((run) => ({
             id: run.runId,
-            content: <RunCard run={run} onPanel={onPanel} />,
+            content: (
+              <RunCard
+                run={run}
+                artifactMetadataVersion={artifactMetadataVersion}
+                onPanel={onPanel}
+              />
+            ),
           })),
         ]}
         composer={
@@ -1281,11 +1290,13 @@ function EntryCard({
   sessionId,
   entry,
   runs,
+  artifactMetadataVersion,
   onPanel,
 }: {
   sessionId: string;
   entry: SessionEntry;
   runs: RunSummary[];
+  artifactMetadataVersion: string;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
@@ -1377,7 +1388,14 @@ function EntryCard({
           {entry.detail}
         </p>
       ) : null}
-      {run && entry.intent !== 'steer' ? <RunCard run={run} nested onPanel={onPanel} /> : null}
+      {run && entry.intent !== 'steer' ? (
+        <RunCard
+          run={run}
+          nested
+          artifactMetadataVersion={artifactMetadataVersion}
+          onPanel={onPanel}
+        />
+      ) : null}
       {entry.intent === 'steer' && entry.runId ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <DeliveryStatus
@@ -1451,10 +1469,12 @@ function useRunChecks(sessionId: string, runs: RunSummary[]) {
  */
 function RunCard({
   run,
+  artifactMetadataVersion,
   nested = false,
   onPanel,
 }: {
   run: RunSummary;
+  artifactMetadataVersion: string;
   nested?: boolean;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
@@ -1507,6 +1527,7 @@ function RunCard({
         runId={run.runId}
         sessionId={run.sessionId ?? null}
         live={!ended}
+        artifactMetadataVersion={artifactMetadataVersion}
         onOpenArtifact={(result) => onPanel('run', { run: run.runId, view: 'results', result })}
       />
       {/* Only a session with a working copy has changes to review (its checks are known). */}
@@ -1746,6 +1767,8 @@ export function Composer({
   );
   const roles = useTeamRoles(team);
   const [recall, setRecall] = useState(-1);
+  // A plan can move between the steering shell and the next-request surface at settlement.
+  const [planAllKey, setPlanAllKey] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (session.entries.length === 0) input.current?.focus();
@@ -1991,6 +2014,15 @@ export function Composer({
   });
 
   const references = pickedReferences(text, picked);
+  const steeringRunId = intent === 'steer' ? (ownActive?.runId ?? null) : null;
+  const steeringSession = steeringRunId ? services.runFor(steeringRunId) : null;
+  useEffect(() => {
+    if (!steeringRunId || !steeringSession) return;
+    const release = services.retainRun(steeringRunId);
+    void steeringSession.getState().open(steeringRunId);
+    return release;
+  }, [steeringRunId, steeringSession, services]);
+
   const chips = picked.filter(
     (item, index) =>
       picked.findIndex((x) => x.id === item.id) === index &&
@@ -2603,7 +2635,6 @@ export function Composer({
     (missingTeam && (intent === 'next' || intent === 'explain')) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
-  const stopping = Boolean(ownActive) && !text.trim();
   // What Send does now, said where it is pressed (#89).
   const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
   // Items this intent does not carry share one notice and one wording (#89).
@@ -2686,55 +2717,33 @@ export function Composer({
     },
   ]);
   const commands = useRegisteredCommands();
-  return (
-    <ComposerSurface.Shell>
-      {queued.length > 0 ? (
-        <section aria-label={t('queueHeading')} className="mx-3 rounded-t-xl bg-raised px-3 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">
-              {t('queueHeading')} · {queued.length}
-            </h3>
-            <Switch
-              label={t('autoStart')}
-              title={t('autoStartHint')}
-              checked={autoStart}
-              onToggle={() => setAutoStart(!autoStart)}
-            />
-          </div>
-          <ul className="mt-1 flex flex-col">
-            {queued.map((entry) => (
-              <li key={entry.entryId} className="group/queued flex items-center gap-1 text-ui">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate" title={entry.text}>
-                    {entry.text}
-                  </p>
-                  {entry.attachments?.length ? (
-                    <TextAttachmentList attachments={entry.attachments} />
-                  ) : null}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="compact"
-                  disabled={Boolean(active) || busy || missingTeam}
-                  onClick={() => void startQueued(entry)}
-                >
-                  {t('startNow')}
-                </Button>
-                <Button variant="ghost" size="compact" onClick={() => void editQueued(entry)}>
-                  {t('editQueued')}
-                </Button>
-                <Button variant="ghost" size="compact" onClick={() => void removeQueued(entry)}>
-                  {t('remove')}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      <ComposerDock summary={<OverviewAccess />} />
-      <ComposerSurface.Host>
-        <ComposerPlan />
-        <section aria-label={t('requestLabel')} className="flex flex-col gap-1 p-2">
+  const compose = (
+    <InputMessage
+      data-slot="composer-host"
+      role="region"
+      aria-label={t('requestLabel')}
+      inputRef={input}
+      value={text}
+      onValueChange={(value) => {
+        setRecall(-1);
+        write(value);
+      }}
+      onSend={() => void send()}
+      placeholder={tc('placeholder')}
+      textareaProps={{ 'aria-label': t('requestLabel') }}
+      sendDisabled={busy || !text.trim() || unavailable}
+      sendLabel={t('send')}
+      sendDescription={sendMeaning}
+      renderAction={(action) => (
+        <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
+          {action}
+        </Tooltip>
+      )}
+      contentSlot={
+        <>
+          {intent !== 'steer' ? (
+            <ComposerPlan showAllKey={planAllKey} onShowAllKeyChange={setPlanAllKey} />
+          ) : null}
           {resolved.blocked ? (
             <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
               <BannerTitle>
@@ -2885,26 +2894,37 @@ export function Composer({
                 ))}
             </div>
           ) : null}
-          <ComposerInput
-            inputRef={input}
-            label={t('requestLabel')}
-            placeholder={tc('placeholder')}
-            value={text}
-            onChange={(value) => {
-              setRecall(-1);
-              write(value);
-            }}
-            onKeyDown={onKeyDown}
-            commands={commands}
-            searchMentions={searchMentions}
-            onMention={(item) => setPicked((list) => [...list, item])}
-          />
-          <div className="flex flex-wrap items-center gap-0.5">
-            <Tooltip content={tc('addReference')}>
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label={tc('addReference')}
+        </>
+      }
+      renderInput={(inputProps) => (
+        <ComposerInput
+          inputRef={inputProps.ref}
+          textareaProps={inputProps}
+          label={t('requestLabel')}
+          placeholder={tc('placeholder')}
+          value={text}
+          onChange={(value) => {
+            setRecall(-1);
+            write(value);
+          }}
+          onKeyDown={onKeyDown}
+          commands={commands}
+          searchMentions={searchMentions}
+          onMention={(item) => setPicked((list) => [...list, item])}
+        />
+      )}
+      leftSlot={
+        <>
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button variant="ghost" size="icon-compact" aria-label={tc('attachmentActions')} />
+              }
+            >
+              <Plus />
+            </MenuTrigger>
+            <MenuPopup align="start">
+              <MenuItem
                 onClick={() => {
                   const box = input.current;
                   const at = box?.selectionStart ?? text.length;
@@ -2918,194 +2938,269 @@ export function Composer({
                 }}
               >
                 <AtSign />
-              </Button>
-            </Tooltip>
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-compact"
-                    aria-label={tc('attachmentActions')}
-                    disabled={
-                      busy ||
-                      attachmentsBusy ||
-                      imagesBusy ||
-                      (intent !== 'next' && intent !== 'queue')
-                    }
-                  />
-                }
-              >
-                <Plus />
-              </MenuTrigger>
-              <MenuPopup align="start">
-                {mode === 'server' ? (
-                  <MenuItem
-                    disabled={intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
-                    onClick={() => imageFiles.current?.click()}
-                  >
-                    {tc('attachImages')}
-                  </MenuItem>
-                ) : null}
+                {tc('addReference')}
+              </MenuItem>
+              <MenuSeparator />
+              {mode === 'server' ? (
                 <MenuItem
-                  disabled={attachments.length >= TEXT_ATTACHMENT_MAX_COUNT}
-                  onClick={() => textFiles.current?.click()}
-                >
-                  {tc('attachText')}
-                </MenuItem>
-              </MenuPopup>
-            </Menu>
-
-            {allowed.length > 1 && !resolved.blocked ? (
-              <Select
-                variant="chip"
-                label={t('intentLabel')}
-                value={intent}
-                onValueChange={chooseIntent}
-                options={allowed.map((value) => ({
-                  value,
-                  label: t(`intentShort.${value}`),
-                  hint: t(`intentHint.${value}`),
-                }))}
-              />
-            ) : intent !== 'next' || resolved.blocked ? (
-              <span className="px-2 text-ui text-muted-foreground">
-                {t(`intentShort.${intent}`)}
-              </span>
-            ) : null}
-            {intent === 'steer' ? (
-              <Select
-                variant="chip"
-                label={t('target')}
-                value={steerTarget || null}
-                placeholder={t('noTarget')}
-                onValueChange={chooseTarget}
-                options={[
-                  ...(steerTarget && !targets.some((x) => x.id === steerTarget)
-                    ? [
-                        {
-                          value: steerTarget,
-                          label: tc('ended', { name: targetName(steerTarget) }),
-                          disabled: true,
-                        },
-                      ]
-                    : []),
-                  ...targets.map((x) => ({ value: x.id, label: x.label })),
-                ]}
-                disabled={targets.length === 0}
-              />
-            ) : null}
-            {intent === 'next' && !resolved.blocked ? (
-              <Select
-                variant="chip"
-                label={tc('teamLabel')}
-                value={team ? `corral:${team.corralId}` : teamMode}
-                disabled={busy}
-                open={teamOpen}
-                onOpenChange={setTeamOpen}
-                onValueChange={(value) => {
-                  const choice = String(value);
-                  if (choice === 'manage')
-                    void navigate({
-                      to: '/projects/$projectId',
-                      params: { projectId: session.projectId },
-                      hash: 'corrals',
-                    });
-                  else if (choice.startsWith('corral:')) void updateTeam(choice.slice(7));
-                  else {
-                    setTeamMode(choice === 'auto' ? 'auto' : 'none');
-                    if (!isAuto) void updateTeam('');
+                  disabled={
+                    busy ||
+                    imagesBusy ||
+                    attachmentsBusy ||
+                    intent !== 'next' ||
+                    images.length >= IMAGE_MAX_COUNT
                   }
-                }}
-                options={[
-                  { value: 'none', label: tc('teamNone'), hint: tc('teamNoneHint') },
-                  // Corral: the automatic team first, then each saved Corral.
-                  {
-                    value: 'auto',
-                    label: tc('teamAuto'),
-                    hint: tc('teamAutoHint'),
-                    group: tc('teamCorralGroup'),
-                  },
-                  ...corrals.map((corral) => ({
-                    value: `corral:${corral.corralId}`,
-                    label: corral.name,
-                    hint: tc('teamCorralHint'),
-                    group: tc('teamCorralGroup'),
-                  })),
-                  // Creating or editing a Corral happens on the project page.
-                  { value: 'manage', label: tc('manageCorrals'), group: tc('teamCorralGroup') },
-                ]}
-              />
-            ) : null}
-            {(isAuto || team) && (intent === 'next' || intent === 'explain') && profiles ? (
+                  onClick={() => imageFiles.current?.click()}
+                >
+                  {tc('attachImages')}
+                </MenuItem>
+              ) : null}
+              <MenuItem
+                disabled={
+                  busy ||
+                  attachmentsBusy ||
+                  imagesBusy ||
+                  (intent !== 'next' && intent !== 'queue') ||
+                  attachments.length >= TEXT_ATTACHMENT_MAX_COUNT
+                }
+                onClick={() => textFiles.current?.click()}
+              >
+                {tc('attachText')}
+              </MenuItem>
+            </MenuPopup>
+          </Menu>{' '}
+          {(intent === 'next' || intent === 'queue') && !resolved.blocked ? (
+            <Select
+              variant="chip"
+              label={tc('teamLabel')}
+              value={team ? `corral:${team.corralId}` : teamMode}
+              disabled={busy}
+              open={teamOpen}
+              onOpenChange={setTeamOpen}
+              onValueChange={(value) => {
+                const choice = String(value);
+                if (choice === 'manage')
+                  void navigate({
+                    to: '/projects/$projectId',
+                    params: { projectId: session.projectId },
+                    hash: 'corrals',
+                  });
+                else if (choice.startsWith('corral:')) void updateTeam(choice.slice(7));
+                else {
+                  setTeamMode(choice === 'auto' ? 'auto' : 'none');
+                  if (!isAuto) void updateTeam('');
+                }
+              }}
+              options={[
+                { value: 'none', label: tc('teamNone'), hint: tc('teamNoneHint') },
+                // Corral: the automatic team first, then each saved Corral.
+                {
+                  value: 'auto',
+                  label: tc('teamAuto'),
+                  hint: tc('teamAutoHint'),
+                  group: tc('teamCorralGroup'),
+                },
+                ...corrals.map((corral) => ({
+                  value: `corral:${corral.corralId}`,
+                  label: corral.name,
+                  hint: tc('teamCorralHint'),
+                  group: tc('teamCorralGroup'),
+                })),
+                // Creating or editing a Corral happens on the project page.
+                { value: 'manage', label: tc('manageCorrals'), group: tc('teamCorralGroup') },
+              ]}
+            />
+          ) : null}
+        </>
+      }
+      rightSlot={
+        <>
+          {(isAuto || team) &&
+          (intent === 'next' || intent === 'explain' || intent === 'queue') &&
+          (profiles || services.mode === 'browser') ? (
+            profiles ? (
               <AutoModelMenu
                 value={autoChoice}
                 profiles={profiles}
-                showReasoning={intent === 'next'}
+                showReasoning={intent === 'next' || intent === 'queue'}
                 disabled={busy}
                 open={autoModelOpen}
                 onOpenChange={setAutoModelOpen}
                 onChange={(value) => void updateAuto(value)}
               />
-            ) : null}
-            {intent === 'next' || intent === 'queue' ? (
-              <PermissionModePicker
-                value={permissionMode}
-                onChange={setPermissionMode}
+            ) : (
+              <ModelPicker
+                models={[]}
+                value=""
+                placeholder={tc('modelPicker.demo')}
+                reasoning={null}
                 disabled={busy}
-              />
-            ) : null}
-            <div className="ml-auto flex items-center gap-1">
-              <LiveVoice
-                api={services.voice ?? null}
-                target={{
-                  hostId: window.location.origin,
-                  sessionId: session.sessionId,
-                  ...(ownActive ? { runId: ownActive.runId } : {}),
-                  ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
+                open={autoModelOpen}
+                onOpenChange={setAutoModelOpen}
+                side="top"
+                align="end"
+                labels={{
+                  model: t('autoModel'),
+                  settings: tc('modelPicker.settings'),
+                  trigger: () => t('autoModel'),
+                  empty: tc('modelPicker.demoEmpty'),
                 }}
-                targetLabel={session.title}
-                onTranscript={submitVoice}
               />
-              {choosingAuto ? (
-                <Tooltip content={t('cancelAutoChoice')}>
-                  <Button
-                    variant="tertiary"
-                    size="icon-compact"
-                    aria-label={t('cancelAutoChoice')}
-                    onClick={cancelAuto}
-                  >
-                    <Square className="fill-current" />
-                  </Button>
-                </Tooltip>
-              ) : stopping ? (
-                <Tooltip content={tr('cancelRun')} shortcut={shortcutLabel('run.stop')}>
-                  <Button
-                    variant="tertiary"
-                    size="icon-compact"
-                    aria-label={tr('cancelRun')}
-                    onClick={requestStop}
-                  >
-                    <Square className="fill-current" />
-                  </Button>
-                </Tooltip>
-              ) : (
-                <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
-                  <Button
-                    size="icon-compact"
-                    aria-label={t('send')}
-                    aria-description={sendMeaning}
-                    disabled={busy || !text.trim() || unavailable}
-                    onClick={() => void send()}
-                  >
-                    <ArrowUp />
-                  </Button>
-                </Tooltip>
-              )}
-            </div>
+            )
+          ) : null}
+          {intent === 'next' || intent === 'queue' ? (
+            <PermissionModePicker
+              value={permissionMode}
+              onChange={setPermissionMode}
+              disabled={busy}
+            />
+          ) : null}
+          <LiveVoice
+            api={services.voice ?? null}
+            target={{
+              hostId: window.location.origin,
+              sessionId: session.sessionId,
+              ...(ownActive ? { runId: ownActive.runId } : {}),
+              ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
+            }}
+            targetLabel={session.title}
+            onTranscript={submitVoice}
+          />
+        </>
+      }
+    />
+  );
+  return (
+    <ComposerSurface.Shell>
+      <ComposerDock summary={<OverviewAccess />} />
+      {ownActive || choosingAuto ? (
+        <div
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1"
+          data-slot="composer-run-header"
+        >
+          <div className="flex items-center gap-2 text-body">
+            <span>{tc('groupRun')}</span>
+            {ownActive ? <StatusBadge status={ownActive.status} /> : null}
           </div>
+          <Tooltip
+            content={choosingAuto ? t('cancelAutoChoice') : tr('cancelRun')}
+            shortcut={choosingAuto ? undefined : shortcutLabel('run.stop')}
+          >
+            <Button
+              variant="tertiary"
+              size="compact"
+              aria-label={choosingAuto ? t('cancelAutoChoice') : tr('cancelRun')}
+              onClick={choosingAuto ? cancelAuto : requestStop}
+            >
+              <Square className="size-3.5 fill-current" />
+              {choosingAuto ? t('cancelAutoChoice') : tr('cancelRun')}
+            </Button>
+          </Tooltip>
+        </div>
+      ) : null}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {allowed.length > 1 && !resolved.blocked ? (
+          <Select
+            variant="chip"
+            label={t('intentLabel')}
+            value={intent}
+            onValueChange={chooseIntent}
+            options={allowed.map((value) => ({
+              value,
+              label: t(`intentShort.${value}`),
+              hint: t(`intentHint.${value}`),
+            }))}
+          />
+        ) : intent !== 'next' || resolved.blocked ? (
+          <span className="px-2 text-ui text-muted-foreground">{t(`intentShort.${intent}`)}</span>
+        ) : null}
+        {intent === 'steer' ? (
+          <Select
+            variant="chip"
+            label={t('target')}
+            value={steerTarget || null}
+            placeholder={t('noTarget')}
+            onValueChange={chooseTarget}
+            options={[
+              ...(steerTarget && !targets.some((x) => x.id === steerTarget)
+                ? [
+                    {
+                      value: steerTarget,
+                      label: tc('ended', { name: targetName(steerTarget) }),
+                      disabled: true,
+                    },
+                  ]
+                : []),
+              ...targets.map((x) => ({ value: x.id, label: x.label })),
+            ]}
+            disabled={targets.length === 0}
+          />
+        ) : null}
+      </div>
+      {steeringSession && steerTarget ? (
+        <ExecutionSteering
+          session={steeringSession}
+          target={{
+            executionId: steerTarget,
+            nodeLabel: targetName(steerTarget),
+            finished: !targets.some((target) => target.id === steerTarget),
+          }}
+          compose={compose}
+          planSlot={
+            <ComposerPlan
+              variant="steering"
+              showAllKey={planAllKey}
+              onShowAllKeyChange={setPlanAllKey}
+            />
+          }
+          showToolActivity
+        />
+      ) : (
+        compose
+      )}
+      {queued.length > 0 ? (
+        <section aria-label={t('queueHeading')} className="mx-3 rounded-t-xl bg-raised px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              {t('queueHeading')} · {queued.length}
+            </h3>
+            <Switch
+              label={t('autoStart')}
+              title={t('autoStartHint')}
+              checked={autoStart}
+              onToggle={() => setAutoStart(!autoStart)}
+            />
+          </div>
+          <ul className="mt-1 flex flex-col">
+            {queued.map((entry) => (
+              <li key={entry.entryId} className="group/queued flex items-center gap-1 text-ui">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate" title={entry.text}>
+                    {entry.text}
+                  </p>
+                  {entry.attachments?.length ? (
+                    <TextAttachmentList attachments={entry.attachments} />
+                  ) : null}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  disabled={Boolean(active) || busy || missingTeam}
+                  onClick={() => void startQueued(entry)}
+                >
+                  {t('startNow')}
+                </Button>
+                <Button variant="ghost" size="compact" onClick={() => void editQueued(entry)}>
+                  {t('editQueued')}
+                </Button>
+                <Button variant="ghost" size="compact" onClick={() => void removeQueued(entry)}>
+                  {t('remove')}
+                </Button>
+              </li>
+            ))}
+          </ul>
         </section>
-      </ComposerSurface.Host>
+      ) : null}
       <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted-foreground">
         <ComposerStats runs={runs} />
         {(intent === 'next' || intent === 'explain') && isAuto ? (
@@ -3113,21 +3208,6 @@ export function Composer({
         ) : null}
         {intent === 'explain' && !latest ? (
           <span className="text-warning">{t('noResult')}</span>
-        ) : null}
-        {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
-        {heldForNew.length ? (
-          <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
-            <span>
-              {tc('heldForNew', {
-                items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
-              })}
-            </span>
-          </div>
-        ) : null}
-        {reasoningBlocked ? (
-          <p role="status" data-testid="reasoning-not-supported" className="text-warning">
-            {tc('reasoningUnsupportedHint')}
-          </p>
         ) : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
@@ -3147,6 +3227,25 @@ export function Composer({
         {intent === 'steer' ? <span>{t('intentHint.steer')}</span> : null}
         {intent === 'queue' ? <span>{t('intentHint.queue')}</span> : null}
       </div>
+      {liveUnavailable || heldForNew.length > 0 || reasoningBlocked ? (
+        <div className="flex flex-col gap-1 px-4 pt-1 text-caption text-warning">
+          {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
+          {heldForNew.length ? (
+            <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
+              <span>
+                {tc('heldForNew', {
+                  items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
+                })}
+              </span>
+            </div>
+          ) : null}
+          {reasoningBlocked ? (
+            <p role="status" data-testid="reasoning-not-supported" className="text-warning">
+              {tc('reasoningUnsupportedHint')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="px-4 pt-1 text-xs text-danger">
           {error}

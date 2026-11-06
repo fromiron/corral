@@ -3,7 +3,7 @@ import { emptyProjection, type RunProjection } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import { buildTurnProcess, turnSummary } from '../src/run/turn-process.ts';
 
-// a chat turn's process is one flat list of one-line rows.
+// Observed requests and tools compose one process without copying response text.
 
 let seq = 0;
 const at = (second: number) => `2026-10-25T00:00:${String(second).padStart(2, '0')}.000Z`;
@@ -14,7 +14,16 @@ function event(
   actor: Record<string, unknown> = { kind: 'agent', id: 'lead' },
 ): RunEvent {
   seq++;
-  return { type, runSeq: seq, recordedAt: at(second), actor, payload } as unknown as RunEvent;
+  return {
+    type,
+    runSeq: seq,
+    recordedAt: at(second),
+    actor,
+    payload:
+      type === 'model.request_prepared'
+        ? { directiveIds: [], inputArtifactVersionIds: [], profile: 'model-a', ...payload }
+        : payload,
+  } as unknown as RunEvent;
 }
 
 function projection(status: RunProjection['status'], executions: [string, string, string][]) {
@@ -31,7 +40,7 @@ function projection(status: RunProjection['status'], executions: [string, string
 }
 
 describe('buildTurnProcess', () => {
-  it('lists thinking before tools and tools with their targets, without the answer', () => {
+  it('lists request facts and tools with their targets, without reclassifying the answer', () => {
     seq = 0;
     const events = [
       event('run.started', {}, 0),
@@ -67,17 +76,20 @@ describe('buildTurnProcess', () => {
       streams as never,
       (id) => id,
     );
-    expect(process.rows).toEqual([
-      { kind: 'think', id: 'c1', text: 'Let me read the app first.', live: false },
+    expect(process.rows).toMatchObject([
+      { kind: 'model', id: 'c1', active: false },
       { kind: 'tool', id: 't1', name: 'read_file', target: 'src/app.ts', status: 'finished' },
+      { kind: 'model', id: 'c2', active: false },
     ]);
+    expect(JSON.stringify(process.rows)).not.toContain('Let me read');
+    expect(JSON.stringify(process.rows)).not.toContain('The bug is fixed');
     expect(process.steps).toBe(1);
     expect(process.running).toBe(false);
     expect(process.startedAt).toBe(at(0));
     expect(process.endedAt).toBe(at(9));
   });
 
-  it('a turn that only answered has no rows, and other agents are one row each', () => {
+  it('an answer-only turn keeps request metadata, and other agents are one row each', () => {
     seq = 0;
     const answerOnly = buildTurnProcess(
       [
@@ -89,7 +101,10 @@ describe('buildTurnProcess', () => {
       { c1: { text: '안녕하세요!', completed: true, broken: false } } as never,
       (id) => id,
     );
-    expect(answerOnly.rows).toEqual([]);
+    expect(answerOnly.rows).toMatchObject([
+      { kind: 'model', id: 'c1', phase: 'unconfirmed', active: false },
+    ]);
+    expect(JSON.stringify(answerOnly.rows)).not.toContain('안녕하세요');
 
     seq = 0;
     const team = buildTurnProcess(
@@ -101,7 +116,9 @@ describe('buildTurnProcess', () => {
       {} as never,
       (id) => (id === 'helper' ? 'Helper' : id),
     );
-    expect(team.rows).toEqual([{ kind: 'agent', id: 'child', label: 'Helper', status: 'active' }]);
+    expect(team.rows).toMatchObject([
+      { kind: 'agent', id: 'child', label: 'Helper', status: 'active', active: true },
+    ]);
     expect(team.running).toBe(true);
     expect(team.endedAt).toBeNull();
     // Without loaded events, the folded header counts the same steps from the projection.
@@ -137,7 +154,8 @@ describe('buildTurnProcess', () => {
       {} as never,
       (id) => id,
     );
-    expect(process.rows).toEqual([
+    expect(process.rows).toMatchObject([
+      { kind: 'model', id: 'c1', phase: 'failed', active: false },
       { kind: 'tool', id: 't1', name: 'run_command', target: 'rm -rf build', status: 'blocked' },
     ]);
   });

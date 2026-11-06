@@ -62,14 +62,14 @@ export function createDemoRuntime(): {
   worker.addEventListener('messageerror', fail);
   const request = <M extends DemoMethod>(
     method: M,
-    ...args: Parameters<RuntimeTransport[M]>
-  ): ReturnType<RuntimeTransport[M]> => {
+    ...args: Parameters<NonNullable<RuntimeTransport[M]>>
+  ): ReturnType<NonNullable<RuntimeTransport[M]>> => {
     const id = ++nextId;
     return new Promise((resolve, reject) => {
       if (failure) return reject(failure);
       pending.set(id, { resolve, reject });
       worker.postMessage({ type: 'request', id, method, args });
-    }) as ReturnType<RuntimeTransport[M]>;
+    }) as ReturnType<NonNullable<RuntimeTransport[M]>>;
   };
   const workspace: DemoWorkspaceCall = (method, ...args) => {
     const id = ++nextId;
@@ -85,6 +85,7 @@ export function createDemoRuntime(): {
     getReceipt: (...args) => request('getReceipt', ...args),
     getSnapshot: (...args) => request('getSnapshot', ...args),
     getArtifactText: (...args) => request('getArtifactText', ...args),
+    getConversationTurn: (...args) => request('getConversationTurn', ...args),
     listRuns: () => request('listRuns'),
     getRunDefinition: (...args) => request('getRunDefinition', ...args),
     subscribe(runId, afterSeq, handlers) {

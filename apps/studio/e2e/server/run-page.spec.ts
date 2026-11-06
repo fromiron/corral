@@ -57,7 +57,7 @@ async function finishedRun(
   const { runId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -66,29 +66,41 @@ async function finishedRun(
 
 test('a reload keeps the chosen execution and the saved layout', async ({ page, corral }) => {
   await finishedRun(page, corral);
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(page.getByText('Layout from the saved team')).toBeVisible();
   await page
     .getByTestId('run-monitor')
     .getByRole('button', { name: 'Executions', exact: true })
     .click();
-  const row = page.locator('li[data-execution-id]').filter({ hasText: 'Research Helper' }).first();
-  const executionId = await row.getAttribute('data-execution-id');
-  await row.getByRole('button', { name: 'Steer' }).first().click();
-  await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
+  await page
+    .getByRole('tree', { name: 'Executions', exact: true })
+    .getByRole('button', { name: /^Research Helper · exec_/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/execution=exec_/);
+  const executionId = new URL(page.url()).searchParams.get('execution');
   await page.reload();
   await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();
   const reins = page.getByRole('region', { name: 'Reins', exact: true });
   await expect(reins).toContainText(`execution ${executionId}`);
-  await expect(page.locator(`li[data-execution-id="${executionId}"]`)).toHaveAttribute(
+  await expect(page.getByTestId(`execution-${executionId}`)).toHaveAttribute(
     'aria-current',
     'true',
   );
   expect(corral.errors).toEqual([]);
 });
 
-test('a link to an execution the run does not have targets nothing', async ({ page, corral }) => {
+test('an old view-point link opens current state without selecting a missing execution', async ({
+  page,
+  corral,
+}) => {
   const runPath = await finishedRun(page, corral);
-  await corral.open(`${runPath}?execution=exec_9999`);
+  await corral.open(`${runPath}?execution=exec_9999&atSeq=1`);
+  await expect(page).not.toHaveURL(/[?&]atSeq=/);
+  await expect(page).toHaveURL(/execution=exec_9999/);
+  await expect(
+    page.getByTestId('run-monitor').getByRole('slider', { name: 'View point' }),
+  ).toHaveCount(0);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByRole('alert')).toContainText('exec_9999 is not part of this run');
   await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();

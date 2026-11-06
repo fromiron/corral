@@ -1,9 +1,8 @@
 import { type BinaryArtifact, ImageInput } from '@corral/contracts';
-import { artifactLineage, type RunProjection } from '@corral/core';
-import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
+import { artifactLineage, canReadArtifactBody, type RunProjection } from '@corral/core';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { diffLines } from '../artifacts/diff.ts';
 import {
   KitAccordion as Accordion,
   KitAccordionContent as AccordionContent,
@@ -22,49 +21,42 @@ import type { RunSessionStore } from '../run/session.ts';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
 /**
- * One immutable version, rendered safely, with where it came from:
- * the version it revises, the versions its model call was given, and a line diff against
- * the earlier version. A review renders as its recorded verdict and issues.
+ * A currently available artifact or operational reference, rendered safely. Creation and
+ * input relationships remain metadata even when a previous body has been released.
  */
 export function ArtifactViewer({
   session,
   versionId,
   onClose,
   onOpen,
-  onStartFrom,
 }: {
   session: RunSessionStore;
   versionId: string;
   onClose: () => void;
-  /** Opens another version; without it, lineage links open in this viewer. */
+  /** Opens another currently available reference; retired bodies never become links. */
   onOpen?: (artifactVersionId: string) => void;
-  /** Offers "New run from this version". */
+  /** Compatibility callback; historical artifact reuse is no longer offered. */
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
 }) {
   const t = useTranslations('Artifact');
   const headingId = useId();
   const [loadedId, setLoadedId] = useState<string | null>(null);
-  // Without onOpen, a lineage link replaces what is shown until the caller picks another version.
+  // Current reference inspection can stay in this viewer when the host has no dock handler.
   const [followed, setFollowed] = useState<{ from: string; id: string } | null>(null);
   const shownId = followed?.from === versionId ? followed.id : versionId;
   const open = onOpen ?? ((id: string) => setFollowed({ from: versionId, id }));
 
   const projection = useRunDisplay(session, (s) => s.projection);
+  const currentProjection = useStore(session, (s) => s.projection);
   const artifact = useRunDisplay(session, (s) => s.projection?.artifacts[shownId]);
   const text = useStore(session, (s) => s.artifactTexts[shownId]);
-  const parentId = artifact?.parentVersionId ?? null;
-  const parentText = useStore(session, (s) => (parentId ? s.artifactTexts[parentId] : undefined));
   const review = useRunDisplay(session, (s) => s.projection?.reviews[shownId]);
   const lineage = projection ? artifactLineage(projection, shownId) : null;
-  const inputs = lineage?.inputArtifactVersionIds;
-  // The revised version is listed once, as the parent.
-  const madeFrom = inputs?.filter((id) => id !== parentId);
+  const madeFrom = lineage?.inputArtifactVersionIds;
   const definition = useStore(session, (s) => s.definition);
   const author = useRunDisplay(session, (s) =>
     artifact ? s.projection?.executions[artifact.authorExecutionId] : undefined,
   );
-  const [comparingId, setComparingId] = useState<string | null>(null);
-  const comparing = comparingId === shownId;
 
   const knownReference = Boolean(
     projection &&
@@ -76,7 +68,9 @@ export function ArtifactViewer({
           (value) => value.criteriaVersionId === shownId || value.newCriteriaVersionId === shownId,
         ) ||
         Object.values(projection.iterations).some((value) => value.criteriaVersionId === shownId) ||
-        Object.values(projection.approvals).some((value) => value.criteriaVersionId === shownId) ||
+        Object.values(projection.approvals).some(
+          (value) => value.criteriaVersionId === shownId || value.tool?.bodyRef === shownId,
+        ) ||
         Object.values(projection.patches).some(
           (value) =>
             value.kind === 'criteria' &&
@@ -86,7 +80,8 @@ export function ArtifactViewer({
         Object.values(projection.modelCalls).some((value) => value.responseRef === shownId) ||
         Object.values(projection.toolCalls).some((value) => value.resultRef === shownId)),
   );
-  const canLoad = Boolean(artifact) || knownReference;
+  const canLoad =
+    Boolean(artifact || knownReference) && canReadArtifactBody(currentProjection, shownId);
   const binary = artifact?.media;
   useEffect(() => {
     if (!canLoad || binary) return;
@@ -102,20 +97,9 @@ export function ArtifactViewer({
       active = false;
     };
   }, [session, shownId, canLoad, binary]);
-  useEffect(() => {
-    if (comparing && parentId) void session.getState().loadArtifact(parentId);
-  }, [session, comparing, parentId]);
-
-  const diff = useMemo(
-    () =>
-      comparing && text !== undefined && parentText !== undefined
-        ? diffLines(parentText, text)
-        : null,
-    [comparing, text, parentText],
-  );
 
   let image: ReturnType<typeof ImageInput.safeParse> | null = null;
-  if (!artifact && knownReference && text !== undefined) {
+  if (!artifact && knownReference && canLoad && text !== undefined) {
     try {
       image = ImageInput.safeParse(JSON.parse(text));
     } catch {
@@ -138,7 +122,7 @@ export function ArtifactViewer({
           </CardAction>
         </CardHeader>
         <CardContent>
-          {knownReference && text !== undefined ? (
+          {knownReference && canLoad && text !== undefined ? (
             image?.success ? (
               <img
                 className="max-h-96 max-w-full object-contain"
@@ -157,11 +141,16 @@ export function ArtifactViewer({
       </Card>
     );
   const label = definition?.nodes.find((n) => n.id === author?.nodeId)?.label ?? author?.nodeId;
-  const link = (id: string) => (
-    <Button key={id} variant="ghost" onClick={() => open(id)} className="font-mono">
-      {id}
-    </Button>
-  );
+  const link = (id: string) =>
+    canReadArtifactBody(currentProjection, id) ? (
+      <Button key={id} variant="ghost" onClick={() => open(id)} className="font-mono">
+        {id}
+      </Button>
+    ) : (
+      <span key={id} className="font-mono">
+        {id}
+      </span>
+    );
   return (
     <Card role="region" aria-labelledby={headingId} data-testid="artifact-viewer">
       <CardHeader>
@@ -171,20 +160,6 @@ export function ArtifactViewer({
           </CardTitle>
         </h3>
         <CardAction className="flex flex-wrap items-center justify-end gap-2">
-          {onStartFrom && projection ? (
-            <Button
-              variant="secondary"
-              onClick={() =>
-                onStartFrom({
-                  runId: projection.runId,
-                  artifactVersionId: artifact.artifactVersionId,
-                  label: `${artifact.name} v${artifact.version}`,
-                })
-              }
-            >
-              {t('newRunFromVersion')}
-            </Button>
-          ) : null}
           <Button variant="ghost" onClick={onClose}>
             {t('close')}
           </Button>
@@ -199,20 +174,12 @@ export function ArtifactViewer({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {parentId || (madeFrom && madeFrom.length > 0) ? (
+        {madeFrom && madeFrom.length > 0 ? (
           <dl className="flex flex-col gap-2 text-caption">
-            {parentId ? (
-              <div className="flex flex-wrap items-center gap-1">
-                <dt className="text-muted-foreground">{t('revises')}</dt>
-                <dd>{link(parentId)}</dd>
-              </div>
-            ) : null}
-            {madeFrom && madeFrom.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1">
-                <dt className="text-muted-foreground">{t('madeFrom')}</dt>
-                <dd className="flex flex-wrap gap-1">{madeFrom.map(link)}</dd>
-              </div>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-1">
+              <dt className="text-muted-foreground">{t('madeFrom')}</dt>
+              <dd className="flex flex-wrap gap-1">{madeFrom.map(link)}</dd>
+            </div>
           </dl>
         ) : null}
         {lineage ? (
@@ -270,16 +237,15 @@ export function ArtifactViewer({
             artifactLink={link}
           />
         ) : null}
-        {parentId && !binary ? (
-          <Button
-            variant="tertiary"
-            onClick={() => setComparingId(comparing ? null : shownId)}
-            className="self-start"
-          >
-            {comparing ? t('hideCompare') : t('compare', { version: parentId })}
-          </Button>
-        ) : null}
-        {binary && projection ? (
+        {!canLoad ? (
+          <p role="status" className="text-body text-muted-foreground">
+            {t(
+              currentProjection?.artifacts[shownId]?.bodyAvailable === false
+                ? 'retired'
+                : 'unavailable',
+            )}
+          </p>
+        ) : binary && projection ? (
           <GeneratedImage
             key={shownId}
             runId={projection.runId}
@@ -287,31 +253,6 @@ export function ArtifactViewer({
             name={artifact.name}
             media={binary}
           />
-        ) : comparing ? (
-          diff === null ? (
-            <p className="text-caption text-muted-foreground">{t('loading')}</p>
-          ) : (
-            <pre className="overflow-x-auto text-body" data-testid="artifact-diff">
-              {diff.map((line, i) => (
-                <div
-                  // Lines repeat; their position is their identity in this diff.
-                  // biome-ignore lint/suspicious/noArrayIndexKey: positional diff rows
-                  key={i}
-                  data-diff={line.kind}
-                  className={
-                    line.kind === 'added'
-                      ? 'bg-success/15'
-                      : line.kind === 'removed'
-                        ? 'bg-danger/15 line-through'
-                        : undefined
-                  }
-                >
-                  {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
-                  {line.text}
-                </div>
-              ))}
-            </pre>
-          )
         ) : text === undefined ? (
           <p className="text-caption text-muted-foreground">{t('loading')}</p>
         ) : review ? null : (

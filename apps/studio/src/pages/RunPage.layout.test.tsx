@@ -28,6 +28,7 @@ vi.mock('@corral/react', async (original) => {
       return module.reconstructRunHistory(...args);
     },
     RunResults: () => <output data-testid="results">Results</output>,
+    RunFlowView: () => <output data-testid="run-flow">Work flow</output>,
     ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
       <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
         Approval evidence
@@ -137,9 +138,12 @@ it('a removed Corral still displays its run with an automatic layout', async () 
   );
 });
 
-it('a completed run opens its graph unless a result was explicitly requested', async () => {
+it('a completed run opens its work flow unless a result was explicitly requested', async () => {
   const graph = await mount('inline_team', null, {});
-  expect(graph.container.querySelector('[data-testid="layout"]')).not.toBeNull();
+  expect(graph.container.querySelector('[data-testid="run-flow"]')).not.toBeNull();
+  expect(
+    graph.container.querySelector('[data-testid="run-flow-tab"]')?.getAttribute('aria-selected'),
+  ).toBe('true');
   expect(
     graph.container.querySelector('[data-testid="results"]')?.closest('main')?.style.display,
   ).toBe('none');
@@ -170,10 +174,12 @@ it('the selected Graph tab returns from the tree and result links keep the monit
   expect(container.querySelector('.run-layout')?.getAttribute('data-details')).toBe('true');
 });
 
-it('an explicit cursor at the current head stays read-only as live state changes until Latest', async () => {
+it('normalizes an old cursor URL and follows current state without replaying or disabling controls', async () => {
   const { container, run, navigations } = await mount('inline_team', null, { atSeq: 0 });
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Created');
-  expect(container.querySelector('fieldset[disabled]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Succeeded');
+  expect(container.querySelector('fieldset[disabled]')).toBeNull();
+  expect(container.querySelector('[data-testid="history-mode"]')).toBeNull();
+  expect(navigations.at(-1)).toEqual({ patch: { atSeq: undefined }, options: { replace: true } });
   const event = RunEvent.parse({
     schemaVersion: '0.1',
     eventId: 'evt_future',
@@ -197,14 +203,8 @@ it('an explicit cursor at the current head stays read-only as live state changes
       });
   });
   expect(fixture.replays).toBe(replays);
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Created');
-  expect(run.getState().projection).toBe(live);
-  const latest = [...container.querySelectorAll('button')].find((el) =>
-    el.textContent?.includes('Latest'),
-  );
-  expect(latest).toBeDefined();
-  await act(async () => latest?.click());
   expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Running');
+  expect(run.getState().projection).toBe(live);
   expect(container.querySelector('fieldset[disabled]')).toBeNull();
-  expect(navigations.at(-1)).toEqual({ patch: { atSeq: undefined }, options: { replace: true } });
+  expect(container.querySelector('[aria-label="View time"]')).toBeNull();
 });

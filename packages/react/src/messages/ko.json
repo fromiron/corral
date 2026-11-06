@@ -341,7 +341,18 @@
     "liveUnavailable": "실제 모델을 사용할 수 없습니다. 연결하거나 모의 실행을 선택하세요.",
     "definitionUnavailable": "실행 설정을 읽지 못했습니다. 상태 연결은 유지됩니다.",
     "retryDefinition": "설정 다시 읽기",
-    "openControls": "제어 열기"
+    "openControls": "제어 열기",
+    "tree": {
+      "title": "실행",
+      "count": "실행 {count}개",
+      "running": "진행 중 {count}",
+      "needsYou": "확인 필요 {count}",
+      "failed": "실패 {count}",
+      "needsYouList": "확인이 필요한 실행",
+      "failedList": "실패한 실행",
+      "showBranch": "{name} 아래 실행 {count}개 펼치기",
+      "foldBranch": "{name} 아래 실행 접기"
+    }
   },
   "Reins": {
     "heading": "Reins",
@@ -433,7 +444,11 @@
     "answered": "답변됨",
     "timed_out": "시간 초과",
     "applied": "적용됨",
-    "superseded": "대체됨"
+    "superseded": "대체됨",
+    "approved": "승인됨",
+    "pending": "대기 중",
+    "stale": "유효하지 않음",
+    "error": "오류"
   },
   "Toolbar": {
     "undo": "실행 취소",
@@ -559,7 +574,8 @@
     "evidenceChecks": "검사",
     "uncertainWrite": "결과 모름",
     "evidenceCheckEarlier": "이전 기준",
-    "waitingExecutions": "실행 {count}개 대기 중"
+    "waitingExecutions": "실행 {count}개 대기 중",
+    "elapsed": "경과 시간"
   },
   "Timeline": {
     "heading": "타임라인",
@@ -653,6 +669,7 @@
     "paused": "질문 대기 시간이 멈춰 있습니다. 실행 전체 기한은 계속 흐릅니다."
   },
   "Artifact": {
+    "retired": "이 산출물의 본문은 더 이상 보관하지 않습니다. 생성·전달 관계는 실행 흐름에서 확인할 수 있습니다.",
     "downloadImage": "원본 PNG 다운로드",
     "imageIntegrity": "원본 이미지 체크섬",
     "imageUnavailable": "생성된 이미지를 불러오지 못했습니다. 서버 로그인 상태를 확인하고 결과물을 다시 열어 주세요.",
@@ -946,7 +963,26 @@
       "succeeded": "완료",
       "failed": "실패",
       "cancelled": "취소됨"
-    }
+    },
+    "tools": {
+      "arguments": "인자",
+      "result": "결과",
+      "error": "오류",
+      "failed": "실패",
+      "errorFallback": "도구가 오류를 반환했습니다.",
+      "waiting": "결과를 기다리는 중…",
+      "noResult": "결과 없음",
+      "retry": "다시 시도",
+      "copy": "{section} 복사",
+      "copied": "복사됨",
+      "showAll": "모두 보기",
+      "showLess": "접기",
+      "status": "{name} {status}",
+      "usingTools": "도구 사용 중…",
+      "usedTools": "도구 {count}개 사용",
+      "failedCount": "{count}개 실패"
+    },
+    "retiredBody": "응답 본문은 더 이상 보관하지 않습니다."
   },
   "Events": {
     "runStartedMock": "실행 시작(시뮬레이션 에이전트)",
@@ -1257,6 +1293,7 @@
     "customizeCorral": "Corral 구성하기 (선택)"
   },
   "Results": {
+    "noCurrentResult": "현재 열 수 있는 최종 결과가 없습니다.",
     "label": "결과",
     "kind": {
       "pending": "실행이 아직 진행 중입니다. 결과가 만들어지면 여기에 나타납니다.",
@@ -1752,7 +1789,11 @@
     "noCopyChanges": "작업 복사본을 만들면 여기에 파일 변경이 보입니다.",
     "checksOnReview": "검증은 검토 화면에서 실행합니다.",
     "serverOnly": "파일 작업·변경·검증은 로컬 서버에서만 쓸 수 있습니다.",
-    "runNumber": "실행 {number}"
+    "runNumber": "실행 {number}",
+    "sidebarNavigation": "작업 공간",
+    "sidebarProjects": "프로젝트",
+    "sidebarResizeHint": "드래그하거나 방향키로 너비 조절",
+    "sidebarCollapseHint": "클릭하여 접기"
   },
   "Desktop": {
     "conversation": "대화",
@@ -1887,6 +1928,19 @@
     "densityDetailed": "상세 활동"
   },
   "Composer": {
+    "modelPicker": {
+      "settings": "모델 설정",
+      "unavailable": "연결 필요",
+      "missing": "찾을 수 없는 프로필",
+      "empty": "모델 프로필이 없습니다",
+      "reasoning": "추론",
+      "effort": "노력 수준",
+      "policyDefault": "기본",
+      "policyAuto": "자동",
+      "policyRoute": "요청별",
+      "demo": "시뮬레이션",
+      "demoEmpty": "데모에서는 실제 모델을 호출하지 않습니다."
+    },
     "nextRequest": "다음 요청부터",
     "commands": "명령",
     "references": "참조",
@@ -2984,6 +3038,7 @@
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "보고 없음",
       "cacheUnreported": "캐시 입력을 보고하지 않은 호출 {count}회",
+      "inputUnreported": "완료된 호출 {count}회가 입력 토큰을 보고하지 않았습니다.",
       "fullBudget": "실행 열기"
     }
   },
@@ -4239,9 +4294,18 @@
     "statSteps": "{count}단계",
     "statTokens": "{tokens} 토큰",
     "statCache": "캐시 적중 {share}",
-    "statCacheUnreported": "캐시 보고 없음"
+    "statCacheUnreported": "캐시 보고 없음",
+    "request": "모델 요청 {no}",
+    "requestPreparing": "응답 준비 중",
+    "requestGenerating": "응답 생성 중",
+    "requestFinished": "응답 완료",
+    "requestUnconfirmed": "응답 완료 기록 없음",
+    "requestDetails": "요청 상세",
+    "toolDetails": "도구 상세",
+    "agentDetails": "에이전트 활동"
   },
   "RunMonitor": {
+    "flow": "작업 흐름",
     "views": "실행 보기",
     "graph": "그래프",
     "events": "이벤트",
@@ -4273,6 +4337,120 @@
     "model": "모델 전송~종료",
     "tool": "도구 시작~종료",
     "nonAgentNode": "이 노드는 별도의 에이전트 실행을 만들지 않습니다. 처리 결과는 그래프와 기록된 결과에서 확인할 수 있습니다.",
-    "workPlans": "작업 계획"
+    "workPlans": "작업 계획",
+    "lanes": {
+      "running": "진행 중 {count}",
+      "needsYou": "확인 필요 {count}",
+      "needsYouChip": "확인 필요",
+      "idle": "쉬는 중",
+      "tick": "+{time}",
+      "needsYouLine": "확인 필요: {what}",
+      "review": "선택",
+      "announce": "{count, plural, =0 {} other {확인이 필요한 실행 #개}}"
+    }
+  },
+  "RunFlow": {
+    "title": "작업 흐름",
+    "description": "누가 산출물을 만들고 사용했는지, 어떤 판단으로 다음 작업이 이어졌는지 확인합니다.",
+    "relationships": "에이전트 간 관계",
+    "chooseRelationship": "관계 선택",
+    "relationship": "{from} → {to}: 확인된 관계",
+    "otherRelationships": "연결된 작업",
+    "noRelationships": "아직 에이전트 간 관계가 기록되지 않았습니다.",
+    "artifacts": "생성된 산출물",
+    "createdBy": "{name} 생성",
+    "open": "{name} 열기",
+    "metadataOnly": "생성·관계 기록",
+    "observed": "확인된 관계",
+    "unrecorded": "기록 없음",
+    "upNext": "다음 작업",
+    "executionInProgress": "실행 중",
+    "executionCount": "실행 {count}회",
+    "attempt": "{name} · 시도 {attempt}",
+    "final": "최종 결과",
+    "decisions": "결정과 근거",
+    "branches": "결정 분기",
+    "noRecordedBranch": "분기 기록 없음",
+    "recordedBranch": "선택된 분기",
+    "selected": "선택: {branch}",
+    "nextNode": "다음: {name}",
+    "evidence": "사용한 근거",
+    "noEvidence": "이 결정에는 근거 참조가 기록되지 않았습니다.",
+    "reviewVerdict": "검토 판단: {verdict}",
+    "recordedAt": "기록 시각 {time}",
+    "relation": {
+      "author": "생성",
+      "read": "읽음",
+      "input": "모델 입력에 포함",
+      "question": "질문 보냄",
+      "answer": "답변 보냄",
+      "delegate": "작업 위임",
+      "review": "검토",
+      "branch": "분기 선택",
+      "output": "최종 결과 확정"
+    },
+    "port": {
+      "out": "출력",
+      "body": "반복 작업",
+      "next": "다음",
+      "pass": "통과",
+      "revise": "수정",
+      "approve": "승인",
+      "reject": "거절",
+      "yes": "충족",
+      "no": "미충족",
+      "inconclusive": "판단 보류"
+    },
+    "question": {
+      "review_verdict": "검토 결과에 따라 진행할까요?",
+      "required_tasks_submitted": "필수 작업이 완료되었나요?",
+      "human_approval": "이 작업이 승인되었나요?"
+    },
+    "evidenceKind": {
+      "artifact": "산출물",
+      "review": "검토",
+      "approval": "승인",
+      "check": "검증",
+      "task": "작업"
+    },
+    "reason": {
+      "required_tasks_completed": "필수 작업 완료",
+      "tasks_unfinished": "미완료 작업 있음",
+      "human_approval": "사용자 승인 판단",
+      "review_verdict": "기록된 검토 판단",
+      "review_checks_failed": "검증 결과 수정 필요",
+      "criteria_changed": "검토 기준 변경",
+      "inconclusive_review_approval": "판단 보류 후 승인",
+      "external_policy": "외부 분기 정책"
+    },
+    "attached": "첨부: {name}",
+    "round": "반복 {round}회차",
+    "currentStatus": "현재 상태: {status}",
+    "reviewedArtifact": "검토 대상: {name}",
+    "taskOutputs": "제출한 산출물: {names}",
+    "checkVerdict": "검증 결과: {verdict}",
+    "exitCode": "종료 코드 {code}",
+    "checkTimedOut": "시간 제한 초과",
+    "checkUnavailable": "검증 상세를 확인할 수 없습니다. 기록된 참조만 표시합니다.",
+    "evidenceUnavailable": "이 근거의 상세를 확인할 수 없습니다.",
+    "verdict": {
+      "pass": "통과",
+      "fail": "실패",
+      "inconclusive": "판단 보류",
+      "not_evaluated": "평가 전"
+    }
+  },
+  "RunLoop": {
+    "title": "루프 · {name}",
+    "summary": "반복 {count}회 · 최대 {max}회",
+    "iterationLabel": "{name} 회차",
+    "current": "현재: {no}회차 · {outcome}",
+    "latest": "최신 회차 따라가기",
+    "noIterations": "아직 반복 기록이 없습니다",
+    "selected": "표시: {no}회차 · {outcome}",
+    "unavailable": "이 회차를 확인할 수 없습니다",
+    "metadataOnly": "회차를 선택하면 관계 기록을 보여줍니다. 실행 제어는 현재 상태를 유지합니다.",
+    "repeat": "{name} 다시 반복",
+    "exit": "{name} 반복 종료"
   }
 }

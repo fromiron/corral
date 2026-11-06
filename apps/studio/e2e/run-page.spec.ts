@@ -23,7 +23,7 @@ async function finishedTeamRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
-  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -35,6 +35,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   page,
 }) => {
   await finishedTeamRun(page);
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
   await expect(page.getByText('Layout from the saved team')).toBeVisible();
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
@@ -51,7 +52,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   const reins = page.getByRole('region', { name: 'Reins', exact: true });
   await expect(reins).toContainText(`execution ${executionId}`);
   // The tree row of the chosen execution is marked as the current one.
-  await expect(page.locator(`li[data-execution-id="${executionId}"]`)).toHaveAttribute(
+  await expect(page.getByTestId(`execution-${executionId}`)).toHaveAttribute(
     'aria-current',
     'true',
   );
@@ -62,9 +63,8 @@ test('the Run page shows the graph with execution counts, and a node leads to it
     .getByRole('button', { name: 'Executions', exact: true })
     .click();
   await page
-    .locator('li[data-execution-id]')
-    .filter({ hasText: /^Research ·/ })
-    .getByRole('button', { name: 'Steer', exact: true })
+    .getByRole('tree', { name: 'Executions', exact: true })
+    .getByRole('button', { name: /^Research · exec_/ })
     .first()
     .click();
   await expect(graph(page).locator('.react-flow__node[data-id="research"]')).toHaveClass(
@@ -83,6 +83,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
 
 test('the Run graph cannot be edited: dragging and Delete change nothing', async ({ page }) => {
   await finishedTeamRun(page);
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
   // A node's place in the graph is its own transform; dragging may pan the view, not move it.
   const position = await writer.getAttribute('style');

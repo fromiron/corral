@@ -528,7 +528,7 @@ describe('chat widget selectors', () => {
     });
   });
 
-  it('SURFACE-02 hides low-priority chips without dropping them', () => {
+  it('SURFACE-02 keeps current work visible and hides idle low-priority chips', () => {
     const chips = visibleWidgets({
       hasContext: true,
       agents: { total: 3, working: 2, waiting: 1, failed: 0, delegated: true },
@@ -552,7 +552,7 @@ describe('chat widget selectors', () => {
         toolCount: 9,
         resultCount: 3,
       }),
-    ).toEqual([]);
+    ).toEqual(['agents']);
     expect(
       visibleWidgets({
         hasContext: true,
