@@ -47,7 +47,8 @@ export type TranscriptEntry =
       seq: number;
       toolCallId: string;
       name: string;
-      status: 'requested' | 'allowed' | 'blocked' | 'finished' | 'failed';
+      /** `cancelled` only when the call's effect was confirmed cancelled, not merely unfinished. */
+      status: 'requested' | 'allowed' | 'blocked' | 'finished' | 'failed' | 'cancelled';
       detail: string | null;
       resultRef: string | null;
       /** The validated arguments as recorded; large values are already size-and-hash stubs. */
@@ -192,6 +193,12 @@ export function buildTranscript(
         });
         break;
     }
+  }
+  // A call stopped with its scope reads as cancelled everywhere, not as a failure or as running.
+  for (const tool of tools.values()) {
+    const effectId = projection.toolCalls[tool.toolCallId]?.effectId;
+    if (effectId && projection.effects[effectId]?.outcome === 'cancelled')
+      tool.status = 'cancelled';
   }
   return entries;
 }

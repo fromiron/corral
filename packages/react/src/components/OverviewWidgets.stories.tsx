@@ -26,6 +26,8 @@ function fixture(live = true): ChatWidgetModel {
     runId: projection.runId,
     live,
     viewed: viewedRun({ runIds: [projection.runId], presentationRunId: projection.runId, live }),
+    runNumber: 1,
+    failedExecutionId: null,
     simulated: true,
     readState: 'ready',
     retryRead: fn(),

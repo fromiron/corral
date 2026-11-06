@@ -10,7 +10,7 @@ it('migrates existing immutable bodies and releases text and media atomically wi
   try {
     for (const [index, migration] of MIGRATIONS.slice(
       0,
-      MIGRATIONS.findIndex((m) => m.name === '0036_artifact_body_lifetime'),
+      MIGRATIONS.findIndex((m) => m.name === '0037_artifact_body_lifetime'),
     ).entries()) {
       db.exec(migration.sql);
       migration.data?.(db);
@@ -140,7 +140,7 @@ it('hydrates additive metadata without replaying retired event types in old data
 it('drops legacy copied event search bodies on migration while preserving ordinary conversation search', () => {
   const db = new Database(':memory:');
   try {
-    const boundary = MIGRATIONS.findIndex((m) => m.name === '0037_artifact_search_lifetime');
+    const boundary = MIGRATIONS.findIndex((m) => m.name === '0038_artifact_search_lifetime');
     const previous = boundary < 0 ? MIGRATIONS : MIGRATIONS.slice(0, boundary);
     for (const [index, migration] of previous.entries()) {
       db.exec(migration.sql);

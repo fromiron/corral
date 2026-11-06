@@ -7,6 +7,7 @@ import {
   BudgetInspector,
   EffortJudgments,
   ExecutionTranscript,
+  FailureNotice,
   HarnessDetails,
   primaryWorkPlan,
   QuestionsPanel,
@@ -98,6 +99,7 @@ export function RunPage() {
  */
 export function RunDetail({
   runId,
+  runNumber,
   search,
   setSearch,
   embedded = false,
@@ -105,6 +107,7 @@ export function RunDetail({
 }: {
   sessionId?: string | null;
   runId: string;
+  runNumber?: number;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded?: boolean;
@@ -172,6 +175,7 @@ export function RunDetail({
   return (
     <RunWorkspace
       runId={runId}
+      runNumber={runNumber}
       key={runId}
       session={session}
       definition={definition}
@@ -219,6 +223,7 @@ function ResultChoices({
 
 function RunWorkspace({
   runId,
+  runNumber,
   session,
   sessionId,
   definition,
@@ -227,6 +232,7 @@ function RunWorkspace({
   embedded,
 }: {
   runId: string;
+  runNumber: number | undefined;
   session: RunSessionStore;
   sessionId: string | null;
   definition: CorralDefinition;
@@ -242,6 +248,14 @@ function RunWorkspace({
   const { previewUrl, workspaces } = useServices();
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
+  const failedTools = execution
+    ? Object.values(projection?.toolCalls ?? {}).filter(
+        (call) =>
+          call.executionId === execution &&
+          call.phase === 'failed' &&
+          (!call.effectId || projection?.effects[call.effectId]?.outcome !== 'cancelled'),
+      )
+    : [];
   const checkReferences = useMemo(
     () =>
       [
@@ -566,6 +580,16 @@ function RunWorkspace({
                   onClose={closeDetail}
                 />
               ) : null}
+              {failedTools.length ? (
+                <section aria-label={m('failedSteps')} className="mb-3 space-y-2">
+                  {failedTools.map((call) => (
+                    <div key={call.toolCallId} data-testid={`failed-step-${call.toolCallId}`}>
+                      <p className="text-xs font-medium">{call.name}</p>
+                      <FailureNotice code={call.errorCode} message={call.reason ?? ''} />
+                    </div>
+                  ))}
+                </section>
+              ) : null}
               <Tabs value={detail} onValueChange={setDetail}>
                 <div className="overflow-x-auto">
                   <TabsList aria-label={m('details')}>
@@ -768,7 +792,7 @@ function RunSummary({
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
   const projection = useRunDisplay(session, (s) => s.projection);
-  const savedTeam = useSavedTeam(projection?.corralId);
+  const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
   if (!projection) return null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -779,6 +803,7 @@ function RunSummary({
   const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
   const tasks = Object.values(projection.tasks);
   const inFlight = Object.values(projection.modelCalls).filter((c) => !c.finished).length;
+  const ended = TERMINAL_RUN_STATUSES.has(projection.status);
   const loops = definition.nodes.flatMap((node) =>
     node.type === 'loop' && projection.loopIterations[node.id]?.length
       ? [
@@ -790,7 +815,7 @@ function RunSummary({
         ]
       : [],
   );
-  const corralId = projection.corralId;
+  const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
   const identity = [
     compact ? null : (
       <span key="run" className="min-w-0 break-all font-mono">
@@ -806,7 +831,7 @@ function RunSummary({
       >
         {t('openCorral')}
       </Link>
-    ) : corralId && savedTeam === false && !compact ? (
+    ) : corralId && !definition.sourceTeam && savedTeam === false && !compact ? (
       <span key="team">{t('unsavedTeam')}</span>
     ) : null,
     projection.startedFrom && !compact ? (
@@ -830,16 +855,22 @@ function RunSummary({
     compact && projection.status === 'succeeded' && working.length === 0
       ? []
       : [
-          working.length ? (
+          projection.status === 'cancelling' ? (
+            <span key="working">{t('cancelling')}</span>
+          ) : ended ? null : working.length ? (
             <span key="working">{t('working', { labels: working.join(', ') })}</span>
-          ) : compact ? null : (
-            <span key="working">{t('idle')}</span>
+          ) : inFlight || waiting || projection.status === 'paused' ? null : (
+            <span key="working">{t('starting')}</span>
           ),
           waiting ? <span key="waiting">{t('waitingExecutions', { count: waiting })}</span> : null,
           ...loops.map((text) => <span key={text}>{text}</span>),
-          compact && inFlight === 0 ? null : (
-            <span key="requests">{t('requests', { count: inFlight })}</span>
-          ),
+          inFlight ? (
+            <span key="requests">
+              {t(ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests', {
+                count: inFlight,
+              })}
+            </span>
+          ) : null,
           compact ? null : (
             <span key="tasks">
               {t('tasks', {
@@ -861,7 +892,11 @@ function RunSummary({
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 className="min-w-0 truncate text-title">{definition.name}</h2>
+          <h2 className="min-w-0 truncate text-title">
+            {definition.sourceTeam
+              ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
+              : definition.name}
+          </h2>
           <span aria-live="polite" data-testid="run-status">
             <AgentStatusText kind="run" status={projection.status} />
           </span>

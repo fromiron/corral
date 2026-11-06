@@ -61,7 +61,9 @@ export function providerFailure(
       : Number.isFinite(Number(after))
         ? Math.max(0, Number(after) * 1000)
         : Math.max(0, Date.parse(after) - now);
-  const code = /insufficient_quota|quota.exceed|credit|billing|account.balance/i.test(text)
+  const code = /insufficient_quota|quota.exceed|usage.limit|credit|billing|account.balance/i.test(
+    text,
+  )
     ? 'QUOTA'
     : status === 401 || status === 403
       ? 'AUTH'
@@ -73,7 +75,8 @@ export function providerFailure(
             ? 'SERVER'
             : /abort|cancel/i.test(text)
               ? 'CANCELLED'
-              : /ECONNREFUSED|ENOTFOUND|connect timeout/i.test(text)
+              : /ECONNREFUSED|ENOTFOUND|connect timeout/i.test(text) ||
+                  /^(?:Connection error\.|fetch failed)$/i.test(text)
                 ? 'TRANSPORT'
                 : 'UNKNOWN';
   const requestId = response?.headers.get('x-request-id') ?? response?.headers.get('request-id');

@@ -210,6 +210,7 @@ export type {
 import {
   type AutoModelChoice,
   type AutoRoute,
+  CommandError,
   type ConversationSource,
   type CorralDefinition,
   type CreateRunRequest,
@@ -258,8 +259,8 @@ import type {
   ProjectResult,
   ProjectSummary,
   RunArchive,
-  RunProjection,
   RunSummary,
+  RuntimeSnapshot,
   RuntimeTransport,
   SaveRequest,
   SaveResult,
@@ -316,11 +317,20 @@ export interface HttpOptions {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: ErrorCode | 'UNKNOWN';
+  readonly retryAfterMs?: number;
+  readonly owner?: CommandError['owner'];
 
-  constructor(status: number, code: ErrorCode | 'UNKNOWN', message: string) {
+  constructor(
+    status: number,
+    code: ErrorCode | 'UNKNOWN',
+    message: string,
+    options: { retryAfterMs?: number; owner?: CommandError['owner'] } = {},
+  ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfterMs = options.retryAfterMs;
+    this.owner = options.owner;
   }
 }
 
@@ -363,16 +373,33 @@ class Http {
   }
 }
 
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after');
+  if (value === null || !/^\d+(?:\.\d+)?$/.test(value)) return undefined;
+  const milliseconds = Number(value) * 1000;
+  return Number.isFinite(milliseconds) ? milliseconds : undefined;
+}
+
 async function apiError(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as { error?: { code?: ErrorCode; message?: string } };
+    const body = (await response.json()) as {
+      error?: { code?: ErrorCode; message?: string; owner?: unknown };
+      receipt?: { error?: { code?: ErrorCode; message?: string; owner?: unknown } };
+    };
+    const error = body.error ?? body.receipt?.error;
     return new ApiError(
       response.status,
-      body.error?.code ?? 'UNKNOWN',
-      body.error?.message ?? response.statusText,
+      error?.code ?? 'UNKNOWN',
+      error?.message ?? response.statusText,
+      {
+        retryAfterMs: retryAfterMs(response),
+        owner: CommandError.shape.owner.safeParse(error?.owner).data,
+      },
     );
   } catch {
-    return new ApiError(response.status, 'UNKNOWN', response.statusText);
+    return new ApiError(response.status, 'UNKNOWN', response.statusText, {
+      retryAfterMs: retryAfterMs(response),
+    });
   }
 }
 
@@ -705,7 +732,7 @@ export class HttpSseTransport implements RuntimeTransport {
     return (await response.json()) as Receipt;
   }
 
-  getSnapshot(runId: string): Promise<{ projection: RunProjection; seq: number }> {
+  getSnapshot(runId: string): Promise<RuntimeSnapshot> {
     return this.http.json(`/runs/${encodeURIComponent(runId)}/snapshot`);
   }
 
@@ -994,11 +1021,15 @@ function refused(commandId: string, code: ErrorCode, message: string): Receipt {
 }
 
 async function apiErrorFrom(response: Response, body: unknown): Promise<ApiError> {
-  const error = (body as { error?: { code?: ErrorCode; message?: string } }).error;
+  const error = (body as { error?: { code?: ErrorCode; message?: string; owner?: unknown } }).error;
   return new ApiError(
     response.status,
     error?.code ?? 'UNKNOWN',
     error?.message ?? response.statusText,
+    {
+      retryAfterMs: retryAfterMs(response),
+      owner: CommandError.shape.owner.safeParse(error?.owner).data,
+    },
   );
 }
 
@@ -1007,6 +1038,9 @@ export class TerminalsApi {
   private readonly http: Http;
   constructor(options: HttpOptions) {
     this.http = new Http(options);
+  }
+  attention(): Promise<InboxItemView[]> {
+    return this.http.json('/terminals/attention');
   }
   private path(sessionId: string, terminalId?: string) {
     return `/sessions/${encodeURIComponent(sessionId)}/terminals${terminalId === undefined ? '' : `/${encodeURIComponent(terminalId)}`}`;
@@ -1329,6 +1363,18 @@ export interface ProviderAuthView {
   endpoint: string | null;
   /** A key was entered for another address than the one the workspace names now. */
   endpointChanged: boolean;
+  connectionTest?: {
+    kind:
+      | 'connected'
+      | 'authentication'
+      | 'rateLimit'
+      | 'server'
+      | 'redirect'
+      | 'unsupported'
+      | 'connection';
+    status: number | null;
+    checkedAt: string;
+  } | null;
   subscription: boolean;
   expiresAt: string | null;
   login: LoginView | null;
@@ -1340,10 +1386,48 @@ export interface ProviderAuthView {
 
 export interface ReasoningSettings {
   apply: boolean;
+  policy: 'medium' | 'judged';
   available: boolean;
   version: string | null;
   reason: string | null;
   revision: string;
+}
+
+/** GET /local-ai: the local AI bundle for the settings panel's install. */
+export interface LocalAiView {
+  release: string;
+  /** Display names of the two models the bundle installs together. */
+  models: { meeting: string; effort: string };
+  state:
+    | 'unsupported'
+    | 'missing'
+    | 'stale'
+    | 'installing'
+    | 'idle'
+    | 'starting'
+    | 'ready'
+    | 'error';
+  downloadBytes: number | null;
+  progress: { received: number; total: number } | null;
+  error: string | null;
+  /** The decision API the workspace asks when the local judge is unsure; null when none. */
+  external: {
+    provider: DecisionApiView['id'] | null;
+    model: string | null;
+    /** The automatic reasoning policy; medium never asks the decision API. */
+    policy: ReasoningSettings['policy'];
+    /** Whether the local judge can abstain; one that never does never asks the decision API. */
+    judgeAbstains: boolean;
+    revision: string;
+  };
+}
+
+/** GET /decision-apis: judge-only APIs and whether a key is stored, never the key. */
+export interface DecisionApiView {
+  id: 'jev' | 'openai-decisions';
+  provider: string;
+  model: string;
+  keyConfigured: boolean;
 }
 
 export interface ModelProfileView {
@@ -1354,6 +1438,7 @@ export interface ModelProfileView {
   modelName: string | null;
   available: boolean;
   reasoning: boolean | null;
+  imageInput?: boolean | null;
   reasoningCapabilities?: ReasoningCapabilities;
   contextWindow: number | null;
   contextPolicy?: ProfileContextPolicy;
@@ -1438,6 +1523,36 @@ export class ModelsApi {
     return this.http.json('/models/reasoning', {
       method: 'PUT',
       body: JSON.stringify({ apply, revision }),
+    });
+  }
+  localAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai');
+  }
+  installLocalAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai/install', { method: 'POST' });
+  }
+  cancelLocalAiInstall(): Promise<LocalAiView> {
+    return this.http.json('/local-ai/install', { method: 'DELETE' });
+  }
+  setExternalJudge(provider: DecisionApiView['id'] | null, revision: string): Promise<LocalAiView> {
+    return this.http.json('/local-ai/external-judge', {
+      method: 'PUT',
+      body: JSON.stringify({ provider, revision }),
+    });
+  }
+  decisionApis(): Promise<DecisionApiView[]> {
+    return this.http.json('/decision-apis');
+  }
+  /** Stores the key server-side; the response says only that one is stored. */
+  setDecisionApiKey(id: DecisionApiView['id'], key: string): Promise<DecisionApiView[]> {
+    return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
+      method: 'PUT',
+      body: JSON.stringify({ key }),
+    });
+  }
+  deleteDecisionApiKey(id: DecisionApiView['id']): Promise<DecisionApiView[]> {
+    return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
+      method: 'DELETE',
     });
   }
   profiles(): Promise<ModelProfileView[]> {
@@ -1535,6 +1650,16 @@ export class ModelsApi {
         goal,
         operationId: options.operationId ?? globalThis.crypto.randomUUID(),
       }),
+    });
+  }
+
+  testEndpoint(
+    providerId: string,
+    revision: string,
+  ): Promise<NonNullable<ProviderAuthView['connectionTest']>> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/probe`, {
+      method: 'POST',
+      body: JSON.stringify({ revision }),
     });
   }
 
@@ -2883,6 +3008,7 @@ export interface InboxItemView {
     | 'decision'
     | 'queued'
     | 'uncertain_write'
+    | 'uncertain_terminal'
     | 'integration'
     | 'check_failed'
     | 'unreviewed'
@@ -2892,4 +3018,6 @@ export interface InboxItemView {
   sessionTitle: string;
   runId: string | null;
   detail: string | null;
+  /** Present only for an uncertain terminal's read-only recovery link. */
+  terminalId?: string;
 }

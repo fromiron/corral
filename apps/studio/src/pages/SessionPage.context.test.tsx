@@ -7,6 +7,7 @@ import {
   type SessionEntry,
   type WorkSession,
 } from '@corral/core';
+import { createRunSession } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -17,8 +18,19 @@ import { appendComposerAttachment, beginAttachmentCapture } from '../workbench/c
 import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import { Composer } from './SessionPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {}, invalidate: vi.fn(async () => {}) }));
+const fixture = vi.hoisted(() => ({
+  services: {},
+  invalidate: vi.fn(async () => {}),
+  profiles: null as import('../workbench/useModels.ts').ProfileInfo[] | null,
+  roles: [] as { profileId: string; name: string }[],
+  materialsRequest: vi.fn(
+    async (_path: string, _body?: unknown): Promise<unknown> => ({ materials: [] }),
+  ),
+}));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../projects-api.ts', () => ({
+  projectRequest: (...args: [string, unknown?]) => fixture.materialsRequest(...args),
+}));
 vi.mock('../router.tsx', () => ({ sessionRoute: {}, runRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#session">{children}</a>,
@@ -40,8 +52,8 @@ vi.mock('../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
 vi.mock('../workbench/useModels.ts', () => ({
-  useModelProfiles: () => null,
-  useTeamRoles: () => [],
+  useModelProfiles: () => fixture.profiles,
+  useTeamRoles: () => fixture.roles,
 }));
 vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
 vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
@@ -56,10 +68,14 @@ vi.mock('../workbench/ImageAttachments.tsx', () => ({
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
-  for (const dispose of disposals.splice(0)) await dispose();
+  for (const dispose of disposals.splice(0).reverse()) await dispose();
   window.localStorage.clear();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  fixture.profiles = null;
+  fixture.roles = [];
+  fixture.materialsRequest.mockReset();
+  fixture.materialsRequest.mockResolvedValue({ materials: [] });
 });
 
 const captured: TextAttachment = {
@@ -129,7 +145,15 @@ async function mount(
   mode: 'server' | 'browser' = 'server',
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  Element.prototype.getAnimations ??= () => [];
+  const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
+  Object.defineProperty(Element.prototype, 'getAnimations', {
+    configurable: true,
+    value: () => [],
+  });
+  disposals.push(async () => {
+    if (animations) Object.defineProperty(Element.prototype, 'getAnimations', animations);
+    else Reflect.deleteProperty(Element.prototype, 'getAnimations');
+  });
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
     media: query,
@@ -140,6 +164,7 @@ async function mount(
     'ResizeObserver',
     class {
       observe() {}
+      unobserve() {}
       disconnect() {}
     },
   );
@@ -157,7 +182,12 @@ async function mount(
     archivedAt: null,
     entries: [],
   };
+  let persistedQueue = initialQueue;
   const repository = {
+    getSession: vi.fn(async () => ({
+      ...session,
+      entries: [...session.entries, ...persistedQueue],
+    })),
     get: vi.fn(async () => ({ ...team, definition: linearCorral(['writer']) })),
     addSessionEntry: vi.fn(async (_sessionId: string, _entry: Partial<SessionEntry>) => ({
       ok: true,
@@ -166,16 +196,25 @@ async function mount(
     updateSessionEntry: vi.fn(async () => ({ ok: true, session })),
   };
   const transport = {
-    getRunDefinition: vi.fn(async () => linearCorral(['writer'])),
+    sendCommand: vi.fn(async (_command: unknown) => ({ error: null })),
     startRun: vi.fn(async (_command: unknown) => ({ runId: 'started', receipt: { error: null } })),
     getSnapshot: vi.fn(async () => ({
       projection: {
-        executionOrder: [],
-        executions: {},
+        executionOrder: ['execution'],
+        executions: {
+          execution: { executionId: 'execution', nodeId: 'writer', status: 'running' },
+        },
         output: { artifactVersionIds: ['result'] },
         artifacts: { result: { name: 'Result', version: 1 } },
       },
     })),
+    getRunDefinition: vi.fn(async () => {
+      const definition = linearCorral(['writer']);
+      return {
+        ...definition,
+        nodes: definition.nodes.map((node) => ({ ...node, label: 'Writer' })),
+      };
+    }),
   };
   const startExplain = vi.fn();
   // a Corral session's turn starts the conversation lead with the Corral as its team.
@@ -184,9 +223,18 @@ async function mount(
     receipt: { error: null },
     autoRoute: null,
   }));
+  const runSessions = new Map<string, ReturnType<typeof createRunSession>>();
   fixture.services = {
     repository,
     transport,
+    runFor: (runId: string) => {
+      const existing = runSessions.get(runId);
+      if (existing) return existing;
+      const created = createRunSession(transport as never);
+      runSessions.set(runId, created);
+      return created;
+    },
+    retainRun: () => () => {},
     startAuto,
     mode,
     live: false,
@@ -198,6 +246,7 @@ async function mount(
   document.body.append(container);
   const root = createRoot(container);
   const render = async (running: RunSummary | null, queued: SessionEntry[]) => {
+    persistedQueue = queued;
     await act(async () =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -400,4 +449,541 @@ it('offers project references in the unified add menu instead of a second toolba
   await act(async () => reference?.click());
   expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('@');
   expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
+});
+
+it('removes a whole-file token without damaging its range or longer paths', async () => {
+  const sessionId = 'exact_file_reference';
+  writeComposerDraft(sessionId, {
+    text: 'Read @README.md @README.md:L1-L3 @README.mdx',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [
+      {
+        id: 'file:readme',
+        kind: 'file',
+        label: 'README.md',
+        reference: { kind: 'file', path: 'README.md' },
+      },
+      {
+        id: 'file:range',
+        kind: 'file',
+        label: 'README.md',
+        lines: { start: 1, end: 3 },
+        reference: { kind: 'file', path: 'README.md', lines: { start: 1, end: 3 } },
+      },
+    ],
+  });
+  const f = await mount(sessionId, null);
+  await f.click('Remove reference README.md');
+  expect(f.container.querySelector('textarea')?.value).toBe('Read @README.md:L1-L3 @README.mdx');
+  await f.click('Remove reference README.md:L1-L3');
+  expect(f.container.querySelector('textarea')?.value).toBe('Read @README.mdx');
+});
+
+it('clears a bare slash on Escape without sending it', async () => {
+  const sessionId = 'slash_escape';
+  const f = await mount(sessionId, null);
+  const input = f.container.querySelector('textarea');
+  expect(input).not.toBeNull();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, '/');
+    input?.setSelectionRange(1, 1);
+    input?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(input?.getAttribute('aria-expanded')).toBe('true');
+  await act(async () =>
+    input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  );
+  expect(input?.value).toBe('');
+  expect(f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(
+    true,
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it('removes one legacy same-name result while preserving the other exact draft reference', async () => {
+  const sessionId = 'legacy_result_identity';
+  const references = ['one', 'two'].map((runId, index) => ({
+    id: `result:${runId}`,
+    kind: 'result' as const,
+    label: 'notes v1',
+    detail: `Run #${index + 1} · Writer`,
+    reference: { kind: 'result' as const, runId, artifactVersionId: 'result' },
+  }));
+  writeComposerDraft(sessionId, {
+    text: 'Compare @"notes v1" @"notes v1"',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references,
+  });
+  const f = await mount(sessionId, null);
+  await f.click('Remove reference "notes v1" · Run #1 · Writer');
+  expect(f.container.querySelector('textarea')?.value).toBe('Compare @"notes v1"');
+  expect(readComposerDraft(sessionId).references).toEqual([references[1]]);
+  expect(
+    f.container.querySelector(
+      'button[aria-label=\'Remove reference "notes v1" · Run #2 · Writer\']',
+    ),
+  ).not.toBeNull();
+});
+
+it('names the viewed and active runs and the queue destination without changing the draft intent', async () => {
+  const sessionId = 'view_old_run';
+  const current = { ...active, runId: 'second', sessionId };
+  const previous = { ...current, runId: 'first', status: 'cancelled' as const };
+  writeComposerDraft(sessionId, {
+    text: 'Later request',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [previous, current], 'first');
+  expect(f.container.querySelector('[data-testid="viewed-run-warning"]')?.textContent).toContain(
+    'Viewing Run #1 while Run #2 is active',
+  );
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
+    'Send to: next run in this session · queue',
+  );
+  expect(readComposerDraft(sessionId).intent).toBe('queue');
+});
+
+it('names the selected run and role for an instruction', async () => {
+  const sessionId = 'instruction_target';
+  const current = { ...active, runId: 'second', sessionId };
+  const f = await mount(
+    sessionId,
+    current,
+    [],
+    [{ ...current, runId: 'first', status: 'cancelled' }, current],
+    'second',
+  );
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
+    'Send to: Run #2 · Writer · #1 · instruction',
+  );
+});
+
+it.each(['cancelled', 'interrupted', 'failed'] as const)(
+  'retries a %s request as a new entry without consuming the current draft or old entry',
+  async (status) => {
+    const sessionId = `retry_${status}`;
+    writeComposerDraft(sessionId, {
+      text: 'Keep this next draft',
+      intent: 'next',
+      target: null,
+      targetLabel: null,
+      references: [],
+      images: [image],
+    });
+    const f = await mount(
+      sessionId,
+      null,
+      [],
+      [{ ...active, runId: 'cancelled', sessionId, status }],
+    );
+    const entry = {
+      ...queuedEntry(captured),
+      entryId: 'original',
+      intent: 'next' as const,
+      state: 'started' as const,
+      runId: 'cancelled',
+      images: [image],
+      permissionMode: 'ask' as const,
+    };
+    // The original entry is repository state, not event-supplied request text.
+    f.session.entries.push(entry);
+    await f.render(null, []);
+    await act(async () =>
+      window.dispatchEvent(
+        new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'original' } }),
+      ),
+    );
+    expect(f.startAuto).toHaveBeenCalledOnce();
+    expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
+      brief: entry.text,
+      references: [captured, image],
+    });
+    expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+      sessionId,
+      expect.objectContaining({
+        intent: 'next',
+        text: entry.text,
+        attachments: [captured],
+        images: [image],
+        runId: 'started',
+      }),
+    );
+    expect(f.repository.updateSessionEntry).not.toHaveBeenCalled();
+    expect(
+      f.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]')?.value,
+    ).toBe('Keep this next draft');
+  },
+);
+
+it('only resends a directive whose delivery record confirms it was not delivered', async () => {
+  const sessionId = 'resend_directive';
+  const f = await mount(sessionId, null);
+  f.session.entries.push({
+    ...queuedEntry(captured),
+    entryId: 'directive',
+    intent: 'steer',
+    state: 'sent',
+    runId: 'ended',
+    commandId: 'steer_command',
+  });
+  for (const status of ['delivered', 'expired']) {
+    f.transport.getSnapshot.mockResolvedValue({
+      projection: { directives: { directive: { commandId: 'steer_command', status } } },
+    } as never);
+    await f.render(null, []);
+    await act(async () =>
+      window.dispatchEvent(
+        new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'directive' } }),
+      ),
+    );
+    expect(f.startAuto).toHaveBeenCalledTimes(status === 'delivered' ? 0 : 1);
+  }
+  expect(f.repository.updateSessionEntry).not.toHaveBeenCalled();
+});
+
+it('resend cannot overwrite the receipt of an unrelated request whose answer was lost', async () => {
+  const sessionId = 'retry_uncertain';
+  writeComposerDraft(sessionId, {
+    text: 'Uncertain current request',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(
+    sessionId,
+    null,
+    [],
+    [{ ...active, runId: 'cancelled', sessionId, status: 'cancelled' }],
+  );
+  f.session.entries.push({
+    ...queuedEntry(captured),
+    entryId: 'original',
+    intent: 'next',
+    state: 'started',
+    runId: 'cancelled',
+  });
+  await f.render(null, []);
+  f.startAuto.mockRejectedValueOnce(new Error('Response lost'));
+  await f.click('Send');
+  expect(f.startAuto).toHaveBeenCalledOnce();
+  await act(async () =>
+    window.dispatchEvent(
+      new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'original' } }),
+    ),
+  );
+  expect(f.startAuto).toHaveBeenCalledOnce();
+  expect(f.container.textContent).toContain('Resolve the previous request');
+});
+
+it('a late directive lookup cannot resend after another run starts', async () => {
+  const sessionId = 'resend_late';
+  const f = await mount(sessionId, null);
+  f.session.entries.push({
+    ...queuedEntry(captured),
+    entryId: 'directive',
+    intent: 'steer',
+    state: 'sent',
+    runId: 'ended',
+    commandId: 'steer_command',
+  });
+  let resolve!: (value: never) => void;
+  f.transport.getSnapshot.mockReturnValue(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  await f.render(null, []);
+  await act(async () =>
+    window.dispatchEvent(
+      new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'directive' } }),
+    ),
+  );
+  await f.render(active, []);
+  await act(async () =>
+    resolve({
+      projection: { directives: { directive: { commandId: 'steer_command', status: 'expired' } } },
+    } as never),
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it.each(['retry', 'queue', 'auto'] as const)(
+  '%s starts a saved request once despite an unrelated stale instruction draft',
+  async (path) => {
+    const sessionId = `stale_steer_${path}`;
+    const draft = {
+      text: 'Keep this  unsent instruction',
+      intent: 'steer' as const,
+      target: 'execution',
+      targetLabel: 'Writer',
+      references: [],
+      images: [image],
+    };
+    writeComposerDraft(sessionId, draft);
+    const run: RunSummary = {
+      ...active,
+      sessionId,
+      status: path === 'auto' ? 'running' : 'cancelled',
+    };
+    const queued = queuedEntry(captured);
+    const f = await mount(
+      sessionId,
+      path === 'auto' ? run : null,
+      path === 'retry' ? [] : [queued],
+      [run],
+      run.runId,
+    );
+    if (path === 'retry') {
+      f.session.entries.push({
+        ...queued,
+        entryId: 'retry',
+        intent: 'next',
+        state: 'started',
+        runId: run.runId,
+      });
+      await f.render(null, []);
+      await act(async () =>
+        window.dispatchEvent(
+          new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'retry' } }),
+        ),
+      );
+    } else if (path === 'queue') {
+      await f.click('Start now');
+    } else {
+      const automatic = f.container.querySelector<HTMLButtonElement>('[role="switch"]');
+      expect(automatic).not.toBeNull();
+      await act(async () => automatic?.click());
+      expect(automatic?.getAttribute('aria-checked')).toBe('true');
+      run.status = 'succeeded';
+      await f.render(null, [queued]);
+    }
+    expect(f.startAuto).toHaveBeenCalledOnce();
+    expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
+      brief: queued.text,
+      references: [captured],
+    });
+    expect(readComposerDraft(sessionId)).toEqual(draft);
+    expect(f.container.querySelector('textarea')?.value).toBe(draft.text);
+  },
+);
+
+it('still blocks a saved request when its live team model is disconnected', async () => {
+  const sessionId = 'saved_request_disconnected';
+  writeComposerDraft(sessionId, {
+    text: 'Unrelated stale instruction',
+    intent: 'steer',
+    target: 'ended',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const queued = queuedEntry(captured);
+  const run: RunSummary = { ...active, sessionId, status: 'cancelled' };
+  const f = await mount(sessionId, null, [queued], [run]);
+  fixture.profiles = [];
+  fixture.roles = [{ profileId: 'missing', name: 'Writer' }];
+  (fixture.services as { live: boolean }).live = true;
+  f.session.entries.push({
+    ...queued,
+    entryId: 'retry',
+    intent: 'next',
+    state: 'started',
+    runId: run.runId,
+  });
+  await f.render(null, [queued]);
+  const start = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent === 'Start now',
+  );
+  expect(start?.disabled).toBe(true);
+  await act(async () =>
+    window.dispatchEvent(
+      new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'retry' } }),
+    ),
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
+  expect(readComposerDraft(sessionId).text).toBe('Unrelated stale instruction');
+});
+
+it('explicitly attaches a selected project material version and records that snapshot in the request', async () => {
+  const attachment = createTextAttachment(
+    'Coding style v1',
+    'text/plain',
+    'Use strict TypeScript.',
+  );
+  fixture.materialsRequest.mockImplementation(async (path, body) => {
+    if (path.endsWith('/attachment')) {
+      expect(body).toEqual({ id: 'material_style', revision: 1 });
+      return { attachment };
+    }
+    return {
+      materials: [
+        {
+          id: 'material_style',
+          projectId: 'project',
+          kind: 'instructions',
+          name: 'Coding style',
+          revision: 1,
+          text: attachment.text,
+        },
+      ],
+    };
+  });
+  writeComposerDraft('material_request', {
+    text: 'Review my code',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount('material_request', null);
+  expect(readComposerDraft('material_request').attachments).toBeUndefined();
+  await selectMaterial(f);
+  expect(readComposerDraft('material_request').attachments).toEqual([attachment]);
+  await f.click('Send');
+  expect(f.startAuto).toHaveBeenCalledWith(
+    expect.objectContaining({ references: [attachment], brief: 'Review my code' }),
+    expect.anything(),
+  );
+  expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+    'material_request',
+    expect.objectContaining({ attachments: [attachment] }),
+  );
+});
+
+async function selectMaterial(f: Awaited<ReturnType<typeof mount>>) {
+  await act(async () => {
+    f.container.querySelector<HTMLButtonElement>('button[aria-label="Attachments"]')?.click();
+    await new Promise(requestAnimationFrame);
+  });
+  const attachMaterial = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (node) => node.textContent?.startsWith('Attach instructions or memory'),
+  );
+  expect(attachMaterial).toBeDefined();
+  await act(async () => attachMaterial?.click());
+  const picker = document.querySelector<HTMLButtonElement>(
+    'button[role="combobox"][aria-label="Attach project instructions or memory to this request"]',
+  );
+  expect(picker).not.toBeNull();
+  await act(async () => picker?.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+    node.textContent?.includes('Coding style'),
+  );
+  expect(option).toBeDefined();
+  await act(async () => option?.click());
+}
+
+it('ignores completion from a dismissed picker while its replacement is still loading', async () => {
+  const attachment = createTextAttachment(
+    'Coding style v1',
+    'text/plain',
+    'Use strict TypeScript.',
+  );
+  const pending: ((value: unknown) => void)[] = [];
+  fixture.materialsRequest.mockImplementation(async (path) => {
+    if (path.endsWith('/attachment')) return new Promise((resolve) => pending.push(resolve));
+    return {
+      materials: [
+        {
+          id: 'style',
+          projectId: 'project',
+          kind: 'instructions',
+          name: 'Coding style',
+          revision: 1,
+          text: attachment.text,
+        },
+      ],
+    };
+  });
+  const id = 'cancelled_material';
+  writeComposerDraft(id, {
+    text: 'Keep my request',
+    intent: 'next',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(id, null);
+  await selectMaterial(f);
+  expect(pending).toHaveLength(1);
+  await act(async () =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  );
+  await selectMaterial(f);
+  expect(pending).toHaveLength(2);
+  await act(async () => pending[0]?.({ attachment }));
+  expect(f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(
+    true,
+  );
+  expect(readComposerDraft(id).attachments).toBeUndefined();
+  await act(async () => pending[1]?.({ attachment }));
+  expect(f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.disabled).toBe(
+    false,
+  );
+  expect(readComposerDraft(id)).toMatchObject({
+    text: 'Keep my request',
+    attachments: [attachment],
+  });
+});
+
+it('browsing an older run does not change the active instruction destination', async () => {
+  const sessionId = 'historical_view_current_destination';
+  const current = { ...active, runId: 'second', sessionId };
+  const previous = { ...current, runId: 'first', status: 'cancelled' as const };
+  writeComposerDraft(sessionId, {
+    text: 'Check edge cases',
+    intent: 'steer',
+    target: 'execution',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [previous, current], 'first');
+  expect(f.transport.getSnapshot).toHaveBeenCalledWith('second');
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toContain(
+    'Run #2',
+  );
+  await f.click('Send');
+  expect(f.transport.sendCommand).toHaveBeenCalledWith(
+    expect.objectContaining({
+      runId: 'second',
+      type: 'steer',
+      payload: expect.objectContaining({
+        targetExecutionId: 'execution',
+        text: 'Check edge cases',
+      }),
+    }),
+  );
+  expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it('two independent composers use one queued identity and a conflicting loser cannot overwrite the entry', async () => {
+  const queued = queuedEntry(captured);
+  const first = await mount('two_tabs', null, [queued]);
+  const second = await mount('two_tabs', null, [queued]);
+  first.startAuto.mockRejectedValueOnce(new Error('response lost'));
+  await first.click('Start now');
+  second.startAuto.mockResolvedValueOnce({
+    runId: null,
+    receipt: {
+      error: { code: 'IDEMPOTENCY_CONFLICT', message: 'Already started with another choice' },
+    },
+    autoRoute: null,
+  } as never);
+  await second.click('Start now');
+  expect(second.startAuto.mock.calls[0]?.[0]).toMatchObject({
+    commandId: (first.startAuto.mock.calls[0]?.[0] as { commandId: string } | undefined)?.commandId,
+  });
+  expect(second.repository.updateSessionEntry).not.toHaveBeenCalled();
+  second.repository.getSession.mockResolvedValueOnce({
+    ...second.session,
+    entries: [{ ...queued, state: 'started', runId: 'winner' }],
+  });
+  await second.click('Start now');
+  expect(second.startAuto).toHaveBeenCalledTimes(1);
 });

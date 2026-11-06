@@ -11,6 +11,7 @@ import {
 } from '@corral/contracts';
 import type { Channel } from './channel.ts';
 import type { EndpointSpec } from './endpoint.ts';
+import { providerFailure } from './ported/dsh/retry.ts';
 import {
   LEGACY_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
@@ -658,16 +659,30 @@ class WorkerExecution {
           text: frame.text,
         });
         return;
-      case 'settled':
+      case 'settled': {
+        const failure = providerFailure(frame.error);
+        const cause =
+          failure.status !== null
+            ? `HTTP ${failure.status} (${failure.code})`
+            : failure.code !== 'UNKNOWN'
+              ? failure.code
+              : null;
         this.pendingSettlement = {
           outcome: frame.outcome,
           ...(frame.finalTextModelCallId
             ? { finalTextModelCallId: frame.finalTextModelCallId }
             : {}),
-          ...(frame.error ? { error: 'the model worker reported a request failure' } : {}),
+          ...(frame.error
+            ? {
+                error: cause
+                  ? `the model request failed: ${cause}`
+                  : 'the model worker reported a request failure',
+              }
+            : {}),
         };
         this.waitForExit();
         return;
+      }
     }
   }
 }

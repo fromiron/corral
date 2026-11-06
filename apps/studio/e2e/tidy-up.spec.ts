@@ -38,6 +38,7 @@ test('Tidy up rearranges a messy canvas, and one Undo puts it back', async ({ pa
     .filter({ hasText: 'Research team' })
     .getByRole('button', { name: 'Edit this team' })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
   // Pile the Research node onto the Output.
   const output = await page.locator('.react-flow__node[data-id="output"]').boundingBox();

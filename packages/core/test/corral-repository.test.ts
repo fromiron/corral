@@ -104,3 +104,28 @@ describe('key-value corral repository', () => {
     await expect(repo.get(created.record.corralId)).rejects.toThrow(/cannot be read/);
   });
 });
+
+it('preserves structured refusal diagnostics when a session is reopened', async () => {
+  const { repo } = setup();
+  const made = await repo.createSession({ projectId: 'default', title: 'diagnostics' });
+  if (!made.ok) throw new Error(made.message);
+  const refusal = {
+    code: 'RUN_ALREADY_ACTIVE' as const,
+    message: 'termination unconfirmed',
+    owner: {
+      kind: 'terminal' as const,
+      id: 'owner',
+      sessionId: made.session.sessionId,
+      state: 'uncertain' as const,
+    },
+  };
+  const appended = await repo.addSessionEntry(made.session.sessionId, {
+    intent: 'next',
+    text: 'try',
+    state: 'refused',
+    detail: refusal.message,
+    refusal,
+  });
+  expect(appended.ok).toBe(true);
+  expect((await repo.getSession(made.session.sessionId))?.entries[0]?.refusal).toEqual(refusal);
+});

@@ -107,8 +107,11 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   ).toBe(1);
   expect(await savedCorrals(page)).toEqual([]);
 
+  // Reload keeps both the session identity and explicit conversation intent (compose=true).
+  const beforeReload = new URL(page.url());
+  expect(beforeReload.pathname).toBe(path);
   await page.reload();
-  await expect(page).toHaveURL(new RegExp(`${path}$`));
+  await expect(page).toHaveURL(beforeReload.href);
   await expect(page.getByTestId('chat-timeline')).toContainText(prompt);
   expect((await session(page)).title).toBe(prompt);
   await expect(page.getByTestId('chat-result')).toContainText(
@@ -168,6 +171,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team', exact: true })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   const saved = await savedCorrals(page);
   expect(saved).toHaveLength(1);

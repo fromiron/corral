@@ -47,9 +47,12 @@ export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
   ];
   return (
     <>
-      <span data-testid="composer-stats" className="tabular-nums">
-        {parts.join(' · ')}
-      </span>
+      <details data-testid="composer-stats" className="tabular-nums">
+        <summary className="cursor-pointer">
+          {t('statSession')} · {parts.join(' · ')}
+        </summary>
+        <p className="mt-1 max-w-prose text-muted-foreground">{t('statDefinition')}</p>
+      </details>
       <span aria-hidden="true">·</span>
     </>
   );

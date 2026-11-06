@@ -82,6 +82,13 @@ const enLeaves = leaves(en as Tree);
 const koLeaves = leaves(ko as Tree);
 
 describe('Korean messages (UX-A5)', () => {
+  it.each([0, 1, 2])('formats the checkpoint restore file count %i', (count) => {
+    const t = createTranslator({ locale: 'en', messages: en });
+    expect(t('Checkpoints.restoreExplain', { count })).toContain(
+      `Restore ${count} changed ${count === 1 ? 'file in' : 'files in'}`,
+    );
+  });
+
   it('has every English key and no other', () => {
     expect([...koLeaves.keys()].sort()).toEqual([...enLeaves.keys()].sort());
   });

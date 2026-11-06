@@ -79,7 +79,7 @@ test('saving a layout move bumps only the layout revision, and survives reload',
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
   await expect(page.getByText('● Unsaved changes', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByTestId('revisions')).toHaveText('Definition r2 · Layout r2');
+  await expect(page.getByTestId('revisions')).toHaveText('Team version 2 · Layout version 2');
 
   const node = page.locator('.react-flow__node[data-id="agent_1"]');
   const before = await node.boundingBox();
@@ -91,11 +91,11 @@ test('saving a layout move bumps only the layout revision, and survives reload',
   await page.mouse.up();
   await expect(page.getByText('Unsaved changes')).toBeVisible();
   await page.keyboard.press('Control+s');
-  await expect(page.getByTestId('revisions')).toHaveText('Definition r2 · Layout r3');
+  await expect(page.getByTestId('revisions')).toHaveText('Team version 2 · Layout version 3');
 
   await page.reload();
   await expect(page.locator('.react-flow__node')).toHaveCount(2);
-  await expect(page.getByTestId('revisions')).toHaveText('Definition r2 · Layout r3');
+  await expect(page.getByTestId('revisions')).toHaveText('Team version 2 · Layout version 3');
   const after = await page.locator('.react-flow__node[data-id="agent_1"]').boundingBox();
   expect(after?.y).not.toBe(before?.y);
 });
@@ -169,7 +169,7 @@ test('the workspace and editor have no serious automated accessibility violation
   const serious = async () =>
     (await new AxeBuilder({ page }).analyze()).violations
       .filter((v) => v.impact === 'serious' || v.impact === 'critical')
-      .map((v) => `${v.id}: ${v.nodes.length} nodes`);
+      .map((v) => ({ rule: v.id, targets: v.nodes.map((node) => node.target) }));
   expect(await serious()).toEqual([]);
 
   await page.getByRole('tab', { name: /^Teams/ }).click();

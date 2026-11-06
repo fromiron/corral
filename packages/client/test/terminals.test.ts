@@ -146,3 +146,48 @@ it('keeps the terminal frame bound even for an unexpected domain event', async (
   expect(fetcher).toHaveBeenCalledTimes(1);
   expect(errors).toHaveLength(1);
 });
+
+it('preserves Retry-After on a definitely rejected terminal input', async () => {
+  const api = new TerminalsApi({
+    baseUrl: '',
+    fetch: async (url) =>
+      String(url).endsWith('/session')
+        ? Response.json({ csrfToken: 'csrf' })
+        : Response.json(
+            { error: { code: 'LIMIT_REACHED', message: 'too fast' } },
+            { status: 429, headers: { 'retry-after': '1' } },
+          ),
+  });
+  await expect(
+    api.input('session', 'terminal', {
+      ...identity,
+      attachmentId: 'view',
+      controllerGeneration: 1,
+      sequence: 1,
+      data: 'x',
+    }),
+  ).rejects.toMatchObject({ status: 429, retryAfterMs: 1000 });
+});
+
+it('retains validated terminal ownership metadata on HTTP refusals', async () => {
+  const owner = { kind: 'terminal', id: 'terminal', sessionId: 'session', state: 'uncertain' };
+  const api = new TerminalsApi({
+    baseUrl: '',
+    fetch: async (url) =>
+      String(url).endsWith('/session')
+        ? Response.json({ csrfToken: 'csrf' })
+        : Response.json(
+            { error: { code: 'RUN_ALREADY_ACTIVE', message: 'termination unconfirmed', owner } },
+            { status: 409 },
+          ),
+  });
+  await expect(
+    api.create('session', {
+      target: identity.target,
+      operationId: 'new',
+      shellId: 'bash',
+      cols: 80,
+      rows: 24,
+    }),
+  ).rejects.toMatchObject({ code: 'RUN_ALREADY_ACTIVE', owner });
+});

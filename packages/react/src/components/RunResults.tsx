@@ -31,11 +31,13 @@ type Format = 'document' | 'source' | 'preview';
  */
 export function RunResults({
   session,
+  runNumber,
   selectedId,
   onSelect,
   previewUrl,
 }: {
   session: RunSessionStore;
+  runNumber?: number;
   /** The chosen version (from the address); null opens the first final result. */
   selectedId: string | null;
   onSelect: (artifactVersionId: string) => void;
@@ -44,6 +46,7 @@ export function RunResults({
   onStartFrom?: (from: { runId: string; artifactVersionId: string; label: string }) => void;
 }) {
   const t = useTranslations('Results');
+  const tw = useTranslations('Workbench');
   const targetText = useTranslations('RunPage');
   const projection = useRunDisplay(session, (s) => s.projection);
   const currentProjection = useStore(session, (s) => s.projection);
@@ -70,6 +73,11 @@ export function RunResults({
           aria-label={t('label')}
           className="flex max-h-40 shrink-0 flex-col gap-3 overflow-auto border-b border-line p-3 @3xl:max-h-none @3xl:w-72 @3xl:border-r @3xl:border-b-0"
         >
+          {runNumber ? (
+            <p className="text-xs text-muted-foreground">
+              {tw('runNumber', { number: runNumber })}
+            </p>
+          ) : null}
           {current.length === 0 && selectedId === null ? (
             <p role="status" className="text-caption text-muted-foreground">
               {t('noCurrentResult')}
@@ -120,11 +128,23 @@ function ResultSection({ heading, children }: { heading: string; children: React
   );
 }
 
-function useAuthorLabel(session: RunSessionStore, executionId: string): string {
-  const nodeId = useRunDisplay(session, (s) => s.projection?.executions[executionId]?.nodeId);
-  return useStore(session, (s) =>
+function useAuthorLabel(session: RunSessionStore, item: ResultItem): string {
+  const t = useTranslations('Results');
+  const nodeId = useRunDisplay(
+    session,
+    (s) => s.projection?.executions[item.authorExecutionId]?.nodeId,
+  );
+  const name = useStore(session, (s) =>
     nodeId ? (s.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId) : '',
   );
+  return [
+    name,
+    item.authorExecutionNumber
+      ? t('authorExecution', { number: item.authorExecutionNumber })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function ResultButton({
@@ -140,7 +160,7 @@ function ResultButton({
 }) {
   const t = useTranslations('Results');
   const ta = useTranslations('Artifact');
-  const author = useAuthorLabel(session, item.authorExecutionId);
+  const author = useAuthorLabel(session, item);
   const button = (
     <Button
       type="button"
@@ -189,7 +209,7 @@ export function ResultReader({
   const status = projection?.status ?? 'created';
   const canLoad = Boolean(projection?.artifacts[id]) && canReadArtifactBody(currentProjection, id);
   const text = useStore(session, (s) => s.artifactTexts[id]);
-  const author = useAuthorLabel(session, item.authorExecutionId);
+  const author = useAuthorLabel(session, item);
   const [failed, setFailed] = useState(false);
   const [chosenFormat, setFormat] = useState<Format | null>(null);
   const [copied, setCopied] = useState(false);

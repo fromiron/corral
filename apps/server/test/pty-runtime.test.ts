@@ -9,13 +9,22 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { WorkbenchOperations } from '../src/files/workbench-operations.ts';
 import { WorkspaceAccessStore } from '../src/files/workspace-access.ts';
 import { PtyRuntime } from '../src/processes/pty.ts';
+import type { PtyLaunchEvidence } from '../src/processes/pty-session.ts';
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-function setup(options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number } = {}) {
+function setup(
+  options: {
+    prepare?: Gate;
+    cleanup?: Gate;
+    capture?: Gate;
+    historyBytes?: number;
+    captureFails?: boolean;
+  } = {},
+) {
   const path = mkdtempSync(join(tmpdir(), 'corral-pty-test-'));
   const db = openDatabase(':memory:');
   const operations = new WorkbenchOperations(db, new FakeClock());
@@ -56,6 +65,8 @@ function setup(options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number 
     await options.cleanup?.wait();
     return true;
   });
+  const cleanupLaunch = vi.fn(async (_evidence: PtyLaunchEvidence) => !options.captureFails);
+  const bootId = vi.fn(() => 'boot');
   const runtimeOptions = {
     operations,
     target: () => ({ target: request.target, path, writable: true }),
@@ -65,8 +76,26 @@ function setup(options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number 
     },
     shells: async () => [{ id: 'bash' as const, label: 'Bash', executable: '/bin/bash' }],
     spawn,
-    capture: () => ({ pid: 123, bootId: 'boot', startTicks: '42', sessionId: 123, owner: 'owner' }),
+    bootId,
+    observeLaunch: (pid: number, owner: string, bootId: string) => ({
+      pid,
+      owner,
+      bootId,
+      startTicks: '42',
+    }),
+    capture: () => {
+      if (options.captureFails) throw new Error('session ownership unavailable');
+      const identity = {
+        pid: 123,
+        bootId: 'boot',
+        startTicks: '42',
+        sessionId: 123,
+        owner: 'owner',
+      };
+      return options.capture ? options.capture.wait().then(() => identity) : identity;
+    },
     cleanup,
+    cleanupLaunch,
     newGeneration: () => 'generation_1',
     historyBytes: options.historyBytes,
   };
@@ -91,11 +120,80 @@ function setup(options: { prepare?: Gate; cleanup?: Gate; historyBytes?: number 
     child,
     spawn,
     cleanup,
+    cleanupLaunch,
+    bootId,
     identity,
     data: (chunk: string) => data(chunk),
     exit: () => exit({ exitCode: 0 }),
   };
 }
+
+it('does not admit input while the spawned child is still establishing its PTY identity', async () => {
+  const capture = new Gate();
+  const s = setup({ capture });
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  try {
+    expect(s.runtime.get('session', 'terminal_1').state).toBe('starting');
+    expect(() =>
+      s.runtime.control('session', 'terminal_1', {
+        ...s.identity,
+        action: 'claim',
+        attachmentId: 'view_1',
+        expectedGeneration: 0,
+        takeover: false,
+      }),
+    ).toThrow(/not running/);
+  } finally {
+    capture.open();
+  }
+});
+
+it('a readiness rejection after explicit Stop cannot turn cancellation into startup failure', async () => {
+  const s = setup();
+  let rejectCapture!: (error: Error) => void;
+  s.runtimeOptions.capture = () =>
+    new Promise<never>((_resolve, reject) => {
+      rejectCapture = reject;
+    });
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  await s.runtime.stop('session', 'terminal_1', s.identity);
+  rejectCapture(new Error('process disappeared while waiting for readiness'));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(s.runtime.get('session', 'terminal_1')).toMatchObject({
+    state: 'exited',
+    stopped: true,
+    error: null,
+  });
+  expect(s.runtime.get('session', 'terminal_1').diagnostic).toBeUndefined();
+  expect(s.operations.get('terminal_1')?.state).toBe('cancelled');
+});
+
+it('records a child exit during readiness before the capture promise rejects', async () => {
+  const s = setup();
+  let rejectCapture!: (error: Error) => void;
+  s.runtimeOptions.capture = () =>
+    new Promise<never>((_resolve, reject) => {
+      rejectCapture = reject;
+    });
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  s.exit();
+  rejectCapture(new Error('child already exited'));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await s.runtime.close();
+  expect(s.runtime.get('session', 'terminal_1')).toMatchObject({
+    state: 'failed',
+    exitCode: 0,
+    diagnostic: { phase: 'startup', code: 'process_exited' },
+  });
+  expect(s.operations.get('terminal_1')).toMatchObject({
+    state: 'failed',
+    result: { startupDiagnostic: { phase: 'startup', code: 'process_exited' } },
+  });
+  expect(s.access.ownersAt(s.path)).toHaveLength(0);
+});
 
 it('duplicate create keeps one writer and cancellation during preparation prevents spawn', async () => {
   const prepare = new Gate();
@@ -295,4 +393,122 @@ it('restoring an existing owner above the cap keeps new admission blocked after 
     await restarted.close();
     for (const permit of permits) permit.releaseConfirmed();
   }
+});
+
+it('records explicit stop separately from a shell exit code of zero', async () => {
+  const s = setup();
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  const stopped = await s.runtime.stop('session', 'terminal_1', s.identity);
+  s.exit();
+  expect(stopped.state).toBe('exited');
+  expect(s.runtime.get('session', 'terminal_1')).toMatchObject({
+    stopped: true,
+    exitCode: 0,
+  });
+  expect(s.operations.get('terminal_1')?.state).toBe('cancelled');
+});
+
+it('missing process identity remains uncertain across stop and restart with an explicit reason', async () => {
+  const s = setup({ captureFails: true });
+  const first = await s.runtime.create('session', s.request);
+  const uncertain = new Gate();
+  const stream = s.runtime.subscribe(
+    'session',
+    first.terminalId,
+    { generation: first.generation, afterSeq: 0 },
+    (event) => {
+      if (event.type === 'status' && event.terminal.state === 'uncertain') uncertain.open();
+    },
+  );
+  await uncertain.wait();
+  stream.close();
+  expect(s.child.kill).not.toHaveBeenCalled();
+  expect(s.cleanup).not.toHaveBeenCalled();
+  expect(s.cleanupLaunch).toHaveBeenCalledWith({
+    pid: 123,
+    bootId: 'boot',
+    startTicks: '42',
+    owner: 'generation_1',
+  });
+  expect(s.operations.get(first.terminalId)?.result).toMatchObject({
+    launch: { pid: 123, bootId: 'boot', startTicks: '42', owner: 'generation_1' },
+    startupDiagnostic: { phase: 'startup', code: 'startup_failed' },
+  });
+  const stopped = await s.runtime.stop('session', first.terminalId, s.identity);
+  expect(stopped.state).toBe('uncertain');
+  expect(stopped.error).toContain('unconfirmed');
+  expect(s.access.ownersAt(s.path)).toHaveLength(1);
+  expect(() => s.access.acquire({ kind: 'run', id: 'run' }, 'session', s.path, true, 1)).toThrow(
+    /writer/,
+  );
+  s.operations.recover();
+  const restarted = new PtyRuntime(s.runtimeOptions);
+  expect((await restarted.stop('session', first.terminalId, s.identity)).state).toBe('uncertain');
+  expect(s.access.ownersAt(s.path)).toHaveLength(1);
+  s.cleanupLaunch.mockResolvedValue(true);
+  expect((await restarted.stop('session', first.terminalId, s.identity)).state).toBe('exited');
+  expect(s.access.ownersAt(s.path)).toHaveLength(0);
+  expect(s.operations.get(first.terminalId)?.result).toMatchObject({
+    startupDiagnostic: { phase: 'startup', code: 'startup_failed' },
+  });
+  await s.runtime.stop('session', first.terminalId, s.identity);
+  await restarted.close();
+});
+
+it('records a legacy recovery boot before allowing a later verified OS restart to release ownership', async () => {
+  const s = setup({ captureFails: true });
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  await s.runtime.stop('session', 'terminal_1', s.identity);
+  const stored = s.operations.get('terminal_1')?.result as { terminal: unknown };
+  s.db
+    .prepare('UPDATE workbench_operations SET result_json=? WHERE operation_id=?')
+    .run(JSON.stringify({ kind: 'terminal', terminal: stored.terminal }), 'terminal_1');
+  s.cleanupLaunch.mockImplementation(async (evidence) => evidence.bootId !== s.bootId());
+  const restarted = new PtyRuntime(s.runtimeOptions);
+  const first = await restarted.stop('session', 'terminal_1', s.identity);
+  expect(first.state).toBe('uncertain');
+  expect(first.diagnostic).toEqual({ phase: 'recovery', code: 'host_restart_required' });
+  expect(s.operations.get('terminal_1')?.result).toMatchObject({
+    launch: { bootId: 'boot', owner: 'generation_1' },
+  });
+  expect(s.access.ownersAt(s.path)).toHaveLength(1);
+  const again = new PtyRuntime(s.runtimeOptions);
+  expect((await again.stop('session', 'terminal_1', s.identity)).state).toBe('uncertain');
+  s.bootId.mockReturnValue('new-boot');
+  expect((await again.stop('session', 'terminal_1', s.identity)).state).toBe('exited');
+  expect(s.access.ownersAt(s.path)).toHaveLength(0);
+  await restarted.stop('session', 'terminal_1', s.identity);
+  await s.runtime.stop('session', 'terminal_1', s.identity);
+  await restarted.close();
+  await again.close();
+});
+
+it('cannot overwrite recovery evidence for another generation or a settled terminal receipt', async () => {
+  const s = setup();
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  const saved = s.operations.get('terminal_1')?.result;
+  expect(s.operations.updateTerminalEvidence('terminal_1', 'another-generation', saved)).toBe(
+    false,
+  );
+  await s.runtime.stop('session', 'terminal_1', s.identity);
+  expect(s.operations.updateTerminalEvidence('terminal_1', 'generation_1', saved)).toBe(false);
+  expect(s.operations.get('terminal_1')?.state).toBe('cancelled');
+});
+
+it('restores stopped status from legacy cancelled receipts without that display field', async () => {
+  const s = setup();
+  await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  await s.runtime.stop('session', 'terminal_1', s.identity);
+  const result = s.operations.get('terminal_1')?.result as { terminal: { stopped?: boolean } };
+  delete result.terminal.stopped;
+  s.db
+    .prepare('UPDATE workbench_operations SET result_json=? WHERE operation_id=?')
+    .run(JSON.stringify(result), 'terminal_1');
+  const restarted = new PtyRuntime(s.runtimeOptions);
+  expect(restarted.get('session', 'terminal_1')).toMatchObject({ state: 'exited', stopped: true });
+  await restarted.close();
 });

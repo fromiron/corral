@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { requestBox } from '../workbench.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -65,7 +65,6 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await corral.open('/');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  const url = page.url();
   const model = page.getByRole('button', { name: 'Model', exact: true });
   await model.click();
   const settings = page.getByRole('dialog', { name: 'Model settings', exact: true });
@@ -94,6 +93,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
     ),
   });
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
+  const url = page.url();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/settings=general/);
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
@@ -127,6 +127,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   ).toBe(true);
   await expect(question).toBeVisible();
   await question.getByRole('button', { name: 'Send answer' }).click();
+  await panelTab(page, 'Conversation');
   await expect(page.getByTestId('chat-result')).toContainText('Attachment verified');
   await expect.poll(() => current().projection.status).toBe('succeeded');
   await page.getByRole('tab', { name: 'Conversation', exact: true }).click();

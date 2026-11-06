@@ -12,6 +12,7 @@ import {
   RunDecisionSettings,
 } from './decisions.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
+import { ErrorCode } from './errors.ts';
 import {
   CompactionReport,
   ContentHash,
@@ -565,6 +566,7 @@ export const ToolFinished = event(
     toolCallId: Identifier,
     resultRef: Identifier.nullable(),
     error: z.string().min(1).nullable(),
+    errorCode: ErrorCode.optional(),
     progressHash: ContentHash.optional(),
   }),
 );
@@ -891,7 +893,7 @@ export const RUN_EVENT_TYPES: readonly RunEventType[] = RunEvent.options.map(
   (option) => option.shape.type.value,
 );
 
-/** Transient text delta. Never persisted, never part of the projection. */
+/** Transient text delta, never part of the projection. A bounded private display prefix may be saved. */
 export interface StreamFrame {
   runId: string;
   modelCallId: string;

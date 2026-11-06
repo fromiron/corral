@@ -3,10 +3,34 @@ import { createTextAttachment } from '@corral/core';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import { TextAttachmentPicker } from './TextAttachments.tsx';
+import { TextAttachmentList, TextAttachmentPicker } from './TextAttachments.tsx';
 
 vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
 afterEach(() => vi.unstubAllGlobals());
+
+it('keeps the sent attachment name visible and its complete hash inside the closed details', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const attachment = createTextAttachment('review.md', 'text/markdown', 'Original review body.');
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TextAttachmentList attachments={[attachment]} />));
+    const details = container.querySelector('details');
+    const summary = details?.querySelector('summary');
+    expect(summary?.textContent).toContain('review.md');
+    expect(summary?.textContent).toContain(`${attachment.bytes} B`);
+    expect(summary?.textContent).not.toContain(attachment.sha256.slice(0, 12));
+    expect(details?.open).toBe(false);
+    expect(details?.textContent).toContain(attachment.sha256);
+    expect(container.querySelector('pre')?.textContent).toBe(attachment.text);
+    await act(async () => summary?.click());
+    expect(details?.open).toBe(true);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
 
 it('a file upload with identical text preserves a captured source with different provenance', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);

@@ -21,6 +21,21 @@ function setup() {
 }
 
 describe('immutable harness revisions (H3)', () => {
+  it('shows the current project name for a usage while retaining its pinned revision', () => {
+    const { db, store } = setup();
+    db.prepare('UPDATE projects SET name = ? WHERE id = ?').run('Evidence project', 'default');
+    store.saveProfile('writing', 0, profile);
+    const binding = { profileId: 'writing', revision: 1 };
+    store.setDefault('project', 'default', 0, binding);
+    store.saveProfile('writing', 1, { ...profile, name: 'Latest writing' });
+    expect(store.profileViews()[0]?.usages).toEqual([
+      { id: 'project:default', scope: 'project', name: 'Evidence project', revision: 1 },
+    ]);
+    db.prepare('UPDATE projects SET name = ? WHERE id = ?').run('Renamed project', 'default');
+    expect(store.profileViews()[0]?.usages[0]?.name).toBe('Renamed project');
+    expect(store.getDefault('project', 'default').binding).toEqual(binding);
+  });
+
   it('stores a new revision without changing a bound old revision, including after reopening the repository', () => {
     const { db, store } = setup();
     const first = store.saveProfile('writing', 0, profile);

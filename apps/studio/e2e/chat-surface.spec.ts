@@ -14,7 +14,9 @@ async function completedConversation(page: Page) {
     ).join('\n'),
   );
   await input.press('Control+Enter');
-  await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
+  await expect(
+    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: true }),
+  ).toBeVisible();
 }
 
 test('SURFACE-02 narrow summary stays accessible and opening details selects its area', async ({

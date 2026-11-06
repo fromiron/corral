@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Identifier } from './ids.ts';
 
 // API-Contract §3. Added in implementation: TARGET_NOT_FOUND (unknown target),
 // COMMAND_NOT_SUPPORTED (valid command whose runtime support arrives in a later phase) and
@@ -34,5 +35,13 @@ export type ErrorCode = z.infer<typeof ErrorCode>;
 export const CommandError = z.strictObject({
   code: ErrorCode,
   message: z.string().min(1),
+  owner: z
+    .strictObject({
+      kind: z.literal('terminal'),
+      id: Identifier,
+      sessionId: Identifier,
+      state: z.enum(['active', 'uncertain']),
+    })
+    .optional(),
 });
 export type CommandError = z.infer<typeof CommandError>;

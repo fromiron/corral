@@ -19,7 +19,7 @@ test('Settings imports selected models and keeps reasoning capability', async ({
   await page.getByRole('option', { name: 'Codex', exact: true }).click();
   await panel.getByLabel('Configuration file (optional)').fill(path);
   await panel.getByRole('button', { name: 'Preview settings' }).click();
-  await expect(panel.getByText('openai / gpt-test-a', { exact: false })).toBeVisible();
+  await expect(panel.getByRole('checkbox', { name: /openai \/ gpt-test-a/ })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Import selected (0)' })).toBeDisabled();
   await panel.getByRole('checkbox', { name: /openai \/ gpt-test-a/ }).check();
   await panel.getByRole('button', { name: 'Import selected (1)' }).click();

@@ -23,7 +23,8 @@ export function AutoModelMenu({
 }) {
   const t = useTranslations('Sessions'),
     tq = useTranslations('Reasoning'),
-    tc = useTranslations('Composer');
+    tc = useTranslations('Composer'),
+    tm = useTranslations('Models');
   const profile = profiles.find((p) => p.profileId === value.modelProfile);
   const effort =
     value.reasoning?.mode === 'fixed'
@@ -73,7 +74,15 @@ export function AutoModelMenu({
   const models: ModelOption[] = profiles.map((item) => ({
     id: item.profileId,
     name: item.label,
-    description: item.available ? (item.modelId ?? item.profileId) : tc('modelPicker.unavailable'),
+    description: item.available
+      ? `${item.modelId ?? item.profileId} · ${tm(
+          item.imageInput === true
+            ? 'imageSupported'
+            : item.imageInput === false
+              ? 'textOnly'
+              : 'imageUnknown',
+        )}`
+      : tc('modelPicker.unavailable'),
   }));
   if (!profile)
     models.unshift({

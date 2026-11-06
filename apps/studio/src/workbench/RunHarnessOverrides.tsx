@@ -77,6 +77,7 @@ export function RunHarnessOverrides({
                 <Select
                   label={t('runStyleFor', { name: role.name })}
                   value={selected}
+                  placeholder={t('keepRoleStyle')}
                   disabled={disabled}
                   options={[
                     { value: '', label: t('keepRoleStyle') },

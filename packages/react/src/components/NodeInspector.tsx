@@ -510,6 +510,7 @@ function InputsEditor({
         <Select
           id={`${id}-kind`}
           label={t('inputKind')}
+          className="w-full min-w-0"
           value={kind}
           onValueChange={setKind}
           options={BINDING_KINDS.map((value) => ({ value, label: t(`inputKinds.${value}`) }))}
@@ -520,6 +521,7 @@ function InputsEditor({
         <Select
           id={`${id}-source`}
           label={t('inputSource')}
+          className="w-full min-w-0"
           value={source}
           onValueChange={setSource}
           options={[
@@ -650,7 +652,7 @@ function Calls({ nodeId, draft }: { nodeId: string; draft: EditorDraft }) {
   );
 
   return (
-    <fieldset className="flex flex-col gap-1 text-caption">
+    <fieldset className="flex min-w-0 flex-col gap-1 text-caption">
       <legend>{t('calls')}</legend>
       <ul className="flex flex-col gap-1">
         {links.map((link) => (
@@ -670,7 +672,7 @@ function Calls({ nodeId, draft }: { nodeId: string; draft: EditorDraft }) {
         ))}
       </ul>
       {anyCallable ? (
-        <div className="flex items-center gap-1">
+        <div className="grid min-w-0 grid-cols-1 gap-1">
           <label htmlFor={`${id}-kind`} className="sr-only">
             {t('callKind')}
           </label>
@@ -678,6 +680,7 @@ function Calls({ nodeId, draft }: { nodeId: string; draft: EditorDraft }) {
             id={`${id}-kind`}
             label={t('callKind')}
             value={kind}
+            className="w-full min-w-0"
             onValueChange={setKind}
             options={(['delegate', 'question'] as const).map((value) => ({
               value,
@@ -690,9 +693,10 @@ function Calls({ nodeId, draft }: { nodeId: string; draft: EditorDraft }) {
           <Select
             id={`${id}-target`}
             label={t('callTarget')}
+            placeholder={t('callTarget')}
             value={target}
             onValueChange={setTarget}
-            className="min-w-0 flex-1"
+            className="w-full min-w-0"
             options={[
               { value: '', label: t('callTarget') },
               ...callables.map((n) => ({ value: n.id, label: n.label })),

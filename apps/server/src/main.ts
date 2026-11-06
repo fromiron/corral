@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { ScriptedAgentAdapter } from '@corral/testkit';
+import { ScriptedAgentAdapter, simulatedReply } from '@corral/testkit';
 import { startCorralServer } from './app.ts';
-import { defaultDecisionProviders } from './decision-providers.ts';
 import { createLiveModels } from './live-models.ts';
+import { defaultLocalIntelligence } from './local-ai.ts';
 
 // `pnpm --filter @corral/server start -- --workspace <dir>`
 // Each Run explicitly chooses simulated or live agents; search needs a separate opt-in.
@@ -28,11 +28,13 @@ const server = await startCorralServer({
   port: Number(values.port),
   agents: new ScriptedAgentAdapter({
     turns: 2,
+    reply: simulatedReply,
+    appendNotes: false,
     beforeReply: () => new Promise((done) => setTimeout(done, delayMs)),
   }),
   ...(values.static ? { staticDir: resolve(values.static) } : {}),
-  // The same judgment providers as `corral dev` (#21).
-  decisionProviders: defaultDecisionProviders(),
+  // The same local AI as `corral dev` (#21).
+  localIntelligence: defaultLocalIntelligence(),
   extraOrigins: values['allow-origin'],
   ...(values['no-live'] ? {} : { live: createLiveModels() }),
   ...(values['allow-live-search']

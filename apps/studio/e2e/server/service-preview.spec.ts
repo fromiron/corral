@@ -50,11 +50,17 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
   let leaseId = '';
   const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
     fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: 'toolUse' });
-  const last = (messages: unknown): Record<string, unknown> => {
-    const message = (messages as { role: string; content: { type: string; text?: string }[] }[]).at(
-      -1,
-    );
-    if (message?.role !== 'toolResult') throw new Error('Tool result did not reach the model');
+  const last = (messages: unknown, toolName: string): Record<string, unknown> => {
+    const message = (
+      messages as {
+        role: string;
+        toolName?: string;
+        isError?: boolean;
+        content: { type: string; text?: string }[];
+      }[]
+    ).findLast((item) => item.role === 'toolResult' && item.toolName === toolName);
+    if (!message || message.isError)
+      throw new Error('Successful tool result did not reach the model');
     return JSON.parse(
       message.content
         .filter((item) => item.type === 'text')
@@ -65,19 +71,21 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
   corral.fake?.setResponses([
     tool('run_command', { command: 'node preview-app.cjs', mode: 'service', timeoutMs: 60000 }),
     (context) => {
-      const started = last(context.messages);
+      const started = last(context.messages, 'run_command');
       expect(started.state).toBe('running');
       operationId = String(started.operationId);
       return tool('preview_app', { operationId, port });
     },
     (context) => {
-      const preview = last(context.messages);
+      const preview = last(context.messages, 'preview_app');
       expect(preview.kind).toBe('service');
       leaseId = String(preview.leaseId);
       return tool('preview_action', { leaseId, tool: 'browser_snapshot', args: {} });
     },
     (context) => {
-      expect(JSON.stringify(last(context.messages))).toContain('Owned service is ready');
+      expect(JSON.stringify(last(context.messages, 'preview_action'))).toContain(
+        'Owned service is ready',
+      );
       return tool('preview_action', {
         leaseId,
         tool: 'browser_verify_text_visible',
@@ -85,7 +93,9 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       });
     },
     (context) => {
-      expect((last(context.messages).result as { isError?: boolean }).isError).not.toBe(true);
+      expect(
+        (last(context.messages, 'preview_action').result as { isError?: boolean }).isError,
+      ).not.toBe(true);
       return tool('ask_user', {
         key: 'service-preview',
         questions: [{ id: 'continue', kind: 'text', prompt: 'Keep the service running?' }],
@@ -113,6 +123,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       .getByRole('region', { name: 'Working copy' })
       .getByRole('button', { name: /Make a working copy from/ })
       .click();
+    await panelTab(page, 'Conversation');
     await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();
     await page
       .getByRole('option')
@@ -127,7 +138,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     await expect(page.getByRole('form', { name: 'Waiting for your answer' })).toContainText(
       'Keep the service running?',
     );
-    await panelTab(page, 'Files');
+    await panelTab(page, 'Tasks & preview');
     const previews = page.getByRole('region', { name: 'Open previews', exact: true });
     await expect(previews).toContainText('Local app');
     await expect(previews.getByRole('link', { name: 'View run', exact: true })).toBeVisible();
@@ -142,7 +153,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     );
     await page.screenshot({ path: testInfo.outputPath('service-preview.png') });
     await page
-      .getByRole('region', { name: 'Request', exact: true })
+      .getByRole('region', { name: 'Active run controls', exact: true })
       .getByRole('button', { name: 'Cancel whole run', exact: true })
       .click();
     await page

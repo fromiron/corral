@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs';
+import type { CommandError } from '@corral/contracts';
 import { ToolRefusal } from '@corral/core';
 import type { Db } from '@corral/storage-sqlite';
 
@@ -71,23 +72,38 @@ export class WorkspaceAccessStore {
           return;
         }
         const held = this.writerAt(key);
+        const operation =
+          held?.owner_kind === 'user'
+            ? (this.db
+                .prepare('SELECT kind FROM workbench_operations WHERE operation_id=?')
+                .get(held.owner_id) as { kind: string } | undefined)
+            : undefined;
+        const terminalOwner: CommandError['owner'] =
+          held && operation?.kind === 'terminal'
+            ? {
+                kind: 'terminal',
+                id: held.owner_id,
+                sessionId: held.session_id,
+                state: held.state === 'uncertain' ? 'uncertain' : 'active',
+              }
+            : undefined;
         if (writer && held) {
-          const development =
-            held.owner_kind === 'user' &&
-            this.db
-              .prepare(
-                "SELECT 1 FROM workbench_operations WHERE operation_id=? AND kind='development'",
-              )
-              .get(held.owner_id);
           throw new ToolRefusal(
             'RUN_ALREADY_ACTIVE',
-            development
-              ? 'finish shared development before starting this exclusive writer'
-              : `working copy writer ${held.owner_id} has not released ownership`,
+            terminalOwner?.state === 'uncertain'
+              ? 'Terminal writer termination is unconfirmed; the working copy remains protected'
+              : operation?.kind === 'development'
+                ? 'finish shared development before starting this exclusive writer'
+                : `working copy ${terminalOwner ? 'terminal ' : ''}writer ${held.owner_id} has not released ownership`,
+            terminalOwner,
           );
         }
         if (held?.state === 'uncertain')
-          throw new ToolRefusal('RESOURCE_CAPACITY', 'working copy termination is unconfirmed');
+          throw new ToolRefusal(
+            'RESOURCE_CAPACITY',
+            'working copy termination is unconfirmed',
+            terminalOwner,
+          );
         this.db
           .prepare(`INSERT INTO workspace_access
             (owner_kind,owner_id,session_id,worktree_key,copy_generation,writer,state,tree)

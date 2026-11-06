@@ -1,5 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HttpSseTransport, RestCorralRepository } from '@corral/client';
@@ -445,10 +446,98 @@ describe('API keys and OpenAI-compatible endpoints', () => {
       expect(local).toMatchObject({ signedIn: false, endpointChanged: true });
       const result = await finish(moved);
       expect(result.status).toBe('refused');
+      const { revision } = (await moved.json('/model-config')).body;
+      const probe = await moved.json('/model-auth/local/probe', {
+        method: 'POST',
+        body: JSON.stringify({ revision }),
+      });
+      expect(probe.body).toMatchObject({ kind: 'authentication', status: null });
       expect(second.authorizations).toEqual([]);
     } finally {
       await first.close();
       await second.close();
+    }
+  });
+
+  it('tests endpoint metadata explicitly, rejects stale settings and never forwards a key through a redirect', async () => {
+    const seen: { path: string; method: string; authorization: string | undefined }[] = [];
+    let status = 200;
+    let hold: ((reply: () => void) => void) | undefined;
+    const endpoint = createServer((request, response) => {
+      seen.push({
+        path: request.url ?? '',
+        method: request.method ?? '',
+        authorization: request.headers.authorization,
+      });
+      const send = () => {
+        response.writeHead(status, {
+          'content-type': 'application/json',
+          ...(status === 302 ? { location: '/credential-sink' } : {}),
+        });
+        response.end('private provider response');
+      };
+      if (hold) hold(send);
+      else send();
+    });
+    await new Promise<void>((resolve) => endpoint.listen(0, '127.0.0.1', resolve));
+    const address = endpoint.address();
+    if (!address || typeof address === 'string') throw new Error('missing endpoint address');
+    try {
+      const context = await start(
+        makeFake(),
+        LOCAL_PROFILES,
+        endpointConfig(`http://127.0.0.1:${address.port}/v1`, 'api_key'),
+      );
+      const { revision } = (await context.json('/model-config')).body;
+      const probe = (rev = revision) =>
+        context.json('/model-auth/local/probe', {
+          method: 'POST',
+          body: JSON.stringify({ revision: rev }),
+        });
+      expect((await probe('stale')).status).toBe(409);
+      expect((await probe()).body).toMatchObject({ kind: 'authentication', status: null });
+      expect(seen).toEqual([]);
+      await setKey(context.json, 'local', 'fixture-probe-secret');
+      expect((await probe()).body).toMatchObject({
+        kind: 'connected',
+        status: 200,
+        checkedAt: expect.any(String),
+      });
+      expect(seen).toEqual([
+        { path: '/v1/models', method: 'GET', authorization: 'Bearer fixture-probe-secret' },
+      ]);
+      status = 302;
+      expect((await probe()).body).toMatchObject({ kind: 'redirect', status: 302 });
+      expect(seen).toHaveLength(2);
+      expect((await context.json('/model-auth')).body[0].connectionTest.kind).toBe('redirect');
+      await setKey(context.json, 'local', 'replacement-probe-secret');
+      expect((await context.json('/model-auth')).body[0].connectionTest).toBeNull();
+      expect(context.responses.join('\n')).not.toMatch(
+        /fixture-probe-secret|private provider response|replacement-probe-secret/,
+      );
+      status = 200;
+      let release: (() => void) | undefined;
+      let entered: (() => void) | undefined;
+      const received = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      hold = (send) => {
+        release = send;
+        entered?.();
+      };
+      const pending = probe();
+      await received;
+      try {
+        await setKey(context.json, 'local', 'new-key-during-probe');
+      } finally {
+        release?.();
+      }
+      expect((await pending).status).toBe(501);
+      expect((await context.json('/model-auth')).body[0].connectionTest).toBeNull();
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        endpoint.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 

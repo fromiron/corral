@@ -7,6 +7,7 @@ import { HarnessApi, RestCorralRepository, WorkspacesApi } from '@corral/client'
 import type { GitWriteCommand } from '@corral/contracts';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
+import { WorkspaceService } from '../src/files/service.ts';
 import { startCorralServer } from '../src/index.ts';
 
 type GitAction<Command = GitWriteCommand> = Command extends GitWriteCommand
@@ -22,6 +23,10 @@ afterEach(async () => {
 it.skipIf(process.platform !== 'linux')(
   'preserves checked source through multi-file edits, commit, local push and explicit deployment readback',
   async () => {
+    const checks = vi.spyOn(WorkspaceService.prototype, 'verify');
+    cleanups.push(async () => {
+      checks.mockRestore();
+    });
     const root = mkdtempSync(join(tmpdir(), 'corral-workbench-journey-'));
     cleanups.push(async () => rmSync(root, { recursive: true, force: true }));
     const git = (cwd: string, ...args: string[]) =>
@@ -136,14 +141,17 @@ fs.writeFileSync('deployment-result.json', JSON.stringify({
     };
     const verify = async () => {
       const { verificationId } = await workspaces.verify(sessionId, 'check');
-      return vi.waitFor(async () => {
-        const report = (await workspaces.verifications(sessionId)).find(
-          (entry) => entry.verificationId === verificationId,
-        );
-        assert(report);
-        expect(report.state).not.toBe('running');
-        return report;
-      });
+      // Observe the real service without replacing it. Snapshotting, launch fingerprinting and
+      // cleanup can exceed waitFor's 1 s default even when the registered check succeeds.
+      const service = checks.mock.contexts.at(-1);
+      assert(service instanceof WorkspaceService);
+      await service.waitVerification(verificationId);
+      const report = (await workspaces.verifications(sessionId)).find(
+        (entry) => entry.verificationId === verificationId,
+      );
+      assert(report);
+      expect(report.state).not.toBe('running');
+      return report;
     };
 
     const failed = await verify();

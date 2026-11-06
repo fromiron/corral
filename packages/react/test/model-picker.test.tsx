@@ -59,12 +59,7 @@ describe('composer model picker', () => {
     expect(within(dialog).getByRole('tablist', { name: 'Effort' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('radiogroup')).toBeNull();
     await user.click(within(dialog).getByRole('combobox', { name: 'Reasoning effort' }));
-    for (const name of [
-      'Provider default',
-      'Extra high',
-      'Automatic (local judge)',
-      'Chosen per request',
-    ])
+    for (const name of ['Provider default', 'Extra high', 'Automatic', 'Chosen per request'])
       expect(await screen.findByRole('option', { name })).toBeInTheDocument();
     expect(within(dialog).queryByText('Speed')).toBeNull();
     expect(within(dialog).queryByText('Quality')).toBeNull();
@@ -114,10 +109,10 @@ describe('composer model picker', () => {
     const { onChange } = show({ modelProfile: 'model-b', reasoning: { mode: 'auto' } });
     expect(screen.queryByRole('tablist')).toBeNull();
     await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
-    const automatic = await screen.findByRole('option', { name: 'Automatic (local judge)' });
+    const automatic = await screen.findByRole('option', { name: 'Automatic' });
     expect(automatic).toHaveAttribute('aria-selected', 'true');
     expect(automatic).toHaveAttribute('aria-disabled', 'true');
-    for (const name of ['Provider default', 'Automatic (local judge)', 'Chosen per request'])
+    for (const name of ['Provider default', 'Automatic', 'Chosen per request'])
       fireEvent.click(screen.getByRole('option', { name }));
     expect(onChange).not.toHaveBeenCalled();
     await user.click(screen.getByRole('option', { name: 'Low' }));

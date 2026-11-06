@@ -141,7 +141,7 @@ test.describe('active work and credentials', () => {
     await corral.open('/projects/default');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('link', { name: 'Models', exact: true }).click();
-    await expect(page.getByTestId('profile-model-a')).toContainText('Ready');
+    await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     const sidebar = page.getByTestId('app-sidebar');
     await expect(sidebar.getByText('Local · live models', { exact: true })).toHaveCount(0);

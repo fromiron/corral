@@ -62,6 +62,7 @@ async function serve(
   fake: Fake | null,
   endpoint: CompatibleEndpoint | null,
   agentReply: AgentReply,
+  port = 0,
 ) {
   if (!existsSync(join(STUDIO, 'index.html'))) {
     throw new Error('Studio is not built: run `pnpm build` before the server E2E tests.');
@@ -91,7 +92,7 @@ async function serve(
   }
   return startCorralServer({
     workspace,
-    port: 0,
+    port,
     staticDir: STUDIO,
     // Sessions' working copies stay with the test, never in the user's data directory.
     worktreeRoot: `${workspace}-worktrees`,
@@ -122,6 +123,7 @@ function watchErrors(page: Page): string[] {
 
 export const test = base.extend<{
   replyDelayMs: number;
+  streamTokensPerSecond: number;
   live: boolean;
   codexLogin: boolean;
   reasoningApi: boolean;
@@ -131,6 +133,7 @@ export const test = base.extend<{
   corral: Harness;
 }>({
   replyDelayMs: [50, { option: true }],
+  streamTokensPerSecond: [0, { option: true }],
   live: [false, { option: true }],
   /** Lay a Codex CLI login for the fake OpenAI to borrow. */
   codexLogin: [false, { option: true }],
@@ -144,6 +147,7 @@ export const test = base.extend<{
     {
       page,
       replyDelayMs,
+      streamTokensPerSecond,
       live,
       codexLogin,
       reasoningApi,
@@ -167,6 +171,7 @@ export const test = base.extend<{
           ...(codexLogin ? { codexLogin: {} } : {}),
           reasoningApi,
           imageInput,
+          tokensPerSecond: streamTokensPerSecond,
         })
       : null;
     const endpoint = compatibleEndpoint ? await startCompatibleEndpoint() : null;
@@ -189,8 +194,9 @@ export const test = base.extend<{
         ).toBeVisible();
       },
       async restart() {
+        const port = Number(new URL(server.url).port);
         await server.close();
-        server = await serve(workspace, replyDelayMs, fake, endpoint, agentReply);
+        server = await serve(workspace, replyDelayMs, fake, endpoint, agentReply, port);
       },
     };
     try {

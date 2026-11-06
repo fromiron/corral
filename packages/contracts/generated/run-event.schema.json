@@ -3396,6 +3396,13 @@
                 "enabled": {
                   "type": "boolean"
                 },
+                "policy": {
+                  "type": "string",
+                  "enum": [
+                    "medium",
+                    "judged"
+                  ]
+                },
                 "maxCalls": {
                   "type": "integer",
                   "minimum": 0,
@@ -3415,6 +3422,28 @@
                       "type": "null"
                     }
                   ]
+                },
+                "external": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "jev",
+                        "openai-decisions"
+                      ]
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -9193,6 +9222,32 @@
                 }
               ]
             },
+            "errorCode": {
+              "type": "string",
+              "enum": [
+                "SCHEMA_INVALID",
+                "GRAPH_INVALID",
+                "CAPABILITY_DENIED",
+                "STALE_CONTROL_REVISION",
+                "IDEMPOTENCY_CONFLICT",
+                "COMMAND_NOT_SUPPORTED",
+                "TARGET_NOT_FOUND",
+                "TARGET_TERMINAL",
+                "RUN_ALREADY_ACTIVE",
+                "REVISION_CONFLICT",
+                "RESOURCE_CAPACITY",
+                "CRITERIA_CHANGE_REQUIRES_NEW_RUN",
+                "RESTART_NOT_ALLOWED",
+                "APPROVAL_STALE",
+                "LIMIT_REACHED",
+                "STORAGE_UNAVAILABLE",
+                "SESSION_INVALID",
+                "ORIGIN_REJECTED",
+                "POLICY_ERROR",
+                "MODEL_UNAVAILABLE",
+                "REQUEST_OUTCOME_UNKNOWN"
+              ]
+            },
             "progressHash": {
               "type": "string",
               "pattern": "^[a-f0-9]{64}$"
@@ -9399,6 +9454,7 @@
                     "fixed",
                     "provider_default",
                     "local-model",
+                    "external-model",
                     "fallback",
                     "compaction"
                   ]
@@ -9447,7 +9503,13 @@
                 },
                 "policyVersion": {
                   "type": "string",
-                  "const": "mixdog-relative-v1"
+                  "enum": [
+                    "mixdog-relative-v1",
+                    "corral-effort-v1",
+                    "corral-effort-v2",
+                    "corral-effort-v3",
+                    "corral-effort-v4"
+                  ]
                 },
                 "fallback": {
                   "type": "string",
@@ -9457,8 +9519,14 @@
                     "provider_error",
                     "invalid_response",
                     "limit",
-                    "missing_input"
+                    "missing_input",
+                    "abstained",
+                    "policy"
                   ]
+                },
+                "escalated": {
+                  "type": "boolean",
+                  "const": true
                 }
               },
               "required": [

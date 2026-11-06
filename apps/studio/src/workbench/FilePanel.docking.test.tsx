@@ -331,9 +331,12 @@ it.each([false, true])(
           await act(async () => select?.click());
           expect(container.querySelector('[data-search-session="session"]')).not.toBeNull();
         } else {
-          expect(
-            container.querySelector('a[href="/sessions/session?panel=changes"]')?.textContent,
-          ).toBe('Prepare working copy');
+          const preparation = [
+            ...container.querySelectorAll('a[href="/sessions/session?panel=changes"]'),
+          ];
+          expect(preparation.map((link) => link.textContent)).toContain(
+            messages.ContentSearch.prepareCopy,
+          );
           expect(container.querySelector('[data-search-session]')).toBeNull();
         }
       },

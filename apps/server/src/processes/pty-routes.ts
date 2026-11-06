@@ -1,4 +1,5 @@
 import {
+  type CommandError,
   type ErrorCode,
   Identifier,
   MAX_TERMINAL_INPUT_BYTES,
@@ -32,7 +33,12 @@ export function registerTerminalRoutes(
   options: {
     terminals: PtyRuntime;
     hasSession: (sessionId: string) => Promise<boolean>;
-    fail: (reply: FastifyReply, code: ErrorCode, message: string) => FastifyReply;
+    fail: (
+      reply: FastifyReply,
+      code: ErrorCode,
+      message: string,
+      owner?: CommandError['owner'],
+    ) => FastifyReply;
     streams: Set<() => void>;
     limiter: InteractiveRequestLimiter;
   },
@@ -51,7 +57,12 @@ export function registerTerminalRoutes(
       return await operation();
     } catch (error) {
       if (error instanceof ToolRefusal || error instanceof WorkspaceError)
-        return fail(reply, error.code, error.message);
+        return fail(
+          reply,
+          error.code,
+          error.message,
+          error instanceof ToolRefusal ? error.owner : undefined,
+        );
       return fail(reply, 'STORAGE_UNAVAILABLE', 'the terminal operation failed');
     }
   };

@@ -3,7 +3,9 @@ import { expect, test } from '@playwright/test';
 // Roadmap 16: two runs of a Corral side by side, picked from the workspace's run list.
 
 test('compares runs with readable narrow figures and accessible identities', async ({ page }) => {
-  await page.goto('/?delay=50');
+  await page.goto('/compare?delay=50');
+  await page.getByRole('link', { name: 'Choose two runs', exact: true }).click();
+  await expect(page.getByRole('tab', { name: /^Runs/ })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .getByRole('region', { name: 'Start from a template' })
@@ -11,6 +13,7 @@ test('compares runs with readable narrow figures and accessible identities', asy
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Edit this team' })
     .click();
+  await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   for (const brief of ['Compare two pens.', 'Compare three pens.']) {
     await page.getByRole('tab', { name: 'Design', exact: true }).click();
@@ -25,6 +28,8 @@ test('compares runs with readable narrow figures and accessible identities', asy
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
   await page.getByRole('tab', { name: /^Runs/ }).click();
   const runs = page.getByRole('region', { name: 'Runs' });
+  await expect(runs.getByRole('link', { name: 'Compare two pens.', exact: true })).toBeVisible();
+  await expect(runs.getByRole('link', { name: 'Compare three pens.', exact: true })).toBeVisible();
   await runs.getByRole('checkbox').nth(0).check();
   await runs.getByRole('checkbox').nth(1).check();
   await runs.getByRole('button', { name: 'Compare 2 runs' }).click();
@@ -49,9 +54,15 @@ test('compares runs with readable narrow figures and accessible identities', asy
 
   const fullRunId = new URL(page.url()).searchParams.get('a');
   if (!fullRunId) throw new Error('Comparison run is missing');
-  const identity = table.locator('thead details').first();
-  await identity.locator('summary').focus();
+  const identity = table
+    .getByRole('columnheader')
+    .filter({ has: page.getByRole('button') })
+    .first();
+  const disclosure = identity.getByRole('button');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await disclosure.focus();
   await page.keyboard.press('Enter');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   await expect(identity.locator('code')).toHaveText(fullRunId);
   await expect(identity.locator('code')).toBeVisible();
   const expandedBounds = await table.boundingBox();

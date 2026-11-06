@@ -281,6 +281,7 @@ test('one deterministic agent request changes the copy, and the person commits a
   await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
   await page.getByRole('option', { name: 'Alpha writer', exact: true }).click();
   const { sessionId } = await startSession(page, false);
+  await panelTab(page, 'Conversation');
   await requestBox(page).fill('Write the notes');
   await page.getByRole('button', { name: 'Send' }).click();
   const card = page.locator('[data-testid^="entry-"]').first();
@@ -333,11 +334,12 @@ test('a failed check, a disk conflict, the settings dialog, a bad branch name an
       .filter({ hasText: /^Saved$/ })
       .first(),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Problems', exact: true }).click();
+  await panelTab(page, 'Problems');
   await problems.getByRole('button', { name: 'Refresh problems', exact: true }).click();
   await expect(problems.getByText('Outdated', { exact: true })).toBeVisible();
 
   // A change on disk while a draft is open is shown, and the draft is not overwritten.
+  await panelTab(page, 'Files');
   await page.getByRole('tab', { name: 'a.ts', exact: true }).click();
   writeFileSync(join(copy, 'src', 'a.ts'), 'const a = 1;\nconst b: number = 3;\n');
   await replaceDocument(page, 'const a = 1;\nconst b: number = 4;\n');

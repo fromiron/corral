@@ -187,7 +187,12 @@ export function TurnProcess({
                     : (ICONS[row.name] ?? 'dot')
                 }
                 label={t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name}
-                description={[row.target, tt(`tool.${row.status}`)].filter(Boolean).join(' · ')}
+                description={[
+                  row.artifact ? t('artifactTarget', row.artifact) : row.target,
+                  tt(`tool.${row.status}`),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
                 status={row.active ? 'active' : 'complete'}
                 isLast={last}
                 className="turn-process-row"

@@ -8,6 +8,7 @@ import type {
   StreamFrame,
 } from '@corral/contracts';
 import type { Coordinator, StartRunResult } from './coordinator.ts';
+import type { RuntimeSnapshot } from './partial-output.ts';
 import { applyEvent, type RunProjection } from './projection.ts';
 import type { RunSummary, StoredConversationTurn } from './store/run-store.ts';
 
@@ -25,7 +26,7 @@ export interface RuntimeTransport {
   startRun(request: StartRunRequest | CreateRunRequest): Promise<StartRunResult>;
   sendCommand(command: RunCommand): Promise<Receipt>;
   getReceipt(runId: string, commandId: string): Promise<Receipt | null>;
-  getSnapshot(runId: string): Promise<{ projection: RunProjection; seq: number }>;
+  getSnapshot(runId: string): Promise<RuntimeSnapshot>;
   getArtifactText(runId: string, artifactVersionId: string): Promise<string | null>;
   /** A settled ordinary request/answer, separate from artifact body access. Optional for older transports. */
   getConversationTurn?(runId: string): Promise<StoredConversationTurn | null>;
@@ -57,7 +58,7 @@ export class InProcessTransport implements RuntimeTransport {
     return this.coordinator.getReceipt(runId, commandId);
   }
 
-  async getSnapshot(runId: string): Promise<{ projection: RunProjection; seq: number }> {
+  async getSnapshot(runId: string): Promise<RuntimeSnapshot> {
     return this.coordinator.getSnapshot(runId);
   }
 

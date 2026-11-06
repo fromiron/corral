@@ -5,6 +5,7 @@ import {
   AutoRouteLevel,
   CanvasLayout,
   type Clock,
+  CommandError,
   type CorralDefinition,
   CorralDefinitionDraft,
   HarnessBindingRef,
@@ -18,6 +19,8 @@ import {
   RunInput,
   type TextAttachment,
 } from '@corral/contracts';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 import { validTextAttachments } from '../attachments.ts';
 import { canonicalJson } from '../canonical-json.ts';
@@ -88,6 +91,7 @@ export interface SessionEntry {
   executionId: string | null;
   /** Why it was refused or not delivered, in the runtime's words. */
   detail: string | null;
+  refusal?: CommandError | null;
   /** The command it was sent as, so its receipt and Reins delivery can be looked up. */
   commandId?: string | null;
   /** The template an auto request ran with; absent for a chosen team. */
@@ -116,6 +120,7 @@ export interface SessionEntryChange {
   state: SessionEntryState;
   runId?: string | null;
   detail?: string | null;
+  refusal?: CommandError | null;
   auto?: SessionEntryAuto | null;
 }
 
@@ -174,6 +179,7 @@ export interface NewSessionEntry {
   runId?: string | null;
   executionId?: string | null;
   detail?: string | null;
+  refusal?: CommandError | null;
   commandId?: string | null;
   auto?: SessionEntryAuto | null;
 }
@@ -333,6 +339,11 @@ export function planSessionUpdate(
       error: 'invalid',
       message: `A session title has 1 to ${TITLE_MAX} characters.`,
     };
+  const pinOnly =
+    change.pinned !== undefined &&
+    Object.entries(change).every(
+      ([key, value]) => value === undefined || key === 'pinned' || key === 'expectedRevision',
+    );
   return {
     ok: true,
     session: {
@@ -347,7 +358,7 @@ export function planSessionUpdate(
         ? {}
         : { archivedAt: change.archived ? (current.archivedAt ?? now) : null }),
       revision: current.revision + 1,
-      updatedAt: now,
+      updatedAt: pinOnly ? current.updatedAt : now,
     },
   };
 }
@@ -420,6 +431,8 @@ export function planSessionEntry(
       error: 'invalid',
       message: 'Ultra was removed; a request cannot choose it',
     };
+  if (entry.refusal != null && !CommandError.safeParse(entry.refusal).success)
+    return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
   const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
@@ -479,6 +492,7 @@ export function planSessionEntry(
           runId: entry.runId ?? null,
           executionId: entry.executionId ?? null,
           detail: entry.detail ?? null,
+          ...(entry.refusal ? { refusal: CommandError.parse(entry.refusal) } : {}),
           commandId: entry.commandId ?? null,
           ...(entry.meetingHandoff
             ? { meetingHandoff: MeetingHandoffOrigin.parse(entry.meetingHandoff) }
@@ -500,6 +514,26 @@ export function planSessionEntry(
   };
 }
 
+/** A saved queue item has one start identity across tabs; model/history changes cannot clone it. */
+export function queuedSessionCommandId(sessionId: string, entry: SessionEntry): string {
+  return (
+    entry.commandId ??
+    `queue_${bytesToHex(
+      sha256(
+        utf8ToBytes(
+          canonicalJson({
+            sessionId,
+            entryId: entry.entryId,
+            text: entry.text,
+            attachments: entry.attachments ?? [],
+            permissionMode: entry.permissionMode ?? null,
+          }),
+        ),
+      ),
+    )}`
+  );
+}
+
 export function planSessionEntryUpdate(
   current: WorkSession | null,
   sessionId: string,
@@ -509,8 +543,29 @@ export function planSessionEntryUpdate(
 ): SessionResult {
   if (!current)
     return { ok: false, error: 'not_found', message: `Session ${sessionId} does not exist.` };
-  if (!current.entries.some((e) => e.entryId === entryId))
+  if (change.refusal != null && !CommandError.safeParse(change.refusal).success)
+    return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
+  const entry = current.entries.find((e) => e.entryId === entryId);
+  if (!entry)
     return { ok: false, error: 'not_found', message: `Session ${sessionId} has no ${entryId}.` };
+  if (
+    entry.intent === 'queue' &&
+    entry.state !== 'queued' &&
+    !(entry.state !== 'started' && change.state === 'started' && change.runId)
+  ) {
+    const same = (['state', 'runId', 'detail', 'refusal', 'auto'] as const).every(
+      (key) =>
+        change[key] === undefined ||
+        canonicalJson(change[key] ?? null) === canonicalJson(entry[key] ?? null),
+    );
+    return same
+      ? { ok: true, session: current }
+      : {
+          ok: false,
+          error: 'revision_conflict',
+          message: 'The queued request already has a different outcome. Refresh the session.',
+        };
+  }
   return {
     ok: true,
     session: {
@@ -523,6 +578,9 @@ export function planSessionEntryUpdate(
               state: change.state,
               ...(change.runId !== undefined ? { runId: change.runId } : {}),
               ...(change.detail !== undefined ? { detail: change.detail } : {}),
+              ...(change.refusal !== undefined
+                ? { refusal: change.refusal ? CommandError.parse(change.refusal) : null }
+                : {}),
               ...(change.auto !== undefined ? { auto: change.auto } : {}),
             }
           : e,

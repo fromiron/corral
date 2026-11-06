@@ -1,0 +1,205 @@
+{
+  "modelSha256": "18f0e527fe8185dd6d43acd52520c00ae52194f30611d5a8c15e5796f56e682b",
+  "samplesSha256": "2f3cea1d2ffac043ec8f886c6e57b30db35b5c73a52f6d4fa5ea0400ad5bd5f2",
+  "policyVersion": "corral-effort-v2",
+  "ceiling": 0.6,
+  "selection": "validation only: minimize hard-as-low count with no accuracy regression on all/coding calibration sets; tie favors the lower ceiling",
+  "baseValidation": {
+    "all": {
+      "n": 2545,
+      "accuracy": 0.5300589390962672,
+      "levelError": 0.612573673870334,
+      "hardAsLow": 84,
+      "xhighRecall": 0.5091575091575091,
+      "extraReview": 0
+    },
+    "coding": {
+      "n": 1579,
+      "accuracy": 0.4566181127295757,
+      "levelError": 0.6998100063331222,
+      "hardAsLow": 35,
+      "xhighRecall": 0.5,
+      "extraReview": 0
+    }
+  },
+  "validation": [
+    {
+      "ceiling": 0.4,
+      "all": {
+        "n": 2545,
+        "accuracy": 0.5324165029469549,
+        "levelError": 0.6,
+        "hardAsLow": 58,
+        "xhighRecall": 0.5091575091575091,
+        "extraReview": 72
+      },
+      "coding": {
+        "n": 1579,
+        "accuracy": 0.461051298290057,
+        "levelError": 0.6877770740975301,
+        "hardAsLow": 23,
+        "xhighRecall": 0.5,
+        "extraReview": 31
+      }
+    },
+    {
+      "ceiling": 0.5,
+      "all": {
+        "n": 2545,
+        "accuracy": 0.531237721021611,
+        "levelError": 0.5905697445972495,
+        "hardAsLow": 31,
+        "xhighRecall": 0.5091575091575091,
+        "extraReview": 170
+      },
+      "coding": {
+        "n": 1579,
+        "accuracy": 0.4648511716276124,
+        "levelError": 0.6776440785307156,
+        "hardAsLow": 13,
+        "xhighRecall": 0.5,
+        "extraReview": 75
+      }
+    },
+    {
+      "ceiling": 0.6,
+      "all": {
+        "n": 2545,
+        "accuracy": 0.5320235756385069,
+        "levelError": 0.5850687622789784,
+        "hardAsLow": 19,
+        "xhighRecall": 0.5091575091575091,
+        "extraReview": 254
+      },
+      "coding": {
+        "n": 1579,
+        "accuracy": 0.467384420519316,
+        "levelError": 0.6725775807473084,
+        "hardAsLow": 9,
+        "xhighRecall": 0.5,
+        "extraReview": 115
+      }
+    },
+    {
+      "ceiling": 0.7,
+      "all": {
+        "n": 2545,
+        "accuracy": 0.5269155206286837,
+        "levelError": 0.5846758349705304,
+        "hardAsLow": 5,
+        "xhighRecall": 0.5091575091575091,
+        "extraReview": 309
+      },
+      "coding": {
+        "n": 1579,
+        "accuracy": 0.4642178594046865,
+        "levelError": 0.6706776440785307,
+        "hardAsLow": 1,
+        "xhighRecall": 0.5,
+        "extraReview": 136
+      }
+    },
+    {
+      "ceiling": 1,
+      "all": {
+        "n": 2545,
+        "accuracy": 0.5237721021611002,
+        "levelError": 0.5878192534381139,
+        "hardAsLow": 5,
+        "xhighRecall": 0.5091575091575091,
+        "extraReview": 319
+      },
+      "coding": {
+        "n": 1579,
+        "accuracy": 0.4642178594046865,
+        "levelError": 0.6706776440785307,
+        "hardAsLow": 1,
+        "xhighRecall": 0.5,
+        "extraReview": 136
+      }
+    }
+  ],
+  "results": [
+    {
+      "name": "기존 전체 테스트",
+      "baseline": {
+        "n": 2182,
+        "accuracy": 0.5311640696608616,
+        "levelError": 0.5907424381301558,
+        "hardAsLow": 57,
+        "xhighRecall": 0.5295454545454545,
+        "extraReview": 0
+      },
+      "fullCost": {
+        "n": 2182,
+        "accuracy": 0.5210815765352887,
+        "levelError": 0.5476626947754354,
+        "hardAsLow": 10,
+        "xhighRecall": 0.33636363636363636,
+        "extraReview": 0
+      },
+      "guard": {
+        "n": 2182,
+        "accuracy": 0.5311640696608616,
+        "levelError": 0.5728689275893676,
+        "hardAsLow": 18,
+        "xhighRecall": 0.5295454545454545,
+        "extraReview": 169
+      }
+    },
+    {
+      "name": "기존 코딩 테스트",
+      "baseline": {
+        "n": 1260,
+        "accuracy": 0.45,
+        "levelError": 0.6865079365079365,
+        "hardAsLow": 17,
+        "xhighRecall": 0.5122699386503068,
+        "extraReview": 0
+      },
+      "fullCost": {
+        "n": 1260,
+        "accuracy": 0.4492063492063492,
+        "levelError": 0.6333333333333333,
+        "hardAsLow": 2,
+        "xhighRecall": 0.35276073619631904,
+        "extraReview": 0
+      },
+      "guard": {
+        "n": 1260,
+        "accuracy": 0.4507936507936508,
+        "levelError": 0.6761904761904762,
+        "hardAsLow": 5,
+        "xhighRecall": 0.5122699386503068,
+        "extraReview": 65
+      }
+    },
+    {
+      "name": "SWE-bench Verified",
+      "baseline": {
+        "n": 500,
+        "accuracy": 0.466,
+        "levelError": 0.602,
+        "hardAsLow": 0,
+        "xhighRecall": 0.28888888888888886,
+        "extraReview": 0
+      },
+      "fullCost": {
+        "n": 500,
+        "accuracy": 0.51,
+        "levelError": 0.51,
+        "hardAsLow": 0,
+        "xhighRecall": 0.1111111111111111,
+        "extraReview": 0
+      },
+      "guard": {
+        "n": 500,
+        "accuracy": 0.466,
+        "levelError": 0.602,
+        "hardAsLow": 0,
+        "xhighRecall": 0.28888888888888886,
+        "extraReview": 0
+      }
+    }
+  ]
+}

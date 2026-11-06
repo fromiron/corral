@@ -122,3 +122,32 @@ it('the attention banner names why an outcome is unclear', () => {
   projection.budget.unknownOutstanding = 0;
   expect(copy()).toEqual([]);
 });
+
+it('a cancelled model request is not presented as an unconfirmed file operation', () => {
+  const projection = emptyProjection('run_cancelled_model');
+  projection.status = 'cancelled';
+  projection.effects.model = {
+    effectId: 'model',
+    kind: 'model_request',
+    scope: 'exec_one',
+    epoch: 0,
+    dispatched: true,
+    reservationId: null,
+    status: 'settled',
+    outcome: 'unknown',
+  };
+  const copy = () =>
+    actionCopy(
+      actionRequired({
+        pendingApprovals: 0,
+        pendingQuestions: 0,
+        runStatus: projection.status,
+        ...effectAttention(projection),
+      }),
+    );
+  expect(copy()).toEqual(['actionModelUnknown']);
+  projection.effects.tool = { ...projection.effects.model, effectId: 'tool', kind: 'tool' };
+  expect(copy()).toEqual(['actionUnclear', 'actionModelUnknown']);
+  projection.effects.model.outcome = 'cancelled';
+  expect(copy()).toEqual(['actionUnclear']);
+});

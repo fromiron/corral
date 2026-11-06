@@ -12,16 +12,23 @@ export const SessionSearchRequest = z.strictObject({
   offset: z.int().min(0).max(10000).default(0),
 });
 export type SessionSearchRequest = z.input<typeof SessionSearchRequest>;
-export interface SessionSearchHit {
-  sessionId: string;
-  title: string;
-  projectId: string;
+export interface SessionSearchSource {
   kind: 'session' | 'entry' | 'artifact' | 'response' | 'interaction';
   runId: string | null;
   entryId: string | null;
   artifactVersionId: string | null;
   sequence: number | null;
+}
+export interface SessionSearchHit extends SessionSearchSource {
+  sessionId: string;
+  title: string;
+  projectId: string;
   excerpt: string;
+  /** UTF-16 ranges in the original excerpt, after normalization-aware matching. */
+  excerptMatches?: { start: number; end: number }[];
+  runNumber?: number;
+  /** Exact targets folded into this one run/body match. */
+  sources?: SessionSearchSource[];
   archived: boolean;
 }
 export interface SessionSearchResult {

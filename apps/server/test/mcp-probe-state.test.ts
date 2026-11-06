@@ -142,7 +142,16 @@ it('terminal probe failures and unconfirmed cleanup remain terminal across retri
     });
     const { fingerprint } = await files.inspectMcpServer('default', 'docs');
     await files.trustMcpServer('default', 'docs', fingerprint, true);
-    for (const error of ['MCP probe failed', 'MCP probe cleanup unconfirmed']) {
+    const failures = [
+      ['MCP probe failed', 'MCP probe failed'],
+      ['MCP probe cleanup unconfirmed', 'MCP probe cleanup unconfirmed'],
+      ['MCP connection refused', 'MCP connection refused'],
+      ['MCP server name could not be resolved', 'MCP server name could not be resolved'],
+      ['MCP server returned HTTP 503', 'MCP server returned HTTP 503'],
+      ['MCP server returned HTTP 999', 'MCP probe failed'],
+      ['MCP server returned HTTP 401: private-token', 'MCP probe failed'],
+    ] as const;
+    for (const [index, [error, expected]] of failures.entries()) {
       let calls = 0;
       const options = {
         store: new SqliteHarnessStore(db, clock),
@@ -154,10 +163,10 @@ it('terminal probe failures and unconfirmed cleanup remain terminal across retri
         },
       };
       const service = new McpService(files, credentials, options);
-      const operationId = error.endsWith('unconfirmed') ? 'unconfirmed' : 'failed';
+      const operationId = error.endsWith('unconfirmed') ? 'unconfirmed' : `failed_${index}`;
       const input = { operationId, configRevision: 1, fingerprint };
-      await expect(service.probe('default', 'docs', input)).rejects.toThrow(error);
-      await expect(service.probe('default', 'docs', input)).rejects.toThrow(error);
+      await expect(service.probe('default', 'docs', input)).rejects.toThrow(expected);
+      await expect(service.probe('default', 'docs', input)).rejects.toThrow(expected);
       expect(calls).toBe(1);
       if (operationId === 'unconfirmed') {
         await expect(service.cancelProbe(operationId)).rejects.toThrow('cleanup unconfirmed');

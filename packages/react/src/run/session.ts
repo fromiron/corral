@@ -17,6 +17,7 @@ import {
   canReadArtifactBody,
   emptyProjection,
   type RunProjection,
+  type RuntimeSnapshot,
   type RuntimeTransport,
 } from '@corral/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -89,6 +90,9 @@ export interface StreamText {
   broken: boolean;
   /** Loaded from the immutable response referenced by a committed model.finished event. */
   completed?: boolean;
+  /** Private unfinished output restored from the workspace snapshot. */
+  partial?: boolean;
+  truncated?: boolean;
 }
 
 export interface SavedRevision {
@@ -114,6 +118,26 @@ export function createRunSession(
   >();
 
   const store = createStore<RunSessionState>((set, get) => {
+    const applyPartialSnapshot = (snapshot: RuntimeSnapshot, version: number) => {
+      if (generation !== version) return;
+      const streams = { ...get().streams };
+      for (const [id, output] of Object.entries(snapshot.partialOutputs ?? {})) {
+        if (
+          streams[id]?.completed ||
+          get().projection?.modelCalls[id]?.responseRef ||
+          (streams[id]?.next ?? 0) > output.next
+        )
+          continue;
+        streams[id] = {
+          text: output.text,
+          next: output.next,
+          broken: output.truncated,
+          partial: true,
+          truncated: output.truncated,
+        };
+      }
+      set({ streams });
+    };
     /**
      * Follows a run from its first event: one ordered stream builds both the projection and
      * the Timeline's event list. Events are applied in batches, so a long replay renders once.
@@ -140,11 +164,9 @@ export function createRunSession(
         const outputId = projection.output?.artifactVersionIds[0];
         const streams = Object.fromEntries(
           Object.entries(get().streams).filter(([id]) => {
+            // An interrupted reply stays as partial output; a confirmed one follows its body.
             const ref = projection.modelCalls[id]?.responseRef;
-            return (
-              !TERMINAL_RUN_STATUSES.has(projection.status) &&
-              (!ref || canReadArtifactBody(projection, ref))
-            );
+            return !ref || canReadArtifactBody(projection, ref);
           }),
         );
         set({
@@ -172,26 +194,39 @@ export function createRunSession(
         );
         if (finalized) void loadOutput(runId, finalized.payload.artifactVersionIds, version);
         refreshAffectedReceipts(batch, projection);
+        if (
+          typeof transport.getSnapshot === 'function' &&
+          batch.some(
+            (event) =>
+              event.type === 'run.state_changed' && TERMINAL_RUN_STATUSES.has(event.payload.to),
+          )
+        ) {
+          // The final prefix also carries a gap/storage-cap marker the live deltas do not.
+          void transport
+            .getSnapshot(runId)
+            .then((snapshot) => applyPartialSnapshot(snapshot, version))
+            .catch((error: unknown) => {
+              if (generation === version) set({ streamError: String(error) });
+            });
+        }
       };
+      let restoringPrefix = typeof transport.getSnapshot === 'function';
       let frames: StreamFrame[] = [];
       let framesScheduled = false;
       const flushFrames = () => {
         framesScheduled = false;
+        if (restoringPrefix) return;
         const batch = frames;
         frames = [];
-        if (
-          generation !== version ||
-          !get().projection ||
-          TERMINAL_RUN_STATUSES.has(get().projection!.status)
-        )
-          return;
+        // Arrival already fenced frames after the run ended; these were received before it.
+        if (generation !== version) return;
         const streams = { ...get().streams };
         for (const frame of batch) {
           const current = streams[frame.modelCallId] ?? { text: '', next: 0, broken: false };
           if (
             current.completed ||
             current.broken ||
-            get().projection?.modelCalls[frame.modelCallId]?.finished ||
+            get().projection?.modelCalls[frame.modelCallId]?.responseRef ||
             frame.chunkIndex < current.next
           )
             continue;
@@ -223,6 +258,17 @@ export function createRunSession(
           }
         },
         onFrame: (frame: StreamFrame) => {
+          // Keep frames received before cancellation, even while the snapshot is pending.
+          // Terminal events queued in this tick already fence subsequent arrivals.
+          if (
+            TERMINAL_RUN_STATUSES.has(get().projection?.status ?? 'created') ||
+            get().projection?.modelCalls[frame.modelCallId]?.finished ||
+            pending.some(
+              (event) =>
+                event.type === 'run.state_changed' && TERMINAL_RUN_STATUSES.has(event.payload.to),
+            )
+          )
+            return;
           frames.push(frame);
           if (!framesScheduled) {
             framesScheduled = true;
@@ -233,6 +279,20 @@ export function createRunSession(
           if (generation === version) set({ streamError: String(error) });
         },
       });
+      // Subscribe first, then restore the saved prefix. Buffer frames while reading so
+      // the snapshot and SSE race cannot drop a chunk or append a duplicate prefix.
+      if (restoringPrefix) {
+        try {
+          const snapshot = await transport.getSnapshot(runId);
+          if (generation !== version) return;
+          applyPartialSnapshot(snapshot, version);
+        } catch (error) {
+          if (generation === version) set({ streamError: String(error) });
+        } finally {
+          restoringPrefix = false;
+          flushFrames();
+        }
+      }
     };
 
     const refreshDefinition = async (runId: string, version: number) => {

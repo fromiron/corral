@@ -20,15 +20,15 @@ import {
   ValidationPanel,
 } from '@corral/react';
 import { Button, Input, Select } from '@corral/react/design-kit';
-import { Link, useBlocker, useNavigate } from '@tanstack/react-router';
+import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
 import { ReactFlowProvider } from '@xyflow/react';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
 import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
 import { useModelPrices } from '../prices.ts';
-import { setCurrentProject } from '../projects.ts';
+import { projectsChanged, setCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import {
@@ -59,7 +59,11 @@ export function EditorPage() {
   const copy = useMemo(() => editorWorkingCopy(repository, record), [repository, record]);
   return (
     <Editor
-      key={`${panelKey(services, { kind: 'graph', projectId: record.projectId, corralId: record.corralId })}:${record.definitionRevision}:${record.layoutRevision}`}
+      key={panelKey(services, {
+        kind: 'graph',
+        projectId: record.projectId,
+        corralId: record.corralId,
+      })}
       record={record}
       workingCopy={copy}
       startFrom={
@@ -209,6 +213,7 @@ function Editor({
 }) {
   const t = useTranslations('Editor');
   const n = useTranslations('Navigation');
+  const router = useRouter();
   const services = useServices();
   const { editor, saved, saving, message } = useStore(workingCopy);
   const { repository, mode, live } = services;
@@ -227,7 +232,12 @@ function Editor({
   const [inspector, setInspector] = useState<'design' | 'run'>(
     startFrom || guide ? 'run' : 'design',
   );
-  const showDesign = useCallback(() => setInspector('design'), []);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const inspectorId = useId();
+  const showDesign = useCallback(() => {
+    setInspector('design');
+    setInspectorOpen(true);
+  }, []);
   useEffect(() => {
     if (selectedNodeId) showDesign();
   }, [selectedNodeId, showDesign]);
@@ -282,6 +292,8 @@ function Editor({
           error: false,
         },
       });
+      projectsChanged();
+      await router.invalidate();
       return result.record;
     } catch (error) {
       workingCopy.setState({
@@ -291,7 +303,7 @@ function Editor({
     } finally {
       workingCopy.setState({ saving: false });
     }
-  }, [editor, repository, t, workingCopy]);
+  }, [editor, repository, router, t, workingCopy]);
 
   // The local server runs saved revisions only, so a run saves first.
   const beforeStart =
@@ -384,6 +396,15 @@ function Editor({
               </span>
               <EditorToolbar />
               {toolbar}
+              <Button
+                variant="tertiary"
+                size="compact"
+                aria-controls={inspectorId}
+                aria-expanded={inspectorOpen}
+                onClick={() => setInspectorOpen((open) => !open)}
+              >
+                {t(inspectorOpen ? 'hideTools' : 'showTools')}
+              </Button>
               <div className="ml-auto flex items-center gap-2">
                 <MarkdownAgentImport
                   editor={editor}
@@ -398,7 +419,7 @@ function Editor({
                   size="compact"
                   type="button"
                   onClick={() => void save()}
-                  disabled={saving}
+                  disabled={saving || !dirty}
                 >
                   {saving ? t('saving') : t('save')}
                 </Button>
@@ -412,7 +433,7 @@ function Editor({
                 </p>
               ) : null}
             </div>
-            <main className="editor-layout grid min-h-0">
+            <main className="editor-layout grid min-h-0" data-tools-open={inspectorOpen}>
               <aside className="editor-palette flex min-h-0 flex-col gap-6 overflow-auto border-r border-line p-3">
                 <NodePalette />
                 <ValidationPanel />
@@ -421,7 +442,11 @@ function Editor({
                 <CorralCanvas onNodeSelect={showDesign} />
                 <CanvasNotice />
               </div>
-              <aside className="editor-inspector flex min-h-0 min-w-0 flex-col overflow-auto border-l border-line">
+              <aside
+                id={inspectorId}
+                hidden={!inspectorOpen}
+                className="editor-inspector flex min-h-0 min-w-0 flex-col overflow-auto border-l border-line"
+              >
                 {!inSession ? (
                   <div className="sticky top-0 z-10 border-b border-line bg-surface p-2">
                     <TabRow

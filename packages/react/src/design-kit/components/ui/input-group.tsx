@@ -136,8 +136,8 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       setIsFocused(false);
     };
 
-    // Precedence: disabled, error, focused, hovered, rest. An error shows its
-    // red ring only on hover or focus; the label and message carry it at rest.
+    // Precedence: disabled, error, focused, hovered, rest. Resting bounds stay
+    // visible; an error adds its red ring on hover or focus.
     let bgClass: string;
     let ringClass: string;
 
@@ -146,7 +146,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       ringClass = 'ring-border';
     } else if (error) {
       bgClass = isFocused ? 'bg-card' : isActive ? 'bg-destructive-light/60' : 'bg-transparent';
-      ringClass = isFocused || isActive ? 'ring-destructive/50' : 'ring-transparent';
+      ringClass = isFocused || isActive ? 'ring-destructive/50' : 'ring-border';
     } else if (isFocused) {
       bgClass = 'bg-card';
       ringClass = 'ring-border';
@@ -155,7 +155,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       ringClass = 'ring-border';
     } else {
       bgClass = 'bg-transparent';
-      ringClass = 'ring-transparent';
+      ringClass = 'ring-border';
     }
 
     return (
@@ -179,7 +179,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
           className={cn(
             labelHidden ? 'sr-only' : 'inline-grid',
             sizeClasses.text,
-            // Tighter than the control padding: the ring is invisible at rest.
+            // Keep the persistent label aligned with the control text.
             !labelHidden && (compact ? 'pl-2' : 'pl-2.5'),
           )}
         >
@@ -206,6 +206,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
 
         {/* biome-ignore lint/a11y/noStaticElementInteractions: Padding clicks focus the native field, which retains keyboard behavior. */}
         <div
+          data-slot="input-control"
           onMouseDown={(e) => {
             // A click anywhere in the container (icon, padding) focuses the
             // input without disturbing its own caret placement.
@@ -216,7 +217,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
           className={cn(
             `flex items-center ${sizeClasses.gap} ${shape.input} ${
               compact ? 'px-2' : 'px-2.5'
-            } ${sizeClasses.control} ring-1 transition-all duration-80`,
+            } ${sizeClasses.control} ring-1 transition-all duration-80 has-focus-visible:ring-2 has-focus-visible:ring-focus-ring`,
             bgClass,
             ringClass,
           )}

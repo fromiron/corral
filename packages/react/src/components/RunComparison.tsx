@@ -93,7 +93,18 @@ export function RunComparison({
                 <KitTableHead className="w-1/3" />
                 {[a, b].map((run) => (
                   <KitTableHead key={run.projection.runId} scope="col" className="align-top">
-                    <div className="break-words">{run.name ?? '—'}</div>
+                    <div className="break-words">{run.name ?? t('unnamedRun')}</div>
+                    {run.projection.startedAt ? (
+                      <time
+                        dateTime={run.projection.startedAt}
+                        className="block text-caption text-muted-foreground"
+                      >
+                        {format.dateTime(new Date(run.projection.startedAt), {
+                          dateStyle: 'short',
+                          timeStyle: 'medium',
+                        })}
+                      </time>
+                    ) : null}
                     <KitAccordion className="w-full">
                       <KitAccordionItem value={run.projection.runId} highlight="trigger">
                         <KitAccordionTrigger className="font-mono">
@@ -155,7 +166,7 @@ export function RunComparison({
               {[a, b].map((run) => (
                 <div key={run.projection.runId}>
                   <h4>
-                    <KitCardTitle>{run.name ?? run.projection.runId}</KitCardTitle>
+                    <KitCardTitle>{run.name ?? t('unnamedRun')}</KitCardTitle>
                   </h4>
                   <ul className="flex flex-col gap-2">
                     {Object.values(run.projection.modelCalls).map((call) => (
@@ -220,7 +231,7 @@ export function RunComparison({
                 <KitCard key={run.projection.runId}>
                   <KitCardHeader>
                     <h4>
-                      <KitCardTitle>{run.name ?? run.projection.runId}</KitCardTitle>
+                      <KitCardTitle>{run.name ?? t('unnamedRun')}</KitCardTitle>
                     </h4>
                   </KitCardHeader>
                   <KitCardContent className="max-h-[60vh] overflow-auto">

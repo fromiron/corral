@@ -40,6 +40,7 @@ async function fixture(
       | 'renderGraph'
       | 'graphTitle'
       | 'controls'
+      | 'terminalStatus'
       | 'onActiveContext'
       | 'fileWorkAvailable'
     >
@@ -582,4 +583,41 @@ it('a team tab behind another tab is not drawn: its canvas nodes override visibi
     f.ref.current?.openGraph('corral_a');
   });
   expect(holder()?.hidden).toBe(false);
+});
+
+it('review preset publishes its Changes destination while keeping the selected document', async () => {
+  const onActiveContext = vi.fn();
+  const f = await fixture({ onActiveContext });
+  await act(async () =>
+    f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' }),
+  );
+  const documentView = document.querySelector('[data-testid="document"]');
+  const rows = await paneActions(documentView);
+  await act(async () => rows.find((row) => row.textContent?.startsWith('preset'))?.click());
+  const review = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+    (option) => option.textContent?.includes('review'),
+  );
+  expect(review).toBeDefined();
+  await act(async () => review?.click());
+  expect(sessionTab(f.container, 'changes')?.getAttribute('aria-selected')).toBe('true');
+  expect(onActiveContext).toHaveBeenLastCalledWith('changes');
+  expect(document.querySelector('[data-testid="document"]')).toBe(documentView);
+  await disposals.pop()?.();
+  const restored = await fixture({ selectedPanel: 'changes' });
+  expect(sessionTab(restored.container, 'changes')?.getAttribute('aria-selected')).toBe('true');
+  expect(activePane(restored.container)).toContain('file.ts');
+});
+
+it('keeps the terminal activity indicator on its tab while another pane is active and removes it on stop', async () => {
+  const props: Partial<DockWorkbenchProps> = {
+    terminalStatus: <span role="img" aria-label="Terminal running" />,
+    fileWorkAvailable: true,
+  };
+  const f = await fixture(props);
+  await act(async () => f.ref.current?.openContext('terminal'));
+  await act(async () => f.ref.current?.openContext('files'));
+  expect(f.container.querySelector('[role="tab"] [aria-label="Terminal running"]')).not.toBeNull();
+  props.terminalStatus = null;
+  await f.renderSession('session');
+  expect(f.container.querySelector('[aria-label="Terminal running"]')).toBeNull();
 });

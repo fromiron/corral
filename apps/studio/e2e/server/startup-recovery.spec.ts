@@ -57,7 +57,7 @@ test('bootstrap links work in another profile and expire when the server restart
   try {
     const otherTab = await otherProfile.newPage();
     await otherTab.goto(corral.server.url);
-    await expect(otherTab.getByRole('alert')).toContainText('no session with the local server');
+    await expect(otherTab.getByRole('alert')).toContainText('Connect to the local server.');
     await otherTab.goto(corral.server.bootstrapUrl);
     await expect(otherTab.getByRole('banner')).toBeVisible();
     await page.reload();
@@ -66,9 +66,9 @@ test('bootstrap links work in another profile and expire when the server restart
     const previousToken = new URL(corral.server.bootstrapUrl).hash;
     await corral.restart();
     await page.goto(corral.server.url);
-    await expect(page.getByRole('alert')).toContainText('no session with the local server');
+    await expect(page.getByRole('alert')).toContainText('Connect to the local server.');
     await page.goto(`${corral.server.url}/${previousToken}`);
-    await expect(page.getByRole('alert')).toContainText('no session with the local server');
+    await expect(page.getByRole('alert')).toContainText('Connect to the local server.');
     await corral.open('/');
     await expect(page.getByRole('banner')).toBeVisible();
   } finally {

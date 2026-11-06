@@ -157,6 +157,7 @@ test.describe('long settings pages', () => {
       'Import model settings',
       'Image generation',
       'Automatic effort choice · server-wide',
+      'Model request history',
     ]);
     await index.getByRole('button', { name: 'Image generation', exact: true }).click();
     await expect(page.locator('#models-images')).toBeFocused();

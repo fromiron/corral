@@ -15,6 +15,7 @@ export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   tab?: 'work' | 'team' | 'run' | undefined;
   panel?: SessionPanel | undefined;
   run?: string | undefined;
+  terminal?: string | undefined;
 }
 export interface ReviewSearch {
   scope?: 'session' | 'review' | 'run' | 'git';
@@ -46,6 +47,7 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   if (SESSION_PANELS.includes(search.panel as SessionPanel))
     out.panel = search.panel as SessionPanel;
   if (search.tab === 'run') out.panel = 'run';
+  if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
   for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
     const value = text(search[key]);
@@ -118,11 +120,15 @@ export function validateEditorSearch(search: Record<string, unknown>): EditorSea
 export function resolveSessionSearch(url: SessionSearch, remembered: unknown): SessionSearch {
   // TanStack merges validated fields with raw parent search; normalize that merged view.
   const selection = validateSessionSearch({ ...url });
+  // A bare session link opens its conversation; tab links carry their explicit view.
+  if (Object.keys(selection).length === 0) return selection;
   const explicitTarget = Boolean(
     selection.atSeq !== undefined ||
       selection.compose ||
+      selection.message ||
       selection.review ||
       selection.run ||
+      selection.terminal ||
       selection.view ||
       selection.artifact ||
       selection.result ||
@@ -154,6 +160,7 @@ export function patchSessionSearch(
         }
       : {}),
     ...patch,
+    ...('panel' in patch && patch.panel !== 'run' ? { atSeq: undefined } : {}),
     ...('panel' in patch || 'view' in patch ? { compose: undefined } : {}),
     ...(patch.view === 'results' ? { artifact: undefined } : {}),
   });

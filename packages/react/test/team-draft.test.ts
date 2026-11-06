@@ -134,6 +134,51 @@ describe('planFromGoal, the local suggestion', () => {
     ]);
   });
 
+  it('recognizes security PR review in both languages and preserves the complete brief', () => {
+    for (const [goal, messages, name] of [
+      [
+        'Review a pull request for security issues, then have a second agent double check the findings and write a summary for me to approve',
+        en,
+        'Security PR review',
+      ],
+      [
+        'PR 보안 문제를 검토하고 다른 에이전트가 발견 사항을 확인한 뒤 승인할 요약을 작성해 줘',
+        ko,
+        'PR 보안 검토',
+      ],
+    ] as const) {
+      const suggested = planFromGoal(goal, wording(messages));
+      expect(suggested?.name).toBe(name);
+      expect(suggested?.brief).toBe(goal);
+      expect(suggested?.pattern).toBe('research_write_review');
+      expect(suggested?.roles[0]?.name).not.toBe(messages.TeamDraft.wording.roles.researcher.name);
+      expect(suggested?.roles[0]?.duty).toMatch(/security|보안/);
+      expect(suggested?.criteria.join(' ')).toMatch(/evidence|근거/);
+      expect(suggested?.finalApproval).toBe(true);
+      expect(suggested && TeamPlan.safeParse(suggested).success).toBe(true);
+      if (!suggested) throw new Error('Expected a security review plan');
+      const definition = draftFromPlan(suggested, 'security_review').definition;
+      expect(compileDefinition(definition).ok).toBe(true);
+      expect(
+        definition.roles.every((role) => role.allowedWorkTools.join(',') === 'write_artifact'),
+      ).toBe(true);
+    }
+    expect(planFromGoal('Write a security awareness announcement', wording(en))?.pattern).toBe(
+      'write_review',
+    );
+  });
+
+  it('keeps general team names short while retaining the goal in the brief', () => {
+    const goal =
+      'Write a launch announcement. Include a detailed explanation of every new feature and a migration checklist.';
+    const suggested = planFromGoal(goal, wording(en));
+    expect(suggested?.name).toBe('Write a launch announcement');
+    expect(suggested?.brief).toBe(goal);
+    expect(
+      planFromGoal(`Write ${'a detailed '.repeat(8)}report`, wording(en))?.name.length,
+    ).toBeLessThanOrEqual(48);
+  });
+
   it('an empty goal gives no plan; a long goal is cut to fit', () => {
     expect(planFromGoal('   ', wording(en))).toBeNull();
     const long = planFromGoal(`Write ${'very '.repeat(600)}long`, wording(en));

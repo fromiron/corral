@@ -3,8 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Db, openDatabase } from '@corral/storage-sqlite';
+import { FakeClock } from '@corral/testkit';
 import { afterEach, expect, it } from 'vitest';
 import { RunAccessStore } from '../src/files/run-access.ts';
+import { WorkbenchOperations } from '../src/files/workbench-operations.ts';
 import { WorkspaceAccessStore } from '../src/files/workspace-access.ts';
 
 const databases: Db[] = [];
@@ -125,5 +127,50 @@ it.each(['before', 'after'] as const)(
     access.acquire(next, 'session_one', path, true, 1);
     access.pin(next, 'after_tree');
     expect(access.get(reader)?.tree).toBe('before_tree');
+  },
+);
+
+it.each(['active', 'uncertain'] as const)(
+  'reports structured %s terminal ownership without releasing it',
+  (state) => {
+    const { db, path } = setup();
+    const access = new WorkspaceAccessStore(db);
+    const operations = new WorkbenchOperations(db, new FakeClock());
+    const owner = { kind: 'user', id: 'custom_owner' } as const;
+    operations.admit(
+      {
+        operationId: owner.id,
+        kind: 'terminal',
+        requestHash: 'request',
+        target: {
+          hostId: 'host',
+          projectId: 'default',
+          bindingId: 'binding',
+          sessionId: 'session_one',
+          copyGeneration: 1,
+        },
+      },
+      path,
+      {},
+    );
+    if (state === 'uncertain') access.release(owner, false);
+    expect(() =>
+      access.acquire({ kind: 'run', id: 'new_run' }, 'session_one', path, true, 1),
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'RUN_ALREADY_ACTIVE',
+        owner: { kind: 'terminal', id: owner.id, sessionId: 'session_one', state },
+      }),
+    );
+    if (state === 'uncertain')
+      expect(() =>
+        access.acquire({ kind: 'run', id: 'reader' }, 'session_one', path, false, 1),
+      ).toThrowError(
+        expect.objectContaining({
+          code: 'RESOURCE_CAPACITY',
+          owner: { kind: 'terminal', id: owner.id, sessionId: 'session_one', state },
+        }),
+      );
+    expect(access.get(owner)?.state).toBe(state);
   },
 );

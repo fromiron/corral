@@ -143,7 +143,7 @@ flowchart LR
 
 ### ABS-07 — 실제 Windows/macOS 앱과 앱 수명
 
-- Windows 패키지를 첫 사용 가능 단계에 둔다. `prepare.ts`의 Linux assert만 제거하지 말고 OS/arch별 bundled Node·native SQLite/ONNX·worker 경로·자산·서버 시작/종료를 검증한다.
+- Windows 패키지를 첫 사용 가능 단계에 둔다. `prepare.ts`의 Linux assert만 제거하지 말고 OS/arch별 bundled Node·native SQLite·로컬 AI 패키지 자산과 헬퍼 실행·worker 경로·서버 시작/종료를 검증한다.
 - Windows 설치형/portable, macOS dmg/zip, 기존 Linux AppImage를 release matrix로 관리한다. 실제 검증한 arch만 지원으로 표시한다.
 - 트레이는 기존 세션 목록/명령으로 열기·승인 대기 이동·실행 취소를 제공한다. 창 닫기와 앱 종료를 구분하고, 활성 Run이 있을 때의 종료 확인·숨기기 설정을 둔다.
 - 절전 방지는 활성 실행 수에 따라 하나의 blocker를 소유한다. 전부 종료/앱 종료 시 해제하고, 승인 대기나 일시정지 중 유지 여부를 설정으로 명시한다.
@@ -162,6 +162,8 @@ flowchart LR
 - 기본 제안: 같은 일정 실행 중이면 overlap을 건너뛰고 기록, 앱이 꺼져 있던 구간은 자동 소급 실행하지 않고 놓침으로 표시. 사용자는 “지금 실행”할 수 있다. DST 중복/없는 시각 정책을 UI와 함께 확정한다.
 - 사람 승인은 알림과 기존 response host로 연결하고 기다린다. unattended라는 이유로 승인하거나 예상 비용을 숨기지 않는다.
 - 삭제/비활성화는 미래 발화를 멈추며 진행 Run 취소는 별도 동작이다. restart 때 이미 시작한 occurrence를 재실행하지 않는다.
+- 새 예약은 비활성으로 시작하며 저장 결과에 활성 여부와 실행하지 않는 이유를 명확히 알린다. 기록은 발화 결과와 Coordinator의 현재/최종 실행 상태를 구분한다. 실행을 조회할 수 없으면 완료로 추정하지 않는다.
+- 대화에서 서버가 발급한 예약 command identity를 예약 요청으로 표시한다. 열린 앱은 처음 읽은 과거 완료를 알리지 않고 새로 관측한 예약 실행 완료·실패를 실행 링크와 함께 알린다. 같은 최종 상태를 반복 조회해도 중복 알리지 않으며 알림은 실행·승인 권한을 부여하지 않는다.
 
 ### ABS-09 — 프로젝트 열기·복제·지침·메모리
 

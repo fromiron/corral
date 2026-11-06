@@ -16,6 +16,7 @@ import {
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript, type TranscriptEntry } from '../run/transcript.ts';
+import { FailureNotice } from './FailureNotice.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
@@ -114,6 +115,7 @@ const toolStatus: Record<ToolEntry['status'], ToolCall['status']> = {
   blocked: 'error',
   finished: 'success',
   failed: 'error',
+  cancelled: 'stopped',
 };
 
 export function ExecutionToolGroup({
@@ -300,12 +302,14 @@ function Entry({
       );
     case 'settled':
       return (
-        <p
+        <div
           className={`text-center text-caption ${entry.outcome === 'succeeded' ? 'text-success' : 'text-danger'}`}
         >
           {t(`settled.${entry.outcome}`)}
-          {entry.error ? `: ${entry.error}` : ''}
-        </p>
+          {entry.error ? (
+            <FailureNotice message={entry.error} cancelled={entry.outcome === 'cancelled'} />
+          ) : null}
+        </div>
       );
   }
 }

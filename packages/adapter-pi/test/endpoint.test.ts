@@ -3,6 +3,7 @@ import { createModels } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
 import { inspectContext, reconcileContextUsage } from '../src/context-usage.ts';
 import { type EndpointSpec, endpointProvider, KEYLESS_PLACEHOLDER } from '../src/endpoint.ts';
+import { providerFailure } from '../src/ported/dsh/retry.ts';
 
 // OpenAI-compatible endpoints (Ollama, LM Studio, OpenRouter) through pi-ai's
 // openai-completions client, against a local fake server.
@@ -38,6 +39,35 @@ const ask = (models: ReturnType<typeof createModels>, apiKey?: string) => {
 };
 
 describe('OpenAI-compatible endpoints', () => {
+  it('classifies a stopped local endpoint through the real Pi client as a transport failure', async () => {
+    const server = await endpoint();
+    const models = createModels();
+    models.setProvider(endpointProvider('local', spec(server.baseUrl, true)));
+    await server.close();
+
+    const answer = await ask(models);
+    expect(answer.stopReason).toBe('error');
+    expect(providerFailure(answer.errorMessage)).toEqual({
+      code: 'TRANSPORT',
+      status: null,
+      retryAfterMs: null,
+      requestId: null,
+    });
+  });
+
+  it('classifies native fetch connection failures without retaining their diagnostics', async () => {
+    const server = await endpoint();
+    await server.close();
+    const failure = await fetch(`${server.baseUrl}/models`).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(TypeError);
+    expect(providerFailure(failure)).toEqual({
+      code: 'TRANSPORT',
+      status: null,
+      retryAfterMs: null,
+      requestId: null,
+    });
+  });
+
   it('measures the real Pi provider payload without adding provider usage', async () => {
     const server = await endpoint();
     server.setReply(() => 'Measured.');

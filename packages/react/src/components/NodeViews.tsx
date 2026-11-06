@@ -108,7 +108,7 @@ function RunOverlay({ nodeId }: { nodeId: string }) {
 function PortLabel({ children, style }: { children: string; style: CSSProperties }) {
   return (
     <span
-      className="pointer-events-none absolute text-2xs leading-none text-muted-foreground"
+      className="pointer-events-none absolute rounded-sm bg-background px-1 py-0.5 text-2xs leading-none text-muted-foreground"
       style={style}
     >
       {children}

@@ -94,7 +94,7 @@ function typeClass(role: TypeScaleRole, variant: TypeScaleVariant = 'default'): 
 
 /** Added after an editable field's role: 16px font size on touch screens, so
  *  iOS Safari doesn't zoom into the focused field. Leading is unchanged. */
-const fieldTouchClass = 'pointer-coarse:text-[16px]';
+const fieldTouchClass = 'pointer-coarse:text-[length:var(--fs-field-touch,16px)]';
 
 export type { TypeScalePair, TypeScaleRole, TypeScaleStep, TypeScaleVariant };
 export { fieldTouchClass, typeClass, typeClasses, typeScale, typeScaleRoles, typeStyles };

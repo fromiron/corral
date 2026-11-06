@@ -3,13 +3,15 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { linuxProcessIdentity } from '@corral/adapter-pi/processes';
+import { linuxBootId, linuxProcessIdentity } from '@corral/adapter-pi/processes';
 import { spawn } from 'node-pty';
 import { expect, it } from 'vitest';
 import {
-  capturePtySession,
+  cleanupPtyLaunch,
   cleanupPtySession,
+  observePtyLaunch,
   type PtySessionIdentity,
+  waitForPtySession,
 } from '../src/processes/pty-session.ts';
 
 it.skipIf(process.platform !== 'linux')(
@@ -18,6 +20,8 @@ it.skipIf(process.platform !== 'linux')(
     const directory = await mkdtemp(join(tmpdir(), 'corral-pty-session-'));
     execFileSync('git', ['init', '--quiet', directory]);
     const owner = randomUUID();
+    const bootId = linuxBootId();
+    if (!bootId) throw new Error('Linux boot identity unavailable');
     const child = spawn('/bin/bash', ['--noprofile', '--norc', '-i'], {
       cwd: directory,
       name: 'xterm-256color',
@@ -30,14 +34,6 @@ it.skipIf(process.platform !== 'linux')(
         CORRAL_PROCESS_OWNER: owner,
       },
     });
-    let identity: PtySessionIdentity;
-    try {
-      identity = capturePtySession(child.pid, owner);
-    } catch (error) {
-      child.kill('SIGKILL');
-      await rm(directory, { recursive: true, force: true });
-      throw error;
-    }
     let output = '';
     let changed = () => {};
     const data = child.onData((chunk) => {
@@ -45,6 +41,18 @@ it.skipIf(process.platform !== 'linux')(
       changed();
     });
     const exited = new Promise<void>((resolve) => child.onExit(() => resolve()));
+    const launch = observePtyLaunch(child.pid, owner, bootId);
+    let identity: PtySessionIdentity;
+    try {
+      identity = await waitForPtySession(launch);
+    } catch (error) {
+      data.dispose();
+      if (!(await cleanupPtyLaunch(launch)))
+        throw new Error('PTY fixture cleanup could not be verified');
+      await exited;
+      await rm(directory, { recursive: true, force: true });
+      throw error;
+    }
     const seen = (pattern: RegExp) =>
       new Promise<RegExpMatchArray>((resolve, reject) => {
         const watchdog = setTimeout(

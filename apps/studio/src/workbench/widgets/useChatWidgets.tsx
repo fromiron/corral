@@ -1,5 +1,5 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import { pendingInteractions, type RunProjection } from '@corral/core';
+import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
 import {
   estimateRunCost,
   type RunCostEstimate,
@@ -16,6 +16,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../../pages/Workbench.tsx';
@@ -27,7 +28,6 @@ import {
   actionRequired,
   activityLine,
   agentActivity,
-  availableResultLinks,
   type ContextPresentation,
   changesPresentation,
   currentAgentExecutions,
@@ -49,6 +49,7 @@ import {
 export interface ChatWidgetModel {
   sessionId: string;
   runId: string | null;
+  runNumber: number | null;
   live: boolean;
   /** The finished run on screen and its place among the session's runs. */
   viewed: ReturnType<typeof viewedRun>;
@@ -74,6 +75,7 @@ export interface ChatWidgetModel {
   /** The list-price estimate, or why there is none; null before the run is read. */
   cost: RunCostEstimate | null;
   action: ReturnType<typeof actionRequired>;
+  failedExecutionId: string | null;
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
     open: boolean;
@@ -399,11 +401,28 @@ function useChatWidgetState(
     })),
   );
   const currentTool = tools.find((row) => row.tone === 'running') ?? null;
+  const resultText = useTranslations('Results');
   const listed = projection ? runResults(projection) : null;
-  const resultItems = availableResultLinks(
-    projection,
-    listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? []),
-  );
+  const resultItems = (
+    listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? [])
+  )
+    .filter((item) => canReadArtifactBody(projection, item.artifactVersionId))
+    .map((item) => {
+      const nodeId = projection?.executions[item.authorExecutionId]?.nodeId;
+      const author = view?.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+      return {
+        id: item.artifactVersionId,
+        label: [
+          `${item.name} v${item.version}`,
+          author,
+          item.authorExecutionNumber
+            ? resultText('authorExecution', { number: item.authorExecutionNumber })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      };
+    });
   useEffect(() => {
     if (!presentationRunId || !live || projection?.endedAt) return;
     const timer = setInterval(() => setNow(new Date().toISOString()), 1000);
@@ -411,7 +430,7 @@ function useChatWidgetState(
   }, [live, projection?.endedAt, presentationRunId]);
   const activity = {
     ...activityLine({
-      runStatus: projection?.status ?? (live ? 'running' : 'succeeded'),
+      runStatus: projection?.status ?? (live ? 'created' : 'succeeded'),
       startedAt: projection?.startedAt ?? null,
       endedAt: projection?.endedAt ?? null,
       now,
@@ -471,6 +490,7 @@ function useChatWidgetState(
     sessionId,
     runId: presentationRunId,
     live,
+    runNumber: presentationRunId ? runIds.indexOf(presentationRunId) + 1 || null : null,
     viewed: viewedRun({ runIds, presentationRunId, live }),
     simulated: Boolean(simulated),
     readState,
@@ -509,6 +529,9 @@ function useChatWidgetState(
     usage: usageSummary(projection, projection?.limits ?? view?.definition?.limits ?? null),
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
+    failedExecutionId:
+      projection?.toolCalls[tools.find((row) => row.tone === 'failed')?.id ?? '']?.executionId ??
+      null,
     activity,
     plan: {
       open,

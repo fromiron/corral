@@ -95,7 +95,16 @@ function LanguageControls({
           </>
         ) : state && !state.available ? (
           <span className="text-muted-foreground">
-            {t(state.unavailableReason === 'platform' ? 'unsupportedPlatform' : 'untrustedCopy')}
+            {state.unavailableReason === 'platform' ? (
+              t('unsupportedPlatform')
+            ) : (
+              <Link
+                {...navigation.link('workspace', target.projectId)}
+                className="underline underline-offset-2"
+              >
+                {t('untrustedCopy')}
+              </Link>
+            )}
           </span>
         ) : servers.length ? (
           <>

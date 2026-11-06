@@ -158,9 +158,8 @@ export class SqliteRunStore implements RunStore {
     const previous = this.db
       .prepare('SELECT retained_json FROM artifact_body_retention WHERE run_id=?')
       .get(runId) as { retained_json: string } | undefined;
-    const retained = previous
-      ? retainedIds.filter((id) => (JSON.parse(previous.retained_json) as string[]).includes(id))
-      : [...retainedIds];
+    const before = previous ? new Set(JSON.parse(previous.retained_json) as string[]) : null;
+    const retained = before ? retainedIds.filter((id) => before.has(id)) : [...retainedIds];
     const json = JSON.stringify(retained);
     this.db
       .prepare(

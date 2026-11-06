@@ -32,6 +32,7 @@ export interface TerminalBuffer {
   controlling: boolean;
   inputUnknown: boolean;
   inputOverflow: boolean;
+  rateLimited?: boolean;
   error: string | null;
   busy: boolean;
   appliedSequence: number;
@@ -76,6 +77,7 @@ interface Options {
   attachmentId?: string;
   newOperationId?: () => string;
   createRuntime?: typeof createXterm;
+  wait?: (milliseconds: number) => Promise<void>;
 }
 const stores = new WeakMap<TerminalClient, TerminalStore>();
 const errorMessage = (error: unknown) =>
@@ -168,12 +170,18 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
         },
       };
     }
+    if (previous && terminal.controllerGeneration !== previous.terminal.controllerGeneration) {
+      queues.delete(id);
+      patch(id, { rateLimited: false });
+    }
     const controlling = terminal.controller?.attachmentId === attachmentId;
     if (previous) {
       if (terminal.generation !== previous.terminal.generation) {
         streams.get(id)?.();
         streams.delete(id);
+        queues.delete(id);
         patch(id, {
+          rateLimited: false,
           terminal,
           controlling: false,
           connection: 'unavailable',
@@ -200,7 +208,10 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
         },
       });
     }
-    if (!controlling) queues.delete(id);
+    if (!controlling || terminal.state !== 'running') {
+      queues.delete(id);
+      patch(id, { rateLimited: false });
+    }
     const currentSession = state.getState().sessions[terminal.target.sessionId];
     if (currentSession?.list) {
       const list = currentSession.list;
@@ -232,7 +243,17 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
         const controller = value.terminal.controller;
         const frame = queue.frames.shift();
         if (!frame) break;
-        if (frame.kind === 'input') queue.bytes -= byteLength(frame.data);
+        let inputBytes = frame.kind === 'input' ? byteLength(frame.data) : 0;
+        if (frame.kind === 'input') {
+          while (queue.frames[0]?.kind === 'input') {
+            const next = queue.frames[0];
+            const nextBytes = byteLength(next.data);
+            if (inputBytes + nextBytes > MAX_TERMINAL_INPUT_BYTES) break;
+            inputBytes += nextBytes;
+            frame.data += next.data;
+            queue.frames.shift();
+          }
+        }
         const request = {
           ...identity(value),
           attachmentId,
@@ -255,6 +276,7 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
           if (
             queues.get(id) !== queue ||
             !latest ||
+            latest.terminal.generation !== request.generation ||
             latest.terminal.controller?.generation !== request.controllerGeneration
           )
             break;
@@ -264,17 +286,27 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
             ack.acceptedSequence !== request.sequence
           )
             throw new Error('Terminal input acknowledgement did not match.');
+          queue.bytes -= inputBytes;
           patch(id, {
+            rateLimited: false,
+            error: null,
             terminal: {
               ...latest.terminal,
               controller: { ...latest.terminal.controller, acceptedSequence: ack.acceptedSequence },
             },
           });
         } catch (error) {
-          if (queues.get(id) === queue) {
-            queues.delete(id);
-            patch(id, { inputUnknown: true, error: errorMessage(error) });
+          if (queues.get(id) !== queue) break;
+          if (error instanceof ApiError && error.status === 429) {
+            queue.frames.unshift(frame);
+            patch(id, { rateLimited: true, error: null });
+            await (
+              options.wait ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+            )(error.retryAfterMs ?? 1000);
+            continue;
           }
+          queues.delete(id);
+          patch(id, { inputUnknown: true, rateLimited: false, error: errorMessage(error) });
           break;
         }
       }
@@ -423,6 +455,7 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
             queues.delete(id);
             patch(id, {
               connection: 'disconnected',
+              rateLimited: false,
               ...(pending ? { inputUnknown: true } : {}),
               error: errorMessage(error),
             });
@@ -435,7 +468,7 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
     const value = get(id);
     if (!value || value.busy) return;
     queues.delete(id);
-    patch(id, { busy: true, error: null });
+    patch(id, { busy: true, rateLimited: false, error: null });
     try {
       upsert(
         await client.control(value.terminal.target.sessionId, id, {
@@ -467,7 +500,12 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
       session(sessionId, { pendingCreate: null });
       return terminal.terminalId;
     } catch (error) {
-      session(sessionId, { error: errorMessage(error) });
+      const refused =
+        error instanceof ApiError && error.status < 500 && error.code !== 'REQUEST_OUTCOME_UNKNOWN';
+      session(sessionId, {
+        error: errorMessage(error),
+        ...(refused ? { pendingCreate: null } : {}),
+      });
       return null;
     } finally {
       session(sessionId, { loading: false });
@@ -528,7 +566,7 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
       const value = get(id);
       if (!value || value.busy) return;
       queues.delete(id);
-      patch(id, { busy: true, error: null });
+      patch(id, { busy: true, rateLimited: false, error: null });
       try {
         upsert(await client.stop(value.terminal.target.sessionId, id, identity(value)));
         if (typeof window !== 'undefined') window.dispatchEvent(new Event(WORKSPACE_CHANGED));

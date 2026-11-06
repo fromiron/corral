@@ -126,8 +126,11 @@ const model: ComponentProps<typeof Sidebar>['model'] = {
   corrals: [],
   runs: [],
   inbox: 0,
+  terminalAttention: [],
   error: null,
   current: 'alpha',
+  scheduledResults: [],
+  dismissScheduled: () => {},
 };
 
 const disposals: (() => Promise<void>)[] = [];

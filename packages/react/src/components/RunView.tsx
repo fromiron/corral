@@ -24,6 +24,7 @@ import { executionIntervals } from '../run/history.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 import { BudgetInspector } from './BudgetInspector.tsx';
+import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
@@ -553,8 +554,12 @@ function ExecutionDetail({
           ))}
         </p>
       ) : null}
-      {execution.error ? <p className="text-destructive">{execution.error}</p> : null}
-      {!compact && live?.completed ? <p className="font-medium">{t('completedResponse')}</p> : null}
+      {execution.error ? (
+        <FailureNotice message={execution.error} cancelled={execution.status === 'cancelled'} />
+      ) : null}
+      {!compact && live?.completed ? (
+        <p className="mt-1 font-medium">{t('completedResponse')}</p>
+      ) : null}
       {!compact && live?.text ? (
         <p
           data-testid="live-text"

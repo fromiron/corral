@@ -1,3 +1,4 @@
+import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { StatusDot } from '@corral/react';
 import {
@@ -44,7 +45,7 @@ import {
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import {
@@ -64,13 +65,23 @@ import {
 } from './notifications.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
+import { watchRunList } from './runList.ts';
 import { SessionSearchDialog } from './SessionSearchDialog.tsx';
+import {
+  completedScheduleRuns,
+  type ScheduledRunOutcome,
+  scheduledRunOutcomes,
+} from './scheduledRuns.ts';
+import { sessionListState, uncertainSessionTerminal } from './sessionList.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
 import { useModelProfiles } from './useModels.ts';
+import { useSessionAge } from './useSessionAge.ts';
 
 export function useCorralSidebar() {
-  const { repository, transport, workspaces } = useServices();
+  const { repository, transport, workspaces, terminals } = useServices();
   const td = useTranslations('Desktop');
+  const scheduledText = useTranslations('Schedules');
+  const statusText = useTranslations('Status');
   const navigate = useNavigate();
   const href = useRouterState({ select: (s) => workHref(s.location.href) ?? s.location.href });
   const version = useProjectsVersion();
@@ -80,91 +91,101 @@ export function useCorralSidebar() {
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [inbox, setInbox] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [terminalAttention, setTerminalAttention] = useState<InboxItemView[]>([]);
   useEffect(() => {
-    void version;
-    let live = true;
-    void (async () => {
-      try {
-        const ps = await repository.listProjects();
-        const lists = await Promise.all(
-          ps.filter((p) => !p.archivedAt).map((p) => repository.listSessions(p.projectId)),
-        );
-        if (!live) return;
-        setProjects(ps.filter((p) => !p.archivedAt));
-        setSessions(lists.flat().filter((s) => !s.archivedAt));
-        setError(null);
-      } catch (e) {
-        if (live) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [repository, version]);
+    void terminals;
+    setTerminalAttention([]);
+  }, [terminals]);
+  const [error, setError] = useState<string | null>(null);
+  const [scheduledResults, setScheduledResults] = useState<ScheduledRunOutcome[]>([]);
+  const scheduledSeen = useRef<{
+    transport: typeof transport;
+    runs: RunSummary[];
+  } | null>(null);
   useEffect(() => {
     void href;
     void version;
-    let live = true;
-    void Promise.all([repository.listSessions(current), repository.list()]).then(
-      ([list, teams]) => {
-        if (live) {
-          setCorrals(teams);
-          setSessions((all) => [
-            ...all.filter((s) => s.projectId !== current),
-            ...list.filter((s) => !s.archivedAt),
-          ]);
-        }
-      },
-      (failure: unknown) => {
-        if (live) setError(failure instanceof Error ? failure.message : String(failure));
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [repository, current, href, version]);
-  useEffect(() => {
-    let live = true;
-    let loading = false;
+    if (scheduledSeen.current?.transport !== transport) setScheduledResults([]);
     let seen: NotificationTarget[] | null = null;
-    const refresh = () => {
-      if (loading) return;
-      loading = Boolean(workspaces);
-      void transport.listRuns().then(
-        (r) => {
-          if (live) setRuns(r);
-        },
-        () => {},
-      );
-      void workspaces
-        ?.inbox(current)
-        .then(
-          (r) => {
-            if (!live) return;
-            setInbox(r.length);
-            const added = inboxNotificationTargets(r, seen ?? r);
-            // First load is the baseline; equal counts can still contain a new decision.
-            seen = inboxNotificationTargets(r);
-            void desktop?.badge(r.length).catch(() => {});
-            if (added[0] && preferences.getState().notify && !document.hasFocus())
+    let runKey: string | null = null;
+    let latestSessions: WorkSession[] = [];
+    const watcher = watchRunList(transport, async (result, currentRead, force) => {
+      try {
+        if ('error' in result) throw result.error;
+        const latestRuns = result.runs;
+        const [items, terminalItems] = await Promise.all([
+          workspaces?.inbox(current).catch(() => null) ?? Promise.resolve(null),
+          terminals?.attention().catch(() => null) ?? Promise.resolve([]),
+        ]);
+        const nextRunKey = latestRuns
+          .map((run) => `${run.runId}:${run.status}`)
+          .sort()
+          .join(',');
+        // Full session entries are needed only after a run changes or an explicit wake-up.
+        if (force || nextRunKey !== runKey) {
+          const [ps, teams] = await Promise.all([repository.listProjects(), repository.list()]);
+          const activeProjects = ps.filter((project) => !project.archivedAt);
+          const lists = await Promise.all(
+            activeProjects.map((project) => repository.listSessions(project.projectId)),
+          );
+          if (!currentRead()) return;
+          latestSessions = lists.flat().filter((session) => !session.archivedAt);
+          setProjects(activeProjects);
+          setCorrals(teams);
+          setSessions(latestSessions);
+          runKey = nextRunKey;
+        }
+        if (!currentRead()) return;
+        if (terminalItems) setTerminalAttention(terminalItems);
+        setRuns(latestRuns);
+        setError(null);
+        const outcomes = scheduledRunOutcomes(latestSessions, latestRuns);
+        const completed = completedScheduleRuns(
+          outcomes,
+          scheduledSeen.current?.transport === transport ? scheduledSeen.current.runs : null,
+        );
+        scheduledSeen.current = { transport, runs: latestRuns };
+        if (completed.length) {
+          setScheduledResults((previous) => [
+            ...completed,
+            ...previous.filter((run) => !completed.some((next) => next.runId === run.runId)),
+          ]);
+          if (preferences.getState().notify && !document.hasFocus())
+            for (const run of completed)
               void desktop
-                ?.notify(td('notifyTitle'), td('notifyBody', { count: r.length }), added[0])
+                ?.notify(
+                  scheduledText('resultTitle'),
+                  scheduledText('result', { status: statusText(run.status) }),
+                )
                 .catch(() => {});
-          },
-          () => {},
-        )
-        .finally(() => {
-          loading = false;
-        });
-    };
-    refresh();
-    const timer = setInterval(refresh, 2000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [transport, workspaces, current, td]);
+        }
+        if (items) {
+          setInbox(items.length);
+          const added = inboxNotificationTargets(items, seen ?? items);
+          seen = inboxNotificationTargets(items);
+          void desktop?.badge(items.length).catch(() => {});
+          if (added[0] && preferences.getState().notify && !document.hasFocus())
+            void desktop
+              ?.notify(td('notifyTitle'), td('notifyBody', { count: items.length }), added[0])
+              .catch(() => {});
+        }
+      } catch (failure) {
+        if (currentRead()) setError(failure instanceof Error ? failure.message : String(failure));
+      }
+    });
+    return watcher.dispose;
+  }, [
+    repository,
+    transport,
+    workspaces,
+    terminals,
+    current,
+    href,
+    version,
+    td,
+    scheduledText,
+    statusText,
+  ]);
   useEffect(() => {
     if (!desktop?.onNotification || !workspaces) return;
     let version = 0;
@@ -188,26 +209,22 @@ export function useCorralSidebar() {
       off();
     };
   }, [repository, workspaces, navigate]);
-  return { projects, corrals, sessions, runs, inbox, error, current };
+  return {
+    projects,
+    corrals,
+    sessions,
+    runs,
+    inbox,
+    terminalAttention,
+    error,
+    current,
+    scheduledResults,
+    dismissScheduled: (runId: string) =>
+      setScheduledResults((results) => results.filter((run) => run.runId !== runId)),
+  };
 }
 
 const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
-
-/** "3m ago", "2h ago" in the reader's language: when a session last changed. */
-function useAgo() {
-  const locale = useLocale();
-  const format = useMemo(
-    () => new Intl.RelativeTimeFormat(locale, { style: 'narrow', numeric: 'always' }),
-    [locale],
-  );
-  return (iso: string) => {
-    const minutes = Math.round((Date.parse(iso) - Date.now()) / 60_000);
-    if (Math.abs(minutes) < 60) return format.format(Math.min(-1, minutes), 'minute');
-    const hours = Math.round(minutes / 60);
-    if (Math.abs(hours) < 24) return format.format(hours, 'hour');
-    return format.format(Math.round(hours / 24), 'day');
-  };
-}
 
 export const Sidebar = memo(function Sidebar({
   model,
@@ -223,9 +240,9 @@ export const Sidebar = memo(function Sidebar({
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
   const ts = useTranslations('Sessions');
-  const status = useTranslations('Status');
   const studio = useTranslations('Studio');
-  const ago = useAgo();
+  const ago = useSessionAge();
+  const status = useTranslations('Status');
   const profiles = useModelProfiles();
   const connected = Boolean(profiles?.some((p) => p.available));
   const { repository, mode, live } = useServices();
@@ -239,6 +256,7 @@ export const Sidebar = memo(function Sidebar({
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const needle = query.trim().toLocaleLowerCase();
   const [collapsed, setCollapsed] = useRemembered<Record<string, boolean>>(
     'corral:sidebar-collapsed:v1',
@@ -345,6 +363,10 @@ export const Sidebar = memo(function Sidebar({
     (row) => row.kind === 'session' && path.startsWith(`/sessions/${row.session.sessionId}`),
   );
   const hasActive = activeIndex >= 0;
+  const mountedRows = virtual.getVirtualItems();
+  const sessionTabIndex = mountedRows.some((row) => row.index === activeIndex)
+    ? activeIndex
+    : mountedRows.find((row) => rows[row.index]?.kind === 'session')?.index;
   // Navigate/search brings the selected session into view; background data changes do not.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only intentional navigation/search scrolls the sidebar
   useLayoutEffect(() => {
@@ -427,6 +449,7 @@ export const Sidebar = memo(function Sidebar({
             type="search"
             shortcut={null}
             aria-label={tw('searchSessions')}
+            aria-description={searchText('sidebarScope')}
             placeholder={tw('searchSessions')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -459,6 +482,9 @@ export const Sidebar = memo(function Sidebar({
         </p>
       ) : null}
       <nav aria-label={tw('sidebar')} className="flex min-h-0 flex-1 flex-col">
+        <p id="session-list-keys" className="sr-only">
+          {ts('keyboardHint')}
+        </p>
         <SidebarContent
           ref={(node) => {
             scroll.current =
@@ -570,15 +596,21 @@ export const Sidebar = memo(function Sidebar({
                     >
                       {projectName(project, tp('defaultName'))}
                     </SidebarMenuButton>
-                    <SidebarMenuAction
-                      aria-label={t('toggleProject', {
+                    <Tooltip
+                      content={t('toggleProject', {
                         name: projectName(project, tp('defaultName')),
                       })}
-                      aria-expanded={!folded}
-                      onClick={() => setCollapsed({ ...collapsed, [project.projectId]: !folded })}
                     >
-                      <ChevronDown className={folded ? '-rotate-90' : undefined} />
-                    </SidebarMenuAction>
+                      <SidebarMenuAction
+                        aria-label={t('toggleProject', {
+                          name: projectName(project, tp('defaultName')),
+                        })}
+                        aria-expanded={!folded}
+                        onClick={() => setCollapsed({ ...collapsed, [project.projectId]: !folded })}
+                      >
+                        <ChevronDown className={folded ? '-rotate-90' : undefined} />
+                      </SidebarMenuAction>
+                    </Tooltip>
                     <SidebarMenuSub open={!folded} style={{ height: group.size - projectHeight }}>
                       {items.map((item) => {
                         const row = rows[item.index];
@@ -604,51 +636,90 @@ export const Sidebar = memo(function Sidebar({
                           );
                         const session = row.session;
                         const active = path.startsWith(`/sessions/${session.sessionId}`);
-                        const run = model.runs.find((r) => r.sessionId === session.sessionId);
+                        const run = model.runs
+                          .filter((r) => r.sessionId === session.sessionId)
+                          .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
                         const working = Boolean(run && !ENDED.has(run.status));
-                        // Only what needs attention shows a dot: working, waiting for a person, or failed.
-                        const flagged = run && (working || run.status === 'failed');
+                        const terminal = uncertainSessionTerminal(
+                          session.sessionId,
+                          model.terminalAttention,
+                        );
+                        const state = sessionListState(
+                          session,
+                          model.runs,
+                          model.terminalAttention,
+                        );
                         return (
                           <SidebarMenuSubItem
                             key={item.key}
                             data-sidebar-index={item.index}
                             style={position}
+                            onKeyDownCapture={(event) => {
+                              if (
+                                openMenu !== session.sessionId ||
+                                !['Tab', 'Escape'].includes(event.key)
+                              )
+                                return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const trigger =
+                                event.currentTarget.querySelector<HTMLElement>(
+                                  '[data-session-menu]',
+                                );
+                              setOpenMenu(null);
+                              requestAnimationFrame(() => trigger?.focus());
+                            }}
                           >
                             <SidebarMenuSubButton
+                              tabIndex={item.index === sessionTabIndex ? 0 : -1}
+                              aria-describedby="session-list-keys"
                               isActive={active}
                               render={
                                 <Link
                                   to="/sessions/$sessionId"
                                   params={{ sessionId: session.sessionId }}
+                                  search={
+                                    terminal ? { panel: 'terminal', terminal } : { compose: true }
+                                  }
                                 />
                               }
                             >
-                              {session.title}
-                              <span className="ml-auto flex shrink-0 items-center gap-2">
-                                {session.pinned ? <Pin size={12} /> : null}
-                                {!flagged ? (
-                                  <span className="text-2xs group-focus-within/menu-sub-item:invisible group-hover/menu-sub-item:invisible">
-                                    {ago(session.updatedAt)}
-                                  </span>
-                                ) : null}
+                              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                <span className="truncate leading-3.5">{session.title}</span>
+                                <span className="truncate text-micro leading-3 text-muted-foreground">
+                                  {terminal ? `${ts('terminalNeedsAttention')} · ` : null}
+                                  {run
+                                    ? `${status(run.status)} · `
+                                    : terminal
+                                      ? null
+                                      : `${ts(`listState.${state}`)} · `}
+                                  {ago(session.updatedAt)}
+                                </span>
                               </span>
+                              {session.pinned ? <Pin size={12} /> : null}
                             </SidebarMenuSubButton>
-                            {flagged ? (
+                            {run ? (
                               <SidebarMenuBadge>
                                 <StatusDot status={run.status} label={status(run.status)} />
                               </SidebarMenuBadge>
                             ) : null}
-                            <Menu>
-                              <MenuTrigger
-                                render={
-                                  <SidebarMenuAction
-                                    showOnHover
-                                    aria-label={t('sessionActions', { title: session.title })}
-                                  />
-                                }
-                              >
-                                <Ellipsis />
-                              </MenuTrigger>
+                            <Menu
+                              open={openMenu === session.sessionId}
+                              onOpenChange={(open) => setOpenMenu(open ? session.sessionId : null)}
+                            >
+                              <Tooltip content={t('sessionActions', { title: session.title })}>
+                                <MenuTrigger
+                                  render={
+                                    <SidebarMenuAction
+                                      showOnHover
+                                      data-session-menu
+                                      aria-label={t('sessionActions', { title: session.title })}
+                                    />
+                                  }
+                                >
+                                  <Ellipsis />
+                                </MenuTrigger>
+                              </Tooltip>
                               <MenuPopup align="start" side="right">
                                 <MenuItem onClick={() => setEditing(session)}>
                                   {t('rename')}
@@ -680,7 +751,14 @@ export const Sidebar = memo(function Sidebar({
           !model.sessions.some((s) =>
             `${s.title}\n${s.objective}`.toLocaleLowerCase().includes(needle),
           ) ? (
-            <p className="p-3 text-xs text-muted-foreground">{t('noMatches')}</p>
+            <div className="p-3 text-xs text-muted-foreground">
+              <p>{t('noMatches')}</p>
+              {mode === 'server' ? (
+                <Button variant="ghost" size="compact" onClick={() => setSearchOpen(true)}>
+                  {searchText('searchBody')}
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </SidebarContent>
       </nav>

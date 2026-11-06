@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, type ReactNode } from 'react';
+import { useTranslations } from 'use-intl';
 import {
   Select as KitSelect,
   SelectContent,
@@ -50,6 +51,7 @@ export function Select<T extends string>({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const t = useTranslations('Select');
   const hasHints = options.some((option) => option.hint);
   const groups: { title?: string; options: { option: SelectOption<T>; index: number }[] }[] = [];
   options.forEach((option, index) => {
@@ -90,7 +92,7 @@ export function Select<T extends string>({
       <SelectTrigger
         id={id}
         aria-label={label}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('placeholder')}
         leadingContent={icon}
         variant={variant === 'outline' ? 'bordered' : 'borderless'}
         className={cn(variant !== 'outline' && 'min-w-0 max-w-full', className)}

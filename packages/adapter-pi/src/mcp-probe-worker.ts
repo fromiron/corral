@@ -4,6 +4,7 @@ import { McpClient } from '@earendil-works/pi-mcp';
 import { z } from 'zod';
 import { BROWSER_TOOLS } from './browser-policy.ts';
 import type { McpProbeTool } from './mcp-probe.ts';
+import { safeProbeFailure } from './mcp-probe-failure.ts';
 import { createCorralMcpTransport } from './mcp-transport.ts';
 import { processPort } from './worker-process.ts';
 
@@ -115,8 +116,8 @@ port.onFrame((raw) => {
       });
       await client.close();
       port.send({ type: 'result', tools: result });
-    } catch {
-      port.send({ type: 'failed' });
+    } catch (error) {
+      port.send({ type: 'failed', failure: safeProbeFailure(error) });
     } finally {
       await client.close().catch(() => {});
       port.kill();

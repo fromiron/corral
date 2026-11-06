@@ -1,5 +1,8 @@
+import { ApiError } from '@corral/client';
 import type { ProjectSummary } from '@corral/core';
 import {
+  Banner,
+  BannerTitle,
   Button,
   Dialog,
   DialogPopup,
@@ -30,9 +33,11 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
+import { useRegisterCommands } from '../commandRegistry.ts';
 import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
 import { projectName } from '../projects.ts';
 import { useServices } from '../services.tsx';
+import { SESSION_MISSING } from '../sessionConnection.ts';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
 import { documentStore } from '../workbench/documents/store.ts';
@@ -46,6 +51,7 @@ import {
   workHref,
 } from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
+import { ScheduledRunNotifications } from '../workbench/ScheduledRunNotifications.tsx';
 import { useSessionJump } from '../workbench/SessionJump.tsx';
 import { SettingsDialog } from '../workbench/SettingsDialog.tsx';
 import {
@@ -71,6 +77,12 @@ function RootFrame() {
   const router = useRouter();
   const settingsOwner = useRef(crypto.randomUUID()).current;
   const { repository, workspaces, mode } = useServices();
+  const [sessionMissing, setSessionMissing] = useState(false);
+  useEffect(() => {
+    const expired = () => setSessionMissing(true);
+    window.addEventListener(SESSION_MISSING, expired);
+    return () => window.removeEventListener(SESSION_MISSING, expired);
+  }, []);
   useBlocker({
     shouldBlockFn: () => false,
     enableBeforeUnload: () =>
@@ -84,6 +96,7 @@ function RootFrame() {
   const td = useTranslations('Desktop');
   const th = useTranslations('Harness');
   const tr = useTranslations('Resources');
+  const commands = useTranslations('Commands');
   const projectsText = useTranslations('Projects');
   const prefs = usePreferences();
   const location = useRouterState({ select: (s) => s.location });
@@ -128,7 +141,9 @@ function RootFrame() {
     lastWork?.href ??
     (settingsProjectId ? `/projects/${encodeURIComponent(settingsProjectId)}` : '/projects');
   const entryProjectId = overlay
-    ? sidebar.projects.find((item) => item.projectId === overlaySearch.settingsProject)?.projectId
+    ? sidebar.projects.find(
+        (item) => item.projectId === (overlaySearch.settingsProject ?? projectId),
+      )?.projectId
     : settings
       ? settingsProjectId
       : projectId;
@@ -246,6 +261,23 @@ function RootFrame() {
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
+  useRegisterCommands('sidebar', [
+    {
+      id: 'view:sidebar',
+      title: (narrow ? mobileOpen : prefs.sidebarOpen)
+        ? commands('hideSidebar')
+        : commands('showSidebar'),
+      group: commands('groups.view'),
+      shortcutId: 'view.sidebar',
+      shortcut: shortcutLabel('view.sidebar'),
+      run: () => {
+        if (narrow) {
+          changePreferences({ sidebarOpen: true });
+          setMobileOpen((open) => !open);
+        } else changePreferences({ sidebarOpen: !prefs.sidebarOpen });
+      },
+    },
+  ]);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -311,6 +343,7 @@ function RootFrame() {
               <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
                 <DialogPopup
                   className="mobile-sidebar-dialog"
+                  position="left"
                   showCloseButton={false}
                   bottomStickOnMobile={false}
                   finalFocus={sidebarTrigger}
@@ -414,6 +447,15 @@ function RootFrame() {
                 </Tooltip>
               </header>
               <SettingsOperationStatus />
+              <ScheduledRunNotifications
+                results={sidebar.scheduledResults}
+                dismiss={sidebar.dismissScheduled}
+              />
+              {sessionMissing ? (
+                <Banner status="warning" size="compact">
+                  <BannerTitle>{t('sessionMissing')}</BannerTitle>
+                </Banner>
+              ) : null}
               <div className="app-outlet">
                 <Outlet />
                 {!overlay ? <SettingsLeavePrompt /> : null}
@@ -499,6 +541,7 @@ export function NotFoundView() {
 export function ErrorView({ error }: ErrorComponentProps) {
   const t = useTranslations('Studio');
   const router = useRouter();
+  if (error instanceof ApiError && error.code === 'SESSION_INVALID') return <SessionMissingView />;
   return (
     <main role="alert" className="flex flex-col items-start gap-3 p-6">
       <h2 className="text-lg font-semibold">
@@ -526,6 +569,9 @@ export function SessionMissingView() {
       <p role="alert" className="text-sm text-danger">
         {t('sessionMissing')}
       </p>
+      <Button variant="secondary" onClick={() => window.location.reload()}>
+        {t('retryConnection')}
+      </Button>
     </main>
   );
 }

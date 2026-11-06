@@ -5,7 +5,7 @@ import {
   type VoiceTranscript,
   type VoiceTranscriptReceipt,
 } from '@corral/client';
-import type { AutoModelChoice, TextAttachment } from '@corral/contracts';
+import type { AutoModelChoice, CommandError, TextAttachment } from '@corral/contracts';
 import {
   IMAGE_MAX_COUNT,
   type ImageAttachment,
@@ -27,8 +27,14 @@ import type {
   SessionIntent,
   WorkSession,
 } from '@corral/core';
-import { validTextAttachments } from '@corral/core';
-import { ExecutionSteering, runResults, StatusBadge } from '@corral/react';
+import { queuedSessionCommandId, validTextAttachments } from '@corral/core';
+import {
+  ExecutionSteering,
+  MessageBody,
+  runResults,
+  StatusBadge,
+  useCancelConfirmation,
+} from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -72,6 +78,7 @@ import {
   PanelRight,
   Plus,
   Square,
+  Terminal,
   X,
 } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -112,6 +119,7 @@ export type { SessionPanel } from '../workbench/panels/registry.ts';
 import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { sendKeyLabel, shortcutLabel } from '../shortcuts.ts';
+import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { AutoModelMenu } from '../workbench/AutoModelMenu.tsx';
 import {
   autoChoiceFor,
@@ -124,7 +132,14 @@ import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
 import { type IntentLock, resolveIntent } from '../workbench/composerIntent.ts';
-import { type MentionItem, mentionToken, pickedReferences } from '../workbench/composerMenu.ts';
+import {
+  type MentionItem,
+  mentionLabel,
+  mentionToken,
+  pickedReferences,
+  removeMention,
+  selectMention,
+} from '../workbench/composerMenu.ts';
 import {
   type AttachmentCapture,
   type AttachmentRequest,
@@ -152,20 +167,28 @@ import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
+import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
 import { panelRunId } from '../workbench/panelRun.ts';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
-import { EDIT_REQUEST, editRequest, RefusalHelp } from '../workbench/RefusalHelp.tsx';
+import {
+  EDIT_REQUEST,
+  editRequest,
+  RESEND_REQUEST,
+  RefusalHelp,
+} from '../workbench/RefusalHelp.tsx';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { RunChanges } from '../workbench/RunChanges.tsx';
 import { RunMessage } from '../workbench/RunMessage.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
+import { isScheduledRequest } from '../workbench/scheduledRuns.ts';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
   readComposerDraft,
   writeComposerDraft,
 } from '../workbench/sessionDraft.ts';
-import { TerminalPanel } from '../workbench/TerminalPanel.tsx';
+import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
+import { TerminalWriterNotice } from '../workbench/TerminalWriterNotice.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
@@ -175,7 +198,9 @@ import {
   useModelProfiles,
   useTeamRoles,
 } from '../workbench/useModels.ts';
+import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
+import { WorkFolderNotice } from '../workbench/WorkFolderNotice.tsx';
 import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx';
 import { OverviewAccess, OverviewPanel } from '../workbench/widgets/OverviewWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
@@ -191,49 +216,6 @@ import { useRemembered } from './Workbench.tsx';
 
 const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
 
-/** The session's runs, kept current while one is working. */
-function useSessionRuns(sessionId: string, selectedRunId?: string) {
-  const { transport } = useServices();
-  const [all, setAll] = useState<RunSummary[]>([]);
-  const [tick, setTick] = useState(0);
-  // Unreachable server: run states are unknown, not finished.
-  const [lost, setLost] = useState(false);
-  // The selection the last answered listing was asked for: a run requested after it may be too
-  // new to be listed yet.
-  const [listedFor, setListedFor] = useState<string | null>(null);
-  const request = `${sessionId}:${selectedRunId ?? ''}`;
-  const refresh = useCallback(() => setTick((n) => n + 1), []);
-  useEffect(() => {
-    void tick;
-    void sessionId;
-    void selectedRunId;
-    let live = true;
-    transport.listRuns().then(
-      (runs) => {
-        if (!live) return;
-        setAll(runs);
-        setListedFor(request);
-        setLost(false);
-      },
-      () => live && setLost(true),
-    );
-    return () => {
-      live = false;
-    };
-  }, [transport, tick, sessionId, selectedRunId, request]);
-  const runs = all
-    .filter((r) => r.sessionId === sessionId)
-    .reverse()
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  const active = runs.findLast((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
-  useEffect(() => {
-    if (!active && !lost) return;
-    const timer = setInterval(refresh, 1500);
-    return () => clearInterval(timer);
-  }, [active, lost, refresh]);
-  return { runs, active, refresh, lost, listed: listedFor === request };
-}
-
 /**
  * Context panes follow the session URL; document tabs keep their explicit workspace target.
  * Stores own editing and execution state independently of dock placement.
@@ -241,6 +223,13 @@ function useSessionRuns(sessionId: string, selectedRunId?: string) {
 /** a meeting has its own chat; every other session keeps the work view. */
 export function SessionPage() {
   const { session } = sessionRoute.useLoaderData();
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = `${session.title} · Corral Studio`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [session.title]);
   return session.meeting ? (
     <MeetingPage key={session.sessionId} session={session} />
   ) : (
@@ -269,8 +258,23 @@ function WorkSessionPage() {
     rememberView(remembered);
   }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
+  const urlViewKey = JSON.stringify(urlSearch);
+  useEffect(() => {
+    if (urlViewKey !== '{}') return;
+    const current = JSON.parse(viewKey) as SessionSearch;
+    // Give Back an explicit destination before remembered state changes with a result link.
+    void navigate({
+      search: () => (Object.keys(current).length ? current : { compose: true }),
+      replace: true,
+    });
+  }, [urlViewKey, viewKey, navigate]);
   const router = useRouter();
-  const { runs, active, refresh, lost, listed } = useSessionRuns(session.sessionId, search.run);
+  const { runs, active, refresh, lost, listed } = useSessionRuns(
+    session.sessionId,
+    search.run,
+    session.revision,
+    session.entries,
+  );
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const ts = useTranslations('Sessions');
@@ -456,6 +460,8 @@ function WorkSessionPage() {
     if (view === 'terminal')
       return (
         <TerminalPanel
+          terminalId={search.terminal}
+          runActive={sessionRuns.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
           key={session.sessionId}
           sessionId={session.sessionId}
           projectId={session.projectId}
@@ -510,6 +516,7 @@ function WorkSessionPage() {
         }
         onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
+      <ArchivedSessionNotice key={session.sessionId} session={session} />
       <SourceNavigationContext.Provider
         value={{
           openDocument: (target, path, range) =>
@@ -524,7 +531,7 @@ function WorkSessionPage() {
             )
               throw new Error(contextMessages('unavailable'));
             setTerminalSource(source);
-            dock.current?.openContext('terminal');
+            showPanel({ panel: 'terminal', terminal: source.terminalId });
           },
         }}
       >
@@ -544,10 +551,11 @@ function WorkSessionPage() {
                 hostId={services.workspaceId}
                 projectId={session.projectId}
                 sessionId={session.sessionId}
-                selectedPanel={search.compose ? null : panel}
+                selectedPanel={panel ?? null}
                 fileWorkAvailable={Boolean(binding)}
                 selectionKey={`${session.sessionId}:${viewKey}`}
                 documentOwner={documents}
+                terminalStatus={<TerminalActivity sessionId={session.sessionId} />}
                 renderContext={renderContext}
                 renderDocument={(descriptor, _panelId, selection) =>
                   documents ? (
@@ -733,7 +741,7 @@ function SessionActions({
   };
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
-  const { workspaces } = useServices();
+  const { workspaces, terminals } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
   useRegisterCommands('session', [
@@ -830,6 +838,14 @@ function SessionActions({
   ]);
   return (
     <TopbarActions>
+      {team ? (
+        <span
+          className="max-w-48 truncate text-xs text-muted-foreground"
+          title={`${team.name} · r${team.definitionRevision}`}
+        >
+          {team.name} · r{team.definitionRevision}
+        </span>
+      ) : null}
       {runs.length > 1 ? (
         <Select
           variant="chip"
@@ -837,15 +853,16 @@ function SessionActions({
           label={t('selectedRun')}
           value={selectedRunId}
           onValueChange={onSelectRun}
-          options={runs.map((run) => ({
+          options={runs.map((run, index) => ({
             value: run.runId,
             label: (
               <span className="block max-w-[min(26rem,70vw)] truncate">
-                {session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
-                  run.runId}{' '}
-                · {status(run.status)}
+                {tw('runNumber', { number: index + 1 })} · {t('selectedRun')} · {status(run.status)}
               </span>
             ),
+            hint:
+              session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
+              run.runId,
           }))}
         />
       ) : null}
@@ -863,8 +880,20 @@ function SessionActions({
           className="gap-1.5 text-muted-foreground"
         >
           <FileDiff />
-          {tw('changeCount', { count: changes.length })}
+          {tw('sessionChangeCount', { count: changes.length })}
         </Button>
+      ) : null}
+      {terminals ? (
+        <Tooltip content={tdock('terminal')}>
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            aria-label={tdock('terminal')}
+            onClick={() => onPanel('terminal')}
+          >
+            <Terminal />
+          </Button>
+        </Tooltip>
       ) : null}
       <Tooltip
         content={tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer')}
@@ -881,17 +910,19 @@ function SessionActions({
         </Button>
       </Tooltip>
       <Menu>
-        <MenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-compact"
-              aria-label={td('sessionActions', { title: session.title })}
-            />
-          }
-        >
-          <Ellipsis />
-        </MenuTrigger>
+        <Tooltip content={td('sessionActions', { title: session.title })}>
+          <MenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label={td('sessionActions', { title: session.title })}
+              />
+            }
+          >
+            <Ellipsis />
+          </MenuTrigger>
+        </Tooltip>
         <MenuPopup align="end" className="min-w-52">
           <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
           <MenuSub>
@@ -1008,7 +1039,20 @@ function WorkTab({
         aside={<OverviewPanel />}
         sessionId={session.sessionId}
         messageId={messageId}
-        header={<MeetingHandoffLinks key={session.sessionId} sessionId={session.sessionId} />}
+        header={
+          <>
+            <MeetingHandoffLinks
+              key={`handoffs:${session.sessionId}`}
+              sessionId={session.sessionId}
+            />
+            <WorkFolderNotice
+              key={`folder:${session.sessionId}`}
+              sessionId={session.sessionId}
+              revision={runs.map((run) => `${run.runId}:${run.status}`).join(',')}
+              onSetup={() => onPanel('changes')}
+            />
+          </>
+        }
         items={[
           ...session.entries
             .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
@@ -1044,6 +1088,7 @@ function WorkTab({
             runs={runs}
             active={active}
             selectedRunId={selectedRunId}
+            onViewRun={(run) => onPanel('run', { run })}
             queued={queued}
             onChange={onChange}
             reference={reference}
@@ -1124,6 +1169,7 @@ function RunPanel({
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
+          runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
           embedded
           search={
             own
@@ -1161,6 +1207,7 @@ function ArtifactsPanel({
     runId: string;
     id: string;
     label: string;
+    author: string;
     kind: 'final' | 'partial' | 'intermediate';
   };
   const [items, setItems] = useState<Item[]>([]);
@@ -1188,6 +1235,8 @@ function ArtifactsPanel({
         });
         if (!live) return;
         if (!snapshot) continue;
+        const definition = await transport.getRunDefinition(runId);
+        if (!live) return;
         const results = runResults(snapshot.projection);
         for (const artifact of [
           ...results.final,
@@ -1197,6 +1246,17 @@ function ArtifactsPanel({
             runId,
             id: artifact.artifactVersionId,
             label: `${artifact.name} v${artifact.version}`,
+            author: [
+              definition?.nodes.find(
+                (node) =>
+                  node.id === snapshot.projection.executions[artifact.authorExecutionId]?.nodeId,
+              )?.label,
+              artifact.authorExecutionNumber
+                ? tr('authorExecution', { number: artifact.authorExecutionNumber })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · '),
             kind: results.final.includes(artifact)
               ? 'final'
               : results.kind === 'partial'
@@ -1216,7 +1276,7 @@ function ArtifactsPanel({
     return () => {
       live = false;
     };
-  }, [transport, key, retry]);
+  }, [transport, key, retry, tr]);
   if (loading)
     return (
       <p role="status" className="text-xs text-muted-foreground">
@@ -1243,17 +1303,21 @@ function ArtifactsPanel({
               <Button
                 variant="ghost"
                 className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
-                aria-label={`${tr(item.kind)} ${item.label}`}
+                aria-label={`${tr(item.kind)} ${item.label} · ${tw('runNumber', { number: runs.findIndex((run) => run.runId === item.runId) + 1 })} · ${item.author}`}
                 onClick={() => onOpen(item.runId, item.id)}
               >
                 <FileText className="text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.label}</span>
-                  <span
-                    className="truncate font-mono text-2xs text-muted-foreground"
-                    title={item.runId}
-                  >
-                    {item.runId}
+                  <span className="truncate text-2xs text-muted-foreground" title={item.runId}>
+                    {[
+                      tw('runNumber', {
+                        number: runs.findIndex((run) => run.runId === item.runId) + 1,
+                      }),
+                      item.author,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">{tr(item.kind)}</span>
@@ -1321,12 +1385,21 @@ function EntryCard({
   const tq = useTranslations('Reasoning');
   const format = useFormatter();
   const run = entry.runId ? runs.find((r) => r.runId === entry.runId) : undefined;
+  const resend = () =>
+    window.dispatchEvent(
+      new CustomEvent(RESEND_REQUEST, { detail: { sessionId, entryId: entry.entryId } }),
+    );
+  const canResend = !runs.some((item) => !TERMINAL_RUN_STATUSES.has(item.status));
   const when = format.dateTime(new Date(entry.createdAt), {
     timeStyle: 'short',
     dateStyle: 'short',
   });
   // A plain follow-up needs no label; queue, instruction and question say what they were.
-  const label = entry.intent === 'next' ? null : t(`intentShort.${entry.intent}`);
+  const label = isScheduledRequest(entry)
+    ? t('scheduledRequest')
+    : entry.intent === 'next'
+      ? null
+      : t(`intentShort.${entry.intent}`);
   // what an auto request ran with; not a team the person chose.
   const auto = entry.auto
     ? [
@@ -1371,7 +1444,14 @@ function EntryCard({
             </AccordionItem>
           </Accordion>
         ) : null}
-        <p>{entry.text}</p>
+        <MessageBody
+          text={entry.text}
+          actions={
+            entry.intent !== 'steer' ? (
+              <EditAsNewRequest onClick={() => editRequest(entry.text, entry)} />
+            ) : undefined
+          }
+        />
         {entry.attachments?.length ? <TextAttachmentList attachments={entry.attachments} /> : null}
         {entry.images?.length ? (
           <ImageAttachmentList sessionId={sessionId} images={entry.images} />
@@ -1389,6 +1469,9 @@ function EntryCard({
       ) : null}
       {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
+          sessionId={sessionId}
+          code={entry.refusal?.code}
+          owner={entry.refusal?.owner}
           message={entry.detail}
           onEdit={() =>
             editRequest(entry.text, {
@@ -1406,6 +1489,18 @@ function EntryCard({
           {entry.detail}
         </p>
       ) : null}
+      {run &&
+      ['cancelled', 'interrupted', 'failed'].includes(run.status) &&
+      entry.intent !== 'steer' ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="compact" variant="tertiary" disabled={!canResend} onClick={resend}>
+            {t('retryRequest')}
+          </Button>
+          <Button size="compact" variant="ghost" onClick={() => editRequest(entry.text, entry)}>
+            {t('restoreRequest')}
+          </Button>
+        </div>
+      ) : null}
       {run && entry.intent !== 'steer' ? (
         <RunCard
           run={run}
@@ -1420,6 +1515,8 @@ function EntryCard({
             runId={entry.runId}
             commandId={entry.commandId ?? null}
             executionId={entry.executionId ?? null}
+            onResend={resend}
+            resendDisabled={!canResend}
           />
           <Button
             variant="ghost"
@@ -1510,7 +1607,7 @@ function RunCard({
     >
       <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         {/* a working or finished turn speaks through its process and answer. */}
-        {nested && (run.status === 'succeeded' || run.status === 'running') ? (
+        {nested && ['created', 'validating', 'running', 'succeeded'].includes(run.status) ? (
           <span className="sr-only">
             <StatusBadge status={run.status} />
           </span>
@@ -1565,10 +1662,14 @@ function DeliveryStatus({
   runId,
   commandId,
   executionId,
+  onResend,
+  resendDisabled,
 }: {
   runId: string;
   commandId: string | null;
   executionId: string | null;
+  onResend: () => void;
+  resendDisabled: boolean;
 }) {
   const t = useTranslations('Sessions');
   const ts = useTranslations('Transcript.instruction');
@@ -1625,6 +1726,11 @@ function DeliveryStatus({
       </span>
       <span>{t('appliesAt')}</span>
       {status ? <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span> : null}
+      {status && ['not_delivered', 'expired', 'cancelled'].includes(status) ? (
+        <Button size="compact" variant="tertiary" disabled={resendDisabled} onClick={onResend}>
+          {t('resendNext')}
+        </Button>
+      ) : null}
     </>
   );
 }
@@ -1646,6 +1752,7 @@ export function Composer({
   runs,
   active,
   selectedRunId,
+  onViewRun,
   queued,
   onChange,
   reference,
@@ -1657,6 +1764,7 @@ export function Composer({
   runs: RunSummary[];
   active: RunSummary | null;
   selectedRunId: string | null;
+  onViewRun?: (runId: string) => void;
   queued: SessionEntry[];
   onChange: () => void;
   reference: FileReference | null;
@@ -1667,6 +1775,7 @@ export function Composer({
   const tc = useTranslations('Composer');
   const format = useFormatter();
   const contextMessages = useTranslations('Context');
+  const materialMessages = useTranslations('Materials');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
   const services = useServices();
@@ -1682,6 +1791,7 @@ export function Composer({
   );
   const [attachments, setAttachments] = useState<TextAttachment[]>(restored.attachments ?? []);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
   const textFiles = useRef<HTMLInputElement>(null);
@@ -1751,6 +1861,7 @@ export function Composer({
   const [refusal, setRefusal] = useState<{
     message: string;
     code?: string | undefined;
+    owner?: CommandError['owner'];
     network?: boolean;
   } | null>(null);
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
@@ -1763,8 +1874,6 @@ export function Composer({
       restored.target && restored.targetLabel ? [[restored.target, restored.targetLabel]] : [],
     ),
   );
-  const [confirmStop, setConfirmStop] = useState(false);
-  const stopTarget = useRef<string | null>(null);
   const [teamOpen, setTeamOpen] = useState(false);
   const [autoModelOpen, setAutoModelOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
@@ -1792,8 +1901,13 @@ export function Composer({
     if (session.entries.length === 0) input.current?.focus();
   }, [session.entries.length]);
   const ownActive =
-    runs.find((run) => run.runId === selectedRunId && !TERMINAL_RUN_STATUSES.has(run.status)) ??
-    null;
+    active?.sessionId === session.sessionId && !TERMINAL_RUN_STATUSES.has(active.status)
+      ? active
+      : null;
+  const [confirmStop, setConfirmStop] = useCancelConfirmation(
+    ownActive?.runId ?? null,
+    ownActive?.status === 'cancelling',
+  );
   const latest = useLatestResult(runs);
   // a follow-up carries the session's turns through the newest ended run.
   const lastEnded = runs.findLast((run) => TERMINAL_RUN_STATUSES.has(run.status)) ?? null;
@@ -1806,9 +1920,9 @@ export function Composer({
   // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
   // the first receipt instead of starting a second run.
   const pending = useRef(pendingSessionCommands.get(session.sessionId) ?? null);
-  const commandFor = (key: string) => {
+  const commandFor = (key: string, commandId?: string) => {
     if (pending.current?.key !== key) {
-      pending.current = { key, commandId: newCommandId() };
+      pending.current = { key, commandId: commandId ?? newCommandId() };
       pendingSessionCommands.set(session.sessionId, pending.current);
     }
     return pending.current.commandId;
@@ -2064,6 +2178,7 @@ export function Composer({
     runId: string | null;
     detail: string | null;
     code?: string | undefined;
+    error?: CommandError | undefined;
     auto?: SessionEntryAuto | null;
     cancelled?: boolean;
     cancelError?: string;
@@ -2123,6 +2238,7 @@ export function Composer({
         runId: result.runId,
         detail: result.receipt.error?.message ?? null,
         code: result.receipt.error?.code,
+        error: result.receipt.error ?? undefined,
         cancelled: cancellation !== null,
         ...(cancellation?.cancellation?.error
           ? { cancelError: cancellation.cancellation.error.message }
@@ -2182,10 +2298,10 @@ export function Composer({
   };
 
   /** A refused request keeps its text, intent and references so it can be fixed and resent. */
-  const refused = async (message: string, code?: string) => {
+  const refused = async (message: string, code?: string, owner?: CommandError['owner']) => {
     // A refusal is final for that command; the next attempt is a new command.
     clearPending();
-    setRefusal({ message, code });
+    setRefusal({ message, code, owner });
     await router.invalidate();
     onChange();
   };
@@ -2257,6 +2373,7 @@ export function Composer({
           runId: utterance.target.runId,
           executionId: utterance.target.executionId,
           detail: receipt.error?.message ?? null,
+          refusal: receipt.error ?? null,
           commandId: utterance.commandId,
         });
         onChange();
@@ -2275,6 +2392,7 @@ export function Composer({
         state: result.runId ? 'started' : 'refused',
         runId: result.runId,
         detail: result.detail,
+        refusal: result.error ?? null,
         commandId: utterance.commandId,
         ...(result.auto ? { auto: result.auto } : {}),
       });
@@ -2329,12 +2447,15 @@ export function Composer({
           autoCommandSeed(body, refs, autoChoice, team ? `corral:${team.corralId}` : teamMode) +
             (permissionMode ? `\u0000permission:${permissionMode}` : ''),
         );
-        const { runId, detail, code, auto, cancelled, cancelError } = await startNext(
-          body,
-          commandId,
-          refs,
-          permissionMode,
-        );
+        const {
+          runId,
+          detail,
+          code,
+          error: commandError,
+          auto,
+          cancelled,
+          cancelError,
+        } = await startNext(body, commandId, refs, permissionMode);
         await record({
           ...(permissionMode ? { permissionMode } : {}),
           intent,
@@ -2342,6 +2463,7 @@ export function Composer({
           state: runId ? 'started' : 'refused',
           runId,
           detail,
+          refusal: commandError ?? null,
           commandId,
           ...(auto ? { auto } : {}),
           ...(attachments.length ? { attachments } : {}),
@@ -2354,7 +2476,8 @@ export function Composer({
           onChange();
           return;
         }
-        if (!runId) return await refused(detail ?? t('failed', { message: '' }), code);
+        if (!runId)
+          return await refused(detail ?? t('failed', { message: '' }), code, commandError?.owner);
       } else if (intent === 'queue') {
         await record({
           intent,
@@ -2379,9 +2502,11 @@ export function Composer({
           runId: ownActive.runId,
           executionId: steerTarget,
           detail: receipt.error?.message ?? null,
+          refusal: receipt.error ?? null,
           commandId,
         });
-        if (receipt.error) return await refused(receipt.error.message, receipt.error.code);
+        if (receipt.error)
+          return await refused(receipt.error.message, receipt.error.code, receipt.error.owner);
       } else if (intent === 'explain') {
         const corral = team ? await repository.get(team.corralId) : null;
         // An auto session asks with its own model.
@@ -2406,11 +2531,13 @@ export function Composer({
           state: result.runId ? 'started' : 'refused',
           runId: result.runId,
           detail: result.receipt.error?.message ?? null,
+          refusal: result.receipt.error ?? null,
         });
         if (!result.runId)
           return await refused(
             result.receipt.error?.message ?? t('noResult'),
             result.receipt.error?.code,
+            result.receipt.error?.owner,
           );
       } else {
         return;
@@ -2429,6 +2556,12 @@ export function Composer({
         clearPending();
         return;
       }
+      if (
+        failure instanceof ApiError &&
+        failure.owner &&
+        ['RUN_ALREADY_ACTIVE', 'RESOURCE_CAPACITY'].includes(failure.code)
+      )
+        return await refused(failure.message, failure.code, failure.owner);
       // The answer was lost: the request may or may not have arrived. The text stays, and a
       // retry reuses the same command ID, so the runtime returns the first receipt.
       setRefusal({
@@ -2481,8 +2614,7 @@ export function Composer({
   }, []);
 
   const requestStop = () => {
-    stopTarget.current = ownActive?.runId ?? null;
-    setConfirmStop(stopTarget.current !== null);
+    setConfirmStop(ownActive !== null);
   };
   const runCommand = async (type: 'pause' | 'resume' | 'cancel', runId = ownActive?.runId) => {
     if (!runId) return;
@@ -2511,25 +2643,67 @@ export function Composer({
     onChange();
   };
 
-  const startQueued = async (entry: SessionEntry) => {
+  const entryCommandKey = (entry: SessionEntry, resend: boolean) =>
+    `${resend ? 'resend' : 'queue'}\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, [...(entry.attachments ?? []), ...(resend ? (entry.images ?? []) : [])], autoChoice, team ? `corral:${team.corralId}` : teamMode)}\u0000${entry.permissionMode ?? ''}`;
+  const startQueued = async (entry: SessionEntry, resend = false) => {
+    if (busy || autoRequest.current || autoSaving.current || active || savedRequestUnavailable)
+      return;
     setBusy(true);
-    const queuedReferences = entry.attachments ?? [];
+    const queuedReferences: RunReference[] = [
+      ...(entry.attachments ?? []),
+      ...(resend ? (entry.images ?? []) : []),
+    ];
     try {
+      if (!resend) {
+        const current = await repository.getSession(session.sessionId);
+        const persisted = current?.entries.find((item) => item.entryId === entry.entryId);
+        if (
+          persisted?.state !== 'queued' ||
+          queuedSessionCommandId(session.sessionId, persisted) !==
+            queuedSessionCommandId(session.sessionId, entry)
+        ) {
+          await router.invalidate();
+          onChange();
+          return;
+        }
+      }
       const commandId = commandFor(
-        `queue\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, queuedReferences, autoChoice, team ? `corral:${team.corralId}` : teamMode)}\u0000${entry.permissionMode ?? ''}`,
+        entryCommandKey(entry, resend),
+        resend ? undefined : queuedSessionCommandId(session.sessionId, entry),
       );
-      const { runId, detail, auto, cancelError } = await startNext(
-        entry.text,
-        commandId,
-        queuedReferences,
-        entry.permissionMode,
-      );
-      const saved = await repository.updateSessionEntry(session.sessionId, entry.entryId, {
-        state: runId ? 'started' : 'refused',
+      const {
         runId,
         detail,
+        error: commandError,
+        auto,
+        cancelError,
+      } = await startNext(entry.text, commandId, queuedReferences, entry.permissionMode);
+      if (!resend && commandError?.code === 'IDEMPOTENCY_CONFLICT') {
+        // Another tab can have a different model/history snapshot of the same queue item.
+        // Its original receipt owns the outcome, including while that start is pending.
+        setError(detail ?? commandError.message);
+        await router.invalidate();
+        onChange();
+        return;
+      }
+      const outcome = {
+        state: runId ? ('started' as const) : ('refused' as const),
+        runId,
+        detail,
+        refusal: commandError ?? null,
         ...(auto ? { auto } : {}),
-      });
+      };
+      const saved = resend
+        ? await repository.addSessionEntry(session.sessionId, {
+            intent: 'next',
+            text: entry.text,
+            commandId,
+            ...outcome,
+            ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
+            ...(entry.attachments ? { attachments: entry.attachments } : {}),
+            ...(entry.images ? { images: entry.images } : {}),
+          })
+        : await repository.updateSessionEntry(session.sessionId, entry.entryId, outcome);
       if (!saved.ok) throw new Error(t('failed', { message: saved.message }));
       clearPending();
       if (cancelError) setError(cancelError);
@@ -2545,6 +2719,66 @@ export function Composer({
       setBusy(false);
     }
   };
+  const resendState = useRef({
+    sessionId: session.sessionId,
+    active: Boolean(active),
+    pending: false,
+  });
+  resendState.current = {
+    ...resendState.current,
+    sessionId: session.sessionId,
+    active: Boolean(active),
+  };
+  const resendEntry = useRef<(entryId: string) => Promise<void>>(async () => {});
+  resendEntry.current = async (entryId) => {
+    const entry = session.entries.find((item) => item.entryId === entryId);
+    if (!entry?.runId || active || busy || autoRequest.current || resendState.current.pending)
+      return;
+    resendState.current.pending = true;
+    try {
+      if (entry.intent === 'steer') {
+        const { projection } = await transport.getSnapshot(entry.runId);
+        const directive = Object.values(projection.directives).find(
+          (item) => item.commandId === entry.commandId,
+        );
+        if (!directive || !['not_delivered', 'expired', 'cancelled'].includes(directive.status))
+          return;
+      } else if (
+        !runs.some(
+          (run) =>
+            run.runId === entry.runId &&
+            ['cancelled', 'interrupted', 'failed'].includes(run.status),
+        )
+      )
+        return;
+      if (
+        resendState.current.sessionId !== session.sessionId ||
+        resendState.current.active ||
+        autoRequest.current
+      )
+        return;
+      if (pending.current && pending.current.key !== entryCommandKey(entry, true)) {
+        setError(t('resolvePendingBeforeRetry'));
+        return;
+      }
+      await startQueued(entry, true);
+    } finally {
+      resendState.current.pending = false;
+    }
+  };
+  useEffect(() => {
+    const resend = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId: string; entryId: string }>).detail;
+      if (detail?.sessionId === session.sessionId && typeof detail.entryId === 'string')
+        void resendEntry
+          .current(detail.entryId)
+          .catch((failure: unknown) =>
+            setError(failure instanceof Error ? failure.message : String(failure)),
+          );
+    };
+    window.addEventListener(RESEND_REQUEST, resend);
+    return () => window.removeEventListener(RESEND_REQUEST, resend);
+  }, [session.sessionId]);
   const removeQueued = async (entry: SessionEntry) => {
     await repository.updateSessionEntry(session.sessionId, entry.entryId, { state: 'dismissed' });
     await router.invalidate();
@@ -2640,6 +2874,17 @@ export function Composer({
     isAuto && intent === 'next' && autoReasoningUnsupported(autoChoice, profiles, runMode);
   const liveUnavailable =
     runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
+  const savedRequestUnavailable =
+    missingTeam ||
+    (runMode === 'live' && !live) ||
+    (isAuto && profiles !== null && autoNotReady(autoChoice, profiles, runMode)) ||
+    (isAuto && autoReasoningUnsupported(autoChoice, profiles, runMode)) ||
+    (runMode === 'live' &&
+      profiles !== null &&
+      roles.some(
+        (role) =>
+          !profiles.some((profile) => profile.profileId === role.profileId && profile.available),
+      ));
   const unavailable =
     liveUnavailable ||
     attachmentsBusy ||
@@ -2653,6 +2898,17 @@ export function Composer({
     (missingTeam && (intent === 'next' || intent === 'explain')) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
+  const runNumber = (runId: string) => runs.findIndex((run) => run.runId === runId) + 1;
+  const viewingOtherRun = active && selectedRunId && active.runId !== selectedRunId;
+  const destination =
+    intent === 'steer'
+      ? ownActive
+        ? tc('destination.steer', {
+            number: runNumber(ownActive.runId),
+            name: targetName(steerTarget),
+          })
+        : tc('destination.steerUnavailable', { name: targetName(steerTarget) })
+      : tc(`destination.${intent}`);
   // What Send does now, said where it is pressed (#89).
   const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
   // Items this intent does not carry share one notice and one wording (#89).
@@ -2762,6 +3018,28 @@ export function Composer({
           {intent !== 'steer' ? (
             <ComposerPlan showAllKey={planAllKey} onShowAllKeyChange={setPlanAllKey} />
           ) : null}
+          {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
+          {viewingOtherRun ? (
+            <Banner data-testid="viewed-run-warning" status="warning" size="compact">
+              <BannerTitle>
+                {tc('viewingOtherRun', {
+                  viewed: runNumber(selectedRunId),
+                  active: runNumber(active.runId),
+                })}
+              </BannerTitle>
+              {onViewRun ? (
+                <BannerActions>
+                  <Button
+                    size="compact"
+                    variant="secondary"
+                    onClick={() => onViewRun(active.runId)}
+                  >
+                    {tc('viewActiveRun')}
+                  </Button>
+                </BannerActions>
+              ) : null}
+            </Banner>
+          ) : null}
           {resolved.blocked ? (
             <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
               <BannerTitle>
@@ -2798,6 +3076,13 @@ export function Composer({
                 <Button size="compact" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
+                <Button
+                  size="compact"
+                  variant="tertiary"
+                  render={<a href="/demo" target="_blank" rel="noreferrer" />}
+                >
+                  {t('tryDemo')}
+                </Button>
               </BannerActions>
             </Banner>
           ) : null}
@@ -2810,6 +3095,13 @@ export function Composer({
                 <Button size="compact" render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
+                <Button
+                  size="compact"
+                  variant="tertiary"
+                  render={<a href="/demo" target="_blank" rel="noreferrer" />}
+                >
+                  {t('tryDemo')}
+                </Button>
               </BannerActions>
             </Banner>
           ) : null}
@@ -2820,8 +3112,10 @@ export function Composer({
           ) : null}
           {refusal ? (
             <RefusalHelp
+              sessionId={session.sessionId}
               message={refusal.message}
               code={refusal.code}
+              owner={refusal.owner}
               network={refusal.network}
               onRetry={() => void send()}
               onQueue={() => {
@@ -2846,8 +3140,8 @@ export function Composer({
                   data-missing={missing.has(item.id) || undefined}
                   className={`flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-xs ${missing.has(item.id) ? 'bg-danger/10 text-danger line-through' : 'bg-subtle'}`}
                 >
-                  <span className="truncate font-mono" title={item.label}>
-                    {mentionToken(item).slice(1)}
+                  <span className="truncate font-mono" title={mentionLabel(item)}>
+                    {mentionLabel(item)}
                   </span>
                   {missing.has(item.id) ? (
                     <span className="sr-only">{tc('referenceGone')}</span>
@@ -2855,9 +3149,9 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="icon-tiny"
-                    aria-label={tc('removeReference', { label: item.label })}
+                    aria-label={tc('removeReference', { label: mentionLabel(item) })}
                     onClick={() => {
-                      write(text.split(mentionToken(item)).join('').replace(/ {2,}/g, ' '));
+                      write(removeMention(text, item, chips));
                       setPicked((list) => list.filter((x) => x.id !== item.id));
                     }}
                   >
@@ -2892,6 +3186,9 @@ export function Composer({
             onChange={setAttachments}
             disabled={busy || attachmentsBusy}
           />
+          <p data-testid="composer-destination" className="px-1 text-caption text-muted-foreground">
+            {destination}
+          </p>
           {attachments.length > 0 && intent !== 'next' && intent !== 'queue' ? (
             <div
               role="status"
@@ -2928,7 +3225,13 @@ export function Composer({
           onKeyDown={onKeyDown}
           commands={commands}
           searchMentions={searchMentions}
-          onMention={(item) => setPicked((list) => [...list, item])}
+          onMention={(item) => {
+            const selected = selectMention(item, picked);
+            setPicked((list) =>
+              list.some((existing) => existing.id === selected.id) ? list : [...list, selected],
+            );
+            return selected;
+          }}
         />
       )}
       leftSlot={
@@ -2985,6 +3288,20 @@ export function Composer({
               >
                 {tc('attachText')}
               </MenuItem>
+              {mode === 'server' ? (
+                <MenuItem
+                  disabled={
+                    busy ||
+                    attachmentsBusy ||
+                    imagesBusy ||
+                    (intent !== 'next' && intent !== 'queue') ||
+                    attachments.length >= TEXT_ATTACHMENT_MAX_COUNT
+                  }
+                  onClick={() => setMaterialsOpen(true)}
+                >
+                  {materialMessages('attachPlaceholder')}
+                </MenuItem>
+              ) : null}
             </MenuPopup>
           </Menu>{' '}
           {(intent === 'next' || intent === 'queue') && !resolved.blocked ? (
@@ -3191,7 +3508,7 @@ export function Composer({
                 <Button
                   variant="ghost"
                   size="compact"
-                  disabled={Boolean(active) || busy || missingTeam}
+                  disabled={Boolean(active) || busy || savedRequestUnavailable}
                   onClick={() => void startQueued(entry)}
                 >
                   {t('startNow')}
@@ -3257,6 +3574,29 @@ export function Composer({
           {error}
         </p>
       ) : null}
+      <Dialog open={materialsOpen} onOpenChange={setMaterialsOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{materialMessages('attachPlaceholder')}</DialogTitle>
+            <DialogDescription>{materialMessages('hint')}</DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            {materialsOpen ? (
+              <ProjectMaterialPicker
+                key={attachmentEpoch}
+                projectId={session.projectId}
+                value={attachments}
+                onChange={(value) => {
+                  setAttachments(value);
+                  setMaterialsOpen(false);
+                }}
+                onBusyChange={setAttachmentsBusy}
+                disabled={busy || (intent !== 'next' && intent !== 'queue')}
+              />
+            ) : null}
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
       <Dialog open={modelsOpen} onOpenChange={setModelsOpen}>
         <DialogPopup>
           <DialogHeader>
@@ -3306,7 +3646,9 @@ export function Composer({
         <DialogPopup>
           <DialogHeader>
             <DialogTitle>{tr('cancelRun')}</DialogTitle>
-            <DialogDescription>{tr('cancelRunExplain')}</DialogDescription>
+            <DialogDescription>
+              {tr('cancelRunExplain')} {tr('cancelNotSent')}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="tertiary" onClick={() => setConfirmStop(false)}>
@@ -3316,7 +3658,7 @@ export function Composer({
               variant="destructive"
               onClick={() => {
                 setConfirmStop(false);
-                if (stopTarget.current) void runCommand('cancel', stopTarget.current);
+                if (ownActive) void runCommand('cancel', ownActive.runId);
               }}
             >
               {tr('confirmCancelRun')}
@@ -3504,5 +3846,14 @@ function ModelAssignments({
         );
       })}
     </ul>
+  );
+}
+
+function EditAsNewRequest({ onClick }: { onClick(): void }) {
+  const t = useTranslations('MessageBody');
+  return (
+    <Button size="compact" variant="ghost" onClick={onClick}>
+      {t('editAsNew')}
+    </Button>
   );
 }

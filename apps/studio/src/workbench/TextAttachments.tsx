@@ -150,8 +150,11 @@ export function TextAttachmentList({ attachments }: { attachments: TextAttachmen
         <li key={textAttachmentKey(item)}>
           <details>
             <summary className="cursor-pointer">
-              {item.name} · {item.bytes} B · {item.sha256.slice(0, 12)}
+              {item.name} · {item.bytes} B
             </summary>
+            <p className="mt-1 text-muted-foreground">
+              {t('attachmentHash')}: <code className="select-text break-all">{item.sha256}</code>
+            </p>
             {item.provenance ? <AttachmentSource source={item.provenance} /> : null}
             <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2">
               {item.text}

@@ -108,7 +108,7 @@ export function RunControls({
         </div>
       ) : null}
       {liveAvailable || mode === 'live' ? (
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
           <span className="text-muted-foreground">{t('agents')}</span>
           <Select
             label={t('agents')}

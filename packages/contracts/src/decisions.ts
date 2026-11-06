@@ -33,6 +33,8 @@ export const DecisionAnswer = z
       })
       .nullable(),
     evidenceLevel: EvidenceLevel,
+    /** The provider is not confident enough for its answer to be applied. */
+    abstain: z.boolean().optional(),
   })
   .refine(
     (a) =>

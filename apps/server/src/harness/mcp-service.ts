@@ -149,14 +149,17 @@ export class McpService {
           : controller.signal.aborted
             ? 'MCP probe cancelled'
             : error instanceof Error &&
-                [
+                ([
                   'MCP probe failed',
+                  'MCP connection refused',
+                  'MCP server name could not be resolved',
                   'MCP probe timed out',
                   'MCP probe authorization failed',
                   'MCP launch requires current fingerprint trust',
                   'package requires trust before MCP launch',
                   'project tool revision changed',
-                ].includes(error.message)
+                ].includes(error.message) ||
+                  /^MCP server returned HTTP [1-5]\d{2}$/.test(error.message))
               ? error.message
               : 'MCP probe failed';
         this.probeOptions.store.receipt(input.operationId, request, () => ({ error: message }));

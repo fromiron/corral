@@ -1,4 +1,4 @@
-import { openRunArchive, type RuntimeTransport } from '@corral/core';
+import { openRunArchive, type RuntimeSnapshot, type RuntimeTransport } from '@corral/core';
 import type { RunSessionState } from '@corral/react';
 
 type HistoryReader = (runId: string) => Promise<unknown>;
@@ -61,7 +61,7 @@ async function loadRunView(
     return turn;
   };
   if (!details) {
-    const [{ projection }, definition, conversationTurn] = await Promise.all([
+    const [{ projection, partialOutputs }, definition, conversationTurn] = await Promise.all([
       transport.getSnapshot(runId),
       transport.getRunDefinition(runId),
       readTurn(),
@@ -72,17 +72,21 @@ async function loadRunView(
       projection,
       definition,
       events: [],
-      streams: {},
+      streams: partialStreams(partialOutputs),
       artifactTexts: {},
       conversationTurn,
       streamError: null,
     };
   }
-  const [record, conversationTurn] = await Promise.all([readHistory(runId), readTurn()]);
+  const [record, conversationTurn, snapshot] = await Promise.all([
+    readHistory(runId),
+    readTurn(),
+    transport.getSnapshot(runId),
+  ]);
   const archive = openRunArchive(record);
   if (archive.visibility !== 'private' || archive.runId !== runId)
     throw new Error('The run history does not match this turn.');
-  const streams: RunSessionState['streams'] = {};
+  const streams = partialStreams(snapshot.partialOutputs);
   for (const call of Object.values(archive.projection.modelCalls)) {
     const text = call.responseRef ? archive.artifacts[call.responseRef] : undefined;
     if (text !== undefined)
@@ -98,4 +102,19 @@ async function loadRunView(
     conversationTurn,
     streamError: null,
   };
+}
+
+function partialStreams(outputs: RuntimeSnapshot['partialOutputs']): RunSessionState['streams'] {
+  return Object.fromEntries(
+    Object.entries(outputs ?? {}).map(([id, output]) => [
+      id,
+      {
+        text: output.text,
+        next: output.next,
+        broken: false,
+        partial: true,
+        truncated: output.truncated,
+      },
+    ]),
+  );
 }

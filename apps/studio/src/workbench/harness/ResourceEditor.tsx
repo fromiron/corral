@@ -65,6 +65,13 @@ export function ResourceEditor({
   );
   const confirmLeave = useSettingsForm({ dirty, pending: busy });
   const installing = useRef(false);
+  const reviewedEntry = ['new', 'file', 'edit'].includes(mode)
+    ? (entry?.entry ?? (kind === 'skill' ? 'skills/SKILL.md' : 'extensions/hook.ts'))
+    : null;
+  const reviewedSkill =
+    kind === 'skill'
+      ? review?.resource.skills.find((skill) => skill.entry === reviewedEntry)
+      : null;
   useEffect(() => {
     alive.current = true;
     if (entry) {
@@ -398,16 +405,23 @@ export function ResourceEditor({
                 <ul className="mt-2 list-inside list-disc">
                   {review.resource.skills.map((skill) => (
                     <li key={skill.entry}>
-                      {skill.name} — {skill.description}
+                      {skill.entry === reviewedEntry ? name.trim() : skill.name} —{' '}
+                      {skill.description}
                     </li>
                   ))}
                   {review.resource.extensions.map((path) => (
-                    <li key={path}>{path}</li>
+                    <li key={path}>{path === reviewedEntry ? name.trim() : path}</li>
                   ))}
                 </ul>
                 <p className="mt-2 text-xs text-muted-foreground">{t('reviewHint')}</p>
                 <details className="mt-2">
                   <summary>{h('files', { count: review.resource.files.length })}</summary>
+                  {reviewedSkill && reviewedSkill.name !== name.trim() ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t('internalSkillName')}:{' '}
+                      <code className="select-text break-all">{reviewedSkill.name}</code>
+                    </p>
+                  ) : null}
                   <ul className="max-h-32 overflow-auto text-xs">
                     {review.resource.files.map((file) => (
                       <li key={file.path}>

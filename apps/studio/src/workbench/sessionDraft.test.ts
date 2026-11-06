@@ -125,3 +125,11 @@ describe('composer draft (UX-02)', () => {
     ).toBeUndefined();
   });
 });
+
+it('stores meeting recipient choices without text and rejects malformed saved recipient values', () => {
+  const draft = { ...parseComposerDraft(null), meetingMentions: ['p1', 'p2'] };
+  expect(parseComposerDraft(serializeComposerDraft(draft))).toEqual(draft);
+  expect(
+    parseComposerDraft(JSON.stringify({ v: 2, meetingMentions: ['p1', null, 9] })).meetingMentions,
+  ).toEqual(['p1']);
+});

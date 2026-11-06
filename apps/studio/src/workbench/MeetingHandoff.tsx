@@ -10,7 +10,7 @@ import {
 import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@corral/core';
 import { Button, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
@@ -21,6 +21,7 @@ import {
   autoReasoningUnsupported,
   sessionRunMode,
 } from './autoChoice.ts';
+import { watchRefresh } from './refresh.ts';
 import { readComposerDraft, serializeComposerDraft } from './sessionDraft.ts';
 import { type ProfileInfo, useModelProfiles } from './useModels.ts';
 
@@ -338,34 +339,30 @@ export function MeetingHandoffLinks({
   const t = useTranslations('MeetingsHandoff');
   const [receipts, setReceipts] = useState<MeetingHandoffReceipt[]>([]);
   const [error, setError] = useState('');
+  const [readError, setReadError] = useState('');
+  const retryRead = useRef(() => {});
   const [busy, setBusy] = useState(false);
   const [actionCommands, setActionCommands] = useState<
     Record<string, { commandId: string; targetHasDraft: boolean }>
   >({});
   useEffect(() => {
     if (!api) return;
-    let active = true;
-    let loading = false;
-    const refresh = async () => {
-      if (loading) return;
-      loading = true;
-      try {
-        const result = await api.list(sessionId);
-        if (active) setReceipts(result.handoffs);
-      } catch (failure) {
-        if (active) setError(failureText(failure));
-      } finally {
-        loading = false;
-      }
-    };
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 3000);
-    window.addEventListener(changed, refresh);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-      window.removeEventListener(changed, refresh);
-    };
+    const watcher = watchRefresh(
+      async (current) => {
+        try {
+          const result = await api.list(sessionId);
+          if (!current()) return;
+          setReceipts(result.handoffs);
+          setReadError('');
+        } catch (failure) {
+          if (current()) setReadError(failureText(failure));
+        }
+      },
+      3000,
+      [changed],
+    );
+    retryRead.current = watcher.refresh;
+    return watcher.dispose;
   }, [api, sessionId]);
   const actOn = async (
     receipt: MeetingHandoffReceipt,
@@ -418,7 +415,7 @@ export function MeetingHandoffLinks({
       setBusy(false);
     }
   };
-  if (!api || (!receipts.length && !error)) return null;
+  if (!api || (!receipts.length && !error && !readError)) return null;
   return (
     <section className="flex min-w-0 flex-col gap-3 text-sm" aria-label={t('history')}>
       <h2 className="font-medium">{t('history')}</h2>
@@ -514,6 +511,16 @@ export function MeetingHandoffLinks({
           ) : null}
         </article>
       ))}
+      {readError ? (
+        <div className="flex items-center gap-2">
+          <p role="alert" className="text-danger wrap-anywhere">
+            {readError}
+          </p>
+          <Button variant="ghost" size="compact" onClick={() => retryRead.current()}>
+            {t('reload')}
+          </Button>
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="text-danger wrap-anywhere">
           {error}

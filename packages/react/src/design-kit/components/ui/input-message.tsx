@@ -131,7 +131,7 @@ interface InputMessageProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onChan
   sendDisabled?: boolean;
   sendDescription?: string;
   /** Adds the host's tooltip without replacing the source send button. */
-  renderAction?: (action: ReactElement) => ReactNode;
+  renderAction?: (action: ReactElement<{ 'aria-describedby'?: string }>) => ReactNode;
   /** Controlled textarea value. */
   value: string;
   /** Called with the new value on every textarea change. */

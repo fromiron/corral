@@ -30,7 +30,19 @@ vi.mock('./language/store.ts', () => ({
     ]),
 }));
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: ReactNode }) => <a href="/settings">{children}</a>,
+  Link: ({
+    children,
+    to,
+    search,
+  }: {
+    children: ReactNode;
+    to: string;
+    search?: { projectId?: string; section?: string };
+  }) => (
+    <a href={to} data-project={search?.projectId} data-section={search?.section}>
+      {children}
+    </a>
+  ),
 }));
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -209,4 +221,21 @@ it('a recreated copy never shows the previous command review or error', async ()
   expect(view.controller.start).not.toHaveBeenCalled();
   expect(view.controller.retain).toHaveBeenLastCalledWith(view.nextTarget);
   expect(view.release).toHaveBeenCalled();
+});
+
+it('links an untrusted copy to its own project settings without granting permission', async () => {
+  const view = await mount();
+  await act(async () =>
+    view.patch({
+      ...idle,
+      state: { ...available, available: false, unavailableReason: 'untrusted' },
+    }),
+  );
+  const link = view.element.querySelector('a');
+  expect(link?.textContent).toContain('Trust this working copy');
+  expect(link?.getAttribute('href')).toBe('/settings');
+  expect(link?.getAttribute('data-section')).toBe('workspace');
+  expect(link?.getAttribute('data-project')).toBe('project');
+  expect(view.controller.start).not.toHaveBeenCalled();
+  expect(view.controller.inspect).not.toHaveBeenCalled();
 });

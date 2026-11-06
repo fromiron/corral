@@ -1,4 +1,7 @@
 {
+  "Select": {
+    "placeholder": "Select…"
+  },
   "SettingsDialog": {
     "unsaved": "Unsaved settings",
     "unsavedHint": "Save these changes before leaving, discard them, or keep editing.",
@@ -79,14 +82,14 @@
     "error": "Something went wrong: {message}",
     "serverBadge": "Local server / Simulated agents",
     "serverNote": "Corrals and runs are saved in this workspace. Agents are simulated; nothing is sent to a model.",
-    "sessionMissing": "This tab has no session with the local server. Open the link the Corral server printed when it started.",
+    "sessionMissing": "Connect to the local server. If it restarted, the previous connection has expired. Open its current start link from the terminal, or reopen the workspace in the desktop app. Unsent requests are not sent automatically.",
     "navModels": "Models",
     "liveBadge": "Local server / Simulated or live agents",
     "language": "Language",
     "serverShort": "Local · simulated",
     "demoShort": "Demo · simulated",
     "liveNoModel": "Connect a model",
-    "liveNoModelNote": "Live models are possible here, but no model is connected yet. Open Settings › Models to sign in; until then runs are simulated.",
+    "liveNoModelNote": "No model is connected. Live requests are blocked until you connect one in Settings › Models. To try simulated agents, open the separate demo.",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
     "retryConnection": "Try again",
     "retry": "Try again"
@@ -302,6 +305,7 @@
     "giveCriteria": "Add a criteria input"
   },
   "Run": {
+    "permissionSettings": "Tool rules for future runs",
     "heading": "Run",
     "scopeSaved": "Saves this team first, then starts a separate run. It is not added to a conversation.",
     "scopeDraft": "Starts a separate run of this draft. It is not added to a conversation.",
@@ -409,10 +413,29 @@
     "requestLink": "Request {request} · Snapshot {snapshot}",
     "produced": "Produced: {versions}",
     "receiptRun": "Whole-run command",
-    "receiptExecution": "Command to one execution"
+    "receiptExecution": "Command to one execution",
+    "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run."
+  },
+  "Schedules": {
+    "dispatch": "Dispatch: {status}",
+    "occurrence": {
+      "dispatching": "Dispatching",
+      "started": "Started",
+      "missed": "Missed",
+      "overlap": "Skipped: previous run active",
+      "refused": "Refused",
+      "interrupted": "Dispatch interrupted"
+    },
+    "savedEnabled": "Saved and enabled. This schedule will run at its next scheduled time.",
+    "savedDisabled": "Saved as disabled. This schedule will not run until you enable it.",
+    "resultTitle": "Scheduled run finished",
+    "result": "Scheduled run: {status}",
+    "openRun": "Open run",
+    "dismiss": "Dismiss",
+    "unavailable": "Current run status unavailable"
   },
   "Status": {
-    "created": "Created",
+    "created": "Starting…",
     "validating": "Validating",
     "running": "Running",
     "pausing": "Pausing",
@@ -467,7 +490,7 @@
     "empty": "No teams yet.",
     "storedLocally": "Teams are saved in this browser only, and executions last until you reload.",
     "notPersistent": "This browser does not allow saving. Teams last until you close this tab.",
-    "revisions": "Definition r{definition} · Layout r{layout} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
+    "revisions": "Team version {definition} · Layout version {layout} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
     "updated": "Saved {time}",
     "open": "Open",
     "duplicate": "Duplicate",
@@ -482,6 +505,10 @@
     "emptyHint": "Start from a template below, create an empty team or import a JSON file.",
     "templatesHeading": "Start from a template",
     "useTemplate": "Edit this team",
+    "saveCopyTitle": "Save a team copy",
+    "copyName": "Team name",
+    "saveCopyEdit": "Save copy and edit",
+    "copyNameAdjusted": "A team with this name exists. This copy will be saved as “{name}”.",
     "template": {
       "research-team": {
         "name": "Research team",
@@ -510,7 +537,7 @@
   },
   "Editor": {
     "name": "Team name",
-    "revisions": "Definition r{definition} · Layout r{layout}",
+    "revisions": "Team version {definition} · Layout version {layout}",
     "unsaved": "Unsaved changes",
     "saved": "All changes saved",
     "save": "Save",
@@ -522,7 +549,9 @@
     "openRun": "Open execution page",
     "backToSession": "Back to the session",
     "appliesNextRun": "Saved changes apply from the session's next run; runs already started keep their team.",
-    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view."
+    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view.",
+    "showTools": "Show team tools",
+    "hideTools": "Hide team tools"
   },
   "RunPage": {
     "retry": "Retry loading run",
@@ -575,6 +604,10 @@
     "uncertainWrite": "outcome unknown",
     "evidenceCheckEarlier": "earlier version",
     "waitingExecutions": "{count, plural, one {# execution waiting} other {# executions waiting}}",
+    "historicalStatus": "Historical view",
+    "starting": "Preparing to run",
+    "cancelling": "Cancelling owned work",
+    "unconfirmedRequests": "{count, plural, one {# model request: termination unconfirmed} other {# model requests: termination unconfirmed}}",
     "elapsed": "Elapsed time"
   },
   "Timeline": {
@@ -643,7 +676,34 @@
     "notWithSubscription": "Not available with a subscription sign-in. Choose another model for this profile.",
     "changeModel": "Change model",
     "fileHint": "Advanced: the same setting is in .corral/config.json.",
-    "editModels": "Edit models"
+    "editModels": "Edit models",
+    "configured": "Configured",
+    "testConnection": "Test connection",
+    "connectionTestHint": "Checks the model-list endpoint without sending a model request. A successful check does not guarantee model availability.",
+    "imageSupported": "Images supported",
+    "textOnly": "Text only",
+    "imageUnknown": "Image support unconfirmed",
+    "connectionTest": {
+      "connected": "Endpoint responded.",
+      "authentication": "Credentials were rejected or are missing. Update the key and test again.",
+      "rateLimit": "Requests are limited. Wait before testing again.",
+      "server": "The endpoint is temporarily unavailable. Retry later.",
+      "redirect": "The endpoint redirected the request. Review its configured address.",
+      "unsupported": "This endpoint does not support the connection check. Review its API base address.",
+      "connection": "Could not connect. Check the address, network, and local server."
+    }
+  },
+  "MessageBody": {
+    "copyCode": "Copy code",
+    "copyMessage": "Copy message",
+    "copied": "Copied",
+    "copyFailed": "Could not copy. Select the text and copy it manually.",
+    "showMore": "Show full message",
+    "showLess": "Collapse message",
+    "plainText": "Plain text",
+    "editAsNew": "Edit as new request",
+    "interrupted": "Incomplete response — generation stopped",
+    "truncated": "Only the received prefix is available."
   },
   "Markdown": {
     "imageNotLoaded": "Image not loaded: {alt} ({host})",
@@ -804,7 +864,11 @@
     "callsInFlight": "Calls in progress",
     "callsUnknown": "Calls with unknown usage",
     "noLimitsNote": "Provider-side limits and charges still apply. Calls with unknown usage are not counted as zero.",
-    "unlimited": "Unlimited"
+    "unlimited": "Unlimited",
+    "requestName": "{role} · Request {number}",
+    "imageRequestName": "{role} · Image generation {number}",
+    "unknownRole": "Agent",
+    "diagnostics": "Diagnostics"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -948,7 +1012,8 @@
       "allowed": "running",
       "blocked": "refused",
       "finished": "done",
-      "failed": "failed"
+      "failed": "failed",
+      "cancelled": "cancelled"
     },
     "asked": "Asked {target}",
     "answer": "Answer",
@@ -1193,6 +1258,28 @@
         "loop": "Review loop",
         "decision": "Review decision",
         "output": "Output"
+      },
+      "securityReview": {
+        "name": "Security PR review",
+        "roles": {
+          "researcher": {
+            "name": "Security reviewer",
+            "duty": "Review the pull request for security issues. Record the affected code, evidence, impact, and uncertainty; do not invent access to unavailable code."
+          },
+          "writer": {
+            "name": "Findings author",
+            "duty": "Write a concise security review summary from the evidence, separating confirmed issues from unverified concerns and describing suggested fixes."
+          },
+          "reviewer": {
+            "name": "Independent verifier",
+            "duty": "Independently double check each security finding against the provided code and evidence. Reject unsupported claims and request specific corrections."
+          }
+        },
+        "criteria": {
+          "evidence": "Tie each security finding to specific code and evidence; state when code or context is missing.",
+          "verification": "Independently verify the findings and distinguish confirmed issues from unverified concerns.",
+          "approval": "Provide a concise summary and suggested fixes for the user to approve."
+        }
       }
     }
   },
@@ -1274,7 +1361,10 @@
     "notFound": "Run {runId} could not be found.",
     "choose": "Compare {count} runs",
     "select": "Select run {runId} to compare",
-    "back": "Back to Corrals"
+    "back": "Back to project home",
+    "chooseRuns": "Choose two runs",
+    "chooseRunsHint": "Choose two runs from the project’s Runs list to compare their results.",
+    "unnamedRun": "Run"
   },
   "GettingStarted": {
     "heading": "Getting started",
@@ -1326,7 +1416,8 @@
     "unavailable": "This result could not be loaded.",
     "previewOf": "Preview of {label}",
     "openResults": "Open in Results",
-    "finalCount": "{count, plural, one {# final result} other {# final results}}"
+    "finalCount": "{count, plural, one {# final result} other {# final results}}",
+    "authorExecution": "execution {number}"
   },
   "Projects": {
     "defaultName": "My project",
@@ -1385,6 +1476,8 @@
     "actions": "Actions for {name}"
   },
   "Sessions": {
+    "scheduledRequest": "Scheduled request",
+    "notFound": "This session is no longer available.",
     "heading": "Sessions",
     "new": "New session",
     "titleLabel": "Title (optional)",
@@ -1487,7 +1580,7 @@
     "runSettings": "Run settings",
     "autoModel": "Model",
     "autoHint": "The request uses the default workflow. Model:",
-    "autoNotReady": "{model} is not connected. Connect it under Settings › Models, or choose another model.",
+    "autoNotReady": "{model} is not connected. Connect it under Settings › Models.",
     "autoFallback": "choice failed, ran one agent",
     "autoTemplate": {
       "single": "Auto · one agent",
@@ -1513,7 +1606,34 @@
       "fallback": "fallback"
     },
     "selectedRun": "Selected run",
-    "unlimited": "unlimited"
+    "unlimited": "unlimited",
+    "justNow": "Just now",
+    "tryDemo": "Try the simulation demo",
+    "noWorkingCopy": "This session has no working copy, so it cannot change files. Connect a folder and prepare a working copy to edit files.",
+    "prepareWorkingCopy": "Set up file work",
+    "retryRequest": "Retry request",
+    "restoreRequest": "Restore message",
+    "resendNext": "Send as next request",
+    "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed.",
+    "savedDetails": "Saved details",
+    "archivedSending": "Sending a message keeps this session archived.",
+    "restoreSession": "Restore session",
+    "statusFilter": "Session status",
+    "archiveEmpty": "Archive empty session: {title}",
+    "keyboardHint": "Use ↑ and ↓ to move between sessions.",
+    "listState": {
+      "all": "All statuses",
+      "running": "In progress",
+      "attention": "Needs attention",
+      "completed": "Completed",
+      "ready": "No run yet",
+      "empty": "Empty session",
+      "cancelled": "Cancelled"
+    },
+    "restoreNamed": "Restore session: {title}",
+    "listSessionUnavailable": "This session is no longer available.",
+    "terminalNeedsAttention": "Terminal needs attention",
+    "hideWorkingCopyNotice": "Hide working copy notice"
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1536,7 +1656,7 @@
     "openTrust": "Open trust settings",
     "openFolderSettings": "Open Folders & tools",
     "create": "Make a working copy from {head}",
-    "createHint": "It starts from the last commit. The {changed, plural, =0 {folder has no} one {# uncommitted change in your folder is} other {# uncommitted changes in your folder are}} not included.",
+    "createHint": "It starts from the last commit. {changed, plural, =0 {Your folder has no uncommitted changes.} one {Your folder’s # uncommitted change is not included.} other {Your folder’s # uncommitted changes are not included.}}",
     "ready": "Working copy from commit {commit}",
     "review": "Review changes",
     "remove": "Remove working copy",
@@ -1662,7 +1782,9 @@
     "removalGitUnknown": "The copy's Git changes could not be read.",
     "removalComments": "{count, plural, one {# review comment not sent} other {# review comments not sent}}",
     "removalUncertain": "{count, plural, one {# file write with unknown outcome} other {# file writes with unknown outcome}}",
-    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}"
+    "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}",
+    "noCopyReadOnly": "Read-only: this session has no working copy.",
+    "operationDetails": "Write details"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -1710,7 +1832,9 @@
       "partial": "Partly applied",
       "conflict": "Not applied: conflicts",
       "reverted": "Reverted",
-      "failed": "Failed"
+      "failed": "Failed",
+      "partlyReverted": "Partly reverted",
+      "notReverted": "Not reverted: files changed since applying"
     },
     "fileOutcome": {
       "planned": "Planned",
@@ -1719,26 +1843,31 @@
       "conflict": "Conflict",
       "failed": "Failed",
       "reverted": "Reverted",
-      "revert_conflict": "Changed since: left as is",
+      "revert_conflict": "Not reverted: changed after applying",
       "uncertain": "Unknown"
     },
     "revert": "Revert",
     "revertNote": "Only files still as applied are reverted.",
-    "inboxHeading": "Needs you",
+    "inboxHeading": "Pending actions",
     "inbox": {
       "decision": "A run waits for your decision",
       "queued": "Queued next task: {detail}",
       "uncertain_write": "File writes with unknown outcome",
       "integration": "Applying did not finish cleanly ({detail})",
       "check_failed": "Latest check failed: {detail}",
-      "unreviewed": "{detail} file writes since your last review",
+      "unreviewed": "{detail} file writes since “Mark working copy as read” (separate from approval)",
       "recipe_stopped": "Review stopped: {detail}",
-      "lsp_proposal": "Language server proposals awaiting review ({detail})"
+      "lsp_proposal": "Language server proposals awaiting review ({detail})",
+      "uncertain_terminal": "Terminal termination needs confirmation"
     },
     "open": "Open",
     "retrySend": "Check the same request",
     "sendUnconfirmed": "The request or its record could not be confirmed. Check the same request before sending another.",
-    "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending."
+    "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending.",
+    "inboxScope": "Pending actions in this project’s unarchived sessions. A session can have several actions; this is not a count of failed sessions.",
+    "confirmRevert": "Revert applied files",
+    "confirmRevertNote": "Revert these files in the original folder. Files changed outside Corral since applying are kept. A checkpoint is saved before reverting.",
+    "cancelRevert": "Cancel"
   },
   "Workbench": {
     "reviewFeedback": "Review changes and request revisions",
@@ -1753,7 +1882,7 @@
     "searchSessions": "Filter conversations",
     "sessions": "Sessions",
     "newSession": "New session",
-    "needsYou": "Needs you ({count})",
+    "needsYou": "Pending actions ({count})",
     "teamLibrary": "Team library",
     "allProjects": "All projects",
     "models": "Models",
@@ -1789,7 +1918,8 @@
     "noCopyChanges": "Make a working copy to see file changes here.",
     "checksOnReview": "Run checks from the review screen.",
     "serverOnly": "File work, changes and checks need the local server.",
-    "runNumber": "Run {number}",
+    "runNumber": "Run #{number}",
+    "sessionChangeCount": "Session changes · {count, plural, one {# file} other {# files}}",
     "sidebarNavigation": "Workspace",
     "sidebarProjects": "Projects",
     "sidebarResizeHint": "Drag or use arrow keys to resize",
@@ -1925,9 +2055,19 @@
     "chatDensity": "Conversation detail",
     "densityResults": "Results",
     "densityBasic": "Basic",
-    "densityDetailed": "Detailed activity"
+    "densityDetailed": "Detailed activity",
+    "developmentBuild": "Development build"
   },
   "Composer": {
+    "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
+    "viewActiveRun": "View active run",
+    "destination": {
+      "next": "Send to: new run in this session · follow-up",
+      "queue": "Send to: next run in this session · queue",
+      "steer": "Send to: Run #{number} · {name} · instruction",
+      "steerUnavailable": "Instruction for {name} · target unavailable",
+      "explain": "Send to: new run about the latest result · question"
+    },
     "modelPicker": {
       "settings": "Model settings",
       "unavailable": "Not connected",
@@ -2068,7 +2208,8 @@
     "teamNoneHint": "One assistant answers; it calls subagents only when you ask.",
     "teamAutoHint": "The assistant leads planner, researcher, writer and reviewer agents when the work benefits.",
     "teamCorralHint": "The assistant leads this Corral's roles, using its flow as guidance.",
-    "teamCorralGroup": "Corral"
+    "teamCorralGroup": "Corral",
+    "attachmentHash": "Content hash (SHA-256)"
   },
   "Commands": {
     "newSession": "New session",
@@ -2111,7 +2252,14 @@
     "connect": "Connect a model",
     "retry": "Send again",
     "queue": "Move to the queue",
-    "edit": "Edit the request again"
+    "edit": "Edit the request again",
+    "terminal": "A terminal is holding this working copy. Open its controls, stop it explicitly, then send again.",
+    "terminalUncertain": "A terminal has not confirmed termination, so this working copy stays protected. Open its controls and diagnostic details, then check the process on the host. Reconnecting or deleting the copy does not prove termination.",
+    "diagnostics": "Diagnostic details",
+    "openTerminal": "Open terminal controls",
+    "image": "This model has no confirmed image input support. Remove the image or choose a model that supports images.",
+    "capability": "This operation needs a capability that is unavailable in the current environment. Check the diagnostics before trying again.",
+    "chooseImageModel": "Choose an image model"
   },
   "Harness": {
     "heading": "Work styles",
@@ -2429,7 +2577,7 @@
     "inherit": "Use saved role setting",
     "legacy": "Keep existing behavior (unset)",
     "provider_default": "Provider default",
-    "auto": "Automatic (local judge)",
+    "auto": "Automatic",
     "unsupported": "unsupported",
     "autoHint": "Review automatic application settings for this workspace.",
     "unsupportedHint": "This model does not support this level. Choose another model or effort level.",
@@ -2438,9 +2586,10 @@
     "saved": "Role default",
     "workspaceHeading": "Automatic effort choice · server-wide",
     "enableApply": "Let the local judge choose reasoning effort in all projects on this server",
+    "enableMedium": "Run automatic roles at medium in all projects on this server",
     "applyHint": "After saving, applies to roles set to automatic in newly started runs on this Corral server workspace. Running runs and fixed reasoning settings stay unchanged.",
     "ready": "Ready",
-    "installHint": "Local judge unavailable. Install with {command}. Until then automatic roles use medium.",
+    "installHint": "Local judge unavailable; see Local AI below. Until then automatic roles use medium.",
     "settingsError": "Could not read or save settings. Reload and try again.",
     "unrecorded": "Reasoning not recorded",
     "payload": "Payload verified",
@@ -2458,7 +2607,8 @@
     "source": {
       "fixed": "Manual",
       "provider_default": "Provider default",
-      "local-model": "ONNX applied",
+      "local-model": "Local model applied",
+      "external-model": "External judge applied",
       "fallback": "Fallback",
       "compaction": "Compaction base"
     },
@@ -2473,10 +2623,68 @@
       "provider_error": "Judge error",
       "invalid_response": "Invalid answer",
       "limit": "Judgment limit",
-      "missing_input": "Missing input"
+      "missing_input": "Missing input",
+      "abstained": "Judge not confident",
+      "policy": "Medium policy"
     },
+    "escalated": "Jev asked",
     "appliedHeading": "Applied reasoning by request",
     "observeHeading": "Observe-only judgments (not applied)"
+  },
+  "LocalAi": {
+    "heading": "Local AI",
+    "model": {
+      "meeting": "Meeting analysis: {name}",
+      "effort": "Reasoning judge: {name}"
+    },
+    "state": {
+      "unsupported": "Not available in this environment",
+      "missing": "Not installed",
+      "stale": "Update needed",
+      "installing": "Installing",
+      "idle": "Ready",
+      "starting": "Starting",
+      "ready": "Ready",
+      "error": "Error"
+    },
+    "download": "Downloads about {size} MB for local AI.",
+    "progress": "{percent}% · {received} / {total} MB",
+    "install": "Install",
+    "update": "Update",
+    "cancel": "Cancel install",
+    "loadFailed": "Could not load local AI status. Reload and try again.",
+    "actionFailed": "Could not change the install. Try again.",
+    "external": {
+      "heading": "External judge",
+      "mode": "When the local judge is unsure",
+      "off": "Use medium",
+      "ask": "Ask {name}",
+      "scope": "In live runs, the chosen decision API gets the same judge text the local AI reads: the current request, the previous request and reply, the plan, and the tool calls, cut to the first 4,096 characters. It never gets files, keys, or run IDs. Applies to this workspace from the next run.",
+      "noKey": "Add a key under Decision APIs to choose one. Until then unsure requests use medium.",
+      "policyMedium": "Automatic reasoning runs at medium without judging for now, so this choice is not used.",
+      "judgeNeverAbstains": "The local judge always picks a level, so this choice is not used.",
+      "chosenNoKey": "{name} has no key. Until you add one under Decision APIs, unsure requests use medium.",
+      "saveFailed": "Could not save the external judge setting. Reload and try again."
+    }
+  },
+  "DecisionApis": {
+    "heading": "Decision APIs",
+    "intro": "Judge-only APIs that automatic reasoning can ask when the local judge is unsure. Each uses its own API key, separate from model sign-ins and model keys.",
+    "name": {
+      "jev": "TypeSafe Jev",
+      "openai-decisions": "OpenAI Decisions"
+    },
+    "data": {
+      "jev": "TypeSafe's API documentation publishes no retention policy.",
+      "openai-decisions": "Connects with an OpenAI platform API key; Corral does not use your ChatGPT sign-in for it. OpenAI documents that API data is not used for training and that abuse-monitoring logs are kept for up to 30 days."
+    },
+    "keySaved": "Key saved",
+    "noKey": "No key",
+    "keyHint": "Kept on this computer, outside the workspace. Corral never shows it again.",
+    "saveKey": "Save key",
+    "removeKey": "Remove key",
+    "loadFailed": "Could not load decision APIs. Reload and try again.",
+    "saveFailed": "Could not save the key. Try again."
   },
   "Resources": {
     "skills": "Skills",
@@ -2554,6 +2762,8 @@
     "restore": "Restore",
     "archiveConfirm": "Remove from the list? Existing settings and past runs keep using it. You can restore it from archived items.",
     "usages": "Versions referenced by settings",
+    "usageDiagnostics": "Diagnostic details",
+    "usageUnknownProject": "Project unavailable",
     "unused": "No work style references this item.",
     "usedBy": "Used by work styles",
     "newCopy": "An edited copy is available.",
@@ -2626,7 +2836,18 @@
     "browserExecutable": "Installed Chromium executable",
     "browserReady": "Text required in the HTTP readiness response",
     "browserDevCommand": "Registered dev server command",
-    "configureMcpFirst": "Manage authentication and launch trust in MCP server settings before discovering tools here."
+    "configureMcpFirst": "Manage authentication and launch trust in MCP server settings before discovering tools here.",
+    "probeFailure": {
+      "connection": "The MCP server refused the connection. Start the server and check its address and port, then test again.",
+      "dns": "The MCP server name could not be resolved. Check the address and network, then test again.",
+      "timeout": "The MCP server did not respond in time. Check that it is running, then test again.",
+      "authentication": "The MCP server rejected authorization. Sign in again or update its credentials, then test again.",
+      "rateLimit": "The MCP server is limiting requests. Wait before testing again.",
+      "server": "The MCP server is temporarily unavailable. Retry when it recovers.",
+      "protocol": "The MCP server rejected the request. Check the endpoint address and transport.",
+      "unknown": "The MCP connection test failed. Check the server, transport, and launch settings, then test again."
+    },
+    "internalSkillName": "Internal skill name"
   },
   "Navigation": {
     "app": "App",
@@ -2693,7 +2914,7 @@
     "retention": "Keeps the latest 50 and the last 30 days. Pinned checkpoints and restore history stay retained.",
     "pin": "Keep",
     "preview": "Preview restore",
-    "restoreExplain": "Restore {count} changed files in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
+    "restoreExplain": "Restore {count, plural, one {# changed file} other {# changed files}} in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
     "restore": "Restore working copy",
     "close": "Close preview",
     "loadFailed": "Could not load checkpoints.",
@@ -2720,7 +2941,10 @@
     "localOnly": "File checkpoints are available in the local app.",
     "original": "Original folder",
     "workingCopy": "Session working copy",
-    "restoreOriginal": "Restore original folder"
+    "restoreOriginal": "Restore original folder",
+    "requestUnavailable": "Original request unavailable",
+    "unchanged": "No changes since the previous checkpoint",
+    "alreadyMatches": "Already matches this checkpoint. There is nothing to restore."
   },
   "RunStatus": {
     "environment": "Environment",
@@ -2838,7 +3062,14 @@
       "artifact": "Result",
       "response": "Model response",
       "interaction": "Interaction"
-    }
+    },
+    "sidebarScope": "All projects · titles and purposes",
+    "paletteScope": "Commands and current project session titles and purposes",
+    "dialogScope": "All projects · titles and purposes. Enable private messages and results to search their text.",
+    "searchBody": "Search messages and results",
+    "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text.",
+    "sourceCount": "{count, plural, one {# source} other {# sources}}",
+    "sourceNumber": "Source {number}"
   },
   "MessageBranch": {
     "open": "Branch from this message",
@@ -2857,7 +3088,8 @@
     "requestOpen": "Branch before this request",
     "requestDescription": "Start this original request in a separate session and Run, using its original team and criteria.",
     "requestBoundary": "Starts at the original request boundary, before any model response.",
-    "unlimited": "Model {model} · no default usage limits"
+    "unlimited": "Model {model} · no default usage limits",
+    "activeRun": "Branching requires idle work and confirmed cleanup. Wait for running work to finish, then try again."
   },
   "ProfileContext": {
     "contextWindow": "Effective context",
@@ -2897,7 +3129,7 @@
     "contextRefresh": "Previous request, waiting for a new measurement",
     "simulatedNote": "Simulated figure. This is not a provider measurement.",
     "lastRun": "Last run",
-    "selectedRun": "Selected run · {number} of {total}",
+    "selectedRun": "Selected run · Run #{number} of {total}",
     "selectedRunUnordered": "Selected run",
     "rail": "This run",
     "agentsHeading": "Agents",
@@ -2935,7 +3167,9 @@
     "actionApproval": "Approval needed",
     "actionQuestion": "A question is waiting",
     "actionFailure": "A failure needs attention",
-    "actionUnclear": "A file effect is unclear",
+    "actionUnclear": "An operation has an unconfirmed outcome",
+    "actionModelUnknown": "A model request has an unconfirmed outcome",
+    "runStatusAnnouncement": "Run status: {status}",
     "actionUsageUnknown": "Unconfirmed usage is still held against the budget",
     "actionStopUnconfirmed": "The stop could not be confirmed",
     "actionMixed": "{count} items need attention",
@@ -3013,30 +3247,38 @@
       "agents": "Agents",
       "environment": "Environment",
       "outputTokens": "output tokens",
-      "calls": "{used} of {max} calls",
-      "callsNoLimit": "{used, plural, one {# call} other {# calls}}",
+      "calls": "{used} of {max} model calls",
+      "callsNoLimit": "{used, plural, one {# model call} other {# model calls}}",
       "tokenLimit": "of {max} limit",
       "unknownHeld": "{count} unconfirmed tokens held",
       "perCall": "Output tokens per model call: {values}",
-      "files": "{count, plural, one {# file} other {# files}}",
+      "files": "{count, plural, one {# changed file} other {# changed files}}",
       "linesUnknown": "Line counts unavailable",
       "readError": "This run couldn't be read.",
       "retry": "Retry",
       "openDetail": "Open {name} details",
       "openChanges": "Open the changes",
-      "spent": "Used",
-      "held": "Held",
-      "limit": "Limit",
+      "spent": "Settled output tokens",
+      "held": "Held output tokens",
+      "limit": "Output token limit",
       "noLimit": "No limit",
       "modelCalls": "Model calls",
-      "inputTokens": "Input tokens",
+      "inputTokens": "Reported input tokens",
       "cachedInput": "Cached input",
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "Not reported",
       "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
       "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}",
-      "fullBudget": "Open the run"
+      "fullBudget": "Open the run",
+      "runScope": "Selected run · Run #{number}",
+      "selectedRun": "Selected run",
+      "usageDefinition": "This run: settled output tokens and model calls. Input is reported usage from finished calls; cached input is part of input, not extra tokens.",
+      "simulatedUsage": "Simulation usage; not a provider measurement or bill."
     },
+    "lastRunNumber": "Last run · Run #{number}",
+    "activityStarting": "Preparing to run…",
+    "actionCompletedWithFailures": "The run completed, but some tool steps failed. Review those steps before relying on the result.",
+    "actionOpenFailure": "Review failed steps",
     "planMore": "{count, plural, one {# more} other {# more}}"
   },
   "ModelImport": {
@@ -3334,7 +3576,7 @@
     "refresh": "Refresh terminals",
     "shell": "Shell",
     "create": "New terminal",
-    "unavailable": "A trusted working copy and an available shell are required.",
+    "unavailable": "Create a trusted working copy in Changes before opening a terminal. An available shell is also required.",
     "createPending": "Terminal creation is unconfirmed. Check the original request before creating another terminal.",
     "checkCreate": "Check creation result",
     "retryCreate": "Retry original creation request",
@@ -3358,7 +3600,10 @@
     },
     "exitCode": "Exit code {code}",
     "writerHint": "While this terminal is active, file saves and Runs that write to this copy are blocked. Stop the terminal or use another copy. Hiding this panel does not stop it.",
-    "replayUnavailable": "Output replay is unavailable because its retained history limit was reached. An existing connected view can continue; a new view cannot reconstruct the screen. Stop this terminal before creating another.",
+    "replayUnavailable": "Output replay is unavailable. An existing connected view may continue; a new view cannot reconstruct the screen. Stop this terminal before creating another.",
+    "replayUnavailableEnded": "Output replay is unavailable. This terminal has ended; you can create a new terminal.",
+    "runningTab": "Terminal running",
+    "rateLimited": "Input is arriving too quickly. It is kept in order and will resume shortly.",
     "uncertain": "Termination is unconfirmed. The working copy stays reserved. Stop the terminal and check the result; reconnecting does not restore a process after a host restart.",
     "inputUnknown": "The last input acknowledgement was lost. Input is paused.",
     "inputOverflow": "This input exceeded the queue limit and was not sent. Wait for pending input, then enter smaller portions.",
@@ -3385,7 +3630,31 @@
     "selectOutput": "Select terminal output to attach first.",
     "attachSelectionError": "Could not attach the selection. Check its size and connection.",
     "sourceStale": "Terminal output has changed; the previous selection was not restored.",
-    "sourceUnavailable": "This terminal source cannot be opened here."
+    "sourceUnavailable": "This terminal source cannot be opened here.",
+    "runActive": "Wait for the current Run to finish, then create a terminal.",
+    "diagnostics": "Diagnostic details",
+    "stopped": "Stopped",
+    "stopUnconfirmed": "Stop was attempted, but termination could not be verified. The working copy remains protected. Check the host process and diagnostic details; do not delete the working copy to bypass this protection.",
+    "writerBusy": "Another operation is using this working copy. Stop it or wait for it to finish before creating a terminal.",
+    "releaseHint": "Releasing input only disconnects this view’s keyboard. The terminal still holds the working copy until its process stops.",
+    "uncertainTab": "Terminal termination needs confirmation",
+    "writerNotice": "A terminal is holding this working copy. Stop it before sending a request that writes files.",
+    "writerUncertainNotice": "Terminal termination has not been confirmed. The working copy stays reserved until the process is confirmed stopped.",
+    "openControls": "Open terminal controls",
+    "recheckTermination": "Stop and verify",
+    "diagnosticReason": {
+      "session_not_ready": "The terminal process did not finish opening its own session.",
+      "identity_unavailable": "Corral could not verify which process owns this terminal.",
+      "identity_changed": "The terminal process identity changed before ownership could be confirmed.",
+      "process_exited": "The terminal process exited before ownership could be recorded.",
+      "startup_failed": "The terminal could not start.",
+      "cleanup_unconfirmed": "Corral could not confirm that the terminal process and its children have stopped.",
+      "receipt_unavailable": "Corral could not confirm the terminal’s recovery record.",
+      "host_restart_required": "This terminal record cannot prove whether its process has stopped."
+    },
+    "diagnosticCheck": "The working copy remains protected. Choose Stop and verify; if termination stays unconfirmed, inspect the host process and diagnostic details.",
+    "diagnosticHostRestart": "Save work on the host computer, restart its operating system, then choose Stop and verify. Restarting only the Corral app is insufficient.",
+    "diagnosticEnded": "Review the diagnostic details before creating another terminal."
   },
   "Docking": {
     "fileViewer": "File viewer",
@@ -3443,7 +3712,7 @@
     "tools": "Tasks & preview",
     "activeRun": "Active run controls",
     "openActiveRun": "Open run",
-    "activeRunTarget": "In progress: {request}",
+    "activeRunTarget": "Request: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
     "pendingActions": "{count, plural, one {# response needed} other {# responses needed}}",
     "runDisconnected": "Run connection lost; its state is unconfirmed.",
@@ -4052,6 +4321,18 @@
     "selectFrame": "Select a frame in the call stack before evaluating an expression."
   },
   "Meetings": {
+    "diagnostics": "Diagnostics",
+    "copyDiagnostics": "Copy diagnostics",
+    "diagnosticsCopied": "Copied",
+    "diagnosticsCopyFailed": "Copy failed. Select and copy the diagnostic text.",
+    "requestFailed": "The model provider returned HTTP {status}. Check the model connection or try again.",
+    "answerFailedHint": "The model could not complete this reply. Try again or open diagnostics for the reported cause.",
+    "participantDefault": "Participant {number}",
+    "clearDraft": "Clear draft",
+    "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
+    "retrySummary": "Request minutes again",
+    "handoffNeedsMinutes": "No decision is ready to hand off. Ask the secretary for a plan, then review and adopt a proposal.",
+    "handoffNeedsAdoption": "Review and adopt a proposal in the minutes before handing it off to work.",
     "heading": "Meeting",
     "new": "New meeting",
     "newTitle": "Create a meeting",
@@ -4060,6 +4341,8 @@
     "defaultTitle": "Meeting",
     "participants": "Participants",
     "participantName": "Participant {number} name",
+    "participantAliases": "Participant {number} nicknames (optional)",
+    "participantAliasesHint": "Separate nicknames with commas. Calling a participant by name or nickname in a message asks them to answer.",
     "participantRole": "Participant {number} role (optional)",
     "participantModel": "Participant {number} model",
     "removeParticipant": "Remove participant {number}",
@@ -4103,7 +4386,7 @@
     "message": "Meeting message",
     "placeholder": "Write a message · @name to ask only some participants",
     "mentions": "To",
-    "everyone": "Without a mention, every participant except the secretary answers.",
+    "everyone": "Without a mention, whoever the message calls answers. If it calls no one, one participant who fits the context answers.",
     "send": "Send",
     "summarise": "Ask secretary for a plan",
     "summaryRequest": "Please organise our conversation into meeting minutes and an implementation plan based on the conclusions we have reached. Keep unresolved questions separate from agreed work.",
@@ -4135,9 +4418,14 @@
     "evidenceLoading": "Loading results…",
     "records": "Minutes, plan and handoff",
     "minutesReady": "The secretary has prepared the minutes and plan.",
-    "viewMinutes": "Review minutes and plan"
+    "viewMinutes": "Review minutes and plan",
+    "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan.",
+    "expandRecords": "Expand records",
+    "compactRecords": "Compact records"
   },
   "MeetingsDecisions": {
+    "decisionLabel": "Decision v{number} · {goal}",
+    "supersededBy": "Replaced by v{number}",
     "heading": "Minutes and decisions",
     "candidateHint": "Candidates are proposals. Only a decision you adopt can be handed off to work.",
     "empty": "Ask the secretary to summarise the meeting to prepare candidates.",
@@ -4182,6 +4470,7 @@
     }
   },
   "MeetingsHandoff": {
+    "reload": "Reload handoffs",
     "open": "Hand off to work",
     "serverRequired": "Work handoff is available when connected to the Corral server.",
     "scopeHint": "This request uses the adopted decision and its selected evidence. The target session’s default Corral stays the same.",
@@ -4289,9 +4578,12 @@
     },
     "statTurns": "{count, plural, one {# turn} other {# turns}}",
     "statSteps": "{count, plural, one {# step} other {# steps}}",
-    "statTokens": "{tokens} tokens",
+    "statTokens": "{tokens} reported tokens",
     "statCache": "cache hit {share}",
     "statCacheUnreported": "cache not reported",
+    "statSession": "Session total",
+    "statDefinition": "Turns are runs. Steps count the lead agent’s tool operations and child executions, not model calls. Tokens sum reported input and output from finished model calls; unreported usage is excluded and cached input is not added again.",
+    "artifactTarget": "{name} · v{version}",
     "request": "Model request {no}",
     "requestPreparing": "Preparing response",
     "requestGenerating": "Generating response",
@@ -4335,6 +4627,7 @@
     "tool": "Tool start to finish",
     "nonAgentNode": "This node has no separate agent execution. Its outcome appears in the graph and recorded results.",
     "workPlans": "Work plans",
+    "failedSteps": "Failed steps",
     "lanes": {
       "running": "{count} running",
       "needsYou": "{count} needs you",
@@ -4368,6 +4661,43 @@
       "rowWaiting": "{label}: {status}",
       "empty": "No tasks were recorded in this run."
     }
+  },
+  "Failure": {
+    "cancelled": "This step was cancelled.",
+    "unknown": "This step failed. Open diagnostics for the recorded reason.",
+    "diagnostics": "Diagnostics",
+    "code": {
+      "TARGET_NOT_FOUND": "The requested file, folder, or target is unavailable.",
+      "TARGET_TERMINAL": "The target has ended or was cancelled, so this request could not be applied.",
+      "REVISION_CONFLICT": "The target changed. Check its current state before trying again.",
+      "CAPABILITY_DENIED": "This operation was not allowed. Check the recorded reason.",
+      "LIMIT_REACHED": "This operation reached a limit."
+    },
+    "provider": {
+      "AUTH": "The model provider rejected the credentials.",
+      "QUOTA": "The model account has no remaining quota.",
+      "RATE_LIMIT": "The model provider is limiting requests.",
+      "CONTEXT_OVERFLOW": "The request exceeds this model’s context limit.",
+      "SERVER": "The model provider is temporarily unavailable.",
+      "TRANSPORT": "The model provider could not be reached.",
+      "CANCELLED": "The model request was cancelled."
+    },
+    "recovery": {
+      "AUTH": "Open Settings → Models to reconnect or replace the API key, then retry.",
+      "QUOTA": "Check the account’s quota or choose another configured model, then retry.",
+      "RATE_LIMIT": "Wait a moment, then retry. Repeated immediate requests may extend the limit.",
+      "CONTEXT_OVERFLOW": "Shorten the message or start a new conversation with the needed context.",
+      "SERVER": "Wait for the provider to recover or choose another configured model, then retry.",
+      "TRANSPORT": "Check the network and endpoint address. Start the local model server if needed, then retry.",
+      "CANCELLED": "Send the message again when you are ready."
+    }
+  },
+  "RunIdentity": {
+    "unnamed": "Run",
+    "number": "Run #{number}",
+    "details": "Run details",
+    "open": "Open {name}",
+    "select": "Compare {name}"
   },
   "RunFlow": {
     "title": "Work flow",

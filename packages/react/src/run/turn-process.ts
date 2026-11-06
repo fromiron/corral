@@ -33,7 +33,13 @@ export type ProcessRow =
       state: string;
       call: Pick<ModelCallView, 'reasoning' | 'reasoningWire'>;
     })
-  | (ProcessState & ToolEntry & { id: string; target: string | null })
+  | (ProcessState &
+      ToolEntry & {
+        id: string;
+        target: string | null;
+        /** The exact version a read names, when the record has it. */
+        artifact?: { name: string; version: number };
+      })
   | (ProcessState & {
       kind: 'agent';
       id: string;
@@ -171,6 +177,8 @@ export function buildTurnProcess(
         });
       } else if (visibleTool(entry)) {
         const target = targetOf(entry.args);
+        const read =
+          entry.name === 'read_artifact' && target ? projection.artifacts[target] : undefined;
         const references = sources([
           ...(typeof entry.args.artifactVersionId === 'string'
             ? [entry.args.artifactVersionId]
@@ -181,6 +189,9 @@ export function buildTurnProcess(
           ...entry,
           id: entry.toolCallId,
           target,
+          ...(read
+            ? { artifact: { name: read.name.split('\n')[0] ?? read.name, version: read.version } }
+            : {}),
           active:
             activeExecution(projection, lead) &&
             (entry.status === 'requested' || entry.status === 'allowed'),

@@ -1,6 +1,7 @@
 import { fork } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -148,6 +149,74 @@ describe('worker in a child process', () => {
     expect(Object.keys(final.executions)).toHaveLength(1);
     const request = Object.values(final.effects).find((e) => e.kind === 'model_request');
     expect(request?.outcome).toBe('unknown');
+  }, 30_000);
+
+  it('keeps the HTTP failure cause from a real worker without persisting provider response details', async () => {
+    let requests = 0;
+    const endpoint = createServer((request, response) => {
+      request.resume();
+      request.on('end', () => {
+        requests += 1;
+        response.writeHead(500, { 'content-type': 'application/json', 'retry-after': '0' });
+        response.end(
+          JSON.stringify({
+            error: {
+              message:
+                'credential=opaque-provider-secret body=private-user-text /home/private/input.md',
+            },
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => endpoint.listen(0, '127.0.0.1', resolve));
+    const address = endpoint.address();
+    if (!address || typeof address === 'string') throw new Error('Missing local endpoint port');
+    const spec = {
+      name: 'Local failure',
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      keyless: true,
+      models: [{ id: 'fixture', contextWindow: 8000, maxOutput: 512, reasoning: false }],
+    };
+    const models = builtinModels();
+    models.setProvider(endpointProvider('local', spec));
+    const model = models.getModel('local', 'fixture');
+    if (!model) throw new Error('Missing fixture model');
+    try {
+      const transport = new InProcessTransport(
+        new Coordinator({
+          clock: new FakeClock(),
+          ids: new SequentialIdFactory(),
+          agents: new PiAgentAdapter({
+            spawn: () =>
+              modelBridgeChannel(
+                processChannel(WORKER_ENTRY, { env: { CORRAL_MODEL_BRIDGE: '1' } }),
+                { model, streamFn: (...args) => models.streamSimple(...args) },
+              ),
+            credentials: async () => null,
+            endpoint: () => spec,
+          }),
+          models: {
+            resolve: (profile) => ({
+              ok: true,
+              snapshot: { profile, provider: 'local', modelId: 'fixture', auth: 'api_key' },
+            }),
+          },
+        }),
+      );
+      const { final } = await run(transport);
+      expect(final.status).toBe('failed');
+      expect(Object.values(final.executions)[0]?.error).toBe(
+        'the model request failed: HTTP 500 (SERVER)',
+      );
+      expect(JSON.stringify(final)).not.toMatch(
+        /opaque-provider-secret|private-user-text|\/home\//,
+      );
+      expect(requests).toBe(3);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        endpoint.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   }, 30_000);
 
   it('the production worker entry loads pi-ai, says ready, and refuses an unknown model', async () => {

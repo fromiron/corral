@@ -908,3 +908,77 @@ it('a failed effective-definition read never disconnects an accepted run', async
     store.getState().dispose();
   }
 });
+
+it('restores a private prefix before merging raced frames and ignores frames after cancellation', async () => {
+  let handlers!: TransportHandlers;
+  let resolve!: (snapshot: unknown) => void;
+  const snapshot = new Promise((done) => {
+    resolve = done;
+  });
+  const store = createRunSession({
+    getRunDefinition: async () => linearCorral(['writer']),
+    getSnapshot: () => snapshot,
+    subscribe: (_id: string, _after: number, value: TransportHandlers) => {
+      handlers = value;
+      return () => {};
+    },
+  } as never);
+  const opening = store.getState().open('run_prefix');
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  const frame = (chunkIndex: number, text: string) =>
+    handlers.onFrame?.({ runId: 'run_prefix', modelCallId: 'call', chunkIndex, text });
+  frame(0, 'duplicate');
+  frame(1, 'continued');
+  store.setState({ projection: { ...emptyProjection('run_prefix'), status: 'cancelled' } });
+  frame(2, 'late during restore');
+  resolve({
+    projection: emptyProjection('run_prefix'),
+    seq: 0,
+    partialOutputs: { call: { text: 'Saved ', next: 1, truncated: false } },
+  });
+  await opening;
+  await Promise.resolve();
+  expect(store.getState().streams.call?.text).toBe('Saved continued');
+  store.setState({ projection: { ...emptyProjection('run_prefix'), status: 'cancelled' } });
+  frame(2, 'late');
+  await Promise.resolve();
+  expect(store.getState().streams.call?.text).toBe('Saved continued');
+  store.getState().dispose();
+});
+
+it('refreshes the bounded prefix marker when the run stops in the current view', async () => {
+  let handlers!: TransportHandlers;
+  const getSnapshot = vi
+    .fn()
+    .mockResolvedValueOnce({ projection: emptyProjection('run_limit'), seq: 0 })
+    .mockResolvedValue({
+      projection: emptyProjection('run_limit'),
+      seq: 1,
+      partialOutputs: { call: { text: 'prefix', next: 1, truncated: true } },
+    });
+  const store = createRunSession({
+    getRunDefinition: async () => linearCorral(['writer']),
+    getSnapshot,
+    subscribe: (_id: string, _after: number, value: TransportHandlers) => {
+      handlers = value;
+      return () => {};
+    },
+  } as never);
+  await store.getState().open('run_limit');
+  handlers.onFrame?.({ runId: 'run_limit', modelCallId: 'call', chunkIndex: 0, text: 'prefix' });
+  await Promise.resolve();
+  handlers.onEvent({
+    schemaVersion: '0.1',
+    eventId: 'stop',
+    runId: 'run_limit',
+    runSeq: 1,
+    recordedAt: '2026-10-29T00:00:00Z',
+    actor: { kind: 'runtime', id: 'runtime' },
+    causedByEventIds: [],
+    type: 'run.state_changed',
+    payload: { from: 'running', to: 'cancelled', reasonCode: 'user_cancelled' },
+  } as never);
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  expect(store.getState().streams.call).toMatchObject({ text: 'prefix', truncated: true });
+  store.getState().dispose();
+});

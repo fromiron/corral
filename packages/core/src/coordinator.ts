@@ -27,11 +27,13 @@ import {
   type DecisionCancellation,
   type DecisionNode,
   type DecisionProvider,
+  EFFORT_LEVELS,
   EffectiveHarnessSnapshot,
   type EventPayload,
   ExtensionUiNotice,
   ExtensionUiRequest,
   type ExtensionUiResult,
+  type ExternalEffortJudge,
   FILE_TOOLS,
   GenerateImageArgs,
   type HarnessBindingRef,
@@ -142,8 +144,20 @@ import { adaptDesignReview } from './design-review.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
+import {
+  PartialOutputWriter,
+  partialOutputRefs,
+  type RuntimeSnapshot,
+  readPartialOutputs,
+} from './partial-output.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
-import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
+import {
+  automaticReasoning,
+  type ExternalConsult,
+  fixedReasoning,
+  reasoningError,
+  reasoningPolicyOf,
+} from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun } from './run-plan.ts';
 import {
@@ -299,9 +313,11 @@ export interface FileTools {
 /** A refusal a tool backend explains to the agent (no local paths in the message). */
 export class ToolRefusal extends Error {
   readonly code: CommandError['code'];
-  constructor(code: CommandError['code'], message: string) {
+  readonly owner?: CommandError['owner'];
+  constructor(code: CommandError['code'], message: string, owner?: CommandError['owner']) {
     super(message);
     this.code = code;
+    this.owner = owner;
   }
 }
 
@@ -365,6 +381,8 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** reasoning_effort judgment providers and workspace settings. Observe only. */
   judgments?: JudgmentConfig;
+  /** Decision APIs; a live run asks the one it chose when the local judge abstains. */
+  externalJudges?: readonly ExternalEffortJudge[];
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -586,6 +604,7 @@ interface ToolFrame {
     error?: string | null,
     outcome?: EventPayload<'effect.settled'>['outcome'],
     progressHash?: string,
+    errorCode?: CommandError['code'],
   ): EventDraft[];
 }
 
@@ -615,6 +634,7 @@ export class Coordinator {
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly judgments: JudgmentConfig | undefined;
+  private readonly externalJudges: readonly ExternalEffortJudge[];
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -669,6 +689,7 @@ export class Coordinator {
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
     this.judgments = deps.judgments;
+    this.externalJudges = deps.externalJudges ?? [];
     this.observers = [
       ...(deps.admission?.observers ?? []),
       ...(deps.judgments
@@ -1871,7 +1892,11 @@ export class Coordinator {
     } catch (error) {
       return refuse(
         error instanceof ToolRefusal
-          ? { code: error.code, message: error.message }
+          ? {
+              code: error.code,
+              message: error.message,
+              ...(error.owner ? { owner: error.owner } : {}),
+            }
           : { code: 'STORAGE_UNAVAILABLE', message: 'working copy admission failed' },
       );
     }
@@ -1922,6 +1947,7 @@ export class Coordinator {
         ? {
             reasoningApply: {
               enabled: true,
+              policy: this.judgments.settings.reasoning_effort.policy ?? 'judged',
               provider: 'local-model' as const,
               version:
                 this.judgments.providers.find(
@@ -1932,6 +1958,10 @@ export class Coordinator {
                 this.judgments.settings.reasoning_effort.maxCalls ??
                   definition.limits.maxModelCalls,
               ),
+              ...(this.judgments.settings.reasoning_effort.allowExternal &&
+              this.judgments.settings.reasoning_effort.external
+                ? { external: { ...this.judgments.settings.reasoning_effort.external } }
+                : {}),
             },
           }
         : {}),
@@ -3520,13 +3550,21 @@ export class Coordinator {
   }
 
   /** Null when the run does not exist. */
-  findSnapshot(runId: string): { projection: RunProjection; seq: number } | null {
+  findSnapshot(runId: string, includePartial = false): RuntimeSnapshot | null {
     const projection = this.projectionOf(runId);
-    return projection ? { projection, seq: projection.lastSeq } : null;
+    return projection
+      ? {
+          projection,
+          seq: projection.lastSeq,
+          ...(includePartial
+            ? { partialOutputs: readPartialOutputs(this.store, runId, projection) }
+            : {}),
+        }
+      : null;
   }
 
-  getSnapshot(runId: string): { projection: RunProjection; seq: number } {
-    const snapshot = this.findSnapshot(runId);
+  getSnapshot(runId: string): RuntimeSnapshot {
+    const snapshot = this.findSnapshot(runId, true);
     if (!snapshot) throw new Error(`run ${runId} does not exist`);
     return snapshot;
   }
@@ -3629,6 +3667,8 @@ export class Coordinator {
           if (context) operational.push(...checkpointReferences(JSON.parse(context)));
         }
       }
+      // An interrupted reply stays readable as private partial output (workbench contract).
+      operational.push(...partialOutputRefs(this.store, run.runId, run.projection));
       this.store.retainArtifactBodies(run.runId, [...retained, ...operational]);
     }
     return changes;
@@ -3747,6 +3787,65 @@ export class Coordinator {
             void Promise.resolve().then(() => this.pump(subscriber));
     notifyObservers(this.observers, committedProjection, events, () => this.observerContext(run));
     return events;
+  }
+
+  /**
+   * The decision API one request may ask: only in live runs that chose it at start, while its
+   * key is configured. Each call is one decision effect, settled once.
+   */
+  private externalConsult(
+    run: LiveRun,
+    executionId: string,
+    attemptNo: number,
+  ): ExternalConsult | undefined {
+    const wanted = run.snapshot.reasoningApply?.external;
+    const judge = wanted && this.externalJudges.find((j) => j.provider === wanted.provider);
+    if (run.snapshot.mode !== 'live' || !wanted || !judge || judge.available() !== true)
+      return undefined;
+    return {
+      now: () => this.clock.monotonicMs(),
+      ask: async (input, cancellation) => {
+        const effectId = this.ids.next('effect');
+        this.commit(run, [
+          {
+            type: 'effect.admitted',
+            executionId,
+            payload: {
+              effectId,
+              kind: 'decision',
+              scope: executionId,
+              epoch: attemptNo,
+              reservationId: null,
+            },
+          },
+        ]);
+        const settle = (outcome: EventPayload<'effect.settled'>['outcome']) => {
+          if (
+            this.live.get(run.runId) === run &&
+            !TERMINAL_RUN_STATUSES.has(run.projection.status) &&
+            run.projection.effects[effectId]?.status === 'admitted'
+          )
+            this.commit(run, [
+              { type: 'effect.settled', executionId, payload: { effectId, outcome } },
+            ]);
+        };
+        const off = cancellation.onCancel(() => settle('cancelled'));
+        try {
+          const answer = await judge.judge(
+            input,
+            { model: wanted.model, owner: { runId: run.runId, executionId, effectId, attemptNo } },
+            cancellation,
+          );
+          settle(EFFORT_LEVELS.some((level) => level === answer.answer) ? 'succeeded' : 'failed');
+          return answer;
+        } catch (error) {
+          settle(cancellation.aborted ? 'cancelled' : 'failed');
+          throw error;
+        } finally {
+          off();
+        }
+      },
+    };
   }
 
   /** What observers may do: record decision facts while the run is open. */
@@ -6512,6 +6611,7 @@ export class Coordinator {
     const agent: Actor = { kind: 'agent', id: executionId };
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
+    let partialWriter: PartialOutputWriter | undefined;
     let harnessState: 'unloaded' | 'loaded' | 'simulated' | 'failed' = 'unloaded';
     let toolsRevision = 1;
     const descriptors = new Map<string, ToolDescriptor>();
@@ -7021,6 +7121,7 @@ export class Coordinator {
         error: string | null = null,
         outcome: EventPayload<'effect.settled'>['outcome'] = error ? 'failed' : 'succeeded',
         progressHash?: string,
+        errorCode?: CommandError['code'],
       ): EventDraft[] =>
         run.projection.effects[effectId] && run.projection.effects[effectId]?.status !== 'admitted'
           ? []
@@ -7034,6 +7135,7 @@ export class Coordinator {
                   resultRef,
                   error,
                   ...(progressHash ? { progressHash } : {}),
+                  ...(errorCode ? { errorCode } : {}),
                 },
               },
               {
@@ -7799,8 +7901,9 @@ export class Coordinator {
                 return () => listeners.delete(fn);
               },
             };
-            const exhausted = run.reasoningCalls >= run.reasoningMaxCalls;
-            if (!exhausted) run.reasoningCalls++;
+            const policy = reasoningPolicyOf(run.snapshot.reasoningApply);
+            const exhausted = policy === 'judged' && run.reasoningCalls >= run.reasoningMaxCalls;
+            if (policy === 'judged' && !exhausted) run.reasoningCalls++;
             run.boundaries.add(executionId);
             try {
               reasoning = await automaticReasoning(
@@ -7814,11 +7917,13 @@ export class Coordinator {
                     ? { inputHash: hashOf(privateInput), kind: privateInput.kind }
                     : {}),
                 },
+                policy,
                 run.reasoningProvider,
                 input.model.reasoning?.levels ?? ['low', 'medium', 'high', 'xhigh'],
                 cancellation,
                 this.timers,
                 exhausted,
+                this.externalConsult(run, executionId, input.attemptNo),
               );
             } finally {
               run.boundaries.delete(executionId);
@@ -8231,7 +8336,18 @@ export class Coordinator {
         const call = run.projection.modelCalls[delta.modelCallId];
         if (lastCall?.modelCallId !== delta.modelCallId || !call || call.finished) return;
         if (run.projection.executions[executionId]?.status !== 'active') return;
-        this.publishFrame({ runId: run.runId, ...delta });
+        if (
+          run.cancelRequested.has(executionId) ||
+          TERMINAL_RUN_STATUSES.has(run.projection.status)
+        )
+          return;
+        const execution = run.projection.executions[executionId];
+        if (!execution || run.projection.tasks[execution.taskId]?.activeExecutionId !== executionId)
+          return;
+        if (partialWriter?.modelCallId !== delta.modelCallId)
+          partialWriter = new PartialOutputWriter(this.store, run.runId, delta.modelCallId);
+        const saved = partialWriter.append(delta);
+        if (saved) this.publishFrame({ runId: run.runId, ...saved });
       },
     };
     return host;
@@ -9546,7 +9662,7 @@ export class Coordinator {
           if (!this.files) throw new ToolRefusal('CAPABILITY_DENIED', 'worktree unavailable');
           result = await this.files.execute(
             {
-              name: 'read_file',
+              name: 'read',
               args: { path },
               runId: run.runId,
               executionId,
@@ -9754,7 +9870,7 @@ export class Coordinator {
         // No process call was dispatched: cancelling its approval cannot be an execution
         // failure. An explicit rejection or approval timeout still takes the failure path.
         this.commit(run, tool.closing(null, null, 'cancelled'));
-      } else this.commit(run, tool.closing(null, message));
+      } else this.commit(run, tool.closing(null, message, undefined, undefined, refusal?.code));
       return {
         ok: false,
         toolCallId: tool.toolCallId,

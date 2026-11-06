@@ -1,3 +1,4 @@
+import { ApiError } from '@corral/client';
 import type { MessageBranchPreview } from '@corral/contracts';
 import {
   Button,
@@ -140,7 +141,13 @@ export function MessageBranch({
                         });
                       })
                       .catch((failure) =>
-                        setError(failure instanceof Error ? failure.message : t('unavailable')),
+                        setError(
+                          failure instanceof ApiError && failure.code === 'RUN_ALREADY_ACTIVE'
+                            ? t('activeRun')
+                            : failure instanceof Error
+                              ? failure.message
+                              : t('unavailable'),
+                        ),
                       )
                       .finally(() => setBusy(false));
                   }}

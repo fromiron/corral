@@ -8,13 +8,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import koreanMessages from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { composerDraftRevision, writeComposerDraft } from './sessionDraft.ts';
-import { TerminalPanel } from './TerminalPanel.tsx';
+import { TerminalActivity, TerminalPanel } from './TerminalPanel.tsx';
 import type { TerminalSelection, TerminalStore } from './terminals/store.ts';
 
 const fixture = vi.hoisted(() => ({
   state: {} as ReturnType<TerminalStore['getState']>,
   workspaceId: undefined as string | undefined,
+  refresh: vi.fn(async (_id: string) => {}),
+  stop: vi.fn(async (_id: string) => {}),
   captureSelection: vi.fn<(id: string) => Promise<TerminalSelection | null>>(),
 }));
 vi.mock('../services.tsx', () => ({
@@ -25,7 +28,8 @@ vi.mock('./terminals/store.ts', () => ({
     getState: () => fixture.state,
     getInitialState: () => fixture.state,
     subscribe: () => () => {},
-    refresh: async () => {},
+    refresh: (id: string) => fixture.refresh(id),
+    stop: (id: string) => fixture.stop(id),
     captureSelection: (id: string) => fixture.captureSelection(id),
   }),
 }));
@@ -68,7 +72,13 @@ const list: TerminalList = {
   shells: [{ id: 'bash', label: 'Bash' }],
   terminals: [terminal],
 };
-function render(current: TerminalView, pendingCreate = false, loading = false) {
+function render(
+  current: TerminalView,
+  pendingCreate = false,
+  loading = false,
+  runActive = false,
+  locale: 'en' | 'ko' = 'en',
+) {
   fixture.state = {
     sessions: {
       session: {
@@ -96,8 +106,12 @@ function render(current: TerminalView, pendingCreate = false, loading = false) {
     },
   };
   return renderToStaticMarkup(
-    <IntlProvider locale="en" messages={messages} timeZone="UTC">
-      <TerminalPanel sessionId="session" />
+    <IntlProvider
+      locale={locale}
+      messages={locale === 'ko' ? koreanMessages : messages}
+      timeZone="UTC"
+    >
+      <TerminalPanel sessionId="session" runActive={runActive} />
     </IntlProvider>,
   );
 }
@@ -108,6 +122,105 @@ it('a missing terminal replay still exposes explicit stop outside the terminal',
   expect(html).toContain('Stop terminal');
   expect(html).toContain('Termination is unconfirmed');
   expect(html).not.toContain('Take control');
+});
+
+it.each(['en', 'ko'] as const)(
+  'explains legacy host restart recovery in %s before the closed diagnostic details',
+  (locale) => {
+    const html = render(
+      {
+        ...terminal,
+        state: 'uncertain',
+        replayAvailable: false,
+        error: 'Legacy terminal observation is missing',
+        diagnostic: { phase: 'recovery', code: 'host_restart_required' },
+      },
+      false,
+      false,
+      false,
+      locale,
+    );
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    const guidance = document.querySelector('[data-testid="terminal-recovery-guidance"]');
+    expect(guidance?.textContent).toContain(locale === 'en' ? 'operating system' : '운영체제');
+    expect(guidance?.textContent).toContain(locale === 'en' ? 'only the Corral app' : '앱만');
+    expect(guidance?.textContent).not.toContain('Legacy terminal observation is missing');
+    const diagnostics = [...document.querySelectorAll('details')].find((element) =>
+      element.textContent?.includes('Legacy terminal observation is missing'),
+    );
+    expect(diagnostics?.open).toBe(false);
+    expect(diagnostics?.textContent).toContain('host_restart_required');
+    expect(diagnostics?.textContent).toContain('recovery');
+    expect(
+      [...document.querySelectorAll('button')].find((button) =>
+        button.textContent?.includes(locale === 'en' ? 'Stop and verify' : '종료하고 확인'),
+      )?.disabled,
+    ).toBe(false);
+  },
+);
+
+it('explains a startup session failure without exposing the technical code as the guidance', () => {
+  const html = render({
+    ...terminal,
+    state: 'uncertain',
+    diagnostic: { phase: 'startup', code: 'session_not_ready' },
+  });
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  const guidance = document.querySelector('[data-testid="terminal-recovery-guidance"]');
+  expect(guidance?.textContent).toContain('did not finish opening its own session');
+  expect(guidance?.textContent).toContain('working copy remains protected');
+  expect(guidance?.textContent).not.toContain('session_not_ready');
+  expect(document.querySelector('details')?.open).toBe(false);
+});
+
+it('only explicitly stops the selected uncertain terminal and keeps its identity for the existing command path', async () => {
+  const current: TerminalView = {
+    ...terminal,
+    state: 'uncertain',
+    replayAvailable: false,
+    diagnostic: { phase: 'recovery', code: 'identity_unavailable' },
+  };
+  render(current);
+  fixture.stop.mockClear();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const renderPanel = () =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <TerminalPanel sessionId="session" />
+        </IntlProvider>,
+      ),
+    );
+  try {
+    await renderPanel();
+    expect(fixture.stop).not.toHaveBeenCalled();
+    const stop = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Stop and verify',
+    );
+    expect(stop).toBeDefined();
+    await act(async () => stop?.click());
+    expect(fixture.stop).toHaveBeenCalledExactlyOnceWith(current.terminalId);
+    expect(fixture.state.terminals.terminal?.terminal).toMatchObject({
+      state: 'uncertain',
+      generation: current.generation,
+      target: current.target,
+    });
+    const entry = fixture.state.terminals.terminal;
+    assert(entry);
+    entry.busy = true;
+    await renderPanel();
+    expect(
+      [...container.querySelectorAll('button')].find((button) => button.textContent === 'Stopping…')
+        ?.disabled,
+    ).toBe(true);
+    expect(fixture.stop).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+    fixture.stop.mockReset();
+  }
 });
 
 it('unresolved creation exposes receipt recovery and prevents a new terminal', () => {
@@ -127,6 +240,23 @@ it('another controller is read-only until an explicit takeover', () => {
   expect(html).toContain('Another view controls input');
   expect(html).toContain('Take over input');
   expect(html).not.toContain('Release input');
+});
+
+it('distinguishes input control release from the protected working copy', () => {
+  const html = render({ ...terminal, controller: null });
+  expect(html).toContain('Releasing input only disconnects this view’s keyboard');
+  expect(html).toContain('Stop terminal');
+});
+
+it('marks unconfirmed termination in the terminal tab without implying it is running', () => {
+  render({ ...terminal, state: 'uncertain' });
+  const html = renderToStaticMarkup(
+    <IntlProvider locale="en" messages={messages}>
+      <TerminalActivity sessionId="session" />
+    </IntlProvider>,
+  );
+  expect(html).toContain('Terminal termination needs confirmation');
+  expect(html).not.toContain('Terminal running');
 });
 
 it('the terminal escape action focuses a control outside its input', async () => {
@@ -255,4 +385,78 @@ it('attaches only the explicit selected text with its captured source target', a
     vi.unstubAllGlobals();
     fixture.captureSelection.mockReset();
   }
+});
+
+it('shows a user stop instead of treating shell exit zero as normal completion', () => {
+  const html = render({ ...terminal, state: 'exited', stopped: true, exitCode: 0 });
+  expect(html).toContain('Stopped');
+  expect(html).not.toContain('Exit code 0');
+});
+
+it('prevents creation during an active Run with a recovery instruction', () => {
+  const html = render({ ...terminal, state: 'exited' }, false, false, true);
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  expect(
+    [...document.querySelectorAll('button')].find((button) => button.textContent === 'New terminal')
+      ?.disabled,
+  ).toBe(true);
+  expect(html).toContain('Wait for the current Run to finish');
+});
+
+it('refreshes terminal availability when a working copy changes', async () => {
+  render(terminal);
+  fixture.refresh.mockClear();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <TerminalPanel sessionId="session" />
+        </IntlProvider>,
+      ),
+    );
+    const before = fixture.refresh.mock.calls.length;
+    await act(async () => window.dispatchEvent(new Event('corral:workspace-changed')));
+    expect(fixture.refresh.mock.calls.length).toBeGreaterThan(before);
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it('a recovery target selects its terminal instead of the remembered terminal', async () => {
+  render(terminal);
+  const session = fixture.state.sessions.session;
+  const first = fixture.state.terminals.terminal;
+  assert(session?.list && first);
+  const second = { ...terminal, terminalId: 'second', shellId: 'sh' };
+  session.list.terminals.push(second);
+  fixture.state.terminals.second = { ...first, terminal: second };
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <TerminalPanel sessionId="session" terminalId="second" />
+        </IntlProvider>,
+      ),
+    );
+    expect(container.querySelector('[aria-label="Select terminal"]')?.textContent).toContain(
+      'Terminal 2 · sh',
+    );
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it('does not tell an already stopped terminal to stop again when replay is unavailable', () => {
+  const html = render({ ...terminal, state: 'exited', stopped: true, replayAvailable: false });
+  expect(html).toContain('Output replay is unavailable');
+  expect(html).not.toContain('Stop this terminal before creating another');
+  expect(html).not.toContain('retained history limit was reached');
 });

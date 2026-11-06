@@ -389,10 +389,12 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
           </span>
         </span>
 
-        {/* Value mode only. Hidden from AT and tab order: the row is already
-            the radio, so exposing this would announce every option twice. */}
+        {/* The public row owns focus and semantics. Hide the entire primitive
+            subtree, including Base UI's generated input, while keeping value plumbing. */}
         {value !== undefined && (
-          <RadioPrimitive.Root value={value} className="sr-only" tabIndex={-1} aria-hidden />
+          <span hidden aria-hidden="true">
+            <RadioPrimitive.Root value={value} tabIndex={-1} />
+          </span>
         )}
       </div>
     );

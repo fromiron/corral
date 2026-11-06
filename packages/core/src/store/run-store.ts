@@ -180,12 +180,12 @@ export class InMemoryRunStore implements RunStore {
 
   retainArtifactBodies(runId: string, retainedIds: readonly string[]) {
     const previous = this.retainedBodies.get(runId);
-    const retained = previous
-      ? retainedIds.filter((id) => previous.includes(id))
-      : [...retainedIds];
+    const before = previous ? new Set(previous) : null;
+    const retained = before ? retainedIds.filter((id) => before.has(id)) : [...retainedIds];
     this.retainedBodies.set(runId, retained);
+    const keep = new Set(retained);
     for (const key of this.artifacts.keys()) {
-      if (key.startsWith(`${runId}\u0000`) && !retained.includes(key.slice(runId.length + 1)))
+      if (key.startsWith(`${runId}\u0000`) && !keep.has(key.slice(runId.length + 1)))
         this.artifacts.delete(key);
     }
   }

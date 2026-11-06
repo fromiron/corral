@@ -1,6 +1,14 @@
 import type { FileSideView } from '@corral/client';
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
-import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
+import {
+  Banner,
+  BannerActions,
+  BannerTitle,
+  Button,
+  Input,
+  Select,
+  Textarea,
+} from '@corral/react/design-kit';
 import { FileText, RefreshCw, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -72,6 +80,7 @@ export function FilePanel({
   const te = useTranslations('Documents');
   const td = useTranslations('Docking');
   const ts = useTranslations('ContentSearch');
+  const sessionText = useTranslations('Sessions');
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces, mode, workspaceId } = services;
@@ -409,6 +418,27 @@ export function FilePanel({
         ) : null}
       </section>
     ) : null;
+  const fileSetup =
+    scope?.kind === 'project' && !hasCopy && !loading ? (
+      <Banner status="info" role="note" size="compact">
+        <BannerTitle>{tf('noCopyReadOnly')}</BannerTitle>
+        <BannerActions>
+          <Button
+            variant="tertiary"
+            size="compact"
+            render={
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId }}
+                search={{ panel: 'changes' }}
+              />
+            }
+          >
+            {sessionText('prepareWorkingCopy')}
+          </Button>
+        </BannerActions>
+      </Banner>
+    ) : null;
   if (!scope && !loading)
     return (
       <div ref={panel} className="space-y-2 p-3 text-xs text-muted-foreground">
@@ -441,6 +471,7 @@ export function FilePanel({
     <Select
       label={ts('mode')}
       size="sm"
+      className="min-w-0 max-w-full shrink-0"
       value={searchMode}
       onValueChange={setSearchMode}
       options={[
@@ -461,6 +492,7 @@ export function FilePanel({
       : null;
   return (
     <div ref={panel} className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
+      {fileSetup}
       {retainedDrafts}
       {recoveryCandidates}
       {recoveryReadError ? (
@@ -507,14 +539,14 @@ export function FilePanel({
           />
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               {searchModeControl}
               <Input
                 size="sm"
                 disabled
                 placeholder={ts('placeholder')}
                 aria-label={ts('placeholder')}
-                className="min-w-0 flex-1"
+                className="min-w-0 max-w-full flex-[1_0_10rem]"
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -548,7 +580,7 @@ export function FilePanel({
           </div>
         )
       ) : (
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {readOnly ? null : searchModeControl}
           <Input
             size="sm"
@@ -556,7 +588,7 @@ export function FilePanel({
             placeholder={t('filterFiles')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 flex-1"
+            className="min-w-0 max-w-full flex-[1_0_10rem]"
           />
         </div>
       )}

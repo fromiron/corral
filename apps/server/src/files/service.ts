@@ -5776,7 +5776,7 @@ export class WorkspaceService implements FileTools {
       throw new ToolRefusal('TARGET_TERMINAL', 'run file access is no longer active');
     if (!access || access.writer) return null;
     if (!access) throw new ToolRefusal('TARGET_NOT_FOUND', 'run input snapshot unavailable');
-    if (!['list_files', 'read_file', 'read_hashline'].includes(input.name))
+    if (!['list_files', 'read', 'read_file', 'read_hashline'].includes(input.name))
       throw new ToolRefusal(
         'CAPABILITY_DENIED',
         'a snapshot reader cannot be promoted to a writer',
@@ -5813,7 +5813,8 @@ export class WorkspaceService implements FileTools {
     }
     const text = decodeText(bytes);
     if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', 'file is not UTF-8 text');
-    return this.fileRange(
+    return this.fileRead(
+      input.name,
       path,
       text,
       sha256(bytes),
@@ -6217,7 +6218,8 @@ export class WorkspaceService implements FileTools {
       case 'edit': {
         const args = PiEditInput.parse(input.args);
         return this.lease(root, async () => {
-          const before = await this.requireRead(root, args.path, reads);
+          const before = await this.requireRead(root, args.path, reads, true);
+          const whole = reads.get(args.path) === before;
           const bytes = await textBytes(root, args.path);
           if (bytes.length > MAX_TEXT)
             throw new ToolRefusal('LIMIT_REACHED', 'files are at most 1 MiB');
@@ -6241,11 +6243,25 @@ export class WorkspaceService implements FileTools {
             cancellation,
             before,
           );
+          // An edit shows only what it replaced, so a file read in part stays read in part.
+          if (!whole) {
+            reads.delete(args.path);
+            this.readRanges.get(reads)?.set(args.path, { hash: String(applied.sha256), spans: [] });
+          }
           return { ...applied, piResult: edited.result };
         });
       }
       case 'list_files':
-        return this.list(root, typeof input.args.path === 'string' ? input.args.path : '');
+        return this.list(root, typeof input.args.path === 'string' ? input.args.path : '').catch(
+          (error: unknown) => {
+            if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
+              throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
+            if ((error as NodeJS.ErrnoException)?.code === 'ENOENT')
+              throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
+            throw error;
+          },
+        );
+      case 'read':
       case 'read_file': {
         const rel = safeRelative(String(input.args.path));
         const kind = await assertPlainPath(root, rel);
@@ -6255,13 +6271,27 @@ export class WorkspaceService implements FileTools {
           throw new ToolRefusal('LIMIT_REACHED', `${rel} is larger than 1 MiB`);
         const text = decodeText(bytes);
         if (text === null) throw new ToolRefusal('CAPABILITY_DENIED', `${rel} is not UTF-8 text`);
-        return this.fileRange(rel, text, sha256(bytes), input.args, reads);
+        return this.fileRead(name, rel, text, sha256(bytes), input.args, reads);
       }
       default:
         return this.lease(root, () =>
           this.change(root, found.sessionId, { ...input, name }, reads, cancellation),
         );
     }
+  }
+
+  /** Pi pages by line over the text it gets, so `read` returns all of it but counts as a range. */
+  private fileRead(
+    name: string,
+    path: string,
+    text: string,
+    hash: string,
+    args: Record<string, unknown>,
+    reads: Map<string, string>,
+  ) {
+    if (name !== 'read') return this.fileRange(path, text, hash, args, reads);
+    this.fileRange(path, text, hash, {}, reads);
+    return { path, text, sha256: hash };
   }
 
   private fileRange(
@@ -6385,10 +6415,14 @@ export class WorkspaceService implements FileTools {
     return { paths, truncated: pending.length > 0 || visited >= 2000 || paths.length > 500 };
   }
 
-  /** What an existing file must look like before it may be changed: as this run read it. */
-  private async requireRead(root: string, rel: string, reads: Map<string, string>) {
+  /**
+   * What an existing file must look like before it may be changed: as this run read it. `partly`
+   * accepts any range of it, for an edit, whose exact old text proves what it replaces.
+   */
+  private async requireRead(root: string, rel: string, reads: Map<string, string>, partly = false) {
     const current = sha256(await textBytes(root, rel));
-    const read = reads.get(rel);
+    const range = partly ? this.readRanges.get(reads)?.get(rel)?.hash : undefined;
+    const read = range === current ? range : (reads.get(rel) ?? range);
     if (!read) throw new ToolRefusal('REVISION_CONFLICT', `read ${rel} before changing it`);
     if (read !== current)
       throw new ToolRefusal('REVISION_CONFLICT', `${rel} changed since you read it; read it again`);

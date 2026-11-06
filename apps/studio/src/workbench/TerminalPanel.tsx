@@ -1,5 +1,6 @@
 import type { TextAttachment } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
+import { StatusDot } from '@corral/react';
 import { Button, Select } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
@@ -16,12 +17,40 @@ import {
   type TerminalStore,
   terminalStore,
 } from './terminals/store.ts';
+import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 const TerminalView = lazy(() =>
   import('./terminals/TerminalView.tsx').then((module) => ({ default: module.TerminalView })),
 );
 
+export function TerminalActivity({ sessionId }: { sessionId: string }) {
+  const { terminals } = useServices();
+  return terminals ? (
+    <TerminalActivityState sessionId={sessionId} store={terminalStore(terminals)} />
+  ) : null;
+}
+
+function TerminalActivityState({ sessionId, store }: { sessionId: string; store: TerminalStore }) {
+  const t = useTranslations('Terminals');
+  const activity = useStore(store, (state) => {
+    const terminals = state.sessions[sessionId]?.list?.terminals;
+    return terminals?.some((terminal) => terminal.state === 'uncertain')
+      ? 'uncertain'
+      : terminals?.some((terminal) => terminal.state === 'running')
+        ? 'running'
+        : null;
+  });
+  return activity ? (
+    <StatusDot
+      status={activity === 'uncertain' ? 'warning' : 'running'}
+      label={t(activity === 'uncertain' ? 'uncertainTab' : 'runningTab')}
+    />
+  ) : null;
+}
+
 interface TerminalContextProps {
+  runActive?: boolean;
+  terminalId?: string;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   revealSource?: TerminalProvenance;
 }
@@ -71,6 +100,8 @@ function SessionTerminals({
   selection,
   onAttach,
   revealSource,
+  runActive = false,
+  terminalId,
 }: {
   sessionId: string;
   store: TerminalStore;
@@ -79,10 +110,11 @@ function SessionTerminals({
   const t = useTranslations('Terminals');
   const session = useStore(store, (state) => state.sessions[sessionId]);
   const list = session?.list;
-  const memorySelection = useState('');
+  const memorySelection = useState(terminalId ?? '');
   const [selected, select] = selection ?? memorySelection;
   const [shell, setShell] = useState('');
   const [actionError, setActionError] = useState(false);
+  const [stopAttempted, setStopAttempted] = useState('');
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<'selectOutput' | 'attachSelectionError' | null>(
     null,
@@ -90,17 +122,27 @@ function SessionTerminals({
   const [sourceState, setSourceState] = useState<TerminalSourceState | null>(null);
   useEffect(() => {
     setSourceState(null);
-    if (revealSource?.target.sessionId === sessionId) select(revealSource.terminalId);
-  }, [revealSource, sessionId, select]);
+    if (terminalId) select(terminalId);
+    else if (revealSource?.target.sessionId === sessionId) select(revealSource.terminalId);
+  }, [terminalId, revealSource, sessionId, select]);
   const hintId = useId();
   const refreshButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    void store.refresh(sessionId).catch(() => setActionError(true));
-  }, [store, sessionId]);
+    void runActive;
+    const refresh = () => void store.refresh(sessionId).catch(() => setActionError(true));
+    refresh();
+    window.addEventListener(WORKSPACE_CHANGED, refresh);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, refresh);
+  }, [store, sessionId, runActive]);
   const items = list?.terminals ?? [];
-  const selectedId = items.some((item) => item.terminalId === selected)
-    ? selected
-    : (items.find((item) => item.state === 'running')?.terminalId ?? items[0]?.terminalId ?? '');
+  const selectedId =
+    terminalId && selected === terminalId && !items.some((item) => item.terminalId === terminalId)
+      ? ''
+      : items.some((item) => item.terminalId === selected)
+        ? selected
+        : (items.find((item) => item.state === 'running')?.terminalId ??
+          items[0]?.terminalId ??
+          '');
   const entry = useStore(
     store,
     useShallow((state) => {
@@ -111,6 +153,7 @@ function SessionTerminals({
             connection: value.connection,
             controlling: value.controlling,
             inputUnknown: value.inputUnknown,
+            rateLimited: value.rateLimited,
             inputOverflow: value.inputOverflow,
             error: value.error,
             busy: value.busy,
@@ -197,6 +240,7 @@ function SessionTerminals({
           disabled={
             Boolean(pending) ||
             hasWriter ||
+            runActive ||
             Boolean(session?.loading) ||
             !list?.available ||
             !list.target ||
@@ -213,9 +257,23 @@ function SessionTerminals({
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">{t('scopeHint')}</p>
+      {runActive ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t('runActive')}
+        </p>
+      ) : null}
       {hasWriter ? <p className="text-xs text-muted-foreground">{t('writerHint')}</p> : null}
+      {hasWriter ? <p className="text-xs text-muted-foreground">{t('releaseHint')}</p> : null}
       {!list?.available && !session?.loading ? (
-        <p className="text-xs text-muted-foreground">{list?.reason || t('unavailable')}</p>
+        <div className="text-xs text-muted-foreground">
+          <p>{t('unavailable')}</p>
+          {list?.reason ? (
+            <details>
+              <summary>{t('diagnostics')}</summary>
+              <p>{list.reason}</p>
+            </details>
+          ) : null}
+        </div>
       ) : null}
       {pending ? (
         <div className="space-y-2">
@@ -254,7 +312,7 @@ function SessionTerminals({
           options={items.map((item, index) => ({
             value: item.terminalId,
             label: t('terminalName', { number: index + 1, shell: item.shellId }),
-            hint: t(`state.${item.state}`),
+            hint: item.state === 'exited' && item.stopped ? t('stopped') : t(`state.${item.state}`),
           }))}
         />
       ) : !session?.loading ? (
@@ -263,20 +321,54 @@ function SessionTerminals({
       {entry && current ? (
         <>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" role="status">
-            <span>{t(`state.${current.state}`)}</span>
+            <span>
+              {current.state === 'exited' && current.stopped
+                ? t('stopped')
+                : t(`state.${current.state}`)}
+            </span>
             <span>{t(`connection.${entry.connection}`)}</span>
-            {current.exitCode !== null ? (
+            {current.exitCode !== null && !current.stopped ? (
               <span>{t('exitCode', { code: current.exitCode })}</span>
             ) : null}
           </div>
           {!current.replayAvailable ? (
             <p role="status" className="text-xs">
-              {t('replayUnavailable')}
+              {t(
+                current.state === 'exited' || current.state === 'failed'
+                  ? 'replayUnavailableEnded'
+                  : 'replayUnavailable',
+              )}
             </p>
           ) : null}
-          {current.state === 'uncertain' ? (
+          {current.diagnostic ? (
+            <div
+              data-testid="terminal-recovery-guidance"
+              role="alert"
+              className="space-y-1 text-xs text-danger"
+            >
+              <p>{t(`diagnosticReason.${current.diagnostic.code}`)}</p>
+              <p>
+                {t(
+                  !mayStop
+                    ? 'diagnosticEnded'
+                    : current.diagnostic.code === 'host_restart_required'
+                      ? 'diagnosticHostRestart'
+                      : 'diagnosticCheck',
+                )}
+              </p>
+            </div>
+          ) : current.state === 'uncertain' ? (
             <p role="alert" className="text-xs text-danger">
-              {t('uncertain')}
+              {t(
+                stopAttempted === current.terminalId && !entry.busy
+                  ? 'stopUnconfirmed'
+                  : 'uncertain',
+              )}
+            </p>
+          ) : null}
+          {entry.rateLimited ? (
+            <p role="status" className="text-xs text-warning">
+              {t('rateLimited')}
             </p>
           ) : null}
           {entry.inputOverflow ? (
@@ -365,9 +457,18 @@ function SessionTerminals({
                 size="compact"
                 variant="tertiary"
                 disabled={entry.busy || current.state === 'stopping'}
-                onClick={() => run(() => store.stop(selectedId))}
+                onClick={() => {
+                  setStopAttempted(selectedId);
+                  run(() => store.stop(selectedId));
+                }}
               >
-                {t(current.state === 'stopping' ? 'stopping' : 'stop')}
+                {t(
+                  entry.busy || current.state === 'stopping'
+                    ? 'stopping'
+                    : current.state === 'uncertain' && current.diagnostic
+                      ? 'recheckTermination'
+                      : 'stop',
+                )}
               </Button>
             ) : null}
           </div>
@@ -415,22 +516,47 @@ function SessionTerminals({
           <p id={hintId} className="text-xs text-muted-foreground">
             {t('keyboardHint')}
           </p>
-          {entry.error || current.error ? (
-            <p role="alert" className="break-words text-xs text-danger">
-              {entry.error || current.error}
+          {(entry.error || current.error) && current.state !== 'uncertain' ? (
+            <p role="alert" className="text-xs text-danger">
+              {t('actionFailed')}
             </p>
+          ) : null}
+          {entry.error || current.error || current.diagnostic ? (
+            <details>
+              <summary>{t('diagnostics')}</summary>
+              {current.diagnostic ? (
+                <code className="text-xs text-muted-foreground">
+                  {current.diagnostic.phase} · {current.diagnostic.code}
+                </code>
+              ) : null}
+              {entry.error || current.error ? (
+                <p className="break-words text-xs text-muted-foreground">
+                  {entry.error || current.error}
+                </p>
+              ) : null}
+            </details>
           ) : null}
         </>
       ) : null}
-      {sourceState === 'unavailable' || sourceUnavailable ? (
+      {sourceState === 'unavailable' ||
+      sourceUnavailable ||
+      (terminalId && !session?.loading && !items.some((item) => item.terminalId === terminalId)) ? (
         <p role="status" className="text-xs text-muted-foreground">
           {t('sourceUnavailable')}
         </p>
       ) : null}
       {actionError || session?.error ? (
-        <p role="alert" className="break-words text-xs text-danger">
-          {session?.error || t('actionFailed')}
-        </p>
+        <div role="alert" className="text-xs text-danger">
+          <p>
+            {session?.error?.includes('working copy writer') ? t('writerBusy') : t('actionFailed')}
+          </p>
+          {session?.error ? (
+            <details>
+              <summary>{t('diagnostics')}</summary>
+              <p className="break-words">{session.error}</p>
+            </details>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

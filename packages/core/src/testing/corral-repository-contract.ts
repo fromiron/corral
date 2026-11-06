@@ -404,6 +404,59 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(b.session.sessionId))?.entries).toHaveLength(1);
       });
 
+      it('does not replace a settled queued entry with a late conflicting outcome', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Queue' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const saved = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'Once',
+          state: 'queued',
+        });
+        if (!saved.ok) throw new Error(saved.message);
+        const entryId = saved.session.entries[0]?.entryId ?? '';
+        const outcome = { state: 'started' as const, runId: 'winner', detail: null, refusal: null };
+        const started = await repo.updateSessionEntry(id, entryId, outcome);
+        expect(started.ok).toBe(true);
+        expect(await repo.updateSessionEntry(id, entryId, outcome)).toEqual(started);
+        for (const change of [
+          { state: 'refused' as const, runId: null, detail: 'Other tab lost' },
+          { state: 'started' as const, runId: 'different' },
+          { state: 'dismissed' as const },
+        ])
+          expect(await repo.updateSessionEntry(id, entryId, change)).toMatchObject({
+            ok: false,
+            error: 'revision_conflict',
+          });
+        expect((await repo.getSession(id))?.entries[0]).toMatchObject(outcome);
+      });
+
+      it('retains a confirmed first run when its start receipt arrives after a non-start outcome', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Queue race' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        for (const state of ['refused', 'dismissed'] as const) {
+          const saved = await repo.addSessionEntry(id, {
+            intent: 'queue',
+            text: state,
+            state: 'queued',
+          });
+          if (!saved.ok) throw new Error(saved.message);
+          const entryId = saved.session.entries.at(-1)?.entryId ?? '';
+          expect((await repo.updateSessionEntry(id, entryId, { state })).ok).toBe(true);
+          const started = await repo.updateSessionEntry(id, entryId, {
+            state: 'started',
+            runId: `run_${state}`,
+          });
+          expect(started.ok && started.session.entries.at(-1)).toMatchObject({
+            state: 'started',
+            runId: `run_${state}`,
+          });
+        }
+      });
+
       it('new sessions are auto; the auto model and reasoning save with a revision; a team keeps its team', async () => {
         const repo = makeRepository();
         const auto = await repo.createSession({ projectId: 'default', title: 'Quick question' });

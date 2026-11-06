@@ -33,7 +33,6 @@ export * from './preview-tools.ts';
 export * from './profile-context.ts';
 export * from './project-tools.ts';
 export * from './reasoning.ts';
-export { chooseReasoningLevel } from './reasoning-cost.ts';
 export * from './receipt.ts';
 export * from './review.ts';
 export * from './review-recipe.ts';

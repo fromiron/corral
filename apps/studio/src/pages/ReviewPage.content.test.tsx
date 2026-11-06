@@ -57,9 +57,14 @@ vi.mock('@corral/react/design-kit', async (original) => ({
     </select>
   ),
 }));
-vi.mock('use-intl', () => ({
-  useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
-}));
+vi.mock('use-intl', async (original) => {
+  const actual = await original<typeof import('use-intl')>();
+  return {
+    ...actual,
+    useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
+    useFormatter: () => actual.createFormatter({ locale: 'en', timeZone: 'UTC' }),
+  };
+});
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
@@ -109,6 +114,7 @@ async function mount({ embedded = true, noCopy = false } = {}) {
     live: false,
     workspaceId: 'host',
     transport: { listRuns: async () => [] },
+    repository: { getSession: async () => session },
     workspaces: {
       worktree: async () => copy,
       comments: async () => [],

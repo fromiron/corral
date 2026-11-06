@@ -1,7 +1,7 @@
 import type { RunEvent } from '@corral/contracts';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Deterministic provider responses exercise the production adapter, Coordinator,
@@ -78,6 +78,47 @@ async function closeOverview(page: Page) {
     await expect(popup).toBeHidden();
   }
 }
+test('plain completion is announced once and opening history is silent', async ({
+  page,
+  corral,
+}) => {
+  const finish = gate();
+  corral.fake?.setResponses([
+    async () => {
+      await finish.waiting;
+      return fauxAssistantMessage('The requested review is complete.');
+    },
+  ]);
+  try {
+    await session(page, corral);
+    await send(page, 'Review the current state.');
+    const dock = page.getByTestId('composer-dock');
+    await expect(dock.getByText('Running', { exact: true })).toBeVisible();
+    await expect(
+      page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
+    ).toHaveCount(0);
+    finish.release();
+    await expect(
+      dock.locator('[aria-live="polite"]').filter({ hasText: 'Run status: Succeeded' }),
+    ).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId('app-sidebar')
+        .getByText(/Succeeded/)
+        .first(),
+    ).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('chat-timeline')).toContainText(
+      'The requested review is complete.',
+    );
+    await expect(
+      page.getByTestId('composer-dock').locator('[aria-live="polite"]'),
+    ).not.toContainText(['Run status: Succeeded']);
+    expect(corral.errors).toEqual([]);
+  } finally {
+    finish.release();
+  }
+});
 
 test('live plans, context, manual collapse and an answer use the primary session flow', async ({
   page,
@@ -225,6 +266,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
     await question.getByRole('button', { name: 'Send answer' }).click();
+    await panelTab(page, 'Conversation');
     await expect(page.getByTestId('chat-result')).toContainText('ready for review');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
@@ -330,6 +372,7 @@ test.describe('serialized provider context', () => {
       );
     }
     await page.keyboard.press('Escape');
+    await expect(inspector).toBeHidden();
     await closeOverview(page);
     await page.getByTestId('action-required').getByRole('link').click();
     const question = page.getByRole('form', { name: 'Waiting for your answer' });
