@@ -267,12 +267,12 @@ describe('session conversation continuity', () => {
 
     const archive = exportRunArchive(s.store, second.runId, { privateTranscript: true });
     if (archive.visibility !== 'private') throw new Error('expected a private archive');
-    expect(archive.artifacts.session_conversation).toContain('hello');
+    expect(archive.artifacts.session_conversation).toBeUndefined();
+    expect(archive.unavailableBodyRefs).toContain('session_conversation');
+    expect(archive.conversationTurn?.request).toBe('again');
     expect(() => openRunArchive(archive)).not.toThrow();
     const tampered = JSON.parse(JSON.stringify(archive)) as typeof archive;
-    tampered.artifacts.session_conversation = (
-      tampered.artifacts.session_conversation ?? ''
-    ).replace('hello', 'HELLO');
+    tampered.conversationTurn!.request = 'changed';
     expect(() => openRunArchive(tampered)).toThrow(/conversation/);
   });
 });

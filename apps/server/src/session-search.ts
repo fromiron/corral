@@ -4,6 +4,7 @@ import {
   SessionSearchRequest,
   type SessionSearchResult,
 } from '@corral/contracts';
+import { canReadArtifactBody, type RunProjection, type StoredConversationTurn } from '@corral/core';
 import type { Db } from '@corral/storage-sqlite';
 
 const normalize = (text: string) => text.normalize('NFKC').toLowerCase();
@@ -105,13 +106,34 @@ export class SessionSearch {
       if (!includeTranscript) return;
       const runs = this.db
         .prepare(
-          'SELECT id,session_id,last_seq FROM runs WHERE session_id IN (SELECT id FROM work_sessions)',
+          'SELECT id,session_id,last_seq,projection_json FROM runs WHERE session_id IN (SELECT id FROM work_sessions)',
         )
-        .all() as { id: string; session_id: string; last_seq: number }[];
+        .all() as { id: string; session_id: string; last_seq: number; projection_json: string }[];
       for (const run of runs) {
+        const conversationKey = `conversation:${run.id}`;
+        if (!state.get(conversationKey)) {
+          const stored = this.db
+            .prepare('SELECT turn_json FROM conversation_turns WHERE run_id=?')
+            .get(run.id) as { turn_json: string } | undefined;
+          const turn = stored ? (JSON.parse(stored.turn_json) as StoredConversationTurn) : null;
+          if (turn?.runId === run.id) {
+            add.run(
+              conversationKey,
+              run.session_id,
+              run.id,
+              null,
+              null,
+              null,
+              'response',
+              normalize([turn.request, turn.answer ?? ''].join('\n')),
+            );
+            mark.run(conversationKey, '1');
+          }
+        }
         const key = `run:${run.id}`,
           cursor = Number((state.get(key) as { cursor: string } | undefined)?.cursor ?? 0);
         if (cursor === run.last_seq) continue;
+        const projection = JSON.parse(run.projection_json) as RunProjection;
         const rows = this.db
           .prepare('SELECT event_json FROM run_events WHERE run_id=? AND seq>? ORDER BY seq')
           .all(run.id, cursor) as { event_json: string }[];
@@ -136,7 +158,8 @@ export class SessionSearch {
             ref = event.payload.answerRef;
           else if (event.type === 'directive.accepted') body = event.payload.text;
           else continue;
-          if (ref)
+          if (ref) {
+            if (!canReadArtifactBody(projection, ref)) continue;
             body = (
               this.db
                 .prepare(
@@ -144,6 +167,7 @@ export class SessionSearch {
                 )
                 .get(run.id, ref) as { text_body: string } | undefined
             )?.text_body;
+          }
           if (body === undefined) throw new Error('private search source is incomplete');
           add.run(
             `event:${run.id}:${event.runSeq}`,

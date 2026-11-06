@@ -136,7 +136,7 @@ describe('run session', () => {
           : store.getState().commandError,
       ).toEqual(result === 'applied' ? receipt : 'response lost');
       await store.getState().open('run_selected');
-      expect(store.getState().artifactTexts).toEqual({ saved: 'cached text' });
+      expect(store.getState().artifactTexts).toEqual({});
       expect(
         result === 'applied'
           ? store.getState().receipts[sent.commandId]

@@ -33,3 +33,5 @@ ABS-06은 고정 snapshot reader 병행과 작업 사본별 단일 writer를 승
 credential·원시 사용자 본문·내부 경로를 공개 이벤트·export·알림·로그에 노출하지 않는다. 모델·웹·Skill·다른 역할의 출력은 권한을 바꾸는 명령이 아니다. 설정과 native 확장 신뢰는 각각 해당 owner의 명시 계약을 따른다.
 
 상세 전이·오류는 [기술 설계](technical-design.md)와 [API 계약](api-contract.md), 일반 개발 규칙은 [AGENTS.md](../../AGENTS.md)를 확인한다.
+
+산출물 본문은 [본문 수명 계약](api-contract.md#산출물-본문-수명)에 따라 실행 및 effect 정리가 끝난 뒤 해제한다. 취소 요청이나 Run 종료 상태만으로 진행 중인 작업의 본문을 제거하지 않는다. 메타데이터와 일반 대화 차례는 본문 아카이브와 구별한다.

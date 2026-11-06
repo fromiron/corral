@@ -80,6 +80,11 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "artifact.content_released",
+    "requiredContent": "artifactVersionIds,reason",
+    "status": "payload_schema_to_implement"
+  },
+  {
     "type": "review.recorded",
     "requiredContent": "reviewVersion,targetVersion,criteriaVersion,verdict,issues",
     "status": "payload_schema_to_implement"
@@ -227,6 +232,11 @@
   {
     "type": "output.finalized",
     "requiredContent": "artifactVersionIds,approvalId",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "workflow.branch_selected",
+    "requiredContent": "nodeId,mode,iterationId,configRevision,selectedPort,targetNodeId,targetPort,reasonCode,evidenceRefs,executionRefs",
     "status": "payload_schema_to_implement"
   },
   {

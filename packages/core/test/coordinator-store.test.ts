@@ -97,6 +97,11 @@ class FailingStore implements RunStore {
   putCommand: RunStore['putCommand'] = (command) => this.inner.putCommand(command);
   putArtifactText: RunStore['putArtifactText'] = (runId, id, text) =>
     this.inner.putArtifactText(runId, id, text);
+  retainArtifactBodies: RunStore['retainArtifactBodies'] = (id, retained) =>
+    this.inner.retainArtifactBodies(id, retained);
+  putConversationTurn: RunStore['putConversationTurn'] = (id, turn) =>
+    this.inner.putConversationTurn(id, turn);
+  getConversationTurn: RunStore['getConversationTurn'] = (id) => this.inner.getConversationTurn(id);
   getRun: RunStore['getRun'] = (runId) => this.inner.getRun(runId);
   listRuns: RunStore['listRuns'] = () => this.inner.listRuns();
   readEvents: RunStore['readEvents'] = (runId, after, limit) =>
@@ -155,7 +160,9 @@ describe('Coordinator over a RunStore: commit before effect', () => {
     const store = new InMemoryRunStore();
     const { transport } = coordinator({ store });
     const { runId } = await transport.startRun(start(linearCorral(['research', 'writer'])));
-    const final = await waitForProjection(transport, runId ?? '', settled);
+    await waitForProjection(transport, runId ?? '', settled);
+    // Terminal state and subsequent body release are separate committed facts.
+    const { projection: final } = await transport.getSnapshot(runId ?? '');
 
     const stored = store.getRun(runId ?? '');
     expect(stored?.projection).toEqual(final);

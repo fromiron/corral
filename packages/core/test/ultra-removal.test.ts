@@ -52,7 +52,15 @@ describe('stored Ultra records', () => {
     const comparison = runIdOf(recorded.comparison);
     expect(coordinator.findSnapshot(comparison)?.projection.status).toBe('interrupted');
     const added = store.readEvents(comparison, recorded.comparison.events.length);
-    expect(added.map((event) => event.type)).toEqual(['run.interrupted', 'run.state_changed']);
+    expect(added.map((event) => event.type)).toEqual([
+      'run.interrupted',
+      'run.state_changed',
+      'artifact.content_released',
+    ]);
+    expect(added.at(-1)?.payload).toEqual({
+      reason: 'superseded',
+      artifactVersionIds: Object.keys(recorded.comparison.projection.artifacts),
+    });
     for (const event of added) expect(RunEvent.safeParse(event).success).toBe(true);
   });
 

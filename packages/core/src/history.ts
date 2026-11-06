@@ -3,6 +3,7 @@ import {
   BinaryArtifact,
   BranchedFrom,
   ContinuedConversation,
+  ConversationTurn,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   Identifier,
@@ -22,6 +23,7 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import { canReadArtifactBody } from './artifact-retention.ts';
 import { canonicalJson } from './canonical-json.ts';
 import { checkpointReferences, decodeContextCheckpoint } from './context-checkpoint.ts';
 import { definitionHash } from './definition-hash.ts';
@@ -85,7 +87,15 @@ const PrivateArchive = z.strictObject({
     )
     .optional(),
   format: z.literal('corral-history'),
-  formatVersion: z.union([z.literal(1), z.literal(2)]),
+  formatVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  unavailableBodyRefs: z.array(Identifier).optional(),
+  conversationTurn: ConversationTurn.extend({
+    artifactVersionId: Identifier.nullable(),
+  }).optional(),
+  conversationTurnHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   visibility: z.literal('private'),
   runId: Identifier,
   lastSeq: z.int().positive(),
@@ -138,8 +148,14 @@ export function exportRunArchive(
     const artifacts: Record<string, string> = {};
     const media: Record<string, { descriptor: BinaryArtifact; dataHex: string }> = {};
     for (const id of versionIds) {
+      // Export only the available current result; operational contexts and old versions are not archives.
+      if (
+        !run.projection.output?.artifactVersionIds.includes(id) ||
+        !canReadArtifactBody(run.projection, id)
+      )
+        continue;
       const text = store.getArtifactText(runId, id);
-      if (text === null) throw new Error('private history is missing a referenced record body');
+      if (text === null) continue;
       artifacts[id] = text;
       if (contextRefs.has(id))
         for (const ref of checkpointReferences(JSON.parse(text))) versionIds.add(ref);
@@ -157,7 +173,16 @@ export function exportRunArchive(
     }
     return PrivateArchive.parse({
       format: 'corral-history',
-      formatVersion: Object.keys(media).length ? 2 : 1,
+      formatVersion: 3,
+      unavailableBodyRefs: [...versionIds].filter((id) => !(id in artifacts)),
+      ...(store.getConversationTurn(runId)
+        ? {
+            conversationTurn: store.getConversationTurn(runId),
+            conversationTurnHash: bytesToHex(
+              sha256(utf8ToBytes(canonicalJson(store.getConversationTurn(runId)))),
+            ),
+          }
+        : {}),
       visibility: 'private',
       runId,
       lastSeq: run.projection.lastSeq,
@@ -217,6 +242,71 @@ export function openRunArchive(input: unknown) {
       bytesToHex(sha256(utf8ToBytes(canonicalJson(snapshot.definition.input))))
   )
     throw new Error('archive snapshot does not match its run start');
+  if (archive.formatVersion === 3) {
+    const projection = archive.events.reduce((projection, event) => {
+      if (event.runId !== archive.runId) throw new Error('archive contains a different run');
+      return applyEvent(projection, event);
+    }, emptyProjection(archive.runId));
+    const required = new Set([
+      snapshot.criteriaVersionId,
+      ...Object.keys(projection.artifacts),
+      ...recordReferences(archive.events),
+      ...(snapshot.definition.input.images ?? []).map((image) => image.imageId),
+      ...(snapshot.conversation ? [SESSION_CONVERSATION] : []),
+      ...(snapshot.resumedFrom ? [snapshot.resumedFrom.contextRef] : []),
+      ...(snapshot.branchedFrom?.contextRef ? [snapshot.branchedFrom.contextRef] : []),
+      ...(snapshot.meeting?.contextSource ? ['meeting_context'] : []),
+    ]);
+    const unavailable = new Set(archive.unavailableBodyRefs ?? []);
+    for (const id of required)
+      if (!(id in archive.artifacts) && !unavailable.has(id))
+        throw new Error('archive body availability manifest is incomplete');
+    for (const id of unavailable)
+      if (!required.has(id) || id in archive.artifacts)
+        throw new Error('archive body availability manifest is inconsistent');
+    for (const [id, text] of Object.entries(archive.artifacts)) {
+      const artifact = projection.artifacts[id];
+      if (
+        !artifact ||
+        !projection.output?.artifactVersionIds.includes(id) ||
+        !canReadArtifactBody(projection, id)
+      )
+        throw new Error('archive contains a retired or operational body');
+      const hash = bytesToHex(sha256(utf8ToBytes(text)));
+      if (
+        hash !== archive.bodyHashes[id] ||
+        hash !== artifact.contentHash ||
+        utf8ToBytes(text).length !== artifact.byteLength
+      )
+        throw new Error('archive artifact content does not match its committed hash');
+      if (artifact.media) {
+        const blob = archive.media?.[id];
+        if (!blob || canonicalJson(blob.descriptor) !== canonicalJson(artifact.media))
+          throw new Error('archive generated image descriptor is missing or changed');
+        const bytes = hexToBytes(blob.dataHex);
+        if (
+          bytes.length !== artifact.media.bytes ||
+          bytesToHex(sha256(bytes)) !== artifact.media.sha256
+        )
+          throw new Error('archive generated image content does not match its committed hash');
+      }
+    }
+    if (
+      Object.keys(archive.bodyHashes).length !== Object.keys(archive.artifacts).length ||
+      Object.keys(archive.media ?? {}).some(
+        (id) => !archive.artifacts[id] || !projection.artifacts[id]?.media,
+      )
+    )
+      throw new Error('archive body manifest is inconsistent');
+    if (
+      archive.conversationTurn &&
+      (archive.conversationTurn.runId !== archive.runId ||
+        bytesToHex(sha256(utf8ToBytes(canonicalJson(archive.conversationTurn)))) !==
+          archive.conversationTurnHash)
+    )
+      throw new Error('archive conversation turn changed');
+    return freeze({ ...archive, projection });
+  }
   if (
     archive.artifacts[snapshot.criteriaVersionId] !== snapshot.definition.input.criteria.join('\n')
   )

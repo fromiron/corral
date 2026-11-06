@@ -87,6 +87,8 @@ export interface ModelCallView {
 }
 
 export interface ArtifactVersionView {
+  /** False after the body lifecycle ends; provenance remains available. */
+  bodyAvailable?: boolean;
   media?: import('@corral/contracts').BinaryArtifact;
   artifactVersionId: string;
   artifactId: string;
@@ -200,6 +202,12 @@ export interface ReviewView {
   issues: { criterionId: string; reason: string; severity: 'required' | 'advisory' }[];
 }
 
+export interface WorkflowBranchView extends EventPayload<'workflow.branch_selected'> {
+  eventId: string;
+  recordedAt: string;
+  runSeq: number;
+}
+
 export interface RunProjection {
   /** When run.started and the terminal state change were recorded; null until then. */
   startedAt: string | null;
@@ -257,6 +265,8 @@ export interface RunProjection {
   decisionSettings: RunDecisionSettings | null;
   /** reasoning_effort judgments by decisionId, in commit order. */
   decisions: Record<string, DecisionView>;
+  /** Actual workflow routes, not reasoning-effort observations; absent in older snapshots. */
+  workflowBranches?: Record<string, WorkflowBranchView>;
 }
 
 export class ProjectionGapError extends Error {
@@ -311,6 +321,7 @@ export function emptyProjection(runId: string): RunProjection {
     startedAt: null,
     endedAt: null,
     decisions: {},
+    workflowBranches: {},
   };
 }
 
@@ -592,6 +603,13 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       };
       return { ...p, artifacts: { ...p.artifacts, [artifactVersionId]: artifact } };
     }
+    case 'artifact.content_released': {
+      const artifacts = { ...p.artifacts };
+      for (const id of event.payload.artifactVersionIds) {
+        if (artifacts[id]) artifacts[id] = { ...artifacts[id], bodyAvailable: false };
+      }
+      return { ...p, artifacts };
+    }
     case 'task.submitted': {
       const { taskId, artifactVersionIds } = event.payload;
       const artifacts = { ...p.artifacts };
@@ -606,6 +624,19 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     }
     case 'task.completed':
       return updateTask(p, event.payload.taskId, { status: 'completed' });
+    case 'workflow.branch_selected':
+      return {
+        ...p,
+        workflowBranches: {
+          ...p.workflowBranches,
+          [event.eventId]: {
+            ...event.payload,
+            eventId: event.eventId,
+            recordedAt: event.recordedAt,
+            runSeq: event.runSeq,
+          },
+        },
+      };
     case 'output.finalized':
       return {
         ...p,

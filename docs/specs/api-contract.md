@@ -2,6 +2,18 @@
 
 현재 타입·생성 schema의 위치는 [API 원본 안내](api.md)를 따른다. 아래 표는 기능별 계약을 설명하며 전체 endpoint 자동 생성 목록이 아니다. 변경할 경로는 `apps/server/src/app.ts`·기능별 routes·`packages/client`와 함께 확인한다.
 
+## 산출물 본문 수명
+
+산출물 기록의 목적은 생성자·소비자·결정 근거·결과의 관계와 시점을 보여주는 것이다. 버전 메타데이터와 관계 이벤트는 유지하지만 과거 본문 복원·재사용을 위한 아카이브는 제공하지 않는다.
+
+실행 중에는 실행·승인·취소 정리에 필요한 본문을 유지한다. Run이 종료되고 모든 실행과 effect가 정리된 뒤 최종 결과만 유지하며 중간 산출물과 내부 실행 본문을 해제한다. 같은 세션에서 더 최근에 시작한 Run이 성공적인 최종 결과를 확정하면 앞선 Run의 최종 본문도 해제한다. 실패한 새 Run은 앞선 최종 결과를 대체하지 않는다. 세션이 없는 Run은 자신의 최종 결과를 유지한다. 바이너리 산출물에도 같은 규칙을 적용한다. 회의는 참여자별 최신 최종 답변과 다음 발언에 필요한 최신 실행 컨텍스트 하나 및 그 의존 본문만 유지한다. 참여자의 새 답변이 확정되면 앞선 컨텍스트는 해제하며, 이 운영 컨텍스트를 산출물 조회·export로 제공하지 않는다.
+
+본문 해제는 불변 본문 수정의 예외가 아니라 명시적인 수명 종료이며, 해제된 ID는 다시 저장할 수 없다. `artifact.content_released` 이벤트는 해제된 산출물 ID와 사유를 기록하며 메타데이터·hash·생성/전달 관계를 삭제하지 않는다. 본문 조회·복사·export는 해제된 본문을 반환하지 않고, 클라이언트는 이전에 캐시한 본문도 표시하지 않는다. 본문에서 파생된 전문 검색 행도 같은 트랜잭션에서 폐기하며, 다음 검색은 현재 조회 가능한 결과와 일반 대화만 다시 색인한다. 이전 버전의 검색 복사본은 스키마 갱신 시 비우고 원본 일반 대화 항목은 유지한다. 현재 실행의 유효한 입력·승인 대상과 현재 최종 결과는 계속 조회할 수 있다.
+
+일반 대화의 연속성은 산출물 보관과 분리한다. 종료된 일반 Run마다 원래 요청과 대표 답변 한 개만 대화 차례로 저장한다. 모든 산출물·버전·모델 응답을 대화로 복사하지 않는다. 후속 대화는 이 요청·답변을 기존 크기 제한 안에서 사용하며 산출물 본문 복구 수단으로 노출하지 않는다.
+
+본문을 복사한 파생 검색 인덱스도 같은 수명을 따른다. 본문 검색에 동의한 경우 현재 열람 가능한 결과와 일반 대화의 요청·대표 답변을 검색하며, 해제된 산출물·내부 응답을 검색 발췌로 보관하거나 재색인하지 않는다. 메타데이터 검색과 일반 세션 메시지는 유지한다.
+
 ## 1. 명령과 조회
 
 주소는 로컬 same-origin `/api/v1` 기준이다. 인증 세션, workspace binding, Host/Origin 검사 후 처리한다. API key는 이 API의 응답에 포함하지 않는다.
@@ -15,11 +27,13 @@
 | POST /corrals/validate | 현재 draft definition | diagnostics + executable IR summary; side effect 없음 |
 | POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,sessionId?,conversation?,references? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED`. `conversation {throughRunId}`는 같은 세션의 끝난 Run까지의 요청·답을 Coordinator 기록에서 복사해 대화 차례로 보내고 `run.started.conversation`에 출처·hash를 남김. 세션 없음·없는 Run·다른 세션·끝나지 않은 Run은 `TARGET_NOT_FOUND`, 산출물 크기 한도를 넘는 오래된 차례는 빠지고 그 수를 기록. `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED` |
 | GET /runs/:id/snapshot | — | read model + snapshotSeq |
+| GET /runs/:id/conversation-turn | — | 종료된 일반 Run의 원래 요청·대표 답변 한 차례. `runId`, `request`, `answer`, `status`, `artifactVersionId`와 선택적 `answerOmitted`. 기존 인증·Host/Origin 경계를 유지하고 private/no-store로 응답한다. 없는 Run·미확정 차례·회의 Run은 `TARGET_NOT_FOUND`. 임의 산출물 ID를 선택하거나 해제된 본문을 복구하는 API가 아니다 |
 | GET /model-attempts | `ownerId?`, `runId?`, `sessionId?`, `before?`, `limit?` (1–100; 기본 50) | `{items,nextCursor}`. 물리 시도·nullable usage·subscription/unknown 가격 상태. private/no-store. 본문·자격 증명 제외 |
 | GET /runs/:id/events?after=N | cursor | commit된 domain events의 SSE; token frames 별도 type |
+| GET /runs/:id/artifact-versions/:versionId | — | 현재 조회 가능한 본문은 `{text}`. 기록된 ID지만 본문 수명이 끝나 조회할 수 없으면 HTTP 200 `{text:null, bodyAvailable:false}`를 반환한다. 실행 중 발견한 참조가 조회 전에 해제돼도 정상적인 부재로 처리하며, 없는 Run·다른 Run·알 수 없는 ID는 404다 |
 | POST /runs/:id/commands | `packages/contracts/generated/command.schema.json` | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |
 | GET /runs/:id/commands/:commandId | — | command 상태·관련 events·적용 scope |
-| GET /runs/:id/artifacts/:artifactId/versions/:version | — | 불변 본문·생성/읽기/지시/검토 경로 |
+| GET /runs/:id/artifacts/:artifactId/versions/:version | — | 현재 보관 중인 본문·생성/읽기/지시/검토 경로. 해제된 본문은 조회 불가 |
 | GET /model-profiles | — | public profileId·지원 capability·keyConfigured, secret 없음 |
 | POST /runs/:id/export | redaction policy | 공개용 bundle. 원문 비공개가 기본 |
 
@@ -153,7 +167,7 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 |---|---|---|
 | GET /documents | — | 등록 입력의 ID, 종류, 제목, MIME, 바이트 수. 원문·원시 URL 없음 |
 | POST /documents/import | `{title,mimeType,text}` 또는 `{url}` | `text/plain`·`text/markdown` 문서를 불변 `documentId`로 저장하거나 공개 HTTPS DNS를 확인하고 `sourceId`로 등록. 중복 입력은 같은 ID |
-| POST /runs/:id/export | `{privateTranscript?:boolean}` | 기본은 원문 없는 공개 요약. 명시적 `true`만 비공개 원문 archive |
+| POST /runs/:id/export | `{privateTranscript?:boolean}` | 기본은 원문 없는 공개 요약. 명시적 `true`는 현재 최종 결과 본문·일반 대화 차례·관계 메타데이터를 포함한 비공개 bundle(format 3). 해제된 본문·내부 컨텍스트는 `unavailableBodyRefs`에 명시 |
 | POST /history/import | archive | 검증한 읽기 전용 기록. 실행·effect 재전송·현재 workspace 기록 삽입 없음 |
 
 `POST /session`은 기존 204 응답과 함께 `x-corral-csrf` 헤더도 반환한다. 그 외 API 변경 요청은 세션 cookie, 허용 Origin, 세션 CSRF token을 모두 요구한다. API query string의 credential 키 이름은 거절하며 값은 오류에 반영하지 않는다. 요청 본문은 2 MiB(초과 413), 등록 문서는 UTF-8 1 MiB, workspace 입력은 32 MiB·1,000개로 제한한다. 로컬 서버 전체에서 분당 읽기 1,200회·변경 120회(bootstrap 포함), 동시 SSE 16개를 허용하며 초과 시 429다.

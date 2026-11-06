@@ -606,6 +606,40 @@ CREATE TABLE model_attempt_events (seq INTEGER PRIMARY KEY, attempt_id TEXT NOT 
 ${IMMUTABLE('model_attempt_events')}
 `,
   },
+  {
+    name: '0036_artifact_body_lifetime',
+    sql: `
+DROP TRIGGER artifact_texts_no_delete;
+CREATE TABLE artifact_body_retention (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id),
+  retained_json TEXT NOT NULL
+) STRICT;
+CREATE TABLE conversation_turns (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id),
+  turn_json TEXT NOT NULL
+) STRICT;
+${IMMUTABLE('conversation_turns')}
+CREATE TRIGGER artifact_texts_released BEFORE INSERT ON artifact_texts
+WHEN EXISTS (SELECT 1 FROM artifact_body_retention WHERE run_id=NEW.run_id)
+AND NOT EXISTS (SELECT 1 FROM artifact_body_retention, json_each(retained_json)
+  WHERE run_id=NEW.run_id AND value=NEW.artifact_version_id)
+BEGIN SELECT RAISE(ABORT, 'artifact body has been released'); END;
+CREATE TRIGGER generated_media_released BEFORE INSERT ON generated_media
+WHEN EXISTS (SELECT 1 FROM artifact_body_retention WHERE run_id=NEW.run_id)
+AND NOT EXISTS (SELECT 1 FROM artifact_body_retention, json_each(retained_json)
+  WHERE run_id=NEW.run_id AND value=NEW.version_id)
+BEGIN SELECT RAISE(ABORT, 'artifact body has been released'); END;
+`,
+  },
+  {
+    name: '0037_artifact_search_lifetime',
+    sql: `
+-- Old event-derived search rows may contain copies of bodies already released.
+-- Ordinary conversation entry rows remain; event rows rebuild from current readable sources.
+DELETE FROM session_search_v1 WHERE substr(id,1,6)='event:';
+DELETE FROM session_search_state_v1 WHERE substr(id,1,4)='run:';
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

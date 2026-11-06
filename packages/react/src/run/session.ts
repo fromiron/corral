@@ -14,6 +14,7 @@ import {
 import {
   applyEvent,
   canonicalJson,
+  canReadArtifactBody,
   emptyProjection,
   type RunProjection,
   type RuntimeTransport,
@@ -133,7 +134,28 @@ export function createRunSession(
         if (generation !== version) return;
         let projection = get().projection ?? emptyProjection(runId);
         for (const event of batch) projection = applyEvent(projection, event);
-        set({ projection, events: [...get().events, ...batch], streamError: null });
+        const artifactTexts = Object.fromEntries(
+          Object.entries(get().artifactTexts).filter(([id]) => canReadArtifactBody(projection, id)),
+        );
+        const outputId = projection.output?.artifactVersionIds[0];
+        const streams = Object.fromEntries(
+          Object.entries(get().streams).filter(([id]) => {
+            const ref = projection.modelCalls[id]?.responseRef;
+            return (
+              !TERMINAL_RUN_STATUSES.has(projection.status) &&
+              (!ref || canReadArtifactBody(projection, ref))
+            );
+          }),
+        );
+        set({
+          projection,
+          artifactTexts,
+          streams,
+          outputText:
+            outputId && canReadArtifactBody(projection, outputId) ? get().outputText : null,
+          events: [...get().events, ...batch],
+          streamError: null,
+        });
         recovery?.committed(runId, get().events);
         for (const event of batch) {
           if (event.type === 'model.finished' && event.payload.responseRef) {
@@ -157,7 +179,12 @@ export function createRunSession(
         framesScheduled = false;
         const batch = frames;
         frames = [];
-        if (generation !== version) return;
+        if (
+          generation !== version ||
+          !get().projection ||
+          TERMINAL_RUN_STATUSES.has(get().projection!.status)
+        )
+          return;
         const streams = { ...get().streams };
         for (const frame of batch) {
           const current = streams[frame.modelCallId] ?? { text: '', next: 0, broken: false };
@@ -242,10 +269,11 @@ export function createRunSession(
 
     const loadOutput = async (runId: string, versionIds: string[], version: number) => {
       const [first] = versionIds;
-      if (!first) return;
+      if (!first || !canReadArtifactBody(get().projection, first)) return;
       try {
         const outputText = await transport.getArtifactText(runId, first);
-        if (generation === version) set({ outputText });
+        if (generation === version && canReadArtifactBody(get().projection, first))
+          set({ outputText });
       } catch (error) {
         if (generation === version) set({ streamError: String(error) });
       }
@@ -258,8 +286,14 @@ export function createRunSession(
       version: number,
     ) => {
       try {
+        if (!canReadArtifactBody(get().projection, responseRef)) return;
         const text = await transport.getArtifactText(runId, responseRef);
-        if (text === null || generation !== version) return;
+        if (
+          text === null ||
+          generation !== version ||
+          !canReadArtifactBody(get().projection, responseRef)
+        )
+          return;
         set({
           streams: {
             ...get().streams,
@@ -421,10 +455,16 @@ export function createRunSession(
       async loadArtifact(artifactVersionId, options) {
         const runId = get().runId;
         const version = generation;
-        if (!runId || (!options?.reload && artifactVersionId in get().artifactTexts)) return;
+        if (!runId || !canReadArtifactBody(get().projection, artifactVersionId)) {
+          const artifactTexts = { ...get().artifactTexts };
+          delete artifactTexts[artifactVersionId];
+          set({ artifactTexts });
+          return;
+        }
+        if (!options?.reload && artifactVersionId in get().artifactTexts) return;
         const text = await transport.getArtifactText(runId, artifactVersionId);
         if (generation === version) {
-          if (text !== null) {
+          if (text !== null && canReadArtifactBody(get().projection, artifactVersionId)) {
             set({ artifactTexts: { ...get().artifactTexts, [artifactVersionId]: text } });
           } else if (options?.reload) {
             const artifactTexts = { ...get().artifactTexts };
@@ -444,7 +484,17 @@ export function createRunSession(
           generation++;
           unsubscribe?.();
           unsubscribe = null;
-          set({ definition: null, definitionError: null, streamError: null, missingRunId: null });
+          // Receipts survive reconnect; body ownership must be read from the host again.
+          set({
+            definition: null,
+            definitionError: null,
+            streamError: null,
+            missingRunId: null,
+            artifactTexts: {},
+            outputText: null,
+            streams: {},
+            projection: null,
+          });
         } else reset();
         // The requested identity owns loading, missing and failed states too. Keeping it
         // here lets consumers display this request's error without accepting a prior run's.

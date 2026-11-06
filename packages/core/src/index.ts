@@ -10,6 +10,7 @@ export {
   type ObserverView,
   type ToolGateView,
 } from './admission/index.ts';
+export * from './artifact-retention.ts';
 export * from './attachments.ts';
 export * from './auto-team.ts';
 export * from './budget.ts';

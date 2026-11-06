@@ -122,8 +122,9 @@ describe('Coordinator: linear mock run', () => {
       onEvent: (event) => seen.push(event.runSeq),
     });
     gate.open();
-    const final = await waitForProjection(transport, id, settled);
+    await waitForProjection(transport, id, settled);
     await Promise.resolve();
+    const { projection: final } = await transport.getSnapshot(id);
     unsubscribe();
     expect(seen.length).toBeGreaterThan(0);
     const expected = Array.from(

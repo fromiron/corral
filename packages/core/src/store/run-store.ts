@@ -2,6 +2,7 @@ import type {
   AutoRoute,
   BranchedFrom,
   ContinuedConversation,
+  ConversationTurn,
   CorralDefinition,
   EffectiveHarnessSnapshot,
   ImageGenerationProfile,
@@ -83,6 +84,10 @@ export interface RunSummary {
   sessionId: string | null;
 }
 
+export interface StoredConversationTurn extends ConversationTurn {
+  artifactVersionId: string | null;
+}
+
 export interface RunStore {
   /** Runs `write` atomically; if it throws, nothing it wrote is kept. */
   transaction<T>(write: () => T): T;
@@ -92,6 +97,10 @@ export interface RunStore {
   putCommand(command: StoredCommand): void;
   putArtifactText(runId: string, artifactVersionId: string, text: string): void;
 
+  /** End body ownership. Later writes to discarded IDs are refused. */
+  retainArtifactBodies(runId: string, retainedIds: readonly string[]): void;
+  putConversationTurn(runId: string, turn: StoredConversationTurn): void;
+  getConversationTurn(runId: string): StoredConversationTurn | null;
   getRun(runId: string): StoredRun | null;
   /** Newest first. */
   listRuns(): RunSummary[];
@@ -107,6 +116,8 @@ export class InMemoryRunStore implements RunStore {
   private events = new Map<string, RunEvent[]>();
   private commands = new Map<string, StoredCommand>();
   private artifacts = new Map<string, string>();
+  private retainedBodies = new Map<string, readonly string[]>();
+  private conversationTurns = new Map<string, StoredConversationTurn>();
   private depth = 0;
 
   transaction<T>(write: () => T): T {
@@ -116,6 +127,8 @@ export class InMemoryRunStore implements RunStore {
       events: new Map([...this.events].map(([k, v]) => [k, [...v]])),
       commands: new Map(this.commands),
       artifacts: new Map(this.artifacts),
+      retainedBodies: new Map(this.retainedBodies),
+      conversationTurns: new Map(this.conversationTurns),
     };
     this.depth += 1;
     try {
@@ -156,10 +169,34 @@ export class InMemoryRunStore implements RunStore {
   }
 
   putArtifactText(runId: string, artifactVersionId: string, text: string) {
+    const retained = this.retainedBodies.get(runId);
+    if (retained && !retained.includes(artifactVersionId))
+      throw new Error('artifact body has been released');
     const key = `${runId}\u0000${artifactVersionId}`;
     if (this.artifacts.has(key))
       throw new Error(`artifact version ${artifactVersionId} is immutable`);
     this.artifacts.set(key, text);
+  }
+
+  retainArtifactBodies(runId: string, retainedIds: readonly string[]) {
+    const previous = this.retainedBodies.get(runId);
+    const retained = previous
+      ? retainedIds.filter((id) => previous.includes(id))
+      : [...retainedIds];
+    this.retainedBodies.set(runId, retained);
+    for (const key of this.artifacts.keys()) {
+      if (key.startsWith(`${runId}\u0000`) && !retained.includes(key.slice(runId.length + 1)))
+        this.artifacts.delete(key);
+    }
+  }
+
+  putConversationTurn(runId: string, turn: StoredConversationTurn) {
+    if (!this.conversationTurns.has(runId)) this.conversationTurns.set(runId, { ...turn });
+  }
+
+  getConversationTurn(runId: string) {
+    const turn = this.conversationTurns.get(runId);
+    return turn ? { ...turn } : null;
   }
 
   getRun(runId: string) {
