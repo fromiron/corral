@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { type DocumentStore, documentKey } from '../documents/store.ts';
+import { TopbarSlotContext } from '../TopbarSlot.tsx';
 import {
   DockWorkbench,
   type DockWorkbenchHandle,
@@ -45,6 +46,7 @@ async function fixture(
       | 'fileWorkAvailable'
     >
   > = {},
+  topbar: HTMLElement | null = null,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
@@ -80,16 +82,18 @@ async function fixture(
   const renderSession = async (sessionId: string) =>
     act(async () => {
       root.render(
-        <DockWorkbench
-          ref={ref}
-          hostId="host"
-          projectId="project"
-          sessionId={sessionId}
-          documentOwner={owner}
-          renderContext={(view) => <span>{view}</span>}
-          renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
-          {...props}
-        />,
+        <TopbarSlotContext.Provider value={{ actions: null, views: topbar, crumbs: null }}>
+          <DockWorkbench
+            ref={ref}
+            hostId="host"
+            projectId="project"
+            sessionId={sessionId}
+            documentOwner={owner}
+            renderContext={(view) => <span>{view}</span>}
+            renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
+            {...props}
+          />
+        </TopbarSlotContext.Provider>,
       );
     });
   await renderSession('session');
@@ -119,6 +123,23 @@ const sessionTab = (container: HTMLElement, label: string) =>
   [
     ...container.querySelectorAll<HTMLButtonElement>('[aria-label="sessionViews"] [role="tab"]'),
   ].find((tab) => tab.textContent?.startsWith(label));
+
+it('puts the session views in the top bar instead of a row of their own', async () => {
+  const topbar = document.createElement('div');
+  document.body.append(topbar);
+  disposals.push(async () => topbar.remove());
+  const f = await fixture({}, topbar);
+  expect(f.container.querySelector('[aria-label="sessionViews"]')).toBeNull();
+  expect(f.container.querySelector('.corral-dock-primary-tabs')).toBeNull();
+  const tabs = [...topbar.querySelectorAll('[aria-label="sessionViews"] [role="tab"]')];
+  expect(tabs.map((tab) => tab.textContent)).toEqual(
+    expect.arrayContaining([expect.stringContaining('chat'), expect.stringContaining('history')]),
+  );
+  await act(async () =>
+    (tabs.find((tab) => tab.textContent?.startsWith('history')) as HTMLElement).click(),
+  );
+  expect(sessionTab(topbar, 'history')?.getAttribute('aria-selected')).toBe('true');
+});
 
 it('keeps conversation independent from the file workspace and reveals file work only when needed', async () => {
   const f = await fixture();

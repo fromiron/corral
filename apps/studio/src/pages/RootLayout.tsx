@@ -30,7 +30,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
 import { useRegisterCommands } from '../commandRegistry.ts';
@@ -40,6 +40,7 @@ import { useServices } from '../services.tsx';
 import { SESSION_MISSING } from '../sessionConnection.ts';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
+import { SessionMenu } from '../workbench/Breadcrumbs.tsx';
 import { documentStore } from '../workbench/documents/store.ts';
 import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
 import {
@@ -280,6 +281,13 @@ function RootFrame() {
   ]);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [viewsSlot, setViewsSlot] = useState<HTMLElement | null>(null);
+  const [crumbsSlot, setCrumbsSlot] = useState<HTMLElement | null>(null);
+  const topbarSlots = useMemo(
+    () => ({ actions: slot, views: viewsSlot, crumbs: crumbsSlot }),
+    [slot, viewsSlot, crumbsSlot],
+  );
+  const openSessionId = /^\/sessions\/([^/]+)/.exec(location.pathname)?.[1];
   useEffect(() => {
     const media = matchMedia('(max-width: 1023px)');
     const update = () => {
@@ -325,7 +333,7 @@ function RootFrame() {
   return (
     <TooltipProvider>
       <SettingsNavigationContext.Provider value={settingsNavigation}>
-        <TopbarSlotContext.Provider value={slot}>
+        <TopbarSlotContext.Provider value={topbarSlots}>
           <SidebarProvider
             className="app-shell min-h-0"
             data-sidebar-open={prefs.sidebarOpen}
@@ -388,17 +396,9 @@ function RootFrame() {
                 >
                   {settings ? (
                     <span className="shrink-0 text-muted-foreground">{td('settings')}</span>
-                  ) : narrow || !prefs.sidebarOpen ? (
+                  ) : (
                     <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
-                  ) : project ? (
-                    <Link
-                      to="/projects/$projectId"
-                      params={{ projectId: project.projectId }}
-                      className="max-w-52 truncate text-muted-foreground hover:text-text"
-                    >
-                      {projectName(project, projectsText('defaultName'))}
-                    </Link>
-                  ) : null}
+                  )}
                   {pageTitle ? (
                     <>
                       {settings || project ? (
@@ -406,9 +406,23 @@ function RootFrame() {
                           /
                         </span>
                       ) : null}
-                      <h2 className="truncate font-medium">{pageTitle}</h2>
+                      {openSessionId && projectId && data?.session ? (
+                        <SessionMenu
+                          sessions={sidebar.sessions}
+                          runs={sidebar.runs}
+                          projectId={projectId}
+                          sessionId={decodeURIComponent(openSessionId)}
+                          title={pageTitle}
+                          onOpen={(sessionId) =>
+                            void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+                          }
+                        />
+                      ) : (
+                        <h2 className="truncate font-medium">{pageTitle}</h2>
+                      )}
                     </>
                   ) : null}
+                  <span ref={setCrumbsSlot} className="contents" />
                 </nav>
                 {settings && activeRuns.length ? (
                   <Menu>
@@ -434,7 +448,8 @@ function RootFrame() {
                     </MenuPopup>
                   </Menu>
                 ) : null}
-                <div ref={setSlot} className="ml-auto flex shrink-0 items-center gap-1" />
+                <div ref={setViewsSlot} className="ml-auto flex shrink-0 items-center" />
+                <div ref={setSlot} className="flex shrink-0 items-center gap-1" />
                 <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
                   <Button
                     variant="ghost"

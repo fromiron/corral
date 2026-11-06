@@ -2886,7 +2886,8 @@
     "prepareExecution": "실행 준비",
     "runOverridesHint": "이 설정은 다음 실행에만 적용됩니다. 저장된 팀 설정은 유지됩니다.",
     "closeResult": "결과 닫기",
-    "personalDefaults": "개인 기본 작업 방식"
+    "personalDefaults": "개인 기본 작업 방식",
+    "switchSession": "세션 이동"
   },
   "WorkPlan": {
     "heading": "작업 계획",

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { chooseRun, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
@@ -104,12 +104,14 @@ test('selected-run usage and unique result identities survive reload without cha
   }
   const totals = await page.getByTestId('composer-stats').locator('summary').innerText();
   expect(totals).toContain('Session total');
-  const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
-  await picker.click();
-  await page.getByRole('option', { name: /Run #1/ }).click();
-  await expect(page.getByRole('link', { name: /Selected run · Run #1 of 2/ })).toBeVisible();
+  // The run segment of the top bar's path exists only in run history.
+  await panelTab(page, 'Execution history');
+  await chooseRun(page, 1);
+  await panelTab(page, 'Conversation');
+  const selected = page.getByRole('link', { name: /Selected run · Run #1 of 2/ });
+  await expect(selected).toBeVisible();
   await page.reload();
-  await expect(picker).toContainText('Run #1');
+  await expect(selected).toBeVisible();
   await expect(page.getByTestId('composer-stats').locator('summary')).toHaveText(totals);
   await page.getByTestId('session-summary-trigger').click();
   const overview = page.getByTestId('session-summary-popup');

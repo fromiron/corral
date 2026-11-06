@@ -128,6 +128,7 @@ import {
   autoReasoningUnsupported,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
+import { RunMenu } from '../workbench/Breadcrumbs.tsx';
 import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
@@ -190,7 +191,7 @@ import {
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TerminalWriterNotice } from '../workbench/TerminalWriterNotice.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
-import { TopbarActions } from '../workbench/TopbarSlot.tsx';
+import { TopbarActions, TopbarCrumb } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
   type ProfileInfo,
@@ -503,17 +504,6 @@ function WorkSessionPage() {
         onPanel={(value) => showPanel({ panel: value })}
         fileViewerOpen={fileViewerOpen}
         onToggleFileViewer={toggleFileViewer}
-        runs={runs}
-        selectedRunId={presentationRunId}
-        onSelectRun={(run) =>
-          setSearch({
-            run,
-            view: 'run',
-            execution: undefined,
-            artifact: undefined,
-            result: undefined,
-          })
-        }
         onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
       <ArchivedSessionNotice key={session.sessionId} session={session} />
@@ -691,9 +681,6 @@ function SessionActions({
   onPanel,
   fileViewerOpen,
   onToggleFileViewer,
-  runs,
-  selectedRunId,
-  onSelectRun,
   onEditTeam,
 }: {
   session: WorkSession;
@@ -706,15 +693,11 @@ function SessionActions({
   onPanel: (panel: SessionPanel | undefined) => void;
   fileViewerOpen: boolean;
   onToggleFileViewer: (open: boolean) => void;
-  runs: RunSummary[];
-  selectedRunId: string | null;
-  onSelectRun: (runId: string) => void;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workbench');
   const td = useTranslations('Desktop');
-  const status = useTranslations('Status');
   const { repository } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -845,26 +828,6 @@ function SessionActions({
         >
           {team.name} · r{team.definitionRevision}
         </span>
-      ) : null}
-      {runs.length > 1 ? (
-        <Select
-          variant="chip"
-          className="max-w-32 sm:max-w-60"
-          label={t('selectedRun')}
-          value={selectedRunId}
-          onValueChange={onSelectRun}
-          options={runs.map((run, index) => ({
-            value: run.runId,
-            label: (
-              <span className="block max-w-[min(26rem,70vw)] truncate">
-                {tw('runNumber', { number: index + 1 })} · {t('selectedRun')} · {status(run.status)}
-              </span>
-            ),
-            hint:
-              session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
-              run.runId,
-          }))}
-        />
       ) : null}
       {error ? (
         <p role="alert" className="max-w-64 truncate text-xs text-danger" title={error}>
@@ -1134,36 +1097,33 @@ function RunPanel({
   setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
 }) {
   const tw = useTranslations('Workbench');
-  const ts = useTranslations('Status');
   const runId = panelRunId(runs, search.run, listed);
   if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
   // A fallback run must not inherit the selection made inside the run that has gone.
   const own = search.run === undefined || search.run === runId;
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
-        <Select
-          label={tw('chooseRun')}
-          size="xs"
-          variant="ghost"
-          value={runId}
-          onValueChange={(value) =>
-            setSearch({
-              run: value,
-              atSeq: undefined,
-              execution: undefined,
-              artifact: undefined,
-              view: undefined,
-              result: undefined,
-            })
-          }
-          options={[...runs].reverse().map((r, index) => ({
-            value: r.runId,
-            label: `${tw('runNumber', { number: runs.length - index })}${search.atSeq === undefined ? ` · ${ts(r.status)}` : ''}`,
-            hint: r.runId,
-          }))}
-        />
-      </div>
+      {search.panel === 'run' ? (
+        <TopbarCrumb>
+          <span aria-hidden="true" className="text-muted-foreground/50">
+            /
+          </span>
+          <RunMenu
+            runs={runs}
+            runId={runId}
+            onSelect={(value) =>
+              setSearch({
+                run: value,
+                atSeq: undefined,
+                execution: undefined,
+                artifact: undefined,
+                view: undefined,
+                result: undefined,
+              })
+            }
+          />
+        </TopbarCrumb>
+      ) : null}
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}

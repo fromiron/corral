@@ -2886,7 +2886,8 @@
     "prepareExecution": "Prepare an execution",
     "runOverridesHint": "These choices apply to the next execution. The saved team stays the same.",
     "closeResult": "Close result",
-    "personalDefaults": "Personal default work style"
+    "personalDefaults": "Personal default work style",
+    "switchSession": "Switch session"
   },
   "WorkPlan": {
     "heading": "Work plan",

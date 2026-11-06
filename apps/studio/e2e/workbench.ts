@@ -74,3 +74,12 @@ export async function panelTab(page: Page, name: string) {
     .filter({ has: page.getByText(`Open ${name}`, { exact: true }) })
     .click();
 }
+
+/** Chooses a run of the open session from the run segment of the top bar's path (run history). */
+export async function chooseRun(page: Page, number: number) {
+  await page
+    .getByRole('banner')
+    .getByRole('button', { name: /Run #\d+/ })
+    .click();
+  await page.getByRole('menuitemradio', { name: new RegExp(`Run #${number}\\b`) }).click();
+}

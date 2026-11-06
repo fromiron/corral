@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { panelTab, requestBox, teamFromTemplate } from './workbench.ts';
+import { chooseRun, panelTab, requestBox, teamFromTemplate } from './workbench.ts';
 
 // Layout regressions from the workbench audit (#93–#95): a control that is in the DOM but
 // clipped by a scroller or replaced by another pane still fails a person.
@@ -239,19 +239,16 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
   page,
 }) => {
   await blankSession(page);
-  const timeline = page.getByTestId('chat-timeline');
   for (const [index, text] of ['First request', 'Second request'].entries()) {
     await requestBox(page).fill(text);
     await requestBox(page).press('Control+Enter');
-    await expect(timeline.getByText('Succeeded', { exact: true })).toHaveCount(index + 1, {
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByRole('link', { name: `Succeeded Last run · Run #${index + 1}`, exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
   }
   await panelTab(page, 'Execution history');
   await expect(page.getByText('Last run').first()).toBeAttached();
-  const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
-  await picker.click();
-  await page.getByRole('option', { name: /Run #1/ }).click();
+  await chooseRun(page, 1);
   await expect(page.getByText('Selected run · Run #1 of 2').first()).toBeAttached();
   await expect(page.getByText('Last run')).toHaveCount(0);
 });
