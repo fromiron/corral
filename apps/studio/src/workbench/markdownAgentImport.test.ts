@@ -6,6 +6,7 @@ import {
 import { compileDefinition } from '@corral/core';
 import { createEditorStore, draftFromDefinition } from '@corral/react';
 import { describe, expect, it } from 'vitest';
+import { manyNodeDefinition } from '../../../../packages/contracts/test/fixtures/many-nodes.ts';
 import { importMarkdownAgent, parseMarkdownAgent, toolTargets } from './markdownAgentImport.ts';
 
 const definition: CorralDefinition = {
@@ -269,7 +270,7 @@ describe('Markdown agent import', () => {
       } as never).definition.roles.at(-1)?.allowedWorkTools,
     ).toEqual(['write_artifact']);
   });
-  it('retains existing node limits and refuses duplicate ids', () => {
+  it('refuses duplicate imported ids', () => {
     const draft = importAgent();
     expect(() =>
       importMarkdownAgent({
@@ -283,7 +284,7 @@ describe('Markdown agent import', () => {
       }),
     ).toThrow(/identifier/i);
   });
-  it('preserves the import as one undo/redo operation and refuses a full graph', () => {
+  it('preserves undo/redo and imports another agent into a graph beyond 64 nodes', () => {
     const before = draftFromDefinition(definition);
     const editor = createEditorStore(before);
     const after = importAgent();
@@ -292,31 +293,25 @@ describe('Markdown agent import', () => {
     expect(editor.getState().draft).toBe(before);
     editor.getState().redo();
     expect(editor.getState().draft).toBe(after);
-    const full = {
-      ...before,
-      definition: {
-        ...definition,
-        nodes: Array.from({ length: 20 }, (_, index) => ({
-          id: `node_${index}`,
-          type: 'agent' as const,
-          roleId: 'parent_role',
-          label: 'Parent',
-          invocation: 'scheduled' as const,
-          inputBindings: [],
-          outputName: 'answer',
-        })),
-      },
-    };
-    expect(() =>
-      importMarkdownAgent({
-        draft: full,
-        candidate: parseMarkdownAgent(source),
-        parentNodeId: 'node_0',
-        modelProfile: 'connected',
-        profiles: profile,
-        mappings: { Read: 'read_file', Glob: 'list_files' },
-        suffix: 'full',
-      }),
-    ).toThrow();
+    const largeDefinition = manyNodeDefinition(definition);
+    const large = draftFromDefinition(largeDefinition);
+    const expanded = importMarkdownAgent({
+      draft: large,
+      candidate: parseMarkdownAgent(source),
+      parentNodeId: 'node_0',
+      modelProfile: 'connected',
+      profiles: profile,
+      mappings: { Read: 'read_file', Glob: 'list_files' },
+      suffix: 'large',
+    });
+    expect(expanded.definition.nodes).toHaveLength(67);
+    expect(expanded.definition.roles).toHaveLength(66);
+    expect(expanded.definition.nodes.at(-1)).toMatchObject({
+      id: 'import_large',
+      invocation: 'callable',
+    });
+    expect(expanded.definition.limits).toEqual(largeDefinition.limits);
+    expect(expanded.definition.controlEdges).toEqual(largeDefinition.controlEdges);
+    expect(compileDefinition(expanded.definition).ok).toBe(true);
   });
 });

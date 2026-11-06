@@ -1,6 +1,10 @@
 import type { CorralDefinition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
+import {
+  manyCapabilityDefinition,
+  manyNodeDefinition,
+} from '../../contracts/test/fixtures/many-nodes.ts';
 import { compileDefinition, type Diagnostic } from '../src/index.ts';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -16,6 +20,27 @@ const has = (diagnostics: Diagnostic[], expected: Partial<Diagnostic>) =>
   expect(diagnostics).toContainEqual(expect.objectContaining(expected));
 
 describe('compileDefinition: valid definition', () => {
+  it('compiles more than 64 connected authored nodes with unique roles and unchanged runtime limits', () => {
+    const definition = manyNodeDefinition();
+    const result = compileDefinition(definition);
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.plan.order).toEqual([
+      ...Array.from({ length: 65 }, (_, i) => `node_${i}`),
+      'output',
+    ]);
+    expect(result.definition.limits).toEqual(definition.limits);
+    expect(result.plan.summary.scheduledAgents).toBe(65);
+  });
+
+  it('compiles more than 40 authored capability links without changing delegation depth', () => {
+    const definition = manyCapabilityDefinition();
+    const result = compileDefinition(definition);
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.plan.callables.node_0?.delegate).toHaveLength(64);
+    expect(result.plan.summary.callableAgents).toBe(64);
+    expect(result.definition.limits.maxDelegationDepth).toBe(definition.limits.maxDelegationDepth);
+  });
+
   it('compiles the research team example into an execution plan', () => {
     const result = compileDefinition(researchTeam);
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics, null, 2));

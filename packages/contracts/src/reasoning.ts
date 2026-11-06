@@ -26,9 +26,7 @@ export const RoleRunOverride = z
     reasoning: ReasoningPolicy.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, 'empty role override');
-export const RoleRunOverrides = z
-  .record(Identifier, RoleRunOverride)
-  .refine((value) => Object.keys(value).length <= 32);
+export const RoleRunOverrides = z.record(Identifier, RoleRunOverride);
 export type RoleRunOverrides = z.infer<typeof RoleRunOverrides>;
 
 /** Private IPC only. Never store the input in public events. */

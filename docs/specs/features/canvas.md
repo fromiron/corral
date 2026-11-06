@@ -17,7 +17,7 @@
 
 ## 계약
 
-- **정의 원본:** `packages/contracts`의 Zod. JSON Schema는 생성물(`packages/contracts/generated/`)이며 `pnpm contracts:check`가 최신인지 검사한다. 생성물과 seed schema(`contracts/*.schema.json`)와 Zod는 같은 fixture에 같은 판정을 내야 한다.
+- **정의 원본:** `packages/contracts`의 Zod. 현재 JSON Schema는 생성물(`packages/contracts/generated/`)이며 `pnpm contracts:check`가 최신인지 검사한다. 현재 생성물과 Zod는 같은 fixture에 같은 판정을 내야 한다. `contracts/*.schema.json`은 [초기 seed](../../../contracts/README.md)이며, 현재 규격과 공유하는 초기 fixture만 호환성을 검사한다. 노드 수 정책은 [사용량 예산과 자원 정책](../product-contract.md#9-사용량-예산과-자원-정책)을 따른다.
 - **포트 표:** 한 곳(`@corral/core` compiler)에서 정의하고 캔버스 연결 규칙과 compiler가 함께 쓴다.
 
 | 노드 | 들어오는 포트 | 나가는 포트 |

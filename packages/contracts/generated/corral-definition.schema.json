@@ -162,7 +162,6 @@
     },
     "roles": {
       "minItems": 1,
-      "maxItems": 20,
       "type": "array",
       "items": {
         "type": "object",
@@ -337,7 +336,6 @@
     },
     "nodes": {
       "minItems": 2,
-      "maxItems": 28,
       "type": "array",
       "items": {
         "oneOf": [
@@ -717,7 +715,6 @@
     },
     "controlEdges": {
       "minItems": 1,
-      "maxItems": 40,
       "type": "array",
       "items": {
         "type": "object",
@@ -769,7 +766,6 @@
       }
     },
     "capabilityLinks": {
-      "maxItems": 40,
       "type": "array",
       "items": {
         "type": "object",
