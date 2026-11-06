@@ -1,6 +1,12 @@
 import { join } from 'node:path';
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { chooseRun, panelTab, requestBox, teamFromTemplate } from './workbench.ts';
+import {
+  chooseRun,
+  lastRunSucceeded,
+  panelTab,
+  requestBox,
+  teamFromTemplate,
+} from './workbench.ts';
 
 // Layout regressions from the workbench audit (#93–#95): a control that is in the DOM but
 // clipped by a scroller or replaced by another pane still fails a person.
@@ -254,19 +260,17 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
 });
 
 async function finishedRunPage(page: Page) {
-  const timeline = page.getByTestId('chat-timeline');
   await requestBox(page).fill('Summarise the plan');
   await requestBox(page).press('Control+Enter');
-  await expect(timeline.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
   // The demo keeps runs in this page's worker, so the run page is reached in-app.
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette.getByRole('combobox', { name: 'Search commands' }).fill('Open run');
   await palette
-    .getByRole('option', { name: /^Open run run_/ })
+    .getByRole('option', { name: /^Open Run #\d+ · Summarise the plan/ })
     .first()
     .click();
-  await expect(page).toHaveURL(/\/runs\/run_/);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
 }
 
@@ -275,6 +279,8 @@ test('#73 an automatically composed team offers no edit link to a team that was 
 }) => {
   await blankSession(page);
   await finishedRunPage(page);
+  // The team's standing is one of the run's facts behind the head's Details.
+  await page.getByTestId('run-header').getByRole('button', { name: 'Details' }).click();
   await expect(page.getByText('Team composed for this run · not a saved team')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Edit team', exact: true })).toHaveCount(0);
 });
@@ -290,6 +296,7 @@ test('#73 a saved team keeps its edit link on the run page', async ({ page }) =>
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
+  await page.getByTestId('run-header').getByRole('button', { name: 'Details' }).click();
   await page.getByRole('link', { name: 'Edit team', exact: true }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit/);
   await expect(page.getByText('not found', { exact: false })).toHaveCount(0);

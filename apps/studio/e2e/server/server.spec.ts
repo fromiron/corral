@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { openResult } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 function handle(page: Page, nodeId: string, port: string) {
@@ -82,7 +83,7 @@ test('a run on the local server saves first, finishes, and survives a reload', a
     'true',
   );
   await page.reload();
-  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Results', exact: true }).click();
+  await openResult(page);
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   expect(corral.errors).toEqual([]);
 });

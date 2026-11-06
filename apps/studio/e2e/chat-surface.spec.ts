@@ -1,5 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
-import { panelTab, requestBox, startSession, teamFromTemplate } from './workbench.ts';
+import {
+  lastRunSucceeded,
+  openResult,
+  panelTab,
+  requestBox,
+  startSession,
+  teamFromTemplate,
+} from './workbench.ts';
 
 async function completedConversation(page: Page) {
   await page.goto('/?delay=50');
@@ -14,9 +21,7 @@ async function completedConversation(page: Page) {
     ).join('\n'),
   );
   await input.press('Control+Enter');
-  await expect(
-    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: true }),
-  ).toBeVisible();
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
 }
 
 test('SURFACE-02 narrow summary stays accessible and opening details selects its area', async ({
@@ -49,7 +54,7 @@ test('RESULT-03 default execution panel offers its actual results', async ({ pag
     'aria-selected',
     'true',
   );
-  await monitor.getByRole('tab', { name: 'Results', exact: true }).click();
+  await openResult(page);
   const results = monitor.getByRole('navigation', { name: 'Results', exact: true });
   await expect(results).toBeVisible();
   await expect(results.getByRole('button')).not.toHaveCount(0);

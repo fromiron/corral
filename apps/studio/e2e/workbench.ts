@@ -83,3 +83,27 @@ export async function chooseRun(page: Page, number: number) {
     .click();
   await page.getByRole('menuitemradio', { name: new RegExp(`Run #${number}\\b`) }).click();
 }
+
+/**
+ * Opens a result of the run page from its side panel: the first one, or the one whose card
+ * matches `name`. A narrow page shows the panel first.
+ */
+export async function openResult(page: Page, name?: RegExp) {
+  const side = page.getByTestId('run-side');
+  if (!(await side.isVisible()))
+    await page.getByRole('button', { name: 'Show side panel', exact: true }).click();
+  const section = side.getByRole('region', { name: 'Results', exact: true });
+  await (name
+    ? section.getByRole('button', { name })
+    : section.getByRole('button').first()
+  ).click();
+  await expect(side.getByTestId('run-results')).toBeVisible();
+}
+
+/**
+ * The newest turn's run has succeeded: the composer names it as the last run. (The timeline
+ * itself repeats the status in hidden kit copies, so its text is not a single target.)
+ */
+export function lastRunSucceeded(page: Page) {
+  return page.getByRole('link', { name: /^Succeeded Last run/ });
+}

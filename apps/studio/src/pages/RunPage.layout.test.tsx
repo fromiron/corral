@@ -12,7 +12,15 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {}, replays: 0 }));
+const fixture = vi.hoisted(() => ({ services: {}, replays: 0, pending: 0 }));
+vi.mock('@corral/core', async (original) => {
+  const module = await original<typeof import('@corral/core')>();
+  return {
+    ...module,
+    // How many questions or approvals wait for the person; the record itself is not needed here.
+    pendingInteractions: () => Array.from({ length: fixture.pending }, () => ({})),
+  };
+});
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ runRoute: {} }));
 vi.mock('../workbench/RunStatusCards.tsx', () => ({ RunStatusCards: () => null }));
@@ -41,10 +49,14 @@ vi.mock('@corral/react', async (original) => {
   };
 });
 
+// jsdom does not scroll; focusing a waiting decision asks it to.
+Element.prototype.scrollIntoView ??= () => {};
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const f of cleanup.splice(0)) await f();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  fixture.pending = 0;
 });
 
 async function mount(
@@ -168,35 +180,42 @@ it('heads the run with its team, start and id over the request, then numbers wit
   );
 });
 
-it('a completed run opens its run summary column unless a result was explicitly requested', async () => {
+it('a completed run opens its run column, headed by the run, with no page tabs', async () => {
   const summary = await mount('inline_team', null, {});
   const column = summary.container.querySelector('[data-testid="run-column"]');
   expect(column).not.toBeNull();
+  // The head scrolls with the activity instead of sitting above it.
+  expect(column?.querySelector('[data-testid="run-header"]')).not.toBeNull();
   expect(column?.querySelector('[data-testid="run-activity"]')).not.toBeNull();
   const selected = column?.querySelector('[role="tab"][aria-selected="true"]');
   expect(selected?.textContent).toContain('Activity');
   // The tree is no longer its own column: the activity list chooses executions.
   expect(summary.container.querySelector('[role="tree"]')).toBeNull();
-  expect(
-    summary.container.querySelector('[data-testid="results"]')?.closest('main')?.style.display,
-  ).toBe('none');
-  const result = await mount('inline_team', null, { view: 'results' });
-  expect(result.container.querySelector('[data-testid="results"]')).not.toBeNull();
+  // Run and results are not two pages any more: results live in the side panel.
+  expect(summary.container.querySelector('[aria-label="Run page view"]')).toBeNull();
+  expect(summary.container.querySelector('[data-testid="results"]')).toBeNull();
 });
 
-it('the run and its results are two tabs of the page, not a toggle button', async () => {
-  const { container, navigations } = await mount('inline_team', null, {});
-  const views = container.querySelector('[role="tablist"][aria-label="Run page view"]');
-  const tabs = [...(views?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
-  expect(tabs).toHaveLength(2);
-  expect(tabs[0]?.textContent).toContain('Execution');
-  expect(tabs[1]?.textContent).toContain('Results');
-  expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
-  await act(async () => tabs[1]?.click());
-  expect(navigations.at(-1)?.patch).toEqual({ view: 'results' });
-  expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
-  expect(container.querySelector('[data-testid="results"]')?.closest('main')?.style.display).toBe(
-    '',
+it('a results address opens the result in the side panel', async () => {
+  for (const search of [{ view: 'results' }, { result: 'artv_result' }] as RunDetailSearch[]) {
+    const { container } = await mount('inline_team', null, search);
+    const panel = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+    expect(panel?.hidden).toBe(false);
+    expect(panel?.querySelector('[data-testid="results"]')).not.toBeNull();
+  }
+});
+
+it('shows the column and the panel side by side once the container holds 640 + 360 px', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
+  const wide = await mount('inline_team', null, {});
+  expect(wide.container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(false);
+  expect(wide.container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(
+    false,
+  );
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(999);
+  const narrow = await mount('inline_team', null, {});
+  expect(narrow.container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(
+    true,
   );
 });
 
@@ -219,7 +238,16 @@ it('secondary views switch under the summary and keep the graph mounted', async 
   expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
 });
 
+it('the right panel shows what needs the person only while something waits', async () => {
+  const idle = await mount('inline_team', null, { execution: 'worker' });
+  const idlePanel = idle.container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(idlePanel?.hidden).toBe(false);
+  expect(idlePanel?.querySelector('[data-testid="run-needs-you"]')).toBeNull();
+  expect(idlePanel?.textContent).not.toContain('Nothing needs you');
+});
+
 it('the right panel leads with what needs the person and opens execution details', async () => {
+  fixture.pending = 1;
   const { container } = await mount('inline_team', null);
   const panel = () => container.querySelector<HTMLElement>('[data-testid="run-side"]');
   // jsdom has no container width: the narrow layout keeps the panel closed until asked. It stays

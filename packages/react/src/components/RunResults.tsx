@@ -35,9 +35,12 @@ export function RunResults({
   selectedId,
   onSelect,
   previewUrl,
+  headed = true,
 }: {
   session: RunSessionStore;
   runNumber?: number;
+  /** Name the list of final results; off where the surrounding section already names it. */
+  headed?: boolean;
   /** The chosen version (from the address); null opens the first final result. */
   selectedId: string | null;
   onSelect: (artifactVersionId: string) => void;
@@ -84,7 +87,7 @@ export function RunResults({
             </p>
           ) : null}
           {current.length > 0 ? (
-            <ResultSection heading={t('final')}>
+            <ResultSection heading={headed ? t('final') : null}>
               {current.map((item) => (
                 <ResultButton
                   key={item.artifactVersionId}
@@ -116,8 +119,15 @@ export function RunResults({
   );
 }
 
-function ResultSection({ heading, children }: { heading: string; children: React.ReactNode }) {
+function ResultSection({
+  heading,
+  children,
+}: {
+  heading: string | null;
+  children: React.ReactNode;
+}) {
   const id = useId();
+  if (heading === null) return <ul className="flex flex-col gap-1">{children}</ul>;
   return (
     <section aria-labelledby={id} className="flex flex-col gap-1">
       <h3 id={id} className="text-xs font-semibold text-muted-foreground">

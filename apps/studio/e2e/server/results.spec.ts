@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { chooseRun, panelTab, requestBox } from '../workbench.ts';
+import { chooseRun, openResult, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
@@ -191,7 +191,7 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
     'aria-selected',
     'true',
   );
-  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Results', exact: true }).click();
+  await openResult(page);
 }
 
 test('the Results view opens its result, and a reload keeps the chosen version', async ({
@@ -200,14 +200,12 @@ test('the Results view opens its result, and a reload keeps the chosen version',
 }) => {
   await corral.open('/');
   await finishedRun(page, corral);
-  await expect(page).toHaveURL(/view=results/);
+  await expect(page).toHaveURL(/result=artv_/);
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   const results = page.getByRole('navigation', { name: 'Results' });
   // One agent, one Output: a single final result.
-  await expect(
-    results.getByRole('region', { name: 'Final results' }).getByRole('button'),
-  ).toHaveCount(1);
-  await results.getByRole('region', { name: 'Final results' }).getByRole('button').click();
+  await expect(results.getByRole('button')).toHaveCount(1);
+  await results.getByRole('button').click();
   await expect(page).toHaveURL(/view=results&result=/);
   await page.reload();
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');

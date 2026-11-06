@@ -4648,8 +4648,6 @@
     },
     "activity": "Activity",
     "needsYou": "Needs your input",
-    "nothingNeedsYou": "Nothing needs you",
-    "nothingNeedsYouHint": "Questions and approvals from the agents show here.",
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",
     "results": "Results",
@@ -4666,7 +4664,8 @@
       "row": "{label}: {status}, {took}",
       "rowWaiting": "{label}: {status}",
       "empty": "No tasks were recorded in this run."
-    }
+    },
+    "closeResult": "Close result"
   },
   "Failure": {
     "cancelled": "This step was cancelled.",
