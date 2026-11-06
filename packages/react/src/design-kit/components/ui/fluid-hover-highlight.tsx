@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, type Transition, useReducedMotion } from 'motion/react';
 import type { ItemRect, UseFluidHoverReturn } from '../../hooks/use-fluid-hover.ts';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 
 // Shared hover highlight for fluid hover lists: an absolutely positioned fill
@@ -57,7 +57,7 @@ export type FluidHoverHighlightProps = (HighlightFromHook | HighlightFromRect) &
   transition?: Transition | false;
 };
 
-const fade: Transition = { duration: 0.08 };
+const fade: Transition = tween.fast;
 const snap: Transition = { duration: 0 };
 
 /** A measured rect as animation targets: position as a transform, size as

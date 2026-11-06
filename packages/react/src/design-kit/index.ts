@@ -13,6 +13,80 @@ export * from './adapters/skeleton.tsx';
 export * from './adapters/textarea.tsx';
 export * from './adapters/tooltip.tsx';
 export { cn } from './adapters/utils.ts';
+export {
+  AgentHandoff,
+  type AgentHandoffProps,
+  type HandoffAgent,
+  type HandoffCard,
+  type HandoffLane,
+} from './components/agent/agent-handoff.tsx';
+export {
+  AgentLanes,
+  type AgentLanesLabels,
+  type LaneAgent,
+  type LaneHandoff,
+  type LaneTask,
+} from './components/agent/agent-lanes.tsx';
+export {
+  AgentAvatar,
+  type AgentAvatarProps,
+  AgentCard,
+  type AgentCardProps,
+  AgentIdentity,
+  type AgentIdentityProps,
+  type AgentMark,
+  type AgentStatus,
+  AgentStatusBadge,
+  type AgentStatusBadgeProps,
+  AgentStatusIcon,
+  type AgentStatusIconProps,
+  AgentStatusLabel,
+  Keycap,
+  LiveDot,
+  MetaDot,
+  Meter,
+  type MeterProps,
+  SizeScope,
+  Sparkline,
+  ToolStack,
+} from './components/agent/agent-primitives.tsx';
+export {
+  AgentSteering,
+  type AgentSteeringLabels,
+  AgentSteeringPlan,
+  type AgentSteeringPlanProps,
+  type AgentSteeringProps,
+  type SteeringRunStatus,
+  type SteerMessage,
+  type SteerStep,
+} from './components/agent/agent-steering.tsx';
+export {
+  AgentTree,
+  type AgentTreeLabels,
+  type AgentTreeNode,
+} from './components/agent/agent-tree.tsx';
+export {
+  type DecisionNode,
+  type DecisionOption,
+  DecisionTree,
+  type DecisionTreeProps,
+} from './components/agent/decision-tree.tsx';
+export {
+  type ModelEffort,
+  type ModelOption,
+  ModelPicker,
+  type ModelPickerChoice,
+  type ModelPickerLabels,
+  type ModelPickerProps,
+  type ModelPickerReasoning,
+} from './components/agent/model-picker.tsx';
+export {
+  type ToolCall,
+  ToolCallCard,
+  ToolCallGroup,
+  type ToolCallLabels,
+  type ToolCallStatus,
+} from './components/agent/tool-call-card.tsx';
 export { SidebarSearchField } from './components/sidebar-app/search-field.tsx';
 export { WorkspaceTile } from './components/sidebar-app/workspace-tile.tsx';
 export {
@@ -45,6 +119,7 @@ export {
   CardGroup,
   CardGroup as KitCardGroup,
   CardHeader as KitCardHeader,
+  CardMedia,
   CardTitle as KitCardTitle,
 } from './components/ui/card.tsx';
 export { ChatMessage as KitChatMessage } from './components/ui/chat-message.tsx';
@@ -68,6 +143,11 @@ export {
   InputGroup,
   InputGroup as KitInputGroup,
 } from './components/ui/input-group.tsx';
+export {
+  InputMessage,
+  type InputMessageInputProps,
+  type InputMessageProps,
+} from './components/ui/input-message.tsx';
 export {
   RadioGroup,
   RadioGroup as KitRadioGroup,
@@ -104,8 +184,13 @@ export {
 export {
   ThinkingStep,
   ThinkingStepDetails,
+  ThinkingStepSource,
+  ThinkingStepSources,
   ThinkingSteps,
   ThinkingStepsContent,
   ThinkingStepsHeader,
 } from './components/ui/thinking-steps.tsx';
+export { useNow } from './hooks/use-now.ts';
+export { formatClock, formatCost, formatTimeOfDay } from './lib/agent-format.ts';
+export { useSize } from './lib/size-context.tsx';
 export { UIProvider as DesignKitProvider } from './lib/ui-provider.tsx';

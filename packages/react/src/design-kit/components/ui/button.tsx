@@ -10,6 +10,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { focusRing } from '../../lib/focus.ts';
 import type { IconComponent } from '../../lib/icon-context.tsx';
 import { omit } from '../../lib/omit.ts';
 import { useShape } from '../../lib/shape-context.tsx';
@@ -19,10 +20,10 @@ import { cn } from '../../lib/utils.ts';
 const buttonVariants = cva(
   [
     // whitespace-nowrap: labels never wrap, so tight rows don't squeeze the button.
-    'group relative isolate inline-flex items-center justify-center outline-none cursor-pointer select-none whitespace-nowrap',
+    'group relative isolate inline-flex items-center justify-center cursor-pointer select-none whitespace-nowrap',
     'transition-colors duration-80',
     'disabled:opacity-50 disabled:pointer-events-none',
-    'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+    focusRing,
   ],
   {
     variants: {
@@ -185,7 +186,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         <span
           aria-hidden
           className={cn(
-            'absolute inset-px rounded-[inherit] transition-[box-shadow,background-color] [transition-duration:180ms,80ms] [transition-timing-function:cubic-bezier(0.23,1,0.32,1),ease] group-active:[transition-duration:80ms,80ms]',
+            'absolute inset-px rounded-[inherit] transition-[box-shadow,background-color] [transition-duration:160ms,80ms] [transition-timing-function:cubic-bezier(0.23,1,0.32,1),ease] group-active:[transition-duration:80ms,80ms]',
             bgClass,
           )}
         />

@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { focusRing, focusRingInset } from '../../lib/focus.ts';
 import { fontWeights } from '../../lib/font-weight.ts';
 import { useIcons } from '../../lib/icon-context.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
@@ -70,6 +71,8 @@ export interface SidebarContextValue {
   /** Live rail width — the rail's drag-resize updates it. */
   width: string;
   setWidth: (width: string) => void;
+  minWidth: number;
+  maxWidth: number;
   widthMobile: string;
   mobileBreakpoint: number;
   /** Which edge the rendered Sidebar sits on (registered by <Sidebar/>). */
@@ -144,6 +147,10 @@ export interface SidebarProviderProps extends HTMLAttributes<HTMLDivElement> {
    *  Peeking never pins the sidebar or writes the cookie. @default "none" */
   peek?: 'hover' | 'click' | 'none';
   width?: string;
+  /** Host persistence can own width while the source rail owns its interaction. */
+  onWidthChange?: (width: string) => void;
+  minWidth?: number;
+  maxWidth?: number;
   widthMobile?: string;
 }
 
@@ -158,6 +165,9 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
       mobileBreakpoint = 768,
       peek = 'none',
       width: widthProp = SIDEBAR_WIDTH,
+      onWidthChange,
+      minWidth = SIDEBAR_MIN_WIDTH,
+      maxWidth = SIDEBAR_MAX_WIDTH,
       widthMobile = SIDEBAR_WIDTH_MOBILE,
       className,
       style,
@@ -183,11 +193,19 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
     const registerSide = useCallback((next: SidebarSide) => setSide(next), []);
 
     // The rail's drag-resize updates width at runtime; a new prop resets it.
-    const [width, setWidth] = useState(widthProp);
+    const [internalWidth, setInternalWidth] = useState(widthProp);
+    const width = onWidthChange ? widthProp : internalWidth;
+    const setWidth = useCallback(
+      (next: string) => {
+        if (onWidthChange) onWidthChange(next);
+        else setInternalWidth(next);
+      },
+      [onWidthChange],
+    );
     const [syncedWidthProp, setSyncedWidthProp] = useState(widthProp);
     if (syncedWidthProp !== widthProp) {
       setSyncedWidthProp(widthProp);
-      setWidth(widthProp);
+      setInternalWidth(widthProp);
     }
     const [isResizing, setIsResizing] = useState(false);
 
@@ -313,6 +331,8 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
         toggleSidebar,
         width,
         setWidth,
+        minWidth,
+        maxWidth,
         widthMobile,
         mobileBreakpoint,
         side,
@@ -334,6 +354,9 @@ const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
         isMobile,
         toggleSidebar,
         width,
+        setWidth,
+        minWidth,
+        maxWidth,
         widthMobile,
         mobileBreakpoint,
         side,
@@ -511,6 +534,8 @@ export interface SidebarShellProps extends MotionSafeDivProps {
   /** Pin the rail's tooltip open (`true`) or closed (`false`); `undefined`
    *  leaves it on hover. Dragging always hides it. */
   railTooltipOpen?: boolean;
+  /** Host labels and keyboard semantics for the original rail. */
+  railProps?: SidebarRailProps;
 }
 
 /** Internal: the expanded/collapsed desktop rail. An in-flow sticky column
@@ -520,7 +545,17 @@ export interface SidebarShellProps extends MotionSafeDivProps {
  *  Ships the resize/collapse rail handle on its inner edge by default. */
 const SidebarShell = forwardRef<HTMLDivElement, SidebarShellProps>(
   (
-    { side, variant, bordered = true, rail = true, railTooltipOpen, className, children, ...props },
+    {
+      side,
+      variant,
+      bordered = true,
+      rail = true,
+      railTooltipOpen,
+      railProps,
+      className,
+      children,
+      ...props
+    },
     ref,
   ) => {
     const {
@@ -783,6 +818,7 @@ const SidebarShell = forwardRef<HTMLDivElement, SidebarShellProps>(
             )}
             {rail && (
               <SidebarRail
+                {...railProps}
                 tooltipOpen={railTooltipOpen}
                 className={cn(
                   // Straddle the floating card's edge, inside the p-2 gutter.
@@ -918,6 +954,8 @@ SidebarTrigger.displayName = 'SidebarTrigger';
 export interface SidebarRailProps extends HTMLAttributes<HTMLButtonElement> {
   /** Pin the tooltip open/closed; `undefined` leaves it on hover. */
   tooltipOpen?: boolean;
+  /** Localized instructions; the source instructions remain the default. */
+  tooltipContent?: ReactNode;
 }
 
 /** The grab strip on the sidebar's inner edge, rendered by default inside
@@ -925,8 +963,9 @@ export interface SidebarRailProps extends HTMLAttributes<HTMLButtonElement> {
  *  its tooltip explains both with the toggle keystroke. Hovering it
  *  brightens the edge border. */
 const SidebarRail = forwardRef<HTMLButtonElement, SidebarRailProps>(
-  ({ className, tooltipOpen, ...props }, ref) => {
-    const { toggleSidebar, setOpen, setWidth, side, setIsResizing } = useSidebar();
+  ({ className, tooltipOpen, tooltipContent, onKeyDown, ...props }, ref) => {
+    const { toggleSidebar, setOpen, width, setWidth, minWidth, maxWidth, side, setIsResizing } =
+      useSidebar();
     const shortcutKey = useShortcutKey();
     const railRef = useRef<HTMLButtonElement | null>(null);
     const dragRef = useRef<{
@@ -963,10 +1002,10 @@ const SidebarRail = forwardRef<HTMLButtonElement, SidebarRailProps>(
       const raw = drag.startWidth + delta;
       // Well past the minimum: preview the collapse but keep the drag alive,
       // so pulling back re-expands.
-      if (raw < SIDEBAR_MIN_WIDTH - SIDEBAR_COLLAPSE_SLOP) {
+      if (raw < minWidth - SIDEBAR_COLLAPSE_SLOP) {
         if (!drag.collapsed) {
           drag.collapsed = true;
-          setWidth(`${SIDEBAR_MIN_WIDTH}px`);
+          setWidth(`${minWidth}px`);
           setOpen(false);
         }
         return;
@@ -975,7 +1014,7 @@ const SidebarRail = forwardRef<HTMLButtonElement, SidebarRailProps>(
         drag.collapsed = false;
         setOpen(true);
       }
-      const next = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, raw));
+      const next = Math.max(minWidth, Math.min(maxWidth, raw));
       setWidth(`${next}px`);
     };
 
@@ -1005,19 +1044,21 @@ const SidebarRail = forwardRef<HTMLButtonElement, SidebarRailProps>(
         followCursor="y"
         forceOpen={dragging ? false : tooltipOpen}
         content={
-          // The flex column escapes the tooltip's text-box trim, so BOTH lines
-          // re-apply it and the gap alone sets the rhythm.
-          <span className="flex flex-col items-start gap-2">
-            <span className="[text-box:trim-both_cap_alphabetic]">
-              <span style={semibold}>Drag</span> to resize
-            </span>
-            <span className="flex items-center gap-1.5">
+          tooltipContent ?? (
+            // The flex column escapes the tooltip's text-box trim, so BOTH lines
+            // re-apply it and the gap alone sets the rhythm.
+            <span className="flex flex-col items-start gap-2">
               <span className="[text-box:trim-both_cap_alphabetic]">
-                <span style={semibold}>Click</span> to collapse
+                <span style={semibold}>Drag</span> to resize
               </span>
-              <ShortcutKbd>{shortcutKey}</ShortcutKbd>
+              <span className="flex items-center gap-1.5">
+                <span className="[text-box:trim-both_cap_alphabetic]">
+                  <span style={semibold}>Click</span> to collapse
+                </span>
+                <ShortcutKbd>{shortcutKey}</ShortcutKbd>
+              </span>
             </span>
-          </span>
+          )
         }
       >
         <button
@@ -1034,10 +1075,22 @@ const SidebarRail = forwardRef<HTMLButtonElement, SidebarRailProps>(
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerCancel}
+          onKeyDown={(event) => {
+            onKeyDown?.(event);
+            if (event.defaultPrevented || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+            event.preventDefault();
+            const panel = railRef.current?.closest<HTMLElement>('[data-slot="sidebar"]');
+            const current = width.endsWith('px')
+              ? Number.parseFloat(width)
+              : (panel?.offsetWidth ?? 0);
+            const delta = (event.key === 'ArrowRight' ? 16 : -16) * (side === 'left' ? 1 : -1);
+            setWidth(`${Math.max(minWidth, Math.min(maxWidth, current + delta))}px`);
+          }}
           className={cn(
             // touch-none: without it the browser claims a touch drag for
             // scrolling and pointercancels the resize mid-gesture.
             'absolute inset-y-0 z-20 w-2 cursor-col-resize touch-none outline-none',
+            focusRingInset,
             // Positioned from context (not group-data selectors) so variant
             // offsets passed via className can win the merge.
             side === 'left' ? 'right-0' : 'left-0',
@@ -1098,11 +1151,11 @@ const SidebarInput = forwardRef<HTMLInputElement, SidebarInputProps>(
         ref={ref}
         data-sidebar="input"
         className={cn(
-          'w-full bg-transparent px-3 text-foreground placeholder:text-muted-foreground outline-none',
+          'w-full bg-transparent px-3 text-foreground placeholder:text-muted-foreground',
           'ring-1 ring-transparent transition-[background-color,box-shadow] duration-80',
           'hover:bg-muted/50 hover:ring-border',
           'focus:bg-card focus:ring-border',
-          'focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+          focusRing,
           size.variant === 'compact' ? 'h-7' : 'h-8',
           size.field,
           shape.input,
@@ -1372,10 +1425,10 @@ const SidebarGroupLabel = forwardRef<HTMLDivElement, SidebarGroupLabelProps>(
                 ? ({ '--group-actions-pad': `${group.actionsCount * 28 + 6}px` } as CSSProperties)
                 : undefined,
             className: cn(
-              'flex h-8 w-full shrink-0 cursor-pointer select-none items-center gap-2 px-2 text-left text-muted-foreground outline-none',
+              'flex h-8 w-full shrink-0 cursor-pointer select-none items-center gap-2 px-2 text-left text-muted-foreground',
               'transition-colors duration-80 hover:text-muted-foreground',
               group.actionsCount > 0 && 'pr-[var(--group-actions-pad)]',
-              'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+              focusRingInset,
               shape.item,
               typeClass('caption', sizeVariant),
               className,
@@ -1458,11 +1511,11 @@ const SidebarGroupAction = forwardRef<HTMLButtonElement, SidebarGroupActionProps
           'data-sidebar': 'group-action',
           className: cn(
             inCluster
-              ? 'relative flex size-6 items-center justify-center text-muted-foreground outline-none'
+              ? 'relative flex size-6 items-center justify-center text-muted-foreground'
               : // right-3.5 centres the 24px box on the rows' badge/action axis.
-                'absolute right-3.5 top-3 flex size-6 items-center justify-center text-muted-foreground outline-none',
+                'absolute right-3.5 top-3 flex size-6 items-center justify-center text-muted-foreground',
             'hover:bg-hover hover:text-foreground transition-colors duration-80',
-            'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+            focusRing,
             // Normalize bare icons to a 1.5 stroke, thickening to 2 on hover.
             '[&_svg]:size-[var(--icon-size)] [&_svg]:shrink-0 [&_svg]:stroke-[1.5] [&_svg]:transition-[stroke-width] [&_svg]:duration-80 hover:[&_svg]:stroke-[2]',
             shape.item,

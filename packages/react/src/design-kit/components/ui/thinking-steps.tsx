@@ -18,18 +18,19 @@ import {
 // SSR-safe layout effect (client components still server-render in Next).
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+import { focusRing } from '../../lib/focus.ts';
 import { fontWeights } from '../../lib/font-weight.ts';
 import type { IconName } from '../../lib/icon-context.tsx';
 import { useIcons } from '../../lib/icon-context.tsx';
 import { omit } from '../../lib/omit.ts';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import type { BadgeColor } from './badge.tsx';
 import { Badge } from './badge.tsx';
 
-// ─── Shared collapsible parts ───────────────────────────────────────────────
+// ─── Shared collapsible parts ────────────────────────────────────────────────
 
 /** Open state of the nearest ThinkingSteps root, for the header trigger/panel. */
 const ThinkingStepsOpenContext = createContext(false);
@@ -63,7 +64,7 @@ const TriggerRow = forwardRef<HTMLButtonElement, TriggerRowProps>(
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: spring.fast.exit }}
-              transition={{ duration: 0.08 }}
+              transition={tween.fast}
             />
           )}
         </AnimatePresence>
@@ -72,8 +73,8 @@ const TriggerRow = forwardRef<HTMLButtonElement, TriggerRowProps>(
           className={cn(
             `relative z-10 flex items-center gap-2.5 ${shape.item} ${sizeClasses.px} ${
               sizeClasses.variant === 'compact' ? 'py-1.5' : 'py-2'
-            } cursor-pointer outline-none select-none`,
-            'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-0',
+            } cursor-pointer select-none`,
+            focusRing,
             className,
           )}
           {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
@@ -215,7 +216,7 @@ function CollapsePanel({ open, children }: CollapsePanelProps) {
   );
 }
 
-// ─── ThinkingSteps (root) ───────────────────────────────────────────────────
+// ─── ThinkingSteps (root) ────────────────────────────────────────────────────
 
 interface ThinkingStepsProps extends HTMLAttributes<HTMLDivElement> {
   /** Size step for every row inside; overrides the surrounding SizeProvider. */
@@ -254,7 +255,7 @@ const ThinkingSteps = forwardRef<HTMLDivElement, ThinkingStepsProps>(
 );
 ThinkingSteps.displayName = 'ThinkingSteps';
 
-// ─── ThinkingStepsHeader ────────────────────────────────────────────────────
+// ─── ThinkingStepsHeader ─────────────────────────────────────────────────────
 
 interface ThinkingStepsHeaderProps extends HTMLAttributes<HTMLButtonElement> {
   children?: ReactNode;
@@ -272,7 +273,7 @@ const ThinkingStepsHeader = forwardRef<HTMLButtonElement, ThinkingStepsHeaderPro
 );
 ThinkingStepsHeader.displayName = 'ThinkingStepsHeader';
 
-// ─── ThinkingStepsContent ───────────────────────────────────────────────────
+// ─── ThinkingStepsContent ────────────────────────────────────────────────────
 
 interface ThinkingStepsContentProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
@@ -292,7 +293,7 @@ const ThinkingStepsContent = forwardRef<HTMLDivElement, ThinkingStepsContentProp
 );
 ThinkingStepsContent.displayName = 'ThinkingStepsContent';
 
-// ─── ThinkingStep ───────────────────────────────────────────────────────────
+// ─── ThinkingStep ────────────────────────────────────────────────────────────
 
 type StepStatus = 'complete' | 'active' | 'pending';
 
@@ -361,7 +362,7 @@ function ThinkingStep({
         ref={stepRef}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.24, delay, ease: 'easeOut' }}
+        transition={{ ...tween.slow, delay }}
       >
         <div className={cn('flex gap-2.5 px-2 py-1.5', shape.item)}>
           {/* Icon column with connector line */}
@@ -403,7 +404,7 @@ function ThinkingStep({
   );
 }
 
-// ─── ThinkingStepDetails (nested collapsible) ───────────────────────────────
+// ─── ThinkingStepDetails (nested collapsible) ────────────────────────────────
 
 interface ThinkingStepDetailsProps {
   summary: string;
@@ -462,7 +463,7 @@ function ThinkingStepDetails({
   );
 }
 
-// ─── ThinkingStepSources ────────────────────────────────────────────────────
+// ─── ThinkingStepSources ─────────────────────────────────────────────────────
 
 interface ThinkingStepSourcesProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
@@ -479,7 +480,7 @@ const ThinkingStepSources = forwardRef<HTMLDivElement, ThinkingStepSourcesProps>
 );
 ThinkingStepSources.displayName = 'ThinkingStepSources';
 
-// ─── ThinkingStepSource ─────────────────────────────────────────────────────
+// ─── ThinkingStepSource ──────────────────────────────────────────────────────
 
 interface ThinkingStepSourceProps {
   color?: BadgeColor;
@@ -501,7 +502,7 @@ function ThinkingStepSource({
       transition={{
         ...spring.moderate,
         delay,
-        filter: { duration: 0.12, delay },
+        filter: { ...tween.fast, delay },
       }}
     >
       <Badge variant="solid" size="sm" color={color} className={className}>
@@ -512,7 +513,7 @@ function ThinkingStepSource({
 }
 ThinkingStepSource.displayName = 'ThinkingStepSource';
 
-// ─── ThinkingStepImage ──────────────────────────────────────────────────────
+// ─── ThinkingStepImage ───────────────────────────────────────────────────────
 
 interface ThinkingStepImageProps {
   src: string;
@@ -537,8 +538,8 @@ function ThinkingStepImage({
       initial={{ opacity: 0, filter: 'blur(4px)' }}
       animate={{ opacity: 1, filter: 'blur(0px)' }}
       transition={{
-        opacity: { duration: 0.2, delay, ease: 'easeOut' },
-        filter: { duration: 0.15, delay },
+        opacity: { ...tween.slow, delay },
+        filter: { ...tween.moderate, delay },
       }}
     >
       {/* Inset hairline keeps white-edged screenshots visible without
@@ -548,7 +549,7 @@ function ThinkingStepImage({
         src={src}
         alt={alt}
         className={cn(
-          'w-full max-w-[200px] object-cover outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10',
+          'w-full max-w-[200px] object-cover outline-1 -outline-offset-1 outline-foreground/10',
           shape.container,
         )}
       />
@@ -567,7 +568,7 @@ function ThinkingStepImage({
 }
 ThinkingStepImage.displayName = 'ThinkingStepImage';
 
-// ─── Exports ────────────────────────────────────────────────────────────────
+// ─── Exports ─────────────────────────────────────────────────────────────────
 
 export type {
   StepStatus,

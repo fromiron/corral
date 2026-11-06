@@ -21,18 +21,18 @@ import { fontWeights } from '../../lib/font-weight.ts';
 import type { IconComponent } from '../../lib/icon-context.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, useSize } from '../../lib/size-context.tsx';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { surfaceClasses } from '../../lib/surface-classes.ts';
 import { useSurface } from '../../lib/surface-context.tsx';
 import { cn } from '../../lib/utils.ts';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tabs is a segmented control. The selected pill, hover pill and focus ring
 // are absolutely positioned layers that travel across the tab rects measured
 // by useFluidHover; the tabs themselves stay transparent.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
-/* ─────────────────────── Contexts ─────────────────────── */
+// ─── Contexts ────────────────────────────────────────────────────────────────
 
 interface TabsValueOrderContextValue {
   valueOrder: string[];
@@ -58,7 +58,7 @@ function useTabsList() {
   return ctx;
 }
 
-/* ─────────────────────── Tabs (Root) ─────────────────────── */
+// ─── Tabs (Root) ─────────────────────────────────────────────────────────────
 
 interface TabsProps
   extends Omit<
@@ -142,7 +142,7 @@ const Tabs = forwardRef<HTMLDivElement, TabsProps>(
 
 Tabs.displayName = 'Tabs';
 
-/* ─────────────────────── TabsList ─────────────────────── */
+// ─── TabsList ────────────────────────────────────────────────────────────────
 
 type TabsListProps = ComponentPropsWithoutRef<typeof TabsPrimitive.List>;
 
@@ -304,7 +304,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
               }}
               transition={{
                 ...spring.moderate,
-                opacity: { duration: 0.08 },
+                opacity: tween.fast,
               }}
             />
           )}
@@ -341,14 +341,14 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
                         opacity: 0,
                         transition: {
                           ...spring.moderate,
-                          opacity: { duration: 0.06 },
+                          opacity: tween.fast.exit,
                         },
                       }
                     : { opacity: 0, transition: spring.fast.exit }
                 }
                 transition={{
                   ...spring.fast,
-                  opacity: { duration: 0.08 },
+                  opacity: tween.fast,
                 }}
               />
             )}
@@ -360,7 +360,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
             {focusRect && (
               <motion.div
                 className={cn(
-                  'absolute pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]',
+                  'absolute pointer-events-none z-20 border-2 border-[color:var(--focus-ring)]',
                   shape.focusRing,
                 )}
                 initial={false}
@@ -373,7 +373,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
                 exit={{ opacity: 0, transition: spring.fast.exit }}
                 transition={{
                   ...spring.fast,
-                  opacity: { duration: 0.08 },
+                  opacity: tween.fast,
                 }}
               />
             )}
@@ -388,7 +388,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
 
 TabsList.displayName = 'TabsList';
 
-/* ─────────────────────── TabItem ─────────────────────── */
+// ─── TabItem ─────────────────────────────────────────────────────────────────
 
 interface TabItemProps extends ComponentPropsWithoutRef<typeof TabsPrimitive.Tab> {
   /** Unique value for this tab. */
@@ -483,7 +483,7 @@ const TabItem = forwardRef<HTMLButtonElement, TabItemProps>(
 
 TabItem.displayName = 'TabItem';
 
-/* ─────────────────────── TabPanel ─────────────────────── */
+// ─── TabPanel ────────────────────────────────────────────────────────────────
 
 interface TabPanelProps extends ComponentPropsWithoutRef<typeof TabsPrimitive.Panel> {
   /** Must match a TabItem value. */
@@ -496,7 +496,7 @@ const TabPanel = forwardRef<HTMLDivElement, TabPanelProps>(({ className, ...prop
 
 TabPanel.displayName = 'TabPanel';
 
-/* ─────────────────────── Exports ─────────────────────── */
+// ─── Exports ─────────────────────────────────────────────────────────────────
 
 export type { TabItemProps, TabPanelProps, TabsListProps, TabsProps };
 export { TabItem, TabPanel, Tabs, TabsList };

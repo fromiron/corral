@@ -20,14 +20,14 @@ import { SURFACE_BG } from '../../lib/surface-classes.ts';
 import { useSurface } from '../../lib/surface-context.tsx';
 import { cn } from '../../lib/utils.ts';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DropdownSearch: a controlled search field pinned to the top of a
 // DropdownContent popup; filter the MenuItems you render against `value`.
 // Typing keys stop at the input so the menu's typeahead can't steal them, and
 // typing on a focused row is redirected into the field (useDropdownSearchHost).
 // Arrows move between the field and the ends of the list; Enter in the field
 // picks nothing.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
@@ -148,9 +148,7 @@ export function useDropdownSearchHost(open: boolean) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// DropdownSearch
-// ---------------------------------------------------------------------------
+// ─── DropdownSearch ──────────────────────────────────────────────────────────
 
 export interface DropdownSearchProps
   extends Omit<
@@ -312,9 +310,7 @@ const DropdownSearch = forwardRef<HTMLInputElement, DropdownSearchProps>(
 
 DropdownSearch.displayName = 'DropdownSearch';
 
-// ---------------------------------------------------------------------------
-// DropdownEmpty
-// ---------------------------------------------------------------------------
+// ─── DropdownEmpty ───────────────────────────────────────────────────────────
 
 const DropdownEmpty = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => {
