@@ -184,7 +184,7 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /local-ai | — | release, modelName, state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), external(`{provider, model, policy, revision}`: 작업공간이 고른 판정 API id와 모델, 고르지 않았으면 provider·model이 null. policy는 자동 추론 정책 `medium`·`judged`) |
+| GET /local-ai | — | release, models(`{meeting, effort}`: 번들이 함께 설치하는 회의 분석 모델과 추론 판정 모델의 표시 이름), state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), external(`{provider, model, policy, judgeAbstains, revision}`: 작업공간이 고른 판정 API id와 모델, 고르지 않았으면 provider·model이 null. policy는 자동 추론 정책 `medium`·`judged`. judgeAbstains는 로컬 판정기가 판정을 보류할 수 있는지이며, false면 판정 API를 부르지 않는다) |
 | POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
 | DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다 |
 | PUT /local-ai/external-judge | `{provider, revision}` | 작업공간의 외부 판정에 쓸 판정 API id, 사용 안 함은 null. 모르는 id는 400, 설정 revision이 다르면 409. 응답은 GET /local-ai와 같다 |
@@ -288,7 +288,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `tool.blocked` | toolCallId,reason |
 | `tool.started` | effectId,toolCallId |
 | `tool.finished` | resultRef,error |
-| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: requested,resolved,source,judged,ladder,policyVersion,judgeVersion,fallback,escalated). 자동 추론 규칙과 fallback 이유는 [로컬 AI](features/local-intelligence.md)가 정한다. 이전 실행의 `mixdog-relative-v1`은 읽기만 한다 |
+| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: requested,resolved,source,judged,ladder,policyVersion,judgeVersion,fallback,escalated). 자동 추론 규칙과 fallback 이유는 [로컬 AI](features/local-intelligence.md)가 정한다. 이전 정책으로 저장된 실행 기록은 읽기만 한다 |
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `budget.reserved` | reservationId,amount,scope |

@@ -66,14 +66,26 @@ describe('local intelligence factory', () => {
         env: {},
       }),
     ).toThrow(/another base model/);
+    // Weights trained for the meeting model are refused too: the judge runs on the effort model.
+    expect(() =>
+      createLocalIntelligence({
+        root: tempDir(),
+        bundle: testBundle(),
+        effortWeights: weights(testBundle().models.meeting.sha256),
+        env: {},
+      }),
+    ).toThrow(/another base model/);
   });
 
-  it('ships effort weights trained for the bundled model', () => {
+  it('ships effort weights trained for the bundled effort model', () => {
     const li = createLocalIntelligence({ root: tempDir(), env: {}, launch: fakeLauncher().launch });
-    expect(li.effort.version).toBe(`${bundledManifest().release}+effort-v2`);
+    expect(li.effort.version).toBe(`${bundledManifest().release}+effort-v4`);
     expect(bundledEffortWeights()).toMatchObject({
-      dims: bundledManifest().embedding.dims,
-      baseModelSha256: bundledManifest().model.sha256,
+      schemaVersion: 3,
+      dims: bundledManifest().models.effort.dims,
+      baseModelSha256: bundledManifest().models.effort.sha256,
+      preprocessVersion: 'effort-text-v2',
+      open: { raiseAt: 0.55 },
     });
   });
 });

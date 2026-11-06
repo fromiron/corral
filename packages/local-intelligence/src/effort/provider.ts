@@ -33,6 +33,8 @@ export class LocalEffortProvider implements DecisionProvider {
   readonly privacy = 'local' as const;
   readonly questions = [{ kind: 'reasoning_effort' as const, version: 1 }];
   readonly version: string;
+  /** Whether a judgment can abstain and so leave the request to the external judge. */
+  readonly abstains: boolean;
   private readonly engine: EffortEngine;
   private readonly classifier: EffortClassifier;
 
@@ -40,6 +42,7 @@ export class LocalEffortProvider implements DecisionProvider {
     this.engine = options.engine;
     this.classifier = options.classifier;
     this.version = `${options.release}+${options.classifier.version}`;
+    this.abstains = options.classifier.abstains;
   }
 
   /**

@@ -16,7 +16,7 @@ const summary = (call: Call, locale: 'en' | 'ko' = 'en') => {
 };
 
 describe('ReasoningSummary', () => {
-  it('says a medium request came from the default policy, not a failed judge', () => {
+  it('says a medium request came from the medium policy, not a failed judge', () => {
     const medium = summary({
       reasoning: {
         requested: { mode: 'auto' },
@@ -28,7 +28,7 @@ describe('ReasoningSummary', () => {
       },
       reasoningWire: { kind: 'effort', value: 'medium' },
     });
-    expect(medium.textContent).toContain('Default policy');
+    expect(medium.textContent).toContain('Medium policy');
     expect(medium.textContent).not.toContain('Judge');
   });
 

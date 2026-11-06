@@ -1,6 +1,7 @@
-import { EFFORT_LEVELS, type EffortLevel } from '@corral/contracts';
+import { EFFORT_LEVELS, type EffortLevel } from '../../../packages/contracts/src/index.ts';
 
-// Calibrated on the effort-v2 validation split; see the reproducible policy comparison.
+// The effort-v2 low review, kept for the reproducible policy comparison. The product judge
+// (corral-effort-v4) does not use it. Calibrated on the effort-v2 validation split.
 export const LOW_EFFORT_REVIEW_CEILING = 0.6;
 
 /** Reference loss: a step costs one; hard-as-low is worse than unnecessary extra reasoning. */

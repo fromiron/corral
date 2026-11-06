@@ -1175,6 +1175,7 @@ async function createCorralServer(
         provider: chosen?.provider ?? null,
         model: chosen?.model ?? null,
         policy: reasoningApplyPolicy(workspace.config),
+        judgeAbstains: local.effort.abstains,
         revision: configRevision(workspace.root),
       },
     };

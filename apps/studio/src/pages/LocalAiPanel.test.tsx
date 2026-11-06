@@ -12,13 +12,19 @@ vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 
 const MB = 1_000_000;
 const view = (overrides: Partial<LocalAiView> = {}): LocalAiView => ({
-  release: 'corral-local-ai-1',
-  modelName: 'EmbeddingGemma 2 Text 270M',
+  release: 'corral-local-ai-2',
+  models: { meeting: 'EmbeddingGemma 2 Text 270M', effort: 'Corral Effort Judge 270M' },
   state: 'missing',
   downloadBytes: 198 * MB,
   progress: null,
   error: null,
-  external: { provider: null, model: null, policy: 'judged', revision: 'r1' },
+  external: {
+    provider: null,
+    model: null,
+    policy: 'judged',
+    judgeAbstains: true,
+    revision: 'r1',
+  },
   ...overrides,
 });
 
@@ -77,7 +83,10 @@ it('installs from settings, shows progress, and tells the page when the model is
   };
   const onInstalled = vi.fn();
   const container = await render(onInstalled);
-  expect(container.textContent).toContain('EmbeddingGemma 2 Text 270M');
+  expect(container.textContent).toContain('Meeting analysis: EmbeddingGemma 2 Text 270M');
+  expect(container.textContent).toContain('Reasoning judge: Corral Effort Judge 270M');
+  // One bundle, one state.
+  expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
   expect(container.textContent).toContain('Not installed');
   expect(container.textContent).toContain('198 MB');
 
@@ -153,6 +162,7 @@ it('offers only decision APIs with a key, and saves the choice with the config r
       provider: 'openai-decisions',
       model: 'gpt-6-luna',
       policy: 'judged',
+      judgeAbstains: true,
       revision: 'r2',
     },
   });
@@ -181,25 +191,36 @@ it('offers only decision APIs with a key, and saves the choice with the config r
   expect(setExternalJudge).toHaveBeenCalledWith('openai-decisions', 'r1');
   expect(mode?.textContent).toContain('Ask OpenAI Decisions');
 
-  await act(async () => mode?.click());
+  // The popup can still be open from the last choice; clicking the trigger then closes it and
+  // leaves only the closing popup's options.
+  if (mode?.getAttribute('aria-expanded') !== 'true') await act(async () => mode?.click());
+  await vi.waitFor(() => expect(mode?.getAttribute('aria-expanded')).toBe('true'));
   const off = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
     (node) => node.textContent === 'Use medium',
   );
   setExternalJudge.mockResolvedValue(
-    view({ external: { provider: null, model: null, policy: 'judged', revision: 'r3' } }),
+    view({
+      external: {
+        provider: null,
+        model: null,
+        policy: 'judged',
+        judgeAbstains: true,
+        revision: 'r3',
+      },
+    }),
   );
   await act(async () => off?.click());
   expect(setExternalJudge).toHaveBeenLastCalledWith(null, 'r2');
 });
 
-it('says the external judge is not used while automatic reasoning runs at medium', async () => {
-  const services = (policy: 'medium' | 'judged') => ({
+it('says the external judge is not used at medium or when the local judge never abstains', async () => {
+  const services = (policy: 'medium' | 'judged', judgeAbstains = true) => ({
     models: {
-      localAi: vi
-        .fn()
-        .mockResolvedValue(
-          view({ external: { provider: null, model: null, policy, revision: 'r1' } }),
-        ),
+      localAi: vi.fn().mockResolvedValue(
+        view({
+          external: { provider: null, model: null, policy, judgeAbstains, revision: 'r1' },
+        }),
+      ),
       decisionApis: vi.fn().mockResolvedValue(apis(true)),
       installLocalAi: vi.fn(),
       cancelLocalAiInstall: vi.fn(),
@@ -211,6 +232,11 @@ it('says the external judge is not used while automatic reasoning runs at medium
   for (const cleanup of cleanups.splice(0)) cleanup();
   fixture.services = services('judged');
   expect((await render()).textContent).not.toContain('so this choice is not used');
+  for (const cleanup of cleanups.splice(0)) cleanup();
+  fixture.services = services('judged', false);
+  const never = (await render()).textContent;
+  expect(never).toContain('The local judge always picks a level, so this choice is not used');
+  expect(never).not.toContain('runs at medium');
 });
 
 it('says where to add a key when no decision API has one, and keeps a chosen one without a key', async () => {
@@ -230,7 +256,13 @@ it('says where to add a key when no decision API has one, and keeps a chosen one
     models: {
       localAi: vi.fn().mockResolvedValue(
         view({
-          external: { provider: 'jev', model: 'jev-latest', policy: 'judged', revision: 'r1' },
+          external: {
+            provider: 'jev',
+            model: 'jev-latest',
+            policy: 'judged',
+            judgeAbstains: true,
+            revision: 'r1',
+          },
         }),
       ),
       decisionApis: vi.fn().mockResolvedValue(apis(false)),

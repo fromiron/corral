@@ -1383,7 +1383,8 @@ export interface ReasoningSettings {
 /** GET /local-ai: the local AI bundle for the settings panel's install. */
 export interface LocalAiView {
   release: string;
-  modelName: string;
+  /** Display names of the two models the bundle installs together. */
+  models: { meeting: string; effort: string };
   state:
     | 'unsupported'
     | 'missing'
@@ -1402,6 +1403,8 @@ export interface LocalAiView {
     model: string | null;
     /** The automatic reasoning policy; medium never asks the decision API. */
     policy: ReasoningSettings['policy'];
+    /** Whether the local judge can abstain; one that never does never asks the decision API. */
+    judgeAbstains: boolean;
     revision: string;
   };
 }

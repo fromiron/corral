@@ -66,14 +66,18 @@ describe('local embedding engine', () => {
     expect(helper.command.args).toEqual([
       '--lib',
       join(dir, 'libfake.so'),
-      '--model',
+      '--meeting-model',
       join(dir, 'model.litertlm'),
+      '--meeting-max-input',
+      '256',
+      '--effort-model',
+      join(dir, 'effort.litertlm'),
+      '--effort-max-input',
+      '1024',
       '--backend',
       'cpu',
       '--threads',
       '6',
-      '--max-input',
-      '256',
       '--cache-dir',
       join(dir, 'cache'),
       '--api-major',
@@ -87,6 +91,7 @@ describe('local embedding engine', () => {
     helper.ready();
     await flush();
     expect(helper.sent[0]).toMatchObject({
+      model: 'effort',
       texts: ['task: classification | query: rename a variable'],
       overflow: 'truncate',
       dim: 4,
@@ -100,6 +105,58 @@ describe('local embedding engine', () => {
       requestedDevice: 'cpu',
       actualDevice: 'cpu',
     });
+  });
+
+  it('computes effort judgments on the effort model and meeting batches on the meeting model', async () => {
+    const { engine, launcher } = setup();
+    const judged = engine.embed(effort('same text'));
+    await flush();
+    const helper = launcher.last();
+    helper.ready();
+    await flush();
+    helper.answer(0, 0.25);
+    await judged;
+    // The same text on the other model is not served from the cache.
+    const grouped = engine.embed({ ...meeting('same text'), task: 'classification' });
+    await flush();
+    expect(helper.sent.map((request) => request.model)).toEqual(['effort', 'meeting']);
+    helper.answer(1, 0.75);
+    expect(Array.from((await grouped)[0]!)).toEqual([0.75, 0.75, 0.75, 0.75]);
+    expect(Array.from((await engine.embed(effort('same text')))[0]!)).toEqual([
+      0.25, 0.25, 0.25, 0.25,
+    ]);
+  });
+
+  it("rejects a vector whose size is not the requested model's", async () => {
+    const root = tempDir();
+    const base = testBundle();
+    const bundle = {
+      ...base,
+      models: { ...base.models, effort: { ...base.models.effort, dims: 8 } },
+    };
+    markInstalled(root, bundle);
+    const launcher = fakeLauncher();
+    const engine = new LocalEmbeddingEngine({
+      root,
+      bundle,
+      target: 'linux-x64',
+      helperPath: '/opt/helper',
+      launch: launcher.launch,
+      threads: 6,
+    });
+    const judged = engine.embed(effort('x'));
+    await flush();
+    launcher.last().ready();
+    await flush();
+    expect(launcher.last().sent[0]).toMatchObject({ model: 'effort', dim: 8 });
+    launcher.last().answer(0);
+    await expect(judged).resolves.toHaveLength(1);
+    const grouped = engine.embed(meeting('y'));
+    await flush();
+    expect(launcher.last().sent[1]).toMatchObject({ model: 'meeting', dim: 4 });
+    // A helper that answers with the other model's size is refused.
+    launcher.last().emitResult(1, 8);
+    await expect(grouped).rejects.toThrow(/unexpected embedding shape/);
   });
 
   it('serves a waiting effort judgment before waiting meeting batches', async () => {

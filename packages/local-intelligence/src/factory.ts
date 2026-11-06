@@ -1,4 +1,5 @@
-// One local AI instance per server: the shared embedding engine and the effort judge on it.
+// One local AI instance per server: the shared embedding engine with both models, and the effort
+// judge on the effort model.
 // The caller creates it once and closes it on shutdown; nothing starts until the first use.
 import { readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
@@ -31,7 +32,8 @@ export interface LocalIntelligenceOptions {
 /** What the settings panel shows. */
 export interface LocalAiStatus {
   release: string;
-  modelName: string;
+  /** Display names of the two models the bundle installs together. */
+  models: { meeting: string; effort: string };
   state: EngineState | 'installing';
   /** The full download for this machine, or null when it has no runtime. */
   downloadBytes: number | null;
@@ -57,9 +59,9 @@ export interface LocalIntelligence {
   close(): Promise<void>;
 }
 
-/** The trained effort classifier shipped with this package. */
+/** The trained effort classifier shipped with this package, for the bundled effort model. */
 export function bundledEffortWeights(): unknown {
-  return JSON.parse(readFileSync(new URL('../weights/effort-v2.json', import.meta.url), 'utf8'));
+  return JSON.parse(readFileSync(new URL('../weights/effort-v4.json', import.meta.url), 'utf8'));
 }
 
 export function createLocalIntelligence(options: LocalIntelligenceOptions = {}): LocalIntelligence {
@@ -69,8 +71,8 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
   const root = options.root ?? defaultLocalAiDir();
   const target = runtimeTarget(bundle, platform, arch);
   const classifier = loadEffortClassifier(options.effortWeights ?? bundledEffortWeights(), {
-    dims: bundle.embedding.dims,
-    baseModelSha256: bundle.model.sha256,
+    dims: bundle.models.effort.dims,
+    baseModelSha256: bundle.models.effort.sha256,
     preprocessVersion: EFFORT_PREPROCESS_VERSION,
   });
   const helperPath =
@@ -113,7 +115,7 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
     const current = engine.status();
     return {
       release: bundle.release,
-      modelName: bundle.model.name,
+      models: { meeting: bundle.models.meeting.name, effort: bundle.models.effort.name },
       state: installing ? 'installing' : current.state,
       downloadBytes: installer.downloadBytes(),
       progress: installer.progress(),

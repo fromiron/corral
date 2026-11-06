@@ -1924,7 +1924,7 @@ export class Coordinator {
         ? {
             reasoningApply: {
               enabled: true,
-              policy: this.judgments.settings.reasoning_effort.policy ?? 'medium',
+              policy: this.judgments.settings.reasoning_effort.policy ?? 'judged',
               provider: 'local-model' as const,
               version:
                 this.judgments.providers.find(

@@ -1,23 +1,19 @@
-// Installs a local AI bundle: the base model and the LiteRT-LM library for one target. Every
+// Installs a local AI bundle: both models and the LiteRT-LM library for one target. Every
 // file is streamed to a partial file with its exact size and sha256 checked, then renamed into
 // place, so a broken or interrupted download never replaces a working file. The release stamp
 // is written last; until then the folder reads as not installed. Each release gets its own
 // folder, so a running engine keeps reading the release it started with.
-//
-// The install-then-stamp approach is derived from mixdog `src/runtime/effort-judge/model-install.mjs`
-// (Apache-2.0; see ../NOTICE.md). Changes for Corral: streamed downloads with cancellation and
-// progress, library extraction from a pinned wheel, and one folder per release.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { open, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { type Bundle, bundledManifest, validBundle } from './bundle.ts';
+import { type Bundle, bundledManifest, MODEL_ROLES, validBundle } from './bundle.ts';
 import { extractZipMember } from './zip.ts';
 
 export type InstallState = 'current' | 'stale' | 'missing' | 'unsupported';
 
 export interface InstallProgress {
-  /** The model file name, or `runtime` for the wheel. */
+  /** A model's file name, or `runtime` for the wheel. */
   file: string;
   received: number;
   total: number;
@@ -150,11 +146,13 @@ export async function installBundle(root: string, options: InstallOptions): Prom
     unstamped = true;
   };
   try {
-    const model = join(dir, bundle.model.file);
-    if (!(await matches(model, bundle.model))) {
+    for (const role of MODEL_ROLES) {
+      const pinned = bundle.models[role];
+      const model = join(dir, pinned.file);
+      if (await matches(model, pinned)) continue;
       const partial = `${model}.part`;
       partials.push(partial);
-      await download(bundle.model.url, partial, bundle.model, bundle.model.file, options);
+      await download(pinned.url, partial, pinned, pinned.file, options);
       unstamp();
       renameSync(partial, model);
     }

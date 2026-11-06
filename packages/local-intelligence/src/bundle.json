@@ -1,21 +1,33 @@
 {
-  "schemaVersion": 1,
-  "release": "corral-local-ai-1",
-  "model": {
-    "name": "EmbeddingGemma 2 Text 270M",
-    "file": "embeddinggemma-2-text-270m.litertlm",
-    "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b90982095dc05c2bd162e4b954ee4dbac7/embeddinggemma-2-text-270m.litertlm",
-    "size": 164626432,
-    "sha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
-  },
-  "embedding": {
-    "dims": 768,
-    "maxInputTokens": 256
+  "schemaVersion": 2,
+  "release": "corral-local-ai-2",
+  "models": {
+    "meeting": {
+      "name": "EmbeddingGemma 2 Text 270M",
+      "file": "embeddinggemma-2-text-270m.litertlm",
+      "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b90982095dc05c2bd162e4b954ee4dbac7/embeddinggemma-2-text-270m.litertlm",
+      "size": 164626432,
+      "sha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb",
+      "dims": 768,
+      "maxInputTokens": 256
+    },
+    "effort": {
+      "name": "Corral Effort Judge 270M",
+      "file": "corral-effort-judge-270m-int8.litertlm",
+      "url": "https://huggingface.co/fromiron/corral-effort-judge-270m/resolve/c772d41e5ae7f5bdf6e31b381b8044a4211d5fd9/corral-effort-judge-270m-int8.litertlm",
+      "size": 305148992,
+      "sha256": "628e232e9949748b9f8e6b255bc09855a265d98893e2dc733f13fb1eb60c5314",
+      "dims": 768,
+      "maxInputTokens": 1024
+    }
   },
   "runtime": {
     "name": "litert-lm-api",
     "version": "0.19.0",
-    "apiVersion": { "major": 1, "minor": 0 },
+    "apiVersion": {
+      "major": 1,
+      "minor": 0
+    },
     "targets": {
       "linux-x64": {
         "url": "https://files.pythonhosted.org/packages/73/07/f2817c145fd04983607d830259e620700638a426ed7b9dda50722a737c90/litert_lm_api-0.19.0-py3-none-manylinux_2_27_x86_64.whl",

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { bundledManifest, validBundle } from '../src/bundle.ts';
 import { bundleDir, installBundle, installState } from '../src/install.ts';
 import {
+  EFFORT_MODEL,
   EXTRA,
   fakeFetch,
   LIBRARY,
@@ -19,7 +20,7 @@ import {
 const target = 'linux-x64';
 
 describe('local AI bundle install', () => {
-  it('installs the model and the library extracted from the wheel, then stamps the release', async () => {
+  it('installs both models and the library extracted from the wheel, then stamps the release', async () => {
     const root = tempDir();
     const bundle = testBundle();
     const { fetchFn } = fakeFetch(servedBodies(bundle));
@@ -37,12 +38,14 @@ describe('local AI bundle install', () => {
 
     expect(dir).toBe(bundleDir(root, bundle));
     expect(readFileSync(join(dir, 'model.litertlm'))).toEqual(MODEL);
+    expect(readFileSync(join(dir, 'effort.litertlm'))).toEqual(EFFORT_MODEL);
     expect(readFileSync(join(dir, 'libfake.so'))).toEqual(LIBRARY);
     expect(readFileSync(join(dir, 'extra.so'))).toEqual(EXTRA);
     expect(installState(root, target, bundle)).toBe('current');
-    expect(progress).toEqual(['model.litertlm', 'runtime']);
+    expect(progress).toEqual(['model.litertlm', 'effort.litertlm', 'runtime']);
     // Only installed files and the stamp remain; the wheel and partial files are gone.
     expect(readdirSync(dir).sort()).toEqual([
+      'effort.litertlm',
       'extra.so',
       'install.json',
       'libfake.so',
@@ -64,7 +67,7 @@ describe('local AI bundle install', () => {
     const bundle = testBundle();
     const bodies = {
       ...servedBodies(bundle),
-      [bundle.model.url]: Buffer.from(MODEL).fill(1, 0, 1),
+      [bundle.models.meeting.url]: Buffer.from(MODEL).fill(1, 0, 1),
     };
     await expect(
       installBundle(root, { bundle, target, fetchFn: fakeFetch(bodies).fetchFn }),
@@ -74,13 +77,30 @@ describe('local AI bundle install', () => {
     expect(readdirSync(dir).filter((name) => name.endsWith('.part'))).toEqual([]);
   });
 
+  it('refuses an effort model whose sha256 differs, naming that file', async () => {
+    const root = tempDir();
+    const bundle = testBundle();
+    const bodies = {
+      ...servedBodies(bundle),
+      [bundle.models.effort.url]: Buffer.from(EFFORT_MODEL).fill(1, 0, 1),
+    };
+    await expect(
+      installBundle(root, { bundle, target, fetchFn: fakeFetch(bodies).fetchFn }),
+    ).rejects.toThrow(/effort\.litertlm.*sha256/);
+    expect(installState(root, target, bundle)).toBe('missing');
+    expect(existsSync(join(bundleDir(root, bundle), 'effort.litertlm'))).toBe(false);
+  });
+
   it('refuses a body that is longer or shorter than the pinned size', async () => {
     const bundle = testBundle();
-    const longer = { ...servedBodies(bundle), [bundle.model.url]: Buffer.concat([MODEL, MODEL]) };
+    const longer = {
+      ...servedBodies(bundle),
+      [bundle.models.meeting.url]: Buffer.concat([MODEL, MODEL]),
+    };
     await expect(
       installBundle(tempDir(), { bundle, target, fetchFn: fakeFetch(longer).fetchFn }),
     ).rejects.toThrow(/larger than/);
-    const shorter = { ...servedBodies(bundle), [bundle.model.url]: MODEL.subarray(1) };
+    const shorter = { ...servedBodies(bundle), [bundle.models.meeting.url]: MODEL.subarray(1) };
     await expect(
       installBundle(tempDir(), { bundle, target, fetchFn: fakeFetch(shorter).fetchFn }),
     ).rejects.toThrow(/of \d+ bytes/);
@@ -104,7 +124,11 @@ describe('local AI bundle install', () => {
         },
       },
     });
-    const bodies = { [pinned.model.url]: MODEL, [pinned.runtime.targets[target]!.url]: tampered };
+    const bodies = {
+      [pinned.models.meeting.url]: MODEL,
+      [pinned.models.effort.url]: EFFORT_MODEL,
+      [pinned.runtime.targets[target]!.url]: tampered,
+    };
     const root = tempDir();
     await expect(
       installBundle(root, { bundle: pinned, target, fetchFn: fakeFetch(bodies).fetchFn }),
@@ -166,12 +190,21 @@ describe('local AI bundle install', () => {
 
   it('rejects manifests that could escape the folder or skip a check', () => {
     const bundle = testBundle();
+    const { meeting, effort } = bundle.models;
     expect(() =>
-      validBundle({ ...bundle, model: { ...bundle.model, file: '../model' } }),
+      validBundle({ ...bundle, models: { meeting: { ...meeting, file: '../model' }, effort } }),
     ).toThrow();
     expect(() =>
-      validBundle({ ...bundle, model: { ...bundle.model, url: 'http://x/model' } }),
+      validBundle({ ...bundle, models: { meeting, effort: { ...effort, url: 'http://x/model' } } }),
     ).toThrow();
+    // Both models in one file, or a model without its own size limits, could skip a check.
+    expect(() =>
+      validBundle({ ...bundle, models: { meeting, effort: { ...effort, file: meeting.file } } }),
+    ).toThrow();
+    expect(() =>
+      validBundle({ ...bundle, models: { meeting, effort: { ...effort, maxInputTokens: 0 } } }),
+    ).toThrow();
+    expect(() => validBundle({ ...bundle, models: { meeting } } as never)).toThrow();
     expect(() => validBundle({ ...bundle, release: 'a/b' })).toThrow();
     const runtime = bundle.runtime.targets[target]!;
     expect(() =>
@@ -189,7 +222,7 @@ describe('local AI bundle install', () => {
         runtime: {
           ...bundle.runtime,
           targets: {
-            [target]: { ...runtime, files: { 'model.litertlm': runtime.files['libfake.so']! } },
+            [target]: { ...runtime, files: { 'effort.litertlm': runtime.files['libfake.so']! } },
           },
         },
       }),
@@ -204,7 +237,8 @@ describe('local AI bundle install', () => {
       'linux-x64',
       'win32-x64',
     ]);
-    expect(bundle.embedding).toEqual({ dims: 768, maxInputTokens: 256 });
+    expect(bundle.models.meeting).toMatchObject({ dims: 768, maxInputTokens: 256 });
+    expect(bundle.models.effort).toMatchObject({ dims: 768, maxInputTokens: 1024 });
     expect(WHEEL.length).toBeGreaterThan(0);
   });
 });

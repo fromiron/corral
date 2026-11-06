@@ -112,6 +112,18 @@ describe('decision APIs', () => {
     ).toMatchObject({ keyConfigured: false });
   });
 
+  it('sends at most the first 4,096 code points of the judge text', async () => {
+    const t = await apisWith(() => new Response(jevAnswer('low'), { status: 200 }));
+    await t.apis.setKey('jev', KEY);
+    // Astral characters count once each and are never split.
+    const long = { ...input, request: '😀'.repeat(3_000) + 'x'.repeat(3_000) };
+    await judgeOf(t.apis, 'jev').judge(long, { model: 'jev-latest', owner }, never);
+    const { state } = JSON.parse(String(t.sent[0]?.init.body)) as { state: string };
+    expect(Array.from(state)).toHaveLength(4_096);
+    expect(effortText(long).startsWith(state)).toBe(true);
+    expect(state.endsWith('😀') || state.endsWith('x')).toBe(true);
+  });
+
   it('asks Jev with the judge text and an effort choice, and records the attempt', async () => {
     const t = await apisWith(() => new Response(jevAnswer('xhigh'), { status: 200 }));
     await t.apis.setKey('jev', KEY);

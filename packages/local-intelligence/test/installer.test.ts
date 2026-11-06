@@ -5,6 +5,7 @@ import { createLocalIntelligence } from '../src/factory.ts';
 import { bundleDir } from '../src/install.ts';
 import { fakeLauncher, markInstalled } from './fake-helper.ts';
 import {
+  EFFORT_MODEL,
   fakeFetch,
   MODEL,
   servedBodies,
@@ -66,10 +67,10 @@ describe('local AI install from the settings panel', () => {
     const root = tempDir();
     const held = heldFetch();
     const li = localAi(root, held.fetchFn);
-    const total = MODEL.length + WHEEL.length;
+    const total = MODEL.length + EFFORT_MODEL.length + WHEEL.length;
     expect(li.status()).toEqual({
       release: 'test-release-1',
-      modelName: 'Test model',
+      models: { meeting: 'Test model', effort: 'Test effort model' },
       state: 'missing',
       downloadBytes: total,
       progress: null,
@@ -85,7 +86,7 @@ describe('local AI install from the settings panel', () => {
     expect(li.status()).toMatchObject({ state: 'idle', progress: null, error: null });
     expect(li.effort.available()).toBe(true);
     expect(li.install()).toMatchObject({ state: 'idle' });
-    expect(held.requested).toHaveLength(2);
+    expect(held.requested).toHaveLength(3);
     await li.close();
   });
 
@@ -100,7 +101,7 @@ describe('local AI install from the settings panel', () => {
       progress: null,
       error: null,
     });
-    expect(held.aborted).toEqual([testBundle().model.url]);
+    expect(held.aborted).toEqual([testBundle().models.meeting.url]);
     expect(leftovers(root)).toEqual([]);
     expect(li.effort.available()).toMatch(/not installed/);
     await li.close();
@@ -185,7 +186,7 @@ describe('local AI install from the settings panel', () => {
     li.install();
     await vi.waitFor(() => expect(held.asked).toHaveLength(1));
     await li.close();
-    expect(held.aborted).toEqual([testBundle().model.url]);
+    expect(held.aborted).toEqual([testBundle().models.meeting.url]);
     expect(leftovers(root)).toEqual([]);
   });
 });
