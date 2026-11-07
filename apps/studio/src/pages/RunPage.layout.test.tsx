@@ -29,6 +29,7 @@ vi.mock('@corral/core', async (original) => {
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ runRoute: {} }));
 vi.mock('../workbench/RunStatusCards.tsx', () => ({
+  ExecutionContext: () => null,
   RunStatusCards: () => (
     <details data-testid="status-card">
       <summary>Context</summary>Scope detail
@@ -881,9 +882,13 @@ it('workspace preserves the mounted graph and the selected view while opening an
   ).toContain('Graph');
 });
 
-it('workspace preserves expanded inspector details across documents and detail tabs', async () => {
+it('workspace preserves expanded run info details across documents and its tabs', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
-  const { container, navigate } = await mount('inline_team', null, { execution: 'worker' });
+  const { container, navigate } = await mount('inline_team', null);
+  const info = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Run info',
+  );
+  await act(async () => info?.click());
   const details = container.querySelector<HTMLDetailsElement>('[data-testid="status-card"]');
   expect(details).not.toBeNull();
   if (details) details.open = true;
@@ -900,11 +905,40 @@ it('workspace preserves expanded inspector details across documents and detail t
     await act(async () => button?.click());
     expect(button?.getAttribute('aria-selected')).toBe('true');
   };
-  await tab('Calls');
+  await tab('Usage');
   expect(details?.isConnected).toBe(true);
   await tab('Overview');
   expect(container.querySelector('[data-testid="status-card"]')).toBe(details);
   expect(details?.open).toBe(true);
+});
+
+it('an execution detail shows only that execution, in one view without tabs', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('h2')?.textContent).toBe('worker');
+  // Environment, connections, changes and run usage belong to Run info only.
+  expect(side?.querySelector('[data-testid="status-card"]')).toBeNull();
+  expect(side?.querySelector('[role="tablist"]')).toBeNull();
+  // The running execution can still be given an instruction.
+  expect(
+    [...(side?.querySelectorAll('button') ?? [])].some(
+      (button) => button.textContent?.trim() === 'Give instruction',
+    ),
+  ).toBe(true);
+});
+
+it('a finished execution offers no instruction screen', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
+  await populateGraph(run, [{ ...graphExecution('exec_worker', 'worker'), status: 'succeeded' }]);
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.querySelector('h2')?.textContent).toBe('worker');
+  const labels = [...(side?.querySelectorAll('button') ?? [])].map((b) => b.textContent?.trim());
+  expect(labels).not.toContain('Reins');
+  expect(labels).not.toContain('Give instruction');
 });
 
 it('workspace changes inspected executions without silently retargeting an instruction draft', async () => {

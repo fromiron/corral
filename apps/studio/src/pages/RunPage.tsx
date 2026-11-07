@@ -72,7 +72,7 @@ import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunPlanStrip } from '../workbench/RunActivity.tsx';
-import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
+import { ExecutionContext, RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { RunViews } from '../workbench/RunViews.tsx';
 import { runFlowChecks } from '../workbench/runFlowChecks.ts';
@@ -720,13 +720,13 @@ function RunWorkspace({
                   onChoose={(id) => chooseExecution(id, trigger.current)}
                 />
               ) : null}
-              {selectedTarget && panel === 'selection' ? (
+              {selectedTarget && !selectedTarget.finished && panel === 'selection' ? (
                 <Button
                   variant="primary"
                   size="compact"
                   onClick={() => openSteering(selectedTarget.executionId)}
                 >
-                  {selectedTarget.finished ? 'Reins' : m('steer')}
+                  {m('steer')}
                 </Button>
               ) : null}
               {failedTools.length && panel === 'selection' ? (
@@ -739,80 +739,66 @@ function RunWorkspace({
                   ))}
                 </section>
               ) : null}
-              {panel === 'run' || execution ? (
+              {panel === 'run' ? (
                 <Tabs value={detail} onValueChange={setDetail} className="mt-3">
                   <div className="overflow-x-auto">
                     <TabsList aria-label={m('details')}>
-                      {(panel === 'run' ? ['overview', 'usage'] : ['overview', 'calls']).map(
-                        (value) => (
-                          <TabItem key={value} value={value} label={m(value)} />
-                        ),
-                      )}
+                      {['overview', 'usage'].map((value) => (
+                        <TabItem key={value} value={value} label={m(value)} />
+                      ))}
                     </TabsList>
                   </div>
                   <TabPanel value="overview" keepMounted className="space-y-3 pt-3">
-                    {panel === 'selection' && sessionId && selectedTarget ? (
-                      <ExecutionEvidence
-                        session={session}
-                        sessionId={sessionId}
-                        executionId={selectedTarget.executionId}
-                        onOpenArtifact={openArtifact}
-                      />
-                    ) : null}
-                    {panel === 'run' ? (
-                      <RunFacts session={session} definition={definition} request={request} />
-                    ) : null}
-                    {panel === 'run' ? (
-                      <Accordion>
-                        <AccordionItem value="tasks">
-                          <AccordionTrigger>{t('tabs.tasks')}</AccordionTrigger>
+                    <RunFacts session={session} definition={definition} request={request} />
+                    <Accordion>
+                      <AccordionItem value="tasks">
+                        <AccordionTrigger>{t('tabs.tasks')}</AccordionTrigger>
+                        <AccordionContent>
+                          <TaskBoard session={session} onOpenArtifact={openArtifact} />
+                        </AccordionContent>
+                      </AccordionItem>
+                      {Object.keys(projection?.questions ?? {}).length ? (
+                        <AccordionItem value="questions">
+                          <AccordionTrigger>{t('tabs.questions')}</AccordionTrigger>
                           <AccordionContent>
-                            <TaskBoard session={session} onOpenArtifact={openArtifact} />
+                            <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
                           </AccordionContent>
                         </AccordionItem>
-                        {Object.keys(projection?.questions ?? {}).length ? (
-                          <AccordionItem value="questions">
-                            <AccordionTrigger>{t('tabs.questions')}</AccordionTrigger>
-                            <AccordionContent>
-                              <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
-                            </AccordionContent>
-                          </AccordionItem>
-                        ) : null}
-                        <AccordionItem value="settings">
-                          <AccordionTrigger>{m('settings')}</AccordionTrigger>
-                          <AccordionContent>
-                            <SettingsPatchPanel session={session} />
-                          </AccordionContent>
-                        </AccordionItem>
-                      </Accordion>
-                    ) : null}
-                    {panel === 'selection' || panel === 'run' ? (
-                      <RunStatusCards
-                        session={session}
-                        sessionId={sessionId}
-                        executionId={panel === 'selection' ? (execution ?? null) : null}
-                      />
-                    ) : null}
-                  </TabPanel>
-                  <TabPanel value="calls" keepMounted className="space-y-3 pt-3">
-                    {selectedTarget ? (
-                      <div className="flex h-[50vh] min-h-40 flex-col">
-                        <ExecutionTranscript
-                          session={session}
-                          executionId={selectedTarget.executionId}
-                          onOpenArtifact={openArtifact}
-                        />
-                      </div>
-                    ) : (
-                      <p>{m('chooseExecution')}</p>
-                    )}
-                    <HarnessDetails session={session} />
+                      ) : null}
+                      <AccordionItem value="settings">
+                        <AccordionTrigger>{m('settings')}</AccordionTrigger>
+                        <AccordionContent>
+                          <SettingsPatchPanel session={session} />
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                    <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
                     <BudgetInspector session={session} prices={prices} />
                     <EffortJudgments session={session} />
                   </TabPanel>
                 </Tabs>
+              ) : null}
+              {panel === 'selection' && selectedTarget ? (
+                <div className="grid gap-4">
+                  {sessionId ? (
+                    <ExecutionEvidence
+                      session={session}
+                      sessionId={sessionId}
+                      executionId={selectedTarget.executionId}
+                      onOpenArtifact={openArtifact}
+                    />
+                  ) : null}
+                  <ExecutionContext session={session} executionId={selectedTarget.executionId} />
+                  <section aria-label={m('calls')} className="-mx-4 grid">
+                    <ExecutionTranscript
+                      session={session}
+                      executionId={selectedTarget.executionId}
+                      onOpenArtifact={openArtifact}
+                    />
+                  </section>
+                </div>
               ) : null}
             </div>
           </div>

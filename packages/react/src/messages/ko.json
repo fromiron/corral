@@ -3005,6 +3005,7 @@
     "noCopy": "작업 사본 없음",
     "noSession": "연결된 세션 작업 사본 없음",
     "context": "컨텍스트와 비용",
+    "contextOnly": "컨텍스트",
     "estimate": "메시지 약 {count, number}토큰",
     "unknown": "알 수 없음",
     "lastRequest": "이 실행의 마지막 기록된 요청",

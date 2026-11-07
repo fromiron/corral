@@ -3005,6 +3005,7 @@
     "noCopy": "No working copy",
     "noSession": "No session working copy linked",
     "context": "Context and cost",
+    "contextOnly": "Context",
     "estimate": "About {count, number} message tokens",
     "unknown": "Unknown",
     "lastRequest": "Last recorded request for this execution",
