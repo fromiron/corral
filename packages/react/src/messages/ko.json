@@ -954,13 +954,28 @@
     }
   },
   "RunCanvas": {
+    "loading": "활동 기록을 불러오는 중…",
     "label": "실행 그래프",
     "layout": {
       "saved": "저장된 팀의 배치",
       "auto": "자동 배치"
     },
     "layoutNote": "위치일 뿐이며 실행 내용은 바꾸지 않습니다.",
-    "relationsLegend": "옅은 선: 정의 연결 · 굵은 선: 관측된 호출",
+    "relationsLegend": "관측된 관계",
+    "empty": "아직 에이전트 활동이 없습니다",
+    "requested": "요청됨",
+    "models": "모델 {count}개",
+    "profiles": "모델 프로필 {count}개",
+    "unsettled": "최종 상태 미기록",
+    "relationship": "{source} → {target}: {relations}",
+    "relationCount": "{kind} {count}",
+    "relation": {
+      "delegate": "위임",
+      "question": "질문",
+      "answer": "응답",
+      "read": "자료 읽음",
+      "input": "모델 입력"
+    },
     "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개"
   },
   "Judgments": {

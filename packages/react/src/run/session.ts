@@ -32,6 +32,8 @@ export interface RunSessionState {
   definition: CorralDefinition | null;
   definitionError: string | null;
   projection: RunProjection | null;
+  /** Initial snapshot sequence to read before mounting graphs; null while fetching, undefined when ready. */
+  initialLoadSeq: number | null | undefined;
   /** Every committed event of the run, in order (Timeline). */
   events: RunEvent[];
   /**
@@ -146,11 +148,13 @@ export function createRunSession(
       const restored = recovery?.events(runId) ?? [];
       set({
         projection: restored.reduce(applyEvent, emptyProjection(runId)),
+        initialLoadSeq: typeof transport.getSnapshot === 'function' ? null : undefined,
         events: restored,
         streams: {},
       });
       let pending: RunEvent[] = [];
       let scheduled = false;
+      let replayFailed = false;
       const flush = () => {
         scheduled = false;
         const batch = pending;
@@ -169,8 +173,13 @@ export function createRunSession(
             return !ref || canReadArtifactBody(projection, ref);
           }),
         );
+        const initialLoadSeq = get().initialLoadSeq;
         set({
           projection,
+          initialLoadSeq:
+            typeof initialLoadSeq === 'number' && projection.lastSeq >= initialLoadSeq
+              ? undefined
+              : initialLoadSeq,
           artifactTexts,
           streams,
           outputText:
@@ -276,7 +285,10 @@ export function createRunSession(
           }
         },
         onError: (error) => {
-          if (generation === version) set({ streamError: String(error) });
+          if (generation === version) {
+            replayFailed = true;
+            set({ streamError: String(error), initialLoadSeq: undefined });
+          }
         },
       });
       // Subscribe first, then restore the saved prefix. Buffer frames while reading so
@@ -286,8 +298,15 @@ export function createRunSession(
           const snapshot = await transport.getSnapshot(runId);
           if (generation !== version) return;
           applyPartialSnapshot(snapshot, version);
+          set({
+            initialLoadSeq:
+              replayFailed || (get().projection?.lastSeq ?? 0) >= snapshot.seq
+                ? undefined
+                : snapshot.seq,
+          });
         } catch (error) {
-          if (generation === version) set({ streamError: String(error) });
+          if (generation === version)
+            set({ streamError: String(error), initialLoadSeq: undefined });
         } finally {
           restoringPrefix = false;
           flushFrames();
@@ -314,6 +333,7 @@ export function createRunSession(
         definition: null,
         definitionError: null,
         projection: null,
+        initialLoadSeq: undefined,
         events: [],
         streams: {},
         artifactTexts: {},
@@ -470,6 +490,7 @@ export function createRunSession(
       definition: null,
       definitionError: null,
       projection: null,
+      initialLoadSeq: undefined,
       events: [],
       streams: {},
       artifactTexts: {},
@@ -508,7 +529,8 @@ export function createRunSession(
           await follow(runId, version);
           await refreshDefinition(runId, version);
         } catch (error) {
-          if (generation === version) set({ streamError: String(error) });
+          if (generation === version)
+            set({ streamError: String(error), initialLoadSeq: undefined });
         }
       },
 
@@ -554,6 +576,7 @@ export function createRunSession(
             outputText: null,
             streams: {},
             projection: null,
+            initialLoadSeq: undefined,
           });
         } else reset();
         // The requested identity owns loading, missing and failed states too. Keeping it
@@ -572,7 +595,8 @@ export function createRunSession(
             await follow(runId, version);
             await recoverCommands(runId, version);
           } catch (error) {
-            if (generation === version) set({ streamError: String(error) });
+            if (generation === version)
+              set({ streamError: String(error), initialLoadSeq: undefined });
           }
         })();
         opening = { runId, generation: version, promise };

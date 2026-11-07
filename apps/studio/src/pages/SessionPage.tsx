@@ -982,7 +982,8 @@ function WorkTab({
   const { runFor, sessionFor, retainRun, workspaces } = useServices();
   const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
-  const messageId = sessionRoute.useSearch().message;
+  const currentSearch = sessionRoute.useSearch();
+  const messageId = currentSearch.message;
   useEffect(() => {
     if (!liveRunId) return;
     const release = retainRun(liveRunId);
@@ -1046,7 +1047,9 @@ function WorkTab({
         composer={
           <Composer
             key={session.sessionId}
-            runControlsOwnConfirmation
+            runControlsOwnConfirmation={
+              currentSearch.panel !== 'run' || selectedRunId === active?.runId
+            }
             session={session}
             team={team}
             corrals={corrals}

@@ -115,19 +115,29 @@ test('a run completed behind conversation fits its graph when opened and then pr
     .poll(() =>
       graph.evaluate((canvas) => {
         const bounds = canvas.getBoundingClientRect();
+        const viewport = canvas.querySelector('.react-flow__viewport');
         const nodes = [...canvas.querySelectorAll('.react-flow__node')].map((node) =>
           node.getBoundingClientRect(),
         );
-        const width =
-          Math.max(...nodes.map((node) => node.right)) -
-          Math.min(...nodes.map((node) => node.left));
-        const height =
-          Math.max(...nodes.map((node) => node.bottom)) -
-          Math.min(...nodes.map((node) => node.top));
-        return Math.max(width / bounds.width, height / bounds.height);
+        if (!viewport || !nodes.length) return false;
+        const zoom = new DOMMatrixReadOnly(getComputedStyle(viewport).transform).m11;
+        // A hidden, zero-size first fit leaves the graph at its minimum scale. Small graphs
+        // may legitimately fit at maxZoom=1 without occupying half of a large canvas.
+        return (
+          zoom > 0.25 &&
+          nodes.every(
+            (node) =>
+              node.width > 40 &&
+              node.height > 20 &&
+              node.left >= bounds.left - 2 &&
+              node.right <= bounds.right + 2 &&
+              node.top >= bounds.top - 2 &&
+              node.bottom <= bounds.bottom + 2,
+          )
+        );
       }),
     )
-    .toBeGreaterThan(0.5);
+    .toBe(true);
   const viewport = graph.locator('.react-flow__viewport');
   const initial = await viewport.getAttribute('style');
   await graph.getByRole('button', { name: /^zoom in$/i }).click();
@@ -255,9 +265,9 @@ test('switching workspace views and reading a result preserves selection, scroll
   expect(corral.errors).toEqual([]);
 });
 
-test('a reload keeps the chosen execution and the saved layout', async ({ page, corral }) => {
+test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
-  await expect(page.getByText('Layout from the saved team')).toBeVisible();
+  await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
   await page
     .getByTestId('run-activity')
@@ -268,7 +278,11 @@ test('a reload keeps the chosen execution and the saved layout', async ({ page, 
   const executionId = new URL(page.url()).searchParams.get('execution');
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
-  await expect(page.getByText('Layout from the saved team')).toBeVisible();
+  await expect(
+    page
+      .getByRole('application', { name: 'Run graph', exact: true })
+      .locator('.react-flow__node[data-id="helper"]'),
+  ).toHaveClass(/selected/);
   const side = page.getByTestId('run-side');
   await side.getByRole('button', { name: 'Reins', exact: true }).click();
   const reins = page.getByTestId('run-instructions');
@@ -462,12 +476,28 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   const flow = page.locator('.corral-flow').first();
   await expect(flow).toBeVisible();
   await expect(flow).toHaveCSS('color-scheme', 'dark');
-  const node = flow.locator('.react-flow__node [data-slot="card"]').first();
-  await expect(node).toHaveCSS('background-color', 'rgb(37, 37, 37)');
-  const labels = await flow.locator('.react-flow__edge-text').allTextContents();
-  expect(labels.filter((label) => label === 'delegates')).toHaveLength(0);
-  expect(labels.some((label) => label.includes('observed'))).toBe(true);
+  const node = flow.locator('.react-flow__node[data-id="research"]');
+  const mark = node.locator('button > div').first();
+  await expect(mark).toBeVisible();
+  const darkSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const labels = await flow
+    .locator('.react-flow__edge[aria-label]')
+    .evaluateAll((edges) => edges.map((edge) => edge.getAttribute('aria-label')));
+  expect(labels.some((label) => /delegat/i.test(label ?? ''))).toBe(true);
+  const selectNode = node.getByRole('button');
+  await selectNode.focus();
+  await page.keyboard.press('Enter');
+  await expect(selectNode).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('region', { name: 'Research executions' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('dark-history.png') });
+  await page.evaluate(() =>
+    localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' })),
+  );
+  await page.reload();
+  await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+  await expect(flow).toHaveCSS('color-scheme', 'light');
+  const lightSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(lightSurface).not.toBe(darkSurface);
   expect(corral.errors).toEqual([]);
 });
 

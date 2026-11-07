@@ -41,7 +41,8 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   await expect(side).toBeVisible();
   await expect(activity).toBeHidden();
   await expect(graph(page)).toBeHidden();
-  await side.getByRole('button', { name: 'Reins', exact: true }).click();
+  const openReins = side.getByRole('button', { name: 'Reins', exact: true });
+  await openReins.click();
   const reins = monitor.getByTestId('run-instructions');
   await expect(reins).toBeVisible();
   await expect(reins).toContainText('This execution has finished.');
@@ -51,6 +52,7 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
 
   await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
   await expect(side).toBeVisible();
+  await expect(openReins).toBeFocused();
   await side.getByRole('button', { name: 'Close details', exact: true }).click();
   await expect(side).toBeHidden();
   await expect(selected).toBeFocused();
@@ -75,19 +77,27 @@ test('the primary graph fits a short window and keeps its zoom across view and s
     .poll(() =>
       graph(page).evaluate((canvas) => {
         const bounds = canvas.getBoundingClientRect();
+        const viewport = canvas.querySelector('.react-flow__viewport');
         const nodes = [...canvas.querySelectorAll('.react-flow__node')].map((node) =>
           node.getBoundingClientRect(),
         );
-        const width =
-          Math.max(...nodes.map((node) => node.right)) -
-          Math.min(...nodes.map((node) => node.left));
-        const height =
-          Math.max(...nodes.map((node) => node.bottom)) -
-          Math.min(...nodes.map((node) => node.top));
-        return Math.max(width / bounds.width, height / bounds.height);
+        if (!viewport || !nodes.length) return false;
+        const zoom = new DOMMatrixReadOnly(getComputedStyle(viewport).transform).m11;
+        return (
+          zoom > 0.25 &&
+          nodes.every(
+            (node) =>
+              node.width > 40 &&
+              node.height > 20 &&
+              node.left >= bounds.left - 2 &&
+              node.right <= bounds.right + 2 &&
+              node.top >= bounds.top - 2 &&
+              node.bottom <= bounds.bottom + 2,
+          )
+        );
       }),
     )
-    .toBeGreaterThan(0.5);
+    .toBe(true);
   const viewport = graph(page).locator('.react-flow__viewport');
   const initial = await viewport.getAttribute('style');
   await graph(page)
@@ -112,6 +122,8 @@ test('the primary graph fits a short window and keeps its zoom across view and s
     .toBe(true);
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   await expect.poll(async () => (await graph(page).boundingBox())?.height ?? 0).toBeGreaterThan(80);
+  await expect(graph(page).getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+  await expect(graph(page).getByRole('button', { name: /^fit view$/i })).toBeInViewport();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
   ).toBeLessThanOrEqual(0);
@@ -127,4 +139,13 @@ test('the primary graph fits a short window and keeps its zoom across view and s
     'aria-selected',
     'true',
   );
+});
+
+test('graph controls remain reachable after resizing to a short phone window', async ({ page }) => {
+  await finishedRun(page);
+  const canvas = graph(page);
+  await canvas.getByRole('button', { name: /^fit view$/i }).click();
+  await page.setViewportSize({ width: 390, height: 420 });
+  await expect(canvas.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+  await expect(canvas.getByRole('button', { name: /^fit view$/i })).toBeInViewport();
 });

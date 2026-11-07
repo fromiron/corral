@@ -32,12 +32,46 @@ test.use({ viewport: { width: 1600, height: 900 } });
 
 const graph = (page: Page) => page.getByRole('application', { name: 'Run graph' });
 
+test('the first view of a completed run fits every observed agent above the results', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await finishedTeamRun(page);
+  await expect(page.getByRole('region', { name: 'Results', exact: true })).toBeVisible();
+  const stage = graph(page).locator('.corral-run-graph');
+  await expect(stage.locator('.react-flow__node')).toHaveCount(5);
+  await expect
+    .poll(() =>
+      stage.evaluate((canvas) => {
+        const bounds = canvas.getBoundingClientRect();
+        return [...canvas.querySelectorAll<HTMLElement>('.react-flow__node')]
+          .filter((node) => {
+            const box = node.getBoundingClientRect();
+            return (
+              box.width <= 0 ||
+              box.height <= 0 ||
+              box.left < bounds.left - 2 ||
+              box.right > bounds.right + 2 ||
+              box.top < bounds.top - 2 ||
+              box.bottom > bounds.bottom + 2
+            );
+          })
+          .map((node) => node.dataset.id);
+      }),
+    )
+    .toEqual([]);
+});
+
 test('the Run page shows the graph with execution counts, and a node leads to its executions', async ({
   page,
 }) => {
   await finishedTeamRun(page);
-  await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
-  await expect(page.getByText('Layout from the saved team')).toBeVisible();
+  const nodes = graph(page).locator('.react-flow__node');
+  await expect(nodes).toHaveCount(5);
+  expect(
+    await nodes.evaluateAll((items) => items.map((item) => item.getAttribute('data-id')).sort()),
+  ).toEqual(['helper', 'research', 'respond', 'review', 'write']);
+  await expect(graph(page).getByText('Layout from the saved team')).toHaveCount(0);
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
   await expect(writer).toContainText('2 executions');
   await expect(writer.locator('[data-run-status]')).toHaveAttribute('data-run-status', 'done');
@@ -50,7 +84,8 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   const executionId = new URL(page.url()).searchParams.get('execution');
   const monitor = page.getByTestId('run-monitor');
   const side = monitor.getByTestId('run-side');
-  await side.getByRole('button', { name: 'Reins', exact: true }).click();
+  const openReins = side.getByRole('button', { name: 'Reins', exact: true });
+  await openReins.click();
   const reins = monitor.getByTestId('run-instructions');
   await expect(reins).toBeVisible();
   await expect(reins).toContainText('Writer');
@@ -58,6 +93,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
   await expect(side).toBeHidden();
   await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await expect(openReins).toBeFocused();
   await monitor.getByRole('tab', { name: 'Work flow', exact: true }).click();
   // The activity entry of the chosen execution is marked as the current one.
   const activity = page.getByTestId('run-activity');
@@ -102,7 +138,7 @@ test('the Run graph cannot be edited: dragging and Delete change nothing', async
   await writer.click();
   await page.keyboard.press('Delete');
   await page.keyboard.press('Backspace');
-  await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
+  await expect(graph(page).locator('.react-flow__node')).toHaveCount(5);
 });
 
 test('the Usage tab lists each request’s effort judgment as observe only', async ({ page }) => {

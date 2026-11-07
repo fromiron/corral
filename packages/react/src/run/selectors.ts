@@ -27,7 +27,10 @@ export interface NodeRunSummary {
   previousFailures: number;
 }
 
-function currentAttempts(projection: RunProjection, executions: ExecutionView[]): ExecutionView[] {
+export function currentAttempts(
+  projection: RunProjection,
+  executions: ExecutionView[],
+): ExecutionView[] {
   const latest = new Map<string, ExecutionView>();
   for (const execution of executions) {
     const previous = latest.get(execution.taskId);

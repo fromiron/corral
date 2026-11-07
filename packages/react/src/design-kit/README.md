@@ -4,11 +4,12 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 59 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 60 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.
 - Source Tabs, TabsList, TabItem and TabPanel use the existing Base UI Tabs primitive and kit size, shape, surface, spring and fluid-hover helpers. Their component and prop types are exported directly, with no adapter or new dependency.
+- `AgentGraphNode` extracts the supplied AgentGraph node tile, label hierarchy, elevation and working halo. Node labels use the stage surface to remain readable across dense connections and keep their contrast when unrelated marks and edges are dimmed. Corral supplies localized status and accessible relationship descriptions, observed topology, stable positions, pan/zoom and its right inspector. The source fixed stage, demo metrics and node popover are omitted because those responsibilities belong to the run workspace.
 - Source Slider uses the existing Base UI Slider primitive, Motion and kit shape, size, font-weight and spring helpers. The supplied compact size omits step dots by default; the comfortable default pips variant renders each step.
 - Source Dialog, Select and Dropdown own their popup surfaces, nested elevation, layout and motion. MenuItem, dropdown search/submenu helpers and popup helpers complete their graph.
 - `ui-provider.tsx`, exported as `DesignKitProvider`, supplies Motion's OS reduced-motion policy and the kit's shape, size and Lucide icon contexts. Corral wraps its app entry with this provider.
@@ -140,5 +141,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/input-message.tsx` | `components/ui/input-message.tsx` | `a3d34f34dd98919b828244324e53167978bd63f3aad727e1eb2f85f01a59d15b` | `8edf002d32fde1efebafd2b869cf7686100115e4259b34306e02e152c25f11c1` |
 
 | `components/ui/file-thumbnail.tsx` | `components/ui/file-thumbnail.tsx` | `6c59cb759becc33e6f318cc31e3c533fb02b96ab79fc3bbc035e4f35c1a2be74` | `b553ae97fca9b6079b83e6ff985f2dfb6293c3386ca4f3b133ed558e4657c672` |
+
+| `components/agent/agent-graph.tsx` (node extraction) | `components/agent/agent-graph.tsx` | `0bfc711fc88994be6f14fa51780fe67b6cf8e6bc753bfa7b93c46776d882c496` | `744df1887ac1f88a643794879f69c3de6908bf81031f4a709f841bdec0ac44c7` |
 
 The supplied kit has no source license or notice file; no license has been inferred. Existing dependency licenses and notices remain in place. [DESIGN.md](../../../../DESIGN.md) owns the active design rules and adoption mappings. Future kit updates refresh these fingerprints and run the affected integration checks.

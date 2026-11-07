@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { RunEvent } from '@corral/contracts';
+import { type CorralDefinition, RunEvent } from '@corral/contracts';
 import type { CorralRecord, RuntimeTransport } from '@corral/core';
 import { applyEvent, emptyProjection } from '@corral/core';
-import { createRunSession, type RunCanvasLayout } from '@corral/react';
+import { createRunSession, type RunSessionStore } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -58,8 +58,23 @@ vi.mock('@corral/react', async (original) => {
         Approval evidence
       </button>
     ),
-    RunCanvas: ({ layout }: { layout: RunCanvasLayout }) => (
-      <output data-testid="layout">{JSON.stringify(layout)}</output>
+    RunCanvas: ({
+      definition,
+      session,
+      onSelectNode,
+    }: {
+      definition: CorralDefinition;
+      session: RunSessionStore;
+      onSelectNode: (nodeId: string) => void;
+    }) => (
+      <div>
+        <output data-testid="layout">
+          {JSON.stringify({ definition, runId: session.getState().runId })}
+        </output>
+        <button type="button" data-testid="select-worker" onClick={() => onSelectNode('worker')}>
+          Select worker
+        </button>
+      </div>
     ),
   };
 });
@@ -165,6 +180,107 @@ it('workspace opens the graph first and keeps the empty inspector closed even on
   expect(container.querySelector('[data-testid="run-dock"]')).toBeNull();
 });
 
+it('closes an empty selection inspector when Back removes the execution from the URL', async () => {
+  const { container, navigate } = await mount('inline_team', null, { execution: 'exec_past' });
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(false);
+  await navigate({ execution: undefined });
+  expect(side?.hidden).toBe(true);
+});
+
+it('returns to the selected agent executions when Back leaves an execution', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigate } = await mount('inline_team', null, {});
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        executionOrder: ['first', 'retry'],
+        nodeExecutions: { worker: ['first', 'retry'] },
+        executions: Object.fromEntries(
+          ['first', 'retry'].map((id, index) => [
+            id,
+            {
+              executionId: id,
+              nodeId: 'worker',
+              taskId: 'task',
+              status: 'succeeded',
+              attemptNo: index + 1,
+              modelProfile: 'default',
+            },
+          ]),
+        ) as never,
+      },
+    }),
+  );
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  const list = () => side?.querySelector('[aria-label="worker executions"]');
+  expect(list()?.textContent).toContain('first');
+  expect(list()?.textContent).toContain('retry');
+  await act(async () =>
+    [...(list()?.querySelectorAll('button') ?? [])]
+      .find((button) => button.textContent?.includes('retry'))
+      ?.click(),
+  );
+  expect(list()).toBeNull();
+  expect(side?.hidden).toBe(false);
+  await navigate({ execution: undefined });
+  expect(side?.hidden).toBe(false);
+  expect(list()?.textContent).toContain('first');
+  expect(list()?.textContent).toContain('retry');
+});
+
+it('does not reopen a completed approval panel when a later decision appears', async () => {
+  fixture.pending = 1;
+  const { container, run } = await mount('inline_team', null, {});
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes('Needs your input'))
+      ?.click(),
+  );
+  expect(side?.hidden).toBe(false);
+  const updatePending = async (pending: number) => {
+    fixture.pending = pending;
+    const projection = run.getState().projection;
+    if (!projection) throw new Error('Missing projection');
+    await act(async () =>
+      run.setState({ projection: { ...projection, lastSeq: projection.lastSeq + 1 } }),
+    );
+  };
+  await updatePending(0);
+  expect(side?.hidden).toBe(true);
+  await updatePending(1);
+  expect(side?.hidden).toBe(true);
+});
+
+it('returns focus to Run info after closing it even if a node was selected earlier', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container } = await mount('inline_team', null, {});
+  const node = container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]');
+  node?.focus();
+  await act(async () => node?.click());
+  const info = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Run info',
+  );
+  info?.focus();
+  await act(async () => info?.click());
+  const close = container.querySelector<HTMLButtonElement>(
+    '[data-testid="run-side"] button[aria-label="Close details"]',
+  );
+  close?.focus();
+  await act(async () => {
+    close?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(document.activeElement).toBe(info);
+});
+
 it('normalizes a legacy cursor once while a parent update precedes the route commit', async () => {
   const { navigations, navigate } = await mount('inline_team', null, { atSeq: 1 }, undefined, true);
   expect(navigations).toHaveLength(1);
@@ -237,6 +353,7 @@ it('workspace preserves expanded inspector details across documents and detail t
 });
 
 it('workspace changes inspected executions without silently retargeting an instruction draft', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run, navigate } = await mount('inline_team', null, {
     execution: 'exec_writer',
   });
@@ -248,6 +365,7 @@ it('workspace changes inspected executions without silently retargeting an instr
         ...projection,
         status: 'running',
         executionOrder: ['exec_writer', 'exec_reviewer'],
+        nodeExecutions: { worker: ['exec_writer', 'exec_reviewer'] },
         executions: Object.fromEntries(
           ['exec_writer', 'exec_reviewer'].map((id) => [
             id,
@@ -265,16 +383,38 @@ it('workspace changes inspected executions without silently retargeting an instr
     }),
   );
   expect(container.querySelector('[data-testid="reins-probe"]')).toBeNull();
-  await act(async () =>
-    [...container.querySelectorAll('button')]
-      .find((el) => el.textContent === 'Give instruction')
-      ?.click(),
+  const instruction = [...container.querySelectorAll('button')].find(
+    (el) => el.textContent === 'Give instruction',
   );
+  expect(instruction).toBeDefined();
+  instruction?.focus();
+  expect(document.activeElement).toBe(instruction);
+  await act(async () => instruction?.click());
   const draft = container.querySelector<HTMLTextAreaElement>(
     '[data-testid="reins-probe"] textarea',
   );
   expect(draft).not.toBeNull();
   if (draft) draft.value = 'Writer only';
+  const back = [
+    ...container.querySelectorAll<HTMLButtonElement>('[data-testid="run-instructions"] button'),
+  ].find((button) => button.textContent?.includes('Back to work'));
+  expect(back).toBeDefined();
+  back?.focus();
+  expect(document.activeElement).toBe(back);
+  await act(async () => {
+    back?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(document.activeElement).toBe(instruction);
+  expect(container.querySelector('[data-testid="select-worker"]')).not.toBeNull();
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const executions = container.querySelector('[aria-label="worker executions"]');
+  expect(executions?.textContent).toContain('exec_writer');
+  expect(executions?.textContent).toContain('exec_reviewer');
+  expect(container.querySelector('[data-testid="reins-probe"]')?.textContent).toBe('exec_writer');
+  expect(container.querySelector('[data-testid="reins-probe"] textarea')).toBe(draft);
   await navigate({ execution: 'exec_reviewer' });
   expect(container.querySelector('[data-testid="reins-probe"]')?.textContent).toBe('exec_writer');
   await navigate({ result: 'artv_result' });
@@ -295,16 +435,19 @@ async function openGraph(container: HTMLElement) {
   await act(async () => tab.click());
 }
 
-it('an inline handoff run lays out its graph without fetching an unsaved Corral', async () => {
+it('an inline run uses its snapshot definition without fetching an unsaved Corral', async () => {
   const { repository, container } = await mount('inline_team', null);
   await openGraph(container);
   expect(repository.get).not.toHaveBeenCalled();
-  expect(container.querySelector('[data-testid="layout"]')?.textContent).toContain(
-    '"source":"auto"',
-  );
+  expect(
+    JSON.parse(container.querySelector('[data-testid="layout"]')?.textContent ?? '{}'),
+  ).toEqual({
+    definition: linearCorral(['worker'], 'inline_team'),
+    runId: 'run_layout',
+  });
 });
 
-it('a saved Corral keeps its layout even when its id has the auto prefix', async () => {
+it('a saved Corral uses the run snapshot without fetching the saved authoring layout', async () => {
   const nodes = Object.fromEntries(
     linearCorral(['worker']).nodes.map((node, i) => [node.id, { x: 10 + i, y: 20 + i }]),
   );
@@ -312,19 +455,25 @@ it('a saved Corral keeps its layout even when its id has the auto prefix', async
     layout: { nodes },
   } as CorralRecord);
   await openGraph(container);
-  expect(repository.get).toHaveBeenCalledWith('auto_saved');
-  expect(container.querySelector('[data-testid="layout"]')?.textContent).toBe(
-    JSON.stringify({ source: 'saved', nodes }),
-  );
+  expect(repository.get).not.toHaveBeenCalled();
+  expect(
+    JSON.parse(container.querySelector('[data-testid="layout"]')?.textContent ?? '{}'),
+  ).toEqual({
+    definition: linearCorral(['worker'], 'auto_saved'),
+    runId: 'run_layout',
+  });
 });
 
-it('a removed Corral still displays its run with an automatic layout', async () => {
+it('a removed Corral still displays its own snapshot definition', async () => {
   const { repository, container } = await mount('removed_corral', null);
   await openGraph(container);
   expect(repository.get).not.toHaveBeenCalled();
-  expect(container.querySelector('[data-testid="layout"]')?.textContent).toContain(
-    '"source":"auto"',
-  );
+  expect(
+    JSON.parse(container.querySelector('[data-testid="layout"]')?.textContent ?? '{}'),
+  ).toEqual({
+    definition: linearCorral(['worker'], 'removed_corral'),
+    runId: 'run_layout',
+  });
 });
 
 it('heads the run with its team, start and id over the request, then numbers without cost', async () => {

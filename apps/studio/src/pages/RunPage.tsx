@@ -1,4 +1,4 @@
-import { type CorralDefinition, type NodeLayout, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   AgentStatusText,
@@ -14,13 +14,11 @@ import {
   ReinsPanel,
   RunActions,
   RunCanvas,
-  type RunCanvasLayout,
   type RunFlowCheck,
   RunFlowView,
   RunReason,
   RunResults,
   type RunSessionStore,
-  runCanvasLayout,
   runResults,
   SettingsPatchPanel,
   StatusBadge,
@@ -307,8 +305,6 @@ function RunWorkspace({
     normalizingCursor.current = search.atSeq;
     setSearch({ atSeq: undefined }, { replace: true });
   }, [search.atSeq, setSearch]);
-  const savedTeam = useSavedTeam(projection?.corralId);
-  const layout = useSavedLayout(definition, projection?.corralId ?? null, savedTeam);
   const prices = useModelPrices();
   const target = useSteerTarget(session, execution ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -322,6 +318,7 @@ function RunWorkspace({
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [relationsVisited, setRelationsVisited] = useState(false);
   const documentTrigger = useRef<HTMLElement | null>(null);
+  const steeringTrigger = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const wide = useContainerAtLeast(body, 640 + 360);
   const [detail, setDetail] = useState('overview');
@@ -339,13 +336,16 @@ function RunWorkspace({
   }, [hasOutput]);
   useEffect(() => {
     if (execution) setPanel('selection');
-  }, [execution]);
+    else if (!selectedNodeId) setPanel((current) => (current === 'selection' ? 'closed' : current));
+  }, [execution, selectedNodeId]);
+  useEffect(() => {
+    if (panel === 'approval' && pending === 0) setPanel('closed');
+  }, [panel, pending]);
   const rememberTrigger = () => {
     trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   };
   const chooseExecution = (id: string) => {
     rememberTrigger();
-    setSelectedNodeId(null);
     setPanel('selection');
     setDetail('overview');
     setSearch({ execution: id, artifact: undefined, result: undefined, view: undefined });
@@ -364,9 +364,20 @@ function RunWorkspace({
   };
   const openSteering = () => {
     if (!execution || !target) return;
+    steeringTrigger.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSteeringId(execution);
     setSteeringTargets((previous) => new Set(previous).add(execution));
     setSteeringOpen(true);
+  };
+  const closeSteering = () => {
+    setSteeringOpen(false);
+    requestAnimationFrame(() =>
+      (steeringTrigger.current?.isConnected
+        ? steeringTrigger.current
+        : detailsButton.current
+      )?.focus(),
+    );
   };
   const closeDetail = () => {
     setSelectedNodeId(null);
@@ -376,8 +387,9 @@ function RunWorkspace({
       (trigger.current?.isConnected ? trigger.current : detailsButton.current)?.focus(),
     );
   };
-  const highlightedNode =
-    selectedNodeId ?? (execution ? (projection?.executions[execution]?.nodeId ?? null) : null);
+  const highlightedNode = execution
+    ? (projection?.executions[execution]?.nodeId ?? null)
+    : selectedNodeId;
   const selectedTarget = execution ? target : null;
   const results = projection ? runResults(projection) : null;
   return (
@@ -409,6 +421,7 @@ function RunWorkspace({
               size="compact"
               aria-pressed={panel === 'run' && sideShown}
               onClick={() => {
+                rememberTrigger();
                 setSteeringOpen(false);
                 setSearch({ artifact: undefined, result: undefined, view: undefined });
                 setDetail('overview');
@@ -437,31 +450,29 @@ function RunWorkspace({
                 {
                   id: 'graph',
                   label: m('graph'),
-                  render: () =>
-                    layout ? (
-                      <div className="h-full min-h-80">
-                        <RunCanvas
-                          session={session}
-                          definition={definition}
-                          layout={layout}
-                          selectedNodeId={highlightedNode}
-                          onSelectNode={(id) => {
-                            rememberTrigger();
-                            setSelectedNodeId(id);
-                            if (id) {
-                              setDetail('overview');
-                              setPanel('selection');
-                              setSearch({
-                                execution: undefined,
-                                artifact: undefined,
-                                result: undefined,
-                                view: undefined,
-                              });
-                            } else closeDetail();
-                          }}
-                        />
-                      </div>
-                    ) : null,
+                  render: () => (
+                    <div className="h-full min-h-0">
+                      <RunCanvas
+                        session={session}
+                        definition={definition}
+                        selectedNodeId={highlightedNode}
+                        onSelectNode={(id) => {
+                          rememberTrigger();
+                          setSelectedNodeId(id);
+                          if (id) {
+                            setDetail('overview');
+                            setPanel('selection');
+                            setSearch({
+                              execution: undefined,
+                              artifact: undefined,
+                              result: undefined,
+                              view: undefined,
+                            });
+                          } else closeDetail();
+                        }}
+                      />
+                    </div>
+                  ),
                 },
                 {
                   id: 'flow',
@@ -577,7 +588,7 @@ function RunWorkspace({
                 variant="ghost"
                 size="compact"
                 className="justify-self-start"
-                onClick={() => setSteeringOpen(false)}
+                onClick={closeSteering}
               >
                 {m('backToWork')}
               </Button>
@@ -662,7 +673,7 @@ function RunWorkspace({
               {execution && projection && !projection.executions[execution] ? (
                 <p role="alert">{t('executionMissing', { executionId: execution })}</p>
               ) : null}
-              {selectedNodeId && projection && panel === 'selection' ? (
+              {selectedNodeId && !execution && projection && panel === 'selection' ? (
                 <NodeExecutions
                   projection={projection}
                   definition={definition}
@@ -819,36 +830,6 @@ function useSavedTeam(corralId: string | null | undefined) {
   }, [repository, corralId]);
   if (!corralId) return false;
   return saved?.id === corralId ? saved.exists : null;
-}
-
-/** The Corral's saved layout, once looked up; null while loading (avoids a layout jump). */
-function useSavedLayout(
-  definition: CorralDefinition,
-  corralId: string | null,
-  savedTeam: boolean | null,
-) {
-  const { repository } = useServices();
-  const [saved, setSaved] = useState<{ nodes: Record<string, NodeLayout> | null } | null>(null);
-  useEffect(() => {
-    if (!savedTeam || !corralId) return;
-    let live = true;
-    repository.get(corralId).then(
-      (record) => live && setSaved({ nodes: record?.layout.nodes ?? null }),
-      () => live && setSaved({ nodes: null }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [repository, corralId, savedTeam]);
-  return useMemo<RunCanvasLayout | null>(
-    () =>
-      savedTeam === false
-        ? runCanvasLayout(definition, null)
-        : saved
-          ? runCanvasLayout(definition, saved.nodes)
-          : null,
-    [definition, saved, savedTeam],
-  );
 }
 
 /** A compact, bounded run heading; optional diagnostics belong to the run inspector. */

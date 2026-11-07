@@ -13,6 +13,7 @@ export * from './adapters/skeleton.tsx';
 export * from './adapters/textarea.tsx';
 export * from './adapters/tooltip.tsx';
 export { cn } from './adapters/utils.ts';
+export { AgentGraphNode, type AgentGraphNodeProps } from './components/agent/agent-graph.tsx';
 export {
   AgentHandoff,
   type AgentHandoffProps,

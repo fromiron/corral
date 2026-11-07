@@ -954,13 +954,28 @@
     }
   },
   "RunCanvas": {
+    "loading": "Loading agent activity…",
     "label": "Run graph",
     "layout": {
       "saved": "Layout from the saved team",
       "auto": "Arranged automatically"
     },
     "layoutNote": "Positions only; they do not change what ran.",
-    "relationsLegend": "Faint lines: definition · bold lines: observed calls",
+    "relationsLegend": "Observed relationships",
+    "empty": "No agent activity yet",
+    "requested": "Requested",
+    "models": "{count} models",
+    "profiles": "{count} model profiles",
+    "unsettled": "Ended without a final state",
+    "relationship": "{source} → {target}: {relations}",
+    "relationCount": "{kind} {count}",
+    "relation": {
+      "delegate": "Delegation",
+      "question": "Question",
+      "answer": "Answer",
+      "read": "Read",
+      "input": "Model input"
+    },
     "observedRelation": "{kind} · {count} observed · {active} in progress"
   },
   "Judgments": {
