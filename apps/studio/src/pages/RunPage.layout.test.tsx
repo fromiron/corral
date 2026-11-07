@@ -7,7 +7,7 @@ import { linearCorral } from '@corral/testkit';
 import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
@@ -23,7 +23,13 @@ vi.mock('@corral/core', async (original) => {
 });
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ runRoute: {} }));
-vi.mock('../workbench/RunStatusCards.tsx', () => ({ RunStatusCards: () => null }));
+vi.mock('../workbench/RunStatusCards.tsx', () => ({
+  RunStatusCards: () => (
+    <details data-testid="status-card">
+      <summary>Context</summary>Scope detail
+    </details>
+  ),
+}));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   useNavigate: () => () => {},
@@ -37,6 +43,15 @@ vi.mock('@corral/react', async (original) => {
       return module.reconstructRunHistory(...args);
     },
     RunResults: () => <output data-testid="results">Results</output>,
+    ArtifactViewer: ({ versionId }: { versionId: string }) => (
+      <output data-testid="artifact">{versionId}</output>
+    ),
+    ReinsPanel: ({ target }: { target: { executionId: string } | null }) => (
+      <section data-testid="reins-probe">
+        <span>{target?.executionId ?? 'Missing target'}</span>
+        <textarea aria-label="Instruction" />
+      </section>
+    ),
     RunFlowView: () => <output data-testid="run-flow">Work flow</output>,
     ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
       <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
@@ -52,6 +67,11 @@ vi.mock('@corral/react', async (original) => {
 // jsdom does not scroll; focusing a waiting decision asks it to.
 Element.prototype.scrollIntoView ??= () => {};
 const cleanup: (() => Promise<void>)[] = [];
+beforeEach(() => {
+  // Browser cases cover measured layout; jsdom needs a visible viewport for lazy views.
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+});
 afterEach(async () => {
   for (const f of cleanup.splice(0)) await f();
   vi.unstubAllGlobals();
@@ -64,6 +84,7 @@ async function mount(
   record: CorralRecord | null,
   search: RunDetailSearch = { view: 'run' },
   request?: string,
+  holdNavigation = false,
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -102,8 +123,10 @@ async function mount(
     container.remove();
   });
   const navigations: { patch: RunDetailSearch; options: { replace?: boolean } | undefined }[] = [];
+  let changeSearch: (patch: RunDetailSearch) => void = () => {};
   function Screen() {
     const [selection, setSelection] = useState(search);
+    changeSearch = (patch) => setSelection((current) => ({ ...current, ...patch }));
     return (
       <RunDetail
         runId={projection.runId}
@@ -111,7 +134,7 @@ async function mount(
         search={selection}
         setSearch={(patch, options) => {
           navigations.push({ patch, options });
-          setSelection((current) => ({ ...current, ...patch }));
+          if (!holdNavigation) setSelection((current) => ({ ...current, ...patch }));
         }}
       />
     );
@@ -123,8 +146,146 @@ async function mount(
       </IntlProvider>,
     ),
   );
-  return { repository, container, run, navigations };
+  return {
+    repository,
+    container,
+    run,
+    navigations,
+    navigate: (patch: RunDetailSearch) => act(async () => changeSearch(patch)),
+  };
 }
+
+it('workspace opens the graph first and keeps the empty inspector closed even on wide screens', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container } = await mount('inline_team', null, {});
+  const selected = container.querySelector('[aria-label="Execution views"] [aria-selected="true"]');
+  expect(selected?.textContent).toContain('Graph');
+  expect(container.querySelector('[data-testid="layout"]')?.closest('[hidden]')).toBeNull();
+  expect(container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(true);
+  expect(container.querySelector('[data-testid="run-dock"]')).toBeNull();
+});
+
+it('normalizes a legacy cursor once while a parent update precedes the route commit', async () => {
+  const { navigations, navigate } = await mount('inline_team', null, { atSeq: 1 }, undefined, true);
+  expect(navigations).toHaveLength(1);
+  // The remembered view can update before the asynchronous router commits the URL.
+  await navigate({});
+  expect(navigations).toHaveLength(1);
+  await navigate({ atSeq: undefined });
+  await navigate({ atSeq: 1 });
+  expect(navigations).toHaveLength(2);
+});
+
+it.each([
+  { result: 'artv_result' },
+  { artifact: 'artv_evidence' },
+  { view: 'results' },
+] as RunDetailSearch[])(
+  'workspace reads an explicit document in the centre without stacking it in the inspector: %j',
+  async (search) => {
+    const { container } = await mount('inline_team', null, search);
+    const document = container.querySelector('[data-testid="results"], [data-testid="artifact"]');
+    expect(document?.closest('[data-testid="run-column"]')).not.toBeNull();
+    expect(document?.closest('[data-testid="run-side"]')).toBeNull();
+    expect(document?.closest('[hidden]')).toBeNull();
+    expect(container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(true);
+  },
+);
+
+it('workspace preserves the mounted graph and the selected view while opening and closing a result', async () => {
+  const { container, navigate } = await mount('inline_team', null, {});
+  const graph = container.querySelector('[data-testid="layout"]');
+  expect(graph).not.toBeNull();
+  await navigate({ result: 'artv_result' });
+  expect(graph?.closest('[hidden]')).not.toBeNull();
+  await act(async () => {
+    [...container.querySelectorAll('button')]
+      .find((el) => el.textContent?.includes('Back to work'))
+      ?.click();
+  });
+  expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
+  expect(graph?.closest('[hidden]')).toBeNull();
+  expect(
+    container.querySelector('[aria-label="Execution views"] [aria-selected="true"]')?.textContent,
+  ).toContain('Graph');
+});
+
+it('workspace preserves expanded inspector details across documents and detail tabs', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, navigate } = await mount('inline_team', null, { execution: 'worker' });
+  const details = container.querySelector<HTMLDetailsElement>('[data-testid="status-card"]');
+  expect(details).not.toBeNull();
+  if (details) details.open = true;
+  await navigate({ result: 'artv_result' });
+  expect(details?.isConnected).toBe(true);
+  await navigate({ result: undefined });
+  expect(container.querySelector('[data-testid="status-card"]')).toBe(details);
+  expect(details?.open).toBe(true);
+  const tab = async (name: string) => {
+    const button = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
+      el.textContent?.includes(name),
+    );
+    expect(button).toBeDefined();
+    await act(async () => button?.click());
+    expect(button?.getAttribute('aria-selected')).toBe('true');
+  };
+  await tab('Calls');
+  expect(details?.isConnected).toBe(true);
+  await tab('Overview');
+  expect(container.querySelector('[data-testid="status-card"]')).toBe(details);
+  expect(details?.open).toBe(true);
+});
+
+it('workspace changes inspected executions without silently retargeting an instruction draft', async () => {
+  const { container, run, navigate } = await mount('inline_team', null, {
+    execution: 'exec_writer',
+  });
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        status: 'running',
+        executionOrder: ['exec_writer', 'exec_reviewer'],
+        executions: Object.fromEntries(
+          ['exec_writer', 'exec_reviewer'].map((id) => [
+            id,
+            {
+              executionId: id,
+              nodeId: 'worker',
+              taskId: id,
+              status: 'active',
+              attemptNo: 1,
+              modelProfile: 'default',
+            },
+          ]),
+        ) as never,
+      },
+    }),
+  );
+  expect(container.querySelector('[data-testid="reins-probe"]')).toBeNull();
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((el) => el.textContent === 'Give instruction')
+      ?.click(),
+  );
+  const draft = container.querySelector<HTMLTextAreaElement>(
+    '[data-testid="reins-probe"] textarea',
+  );
+  expect(draft).not.toBeNull();
+  if (draft) draft.value = 'Writer only';
+  await navigate({ execution: 'exec_reviewer' });
+  expect(container.querySelector('[data-testid="reins-probe"]')?.textContent).toBe('exec_writer');
+  await navigate({ result: 'artv_result' });
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((el) => el.textContent?.includes('Back to work'))
+      ?.click(),
+  );
+  expect(container.querySelector('[data-testid="reins-probe"] textarea')).toBe(draft);
+  expect(draft?.value).toBe('Writer only');
+});
 
 async function openGraph(container: HTMLElement) {
   const tab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((element) =>
@@ -170,19 +331,25 @@ it('heads the run with its team, start and id over the request, then numbers wit
   const { container } = await mount('inline_team', null, {}, 'Summarise the release');
   const header = container.querySelector('[data-testid="run-header"]');
   expect(header?.querySelector('h2')?.textContent).toBe('Summarise the release');
-  const meta = header?.querySelector('[data-run-meta]');
+  expect(header?.querySelector('[data-run-meta]')).toBeNull();
+  await act(async () =>
+    [...container.querySelectorAll('button')].find((el) => el.textContent === 'Run info')?.click(),
+  );
+  const info = container.querySelector('[data-testid="run-facts"]');
+  const meta = info?.querySelector('[data-run-meta]');
   expect(meta?.textContent).toContain('Linear worker');
   expect(meta?.textContent).toContain('9:05');
   expect(meta?.textContent).toContain('run_layout');
   expect(meta?.querySelector('button[aria-label="Copy run ID"]')).not.toBeNull();
-  const stats = header?.querySelector('[data-run-stats]');
+  const stats = info?.querySelector('[data-run-stats]');
   expect(stats?.textContent).toContain('0/0 tasks');
   expect(stats?.textContent).toContain('0 tool calls');
   expect(stats?.textContent).toContain('0 model requests');
-  expect(stats?.textContent).toContain('1:30');
+  expect(header?.textContent).toContain('1:30');
+  expect(meta?.closest('[hidden]')).toBeNull();
   expect(header?.textContent).not.toMatch(/\$|cost/i);
-  // The run's own facts sit behind one disclosure, not in the heading lines.
-  expect(header?.querySelector('button[aria-expanded="false"]')?.textContent).toContain('Details');
+  // One explicit information entry opens the inspector; diagnostics do not expand the header.
+  expect(header?.querySelector('button[aria-expanded]')).toBeNull();
   // No per-agent summary card: the activity heads carry each execution's state.
   expect(container.querySelector('[data-testid="run-summary-card"]')).toBeNull();
   const unnamed = await mount('inline_team', null, {});
@@ -191,91 +358,77 @@ it('heads the run with its team, start and id over the request, then numbers wit
   );
 });
 
-it('a completed run opens its run column, headed by the run, with no page tabs', async () => {
-  const summary = await mount('inline_team', null, {});
-  const column = summary.container.querySelector('[data-testid="run-column"]');
-  expect(column).not.toBeNull();
-  // The head scrolls with the activity instead of sitting above it.
-  expect(column?.querySelector('[data-testid="run-header"]')).not.toBeNull();
-  expect(column?.querySelector('[data-testid="run-activity"]')).not.toBeNull();
-  // Activity is the column itself, not a tab; the dock below starts folded.
+it('a completed run opens its central graph with the header outside the scrollable workspace', async () => {
+  const { container } = await mount('inline_team', null, {});
+  const column = container.querySelector('[data-testid="run-column"]');
+  expect(column?.querySelector('[data-testid="layout"]')).not.toBeNull();
+  expect(column?.querySelector('[data-testid="run-header"]')).toBeNull();
+  expect(container.querySelector('[data-testid="run-header"]')).not.toBeNull();
   expect(
-    column?.querySelector('[role="tablist"][aria-label="Execution views"] [aria-selected="true"]'),
-  ).toBeNull();
-  // The tree is no longer its own column: the activity list chooses executions.
-  expect(summary.container.querySelector('[role="tree"]')).toBeNull();
-  // Run and results are not two pages any more: results live in the side panel.
-  expect(summary.container.querySelector('[aria-label="Run page view"]')).toBeNull();
-  expect(summary.container.querySelector('[data-testid="results"]')).toBeNull();
+    column?.querySelector('[aria-label="Execution views"] [aria-selected="true"]')?.textContent,
+  ).toContain('Graph');
+  expect(container.querySelector('[role="tree"]')).toBeNull();
+  expect(container.querySelector('[data-testid="run-side"]')?.hasAttribute('hidden')).toBe(true);
 });
 
-it('a results address opens the result in the side panel', async () => {
+it('a results address opens the result in the central document workspace', async () => {
   for (const search of [{ view: 'results' }, { result: 'artv_result' }] as RunDetailSearch[]) {
     const { container } = await mount('inline_team', null, search);
-    const panel = container.querySelector<HTMLElement>('[data-testid="run-side"]');
-    expect(panel?.hidden).toBe(false);
-    expect(panel?.querySelector('[data-testid="results"]')).not.toBeNull();
+    expect(container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(true);
+    const document = container.querySelector('[data-testid="run-document"]');
+    expect(document?.querySelector('[data-testid="results"]')).not.toBeNull();
+    expect(document?.closest('[hidden]')).toBeNull();
   }
 });
 
-it('shows the column and the panel side by side once the container holds 640 + 360 px', async () => {
+it('shows the selected inspector beside the workspace only when the container fits both', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
-  const wide = await mount('inline_team', null, {});
+  const wide = await mount('inline_team', null, { execution: 'worker' });
   expect(wide.container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(false);
   expect(wide.container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(
     false,
   );
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(999);
-  const narrow = await mount('inline_team', null, {});
+  const narrow = await mount('inline_team', null, { execution: 'worker' });
   expect(narrow.container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(
+    false,
+  );
+  expect(narrow.container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(
     true,
   );
 });
 
-it('secondary views open in a bottom dock whose tab bar stays, folding on a second press', async () => {
+it('primary views retain the graph when switching and keep the active view on a repeat press', async () => {
   const { container } = await mount('inline_team', null);
-  const dock = () => container.querySelector<HTMLElement>('[data-testid="run-dock"]');
   const tabs = () => [
-    ...(dock()?.querySelectorAll<HTMLElement>(
-      '[role="tablist"][aria-label="Execution views"] [role="tab"]',
-    ) ?? []),
+    ...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]'),
   ];
   const tab = async (name: string) => {
     const button = tabs().find((el) => el.textContent?.includes(name));
     expect(button).toBeDefined();
     await act(async () => button?.click());
   };
-  const open = () =>
-    dock()?.querySelector<HTMLElement>('[data-run-dock-content]')?.hidden === false;
-  // The bar is always there, the record count on its events tab; nothing is open yet.
   expect(tabs().map((el) => el.textContent)).toEqual([
+    expect.stringContaining('Graph'),
     expect.stringContaining('Work flow'),
     expect.stringContaining('Timeline'),
     expect.stringContaining('Events 0'),
-    expect.stringContaining('Graph'),
   ]);
-  expect(open()).toBe(false);
-  expect(dock()?.querySelector('[role="separator"]')).toBeNull();
-  await tab('Work flow');
-  expect(open()).toBe(true);
-  expect(dock()?.querySelector('[data-testid="run-flow"]')).not.toBeNull();
-  await tab('Graph');
   const graph = container.querySelector('[data-testid="layout"]');
-  expect(graph).not.toBeNull();
   await tab('Work flow');
+  expect(container.querySelector('[data-testid="run-activity"]')?.closest('[hidden]')).toBeNull();
   await tab('Graph');
   expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
-  // Pressing the open tab folds the dock; the graph stays mounted, the activity stays above.
   await tab('Graph');
-  expect(open()).toBe(false);
-  expect(tabs().some((el) => el.getAttribute('aria-selected') === 'true')).toBe(false);
-  expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
+  expect(graph?.closest('[hidden]')).toBeNull();
   expect(
-    container.querySelector('[data-testid="run-column"] [data-testid="run-activity"]'),
-  ).not.toBeNull();
+    tabs()
+      .find((el) => el.textContent?.includes('Graph'))
+      ?.getAttribute('aria-selected'),
+  ).toBe('true');
 });
 
-it('keeps the timeline view selection across switching and folding the dock', async () => {
+it('keeps the timeline view selection across primary workspace switches', async () => {
   const { container } = await mount('inline_team', null);
   const tab = async (name: string) => {
     const button = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
@@ -300,35 +453,32 @@ it('keeps the timeline view selection across switching and folding the dock', as
   expect(taskTab?.getAttribute('aria-selected')).toBe('true');
 });
 
-it('the dock height follows its separator keys and is remembered in this browser', async () => {
-  localStorage.removeItem('corral.run.dockHeight');
-  const first = await mount('inline_team', null);
-  const press = async (root: HTMLElement, name: string) =>
-    act(async () =>
-      [...root.querySelectorAll<HTMLElement>('[data-testid="run-dock"] [role="tab"]')]
-        .find((el) => el.textContent?.includes(name))
-        ?.click(),
-    );
-  await press(first.container, 'Work flow');
-  const separator = first.container.querySelector<HTMLElement>(
-    '[data-testid="run-dock"] [role="separator"]',
-  );
-  expect(separator?.getAttribute('aria-orientation')).toBe('horizontal');
-  const before = Number(separator?.getAttribute('aria-valuenow'));
-  await act(async () =>
-    separator?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })),
-  );
-  const after = Number(separator?.getAttribute('aria-valuenow'));
-  expect(after).toBeGreaterThan(before);
-  expect(localStorage.getItem('corral.run.dockHeight')).toBe(String(after));
-  const again = await mount('inline_team', null);
-  await press(again.container, 'Work flow');
-  expect(
-    again.container
-      .querySelector('[data-testid="run-dock"] [role="separator"]')
-      ?.getAttribute('aria-valuenow'),
-  ).toBe(String(after));
+it('event count updates keep the current tab and mounted filter controls', async () => {
+  const { container, run } = await mount('inline_team', null);
+  const tab = [
+    ...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]'),
+  ].find((el) => el.textContent?.startsWith('Events'));
+  await act(async () => tab?.click());
+  const panel = container.querySelector('[data-run-workspace-view="events"]');
+  const filter = panel?.querySelector('[role="combobox"]');
+  expect(filter).not.toBeNull();
+  const event = RunEvent.parse({
+    schemaVersion: '0.1',
+    eventId: 'evt_new',
+    runId: 'run_layout',
+    runSeq: 1,
+    recordedAt: '2026-10-26T00:00:00.000Z',
+    actor: { kind: 'runtime', id: 'runtime' },
+    causedByEventIds: [],
+    type: 'run.state_changed',
+    payload: { from: 'created', to: 'running', reasonCode: 'started' },
+  });
+  await act(async () => run.setState({ events: [event] }));
+  expect(tab?.textContent).toContain('Events 1');
+  expect(tab?.getAttribute('aria-selected')).toBe('true');
+  expect(panel?.querySelector('[role="combobox"]')).toBe(filter);
 });
+
 it('the right panel shows what needs the person only while something waits', async () => {
   const idle = await mount('inline_team', null, { execution: 'worker' });
   const idlePanel = idle.container.querySelector<HTMLElement>('[data-testid="run-side"]');
@@ -337,25 +487,36 @@ it('the right panel shows what needs the person only while something waits', asy
   expect(idlePanel?.textContent).not.toContain('Nothing needs you');
 });
 
-it('the right panel leads with what needs the person and opens execution details', async () => {
+it('pending decisions stay reachable and replace the inspector rather than stacking with details', async () => {
   fixture.pending = 1;
   const { container } = await mount('inline_team', null);
   const panel = () => container.querySelector<HTMLElement>('[data-testid="run-side"]');
-  // jsdom has no container width: the narrow layout keeps the panel closed until asked. It stays
-  // mounted so a Reins draft or graph position survives the switch.
   expect(panel()?.hidden).toBe(true);
-  const needs = container.querySelector('[data-testid="run-needs-you"]');
-  expect(needs?.closest('[data-testid="run-column"]')).not.toBeNull();
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((el) => el.textContent?.includes('Needs your input'))
+      ?.click(),
+  );
+  expect(panel()?.hidden).toBe(false);
+  expect(panel()?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  expect(panel()?.querySelector('[role="tablist"]')?.closest('[hidden]')).not.toBeNull();
+  expect(container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(true);
   await act(async () =>
     [...container.querySelectorAll('button')]
       .find((el) => el.textContent?.includes('Approval evidence'))
       ?.click(),
   );
+  expect(panel()?.hidden).toBe(true);
+  expect(
+    container.querySelector('[data-testid="run-document"] [data-testid="artifact"]')?.textContent,
+  ).toBe('artv_evidence');
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((el) => el.textContent?.includes('Back to work'))
+      ?.click(),
+  );
   expect(panel()?.hidden).toBe(false);
-  expect(panel()?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
-  expect(panel()?.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe('Details');
-  // On a narrow container the opened panel takes the column's place.
-  expect(container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(true);
+  expect(panel()?.querySelector('[data-testid="run-needs-you"]')?.closest('[hidden]')).toBeNull();
 });
 
 it('normalizes an old cursor URL and follows current state without replaying or disabling controls', async () => {
@@ -405,6 +566,11 @@ it('ended requests are not shown in flight', async () => {
         modelCalls: { pending: { finished: false } as never },
       },
     }),
+  );
+  await act(async () =>
+    [...live.container.querySelectorAll('button')]
+      .find((el) => el.textContent === 'Run info')
+      ?.click(),
   );
   expect(live.container.textContent).not.toContain('in flight');
   expect(live.container.textContent).toContain('termination unconfirmed');

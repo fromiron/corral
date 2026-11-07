@@ -359,6 +359,7 @@
     }
   },
   "Reins": {
+    "executionNumber": "에이전트 실행 {number}",
     "heading": "Reins",
     "noTarget": "실행을 시작하고 지시할 실행을 고르세요.",
     "target": "대상",
@@ -4601,6 +4602,11 @@
     "agentDetails": "에이전트 활동"
   },
   "RunMonitor": {
+    "backToWork": "작업으로 돌아가기",
+    "runInfo": "실행 정보",
+    "steer": "지시하기",
+    "relations": "작업 관계",
+    "settings": "설정",
     "flow": "작업 흐름",
     "views": "실행 보기",
     "graph": "그래프",

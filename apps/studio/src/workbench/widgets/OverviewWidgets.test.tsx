@@ -353,7 +353,7 @@ it('names missing input reports rather than presenting the known-only sum as com
   expect(detail).toContain('1 completed call did not report input tokens');
 });
 
-it('shows the selected work plan at a glance and no environment widget', async () => {
+it('keeps the selected plan in its composer instead of repeating its items in Overview', async () => {
   const plan = WorkPlan.parse({
     scope: 'execution',
     executionId: 'exec_plan',
@@ -385,11 +385,11 @@ it('shows the selected work plan at a glance and no environment widget', async (
       },
     } as unknown as Partial<ChatWidgetModel>),
   );
-  expect(widgets(container)).toEqual(['plan', 'results', 'context', 'usage']);
-  const widget = container.querySelector('[data-testid="overview-plan"]');
-  expect(widget?.textContent).toContain('1/7 done');
-  expect(widget?.textContent).toContain('Plan item 5');
-  expect(widget?.textContent).not.toContain('Plan item 6');
-  expect(widget?.textContent).toContain('2 more');
+  expect(widgets(container)).toEqual(['results', 'context', 'usage']);
+  expect(container.querySelector('[data-testid="overview-plan"]')).toBeNull();
+  expect(container.textContent).not.toContain('Plan item');
+  expect(container.querySelector('[data-overview-widget="results"]')?.textContent).toContain(
+    'draft v1',
+  );
   expect(container.querySelector('[data-testid="environment-chip"]')).toBeNull();
 });

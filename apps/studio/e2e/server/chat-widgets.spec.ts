@@ -61,11 +61,13 @@ async function send(page: Page, text: string) {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
 }
 
-/** Overview floats only when the conversation container has room; narrow views use its trigger. */
+/** Overview is explicitly opened from the same trigger at every conversation width. */
 async function openOverview(page: Page) {
+  await expect(page.getByTestId('chat-overview')).toHaveCount(0);
   const access = page.getByTestId('session-summary-trigger');
   const popup = page.getByTestId('session-summary-popup');
-  if ((await access.isVisible()) && !(await popup.isVisible())) await access.click();
+  await expect(access).toBeVisible();
+  if (!(await popup.isVisible())) await access.click();
   const widgets = page.locator('[data-testid="session-summary-card"]:visible');
   await expect(widgets).toHaveCount(1);
   return widgets;
@@ -93,7 +95,8 @@ test('plain completion is announced once and opening history is silent', async (
     await session(page, corral);
     await send(page, 'Review the current state.');
     const dock = page.getByTestId('composer-dock');
-    await expect(dock.getByText('Running', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('active-run-status')).toContainText('Running');
+    await expect(dock.getByText('Running', { exact: true })).toHaveCount(0);
     await expect(
       page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
     ).toHaveCount(0);
@@ -171,17 +174,20 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(toggle).toContainText('0/7 done');
     const pills = page.getByTestId('composer-status-pills');
     await expect(pills).toBeVisible();
-    await expect(pills.getByRole('link').first()).toHaveAttribute(
-      'href',
-      new RegExp(`run=${current(corral).runId}`),
-    );
+    await expect(pills.getByRole('link')).toHaveCount(0);
+    await page.getByTestId('dock-open-active-run').click();
+    await expect(page).toHaveURL(new RegExp(`run=${current(corral).runId}`));
+    await expect(page.getByRole('application', { name: 'Run graph', exact: true })).toBeVisible();
+    await panelTab(page, 'Conversation');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(plan.getByRole('listitem')).toHaveCount(5);
-    await expect(page.getByTestId('run-monitor')).toHaveCount(0);
+    await expect(page.getByTestId('run-monitor')).toBeHidden();
     await page.screenshot({ path: testInfo.outputPath('composer-plan-restored.png') });
 
     const widgets = await openOverview(page);
     await expect(widgets).toBeVisible();
+    await expect(widgets.getByTestId('overview-plan')).toHaveCount(0);
+    await expect(plan.getByRole('listitem')).toHaveCount(5);
     expect(await widgets.evaluate((node) => !!node.closest('[data-testid="chat-timeline"]'))).toBe(
       false,
     );
@@ -262,6 +268,7 @@ test('live plans, context, manual collapse and an answer use the primary session
       .getByTestId('action-required')
       .getByText('Go to the request', { exact: true })
       .click();
+    await page.getByRole('button', { name: /^Needs your input/ }).click();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
@@ -375,9 +382,11 @@ test.describe('serialized provider context', () => {
     await expect(inspector).toBeHidden();
     await closeOverview(page);
     await page.getByTestId('action-required').getByRole('link').click();
+    await page.getByRole('button', { name: /^Needs your input/ }).click();
     const question = page.getByRole('form', { name: 'Waiting for your answer' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();
+    await panelTab(page, 'Conversation');
     await expect(page.getByTestId('chat-result')).toContainText('recorded provider payload');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     expect(corral.endpoint.models.every((model) => model === 'llama3.2')).toBe(true);

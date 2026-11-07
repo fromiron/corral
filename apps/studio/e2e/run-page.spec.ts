@@ -23,7 +23,8 @@ async function finishedTeamRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
-  await expect(page.getByTestId('run-activity')).toBeVisible();
+  await expect(graph(page)).toBeVisible();
+  await expect(page.getByTestId('run-side')).toBeHidden();
 }
 
 // Wide enough for the run column and the side panel side by side.
@@ -35,7 +36,6 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   page,
 }) => {
   await finishedTeamRun(page);
-  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
   await expect(page.getByText('Layout from the saved team')).toBeVisible();
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
@@ -48,9 +48,17 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   await list.getByRole('button', { name: /Round 2/ }).click();
   await expect(page).toHaveURL(/execution=exec_/);
   const executionId = new URL(page.url()).searchParams.get('execution');
-  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();
-  const reins = page.getByRole('region', { name: 'Reins', exact: true });
-  await expect(reins).toContainText(`execution ${executionId}`);
+  const monitor = page.getByTestId('run-monitor');
+  const side = monitor.getByTestId('run-side');
+  await side.getByRole('button', { name: 'Reins', exact: true }).click();
+  const reins = monitor.getByTestId('run-instructions');
+  await expect(reins).toBeVisible();
+  await expect(reins).toContainText('Writer');
+  await expect(reins).toContainText('This execution has finished.');
+  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
+  await expect(side).toBeHidden();
+  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await monitor.getByRole('tab', { name: 'Work flow', exact: true }).click();
   // The activity entry of the chosen execution is marked as the current one.
   const activity = page.getByTestId('run-activity');
   await expect(activity.locator(`button[data-execution-id="${executionId}"]`)).toHaveAttribute(
@@ -58,19 +66,20 @@ test('the Run page shows the graph with execution counts, and a node leads to it
     'true',
   );
 
-  // Choosing another role from the activity must also update the previously selected graph node;
-  // the graph stays open in the dock under the activity.
+  // Activity and graph are alternative views of the same explicit execution selection.
   await activity
     .getByRole('button', { name: /^Research\b/ })
     .first()
     .click();
+  await monitor.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph(page).locator('.react-flow__node[data-id="research"]')).toHaveClass(
     /selected/,
   );
   await expect(writer).not.toHaveClass(/selected/);
   await page.goBack();
   await expect(writer).toHaveClass(/selected/);
-  await expect(reins).toContainText(`execution ${executionId}`);
+  await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
+  await expect(side.getByRole('heading', { name: 'Writer', exact: true })).toBeVisible();
   await page.goForward();
   await expect(graph(page).locator('.react-flow__node[data-id="research"]')).toHaveClass(
     /selected/,
@@ -80,7 +89,6 @@ test('the Run page shows the graph with execution counts, and a node leads to it
 
 test('the Run graph cannot be edited: dragging and Delete change nothing', async ({ page }) => {
   await finishedTeamRun(page);
-  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
   // A node's place in the graph is its own transform; dragging may pan the view, not move it.
   const position = await writer.getAttribute('style');
@@ -99,6 +107,7 @@ test('the Run graph cannot be edited: dragging and Delete change nothing', async
 
 test('the Usage tab lists each request’s effort judgment as observe only', async ({ page }) => {
   await finishedTeamRun(page);
+  await page.getByRole('button', { name: 'Run info', exact: true }).click();
   await page.getByTestId('run-monitor').getByRole('tab', { name: 'Usage', exact: true }).click();
   const judgments = page.getByRole('region', { name: 'Effort judgments' });
   await expect(judgments).toContainText('Observe only. Not applied to any request.');

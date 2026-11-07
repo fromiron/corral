@@ -86,7 +86,7 @@ it('a conversation without Overview has no widgets', async () => {
   expect(container.querySelector('[data-testid="chat-overview"]')).toBeNull();
 });
 
-it('the widgets sit in the right margin and hide when it is too narrow', () => {
+it('keeps explicitly opened Overview available at every conversation width', () => {
   const css = readFileSync(join(import.meta.dirname, '..', 'index.css'), 'utf8');
   const rule = (selector: string) =>
     css.match(
@@ -102,10 +102,8 @@ it('the widgets sit in the right margin and hide when it is too narrow', () => {
   expect(css).toMatch(
     /@container chat-view \(min-width: 75rem\)\s*\{\s*\.chat-overview:not\(:empty\)\s*\{\s*display:\s*flex;/,
   );
-  // Below it the composer's button opens the same widgets.
-  expect(css).toMatch(
-    /@container chat-view \(max-width: 74\.99rem\)\s*\{\s*\.session-widget-access\s*\{\s*display:\s*flex;/,
-  );
+  // The actual session no longer mounts floating widgets; its explicit entry remains available.
+  expect(rule('.session-widget-access')).toMatch(/display:\s*flex/);
 });
 
 it('follows growing replies, keeps following after a message click, and pauses for manual scroll until Latest', async () => {

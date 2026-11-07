@@ -1,4 +1,5 @@
 import { emptyProjection } from '@corral/core';
+import { linearCorral } from '@corral/testkit';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
@@ -49,6 +50,53 @@ function renderPanel(
 }
 
 describe('ReinsPanel', () => {
+  it('compact entry identifies a particular execution of the same node and its scope', () => {
+    const session = fakeSession();
+    const projection = emptyProjection('run_0001');
+    projection.executionOrder = ['exec_first', 'exec_second'];
+    session.setState({ projection });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel
+          session={session}
+          target={{ executionId: 'exec_second', nodeLabel: 'Writer', finished: false }}
+          compact
+        />
+      </IntlProvider>,
+    );
+    expect(screen.getByText('Agent execution 2')).toBeInTheDocument();
+    expect(screen.getByText('this execution only')).toBeInTheDocument();
+  });
+  it('a missing compact instruction target never exposes run-wide settings as a substitute', () => {
+    const session = fakeSession();
+    session.setState({
+      definition: linearCorral(['worker']),
+      projection: { ...emptyProjection('run_0001'), status: 'running' },
+    });
+    const { container } = render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel session={session} target={null} compact />
+      </IntlProvider>,
+    );
+    expect(screen.queryByLabelText('Instruction')).not.toBeInTheDocument();
+    expect(container.querySelector('button')).toBeNull();
+  });
+  it('compact instruction entry keeps its target and input without empty activity explanations', () => {
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel
+          session={fakeSession()}
+          target={{ executionId: 'exec_writer', nodeLabel: 'Writer', finished: false }}
+          compact
+        />
+      </IntlProvider>,
+    );
+    expect(screen.getByLabelText('Instruction')).toBeInTheDocument();
+    expect(screen.getByText('Writer')).toBeInTheDocument();
+    expect(screen.getByText('next model request')).toBeInTheDocument();
+    expect(screen.queryByText(messages.Reins.noHistory)).not.toBeInTheDocument();
+    expect(screen.queryByText(messages.Reins.deliveredNote)).not.toBeInTheDocument();
+  });
   it.each([false, true])(
     'safe receipt recovery clears only the unchanged submitted draft (edited=%s)',
     async (edited) => {

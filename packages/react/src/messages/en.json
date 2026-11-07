@@ -359,6 +359,7 @@
     }
   },
   "Reins": {
+    "executionNumber": "Agent execution {number}",
     "heading": "Reins",
     "noTarget": "Start a run and choose an execution to steer.",
     "target": "Target",
@@ -4601,6 +4602,11 @@
     "agentDetails": "Agent activity"
   },
   "RunMonitor": {
+    "backToWork": "Back to work",
+    "runInfo": "Run info",
+    "steer": "Give instruction",
+    "relations": "Work relationships",
+    "settings": "Settings",
     "flow": "Work flow",
     "views": "Execution views",
     "graph": "Graph",

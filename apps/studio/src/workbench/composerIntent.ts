@@ -45,7 +45,12 @@ export function resolveIntent({
       blocked: allowed.includes(lock.intent) ? null : 'intent',
     };
   }
-  const intent = chosen && allowed.includes(chosen) ? chosen : (allowed[0] as SessionIntent);
+  const intent =
+    chosen && allowed.includes(chosen)
+      ? chosen
+      : allowed.includes('queue')
+        ? 'queue'
+        : (allowed[0] as SessionIntent);
   if (intent !== 'steer') return { intent, target: null, blocked: null };
   const target =
     chosenTarget && targets.includes(chosenTarget) ? chosenTarget : (targets[0] ?? null);

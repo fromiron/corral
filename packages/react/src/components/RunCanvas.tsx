@@ -175,7 +175,7 @@ export function RunCanvas({
             <Controls showInteractive={false} />
           </ReactFlow>
           <p className="pointer-events-none absolute right-2 top-2 rounded bg-raised/90 px-2 py-0.5 text-2xs text-muted-foreground">
-            {t(`layout.${layout.source}`)} · {t('layoutNote')} · {t('relationsLegend')}
+            {t(`layout.${layout.source}`)} · {t('relationsLegend')}
           </p>
         </div>
       </ReactFlowProvider>

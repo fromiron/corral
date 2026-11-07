@@ -3,7 +3,6 @@ import {
   AgentIdentity,
   type AgentStatus,
   AgentStatusLabel,
-  AgentSteeringPlan,
   Banner,
   BannerActions,
   BannerTitle,
@@ -15,7 +14,6 @@ import {
   CardGroup,
   CardHeader,
   CardMedia,
-  KitBadge,
   KitCardTitle,
   Meter,
   Popover,
@@ -32,7 +30,6 @@ import {
   FileDiff,
   FileText,
   LayoutGrid,
-  ListChecks,
   type LucideIcon,
 } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
@@ -54,22 +51,13 @@ import {
 } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
-/** The presented run's overview, floating in the conversation's spare right margin. */
-export function OverviewPanel() {
-  const model = useChatWidget();
-  return model ? <OverviewWidgets model={model} /> : null;
-}
-
-/**
- * Where the side area is too narrow or hidden, the composer opens the same widgets in a popover;
- * the CSS in index.css decides when this trigger shows.
- */
+/** Supporting run information stays available on demand at every conversation width. */
 export function OverviewAccess() {
   const model = useChatWidget();
   return model?.runId ? <OverviewPopover model={model} /> : null;
 }
 
-/** The same overview content for narrow conversation containers. */
+/** A single explicit entry to supporting information, without a permanent side column. */
 export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   if (!model.runId) return null;
@@ -101,7 +89,7 @@ export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
  */
 export function OverviewWidgets({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets.overview');
-  // Without a run the column stays empty, and index.css hides it.
+  // Without a run there is no overview to inspect.
   if (!model.runId) return null;
   if (model.readState === 'error')
     return (
@@ -123,19 +111,13 @@ export function OverviewWidgets({ model }: { model: ChatWidgetModel }) {
           ? t('runScope', { number: model.runNumber ?? model.viewed?.number ?? 0 })
           : t('selectedRun')}
       </p>
-      {overviewWidgets({ ...model, plan: hasPlan(model) }).map((widget) => (
+      {overviewWidgets(model).map((widget) => (
         <div key={widget} data-overview-widget={widget}>
           <Widget widget={widget} model={model} />
         </div>
       ))}
     </section>
   );
-}
-
-function hasPlan(model: ChatWidgetModel): boolean {
-  // Models built without a plan reader (tests, the empty state) carry no plan status.
-  const status = model.plan?.status;
-  return Boolean(status && 'plan' in status && status.plan?.items.length);
 }
 
 function Widget({ widget, model }: { widget: OverviewWidget; model: ChatWidgetModel }) {
@@ -145,7 +127,6 @@ function Widget({ widget, model }: { widget: OverviewWidget; model: ChatWidgetMo
   if (widget === 'results') return <ResultsWidget model={model} />;
   if (widget === 'changes') return <ChangesWidget model={model} />;
   if (widget === 'agents') return <AgentsWidget model={model} />;
-  if (widget === 'plan') return <PlanWidget model={model} />;
   return null;
 }
 
@@ -615,47 +596,4 @@ function agentStatus(status: string): AgentStatus {
   if (status === 'failed') return 'failed';
   if (['cancelled', 'cancelling', 'paused', 'pausing'].includes(status)) return 'stopped';
   return 'waiting';
-}
-
-/** The selected work plan at a glance: progress and each item's state, read-only. */
-function PlanWidget({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  const status = model.plan.status;
-  if (!('plan' in status) || !status.plan) return null;
-  const items = status.plan.items;
-  const shown = items.slice(0, 5);
-  return (
-    <AgentCard data-testid="overview-plan" className="grid gap-2 p-3">
-      <p className="flex items-center gap-2 text-caption text-muted-foreground">
-        <ListChecks size={14} aria-hidden="true" />
-        <span>{t('planHeading')}</span>
-        <span className="ml-auto tabular-nums">
-          {t('planCount', { done: status.completed, total: status.total })}
-        </span>
-      </p>
-      <AgentSteeringPlan
-        steps={shown.map((item) => ({
-          id: item.id,
-          title: item.title,
-          status:
-            item.status === 'completed'
-              ? 'done'
-              : item.status === 'in_progress'
-                ? 'active'
-                : 'pending',
-        }))}
-        status={model.live ? 'running' : 'waiting'}
-        labels={{ plan: t('planHeading') }}
-        statusLabel={(state) =>
-          t(state === 'done' ? 'completed' : state === 'active' ? 'in_progress' : 'pending')
-        }
-        wrapTitles
-      />
-      {items.length > shown.length ? (
-        <p className="pl-6 text-caption text-muted-foreground">
-          {t('planMore', { count: items.length - shown.length })}
-        </p>
-      ) : null}
-    </AgentCard>
-  );
 }

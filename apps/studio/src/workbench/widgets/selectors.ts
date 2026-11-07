@@ -691,14 +691,7 @@ export function sessionStats(
   };
 }
 
-export type OverviewWidget =
-  | 'attention'
-  | 'context'
-  | 'usage'
-  | 'results'
-  | 'changes'
-  | 'agents'
-  | 'plan';
+export type OverviewWidget = 'attention' | 'context' | 'usage' | 'results' | 'changes' | 'agents';
 
 /**
  * Put the current task ahead of telemetry, then lead with results after it ends. The execution
@@ -710,17 +703,14 @@ export function overviewWidgets(input: {
   results: readonly unknown[];
   live?: boolean;
   action?: { needsUser: boolean };
-  /** A work plan from the planning tool is selected and readable. */
-  plan?: boolean;
 }): OverviewWidget[] {
   const shown = new Set<string>(input.chips);
-  if (input.plan) shown.add('plan');
   if (input.action?.needsUser) shown.add('attention');
   if (input.usage) shown.add('usage');
   if (input.results.length) shown.add('results');
   const primary: OverviewWidget[] = input.live
-    ? ['attention', 'plan', 'agents', 'results', 'changes']
-    : ['attention', 'results', 'changes', 'plan', 'agents'];
+    ? ['attention', 'agents', 'results', 'changes']
+    : ['attention', 'results', 'changes', 'agents'];
   return [...primary, 'context' as const, 'usage' as const].filter((widget) => shown.has(widget));
 }
 

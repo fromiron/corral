@@ -22,9 +22,11 @@ export interface SteerTarget {
 export function ReinsPanel({
   session,
   target,
+  compact = false,
 }: {
   session: RunSessionStore;
   target: SteerTarget | null;
+  compact?: boolean;
 }) {
   const t = useTranslations('Reins');
   const inputId = useId();
@@ -62,7 +64,7 @@ export function ReinsPanel({
           {t('heading')}
         </h2>
         <p className="text-sm text-muted-foreground">{t('noTarget')}</p>
-        <SettingsPatchPanel key={projection?.runId} session={session} />
+        {compact ? null : <SettingsPatchPanel key={projection?.runId} session={session} />}
       </section>
     );
   }
@@ -130,99 +132,125 @@ export function ReinsPanel({
       .catch(() => undefined);
   };
 
+  const compose =
+    !target.finished || draft ? (
+      <div className="mt-2.5 flex flex-col gap-1 border-t border-border py-2.5 pr-3 pl-3.5">
+        <label htmlFor={inputId} className="text-xs font-medium">
+          {t('instruction')}
+        </label>
+        <Textarea
+          id={inputId}
+          aria-describedby={hintId}
+          value={text}
+          onChange={(event) =>
+            setDraft(
+              event.target.value
+                ? {
+                    runId: draft?.runId ?? runId,
+                    executionId: draft?.executionId ?? target.executionId,
+                    nodeLabel: draft?.nodeLabel ?? target.nodeLabel,
+                    text: event.target.value,
+                  }
+                : null,
+            )
+          }
+          onKeyDown={onKeyDown}
+          rows={3}
+        />
+        <p id={hintId} className="text-xs text-muted-foreground">
+          {t('instructionHint')}
+        </p>
+        {!draftMatches && draft ? (
+          <>
+            <p role="status" className="text-xs text-warning">
+              {t('draftTargetChanged', {
+                target: `${draft.nodeLabel} · ${draft.executionId}`,
+              })}
+            </p>
+            <Button
+              type="button"
+              disabled={pending || target.finished}
+              variant="tertiary"
+              size="compact"
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  commandId: undefined,
+                  runId,
+                  executionId: target.executionId,
+                  nodeLabel: target.nodeLabel,
+                })
+              }
+            >
+              {t('useDraftHere')}
+            </Button>
+          </>
+        ) : null}
+        <Button
+          type="button"
+          onClick={() => void send()}
+          disabled={pending || text.trim() === '' || !draftMatches || target.finished}
+          variant="primary"
+          size="compact"
+          className="self-end"
+        >
+          {pending ? t('sending') : t('send')}
+        </Button>
+      </div>
+    ) : null;
+
   return (
     <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3">
       <h2 id={`${inputId}-heading`} className="text-sm font-semibold">
         {t('heading')}
       </h2>
-      <ExecutionSteering
-        session={session}
-        target={target}
-        compose={
-          !target.finished || draft ? (
-            <div className="mt-2.5 flex flex-col gap-1 border-t border-border py-2.5 pr-3 pl-3.5">
-              <label htmlFor={inputId} className="text-xs font-medium">
-                {t('instruction')}
-              </label>
-              <Textarea
-                id={inputId}
-                aria-describedby={hintId}
-                value={text}
-                onChange={(event) =>
-                  setDraft(
-                    event.target.value
-                      ? {
-                          runId: draft?.runId ?? runId,
-                          executionId: draft?.executionId ?? target.executionId,
-                          nodeLabel: draft?.nodeLabel ?? target.nodeLabel,
-                          text: event.target.value,
-                        }
-                      : null,
-                  )
-                }
-                onKeyDown={onKeyDown}
-                rows={3}
-              />
-              <p id={hintId} className="text-xs text-muted-foreground">
-                {t('instructionHint')}
-              </p>
-              {!draftMatches && draft ? (
-                <>
-                  <p role="status" className="text-xs text-warning">
-                    {t('draftTargetChanged', {
-                      target: `${draft.nodeLabel} · ${draft.executionId}`,
-                    })}
-                  </p>
-                  <Button
-                    type="button"
-                    disabled={pending || target.finished}
-                    variant="tertiary"
-                    size="compact"
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        commandId: undefined,
-                        runId,
-                        executionId: target.executionId,
-                        nodeLabel: target.nodeLabel,
-                      })
-                    }
-                  >
-                    {t('useDraftHere')}
-                  </Button>
-                </>
-              ) : null}
-              <Button
-                type="button"
-                onClick={() => void send()}
-                disabled={pending || text.trim() === '' || !draftMatches || target.finished}
-                variant="primary"
-                size="compact"
-                className="self-end"
-              >
-                {pending ? t('sending') : t('send')}
-              </Button>
-            </div>
-          ) : null
-        }
-      >
-        <div className="px-3.5 pb-3">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-            <dt className="text-muted-foreground">{t('target')}</dt>
-            <dd>
-              {target.nodeLabel} · execution {target.executionId}
-            </dd>
-            <dt className="text-muted-foreground">{t('delivery')}</dt>
-            <dd>{t('deliveryValue')}</dd>
-            <dt className="text-muted-foreground">{t('scope')}</dt>
-            <dd>{t('scopeValue')}</dd>
-          </dl>
-
+      {compact ? (
+        <>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+            <span className="font-medium">{target.nodeLabel}</span>
+            <span>
+              {projection?.executionOrder.includes(target.executionId)
+                ? t('executionNumber', {
+                    number: projection.executionOrder.indexOf(target.executionId) + 1,
+                  })
+                : target.executionId}
+            </span>
+            <span className="text-muted-foreground">{t('deliveryValue')}</span>
+            <span className="text-muted-foreground">{t('scopeValue')}</span>
+          </div>
+          {compose}
           {target.finished ? (
-            <p className="text-xs text-muted-foreground">{t('finished')}</p>
+            <p className="text-sm text-muted-foreground">{t('finished')}</p>
           ) : null}
-        </div>
-      </ExecutionSteering>
+          {(projection?.directiveOrder ?? []).some(
+            (id) => projection?.directives[id]?.targetExecutionId === target.executionId,
+          ) ? (
+            <details>
+              <summary>{t('history')}</summary>
+              <ExecutionSteering session={session} target={target} compose={null} planSlot={null} />
+            </details>
+          ) : null}
+        </>
+      ) : (
+        <ExecutionSteering session={session} target={target} compose={compose}>
+          <div className="px-3.5 pb-3">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">{t('target')}</dt>
+              <dd>
+                {target.nodeLabel} · execution {target.executionId}
+              </dd>
+              <dt className="text-muted-foreground">{t('delivery')}</dt>
+              <dd>{t('deliveryValue')}</dd>
+              <dt className="text-muted-foreground">{t('scope')}</dt>
+              <dd>{t('scopeValue')}</dd>
+            </dl>
+
+            {target.finished ? (
+              <p className="text-xs text-muted-foreground">{t('finished')}</p>
+            ) : null}
+          </div>
+        </ExecutionSteering>
+      )}
 
       {runOpen && !target.finished ? (
         <Button

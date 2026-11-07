@@ -77,7 +77,8 @@ test('a completed run explains failed file steps and opens their reasons', async
   await expect(failure.locator('details')).not.toHaveAttribute('open');
   await failure.getByText('Diagnostics', { exact: true }).click();
   await expect(failure.locator('code')).toHaveText('TARGET_NOT_FOUND: the folder is unavailable');
-  await page.getByRole('tab', { name: 'Usage', exact: true }).click();
+  await page.getByRole('button', { name: 'Run info', exact: true }).click();
+  await page.getByTestId('run-side').getByRole('tab', { name: 'Usage', exact: true }).click();
   await page.getByRole('button', { name: 'Usage by request' }).click();
   const request = page.locator('[data-testid^="budget-call-"]').first();
   await expect(request.locator('span').first()).toContainText('Request 1');
@@ -134,15 +135,27 @@ test('selected-run usage and unique result identities survive reload without cha
   await expect(results.getByRole('option').first()).toContainText('Run #2');
   const names = await results.getByRole('option').allTextContents();
   expect(new Set(names).size).toBe(names.length);
-  for (const execution of [2, 3]) {
-    await expect(
-      results
-        .getByRole('option')
-        .filter({ hasText: 'Run #2' })
-        .filter({ hasText: 'Helper' })
-        .filter({ hasText: `execution ${execution}` }),
-    ).toBeVisible();
-  }
+  // Only the current result body is offered; older relation metadata is retained
+  // for history without presenting a reference whose body has been released.
+  const latest = corral.server.coordinator.listRuns()[0];
+  assert(latest);
+  const current = corral.server.coordinator.getSnapshot(latest.runId).projection;
+  const latestId = current.output?.artifactVersionIds[0];
+  const previousId = projection.output?.artifactVersionIds[0];
+  assert(latestId && previousId);
+  expect(latestId).not.toBe(previousId);
+  const result = current.artifacts[latestId];
+  assert(result);
+  expect(current.executionOrder).toContain(result.authorExecutionId);
+  await expect(results.getByRole('option')).toHaveCount(1);
+  await expect(results.getByRole('option')).toContainText(`${result.name} v${result.version}`);
+  await expect(results.getByRole('option')).toContainText('Run #2');
+  await expect(results.getByRole('option')).toContainText(
+    `execution ${current.executionOrder.indexOf(result.authorExecutionId) + 1}`,
+  );
+  expect(projection.artifacts[previousId]?.bodyAvailable).toBe(false);
+  expect(projection.artifacts[previousId]?.authorExecutionId).toBeTruthy();
+  await expect(results.getByRole('option').filter({ hasText: 'Run #1' })).toHaveCount(0);
   expect(corral.errors).toEqual([]);
 });
 
@@ -187,7 +200,7 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
   }, definition);
   await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
-  await expect(page.getByTestId('run-activity')).toBeVisible();
+  await expect(page.getByRole('application', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);
 }
 
@@ -198,13 +211,17 @@ test('the Results view opens its result, and a reload keeps the chosen version',
   await corral.open('/');
   await finishedRun(page, corral);
   await expect(page).toHaveURL(/result=artv_/);
+  const selectedVersion = new URL(page.url()).searchParams.get('result');
+  await expect(page.getByTestId('run-document')).toBeVisible();
+  await expect(page.getByTestId('run-side')).toBeHidden();
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   const results = page.getByRole('navigation', { name: 'Results' });
   // One agent, one Output: a single final result.
   await expect(results.getByRole('button')).toHaveCount(1);
   await results.getByRole('button').click();
-  await expect(page).toHaveURL(/view=results&result=/);
+  await expect(page).toHaveURL(new RegExp(`result=${selectedVersion}`));
   await page.reload();
+  await expect(page).toHaveURL(new RegExp(`result=${selectedVersion}`));
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   expect(corral.errors).toEqual([]);
 });
