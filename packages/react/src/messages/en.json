@@ -644,7 +644,9 @@
     "selected": "Selected event",
     "round": "round {no}",
     "attempt": "attempt {no}",
-    "recordedAt": "Recorded"
+    "causes": "Caused by",
+    "openExecution": "Open execution",
+    "payload": "Recorded content"
   },
   "Models": {
     "loadFailed": "Could not load model settings. Check the connection and try again.",

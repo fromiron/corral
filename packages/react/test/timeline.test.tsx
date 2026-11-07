@@ -1,6 +1,7 @@
 import type { RunEvent } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { Timeline } from '../src/components/Timeline.tsx';
@@ -48,14 +49,19 @@ const execution = (
   error: null,
 });
 
-function event(runSeq: number, executionId: string, seconds: number): RunEvent {
+function event(
+  runSeq: number,
+  executionId: string,
+  seconds: number,
+  causes: string[] = [],
+): RunEvent {
   return {
     schemaVersion: '0.1',
     eventId: `evt_${runSeq}`,
     runId: 'run_events',
     runSeq,
     recordedAt: new Date(Date.UTC(2026, 10, 7, 0, 0, seconds)).toISOString(),
-    causedByEventIds: [],
+    causedByEventIds: causes,
     actor: { kind: 'agent', id: executionId },
     type: 'tool.requested',
     executionId,
@@ -68,13 +74,14 @@ function event(runSeq: number, executionId: string, seconds: number): RunEvent {
   } as RunEvent;
 }
 
-function renderEvents(fill = false) {
+function renderEvents(fill = false, onOpenExecution?: (id: string) => void) {
   const { definition } = researchTeamDraft();
   const writer = definition.nodes.find((node) => node.id === 'write')?.label ?? 'write';
   render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
       <Timeline
         fill={fill}
+        {...(onOpenExecution ? { onOpenExecution } : {})}
         session={sessionStore({
           runId: 'run_events',
           definition,
@@ -86,7 +93,7 @@ function renderEvents(fill = false) {
             },
             executionOrder: ['exec_a', 'exec_b'],
           }),
-          events: [event(1, 'exec_a', 0), event(2, 'exec_b', 65)],
+          events: [event(1, 'exec_a', 0), event(2, 'exec_b', 65, ['evt_1'])],
         })}
       />
     </IntlProvider>,
@@ -101,7 +108,10 @@ it('shows elapsed time per row and opens details only for a chosen event', async
   expect(rows[0]?.textContent).toContain('+0:00');
   expect(rows[1]?.textContent).toContain('+1:05');
   await act(async () => fireEvent.click(within(rows[1] as HTMLElement).getByRole('button')));
-  expect(screen.getByTestId('timeline-selected').textContent).toContain('tool.requested');
+  const detail = screen.getByTestId('timeline-selected');
+  // Only what the row lacks: the recorded payload, not the kind again.
+  expect(detail.textContent).toContain('"toolCallId": "tool_2"');
+  expect(detail.textContent).not.toContain('tool.requested');
 });
 
 it('filters executions by agent name and attempt rather than by identifier', async () => {
@@ -139,4 +149,33 @@ it('marks each actor with its own icon', () => {
     row.querySelector('[data-actor-icon]')?.getAttribute('data-actor-icon');
   // Both fixture events are recorded by agents.
   for (const row of screen.getAllByTestId('timeline-row')) expect(icon(row)).toBe('agent');
+});
+
+it('follows a cause to its event even when the filters hide it', async () => {
+  const user = userEvent.setup();
+  const writer = renderEvents(true);
+  await user.click(screen.getByRole('combobox', { name: 'Execution' }));
+  await user.click(screen.getByRole('option', { name: `${writer} · attempt 2` }));
+  const rows = screen.getAllByTestId('timeline-row');
+  expect(rows).toHaveLength(1);
+  await act(async () => fireEvent.click(within(rows[0] as HTMLElement).getByRole('button')));
+  const cause = within(screen.getByTestId('timeline-selected')).getByRole('button', { name: /#1/ });
+  await act(async () => fireEvent.click(cause));
+  // The filter is cleared and the cause is now the chosen row.
+  const chosen = screen
+    .getAllByTestId('timeline-row')
+    .find((row) => within(row).getByRole('button').getAttribute('aria-pressed') === 'true');
+  expect(chosen?.dataset.seq).toBe('1');
+});
+
+it('opens the execution an event belongs to', async () => {
+  const open = vi.fn();
+  renderEvents(true, open);
+  const rows = screen.getAllByTestId('timeline-row');
+  await act(async () => fireEvent.click(within(rows[1] as HTMLElement).getByRole('button')));
+  const detail = screen.getByTestId('timeline-selected');
+  await act(async () =>
+    fireEvent.click(within(detail).getByRole('button', { name: 'Open execution' })),
+  );
+  expect(open).toHaveBeenCalledWith('exec_b');
 });

@@ -1,10 +1,12 @@
 import type { RunEvent } from '@corral/contracts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Bot, Cog, type LucideIcon, User } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
+  formatJson,
+  highlightJson,
   KitButton,
   KitCard,
   KitCardAction,
@@ -36,10 +38,13 @@ export function Timeline({
   selectedSeq,
   onSelectSeq,
   fill = false,
+  onOpenExecution,
 }: {
   session: RunSessionStore;
   selectedSeq?: number | undefined;
   onSelectSeq?: (seq: number) => void;
+  /** Opens the execution an event belongs to. */
+  onOpenExecution?: (executionId: string) => void;
   /** Fill the parent's height (the run workspace) instead of a fixed list height. */
   fill?: boolean;
 }) {
@@ -107,6 +112,25 @@ export function Timeline({
       selectedSeq !== undefined ? e.runSeq === selectedSeq : e.eventId === selectedId,
     ) ?? null;
 
+  // Choosing an event from elsewhere (a cause) clears filters that hide it and brings it into view.
+  const [reveal, setReveal] = useState<string | null>(null);
+  const choose = (event: RunEvent) => {
+    if (!shown.includes(event)) {
+      setActor('all');
+      setKind('all');
+      setExecution('all');
+    }
+    setSelectedId(event.eventId);
+    onSelectSeq?.(event.runSeq);
+    setReveal(event.eventId);
+  };
+  const causes = selected
+    ? selected.causedByEventIds.flatMap((id) => {
+        const cause = events.find((e) => e.eventId === id);
+        return cause ? [cause] : [];
+      })
+    : [];
+
   const rows = useVirtualizer({
     count: shown.length,
     getScrollElement: () => scrollRef.current,
@@ -114,6 +138,14 @@ export function Timeline({
     overscan: 8,
     getItemKey: (index) => shown[index]?.eventId ?? index,
   });
+
+  useEffect(() => {
+    if (!reveal) return;
+    const index = shown.findIndex((e) => e.eventId === reveal);
+    if (index < 0) return;
+    rows.scrollToIndex(index, { align: 'center' });
+    setReveal(null);
+  }, [reveal, shown, rows]);
 
   const filter = (
     label: string,
@@ -252,35 +284,71 @@ export function Timeline({
               <KitCardTitle>{t('selected')}</KitCardTitle>
             </h4>
           </KitCardHeader>
-          <KitCardContent>
-            <dl className="grid grid-cols-[6rem_1fr] gap-x-2 gap-y-1">
-              <dt className="text-muted-foreground">#</dt>
-              <dd>{selected.runSeq}</dd>
-              <dt className="text-muted-foreground">{t('kind')}</dt>
-              <dd className="break-all font-mono">{selected.type}</dd>
-              <dt className="text-muted-foreground">{t('actor')}</dt>
-              <dd className="flex items-center gap-1.5">
-                <ActorIcon kind={selected.actor.kind} />
-                {t(`actors.${selected.actor.kind}`)}
-              </dd>
-              {selected.executionId ? (
-                <>
-                  <dt className="text-muted-foreground">{t('execution')}</dt>
-                  <dd>
-                    {executionOptions.find(([id]) => id === selected.executionId)?.[1] ??
-                      labelOf(selected.executionId)}
-                  </dd>
-                </>
-              ) : null}
-              <dt className="text-muted-foreground">{t('recordedAt')}</dt>
-              <dd>
+          <KitCardContent className="grid gap-4">
+            <div className="grid gap-1">
+              <p className="text-foreground">
+                <EventText event={selected} labelOf={labelOf} nodeLabel={nodeLabel} />
+              </p>
+              <p className="text-caption text-muted-foreground tabular-nums">
                 {format.dateTime(new Date(selected.recordedAt), {
                   dateStyle: 'medium',
                   timeStyle: 'medium',
                 })}{' '}
-                <span className="text-muted-foreground">{elapsed(selected)}</span>
-              </dd>
-            </dl>
+                · {elapsed(selected)}
+              </p>
+            </div>
+            {causes.length ? (
+              <section aria-label={t('causes')} className="grid gap-1">
+                <h5 className="text-caption text-muted-foreground">{t('causes')}</h5>
+                <ul className="grid gap-0.5">
+                  {causes.map((cause) => (
+                    <li key={cause.eventId}>
+                      <KitButton
+                        type="button"
+                        variant="ghost"
+                        size="compact"
+                        className="w-full justify-start text-left"
+                        onClick={() => choose(cause)}
+                      >
+                        <span className="shrink-0 font-mono text-muted-foreground">
+                          #{cause.runSeq}
+                        </span>
+                        <span className="min-w-0 truncate">
+                          <EventText event={cause} labelOf={labelOf} nodeLabel={nodeLabel} />
+                        </span>
+                      </KitButton>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            {selected.executionId ? (
+              <section aria-label={t('execution')} className="grid gap-1">
+                <h5 className="text-caption text-muted-foreground">{t('execution')}</h5>
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    {executionOptions.find(([id]) => id === selected.executionId)?.[1] ??
+                      labelOf(selected.executionId)}
+                  </span>
+                  {onOpenExecution ? (
+                    <KitButton
+                      type="button"
+                      variant="secondary"
+                      size="compact"
+                      onClick={() => selected.executionId && onOpenExecution(selected.executionId)}
+                    >
+                      {t('openExecution')}
+                    </KitButton>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+            <section aria-label={t('payload')} className="grid gap-1">
+              <h5 className="text-caption text-muted-foreground">{t('payload')}</h5>
+              <pre className="m-0 max-h-[50vh] overflow-auto rounded-lg border border-border bg-muted px-3 py-2.5 font-mono text-caption whitespace-pre-wrap text-foreground [overflow-wrap:anywhere] [tab-size:2]">
+                <code>{highlightJson(formatJson(selected.payload))}</code>
+              </pre>
+            </section>
           </KitCardContent>
         </KitCard>
       ) : null}

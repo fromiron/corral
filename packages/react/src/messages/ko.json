@@ -644,7 +644,9 @@
     "selected": "선택한 이벤트",
     "round": "{no}회차",
     "attempt": "{no}번째 시도",
-    "recordedAt": "기록 시각"
+    "causes": "원인",
+    "openExecution": "실행 열기",
+    "payload": "기록 내용"
   },
   "Models": {
     "loadFailed": "모델 설정을 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.",

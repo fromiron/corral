@@ -13,7 +13,6 @@ import {
   ExecutionTranscript,
   ExecutionTree,
   FailureNotice,
-  HarnessDetails,
   primaryWorkPlan,
   QuestionsPanel,
   ReinsPanel,
@@ -571,7 +570,13 @@ function RunWorkspace({
                 {
                   id: 'events',
                   label: `${m('events')} ${events.length}`,
-                  render: () => <Timeline session={session} fill />,
+                  render: () => (
+                    <Timeline
+                      session={session}
+                      fill
+                      onOpenExecution={(id) => chooseExecution(id)}
+                    />
+                  ),
                 },
               ]}
             />

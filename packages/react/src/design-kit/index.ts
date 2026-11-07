@@ -88,6 +88,8 @@ export {
   type PlanVsActualProps,
 } from './components/agent/plan-vs-actual.tsx';
 export {
+  formatJson,
+  highlightJson,
   type ToolCall,
   ToolCallCard,
   ToolCallGroup,
