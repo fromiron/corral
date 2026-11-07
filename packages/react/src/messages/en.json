@@ -978,7 +978,17 @@
       "read": "Read",
       "input": "Model input"
     },
-    "observedRelation": "{kind} · {count} observed · {active} in progress"
+    "observedRelation": "{kind} · {count} observed · {active} in progress",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fit": "Fit view",
+    "state": {
+      "call": "Call",
+      "data": "Data",
+      "ask": "Needs you",
+      "failed": "Failed",
+      "settled": "Finished"
+    }
   },
   "Judgments": {
     "heading": "Effort judgments",

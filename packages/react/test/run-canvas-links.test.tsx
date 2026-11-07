@@ -1,6 +1,5 @@
 import type { ArtifactVersionView, ExecutionView, ModelCallView } from '@corral/core';
 import { render } from '@testing-library/react';
-import type { Edge } from '@xyflow/react';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { RunCanvas } from '../src/components/RunCanvas.tsx';
@@ -17,15 +16,6 @@ beforeAll(() => {
   } as unknown as typeof ResizeObserver;
 });
 afterAll(() => vi.restoreAllMocks());
-
-const rendered = vi.hoisted(() => ({ edges: [] as Edge[] }));
-vi.mock('@xyflow/react', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@xyflow/react')>()),
-  ReactFlow: ({ edges }: { edges: Edge[] }) => {
-    rendered.edges = edges;
-    return null;
-  },
-}));
 
 function execution(id: string, nodeId: string, parentExecutionId: string | null): ExecutionView {
   return {
@@ -117,10 +107,18 @@ it('renders only observed directed relations with distinct accessible names', ()
     </IntlProvider>,
   );
   // Different kinds sharing the same direction may be presented on one line.
-  expect(rendered.edges).toHaveLength(3);
+  const rendered = [...document.querySelectorAll<HTMLElement>('li[data-source][data-target]')].map(
+    (item) => ({
+      source: item.dataset.source,
+      target: item.dataset.target,
+      ariaLabel: item.textContent ?? '',
+    }),
+  );
+  expect(rendered).toHaveLength(3);
+  expect(document.querySelectorAll('path[data-relation]')).toHaveLength(3);
   const edge = (source: string, target: string, name: RegExp) =>
-    rendered.edges.find(
-      (item) => item.source === source && item.target === target && name.test(item.ariaLabel ?? ''),
+    rendered.find(
+      (item) => item.source === source && item.target === target && name.test(item.ariaLabel),
     );
   for (const [source, target, name] of [
     ['research', 'helper', /delegat/i],
@@ -131,8 +129,8 @@ it('renders only observed directed relations with distinct accessible names', ()
   ] as const) {
     expect(edge(source, target, name)).toBeDefined();
   }
-  expect(rendered.edges.every((item) => item.ariaLabel?.includes('1'))).toBe(true);
-  expect(rendered.edges.some((item) => item.source === 'respond' && item.target === 'helper')).toBe(
+  expect(rendered.every((item) => item.ariaLabel.includes('1'))).toBe(true);
+  expect(rendered.some((item) => item.source === 'respond' && item.target === 'helper')).toBe(
     false,
   );
 });

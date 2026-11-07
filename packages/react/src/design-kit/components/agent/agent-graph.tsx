@@ -7,6 +7,8 @@ import { Elevated } from '../../lib/elevated.tsx';
 import { focusRing } from '../../lib/focus.ts';
 import { fontWeights } from '../../lib/font-weight.ts';
 import { loop, spring } from '../../lib/springs.ts';
+import { SURFACE_BG } from '../../lib/surface-classes.ts';
+import { useSurface } from '../../lib/surface-context.tsx';
 import { cn } from '../../lib/utils.ts';
 import {
   type AgentMark,
@@ -50,6 +52,8 @@ export function AgentGraphNode({
   renderTrigger,
 }: AgentGraphNodeProps) {
   const reduce = useReducedMotion() ?? false;
+  // Labels take the stage's own surface so edges passing behind them stay out of the text.
+  const surface = useSurface();
   const descriptionId = useId();
   const diameter = lead ? 56 : 46;
   const Mark = resolveMark(logo);
@@ -91,13 +95,14 @@ export function AgentGraphNode({
         className="relative grid h-14 place-items-center"
         style={{ width: diameter, opacity: dimmed ? 0.35 : 1 }}
       >
-        {status === 'running' ? (
+        {status === 'running' || status === 'waiting' ? (
+          // Corral also breathes a waiting (needs you) agent, in the warning colour.
           <motion.span
             className="absolute rounded-[27%]"
             style={{
               width: diameter,
               height: diameter,
-              background: 'color-mix(in srgb, var(--emphasis) 30%, var(--background))',
+              background: `color-mix(in srgb, var(${status === 'waiting' ? '--warning' : '--emphasis'}) 30%, var(--background))`,
             }}
             initial={false}
             animate={
@@ -111,7 +116,12 @@ export function AgentGraphNode({
         ) : null}
         {renderTrigger ? renderTrigger(button) : button}
       </div>
-      <div className="grid max-w-full justify-items-center gap-1 bg-surface-2 px-1">
+      <div
+        className={cn(
+          'pointer-events-none grid max-w-full justify-items-center gap-1 px-1',
+          SURFACE_BG[surface] ?? 'bg-background',
+        )}
+      >
         <span
           className="max-w-full truncate px-1 text-caption text-foreground"
           style={{ fontVariationSettings: fontWeights.semibold }}

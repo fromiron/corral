@@ -342,6 +342,59 @@ describe('run agent relationship graph', () => {
     expect(new Set(relations.map((relation) => relation.id)).size).toBe(2);
   });
 
+  it('keeps a delivery in progress only while its consuming model call or reader is unfinished', () => {
+    const changes = {
+      artifacts: { v1: artifact('v1', 'author'), v2: artifact('v2', 'author') },
+      artifactReads: { reader: ['v1'] },
+      modelCalls: { call: { ...modelCall('call', 'consumer', ['v2']), finished: false } },
+    };
+    const live = projection(
+      [
+        execution('author', 'research'),
+        execution('reader', 'write', { status: 'active' }),
+        execution('consumer', 'review', { status: 'active' }),
+      ],
+      changes,
+    );
+    const relation = (value: RunProjection, kind: string) =>
+      buildRunAgentGraph(value, definition).relations.find((item) => item.kind === kind);
+    expect(relation(live, 'read')).toMatchObject({ target: 'write', activeCount: 1 });
+    expect(relation(live, 'input')).toMatchObject({ target: 'review', activeCount: 1 });
+    const settled = projection(
+      [
+        execution('author', 'research'),
+        execution('reader', 'write'),
+        execution('consumer', 'review', { status: 'active' }),
+      ],
+      { ...changes, modelCalls: { call: modelCall('call', 'consumer', ['v2']) } },
+    );
+    expect(relation(settled, 'read')).toMatchObject({ activeCount: 0 });
+    expect(relation(settled, 'input')).toMatchObject({ activeCount: 0 });
+    expect(relation({ ...live, status: 'cancelled' }, 'read')).toMatchObject({ activeCount: 0 });
+    expect(relation({ ...live, status: 'cancelled' }, 'input')).toMatchObject({ activeCount: 0 });
+  });
+
+  it('marks a delegation failed only while its current attempt failed', () => {
+    const failed = projection([
+      execution('root', 'research'),
+      execution('child1', 'write', { parentExecutionId: 'root', taskId: 'task', status: 'failed' }),
+    ]);
+    const delegation = (value: RunProjection) =>
+      buildRunAgentGraph(value, definition).relations.find((item) => item.kind === 'delegate');
+    expect(delegation(failed)).toMatchObject({ failedCount: 1 });
+    const retried = projection([
+      execution('root', 'research'),
+      execution('child1', 'write', { parentExecutionId: 'root', taskId: 'task', status: 'failed' }),
+      execution('child2', 'write', {
+        parentExecutionId: 'root',
+        taskId: 'task',
+        attemptNo: 2,
+        previousExecutionId: 'child1',
+      }),
+    ]);
+    expect(delegation(retried)).toMatchObject({ failedCount: 0 });
+  });
+
   it('retains recorded self-relations between different executions of one agent', () => {
     const p = projection(
       [

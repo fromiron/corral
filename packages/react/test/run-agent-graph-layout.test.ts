@@ -24,6 +24,7 @@ function relation(source: string, target: string): RunAgentGraphRelation {
     kind: 'delegate',
     count: 1,
     activeCount: 0,
+    failedCount: 0,
     executionIds: [`execution_${source}`, `execution_${target}`],
     artifactVersionIds: [],
   };

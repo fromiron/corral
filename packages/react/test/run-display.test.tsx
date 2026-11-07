@@ -175,7 +175,7 @@ it('a display prefix keeps its observed metadata without restoring retired or fu
   );
   expect(
     view.container
-      .querySelector('[data-id="worker"] [data-run-status]')
+      .querySelector('[data-agent-id="worker"] [data-run-status]')
       ?.getAttribute('data-run-status'),
   ).toBe(nodeRunStatus(snapshot.projection, 'worker'));
   expect(within(screen.getByTestId('tree')).getByTestId('execution-exec_past')).toBeInTheDocument();

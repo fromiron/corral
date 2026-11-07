@@ -21,6 +21,8 @@ export interface RunAgentGraphRelation {
   kind: 'delegate' | 'question' | 'answer' | 'read' | 'input';
   count: number;
   activeCount: number;
+  /** Delegations whose current attempt failed. */
+  failedCount: number;
   executionIds: string[];
   artifactVersionIds: string[];
 }
@@ -73,6 +75,7 @@ export function buildRunAgentGraph(
   const relations = new Map<string, RunAgentGraphRelation>();
   const counted = new Map<string, Set<string>>();
   const active = new Map<string, Set<string>>();
+  const failing = new Map<string, Set<string>>();
   const add = (
     kind: RunAgentGraphRelation['kind'],
     source: string | null,
@@ -81,6 +84,7 @@ export function buildRunAgentGraph(
     inProgress: boolean,
     executionIds: string[],
     artifactVersionIds: string[] = [],
+    failed = false,
   ) => {
     if (!source || !target) return;
     const id = JSON.stringify([kind, source, target]);
@@ -91,6 +95,7 @@ export function buildRunAgentGraph(
       kind,
       count: 0,
       activeCount: 0,
+      failedCount: 0,
       executionIds: [],
       artifactVersionIds: [],
     };
@@ -100,8 +105,12 @@ export function buildRunAgentGraph(
     const progressing = active.get(id) ?? new Set<string>();
     if (running && inProgress) progressing.add(recordId);
     active.set(id, progressing);
+    const failures = failing.get(id) ?? new Set<string>();
+    if (failed) failures.add(recordId);
+    failing.set(id, failures);
     relation.count = records.size;
     relation.activeCount = progressing.size;
+    relation.failedCount = failures.size;
     relation.executionIds = [
       ...new Set([
         ...relation.executionIds,
@@ -125,6 +134,8 @@ export function buildRunAgentGraph(
       execution.taskId,
       current.has(execution.executionId) && !TERMINAL_EXECUTION_STATUSES.has(execution.status),
       [execution.parentExecutionId, execution.executionId],
+      [],
+      current.has(execution.executionId) && execution.status === 'failed',
     );
   }
   for (const question of questions) {
@@ -161,7 +172,14 @@ export function buildRunAgentGraph(
         question.answer.evidenceRefs,
       );
   }
-  const delivery = (kind: 'read' | 'input', executionId: string, versionId: string) => {
+  // A delivery is in progress while the receiver still works with it: the model call that
+  // included it has not finished, or the execution that read it has not ended.
+  const delivery = (
+    kind: 'read' | 'input',
+    executionId: string,
+    versionId: string,
+    inProgress: boolean,
+  ) => {
     const artifact = projection.artifacts[versionId];
     if (!artifact) return;
     add(
@@ -169,15 +187,24 @@ export function buildRunAgentGraph(
       agent(artifact.authorExecutionId),
       agent(executionId),
       versionId,
-      false,
+      inProgress,
       [artifact.authorExecutionId, executionId],
       [versionId],
     );
   };
   for (const [executionId, versions] of Object.entries(projection.artifactReads))
-    for (const versionId of versions) delivery('read', executionId, versionId);
+    for (const versionId of versions)
+      delivery(
+        'read',
+        executionId,
+        versionId,
+        !!projection.executions[executionId] &&
+          !TERMINAL_EXECUTION_STATUSES.has(
+            (projection.executions[executionId] as (typeof executions)[number]).status,
+          ),
+      );
   for (const call of Object.values(projection.modelCalls))
     for (const versionId of call.inputArtifactVersionIds)
-      delivery('input', call.executionId, versionId);
+      delivery('input', call.executionId, versionId, !call.finished);
   return { nodes: [...nodes.values()], relations: [...relations.values()] };
 }

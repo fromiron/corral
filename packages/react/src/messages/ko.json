@@ -978,7 +978,17 @@
       "read": "자료 읽음",
       "input": "모델 입력"
     },
-    "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개"
+    "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개",
+    "zoomIn": "확대",
+    "zoomOut": "축소",
+    "fit": "화면에 맞추기",
+    "state": {
+      "call": "지시",
+      "data": "자료 전달",
+      "ask": "확인 필요",
+      "failed": "실패",
+      "settled": "완료된 흐름"
+    }
   },
   "Judgments": {
     "heading": "추론 강도 판정",

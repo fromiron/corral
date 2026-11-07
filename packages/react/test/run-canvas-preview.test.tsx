@@ -82,9 +82,7 @@ function setup() {
   }
   render(<Harness />);
   const button = (nodeId: string) => {
-    const node = document.querySelector<HTMLElement>(
-      `.react-flow__node[data-id="${nodeId}"] button`,
-    );
+    const node = document.querySelector<HTMLElement>(`[data-agent-id="${nodeId}"] button`);
     if (!node) throw new Error(`Missing ${nodeId} button`);
     return node;
   };
