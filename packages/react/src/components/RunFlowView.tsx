@@ -208,11 +208,8 @@ export function RunFlowView({
     })) ?? [];
 
   return (
+    // Named by the tab that shows it; no heading of its own.
     <div data-testid="run-flow" className="mx-auto grid w-full max-w-5xl gap-6 pb-6">
-      <div className="grid gap-1">
-        <h2 className="text-base font-medium">{t('title')}</h2>
-        <p className="text-caption text-muted-foreground">{t('description')}</p>
-      </div>
       {flow.loops.length > 0 && (
         <div className="grid gap-3">
           {flow.loops.map((loop) => {

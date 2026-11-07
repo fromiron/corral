@@ -4665,7 +4665,8 @@
       "rowWaiting": "{label}: {status}",
       "empty": "No tasks were recorded in this run."
     },
-    "closeResult": "Close result"
+    "closeResult": "Close result",
+    "dockHeight": "Views height"
   },
   "Failure": {
     "cancelled": "This step was cancelled.",
@@ -4705,8 +4706,6 @@
     "select": "Compare {name}"
   },
   "RunFlow": {
-    "title": "Work flow",
-    "description": "Who created each result, who used it, and which recorded decisions followed.",
     "relationships": "Agent relationships",
     "chooseRelationship": "Choose a relationship",
     "relationship": "{from} → {to}: observed relationships",

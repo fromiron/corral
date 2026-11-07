@@ -4665,7 +4665,8 @@
       "rowWaiting": "{label}: {status}",
       "empty": "이 실행에 기록된 작업이 없습니다."
     },
-    "closeResult": "결과 닫기"
+    "closeResult": "결과 닫기",
+    "dockHeight": "보기 높이"
   },
   "Failure": {
     "cancelled": "이 단계는 취소되었습니다.",
@@ -4705,8 +4706,6 @@
     "select": "{name} 비교"
   },
   "RunFlow": {
-    "title": "작업 흐름",
-    "description": "누가 산출물을 만들고 사용했는지, 어떤 판단으로 다음 작업이 이어졌는지 확인합니다.",
     "relationships": "에이전트 간 관계",
     "chooseRelationship": "관계 선택",
     "relationship": "{from} → {to}: 확인된 관계",

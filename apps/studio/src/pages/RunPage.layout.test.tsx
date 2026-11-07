@@ -126,8 +126,17 @@ async function mount(
   return { repository, container, run, navigations };
 }
 
+async function openGraph(container: HTMLElement) {
+  const tab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((element) =>
+    element.textContent?.includes('Graph'),
+  );
+  if (!tab) throw new Error('The Graph tab must exist');
+  await act(async () => tab.click());
+}
+
 it('an inline handoff run lays out its graph without fetching an unsaved Corral', async () => {
   const { repository, container } = await mount('inline_team', null);
+  await openGraph(container);
   expect(repository.get).not.toHaveBeenCalled();
   expect(container.querySelector('[data-testid="layout"]')?.textContent).toContain(
     '"source":"auto"',
@@ -141,6 +150,7 @@ it('a saved Corral keeps its layout even when its id has the auto prefix', async
   const { repository, container } = await mount('auto_saved', {
     layout: { nodes },
   } as CorralRecord);
+  await openGraph(container);
   expect(repository.get).toHaveBeenCalledWith('auto_saved');
   expect(container.querySelector('[data-testid="layout"]')?.textContent).toBe(
     JSON.stringify({ source: 'saved', nodes }),
@@ -149,6 +159,7 @@ it('a saved Corral keeps its layout even when its id has the auto prefix', async
 
 it('a removed Corral still displays its run with an automatic layout', async () => {
   const { repository, container } = await mount('removed_corral', null);
+  await openGraph(container);
   expect(repository.get).not.toHaveBeenCalled();
   expect(container.querySelector('[data-testid="layout"]')?.textContent).toContain(
     '"source":"auto"',
@@ -187,8 +198,10 @@ it('a completed run opens its run column, headed by the run, with no page tabs',
   // The head scrolls with the activity instead of sitting above it.
   expect(column?.querySelector('[data-testid="run-header"]')).not.toBeNull();
   expect(column?.querySelector('[data-testid="run-activity"]')).not.toBeNull();
-  const selected = column?.querySelector('[role="tab"][aria-selected="true"]');
-  expect(selected?.textContent).toContain('Activity');
+  // Activity is the column itself, not a tab; the dock below starts folded.
+  expect(
+    column?.querySelector('[role="tablist"][aria-label="Execution views"] [aria-selected="true"]'),
+  ).toBeNull();
   // The tree is no longer its own column: the activity list chooses executions.
   expect(summary.container.querySelector('[role="tree"]')).toBeNull();
   // Run and results are not two pages any more: results live in the side panel.
@@ -219,7 +232,50 @@ it('shows the column and the panel side by side once the container holds 640 + 3
   );
 });
 
-it('secondary views switch under the summary and keep the graph mounted', async () => {
+it('secondary views open in a bottom dock whose tab bar stays, folding on a second press', async () => {
+  const { container } = await mount('inline_team', null);
+  const dock = () => container.querySelector<HTMLElement>('[data-testid="run-dock"]');
+  const tabs = () => [
+    ...(dock()?.querySelectorAll<HTMLElement>(
+      '[role="tablist"][aria-label="Execution views"] [role="tab"]',
+    ) ?? []),
+  ];
+  const tab = async (name: string) => {
+    const button = tabs().find((el) => el.textContent?.includes(name));
+    expect(button).toBeDefined();
+    await act(async () => button?.click());
+  };
+  const open = () =>
+    dock()?.querySelector<HTMLElement>('[data-run-dock-content]')?.hidden === false;
+  // The bar is always there, the record count on its events tab; nothing is open yet.
+  expect(tabs().map((el) => el.textContent)).toEqual([
+    expect.stringContaining('Work flow'),
+    expect.stringContaining('Timeline'),
+    expect.stringContaining('Events 0'),
+    expect.stringContaining('Graph'),
+  ]);
+  expect(open()).toBe(false);
+  expect(dock()?.querySelector('[role="separator"]')).toBeNull();
+  await tab('Work flow');
+  expect(open()).toBe(true);
+  expect(dock()?.querySelector('[data-testid="run-flow"]')).not.toBeNull();
+  await tab('Graph');
+  const graph = container.querySelector('[data-testid="layout"]');
+  expect(graph).not.toBeNull();
+  await tab('Work flow');
+  await tab('Graph');
+  expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
+  // Pressing the open tab folds the dock; the graph stays mounted, the activity stays above.
+  await tab('Graph');
+  expect(open()).toBe(false);
+  expect(tabs().some((el) => el.getAttribute('aria-selected') === 'true')).toBe(false);
+  expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
+  expect(
+    container.querySelector('[data-testid="run-column"] [data-testid="run-activity"]'),
+  ).not.toBeNull();
+});
+
+it('keeps the timeline view selection across switching and folding the dock', async () => {
   const { container } = await mount('inline_team', null);
   const tab = async (name: string) => {
     const button = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
@@ -228,16 +284,51 @@ it('secondary views switch under the summary and keep the graph mounted', async 
     expect(button).toBeDefined();
     await act(async () => button?.click());
   };
+  await tab('Timeline');
+  await tab('By task');
+  const taskTab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
+    el.textContent?.includes('By task'),
+  );
+  expect(taskTab?.getAttribute('aria-selected')).toBe('true');
   await tab('Work flow');
-  expect(container.querySelector('[data-testid="run-flow"]')).not.toBeNull();
-  await tab('Graph');
-  const graph = container.querySelector('[data-testid="layout"]');
-  expect(graph).not.toBeNull();
-  await tab('Activity');
-  await tab('Graph');
-  expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
+  await tab('Timeline');
+  expect(taskTab?.isConnected).toBe(true);
+  expect(taskTab?.getAttribute('aria-selected')).toBe('true');
+  await tab('Timeline');
+  await tab('Timeline');
+  expect(taskTab?.isConnected).toBe(true);
+  expect(taskTab?.getAttribute('aria-selected')).toBe('true');
 });
 
+it('the dock height follows its separator keys and is remembered in this browser', async () => {
+  localStorage.removeItem('corral.run.dockHeight');
+  const first = await mount('inline_team', null);
+  const press = async (root: HTMLElement, name: string) =>
+    act(async () =>
+      [...root.querySelectorAll<HTMLElement>('[data-testid="run-dock"] [role="tab"]')]
+        .find((el) => el.textContent?.includes(name))
+        ?.click(),
+    );
+  await press(first.container, 'Work flow');
+  const separator = first.container.querySelector<HTMLElement>(
+    '[data-testid="run-dock"] [role="separator"]',
+  );
+  expect(separator?.getAttribute('aria-orientation')).toBe('horizontal');
+  const before = Number(separator?.getAttribute('aria-valuenow'));
+  await act(async () =>
+    separator?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })),
+  );
+  const after = Number(separator?.getAttribute('aria-valuenow'));
+  expect(after).toBeGreaterThan(before);
+  expect(localStorage.getItem('corral.run.dockHeight')).toBe(String(after));
+  const again = await mount('inline_team', null);
+  await press(again.container, 'Work flow');
+  expect(
+    again.container
+      .querySelector('[data-testid="run-dock"] [role="separator"]')
+      ?.getAttribute('aria-valuenow'),
+  ).toBe(String(after));
+});
 it('the right panel shows what needs the person only while something waits', async () => {
   const idle = await mount('inline_team', null, { execution: 'worker' });
   const idlePanel = idle.container.querySelector<HTMLElement>('[data-testid="run-side"]');

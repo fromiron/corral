@@ -42,8 +42,6 @@ import {
   TabPanel,
   Tabs,
   TabsList,
-  TabsSubtle,
-  TabsSubtleItem,
   ToolStack,
   useNow,
 } from '@corral/react/design-kit';
@@ -70,6 +68,7 @@ import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunActivity, RunPlanCard } from '../workbench/RunActivity.tsx';
+import { RunDock } from '../workbench/RunDock.tsx';
 import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { runFlowChecks } from '../workbench/runFlowChecks.ts';
@@ -321,7 +320,6 @@ function RunWorkspace({
   const body = useRef<HTMLDivElement>(null);
   const wide = useContainerAtLeast(body, 640 + 360);
   const sideShown = wide ? panel !== 'closed' : panel === 'open';
-  const [monitor, setMonitor] = useState(0);
   const [detail, setDetail] = useState('overview');
   const trigger = useRef<HTMLElement | null>(null);
   const detailsButton = useRef<HTMLButtonElement>(null);
@@ -379,7 +377,6 @@ function RunWorkspace({
     selectedNodeId ?? (execution ? (projection?.executions[execution]?.nodeId ?? null) : null);
   const selectedTarget = execution ? target : null;
   const results = projection ? runResults(projection) : null;
-  const views = [m('activity'), m('flow'), m('time'), m('events'), m('graph')];
   const needsYou = (inPanel: boolean) => (
     <section
       data-testid="run-needs-you"
@@ -410,34 +407,31 @@ function RunWorkspace({
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
       <div ref={body} className="flex min-h-0 flex-1">
-        <Main
+        <div
           data-testid="run-column"
           hidden={!wide && sideShown}
-          className="min-h-0 min-w-0 flex-1 overflow-auto"
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
         >
-          <div
-            className={`mx-auto grid w-full gap-5 px-6 py-5 ${monitor === 0 ? 'max-w-[760px]' : ''}`}
-          >
-            <RunHeader session={session} definition={definition} request={request} />
-            {sideShown ? null : needsYou(false)}
-            {projection ? <RunPlanCard projection={projection} plan={plan} /> : null}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <TabsSubtle
-                idPrefix={`run-${runId}-view`}
-                selectedIndex={monitor}
-                onSelect={setMonitor}
-                size="compact"
-                aria-label={m('views')}
-              >
-                {views.map((label, index) => (
-                  <TabsSubtleItem
-                    key={label}
-                    index={index}
-                    label={label}
-                    {...(index === 1 ? { 'data-testid': 'run-flow-tab' } : {})}
-                  />
-                ))}
-              </TabsSubtle>
+          <Main data-testid="run-column-scroll" className="min-h-0 flex-1 overflow-auto">
+            <div className="mx-auto grid w-full max-w-[760px] gap-5 px-6 py-5">
+              <RunHeader session={session} definition={definition} request={request} />
+              {sideShown ? null : needsYou(false)}
+              {projection ? <RunPlanCard projection={projection} plan={plan} /> : null}
+              {projection ? (
+                <RunActivity
+                  events={events}
+                  projection={projection}
+                  definition={definition}
+                  selected={execution}
+                  onSelect={chooseExecution}
+                  onOpenArtifact={openArtifact}
+                />
+              ) : null}
+            </div>
+          </Main>
+          <RunDock
+            idPrefix={`run-${runId}-view`}
+            trailing={
               <Button
                 ref={detailsButton}
                 variant="ghost"
@@ -447,27 +441,13 @@ function RunWorkspace({
               >
                 {sideShown ? m('hidePanel') : m('showPanel')}
               </Button>
-            </div>
-            {views.map((label, index) => (
-              <div
-                key={label}
-                id={`run-${runId}-view-panel-${index}`}
-                role="tabpanel"
-                aria-labelledby={`run-${runId}-view-tab-${index}`}
-                hidden={monitor !== index}
-                className="min-w-0"
-              >
-                {index === 0 && projection ? (
-                  <RunActivity
-                    events={events}
-                    projection={projection}
-                    definition={definition}
-                    selected={execution}
-                    onSelect={chooseExecution}
-                    onOpenArtifact={openArtifact}
-                  />
-                ) : null}
-                {index === 1 ? (
+            }
+            views={[
+              {
+                id: 'flow',
+                label: m('flow'),
+                testId: 'run-flow-tab',
+                render: () => (
                   <RunFlowView
                     session={session}
                     definition={definition}
@@ -476,9 +456,12 @@ function RunWorkspace({
                     onSelectExecution={chooseExecution}
                     onOpenArtifact={openArtifact}
                   />
-                ) : null}
-                {/* Mounted while shown, so its hand-off lines draw in each time it opens. */}
-                {index === 2 && monitor === 2 ? (
+                ),
+              },
+              {
+                id: 'time',
+                label: m('time'),
+                render: () => (
                   <RunTimeChart
                     events={events}
                     projection={projection}
@@ -486,31 +469,40 @@ function RunWorkspace({
                     selected={execution}
                     onSelect={chooseExecution}
                   />
-                ) : null}
-                {index === 3 ? <Timeline session={session} /> : null}
-                {index === 4 && layout ? (
-                  <div className="h-[min(70vh,48rem)] min-h-80">
-                    <RunCanvas
-                      session={session}
-                      definition={definition}
-                      layout={layout}
-                      selectedNodeId={highlightedNode}
-                      onSelectNode={(id) => {
-                        rememberTrigger();
-                        setSelectedNodeId(id);
-                        if (id) {
-                          setDetail('overview');
-                          setPanel('open');
-                          setSearch({ execution: undefined, artifact: undefined });
-                        }
-                      }}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </Main>
+                ),
+              },
+              {
+                id: 'events',
+                label: `${m('events')} ${events.length}`,
+                render: () => <Timeline session={session} />,
+              },
+              {
+                id: 'graph',
+                label: m('graph'),
+                render: () =>
+                  layout ? (
+                    <div className="h-full min-h-60">
+                      <RunCanvas
+                        session={session}
+                        definition={definition}
+                        layout={layout}
+                        selectedNodeId={highlightedNode}
+                        onSelectNode={(id) => {
+                          rememberTrigger();
+                          setSelectedNodeId(id);
+                          if (id) {
+                            setDetail('overview');
+                            setPanel('open');
+                            setSearch({ execution: undefined, artifact: undefined });
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : null,
+              },
+            ]}
+          />
+        </div>
         <aside
           data-testid="run-side"
           hidden={!sideShown}

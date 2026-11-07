@@ -23,10 +23,7 @@ async function finishedTeamRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
-  await expect(page.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(page.getByTestId('run-activity')).toBeVisible();
 }
 
 // Wide enough for the run column and the side panel side by side.
@@ -61,13 +58,12 @@ test('the Run page shows the graph with execution counts, and a node leads to it
     'true',
   );
 
-  // Choosing another role from the activity must also update the previously selected graph node.
-  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  // Choosing another role from the activity must also update the previously selected graph node;
+  // the graph stays open in the dock under the activity.
   await activity
     .getByRole('button', { name: /^Research\b/ })
     .first()
     .click();
-  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph(page).locator('.react-flow__node[data-id="research"]')).toHaveClass(
     /selected/,
   );

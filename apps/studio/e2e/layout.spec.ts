@@ -446,10 +446,7 @@ test('#74 a narrow run keeps the response reachable outside its detail tabs', as
   await expect(page).toHaveURL(/\/runs\//);
   await page.setViewportSize({ width: 501, height: 757 });
   const monitor = page.getByTestId('run-monitor');
-  await expect(monitor.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(monitor.getByTestId('run-activity')).toBeVisible();
   const response = monitor
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: 'Your decision' });
@@ -527,7 +524,7 @@ test('#90 each area offers its panes and folds layout, groups and the save rule 
   await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await side.getByRole('button', { name: 'Pane actions', exact: true }).click();
-  const menu = page.getByRole('menu');
+  const menu = page.getByRole('menu', { name: 'Pane actions', exact: true });
   await expect(menu).toContainText('saved for this project in this browser');
   await page.getByRole('menuitem', { name: /^Layout/ }).click();
   await expect(page.getByRole('menuitemradio', { name: 'Implementation' })).toBeVisible();

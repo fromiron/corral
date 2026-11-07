@@ -57,18 +57,116 @@ async function finishedRun(
   const { runId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(page.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute(
+  await expect(page.getByTestId('run-activity')).toBeVisible();
+  return new URL(page.url()).pathname;
+}
+
+test('live event counts keep event filters, selection and scroll in the dock', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const { runId } = await startRun(page, corral, {
+    definition: approvalDefinition,
+    layout: approvalLayout,
+  });
+  await corral.open(`/runs/${runId}`);
+  const approval = page.getByRole('button', { name: 'Continue with this version', exact: true });
+  await expect(approval).toBeVisible();
+  const dock = page.getByTestId('run-dock');
+  const tab = dock.getByRole('tab', { name: /^Events \d+$/ });
+  await tab.click();
+  const events = dock.locator('[data-run-dock-panel="events"]');
+  const kind = events.getByRole('combobox', { name: 'Kind', exact: true });
+  await kind.click();
+  await page.getByRole('option', { name: 'tool', exact: true }).click();
+  const scroll = events.getByTestId('timeline-scroll');
+  await scroll.getByRole('button').first().click();
+  const selected = events.getByTestId('timeline-selected');
+  const selectedText = await selected.textContent();
+  await scroll.hover();
+  await page.mouse.wheel(0, 180);
+  await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const top = await scroll.evaluate((element) => element.scrollTop);
+  const count = await tab.textContent();
+  await approval.click();
+  await expect(tab).not.toHaveText(count ?? '');
+  await expect(kind).toContainText('tool');
+  await expect(selected).toHaveText(selectedText ?? '');
+  await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(top);
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  await page.screenshot({ path: test.info().outputPath('run-dock-live-events.png') });
+  expect(corral.errors).toEqual([]);
+});
+
+test('switching and folding dock views preserves the column, side panel and graph', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 600 });
+  await finishedRun(page, corral);
+  const monitor = page.getByTestId('run-monitor');
+  const dock = page.getByTestId('run-dock');
+  const column = page.getByTestId('run-column-scroll');
+  const side = page.getByTestId('run-side');
+  await monitor.getByTestId('run-activity').locator('button[data-execution-id]').first().click();
+  await side.getByRole('tab', { name: 'Usage', exact: true }).click();
+  await expect
+    .poll(() => side.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+  const sideBounds = await side.boundingBox();
+  if (!sideBounds) throw new Error('The default side panel must be visible');
+  // Scroll the panel's padding, not a nested table or log inside it.
+  await page.mouse.move(sideBounds.x + sideBounds.width - 4, sideBounds.y + sideBounds.height / 2);
+  await page.mouse.wheel(0, 180);
+  await expect.poll(() => side.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const sideTop = await side.evaluate((element) => element.scrollTop);
+  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
+  const events = dock.locator('[data-run-dock-panel="events"]');
+  await events.focus();
+  await page.keyboard.press('End');
+  await expect
+    .poll(() =>
+      events.evaluate(
+        (element) =>
+          element.scrollTop > 0 &&
+          Math.abs(element.scrollTop - (element.scrollHeight - element.clientHeight)) < 1,
+      ),
+    )
+    .toBe(true);
+  const eventTop = await events.evaluate((element) => element.scrollTop);
+  await column.hover();
+  await page.mouse.wheel(0, 150);
+  await expect.poll(() => column.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const columnTop = await column.evaluate((element) => element.scrollTop);
+
+  await dock.getByRole('tab', { name: 'Graph', exact: true }).click();
+  const graph = monitor.getByRole('application', { name: 'Run graph', exact: true });
+  await graph.getByRole('button', { name: /^zoom in$/i }).click();
+  const viewport = graph.locator('.react-flow__viewport');
+  const transform = await viewport.getAttribute('style');
+  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
+  await expect.poll(() => events.evaluate((element) => element.scrollTop)).toBe(eventTop);
+  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
+  await expect(dock.locator('[data-run-dock-content]')).toBeHidden();
+  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
+  await expect.poll(() => events.evaluate((element) => element.scrollTop)).toBe(eventTop);
+  await dock.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await expect(viewport).toHaveAttribute('style', transform ?? '');
+  await expect.poll(() => column.evaluate((element) => element.scrollTop)).toBe(columnTop);
+  await expect.poll(() => side.evaluate((element) => element.scrollTop)).toBe(sideTop);
+  await expect(side.getByRole('tab', { name: 'Usage', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  return new URL(page.url()).pathname;
-}
+  await page.screenshot({ path: test.info().outputPath('run-dock-scroll-preserved.png') });
+  expect(corral.errors).toEqual([]);
+});
 
 test('a reload keeps the chosen execution and the saved layout', async ({ page, corral }) => {
   await finishedRun(page, corral);
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(page.getByText('Layout from the saved team')).toBeVisible();
-  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await page
     .getByTestId('run-activity')
     .getByRole('button', { name: /^Research Helper\b/ })
