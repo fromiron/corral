@@ -8,6 +8,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
+  type CSSProperties,
   forwardRef,
   type HTMLAttributes,
   type KeyboardEvent,
@@ -825,6 +826,19 @@ function LaneBlock({
   const named = pieces.reduce((a, b) => (a && a.width >= b.width ? a : b), pieces[0]);
   const surface = SURFACE_BG[useSurface()] ?? 'bg-background';
   const last = pieces.at(-1);
+  // The name's natural width, so a short block can open to it with a transition.
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const [nameWidth, setNameWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = nameRef.current;
+    if (!el) return;
+    const measure = () => setNameWidth(el.offsetWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
     <li
       className={cn(
@@ -873,11 +887,12 @@ function LaneBlock({
                 shape.bg,
                 // An opaque base: hand-off lines pass under blocks, never through them.
                 surface,
-                'pointer-events-none absolute inset-y-0 overflow-hidden',
+                'pointer-events-none absolute inset-y-0 min-w-0 overflow-hidden',
                 isNamed &&
-                  'group-hover:min-w-max group-focus-visible:min-w-max group-hover:shadow-md',
+                  'transition-[min-width,box-shadow] duration-160 ease-[var(--ease-out-soft)] group-hover:min-w-[var(--lane-open)] group-hover:shadow-md group-focus-visible:min-w-[var(--lane-open)] motion-reduce:transition-none',
               )}
               style={{
+                ...(isNamed && ({ '--lane-open': `${nameWidth}px` } as CSSProperties)),
                 ...(fromRight
                   ? { right: `${100 - piece.left - piece.width}%` }
                   : { left: `${piece.left}%` }),
@@ -914,8 +929,9 @@ function LaneBlock({
               </span>
               {isNamed && (
                 <span
+                  ref={nameRef}
                   data-lane-label
-                  className="relative flex h-full min-w-0 items-center overflow-hidden px-2"
+                  className="absolute inset-y-0 left-0 flex w-max items-center px-2"
                 >
                   {task.tools && task.tools.length > 0 && (
                     <span className="mr-1.5 flex shrink-0 gap-1">
@@ -926,7 +942,7 @@ function LaneBlock({
                       })}
                     </span>
                   )}
-                  <span className="min-w-0 overflow-hidden text-start">{task.label}</span>
+                  <span className="text-start">{task.label}</span>
                 </span>
               )}
             </span>

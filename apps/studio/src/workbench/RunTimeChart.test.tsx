@@ -316,7 +316,9 @@ it('breaks a span where its execution waited on another agent, keeping one selec
   // The name sits in the widest block, which opens to fit it on hover or focus.
   const named = lead?.querySelector('[data-lane-label]')?.closest('[data-lane-piece]');
   expect(named).toBe(pieces[1]);
-  expect(named?.className).toContain('group-hover:min-w-max');
+  expect(named?.className).toContain('group-hover:min-w-[var(--lane-open)]');
+  // It opens with the kit's moderate transition rather than jumping.
+  expect(named?.className).toContain('duration-160');
   // Every block has an opaque base, so hand-off lines never show through it.
   for (const piece of pieces) expect(piece.className).toMatch(/\bbg-(surface-\d|background)\b/);
   expect(container.querySelectorAll('[data-execution-id="exec_lead"]')).toHaveLength(1);
