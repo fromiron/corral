@@ -66,6 +66,7 @@ import {
 import {
   autoDefinition,
   Coordinator,
+  canReadArtifactBody,
   compileDefinition,
   createAutoStarter,
   explainDefinition,
@@ -3241,8 +3242,10 @@ async function createCorralServer(
     '/api/v1/runs/:runId/artifact-versions/:versionId/media',
     async (request, reply) => {
       const { runId, versionId } = request.params;
-      const artifact = coordinator.findSnapshot(runId)?.projection.artifacts[versionId];
-      if (!artifact?.media) return fail(reply, 'TARGET_NOT_FOUND', 'no generated image version');
+      const projection = coordinator.findSnapshot(runId)?.projection;
+      const artifact = projection?.artifacts[versionId];
+      if (!artifact?.media || !canReadArtifactBody(projection ?? null, versionId))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no generated image version');
       const stored = imageGeneration.read(runId, versionId);
       if (!stored || canonicalJson(stored.media) !== canonicalJson(artifact.media))
         return fail(
@@ -3282,6 +3285,11 @@ async function createCorralServer(
       coordinator.findSnapshot(request.params.runId, true) ??
       fail(reply, 'TARGET_NOT_FOUND', 'no such run')
     );
+  });
+  app.get<RunParams>('/api/v1/runs/:runId/conversation-turn', async (request, reply) => {
+    const turn = coordinator.getConversationTurn(request.params.runId);
+    if (!turn) return fail(reply, 'TARGET_NOT_FOUND', 'no conversation turn');
+    return reply.header('Cache-Control', 'private, no-store').send(turn);
   });
   app.post<RunParams>('/api/v1/runs/:runId/commands', async (request, reply) => {
     const body = request.body as { runId?: unknown; commandId?: unknown } | null;
@@ -3331,6 +3339,10 @@ async function createCorralServer(
                   event.payload.answerRef === versionId) ||
                 (event.type === 'approval.requested' && event.payload.tool?.bodyRef === versionId),
             ));
+      if (known && !canReadArtifactBody(projection ?? null, versionId))
+        return reply
+          .header('Cache-Control', 'private, no-store')
+          .send({ text: null, bodyAvailable: false });
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
     },

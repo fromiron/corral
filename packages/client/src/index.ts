@@ -268,6 +268,7 @@ import type {
   SessionEntryChange,
   SessionResult,
   StartRunResult,
+  StoredConversationTurn,
   TransportHandlers,
   WorkSession,
 } from '@corral/core';
@@ -808,7 +809,19 @@ export class HttpSseTransport implements RuntimeTransport {
     );
     if (response.status === 404) return null;
     if (!response.ok) throw await apiError(response);
-    return ((await response.json()) as { text: string }).text;
+    return ((await response.json()) as { text: string | null }).text;
+  }
+
+  async getConversationTurn(runId: string): Promise<StoredConversationTurn | null> {
+    const response = await this.http.request(
+      `/runs/${encodeURIComponent(runId)}/conversation-turn`,
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    const turn = (await response.json()) as StoredConversationTurn;
+    if (turn.runId !== runId)
+      throw new Error('The conversation turn does not match the requested run.');
+    return turn;
   }
 
   listRuns(): Promise<RunSummary[]> {

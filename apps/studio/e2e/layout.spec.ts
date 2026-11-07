@@ -1,6 +1,12 @@
 import { join } from 'node:path';
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { panelTab, requestBox, teamFromTemplate } from './workbench.ts';
+import {
+  chooseRun,
+  lastRunSucceeded,
+  panelTab,
+  requestBox,
+  teamFromTemplate,
+} from './workbench.ts';
 
 // Layout regressions from the workbench audit (#93–#95): a control that is in the DOM but
 // clipped by a scroller or replaced by another pane still fails a person.
@@ -239,37 +245,32 @@ test('#72 an older finished run is labelled as the selected run, not the last ru
   page,
 }) => {
   await blankSession(page);
-  const timeline = page.getByTestId('chat-timeline');
   for (const [index, text] of ['First request', 'Second request'].entries()) {
     await requestBox(page).fill(text);
     await requestBox(page).press('Control+Enter');
-    await expect(timeline.getByText('Succeeded', { exact: true })).toHaveCount(index + 1, {
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByRole('link', { name: `Succeeded Last run · Run #${index + 1}`, exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
   }
   await panelTab(page, 'Execution history');
   await expect(page.getByText('Last run').first()).toBeAttached();
-  const picker = page.getByRole('banner').getByRole('combobox', { name: 'Selected run' });
-  await picker.click();
-  await page.getByRole('option', { name: /Run #1/ }).click();
+  await chooseRun(page, 1);
   await expect(page.getByText('Selected run · Run #1 of 2').first()).toBeAttached();
   await expect(page.getByText('Last run')).toHaveCount(0);
 });
 
 async function finishedRunPage(page: Page) {
-  const timeline = page.getByTestId('chat-timeline');
   await requestBox(page).fill('Summarise the plan');
   await requestBox(page).press('Control+Enter');
-  await expect(timeline.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
   // The demo keeps runs in this page's worker, so the run page is reached in-app.
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette.getByRole('combobox', { name: 'Search commands' }).fill('Open run');
   await palette
-    .getByRole('option', { name: /^Open run run_/ })
+    .getByRole('option', { name: /^Open Run #\d+ · Summarise the plan/ })
     .first()
     .click();
-  await expect(page).toHaveURL(/\/runs\/run_/);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
 }
 
@@ -278,6 +279,8 @@ test('#73 an automatically composed team offers no edit link to a team that was 
 }) => {
   await blankSession(page);
   await finishedRunPage(page);
+  // The team's standing is one of the run's facts behind the head's Details.
+  await page.getByTestId('run-header').getByRole('button', { name: 'Details' }).click();
   await expect(page.getByText('Team composed for this run · not a saved team')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Edit team', exact: true })).toHaveCount(0);
 });
@@ -293,6 +296,7 @@ test('#73 a saved team keeps its edit link on the run page', async ({ page }) =>
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
+  await page.getByTestId('run-header').getByRole('button', { name: 'Details' }).click();
   await page.getByRole('link', { name: 'Edit team', exact: true }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit/);
   await expect(page.getByText('not found', { exact: false })).toHaveCount(0);
@@ -442,17 +446,14 @@ test('#74 a narrow run keeps the response reachable outside its detail tabs', as
   await expect(page).toHaveURL(/\/runs\//);
   await page.setViewportSize({ width: 501, height: 757 });
   const monitor = page.getByTestId('run-monitor');
-  await expect(monitor.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(monitor.getByTestId('run-activity')).toBeVisible();
   const response = monitor
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: 'Your decision' });
   await expect(
     response.getByRole('button', { name: 'Continue with this version', exact: true }),
   ).toBeVisible();
-  await monitor.getByRole('button', { name: 'Details', exact: true }).click();
+  await monitor.getByRole('button', { name: 'Show side panel', exact: true }).click();
   await monitor.getByRole('tab', { name: 'Usage', exact: true }).click();
   await expect(
     response.getByRole('button', { name: 'Continue with this version', exact: true }),
@@ -523,7 +524,7 @@ test('#90 each area offers its panes and folds layout, groups and the save rule 
   await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await side.getByRole('button', { name: 'Pane actions', exact: true }).click();
-  const menu = page.getByRole('menu');
+  const menu = page.getByRole('menu', { name: 'Pane actions', exact: true });
   await expect(menu).toContainText('saved for this project in this browser');
   await page.getByRole('menuitem', { name: /^Layout/ }).click();
   await expect(page.getByRole('menuitemradio', { name: 'Implementation' })).toBeVisible();

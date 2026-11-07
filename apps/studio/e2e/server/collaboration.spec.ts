@@ -24,16 +24,13 @@ test('one run shows two delegated helpers and a question answered by a new respo
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   const monitor = page.getByTestId('run-monitor');
-  await monitor.getByRole('button', { name: 'Executions', exact: true }).click();
-
-  // Two helper executions nested under Research in the call tree.
-  const research = page.locator('[data-execution-id]').filter({ hasText: 'Research ·' }).first();
+  // Two helper executions in the run's activity, delegated by Research.
   await expect(
-    research.locator('[data-execution-id]').filter({ hasText: 'Research Helper' }),
+    monitor.getByTestId('run-activity').getByRole('button', { name: /^Research Helper\b/ }),
   ).toHaveCount(2);
 
   // The question: from the Writer to a responder execution of its own, answered.
-  await monitor.getByRole('button', { name: 'Details', exact: true }).click();
+  await monitor.getByRole('button', { name: 'Show side panel', exact: true }).click();
   const details = monitor.getByRole('tabpanel', { name: 'Overview', exact: true });
   await details.getByRole('button', { name: /^Questions/ }).click();
   const question = page.locator('[data-testid^="question-"]');

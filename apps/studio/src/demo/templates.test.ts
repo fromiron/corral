@@ -369,18 +369,28 @@ describe('demo replies', () => {
       if (!started.runId) throw new Error('Demo run was not created');
       const runId = started.runId;
       const events: RunEvent[] = [];
-      const stop = transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
+      const plans: WorkPlan[] = [];
+      const stop = transport.subscribe(runId, 0, {
+        onEvent: (event) => {
+          events.push(event);
+          if (event.type === 'work_plan.updated')
+            plans.push(
+              WorkPlan.parse(
+                JSON.parse(coordinator.getArtifactText(runId, event.payload.bodyRef) ?? 'null'),
+              ),
+            );
+        },
+      });
       try {
         const projection = await waitForProjection(transport, runId, (run) =>
           ['succeeded', 'failed', 'cancelled'].includes(run.status),
         );
         expect(projection.status).toBe('succeeded');
         const updates = events.filter((event) => event.type === 'work_plan.updated');
-        const plans = updates.map((event) =>
-          WorkPlan.parse(
-            JSON.parse(coordinator.getArtifactText(runId, event.payload.bodyRef) ?? 'null'),
-          ),
-        );
+        // Plan payloads are consumed while their owner runs; completed Runs retain the
+        // sequence/revision metadata, not a body archive of each intermediate plan.
+        for (const event of updates)
+          expect(coordinator.getArtifactText(runId, event.payload.bodyRef)).toBeNull();
         expect(
           plans.map((plan) => plan.items.filter((item) => item.status === 'completed').length),
         ).toEqual(completed);

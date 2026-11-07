@@ -1,147 +1,235 @@
 import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import type { ModelCallView, RunProjection } from '@corral/core';
 import type { StreamText } from './session.ts';
+import { buildTranscript, type TranscriptEntry } from './transcript.ts';
 
-// a chat turn's process as one flat list of one-line rows (DSH-style), built from
-// committed events, the projection and streamed text. The answer is never a row: it is the
-// reply that ended the turn, shown below the process.
-
+type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
+export interface ProcessSource {
+  id: string;
+  label: string;
+}
+export type ModelProcessPhase =
+  | 'preparing'
+  | 'generating'
+  | 'finished'
+  | 'waiting'
+  | 'paused'
+  | 'pausing'
+  | 'failed'
+  | 'cancelled'
+  | 'cancelling'
+  | 'unconfirmed';
+interface ProcessState {
+  active: boolean;
+  sources: ProcessSource[];
+}
 export type ProcessRow =
-  | { kind: 'think'; id: string; text: string; live: boolean }
-  | {
-      kind: 'tool';
+  | (ProcessState & {
+      kind: 'model';
       id: string;
-      name: string;
-      target: string | null;
-      artifact?: { name: string; version: number };
-      status: 'requested' | 'allowed' | 'blocked' | 'finished' | 'failed' | 'cancelled';
-    }
-  | { kind: 'agent'; id: string; label: string; status: string };
+      no: number;
+      model: string | null;
+      phase: ModelProcessPhase;
+      state: string;
+      call: Pick<ModelCallView, 'reasoning' | 'reasoningWire'>;
+    })
+  | (ProcessState &
+      ToolEntry & {
+        id: string;
+        target: string | null;
+        /** The exact version a read names, when the record has it. */
+        artifact?: { name: string; version: number };
+      })
+  | (ProcessState & {
+      kind: 'agent';
+      id: string;
+      label: string;
+      status: string;
+      tools: ToolEntry[];
+    });
 
 export interface TurnProcess {
   rows: ProcessRow[];
   steps: number;
   startedAt: string | null;
   endedAt: string | null;
+  /** The run is not terminal; waiting and paused are still open runs. */
   running: boolean;
+  /** Observed work eligible for active motion, separate from an open run. */
+  active: boolean;
 }
 
-/** Tools that only publish a result; the answer below the process already shows it. */
 const PUBLISHING = new Set(['write_artifact', 'submit_result']);
-/** Argument keys that name what a tool worked on, in the order they are preferred. */
 const TARGETS = ['path', 'command', 'pattern', 'url', 'artifactVersionId', 'targetNodeId'];
-const MAX_TEXT = 120;
-
-function firstLine(text: string): string {
-  const line =
-    text
-      .split('\n')
-      .map((part) => part.trim())
-      .find(Boolean) ?? '';
-  return line.length > MAX_TEXT ? `${line.slice(0, MAX_TEXT - 1)}…` : line;
-}
-
-function targetOf(args: unknown): string | null {
-  if (!args || typeof args !== 'object') return null;
-  const record = args as Record<string, unknown>;
+function targetOf(args: Record<string, unknown>): string | null {
   for (const key of TARGETS) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) return firstLine(value);
+    const value = args[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
   }
-  if (Array.isArray(record.tasks)) return String(record.tasks.length);
   return null;
 }
+function activeExecution(projection: RunProjection, id: string): boolean {
+  return projection.status === 'running' && projection.executions[id]?.status === 'active';
+}
+function modelPhase(
+  projection: RunProjection,
+  executionId: string,
+  modelCallId: string,
+  dispatched: ReadonlySet<string>,
+): ModelProcessPhase {
+  const call = projection.modelCalls[modelCallId];
+  const execution = projection.executions[executionId];
+  if (call?.finished) return 'finished';
+  if (execution?.status === 'cancelled' || projection.status === 'cancelled') return 'cancelled';
+  if (execution?.status === 'cancelling' || projection.status === 'cancelling') return 'cancelling';
+  if (
+    execution?.status === 'failed' ||
+    projection.status === 'failed' ||
+    projection.status === 'interrupted'
+  )
+    return 'failed';
+  if (execution?.status === 'paused' || projection.status === 'paused') return 'paused';
+  if (execution?.status === 'pausing' || projection.status === 'pausing') return 'pausing';
+  if (execution?.status === 'succeeded' || projection.status === 'succeeded') return 'unconfirmed';
+  if (!activeExecution(projection, executionId)) return 'waiting';
+  return dispatched.has(modelCallId) ? 'generating' : 'preparing';
+}
 
+/** A post-send process contains observed request/tool facts, never inferred reasoning text. */
 export function buildTurnProcess(
   events: readonly RunEvent[],
   projection: RunProjection | null,
-  streams: Record<string, StreamText>,
+  _streams: Record<string, StreamText>,
   label: (nodeId: string) => string,
 ): TurnProcess {
   const running = !projection || !TERMINAL_RUN_STATUSES.has(projection.status);
-  const lead = projection?.executionOrder[0];
   const rows: ProcessRow[] = [];
-  const tools = new Map<string, Extract<ProcessRow, { kind: 'tool' }>>();
-  // The latest request of the lead whose reply has not yet been followed by a tool.
-  let pendingReply: string | null = null;
-  for (const event of events) {
-    const payload = event.payload as Record<string, unknown>;
-    if (payload.executionId !== lead) continue;
-    switch (event.type) {
-      case 'model.request_prepared':
-        pendingReply = payload.modelCallId as string;
-        break;
-      case 'tool.requested': {
-        const name = payload.name as string;
-        if (event.actor.kind === 'runtime' || PUBLISHING.has(name)) break;
-        // A reply that led to a tool call is thinking out loud, not the answer.
-        const text = pendingReply ? firstLine(streams[pendingReply]?.text ?? '') : '';
-        if (pendingReply && text)
-          rows.push({
-            kind: 'think',
-            id: pendingReply,
-            text,
-            live: !projection?.modelCalls[pendingReply]?.finished && running,
-          });
-        pendingReply = null;
-        const target = targetOf(payload.validatedArgs);
-        const artifact = name === 'read_artifact' && target ? projection?.artifacts[target] : null;
-        const tool: Extract<ProcessRow, { kind: 'tool' }> = {
-          kind: 'tool',
-          id: payload.toolCallId as string,
-          name,
-          target,
-          ...(artifact
-            ? { artifact: { name: firstLine(artifact.name), version: artifact.version } }
-            : {}),
-          status: 'requested',
-        };
-        tools.set(tool.id, tool);
-        rows.push(tool);
-        break;
-      }
-      case 'tool.allowed': {
-        const tool = tools.get(payload.toolCallId as string);
-        if (tool) tool.status = 'allowed';
-        break;
-      }
-      case 'tool.blocked': {
-        const tool = tools.get(payload.toolCallId as string);
-        if (tool) tool.status = 'blocked';
-        break;
-      }
-      case 'tool.finished': {
-        const tool = tools.get(payload.toolCallId as string);
-        if (tool) tool.status = payload.error ? 'failed' : 'finished';
-        break;
+  const lead = projection?.executionOrder[0];
+  if (projection && lead) {
+    const requested = new Map<string, RunEvent>();
+    const toolOwners = new Map<string, string>();
+    const executionEvents = new Map<string, RunEvent[]>();
+    // Partition once: a large team should not rescan every other execution's event log.
+    for (const event of events) {
+      let owner: string | undefined;
+      if (event.type === 'model.request_prepared') owner = event.payload.executionId;
+      else if (event.type === 'tool.requested') {
+        owner = event.payload.executionId;
+        toolOwners.set(event.payload.toolCallId, owner);
+        requested.set(event.payload.toolCallId, event);
+      } else if (
+        event.type === 'tool.allowed' ||
+        event.type === 'tool.blocked' ||
+        event.type === 'tool.started' ||
+        event.type === 'tool.finished'
+      )
+        owner = toolOwners.get(event.payload.toolCallId);
+      if (owner) {
+        const owned = executionEvents.get(owner) ?? [];
+        owned.push(event);
+        executionEvents.set(owner, owned);
       }
     }
-  }
-  for (const tool of tools.values()) {
-    const effectId = projection?.toolCalls[tool.id]?.effectId;
-    if (effectId && projection?.effects[effectId]?.outcome === 'cancelled')
-      tool.status = 'cancelled';
-  }
-  // Every other execution (a delegate or a team role) is one row; its own work opens beside.
-  for (const id of projection?.executionOrder.slice(1) ?? []) {
-    const execution = projection?.executions[id];
-    if (execution)
-      rows.push({ kind: 'agent', id, label: label(execution.nodeId), status: execution.status });
+    const dispatched = new Set(
+      Object.values(projection.effects).flatMap((effect) =>
+        effect.kind === 'model_request' && effect.dispatched && effect.reservationId
+          ? [effect.reservationId]
+          : [],
+      ),
+    );
+    const authored = new Map<string, string[]>();
+    for (const artifact of Object.values(projection.artifacts)) {
+      const ids = authored.get(artifact.authorExecutionId) ?? [];
+      ids.push(artifact.artifactVersionId);
+      authored.set(artifact.authorExecutionId, ids);
+    }
+    const visibleTool = (entry: TranscriptEntry): entry is ToolEntry =>
+      entry.kind === 'tool' &&
+      !PUBLISHING.has(entry.name) &&
+      requested.get(entry.toolCallId)?.actor.kind !== 'runtime';
+    const sources = (ids: readonly string[]): ProcessSource[] =>
+      [...new Set(ids)].flatMap((id) => {
+        const artifact = projection.artifacts[id];
+        return artifact ? [{ id, label: artifact.name }] : [];
+      });
+    const entries = buildTranscript(executionEvents.get(lead) ?? [], projection, {}, lead);
+    for (const entry of entries) {
+      if (entry.kind === 'request') {
+        const call = projection.modelCalls[entry.modelCallId];
+        const phase = modelPhase(projection, lead, entry.modelCallId, dispatched);
+        const profile = call?.profile ?? projection.executions[lead]?.modelProfile;
+        rows.push({
+          kind: 'model',
+          id: entry.modelCallId,
+          no: entry.no,
+          phase,
+          state:
+            projection.status === 'running'
+              ? (projection.executions[lead]?.status ?? projection.status)
+              : projection.status,
+          active: phase === 'preparing' || phase === 'generating',
+          model: profile ? (projection.modelProfiles[profile]?.modelId ?? profile) : null,
+          call: {
+            ...(entry.reasoning ? { reasoning: entry.reasoning } : {}),
+            ...(entry.reasoningWire ? { reasoningWire: entry.reasoningWire } : {}),
+          },
+          sources: sources(call?.inputArtifactVersionIds ?? []),
+        });
+      } else if (visibleTool(entry)) {
+        const target = targetOf(entry.args);
+        const read =
+          entry.name === 'read_artifact' && target ? projection.artifacts[target] : undefined;
+        const references = sources([
+          ...(typeof entry.args.artifactVersionId === 'string'
+            ? [entry.args.artifactVersionId]
+            : []),
+          ...(entry.resultRef ? [entry.resultRef] : []),
+        ]);
+        rows.push({
+          ...entry,
+          id: entry.toolCallId,
+          target,
+          ...(read
+            ? { artifact: { name: read.name.split('\n')[0] ?? read.name, version: read.version } }
+            : {}),
+          active:
+            activeExecution(projection, lead) &&
+            (entry.status === 'requested' || entry.status === 'allowed'),
+          sources: references,
+        });
+      }
+    }
+    for (const id of projection.executionOrder.slice(1)) {
+      const execution = projection.executions[id];
+      if (!execution) continue;
+      rows.push({
+        kind: 'agent',
+        id,
+        label: label(execution.nodeId),
+        status: execution.status,
+        active: activeExecution(projection, id),
+        tools: buildTranscript(executionEvents.get(id) ?? [], projection, {}, id).filter(
+          visibleTool,
+        ),
+        sources: sources(authored.get(id) ?? []),
+      });
+    }
   }
   return {
     rows,
-    // Steps are the tools and agents a turn used; thinking rows accompany them.
-    steps: rows.filter((row) => row.kind !== 'think').length,
+    // Preserve the existing task-step statistic: tools and other executions, not model requests.
+    steps: rows.filter((row) => row.kind !== 'model').length,
     startedAt: projection?.startedAt ?? events[0]?.recordedAt ?? null,
     endedAt: running ? null : (projection?.endedAt ?? events.at(-1)?.recordedAt ?? null),
     running,
+    active: rows.some((row) => row.active),
   };
 }
 
-/** The folded header of a turn whose events are not loaded: the same step count and times. */
+/** The folded header reads the same tool/agent count from the committed projection. */
 export function turnSummary(
   projection: RunProjection,
-): Pick<TurnProcess, 'steps' | 'startedAt' | 'endedAt' | 'running'> {
+): Pick<TurnProcess, 'steps' | 'startedAt' | 'endedAt' | 'running' | 'active'> {
   const lead = projection.executionOrder[0];
   const tools = Object.values(projection.toolCalls).filter(
     (call) => call.executionId === lead && !PUBLISHING.has(call.name),
@@ -152,5 +240,6 @@ export function turnSummary(
     startedAt: projection.startedAt,
     endedAt: running ? null : projection.endedAt,
     running,
+    active: projection.executionOrder.some((id) => activeExecution(projection, id)),
   };
 }

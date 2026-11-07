@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { emptyProjection, type RunProjection } from '@corral/core';
 import { type Db, MIGRATIONS, openDatabase } from '@corral/storage-sqlite';
 import { expect, it } from 'vitest';
 import { SessionSearch } from '../src/session-search.ts';
@@ -13,10 +14,29 @@ function setup(path = ':memory:') {
   return db;
 }
 
+/** A settled run whose sources are its readable outputs (the artifact lifetime contract). */
+function settledProjection(id: string, sources: string[]) {
+  const projection = emptyProjection(id);
+  projection.status = 'succeeded';
+  for (const source of sources)
+    projection.artifacts[source] = {
+      artifactVersionId: source,
+    } as RunProjection['artifacts'][string];
+  projection.output = { artifactVersionIds: sources } as RunProjection['output'];
+  return JSON.stringify(projection);
+}
+
 function addRun(db: Db, id: string, texts: string[]) {
   db.prepare(
-    "INSERT INTO runs (id,corral_id,definition_hash,snapshot_json,status,last_seq,projection_json,started_at,project_id,session_id) VALUES (?, 'team','hash','{}','succeeded',?,'{}','2026-10-28T00:00:00Z','default','session_search')",
-  ).run(id, texts.length);
+    "INSERT INTO runs (id,corral_id,definition_hash,snapshot_json,status,last_seq,projection_json,started_at,project_id,session_id) VALUES (?, 'team','hash','{}','succeeded',?,?,'2026-10-28T00:00:00Z','default','session_search')",
+  ).run(
+    id,
+    texts.length,
+    settledProjection(
+      id,
+      texts.map((_, index) => `${id}_source_${index + 1}`),
+    ),
+  );
   texts.forEach((text, index) => {
     const sequence = index + 1;
     const artifactId = `${id}_source_${sequence}`;

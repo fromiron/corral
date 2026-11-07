@@ -345,7 +345,18 @@
     "liveUnavailable": "Live models are unavailable. Connect them or choose simulated mode.",
     "definitionUnavailable": "Run settings are unavailable. Status updates remain connected.",
     "retryDefinition": "Reload settings",
-    "openControls": "Open controls"
+    "openControls": "Open controls",
+    "tree": {
+      "title": "Executions",
+      "count": "{count, plural, =0 {no executions} one {# execution} other {# executions}}",
+      "running": "{count} running",
+      "needsYou": "{count} needs you",
+      "failed": "{count} failed",
+      "needsYouList": "Executions that need you",
+      "failedList": "Failed executions",
+      "showBranch": "Show {count, plural, one {# execution} other {# executions}} under {name}",
+      "foldBranch": "Fold the executions under {name}"
+    }
   },
   "Reins": {
     "heading": "Reins",
@@ -456,7 +467,11 @@
     "answered": "Answered",
     "timed_out": "Timed out",
     "applied": "Applied",
-    "superseded": "Superseded"
+    "superseded": "Superseded",
+    "approved": "Approved",
+    "pending": "Pending",
+    "stale": "Outdated",
+    "error": "Error"
   },
   "Toolbar": {
     "undo": "Undo",
@@ -551,7 +566,6 @@
     "working": "Working now: {labels}",
     "idle": "Nothing is running",
     "loopRound": "{label}: round {round} of {max}",
-    "tasks": "Tasks completed: {done} of {total}",
     "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
     "executions": "Executions",
     "nodeExecutions": "{label} executions",
@@ -592,7 +606,15 @@
     "historicalStatus": "Historical view",
     "starting": "Preparing to run",
     "cancelling": "Cancelling owned work",
-    "unconfirmedRequests": "{count, plural, one {# model request: termination unconfirmed} other {# model requests: termination unconfirmed}}"
+    "unconfirmedRequests": "{count, plural, one {# model request: termination unconfirmed} other {# model requests: termination unconfirmed}}",
+    "elapsed": "Elapsed time",
+    "copyRunId": "Copy run ID",
+    "runIdCopied": "Run ID copied",
+    "stats": {
+      "tasks": "{done}/{total} tasks",
+      "toolCalls": "{count, plural, one {# tool call} other {# tool calls}}",
+      "modelRequests": "{count, plural, one {# model request} other {# model requests}}"
+    }
   },
   "Timeline": {
     "heading": "Timeline",
@@ -713,6 +735,7 @@
     "paused": "The question timeout is paused. The whole-run deadline still applies."
   },
   "Artifact": {
+    "retired": "The body of this artifact is no longer available. Its creation and delivery relationships remain in the execution flow.",
     "downloadImage": "Download original PNG",
     "imageIntegrity": "Original image checksum",
     "imageUnavailable": "The generated image could not be loaded. Check your server session and try reopening this artifact.",
@@ -995,7 +1018,8 @@
       "allowed": "running",
       "blocked": "refused",
       "finished": "done",
-      "failed": "failed"
+      "failed": "failed",
+      "cancelled": "cancelled"
     },
     "asked": "Asked {target}",
     "answer": "Answer",
@@ -1010,7 +1034,26 @@
       "succeeded": "Finished",
       "failed": "Failed",
       "cancelled": "Cancelled"
-    }
+    },
+    "tools": {
+      "arguments": "Arguments",
+      "result": "Result",
+      "error": "Error",
+      "failed": "Failed",
+      "errorFallback": "The tool returned an error.",
+      "waiting": "Waiting for result…",
+      "noResult": "No result",
+      "retry": "Retry",
+      "copy": "Copy {section}",
+      "copied": "Copied",
+      "showAll": "Show all",
+      "showLess": "Show less",
+      "status": "{name} {status}",
+      "usingTools": "Using tools…",
+      "usedTools": "{count, plural, one {Used # tool} other {Used # tools}}",
+      "failedCount": "{count} failed"
+    },
+    "retiredBody": "Response body is no longer retained."
   },
   "Events": {
     "runStartedMock": "Run started (simulated agents)",
@@ -1346,6 +1389,7 @@
     "customizeCorral": "Customize a Corral (optional)"
   },
   "Results": {
+    "noCurrentResult": "No current final result is available.",
     "label": "Results",
     "kind": {
       "pending": "The run is still working. Results appear here as they are made.",
@@ -1881,7 +1925,11 @@
     "checksOnReview": "Run checks from the review screen.",
     "serverOnly": "File work, changes and checks need the local server.",
     "runNumber": "Run #{number}",
-    "sessionChangeCount": "Session changes · {count, plural, one {# file} other {# files}}"
+    "sessionChangeCount": "Session changes · {count, plural, one {# file} other {# files}}",
+    "sidebarNavigation": "Workspace",
+    "sidebarProjects": "Projects",
+    "sidebarResizeHint": "Drag or use arrow keys to resize",
+    "sidebarCollapseHint": "Click to collapse"
   },
   "Desktop": {
     "conversation": "Conversation",
@@ -2025,6 +2073,19 @@
       "steer": "Send to: Run #{number} · {name} · instruction",
       "steerUnavailable": "Instruction for {name} · target unavailable",
       "explain": "Send to: new run about the latest result · question"
+    },
+    "modelPicker": {
+      "settings": "Model settings",
+      "unavailable": "Not connected",
+      "missing": "Unavailable profile",
+      "empty": "No model profiles",
+      "reasoning": "Reasoning",
+      "effort": "Effort",
+      "policyDefault": "Default",
+      "policyAuto": "Automatic",
+      "policyRoute": "Per request",
+      "demo": "Simulation",
+      "demoEmpty": "The demo runs without a live model."
     },
     "nextRequest": "From next request",
     "commands": "Commands",
@@ -2831,7 +2892,8 @@
     "prepareExecution": "Prepare an execution",
     "runOverridesHint": "These choices apply to the next execution. The saved team stays the same.",
     "closeResult": "Close result",
-    "personalDefaults": "Personal default work style"
+    "personalDefaults": "Personal default work style",
+    "switchSession": "Switch session"
   },
   "WorkPlan": {
     "heading": "Work plan",
@@ -2987,10 +3049,6 @@
       "already_resumed": "This Run already has a continuation."
     },
     "unlimited": "Continue with no usage limits."
-  },
-  "SessionTabs": {
-    "label": "Session tabs",
-    "close": "Close {title} tab"
   },
   "SessionSearch": {
     "title": "Search sessions and results",
@@ -3217,6 +3275,7 @@
       "cachedShare": "{tokens} ({share})",
       "cacheNotReported": "Not reported",
       "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
+      "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}",
       "fullBudget": "Open the run",
       "runScope": "Selected run · Run #{number}",
       "selectedRun": "Selected run",
@@ -3226,7 +3285,8 @@
     "lastRunNumber": "Last run · Run #{number}",
     "activityStarting": "Preparing to run…",
     "actionCompletedWithFailures": "The run completed, but some tool steps failed. Review those steps before relying on the result.",
-    "actionOpenFailure": "Review failed steps"
+    "actionOpenFailure": "Review failed steps",
+    "planMore": "{count, plural, one {# more} other {# more}}"
   },
   "ModelImport": {
     "heading": "Import model settings",
@@ -3658,7 +3718,7 @@
     "terminal": "Terminal",
     "tools": "Tasks & preview",
     "activeRun": "Active run controls",
-    "openActiveRun": "Open active run",
+    "openActiveRun": "Open run",
     "activeRunTarget": "Request: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
     "pendingActions": "{count, plural, one {# response needed} other {# responses needed}}",
@@ -4530,9 +4590,18 @@
     "statCacheUnreported": "cache not reported",
     "statSession": "Session total",
     "statDefinition": "Turns are runs. Steps count the lead agent’s tool operations and child executions, not model calls. Tokens sum reported input and output from finished model calls; unreported usage is excluded and cached input is not added again.",
-    "artifactTarget": "{name} · v{version}"
+    "artifactTarget": "{name} · v{version}",
+    "request": "Model request {no}",
+    "requestPreparing": "Preparing response",
+    "requestGenerating": "Generating response",
+    "requestFinished": "Response complete",
+    "requestUnconfirmed": "Response completion not recorded",
+    "requestDetails": "Request details",
+    "toolDetails": "Tool details",
+    "agentDetails": "Agent activity"
   },
   "RunMonitor": {
+    "flow": "Work flow",
     "views": "Execution views",
     "graph": "Graph",
     "events": "Events",
@@ -4565,7 +4634,39 @@
     "tool": "Tool start to finish",
     "nonAgentNode": "This node has no separate agent execution. Its outcome appears in the graph and recorded results.",
     "workPlans": "Work plans",
-    "failedSteps": "Failed steps"
+    "failedSteps": "Failed steps",
+    "lanes": {
+      "running": "{count} running",
+      "needsYou": "{count} needs you",
+      "needsYouChip": "Needs you",
+      "idle": "Idle",
+      "tick": "+{time}",
+      "needsYouLine": "needs you: {what}",
+      "review": "Select",
+      "announce": "{count, plural, =0 {} one {# execution needs you} other {# executions need you}}",
+      "now": "Now"
+    },
+    "activity": "Activity",
+    "needsYou": "Needs your input",
+    "showPanel": "Show side panel",
+    "hidePanel": "Hide side panel",
+    "results": "Results",
+    "replay": "Replay",
+    "stopReplay": "Stop replay",
+    "timeViews": "Timeline views",
+    "byAgent": "By agent",
+    "byTask": "By task",
+    "taskTimeline": {
+      "title": "Time per task",
+      "note": "Each task runs from its first assigned attempt to its completion. Planned times are not recorded, so only actual intervals are shown.",
+      "step": "Task",
+      "time": "Elapsed",
+      "row": "{label}: {status}, {took}",
+      "rowWaiting": "{label}: {status}",
+      "empty": "No tasks were recorded in this run."
+    },
+    "closeResult": "Close result",
+    "dockHeight": "Views height"
   },
   "Failure": {
     "cancelled": "This step was cancelled.",
@@ -4603,5 +4704,107 @@
     "details": "Run details",
     "open": "Open {name}",
     "select": "Compare {name}"
+  },
+  "RunFlow": {
+    "relationships": "Agent relationships",
+    "chooseRelationship": "Choose a relationship",
+    "relationship": "{from} → {to}: observed relationships",
+    "otherRelationships": "Related work",
+    "noRelationships": "No inter-agent relationship has been recorded yet.",
+    "artifacts": "Created artifacts",
+    "createdBy": "Created by {name}",
+    "open": "Open {name}",
+    "metadataOnly": "Creation and relationship record",
+    "observed": "Recorded relationship",
+    "unrecorded": "Not recorded",
+    "upNext": "Up next",
+    "executionInProgress": "Execution in progress",
+    "executionCount": "{count, plural, one {# execution} other {# executions}}",
+    "attempt": "{name} · attempt {attempt}",
+    "final": "Final result",
+    "decisions": "Decisions and evidence",
+    "branches": "Decision branches",
+    "noRecordedBranch": "No recorded branch",
+    "recordedBranch": "Recorded branch",
+    "selected": "Selected: {branch}",
+    "nextNode": "Next: {name}",
+    "evidence": "Evidence used",
+    "noEvidence": "No evidence reference was recorded for this decision.",
+    "reviewVerdict": "Review verdict: {verdict}",
+    "recordedAt": "Recorded {time}",
+    "relation": {
+      "author": "Created",
+      "read": "Read",
+      "input": "Included in model input",
+      "question": "Question sent",
+      "answer": "Answer returned",
+      "delegate": "Delegated task",
+      "review": "Reviewed",
+      "branch": "Selected branch",
+      "output": "Finalized"
+    },
+    "port": {
+      "out": "Output",
+      "body": "Loop body",
+      "next": "Next",
+      "pass": "Pass",
+      "revise": "Revise",
+      "approve": "Approve",
+      "reject": "Reject",
+      "yes": "Yes",
+      "no": "No",
+      "inconclusive": "Inconclusive"
+    },
+    "question": {
+      "review_verdict": "Does the review support proceeding?",
+      "required_tasks_submitted": "Are the required tasks complete?",
+      "human_approval": "Was this work approved?"
+    },
+    "evidenceKind": {
+      "artifact": "Artifact",
+      "review": "Review",
+      "approval": "Approval",
+      "check": "Check",
+      "task": "Task"
+    },
+    "reason": {
+      "required_tasks_completed": "Required tasks completed",
+      "tasks_unfinished": "Tasks remain unfinished",
+      "human_approval": "User approval decision",
+      "review_verdict": "Recorded review verdict",
+      "review_checks_failed": "Review checks require revision",
+      "criteria_changed": "Review criteria changed",
+      "inconclusive_review_approval": "Approval after an inconclusive review",
+      "external_policy": "External routing policy"
+    },
+    "attached": "Attached: {name}",
+    "round": "Round {round}",
+    "currentStatus": "Current status: {status}",
+    "reviewedArtifact": "Reviewed: {name}",
+    "taskOutputs": "Submitted: {names}",
+    "checkVerdict": "Check result: {verdict}",
+    "exitCode": "Exit code {code}",
+    "checkTimedOut": "Time limit exceeded",
+    "checkUnavailable": "Check details are unavailable. The recorded reference is preserved.",
+    "evidenceUnavailable": "Details for this recorded reference are unavailable.",
+    "verdict": {
+      "pass": "Pass",
+      "fail": "Fail",
+      "inconclusive": "Inconclusive",
+      "not_evaluated": "Not evaluated"
+    }
+  },
+  "RunLoop": {
+    "title": "{name} Loop",
+    "summary": "{count} observed rounds · max {max}",
+    "iterationLabel": "Round for {name}",
+    "current": "Current: round {no} · {outcome}",
+    "latest": "Follow latest round",
+    "noIterations": "No observed rounds",
+    "selected": "Viewing round {no} · {outcome}",
+    "unavailable": "This round is unavailable",
+    "metadataOnly": "Round selection shows relationships; current run controls stay active.",
+    "repeat": "Repeat {name}",
+    "exit": "Exit {name}"
   }
 }

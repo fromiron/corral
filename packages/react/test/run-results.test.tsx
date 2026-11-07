@@ -224,17 +224,16 @@ describe('RunResults view', () => {
     expect(states).not.toHaveTextContent('No file changes or checks in this run');
   });
 
-  it('shows a failed run’s work as a partial result, not “pending”', async () => {
+  it('does not offer a failed run’s intermediate body as a current final result', () => {
     const session = sessionStore({
       runId: 'run_1',
       projection: projectionWith([version('d1', 'draft', 1)], { status: 'failed' }),
       artifactTexts: { d1: 'half-written draft' },
     });
     wrap(<RunResults session={session} selectedId={null} onSelect={vi.fn()} />);
-    expect(screen.getByRole('status')).toHaveTextContent(/partial/i);
-    await waitFor(() =>
-      expect(screen.getByTestId('result-body')).toHaveTextContent('half-written draft'),
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('No current final result is available.');
+    expect(screen.queryByText('half-written draft')).toBeNull();
+    expect(screen.queryByTestId('result-body')).toBeNull();
   });
 
   it('shows the source and an isolated preview for an HTML document', async () => {

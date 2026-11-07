@@ -33,7 +33,7 @@ import {
 } from '../../lib/popup.ts';
 import { shapeMap } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
-import { exitFallbackMs, spring } from '../../lib/springs.ts';
+import { exitFallbackMs, spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import {
   DropdownEmpty,
@@ -66,21 +66,21 @@ import { ScrollArea } from './scroll-area.tsx';
 // corners distort perceived padding at this scale.
 const shape = shapeMap.rounded;
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Panel context, shared by the inline Dropdown and the popup DropdownContent.
 // Defined in menu-item.tsx so MenuItem finds whichever provider wraps it.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 export type { DropdownContextValue, MenuItemRenderOptions };
 export { useDropdown, useDropdownMaybe };
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Dropdown (inline panel)
 //
 // An always-rendered panel with no trigger or dismissal. It's a plain
 // role="group" (pass `aria-label` to name it), not a menu: role="menu"
 // belongs on the popup DropdownContent, which Base UI wires to a trigger.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 interface DropdownProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
@@ -190,7 +190,7 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
                 exit={{ opacity: 0, transition: spring.moderate.exit }}
                 transition={{
                   ...spring.moderate,
-                  opacity: { duration: 0.08 },
+                  opacity: tween.fast,
                 }}
               />
             )}
@@ -203,7 +203,7 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
           <AnimatePresence>
             {focusRect && (
               <motion.div
-                className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                className={`absolute ${shape.focusRing} pointer-events-none z-20 border-2 border-[color:var(--focus-ring)]`}
                 initial={false}
                 animate={{
                   left: focusRect.left - 2,
@@ -214,7 +214,7 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
                 exit={{ opacity: 0, transition: spring.fast.exit }}
                 transition={{
                   ...spring.fast,
-                  opacity: { duration: 0.08 },
+                  opacity: tween.fast,
                 }}
               />
             )}
@@ -231,13 +231,13 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
 
 Dropdown.displayName = 'Dropdown';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DropdownMenu (popup root)
 //
 // Base UI's Menu owns trigger wiring, positioning, dismissal, roving
 // highlight, typeahead and close-on-select. This layer adds the fluid-hover
 // overlays and the spring open/close (see usePopupExit).
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 interface DropdownMenuActions {
   unmount: () => void;
@@ -331,25 +331,25 @@ function DropdownMenu({
 
 DropdownMenu.displayName = 'DropdownMenu';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DropdownTrigger
 //
 // Base UI's Menu.Trigger. Use `render` to make any element the trigger:
 //
 //   <DropdownTrigger render={<Button variant="secondary">Open</Button>} />
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 type DropdownTriggerProps = MenuTriggerProps;
 
 const DropdownTrigger = Menu.Trigger;
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DropdownContent (popup panel)
 //
 // Portal > Positioner > Popup with the inline panel's visuals. Children sit
 // in a Menu.RadioGroup so radio MenuItems get aria-checked from
 // `checkedIndex`.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 type MenuPositionerProps = ComponentProps<typeof Menu.Positioner>;
 
@@ -656,7 +656,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                             exit={{ opacity: 0, transition: spring.moderate.exit }}
                             transition={{
                               ...spring.moderate,
-                              opacity: { duration: 0.08 },
+                              opacity: tween.fast,
                             }}
                           />
                         )}
@@ -688,7 +688,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
 
 DropdownContent.displayName = 'DropdownContent';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DropdownSub, DropdownSubTrigger, DropdownSubContent (submenus)
 //
 //   <DropdownSub>
@@ -701,7 +701,7 @@ DropdownContent.displayName = 'DropdownContent';
 // Base UI's SubmenuRoot owns hover-to-open, the safe area, →/← and Escape.
 // DropdownSubContent is DropdownContent placed beside its trigger row. The
 // trigger is indexed among its parent's rows; submenu rows index from 0.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 interface DropdownSubProps {
   children: ReactNode;
@@ -789,9 +789,7 @@ const DropdownSubContent = forwardRef<HTMLDivElement, DropdownSubContentProps>(
 
 DropdownSubContent.displayName = 'DropdownSubContent';
 
-// ---------------------------------------------------------------------------
-// DropdownLabel
-// ---------------------------------------------------------------------------
+// ─── DropdownLabel ───────────────────────────────────────────────────────────
 
 const DropdownLabel = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => {
@@ -813,9 +811,7 @@ const DropdownLabel = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>
 
 DropdownLabel.displayName = 'DropdownLabel';
 
-// ---------------------------------------------------------------------------
-// DropdownSeparator
-// ---------------------------------------------------------------------------
+// ─── DropdownSeparator ───────────────────────────────────────────────────────
 
 const DropdownSeparator = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (

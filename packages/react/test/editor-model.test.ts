@@ -3,6 +3,7 @@ import { compileDefinition, definitionHash, planRun, reviewCriteriaHash } from '
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
+import { manyNodeDefinition } from '../../contracts/test/fixtures/many-nodes.ts';
 import {
   addNode,
   arrangeDraft,
@@ -42,6 +43,39 @@ const control = (
 ) => ok(connect(draft, { source, sourcePort, target, targetPort } as never)).draft;
 
 describe('editor model: drawing a definition', () => {
+  it('imports, exports and compiles more than 64 unique-role nodes without losing layout or limits', () => {
+    const definition = manyNodeDefinition();
+    const imported = ok(importDocuments(JSON.stringify(definition))).draft;
+    const moved = moveNode(imported, 'node_64', { x: 700, y: 350 });
+    const documents = exportDocuments(moved);
+    const restored = ok(importDocuments(documents.definition, documents.layout)).draft;
+    expect(restored.definition.nodes).toHaveLength(66);
+    expect(restored.definition.roles).toHaveLength(65);
+    expect(restored.definition.limits).toEqual(definition.limits);
+    expect(restored.layout.node_64).toEqual({ x: 700, y: 350 });
+    expect(compileDraft(restored).runnable).toBe(true);
+  });
+
+  it('adds and connects more than 64 agents through the normal editor operations', () => {
+    let draft = emptyDraft();
+    let previous: string | null = null;
+    for (let index = 0; index < 65; index++) {
+      const added = add(draft, 'agent', index * 20, 0);
+      draft = previous ? control(added.draft, previous, 'out', added.nodeId, 'in') : added.draft;
+      previous = added.nodeId;
+    }
+    const output = add(draft, 'output', 1400, 0);
+    if (!previous) throw new Error('Missing editor agent.');
+    draft = control(output.draft, previous, 'out', output.nodeId, 'in');
+    expect(draft.definition.nodes).toHaveLength(66);
+    expect(draft.definition.roles).toHaveLength(65);
+    expect(compileDraft(draft).runnable).toBe(true);
+    const documents = exportDocuments(draft);
+    const restored = ok(importDocuments(documents.definition, documents.layout)).draft;
+    expect(restored.definition).toEqual(draft.definition);
+    expect(restored.layout).toEqual(draft.layout);
+  });
+
   it('gives each dropped node a fresh, valid identifier', () => {
     let draft = emptyDraft();
     const ids: string[] = [];

@@ -7,6 +7,7 @@ import {
   type SessionEntry,
   type WorkSession,
 } from '@corral/core';
+import { createRunSession } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -141,6 +142,7 @@ async function mount(
   initialQueue: SessionEntry[] = [],
   runs: RunSummary[] = [],
   selectedRunId: string | null = null,
+  mode: 'server' | 'browser' = 'server',
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
@@ -152,8 +154,9 @@ async function mount(
     if (animations) Object.defineProperty(Element.prototype, 'getAnimations', animations);
     else Reflect.deleteProperty(Element.prototype, 'getAnimations');
   });
-  vi.stubGlobal('matchMedia', () => ({
+  vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
+    media: query,
     addEventListener() {},
     removeEventListener() {},
   }));
@@ -205,7 +208,13 @@ async function mount(
         artifacts: { result: { name: 'Result', version: 1 } },
       },
     })),
-    getRunDefinition: vi.fn(async () => ({ nodes: [{ id: 'writer', label: 'Writer' }] })),
+    getRunDefinition: vi.fn(async () => {
+      const definition = linearCorral(['writer']);
+      return {
+        ...definition,
+        nodes: definition.nodes.map((node) => ({ ...node, label: 'Writer' })),
+      };
+    }),
   };
   const startExplain = vi.fn();
   // a Corral session's turn starts the conversation lead with the Corral as its team.
@@ -214,11 +223,20 @@ async function mount(
     receipt: { error: null },
     autoRoute: null,
   }));
+  const runSessions = new Map<string, ReturnType<typeof createRunSession>>();
   fixture.services = {
     repository,
     transport,
+    runFor: (runId: string) => {
+      const existing = runSessions.get(runId);
+      if (existing) return existing;
+      const created = createRunSession(transport as never);
+      runSessions.set(runId, created);
+      return created;
+    },
+    retainRun: () => () => {},
     startAuto,
-    mode: 'server',
+    mode,
     live: false,
     workspaceId: 'host',
     workspaces: null,
@@ -263,6 +281,14 @@ async function mount(
   };
   return { container, session, repository, transport, startAuto, startExplain, render, click };
 }
+
+it('exposes the demo model picker as simulation without pretending a model is connected', async () => {
+  const f = await mount('demo_picker', null, [], [], null, 'browser');
+  await f.click(messages.Sessions.autoModel);
+  expect(document.body.textContent).toContain(messages.Composer.modelPicker.demoEmpty);
+  expect(document.querySelector('[role="option"]')).toBeNull();
+  expect(document.querySelector('[role="switch"]')).toBeNull();
+});
 
 it('queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
   const sessionId = 'queue_capture';
@@ -381,6 +407,48 @@ it('an explain draft with captured context requires an explicit follow-up choice
     expect.objectContaining({ references: [captured], brief: 'Explain this capture' }),
     expect.anything(),
   );
+});
+
+it('leaves whole-run stop to the top bar while composing a queued next request in the single input', async () => {
+  const sessionId = 'stop_while_typing';
+  writeComposerDraft(sessionId, {
+    text: 'After this, summarize the result',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const ownRun = { ...active, sessionId };
+  const f = await mount(sessionId, ownRun, [], [ownRun], ownRun.runId);
+  expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
+  expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
+    'After this, summarize the result',
+  );
+  // The live run's Cancel sits once in the top bar's run controls (DockRunControls), so the
+  // composer does not repeat it beside the draft.
+  const stops = [...f.container.querySelectorAll('button')].filter((button) =>
+    button.textContent?.includes(messages.Reins.cancelRun),
+  );
+  expect(stops).toHaveLength(0);
+  expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+});
+
+it('offers project references in the unified add menu instead of a second toolbar trigger', async () => {
+  const f = await mount('unified_add', null);
+  expect(
+    f.container.querySelector(`button[aria-label="${messages.Composer.addReference}"]`),
+  ).toBeNull();
+  await f.click(messages.Composer.attachmentActions);
+  let reference: HTMLElement | undefined;
+  await vi.waitFor(() => {
+    reference = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) =>
+      item.textContent?.includes(messages.Composer.addReference),
+    );
+    expect(reference).toBeDefined();
+  });
+  await act(async () => reference?.click());
+  expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('@');
+  expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
 });
 
 it('removes a whole-file token without damaging its range or longer paths', async () => {

@@ -1,5 +1,15 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
-import type { RunProjection } from '@corral/core';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { canReadArtifactBody, type RunProjection } from '@corral/core';
+
+export function availableResultLinks(
+  projection: RunProjection | null,
+  items: readonly { artifactVersionId: string; name: string; version: number }[],
+) {
+  return items
+    .filter((item) => canReadArtifactBody(projection, item.artifactVersionId))
+    .map((item) => ({ id: item.artifactVersionId, label: `${item.name} v${item.version}` }));
+}
 
 /** Shell services can change files after the launch tool has already finished. */
 export function fileChangeSignals(
@@ -496,6 +506,24 @@ export function effectAttention(projection: RunProjection | null) {
   };
 }
 
+/** One current attempt per task; retry history stays in the execution view. */
+export function currentAgentExecutions(projection: RunProjection | null) {
+  if (!projection) return [];
+  const latest = new Map<string, RunProjection['executions'][string]>();
+  for (const id of projection.executionOrder) {
+    const execution = projection.executions[id];
+    if (!execution) continue;
+    const previous = latest.get(execution.taskId);
+    if (!previous || previous.attemptNo <= execution.attemptNo)
+      latest.set(execution.taskId, execution);
+  }
+  return [...latest.values()].map((last) => {
+    const activeId = projection.tasks[last.taskId]?.activeExecutionId;
+    const active = activeId ? projection.executions[activeId] : undefined;
+    return active?.taskId === last.taskId && active.nodeId === last.nodeId ? active : last;
+  });
+}
+
 export function agentActivity(executions: ExecutionFact[]) {
   const waitingStatuses = new Set([
     'queued',
@@ -511,7 +539,7 @@ export function agentActivity(executions: ExecutionFact[]) {
     (execution) => !execution.ended && waitingStatuses.has(execution.status),
   ).length;
   const failed = executions.filter((execution) => execution.status === 'failed').length;
-  return executions.length > 1 || waiting > 0 || failed > 0
+  return executions.length > 1 || working > 0 || waiting > 0 || failed > 0
     ? { total: executions.length, working, waiting, failed }
     : null;
 }
@@ -552,6 +580,8 @@ export interface UsageSummary {
   perCall: number[];
   /** reported input of finished calls; null when none reported it. */
   input: UsageInput | null;
+  /** Completed calls without input usage; excluded from the known input total. */
+  inputUnreported: number;
 }
 
 export interface UsageInput {
@@ -587,6 +617,9 @@ export function usageSummary(
     callLimit: unlimited ? null : limits.maxModelCalls,
     perCall: perCall.slice(-PER_CALL_BARS),
     input: usageInput(projection),
+    inputUnreported: Object.values(projection.modelCalls).filter(
+      (call) => call.finished && call.usage?.inputTokens == null,
+    ).length,
   };
 }
 
@@ -658,20 +691,37 @@ export function sessionStats(
   };
 }
 
-export type OverviewWidget = 'context' | 'usage' | 'results' | 'changes' | 'agents' | 'environment';
+export type OverviewWidget =
+  | 'attention'
+  | 'context'
+  | 'usage'
+  | 'results'
+  | 'changes'
+  | 'agents'
+  | 'plan';
 
-/** The Overview's widgets in their fixed order; one with nothing to say is left out. */
+/**
+ * Put the current task ahead of telemetry, then lead with results after it ends. The execution
+ * environment is not a widget: the composer status line and the Run screen state it.
+ */
 export function overviewWidgets(input: {
   chips: readonly WidgetChip[];
   usage: UsageSummary | null;
   results: readonly unknown[];
+  live?: boolean;
+  action?: { needsUser: boolean };
+  /** A work plan from the planning tool is selected and readable. */
+  plan?: boolean;
 }): OverviewWidget[] {
-  const shown = new Set<OverviewWidget>(input.chips);
+  const shown = new Set<string>(input.chips);
+  if (input.plan) shown.add('plan');
+  if (input.action?.needsUser) shown.add('attention');
   if (input.usage) shown.add('usage');
   if (input.results.length) shown.add('results');
-  return (['context', 'usage', 'results', 'changes', 'agents', 'environment'] as const).filter(
-    (widget) => shown.has(widget),
-  );
+  const primary: OverviewWidget[] = input.live
+    ? ['attention', 'plan', 'agents', 'results', 'changes']
+    : ['attention', 'results', 'changes', 'plan', 'agents'];
+  return [...primary, 'context' as const, 'usage' as const].filter((widget) => shown.has(widget));
 }
 
 export function visibleWidgets(input: {
@@ -687,7 +737,13 @@ export function visibleWidgets(input: {
   if (input.environment && (input.environment.simulated || input.environment.restricted))
     chips.push('environment');
   const agents = input.agents;
-  if (agents.total > 1 || agents.delegated || agents.waiting > 0 || agents.failed > 0)
+  if (
+    agents.total > 1 ||
+    agents.delegated ||
+    agents.working > 0 ||
+    agents.waiting > 0 ||
+    agents.failed > 0
+  )
     chips.push('agents');
   if (input.changes) chips.push('changes');
   return chips;
@@ -780,4 +836,18 @@ export function viewedRun(input: {
     number: index + 1,
     total: input.runIds.length,
   };
+}
+
+/**
+ * Whether the composer shows its run status pill. A live run's status and controls belong to the
+ * top bar, so the pill appears only when the person is needed, when the state cannot be read,
+ * and for an ended run.
+ */
+export function composerShowsRunStatus(input: {
+  runStatus: string | null;
+  readState: 'empty' | 'loading' | 'ready' | 'error';
+  needsAction: boolean;
+}): boolean {
+  if (input.needsAction || input.readState === 'error') return true;
+  return input.runStatus !== null && (TERMINAL_RUN_STATUSES as Set<string>).has(input.runStatus);
 }

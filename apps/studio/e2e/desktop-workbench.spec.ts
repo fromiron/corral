@@ -1,6 +1,12 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { panelTab, requestBox, startSession, teamFromTemplate } from './workbench.ts';
+import {
+  lastRunSucceeded,
+  panelTab,
+  requestBox,
+  startSession,
+  teamFromTemplate,
+} from './workbench.ts';
 
 async function openSession(page: Page, blank = false) {
   await page.goto('/?delay=50');
@@ -48,9 +54,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
     ),
   );
   await input.press('Control+Enter');
-  await expect(
-    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: true }),
-  ).toBeVisible();
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
   await input.fill('Preserve this follow-up draft');
   await panelTab(page, 'Run');
   const workUrl = page.url();

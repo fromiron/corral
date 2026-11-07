@@ -10,7 +10,7 @@ import type {
 import type { Coordinator, StartRunResult } from './coordinator.ts';
 import type { RuntimeSnapshot } from './partial-output.ts';
 import { applyEvent, type RunProjection } from './projection.ts';
-import type { RunSummary } from './store/run-store.ts';
+import type { RunSummary, StoredConversationTurn } from './store/run-store.ts';
 
 // The only way Studio talks to a runtime. HttpSseTransport and the
 // public demo implement the same contract.
@@ -28,6 +28,8 @@ export interface RuntimeTransport {
   getReceipt(runId: string, commandId: string): Promise<Receipt | null>;
   getSnapshot(runId: string): Promise<RuntimeSnapshot>;
   getArtifactText(runId: string, artifactVersionId: string): Promise<string | null>;
+  /** A settled ordinary request/answer, separate from artifact body access. Optional for older transports. */
+  getConversationTurn?(runId: string): Promise<StoredConversationTurn | null>;
   /** Newest first (run history). */
   listRuns(): Promise<RunSummary[]>;
   /** The definition a run was started with (its snapshot), or null for an unknown run. */
@@ -62,6 +64,10 @@ export class InProcessTransport implements RuntimeTransport {
 
   async getArtifactText(runId: string, artifactVersionId: string): Promise<string | null> {
     return this.coordinator.getArtifactText(runId, artifactVersionId);
+  }
+
+  async getConversationTurn(runId: string): Promise<StoredConversationTurn | null> {
+    return this.coordinator.getConversationTurn(runId);
   }
 
   async listRuns(): Promise<RunSummary[]> {

@@ -63,6 +63,14 @@ export const UnknownUsage: Story = {
     expect(canvas.getByTestId('budget-call-call_unknown')).toHaveTextContent('300');
     expect(canvas.getByTestId('budget-call-call_unknown')).toHaveTextContent(/unknown/i);
     expect(canvas.getByTestId('budget-call-call_known')).toHaveTextContent('100');
+    // Let the kit's reveal finish before axe measures the text's rendered contrast.
+    await waitFor(() => {
+      let element: HTMLElement | null = canvas.getByTestId('budget-call-call_unknown');
+      while (element && element !== canvasElement) {
+        expect(getComputedStyle(element).opacity).toBe('1');
+        element = element.parentElement;
+      }
+    });
   },
 };
 

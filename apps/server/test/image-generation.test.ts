@@ -6,7 +6,13 @@ import type {
   ImageGenerationOwner,
   ImageGenerationProfile,
 } from '@corral/contracts';
-import { Coordinator, exportRunArchive, openRunArchive } from '@corral/core';
+import {
+  Coordinator,
+  definitionHash,
+  emptyProjection,
+  exportRunArchive,
+  openRunArchive,
+} from '@corral/core';
 import { openDatabase, SqliteModelAttemptStore, SqliteRunStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { PNG } from 'pngjs';
@@ -39,9 +45,20 @@ function database() {
   const db = openDatabase(':memory:');
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE name='generated_media'").get())
     db.exec(MEDIA_ARTIFACT_MIGRATION.sql);
-  db.prepare(
-    "INSERT INTO runs (id,corral_id,definition_hash,snapshot_json,status,last_seq,projection_json,started_at) VALUES ('run_one','corral_one','hash','{}','running',0,'{}','now')",
-  ).run();
+  const definition = linearCorral(['writer']);
+  new SqliteRunStore(db).insertRun({
+    runId: 'run_one',
+    projection: emptyProjection('run_one'),
+    snapshot: {
+      definition,
+      definitionHash: definitionHash(definition),
+      criteriaVersionId: 'criteria_one',
+      source: null,
+      mode: 'mock',
+      models: {},
+      startedAt: now(),
+    },
+  });
   return db;
 }
 async function endpoint(
@@ -226,7 +243,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
               cancel: async () => done.open(),
               waitForSettlement: async () => {
                 await done.wait();
-                return { outcome: 'cancelled' as const };
+                return { outcome: 'succeeded' as const };
               },
             };
           },
@@ -272,30 +289,40 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         .readEvents(startedRun.runId, 0)
         .find((event) => event.type === 'budget.reserved' && event.payload.amount.image);
       expect(effect?.type).toBe('budget.reserved');
-      const archive = exportRunArchive(store, startedRun.runId, { privateTranscript: true });
+      const activeArchive = exportRunArchive(store, startedRun.runId, { privateTranscript: true });
+      if (activeArchive.visibility !== 'private') throw new Error('private archive missing');
+      expect(activeArchive.media?.[versionId]).toBeUndefined();
+      expect(activeArchive.unavailableBodyRefs).toContain(versionId);
+      expect((await host.invokeTool({ name: 'generate_image', args })).ok).toBe(true);
+      const overBudget = await host.invokeTool({ name: 'generate_image', args });
+      expect(overBudget.ok).toBe(false);
+      if (!overBudget.ok) expect(overBudget.error.message).toContain('call/cost limit');
+      expect(
+        (
+          await host.invokeTool({
+            name: 'submit_result',
+            args: { artifactVersionIds: [versionId] },
+          })
+        ).ok,
+      ).toBe(true);
+      done.open();
+      const sourceRunId = startedRun.runId;
+      await vi.waitFor(() =>
+        expect(coordinator.getSnapshot(sourceRunId).projection.status).toBe('succeeded'),
+      );
+      const archive = exportRunArchive(store, sourceRunId, { privateTranscript: true });
       const opened = openRunArchive(archive);
-      expect(opened.visibility).toBe('private');
       if (opened.visibility !== 'private') throw new Error('private archive missing');
       expect(opened.media?.[versionId]?.dataHex).toBe(bytes.toString('hex'));
       const corrupt = structuredClone(archive);
       if (corrupt.visibility === 'private' && corrupt.media?.[versionId])
         corrupt.media[versionId].dataHex = '00';
       expect(() => openRunArchive(corrupt)).toThrow('generated image');
-      expect((await host.invokeTool({ name: 'generate_image', args })).ok).toBe(true);
-      const overBudget = await host.invokeTool({ name: 'generate_image', args });
-      expect(overBudget.ok).toBe(false);
-      if (!overBudget.ok) expect(overBudget.error.message).toContain('call/cost limit');
-      coordinator.submit({
-        schemaVersion: '0.1',
-        commandId: 'stop_image',
-        runId: startedRun.runId,
-        type: 'cancel',
-        payload: { scope: { kind: 'run' }, reason: 'next request' },
-      });
-      const sourceRunId = startedRun.runId;
-      await vi.waitFor(() =>
-        expect(coordinator.getSnapshot(sourceRunId).projection.status).toBe('cancelled'),
-      );
+      expect(service.read(sourceRunId, versionId)?.bytes).toEqual(bytes);
+      const intermediates = Object.keys(
+        coordinator.getSnapshot(sourceRunId).projection.artifacts,
+      ).filter((id) => id !== versionId);
+      for (const id of intermediates) expect(service.read(sourceRunId, id)).toBeNull();
       const next = coordinator.startRun({
         schemaVersion: '0.1',
         commandId: 'reuse_image',

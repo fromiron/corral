@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { WorkPlan } from '@corral/contracts';
 import { emptyProjection } from '@corral/core';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -6,7 +7,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { OverviewWidgets } from './OverviewWidgets.tsx';
-import { usageSummary } from './selectors.ts';
+import { actionRequired, usageSummary } from './selectors.ts';
 import type { ChatWidgetModel } from './useChatWidgets.tsx';
 
 const navigate = vi.hoisted(() => vi.fn());
@@ -77,6 +78,13 @@ function model(patch: Partial<ChatWidgetModel> = {}): ChatWidgetModel {
     environment: null,
     usage: usageSummary(projection, { maxOutputTokens: 64_000, maxModelCalls: 40 }),
     cost: null,
+    action: actionRequired({
+      pendingApprovals: 0,
+      pendingQuestions: 0,
+      failedEffects: 0,
+      unclearEffects: 0,
+    }),
+    agentRows: [],
     plan: { choices: [], choose: vi.fn() },
     ...patch,
   } as unknown as ChatWidgetModel;
@@ -116,7 +124,7 @@ const widgets = (container: HTMLElement) =>
 
 it('shows the run in kit widgets whose details open in place', async () => {
   const container = await render(model());
-  expect(widgets(container)).toEqual(['context', 'usage', 'results', 'changes']);
+  expect(widgets(container)).toEqual(['results', 'changes', 'context', 'usage']);
   const usage = container.querySelector<HTMLElement>('[data-overview-widget="usage"]');
   expect(usage?.querySelector('[data-slot="card"]')).not.toBeNull();
   expect(usage?.textContent).toContain('930');
@@ -126,8 +134,20 @@ it('shows the run in kit widgets whose details open in place', async () => {
   const changes = container.querySelector('[data-overview-widget="changes"]');
   expect(changes?.textContent).toContain('+2,589');
   expect(changes?.textContent).toContain('−1,027');
-  expect(container.querySelector('[data-overview-widget="results"] a')?.textContent).toContain(
-    'draft v1',
+  const resultButton = container.querySelector<HTMLButtonElement>(
+    '[data-overview-widget="results"] button[aria-label="draft v1"]',
+  );
+  expect(resultButton).not.toBeNull();
+  await act(async () => resultButton?.click());
+  expect(navigate).toHaveBeenCalledWith(
+    expect.objectContaining({
+      search: {
+        panel: 'run',
+        run: 'run_overview',
+        view: 'results',
+        result: 'artv_1',
+      },
+    }),
   );
   // Changes opens this run's diff; nothing changes the presented run or the next request.
   await act(async () =>
@@ -143,6 +163,87 @@ it('shows the run in kit widgets whose details open in place', async () => {
   await act(async () => trigger?.click());
   expect(document.querySelector('[data-testid="usage-detail"]')?.textContent).toContain('930');
   expect(trigger?.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('keeps pending attention first and links to the same run without an approval command', async () => {
+  const container = await render(
+    model({
+      live: true,
+      action: actionRequired({
+        pendingApprovals: 1,
+        pendingQuestions: 0,
+        failedEffects: 0,
+        unclearEffects: 0,
+      }),
+    }),
+  );
+  expect(widgets(container)[0]).toBe('attention');
+  const attention = container.querySelector('[data-overview-widget="attention"]');
+  expect(attention?.textContent).toContain('Approval needed');
+  expect(attention?.querySelector('a')).not.toBeNull();
+  expect(attention?.textContent).not.toMatch(/Approve|Reject/);
+});
+
+it('does not present a partial or unmeasured context as a full-window meter', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      context: {
+        ...base.context,
+        coverage: 'messages',
+        completeness: 'partial',
+        windowTokens: null,
+        percent: null,
+        barPercent: null,
+      },
+    }),
+  );
+  expect(
+    container.querySelector('[data-overview-widget="context"] [role="progressbar"]'),
+  ).toBeNull();
+  expect(container.querySelector('[data-overview-widget="context"]')?.textContent).not.toContain(
+    '0%',
+  );
+});
+
+it('uses a measured meter and a sparkline only for reported completed-call values', async () => {
+  const base = model();
+  const container = await render(model({ usage: { ...base.usage!, perCall: [10, 0, 30] } }));
+  const meter = container.querySelector('[data-overview-widget="context"] [role="progressbar"]');
+  expect(meter?.getAttribute('aria-valuenow')).toBe('71');
+  const usage = container.querySelector('[data-overview-widget="usage"]');
+  expect(usage?.querySelector('[data-testid="usage-sparkline"] svg')).not.toBeNull();
+  expect(usage?.textContent).toContain('10, 0, 30');
+});
+
+it('shows agent identity and accurate current status while work is active, then condenses it', async () => {
+  const container = await render(
+    model({
+      live: true,
+      chips: ['agents'],
+      agents: { total: 2, working: 1, waiting: 1, failed: 0 },
+      agentRows: [
+        { id: 'reviewer', name: 'Reviewer', status: 'active' },
+        { id: 'writer', name: 'Writer', status: 'waiting_message' },
+      ],
+    }),
+  );
+  const agent = container.querySelector('[data-overview-widget="agents"]');
+  expect(agent?.textContent).toContain('Reviewer');
+  expect(agent?.textContent).toContain('Waiting for an answer');
+  expect(agent?.textContent).toContain('2 agents, 1 working');
+  expect(agent?.textContent).not.toMatch(/Pause|Cancel|Approve/);
+  const completed = await render(
+    model({
+      chips: ['agents'],
+      agents: { total: 2, working: 0, waiting: 0, failed: 0 },
+      agentRows: [{ id: 'reviewer', name: 'Reviewer', status: 'succeeded' }],
+    }),
+  );
+  expect(completed.querySelector('[data-overview-widget="agents"]')?.textContent).not.toContain(
+    'Reviewer',
+  );
+  expect(widgets(completed)[0]).toBe('results');
 });
 
 it('identifies an older selected run without changing its usage or results', async () => {
@@ -230,4 +331,65 @@ it('the usage detail never shows an unreported cache as zero', async () => {
   expect(detail).toContain('Cached input');
   expect(detail).toContain('Not reported');
   expect(detail).not.toContain('0%');
+});
+
+it('names missing input reports rather than presenting the known-only sum as complete', async () => {
+  const base = model();
+  if (!base.usage) throw new Error('usage fixture missing');
+  const container = await render(
+    model({
+      usage: {
+        ...base.usage,
+        input: { tokens: 100, cached: null, cacheShare: null, cacheUnreported: 1 },
+        inputUnreported: 1,
+      },
+    }),
+  );
+  await act(async () =>
+    container.querySelector<HTMLElement>('[data-overview-widget="usage"] [role="button"]')?.click(),
+  );
+  const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
+  expect(detail).toContain('100');
+  expect(detail).toContain('1 completed call did not report input tokens');
+});
+
+it('shows the selected work plan at a glance and no environment widget', async () => {
+  const plan = WorkPlan.parse({
+    scope: 'execution',
+    executionId: 'exec_plan',
+    attemptNo: 1,
+    revision: 1,
+    criteriaVersionId: 'criteria_plan',
+    items: Array.from({ length: 7 }, (_, index) => ({
+      id: `item_${index + 1}`,
+      title: `Plan item ${index + 1}`,
+      status: index === 0 ? 'completed' : index === 1 ? 'in_progress' : 'pending',
+    })),
+  });
+  const container = await render(
+    model({
+      live: true,
+      environment: 'simulated',
+      chips: ['context', 'environment'],
+      plan: {
+        choices: [],
+        choose: vi.fn(),
+        status: {
+          state: 'ready',
+          plan,
+          total: 7,
+          completed: 1,
+          planFinished: false,
+          runFinished: false,
+        },
+      },
+    } as unknown as Partial<ChatWidgetModel>),
+  );
+  expect(widgets(container)).toEqual(['plan', 'results', 'context', 'usage']);
+  const widget = container.querySelector('[data-testid="overview-plan"]');
+  expect(widget?.textContent).toContain('1/7 done');
+  expect(widget?.textContent).toContain('Plan item 5');
+  expect(widget?.textContent).not.toContain('Plan item 6');
+  expect(widget?.textContent).toContain('2 more');
+  expect(container.querySelector('[data-testid="environment-chip"]')).toBeNull();
 });

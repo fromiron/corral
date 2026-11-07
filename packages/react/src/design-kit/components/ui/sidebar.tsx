@@ -20,6 +20,7 @@ import { cn } from '../../lib/utils.ts';
 import { ScrollArea } from './scroll-area.tsx';
 import {
   type SidebarCollapsible,
+  type SidebarRailProps,
   SidebarShell,
   type SidebarSide,
   type SidebarVariant,
@@ -28,9 +29,10 @@ import {
 
 // ─── Mobile sheet ────────────────────────────────────────────────────────────
 //
-// Built on Base UI Dialog, not Drawer: Drawer's swipe-to-dismiss writes inline
-// transforms that fight Motion on the same element. Dialog still provides
-// scroll lock, focus trap/restore, and Esc + outside-click dismissal.
+// The mobile sheet is a Base UI Dialog. Base UI's Drawer component writes
+// swipe-to-dismiss transforms onto the same element Motion animates, and the
+// two transforms fight. Dialog still scroll-locks, traps and restores focus,
+// and closes on Escape or an outside click.
 
 // Props Motion redefines with incompatible signatures; never forward them
 // from Base UI's render-prop payload onto a motion.div.
@@ -181,7 +183,7 @@ export interface SidebarProps
   > {
   side?: SidebarSide;
   variant?: SidebarVariant;
-  /** `"icon"` collapse is intentionally not supported — offcanvas or none. */
+  /** How the desktop sidebar collapses. `"offcanvas"` slides it off-screen. `"none"` leaves it open. */
   collapsible?: SidebarCollapsible;
   /** The `sidebar` variant's inner-edge border. Default true. */
   bordered?: boolean;
@@ -190,6 +192,7 @@ export interface SidebarProps
   railTooltipOpen?: boolean;
   /** Render the built-in resize/collapse rail. Default true. */
   rail?: boolean;
+  railProps?: SidebarRailProps;
 }
 
 const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
@@ -200,6 +203,7 @@ const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
       collapsible = 'offcanvas',
       bordered = true,
       rail = true,
+      railProps,
       railTooltipOpen,
       className,
       style,
@@ -259,6 +263,7 @@ const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
           variant={variant}
           bordered={bordered}
           rail={rail}
+          railProps={railProps}
           railTooltipOpen={railTooltipOpen}
           className={className}
           style={style}

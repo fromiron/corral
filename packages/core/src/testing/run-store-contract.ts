@@ -54,6 +54,48 @@ export function describeRunStoreContract(
     events.reduce(applyEvent, emptyProjection(runId));
 
   describe(`RunStore contract: ${name}`, () => {
+    it('keeps only the primary conversation turn and returns independent reader values', () => {
+      const store = makeStore();
+      const run = newRun();
+      store.insertRun(run);
+      const turn = {
+        runId: run.runId,
+        request: 'request',
+        answer: 'answer',
+        status: 'succeeded' as const,
+        artifactVersionId: 'artv_final',
+      };
+      store.putConversationTurn(run.runId, turn);
+      const read = store.getConversationTurn(run.runId);
+      if (!read) throw new Error('missing conversation turn');
+      read.answer = null;
+      expect(store.getConversationTurn(run.runId)?.answer).toBe('answer');
+      store.putConversationTurn(run.runId, { ...turn, answer: 'changed' });
+      expect(store.getConversationTurn(run.runId)?.answer).toBe('answer');
+    });
+
+    it('releases body ownership atomically and never resurrects released IDs', () => {
+      const store = makeStore();
+      const run = newRun();
+      store.insertRun(run);
+      store.putArtifactText(run.runId, 'artv_old', 'old');
+      store.putArtifactText(run.runId, 'artv_final', 'final');
+      expect(() =>
+        store.transaction(() => {
+          store.retainArtifactBodies(run.runId, ['artv_final']);
+          throw new Error('rollback');
+        }),
+      ).toThrow('rollback');
+      expect(store.getArtifactText(run.runId, 'artv_old')).toBe('old');
+      store.retainArtifactBodies(run.runId, ['artv_final']);
+      expect(store.getArtifactText(run.runId, 'artv_old')).toBeNull();
+      expect(store.getArtifactText(run.runId, 'artv_final')).toBe('final');
+      expect(() => store.putArtifactText(run.runId, 'artv_old', 'late')).toThrow();
+      store.retainArtifactBodies(run.runId, []);
+      store.retainArtifactBodies(run.runId, ['artv_final']);
+      expect(() => store.putArtifactText(run.runId, 'artv_final', 'late')).toThrow();
+    });
+
     it('keeps nothing from a transaction that throws', () => {
       const store = makeStore();
       const run = newRun();

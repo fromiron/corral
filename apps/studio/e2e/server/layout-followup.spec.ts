@@ -106,11 +106,7 @@ for (const locale of ['en', 'ko'] as const) {
       name: `${messages.Docking.close}: README.md`,
       exact: true,
     });
-    const sessionClose = page.getByRole('button', {
-      name: messages.SessionTabs.close.replace('{title}', 'Layout followup'),
-      exact: true,
-    });
-    for (const control of [actions, collapse, close, sessionClose]) {
+    for (const control of [actions, collapse, close]) {
       const name = await control.getAttribute('aria-label');
       await control.hover();
       await expect(page.getByRole('tooltip', { name: name ?? '', exact: true })).toBeVisible();

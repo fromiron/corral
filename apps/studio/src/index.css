@@ -9,25 +9,6 @@
   min-width: 0;
   overflow: hidden;
 }
-.app-sidebar {
-  width: var(--app-sidebar-width);
-  flex-shrink: 0;
-  min-height: 0;
-}
-.app-sidebar-resizer {
-  width: 3px;
-  margin-left: -3px;
-  z-index: 20;
-  flex-shrink: 0;
-  cursor: col-resize;
-}
-.app-sidebar-resizer:hover {
-  background: var(--line);
-}
-.app-shell[data-sidebar-open="false"] > .app-sidebar,
-.app-shell[data-sidebar-open="false"] > .app-sidebar-resizer {
-  display: none;
-}
 .app-main {
   display: flex;
   flex: 1;
@@ -206,12 +187,6 @@
   margin-bottom: 32px;
 }
 @media (max-width: 1023px) {
-  .app-sidebar {
-    display: none;
-  }
-  .app-sidebar-resizer {
-    display: none;
-  }
   .app-shell[data-sidebar-open="true"] .app-sidebar-trigger {
     display: inline-flex;
   }
@@ -283,66 +258,13 @@
   }
 }
 
-/* The Run monitor follows its own container, including the project file viewer. */
-.run-layout {
-  display: grid;
-  grid-template-columns: 18rem minmax(0, 1fr);
-}
-.run-layout[data-details="true"] {
-  grid-template-columns: 18rem minmax(0, 1fr) 22rem;
-}
-.run-layout[data-details="false"] > .run-side {
-  display: none;
-}
-@container (max-width: 1279px) {
-  .run-layout,
-  .run-layout[data-details="true"] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .run-layout[data-details="true"],
-  .run-layout[data-panel="tree"] {
-    grid-template-columns: minmax(0, 1fr) 20rem;
-  }
-  .run-tree {
-    display: none;
-  }
-  .run-center {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .run-layout[data-panel="tree"] > .run-tree {
-    display: block;
-    grid-column: 2;
-    grid-row: 1;
-  }
-  .run-layout[data-panel="tree"] > .run-side {
-    display: none;
-  }
-}
-@container (max-width: 767px) {
-  .run-layout,
-  .run-layout[data-details="true"],
-  .run-layout[data-panel="tree"] {
-    display: flex;
-    flex-direction: column;
-  }
-  .run-layout > * {
-    flex: 1 1 auto;
-    border: 0;
-  }
-  .run-layout[data-panel="canvas"] > .run-side,
-  .run-layout[data-panel="tree"] > .run-center,
-  .run-layout[data-panel="side"] > .run-center {
-    display: none;
-  }
-}
 /* room for the window buttons the system draws over the top bar (Window Controls
    Overlay); without an overlay the env() fallbacks leave the normal padding. */
 .desktop-app .app-topbar {
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
   -webkit-app-region: drag;
 }
-.desktop-app .app-topbar :is(button, a, input, select, .session-tabs) {
+.desktop-app .app-topbar :is(button, a, input, select) {
   -webkit-app-region: no-drag;
 }
 

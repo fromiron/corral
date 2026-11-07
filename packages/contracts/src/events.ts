@@ -262,6 +262,13 @@ export const ArtifactVersionCreated = event(
     contextSnapshotId: Identifier.nullable(),
   }),
 );
+export const ArtifactContentReleased = event(
+  'artifact.content_released',
+  z.strictObject({
+    artifactVersionIds: z.array(Identifier),
+    reason: z.enum(['run_settled', 'superseded']),
+  }),
+);
 export const ArtifactRead = event(
   'artifact.read',
   z.strictObject({
@@ -380,6 +387,46 @@ export const ApprovalResolved = event(
     reason: z.enum(['cancelled', 'timeout', 'execution_ended']).optional(),
   }),
 );
+/** A workflow routing fact, separate from observe-only reasoning-effort judgments. */
+export const WorkflowBranchSelected = event(
+  'workflow.branch_selected',
+  z
+    .strictObject({
+      nodeId: Identifier,
+      mode: z.enum(['review', 'approval', 'rule']),
+      iterationId: Identifier.nullable(),
+      configRevision: z.int().min(0),
+      selectedPort: z.string().min(1).max(128),
+      targetNodeId: Identifier.nullable(),
+      targetPort: z.enum(['in', 'enter', 'repeat', 'exit']).nullable(),
+      reasonCode: z.enum([
+        'required_tasks_completed',
+        'tasks_unfinished',
+        'human_approval',
+        'review_verdict',
+        'review_checks_failed',
+        'criteria_changed',
+        'inconclusive_review_approval',
+        'external_policy',
+      ]),
+      evidenceRefs: z
+        .array(
+          z.strictObject({
+            kind: z.enum(['artifact', 'review', 'approval', 'check', 'task']),
+            id: Identifier,
+          }),
+        )
+        .max(1000),
+      executionRefs: z
+        .array(z.strictObject({ executionId: Identifier, attemptNo: z.int().min(1) }))
+        .max(1000),
+    })
+    .refine(
+      (value) => (value.targetNodeId === null) === (value.targetPort === null),
+      'branch destination must be complete',
+    ),
+);
+
 export const OutputFinalized = event(
   'output.finalized',
   z.strictObject({
@@ -798,6 +845,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   AnswerCommitted,
   MessageClosed,
   ArtifactVersionCreated,
+  ArtifactContentReleased,
   ArtifactRead,
   ReviewRecorded,
   RecipeEvaluated,
@@ -831,6 +879,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   CancelConfirmed,
   ObservationLate,
   OutputFinalized,
+  WorkflowBranchSelected,
   DecisionRequested,
   DecisionObserved,
   DecisionFailed,

@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { openResult } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
@@ -46,12 +47,8 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await page.getByRole('button', { name: 'Results', exact: true }).click();
+  await openResult(page, /^draft v2/);
   const results = page.getByTestId('run-results');
-  await results
-    .getByRole('region', { name: 'Final results', exact: true })
-    .getByRole('button', { name: /^draft v2/ })
-    .click();
   await expect(results.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();
   const run = corral.server.coordinator.listRuns()[0];
   if (!run) throw new Error('Expected the completed review run');

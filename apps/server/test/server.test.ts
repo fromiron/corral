@@ -1106,7 +1106,7 @@ describe('SSE event stream', () => {
     expect(response.status).toBe(404);
   });
 
-  it('serves artifact bodies and snapshots of finished runs', async () => {
+  it('serves current final results and metadata while releasing completed internal responses', async () => {
     const { server, call, runId, final } = await finishedRun();
     const versionId = final.output?.artifactVersionIds[0] ?? '';
     const text = await call(`${server.url}/api/v1/runs/${runId}/artifact-versions/${versionId}`);
@@ -1116,10 +1116,13 @@ describe('SSE event stream', () => {
       `${server.url}/api/v1/runs/${runId}/artifact-versions/${modelCall?.responseRef}`,
     );
     expect(responseText.status).toBe(200);
-    expect((await responseText.json()).text).toContain('writer (writer) turn 1');
+    expect(await responseText.json()).toMatchObject({ text: null, bodyAvailable: false });
+    expect(modelCall?.responseRef).toBeTruthy();
     const snapshot = await (await call(`${server.url}/api/v1/runs/${runId}/snapshot`)).json();
-    expect(snapshot.seq).toBe(final.lastSeq);
-    expect(snapshot.projection).toEqual(final);
+    const committed = server.coordinator.getSnapshot(runId);
+    expect(snapshot.seq).toBe(committed.seq);
+    expect(snapshot.projection).toEqual(committed.projection);
+    expect(snapshot.projection.output).toEqual(final.output);
   });
 });
 
@@ -1127,6 +1130,8 @@ describe('registered input API and tool integration', () => {
   it('imports text, searches and reads by ID through authorized Coordinator tools', async () => {
     let documentId = '';
     const seen: unknown[] = [];
+    const readsReady = new Gate(),
+      finishRead = new Gate();
     const workspace = tempWorkspace();
     const server = await start({
       workspace,
@@ -1138,6 +1143,8 @@ describe('registered input API and tool integration', () => {
           seen.push(
             await host.invokeTool({ name: 'read_document', args: { path: '/etc/passwd' } }),
           );
+          readsReady.open();
+          await finishRead.wait();
           return null;
         },
       }),
@@ -1201,12 +1208,9 @@ describe('registered input API and tool integration', () => {
       mode: 'mock',
     });
     const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
-    const completed = await waitForProjection(
-      transport,
-      created.runId ?? '',
-      (p) => p.status === 'succeeded',
-    );
-    const readCall = Object.values(completed.toolCalls).find(
+    await readsReady.wait();
+    const active = server.coordinator.getSnapshot(created.runId ?? '').projection;
+    const readCall = Object.values(active.toolCalls).find(
       (tool) => tool.name === 'read_document' && tool.resultRef,
     );
     const readback = await call(
@@ -1221,6 +1225,18 @@ describe('registered input API and tool integration', () => {
       (await call(`${server.url}/api/v1/runs/run_other/artifact-versions/${readCall?.resultRef}`))
         .status,
     ).toBe(404);
+    finishRead.open();
+    const completed = await waitForProjection(
+      transport,
+      created.runId ?? '',
+      (p) => p.status === 'succeeded',
+    );
+    expect(completed.toolCalls[readCall?.toolCallId ?? '']?.resultRef).toBe(readCall?.resultRef);
+    const released = await call(
+      `${server.url}/api/v1/runs/${created.runId}/artifact-versions/${readCall?.resultRef}`,
+    );
+    expect(released.status).toBe(200);
+    expect(await released.json()).toMatchObject({ text: null, bodyAvailable: false });
     expect(seen[0]).toMatchObject({
       ok: true,
       result: { provider: 'corpus', results: [{ documentId }] },

@@ -4,8 +4,32 @@
     {
       "name": "studio",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@corral/studio", "exec", "vite", "--port", "5173", "--strictPort"],
+      "runtimeArgs": [
+        "--filter",
+        "@corral/studio",
+        "exec",
+        "vite",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
       "port": 5173
+    },
+    {
+      "name": "storybook",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@corral/react",
+        "exec",
+        "storybook",
+        "dev",
+        "-p",
+        "6006",
+        "--ci",
+        "--no-open"
+      ],
+      "port": 6006
     }
   ]
 }

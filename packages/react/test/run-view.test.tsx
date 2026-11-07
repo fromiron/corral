@@ -81,10 +81,19 @@ function projection(): RunProjection {
   };
 }
 
+function definition() {
+  const team = linearCorral(['research', 'writer']);
+  team.nodes = team.nodes.map((node) =>
+    node.type === 'agent' && node.id === 'writer' ? { ...node, loopId: 'loop' } : node,
+  );
+  team.nodes.push({ id: 'loop', type: 'loop', label: 'Revision', maxIterations: 5 });
+  return team;
+}
+
 function renderView() {
   const session = sessionStore({
     runId: 'run_view',
-    definition: linearCorral(['research', 'writer']),
+    definition: definition(),
     projection: projection(),
   });
   return render(
@@ -95,13 +104,11 @@ function renderView() {
 }
 
 describe('RunView execution tree', () => {
-  it('shows each Loop round of a node as its own execution', () => {
+  it('shows one Loop group with only its latest round’s execution', () => {
     renderView();
-    const first = screen.getByTestId('execution-exec_w1');
-    const second = screen.getByTestId('execution-exec_w2');
-    expect(first).toHaveTextContent('Round 1');
-    expect(second).toHaveTextContent('Round 2');
-    expect(second).not.toBe(first);
+    expect(screen.getByTestId('loop-group-loop')).toHaveTextContent('2 observed rounds');
+    expect(screen.getByTestId('execution-exec_w2')).toHaveTextContent('Round 2');
+    expect(screen.queryByTestId('execution-exec_w1')).toBeNull();
   });
 
   it('names what a waiting execution waits for, linking the real children', () => {
@@ -118,7 +125,7 @@ describe('RunView execution tree', () => {
     for (const link of links) {
       const target = document.getElementById(link.getAttribute('href')?.slice(1) ?? '');
       expect(target).not.toBeNull();
-      expect(parent.contains(target)).toBe(true);
+      expect(parent.closest('[role="treeitem"]')?.contains(target)).toBe(true);
     }
   });
 
@@ -142,7 +149,7 @@ describe('RunView execution tree', () => {
     };
     const session = sessionStore({
       runId: 'run_view',
-      definition: linearCorral(['research', 'writer']),
+      definition: definition(),
       projection: p,
       streams: { call_live: { text: 'Partial answer', next: 1, broken: false } },
     });
@@ -154,7 +161,7 @@ describe('RunView execution tree', () => {
     expect(
       within(screen.getByTestId('execution-exec_w2')).getByTestId('live-text'),
     ).toHaveTextContent('Partial answer');
-    expect(within(screen.getByTestId('execution-exec_w1')).queryByTestId('live-text')).toBeNull();
+    expect(screen.queryByTestId('execution-exec_w1')).toBeNull();
   });
 
   it('exposes the run status for people and tests', () => {

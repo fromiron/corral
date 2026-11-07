@@ -65,10 +65,20 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await corral.open('/');
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await page.getByRole('button', { name: 'Model', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Reasoning effort', exact: true }).hover();
-  await page.getByRole('menuitemradio', { name: 'Low', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Model', exact: true })).toContainText('Low');
+  const model = page.getByRole('button', { name: 'Model', exact: true });
+  await model.click();
+  const settings = page.getByRole('dialog', { name: 'Model settings', exact: true });
+  const policy = settings.getByRole('combobox', { name: 'Reasoning effort', exact: true });
+  await policy.click();
+  await page.getByRole('option', { name: 'Low', exact: true }).click();
+  await expect(policy).toHaveAttribute('aria-expanded', 'false');
+  await expect(settings.getByRole('tab', { name: 'Low', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(model).toHaveAttribute('aria-description', /Low/);
+  await page.keyboard.press('Escape');
+  await expect(model).toBeFocused();
   await requestBox(page).fill('Read the attachment and use my chosen format');
   await page
     .getByLabel('Attach text files', { exact: true })
@@ -93,9 +103,10 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('action-required')).toBeVisible();
-  await expect(
-    page.getByTestId('composer-work-plan').getByText('Read attachment and answer', { exact: true }),
-  ).toBeVisible();
+  const planItem = page.getByTestId('composer-work-plan').locator('[data-plan-item="answer"]');
+  await expect(planItem).toBeVisible();
+  await expect(planItem).toContainText('Read attachment and answer');
+  await expect(planItem).toHaveAttribute('aria-current', 'step');
   await page.getByTestId('action-required').getByRole('link').click();
   const question = page.getByRole('form', { name: 'Waiting for your answer' });
   await expect(question).toHaveCount(1);
@@ -119,6 +130,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await panelTab(page, 'Conversation');
   await expect(page.getByTestId('chat-result')).toContainText('Attachment verified');
   await expect.poll(() => current().projection.status).toBe('succeeded');
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
   const calls = current().projection.budget.modelCalls;
   await page.reload();
@@ -136,7 +148,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await page.getByRole('button', { name: 'View run', exact: true }).click();
   await page
     .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Details', exact: true })
+    .getByRole('button', { name: 'Show side panel', exact: true })
     .click();
   for (const card of ['environment', 'context', 'connections', 'changes'])
     await expect(page.getByTestId(`status-${card}`)).toBeVisible();

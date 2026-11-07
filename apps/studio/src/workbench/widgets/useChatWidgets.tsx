@@ -1,5 +1,5 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import { pendingInteractions, type RunProjection } from '@corral/core';
+import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
 import {
   estimateRunCost,
   type RunCostEstimate,
@@ -30,6 +30,7 @@ import {
   agentActivity,
   type ContextPresentation,
   changesPresentation,
+  currentAgentExecutions,
   effectAttention,
   fileChangeSignals,
   type PlanRef,
@@ -64,6 +65,8 @@ export interface ChatWidgetModel {
   changeAdditions: number | null;
   changeDeletions: number | null;
   agents: { total: number; working: number; waiting: number; failed: number } | null;
+  /** Current attempts only; the execution view retains retry history. */
+  agentRows: { id: string; name: string; status: string }[];
   tools: { id: string; name: string; tone: string }[];
   results: { id: string; label: string }[];
   environment: 'simulated' | 'restricted' | null;
@@ -402,22 +405,24 @@ function useChatWidgetState(
   const listed = projection ? runResults(projection) : null;
   const resultItems = (
     listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? [])
-  ).map((item) => {
-    const nodeId = projection?.executions[item.authorExecutionId]?.nodeId;
-    const author = view?.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
-    return {
-      id: item.artifactVersionId,
-      label: [
-        `${item.name} v${item.version}`,
-        author,
-        item.authorExecutionNumber
-          ? resultText('authorExecution', { number: item.authorExecutionNumber })
-          : null,
-      ]
-        .filter(Boolean)
-        .join(' · '),
-    };
-  });
+  )
+    .filter((item) => canReadArtifactBody(projection, item.artifactVersionId))
+    .map((item) => {
+      const nodeId = projection?.executions[item.authorExecutionId]?.nodeId;
+      const author = view?.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+      return {
+        id: item.artifactVersionId,
+        label: [
+          `${item.name} v${item.version}`,
+          author,
+          item.authorExecutionNumber
+            ? resultText('authorExecution', { number: item.authorExecutionNumber })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      };
+    });
   useEffect(() => {
     if (!presentationRunId || !live || projection?.endedAt) return;
     const timer = setInterval(() => setNow(new Date().toISOString()), 1000);
@@ -437,7 +442,22 @@ function useChatWidgetState(
     }),
     runId: presentationRunId,
   };
-  const agents = agentActivity(executions);
+  const currentIds = new Set(
+    currentAgentExecutions(projection).map((execution) => execution.executionId),
+  );
+  const awaitingApproval = new Set(
+    Object.values(projection?.approvals ?? {}).flatMap((approval) =>
+      approval.status === 'pending' && approval.tool ? [approval.tool.executionId] : [],
+    ),
+  );
+  const currentAgents = executions
+    .filter((execution) => currentIds.has(execution.executionId))
+    .map((execution) =>
+      execution.status === 'active' && awaitingApproval.has(execution.executionId)
+        ? { ...execution, status: 'waiting_approval' }
+        : execution,
+    );
+  const agents = agentActivity(currentAgents);
   const simulated =
     projection?.mode === 'mock' || (mode === 'browser' && projection?.mode !== 'live');
   const restricted =
@@ -446,11 +466,11 @@ function useChatWidgetState(
   const chips = visibleWidgets({
     hasContext: Boolean(presentationRunId),
     agents: {
-      total: agents?.total ?? executions.length,
+      total: agents?.total ?? currentAgents.length,
       working: agents?.working ?? 0,
       waiting: agents?.waiting ?? 0,
       failed: agents?.failed ?? 0,
-      delegated: executions.length > 1,
+      delegated: currentAgents.length > 1,
     },
     toolCount: tools.length,
     resultCount: resultItems.length,
@@ -498,6 +518,11 @@ function useChatWidgetState(
     changeAdditions: changes?.kind === 'count' ? changes.additions : null,
     changeDeletions: changes?.kind === 'count' ? changes.deletions : null,
     agents,
+    agentRows: currentAgents.map((execution) => ({
+      id: execution.executionId,
+      name: execution.roleName,
+      status: execution.status,
+    })),
     tools,
     results: resultItems,
     environment: simulated ? 'simulated' : restricted ? 'restricted' : null,

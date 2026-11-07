@@ -890,8 +890,7 @@
           "revision"
         ],
         "additionalProperties": false
-      },
-      "maxProperties": 20
+      }
     },
     "roleOverrides": {
       "type": "object",

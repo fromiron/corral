@@ -6,6 +6,7 @@ import {
   type RunStore,
   type RunSummary,
   type StoredCommand,
+  type StoredConversationTurn,
   type StoredRun,
 } from '@corral/core';
 import type { Db } from './database.ts';
@@ -21,7 +22,16 @@ export class SqliteRunStore implements RunStore {
     const hasRequestHash = (db.pragma('table_info(commands)') as { name: string }[]).some(
       (column) => column.name === 'original_request_hash',
     );
+    const hasRetention = !!db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_turns'")
+      .get();
     this.sql = {
+      getConversation: hasRetention
+        ? db.prepare('SELECT turn_json FROM conversation_turns WHERE run_id=?')
+        : null,
+      insertConversation: hasRetention
+        ? db.prepare('INSERT OR IGNORE INTO conversation_turns VALUES (?,?)')
+        : null,
       insertRun: db.prepare(
         // The run joins its session's project, else its saved Corral's project as it
         // is now; inline definitions without a session go to the default project.
@@ -144,6 +154,47 @@ export class SqliteRunStore implements RunStore {
     this.sql.insertArtifact.run(runId, artifactVersionId, text);
   }
 
+  retainArtifactBodies(runId: string, retainedIds: readonly string[]) {
+    const previous = this.db
+      .prepare('SELECT retained_json FROM artifact_body_retention WHERE run_id=?')
+      .get(runId) as { retained_json: string } | undefined;
+    const before = previous ? new Set(JSON.parse(previous.retained_json) as string[]) : null;
+    const retained = before ? retainedIds.filter((id) => before.has(id)) : [...retainedIds];
+    const json = JSON.stringify(retained);
+    this.db
+      .prepare(
+        'INSERT INTO artifact_body_retention VALUES (?,?) ON CONFLICT(run_id) DO UPDATE SET retained_json=excluded.retained_json',
+      )
+      .run(runId, json);
+    this.db
+      .prepare(
+        'DELETE FROM artifact_texts WHERE run_id=? AND artifact_version_id NOT IN (SELECT value FROM json_each(?))',
+      )
+      .run(runId, json);
+    this.db
+      .prepare(
+        'DELETE FROM generated_media WHERE run_id=? AND version_id NOT IN (SELECT value FROM json_each(?))',
+      )
+      .run(runId, json);
+    // Search copies are disposable derived data, never an alternate artifact archive.
+    // substr avoids trigram LIKE optimization on the FTS table's UNINDEXED id column.
+    this.db
+      .prepare("DELETE FROM session_search_v1 WHERE run_id=? AND substr(id,1,6)='event:'")
+      .run(runId);
+    this.db.prepare('DELETE FROM session_search_state_v1 WHERE id=?').run(`run:${runId}`);
+  }
+
+  putConversationTurn(runId: string, turn: StoredConversationTurn) {
+    if (!this.sql.insertConversation)
+      throw new Error('conversation writes require the current database schema');
+    this.sql.insertConversation.run(runId, JSON.stringify(turn));
+  }
+
+  getConversationTurn(runId: string): StoredConversationTurn | null {
+    const row = this.sql.getConversation?.get(runId) as { turn_json: string } | undefined;
+    return row ? (JSON.parse(row.turn_json) as StoredConversationTurn) : null;
+  }
+
   getRun(runId: string): StoredRun | null {
     const row = this.sql.getRun.get(runId) as
       | { snapshot_json: string; projection_json: string; session_id: string | null }
@@ -151,6 +202,9 @@ export class SqliteRunStore implements RunStore {
     if (!row) return null;
     let projection = JSON.parse(row.projection_json) as RunProjection;
     const initial = emptyProjection(runId);
+    // New optional metadata does not require replaying retired event types (e.g. Ultra).
+    if (projection && !Object.hasOwn(projection, 'workflowBranches'))
+      projection = { ...projection, workflowBranches: {} };
     // Cached projections from older phases are rebuilt; committed snapshots and events stay immutable.
     if (!projection || Object.keys(initial).some((key) => !Object.hasOwn(projection, key))) {
       projection = this.readEvents(runId, 0).reduce(applyEvent, initial);

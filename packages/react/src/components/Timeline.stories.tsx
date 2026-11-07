@@ -98,6 +98,10 @@ export const TenThousandEvents: Story = {
     await userEvent.click(canvas.getByRole('combobox', { name: 'Execution' }));
     await userEvent.click(await popup.findByRole('option', { name: 'exec_0001' }));
     await waitFor(() => expect(popup.queryByRole('listbox')).toBeNull());
+    await expect(canvas.getByRole('combobox', { name: 'Execution' })).toHaveFocus();
+    await waitFor(() =>
+      expect(canvas.getByTestId('timeline-count')).toHaveTextContent('350 events'),
+    );
     for (const r of rows()) expect(r).toHaveTextContent('exec_0001');
     expect(canvas.getByRole('combobox', { name: 'Execution' })).toHaveFocus();
   },

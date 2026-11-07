@@ -1,6 +1,11 @@
 import { emptyProjection, type RunProjection } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import { overviewWidgets, sessionStats, usageSummary } from './selectors.ts';
+import {
+  currentAgentExecutions,
+  overviewWidgets,
+  sessionStats,
+  usageSummary,
+} from './selectors.ts';
 
 const limits = { maxOutputTokens: 64_000, maxModelCalls: 40 };
 
@@ -60,6 +65,7 @@ describe('overview usage widget', () => {
       perCall: [194, 63],
       // input of the finished calls; none of them reported cached input.
       input: { tokens: 300, cached: null, cacheShare: null, cacheUnreported: 3 },
+      inputUnreported: 0,
     });
   });
 
@@ -81,6 +87,21 @@ describe('overview usage widget', () => {
     });
     projection.modelCalls = { d: call('d', 10, true, { inputTokens: null, cachedInputTokens: 5 }) };
     expect(usageSummary(projection, limits)?.input).toBeNull();
+  });
+
+  it('keeps incomplete input coverage visible beside the known-only total', () => {
+    const projection = run();
+    projection.modelCalls = {
+      reported: call('reported', 10, true, { inputTokens: 100, cachedInputTokens: 0 }),
+      missing: { ...call('missing', 20), usage: null },
+      streaming: call('streaming', 30, false),
+    };
+    expect(usageSummary(projection, limits)).toMatchObject({
+      input: { tokens: 100 },
+      inputUnreported: 1,
+    });
+    projection.modelCalls = { missing: { ...call('missing', 20), usage: null } };
+    expect(usageSummary(projection, limits)).toMatchObject({ input: null, inputUnreported: 1 });
   });
 
   it('names unconfirmed usage and a run without limits, never as zero', () => {
@@ -114,14 +135,37 @@ describe('overview widget order', () => {
     results: [] as { id: string; label: string }[],
   };
 
-  it('stacks context, usage, results, changes, agents and environment in order', () => {
+  it('prioritizes pending attention and active agents over supporting resources', () => {
     expect(
       overviewWidgets({
         chips: ['environment', 'changes', 'agents', 'context'],
         usage: usageSummary(run(), limits),
         results: [{ id: 'r', label: 'draft v1' }],
+        action: { needsUser: true },
+        plan: true,
+        live: true,
       }),
-    ).toEqual(['context', 'usage', 'results', 'changes', 'agents', 'environment']);
+    ).toEqual(['attention', 'plan', 'agents', 'results', 'changes', 'context', 'usage']);
+  });
+
+  it('puts results first after completion without treating a past failure as pending input', () => {
+    expect(
+      overviewWidgets({
+        chips: ['environment', 'changes', 'agents', 'context'],
+        usage: usageSummary(run(), limits),
+        results: [{ id: 'r', label: 'draft v1' }],
+        action: { needsUser: false },
+        plan: true,
+        live: false,
+      }),
+    ).toEqual(['results', 'changes', 'plan', 'agents', 'context', 'usage']);
+  });
+
+  it('shows the plan only when there is one, and never an environment widget', () => {
+    expect(overviewWidgets({ ...base, chips: ['environment'], plan: false, live: true })).toEqual(
+      [],
+    );
+    expect(overviewWidgets({ ...base, plan: true, live: true })).toEqual(['plan']);
   });
 
   it('hides a widget with nothing to say', () => {
@@ -132,6 +176,31 @@ describe('overview widget order', () => {
       'results',
     ]);
   });
+});
+
+it('keeps the current attempt per task and does not reuse a failed earlier attempt', () => {
+  const projection = emptyProjection('run_attempts');
+  const executions = [
+    { executionId: 'old', taskId: 'task', nodeId: 'agent', attemptNo: 1, status: 'failed' },
+    { executionId: 'current', taskId: 'task', nodeId: 'agent', attemptNo: 2, status: 'succeeded' },
+    { executionId: 'other', taskId: 'other_task', nodeId: 'agent', attemptNo: 1, status: 'active' },
+  ] as RunProjection['executions'][string][];
+  projection.executionOrder = executions.map((execution) => execution.executionId);
+  projection.executions = Object.fromEntries(
+    executions.map((execution) => [execution.executionId, execution]),
+  );
+  expect(currentAgentExecutions(projection).map((execution) => execution.executionId)).toEqual([
+    'current',
+    'other',
+  ]);
+  projection.tasks.task = {
+    taskId: 'task',
+    activeExecutionId: 'current',
+  } as RunProjection['tasks'][string];
+  expect(currentAgentExecutions(projection).map((execution) => execution.status)).toEqual([
+    'succeeded',
+    'active',
+  ]);
 });
 
 describe('session statistics', () => {

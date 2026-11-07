@@ -6,7 +6,7 @@
 
 명령은 기존 admission·Coordinator·영속 기록·projection 경로를 통과한다. HTTP 접수, worker 전달, 효과 실행, 실제 종료와 Run 완료는 별개다. 재전송은 원래 command ID·내용·revision 계약을 유지하며, 결과가 불명확한 효과를 자동 재실행하지 않는다.
 
-취소·patch·승인은 원래 Run, 실행 시도, scope, revision과 대상 hash를 확인한다. 늦은 응답은 원래 소유자에만 반영한다. 과거 snapshot·산출물·검사 결과를 현재 상태로 덮어쓰지 않는다.
+취소·patch·승인은 원래 Run, 실행 시도, scope, revision과 대상 hash를 확인한다. 늦은 응답은 원래 소유자에만 반영한다. 사람의 승인·거절은 승인 카드의 명시적 버튼으로만 보낸다. 카드 안의 Enter·Escape 같은 키보드 단축키로 결정을 보내지 않으며, 버튼 자체는 키보드로 조작할 수 있다. 과거 snapshot·산출물·검사 결과를 현재 상태로 덮어쓰지 않는다.
 
 호출 전 permit과 공유 예산을 확인한다. UI·worker·하위 agent가 자체 예산이나 완료 원장을 만들지 않는다. 새 기능·스킬 선택은 비용 상한 자동 증가나 권한 확대의 근거가 아니다.
 
@@ -33,3 +33,5 @@ ABS-06은 고정 snapshot reader 병행과 작업 사본별 단일 writer를 승
 credential·원시 사용자 본문·내부 경로를 공개 이벤트·export·알림·로그에 노출하지 않는다. 모델·웹·Skill·다른 역할의 출력은 권한을 바꾸는 명령이 아니다. 설정과 native 확장 신뢰는 각각 해당 owner의 명시 계약을 따른다.
 
 상세 전이·오류는 [기술 설계](technical-design.md)와 [API 계약](api-contract.md), 일반 개발 규칙은 [AGENTS.md](../../AGENTS.md)를 확인한다.
+
+산출물 본문은 [본문 수명 계약](api-contract.md#산출물-본문-수명)에 따라 실행 및 effect 정리가 끝난 뒤 해제한다. 취소 요청이나 Run 종료 상태만으로 진행 중인 작업의 본문을 제거하지 않는다. 메타데이터와 일반 대화 차례는 본문 아카이브와 구별한다.

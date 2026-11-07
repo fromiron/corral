@@ -12,8 +12,9 @@ interface ElevatedProps extends ComponentPropsWithoutRef<'div'> {
    */
   offset: number;
   /**
-   * Shadow level override (defaults to the computed surface level), for a
-   * constant shadow regardless of nesting depth.
+   * Shadow level override. By default the shadow follows the raise (`1 + offset`, never above the
+   * surface level), so a card nested in a card casts the same shadow as one on the page while its
+   * background still steps up. The ladder's deep drops stay for surfaces raised that far.
    */
   shadowLevel?: number;
   children?: ReactNode;
@@ -27,7 +28,10 @@ const Elevated = forwardRef<HTMLDivElement, ElevatedProps>(
       <SurfaceProvider value={level}>
         <div
           ref={ref}
-          className={cn(surfaceClasses(level, shadowLevel ?? level), className)}
+          className={cn(
+            surfaceClasses(level, shadowLevel ?? Math.min(level, 1 + offset)),
+            className,
+          )}
           {...props}
         >
           {children}

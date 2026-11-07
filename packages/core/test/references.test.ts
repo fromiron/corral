@@ -126,8 +126,11 @@ describe('references in a start request', () => {
       exportRunArchive(store, started.runId!, { privateTranscript: true }),
     );
     expect(archived.visibility).toBe('private');
-    if (archived.visibility === 'private')
-      expect(archived.artifacts[image.imageId]).toContain('AQID');
+    if (archived.visibility === 'private') {
+      expect(archived.artifacts).not.toHaveProperty(image.imageId);
+      expect(archived.unavailableBodyRefs).toContain(image.imageId);
+      expect(archived.snapshot.definition.input.images).toContainEqual(image);
+    }
   });
   it('lists files, folders, runs and roles as pointers after the brief', async () => {
     const s = setup();

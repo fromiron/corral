@@ -325,7 +325,8 @@ describe('Coordinator over a SQLite file', () => {
       definition: linearCorral(['research', 'writer']),
       mode: 'mock',
     });
-    const done = await waitForProjection(transportA, runId ?? '', settled);
+    await waitForProjection(transportA, runId ?? '', settled);
+    const { projection: done } = await transportA.getSnapshot(runId ?? '');
     dbA.close();
 
     const reader = new Coordinator({

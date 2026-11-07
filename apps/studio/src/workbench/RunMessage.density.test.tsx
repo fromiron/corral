@@ -246,7 +246,7 @@ it('changes only display density while keeping results and required attention ou
     expect(fixture.store?.getState().projection).toBe(f.projection);
     expect(fixture.store?.getState().events).toBe(f.events);
   }
-  // the turn's process is the kit's ThinkingSteps with one flat row per step.
+  // The kit keeps an agent's name in the step label and state in its description.
   const log = f.container.querySelector<HTMLElement>('[data-testid="turn-process"]');
   if (!log) throw new Error('turn process missing');
   expect(log.tagName).not.toBe('DETAILS');
@@ -257,7 +257,8 @@ it('changes only display density while keeping results and required attention ou
   const active = [...log.querySelectorAll('.turn-process-row .shimmer-text')].map(
     (node) => node.textContent,
   );
-  expect(active).toEqual(['writer · Active…']);
+  expect(active).toEqual(['writer…']);
+  expect(log.textContent).toContain('Active');
   // Raw transcripts stay in the run pane beside the conversation.
   expect(f.container.querySelector('[data-testid="density-transcript"]')).toBeNull();
   await act(async () => trigger()?.click());

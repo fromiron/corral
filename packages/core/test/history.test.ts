@@ -1,15 +1,15 @@
-import { RunEvent } from '@corral/contracts';
 import {
   collaborationCorral,
   FakeClock,
+  Gate,
   linearCorral,
   ScriptedAgentAdapter,
   SequentialIdFactory,
 } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import { exportRunArchive, openRunArchive } from '../src/history.ts';
 import {
-  applyEvent,
   Coordinator,
   createAutoStarter,
   InMemoryRunStore,
@@ -39,7 +39,8 @@ async function recordedRun() {
     mode: 'mock',
   });
   if (!runId) throw new Error('run not started');
-  const projection = await waitForProjection(runtime, runId, (p) => p.status === 'succeeded');
+  await waitForProjection(runtime, runId, (p) => p.status === 'succeeded');
+  const { projection } = await runtime.getSnapshot(runId);
   return { store, runId, projection };
 }
 
@@ -61,7 +62,8 @@ describe('record archives', () => {
       mode: 'mock',
     });
     if (!runId) throw new Error('run not started');
-    const final = await waitForProjection(runtime, runId, (p) => p.status === 'succeeded');
+    await waitForProjection(runtime, runId, (p) => p.status === 'succeeded');
+    const { projection: final } = await runtime.getSnapshot(runId);
     const question = Object.values(final.questions)[0];
     if (!question) throw new Error('question expected');
     expect(question.status).toBe('answered');
@@ -111,7 +113,8 @@ describe('record archives', () => {
       { fileTools: false },
     );
     if (!runId || !autoRoute) throw new Error('auto run expected');
-    const final = await waitForProjection(runtime, runId, (p) => p.status === 'succeeded');
+    await waitForProjection(runtime, runId, (p) => p.status === 'succeeded');
+    const { projection: final } = await runtime.getSnapshot(runId);
     const archive = exportRunArchive(store, runId, { privateTranscript: true });
     if (archive.visibility !== 'private') throw new Error('private archive expected');
     const opened = openRunArchive(JSON.parse(JSON.stringify(archive)));
@@ -136,7 +139,7 @@ describe('record archives', () => {
     expect(JSON.stringify(exportRunArchive(store, runId))).not.toContain('autoRoute');
   });
 
-  it('exports committed final response text and verifies its archived body', async () => {
+  it('exports only the current final artifact and declares internal response bodies unavailable', async () => {
     const { store, runId } = await recordedRun();
     const finished = store.readEvents(runId, 0).find((event) => event.type === 'model.finished');
     if (finished?.type !== 'model.finished' || !finished.payload.responseRef)
@@ -144,7 +147,13 @@ describe('record archives', () => {
     const ref = finished.payload.responseRef;
     const archive = exportRunArchive(store, runId, { privateTranscript: true });
     if (archive.visibility !== 'private') throw new Error('private archive expected');
-    expect(archive.artifacts[ref]).toBe(store.getArtifactText(runId, ref));
+    expect(archive.formatVersion).toBe(3);
+    expect(store.getArtifactText(runId, ref)).toBeNull();
+    expect(archive.artifacts).not.toHaveProperty(ref);
+    expect(archive.unavailableBodyRefs).toContain(ref);
+    const output = store.getRun(runId)?.projection.output?.artifactVersionIds[0];
+    if (!output) throw new Error('final artifact expected');
+    expect(archive.artifacts[output]).toBe(store.getArtifactText(runId, output));
     expect(() =>
       openRunArchive({
         ...archive,
@@ -152,8 +161,14 @@ describe('record archives', () => {
       }),
     ).toThrow();
     const bodies = { ...archive.artifacts };
-    delete bodies[ref];
+    delete bodies[output];
     expect(() => openRunArchive({ ...archive, artifacts: bodies })).toThrow();
+    expect(() =>
+      openRunArchive({
+        ...archive,
+        unavailableBodyRefs: archive.unavailableBodyRefs?.filter((id) => id !== ref),
+      }),
+    ).toThrow(/availability manifest/);
   });
 
   it('public export defaults to an allowlisted timeline without user text or paths', async () => {
@@ -172,37 +187,76 @@ describe('record archives', () => {
     expect(archive.events.length).toBeGreaterThan(0);
   });
 
-  it('includes criteria revisions referenced by immutable patch events', async () => {
-    const { store, runId, projection } = await recordedRun();
-    const started = store.readEvents(runId, 0)[0];
-    if (!started) throw new Error('run start expected');
-    const patched = RunEvent.parse({
-      ...started,
-      eventId: 'event_patch_history',
-      runSeq: projection.lastSeq + 1,
-      type: 'patch.committed',
+  it('keeps criteria revision references without exporting their retired bodies', async () => {
+    const store = new InMemoryRunStore();
+    const gate = new Gate();
+    const coordinator = new Coordinator({
+      store,
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({
+        turns: 1,
+        beforeReply: (_turn, input) =>
+          input.role.outputContract === 'review' ? gate.wait() : Promise.resolve(),
+      }),
+    });
+    const transport = new InProcessTransport(coordinator);
+    const { runId } = coordinator.startRun({
+      schemaVersion: '0.1',
+      commandId: 'criteria_history',
+      definition: CorralDefinition.parse(researchTeam),
+      mode: 'mock',
+    });
+    if (!runId) throw new Error('run expected');
+    const active = await waitForProjection(transport, runId, (p) =>
+      Object.values(p.executions).some(
+        (execution) => execution.nodeId === 'review' && execution.modelCallIds.length > 0,
+      ),
+    );
+    const receipt = coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'criteria_patch',
+      runId,
+      type: 'patch',
+      expectedControlRevision: active.controlRevision,
       payload: {
-        patchId: 'patch_history',
         kind: 'criteria',
-        scope: { nodeId: null },
-        before: { criteriaVersionId: store.getRun(runId)?.snapshot.criteriaVersionId },
-        after: { criteriaVersionId: 'criteria_new', criteria: ['new criterion'] },
-        controlRevision: 1,
+        baseCriteriaVersionId: active.currentCriteriaVersionId ?? '',
+        criteria: ['new criterion'],
       },
     });
-    store.transaction(() => {
-      store.appendEvents(runId, [patched]);
-      store.saveProjection(runId, applyEvent(projection, patched));
-      store.putArtifactText(runId, 'criteria_new', 'new criterion');
+    expect(receipt.status).toBe('applied');
+    const criteriaId = coordinator.getSnapshot(runId).projection.currentCriteriaVersionId;
+    if (!criteriaId) throw new Error('patched criteria expected');
+    expect(store.getArtifactText(runId, criteriaId)).toBe('new criterion');
+    await transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cancel',
+      runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'stop' },
     });
+    gate.open();
+    await waitForProjection(transport, runId, (p) => p.status === 'cancelled');
+    expect(store.getArtifactText(runId, criteriaId)).toBeNull();
     const archive = exportRunArchive(store, runId, { privateTranscript: true });
     const opened = openRunArchive(archive);
-    expect(opened.visibility === 'private' && opened.artifacts.criteria_new).toBe('new criterion');
-    if (archive.visibility !== 'private') throw new Error('private expected');
+    if (archive.visibility !== 'private' || opened.visibility !== 'private')
+      throw new Error('private expected');
+    expect(opened.artifacts).not.toHaveProperty(criteriaId);
+    expect(archive.unavailableBodyRefs).toContain(criteriaId);
+    expect(archive.events).toContainEqual(
+      expect.objectContaining({
+        type: 'patch.committed',
+        payload: expect.objectContaining({
+          after: expect.objectContaining({ criteriaVersionId: criteriaId }),
+        }),
+      }),
+    );
     expect(() =>
       openRunArchive({
         ...archive,
-        artifacts: { ...archive.artifacts, criteria_new: 'tampered criteria' },
+        artifacts: { ...archive.artifacts, [criteriaId]: 'tampered criteria' },
       }),
     ).toThrow();
   });
@@ -235,3 +289,5 @@ describe('record archives', () => {
     expect(() => exportRunArchive(store, 'missing')).toThrow();
   });
 });
+
+import { CorralDefinition } from '@corral/contracts';

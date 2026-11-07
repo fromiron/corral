@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { openResult } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 function handle(page: Page, nodeId: string, port: string) {
@@ -77,15 +78,9 @@ test('a run on the local server saves first, finishes, and survives a reload', a
 
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
-  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(page.getByTestId('run-activity')).toBeVisible();
   await page.reload();
-  await page
-    .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Results', exact: true })
-    .click();
+  await openResult(page);
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   expect(corral.errors).toEqual([]);
 });

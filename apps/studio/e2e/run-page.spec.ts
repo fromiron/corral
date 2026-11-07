@@ -23,11 +23,11 @@ async function finishedTeamRun(page: Page) {
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
-  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(page.getByTestId('run-activity')).toBeVisible();
 }
+
+// Wide enough for the run column and the side panel side by side.
+test.use({ viewport: { width: 1600, height: 900 } });
 
 const graph = (page: Page) => page.getByRole('application', { name: 'Run graph' });
 
@@ -35,6 +35,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   page,
 }) => {
   await finishedTeamRun(page);
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph(page).locator('.react-flow__node')).toHaveCount(9);
   await expect(page.getByText('Layout from the saved team')).toBeVisible();
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
@@ -50,21 +51,17 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();
   const reins = page.getByRole('region', { name: 'Reins', exact: true });
   await expect(reins).toContainText(`execution ${executionId}`);
-  // The tree row of the chosen execution is marked as the current one.
-  await expect(page.locator(`li[data-execution-id="${executionId}"]`)).toHaveAttribute(
-    'aria-current',
+  // The activity entry of the chosen execution is marked as the current one.
+  const activity = page.getByTestId('run-activity');
+  await expect(activity.locator(`button[data-execution-id="${executionId}"]`)).toHaveAttribute(
+    'aria-pressed',
     'true',
   );
 
-  // Choosing another role from the tree must also update the previously selected graph node.
-  await page
-    .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Executions', exact: true })
-    .click();
-  await page
-    .locator('li[data-execution-id]')
-    .filter({ hasText: /^Research ·/ })
-    .getByRole('button', { name: 'Steer', exact: true })
+  // Choosing another role from the activity must also update the previously selected graph node;
+  // the graph stays open in the dock under the activity.
+  await activity
+    .getByRole('button', { name: /^Research\b/ })
     .first()
     .click();
   await expect(graph(page).locator('.react-flow__node[data-id="research"]')).toHaveClass(
@@ -83,6 +80,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
 
 test('the Run graph cannot be edited: dragging and Delete change nothing', async ({ page }) => {
   await finishedTeamRun(page);
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const writer = graph(page).locator('.react-flow__node[data-id="write"]');
   // A node's place in the graph is its own transform; dragging may pan the view, not move it.
   const position = await writer.getAttribute('style');
@@ -101,10 +99,6 @@ test('the Run graph cannot be edited: dragging and Delete change nothing', async
 
 test('the Usage tab lists each request’s effort judgment as observe only', async ({ page }) => {
   await finishedTeamRun(page);
-  await page
-    .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Details', exact: true })
-    .click();
   await page.getByTestId('run-monitor').getByRole('tab', { name: 'Usage', exact: true }).click();
   const judgments = page.getByRole('region', { name: 'Effort judgments' });
   await expect(judgments).toContainText('Observe only. Not applied to any request.');

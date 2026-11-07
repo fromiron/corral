@@ -30,6 +30,10 @@ interface ShapeClasses {
   /** `container` in px; bgRadius + 4 keeps 4px-inset popup curves concentric. */
   containerRadius: number;
   mergedRadius: number;
+  /** Small fixtures: keycaps, chips, counters, tiny tiles. 5px rounded, full in pill. */
+  chip: string;
+  /** `chip` in px (9999 in pill). */
+  chipRadius: number;
 }
 
 /**
@@ -54,6 +58,8 @@ const shapeMap: Record<ShapeVariant, ShapeClasses> = {
     bgRadius: 20,
     containerRadius: 24,
     mergedRadius: 16,
+    chip: 'rounded-full',
+    chipRadius: 9999,
   },
   rounded: {
     variant: 'rounded',
@@ -67,6 +73,8 @@ const shapeMap: Record<ShapeVariant, ShapeClasses> = {
     bgRadius: 8,
     containerRadius: 12,
     mergedRadius: 8,
+    chip: 'rounded-[5px]',
+    chipRadius: 5,
   },
 };
 

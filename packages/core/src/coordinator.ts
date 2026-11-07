@@ -116,6 +116,7 @@ import {
   runGates,
   type ToolGateView,
 } from './admission/index.ts';
+import { canReadArtifactBody, canReleaseArtifactBodies } from './artifact-retention.ts';
 import { validTextAttachments } from './attachments.ts';
 import { type AutoStart, autoDefinition } from './auto-team.ts';
 import {
@@ -143,7 +144,12 @@ import { adaptDesignReview } from './design-review.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
-import { PartialOutputWriter, type RuntimeSnapshot, readPartialOutputs } from './partial-output.ts';
+import {
+  PartialOutputWriter,
+  partialOutputRefs,
+  type RuntimeSnapshot,
+  readPartialOutputs,
+} from './partial-output.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
 import {
   automaticReasoning,
@@ -169,6 +175,8 @@ import {
   type RunStore,
   type RunSummary,
   type StoredCommand,
+  type StoredConversationTurn,
+  type StoredRun,
 } from './store/run-store.ts';
 import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
 
@@ -215,6 +223,11 @@ export interface DecisionInput {
   iteration: IterationRef | null;
   projection: RunProjection;
 }
+
+type WorkflowDecision = Pick<
+  EventPayload<'workflow.branch_selected'>,
+  'reasonCode' | 'evidenceRefs' | 'configRevision'
+> & { branch: string };
 
 /** Chooses a Decision branch. Reviews and approvals provide it in P5; tests script it. */
 export interface DecisionPolicy {
@@ -776,7 +789,12 @@ export class Coordinator {
     const manifestText = this.store.getArtifactText(runId, record.manifestRef);
     const stateText = this.store.getArtifactText(runId, record.contextRef);
     if (!manifestText || !stateText)
-      throw new ToolRefusal('STORAGE_UNAVAILABLE', 'runtime checkpoint is incomplete');
+      throw new ToolRefusal(
+        'STORAGE_UNAVAILABLE',
+        canReleaseArtifactBodies(source.projection)
+          ? 'runtime checkpoint body has been released'
+          : 'runtime checkpoint is incomplete',
+      );
     const manifest = RuntimeCheckpointManifest.parse(JSON.parse(manifestText));
     const storedState = JSON.parse(stateText);
     const state = decodeContextCheckpoint(storedState, (id) =>
@@ -975,7 +993,12 @@ export class Coordinator {
           createdAt: source.snapshot.startedAt,
           runtime: 'pi-core',
           ready: false,
-          blockers: ['checkpoint_corrupt'],
+          blockers: [
+            canReleaseArtifactBodies(source.projection) &&
+            !this.store.getArtifactText(runId, record.contextRef)
+              ? 'content_released'
+              : 'checkpoint_corrupt',
+          ],
           limits: null,
         });
       }
@@ -2228,25 +2251,8 @@ export class Coordinator {
       const run = read(runId);
       if (!run || run.snapshot.meeting || !TERMINAL_RUN_STATUSES.has(run.projection.status))
         continue;
-      let request = run.snapshot.definition.input.brief;
-      const from = run.projection.startedFrom;
-      const source = from ? read(from.runId) : null;
-      const version = from ? source?.projection.artifacts[from.artifactVersionId] : undefined;
-      const copied =
-        from && version ? this.store.getArtifactText(from.runId, from.artifactVersionId) : null;
-      if (from && version && copied !== null)
-        request = request.replace(startPointText(version, from.runId, copied), '');
-      const outputId = run.projection.output?.artifactVersionIds[0];
-      const answer =
-        outputId && !run.projection.artifacts[outputId]?.media
-          ? this.store.getArtifactText(runId, outputId)
-          : null;
       turns.push({
-        runId,
-        request,
-        answer,
-        status: run.projection.status,
-        artifactVersionId: answer === null ? null : (outputId ?? null),
+        ...(this.store.getConversationTurn(runId) ?? this.primaryConversationTurn(run)),
       });
     }
     const bytes = (turn: ConversationTurn) =>
@@ -3568,7 +3574,104 @@ export class Coordinator {
   }
 
   getArtifactText(runId: string, artifactVersionId: string): string | null {
-    return this.store.getArtifactText(runId, artifactVersionId);
+    return canReadArtifactBody(this.projectionOf(runId), artifactVersionId)
+      ? this.store.getArtifactText(runId, artifactVersionId)
+      : null;
+  }
+
+  getConversationTurn(runId: string): StoredConversationTurn | null {
+    return this.store.getConversationTurn(runId);
+  }
+
+  private primaryConversationTurn(run: StoredRun): StoredConversationTurn {
+    let request = run.snapshot.definition.input.brief;
+    const from = run.projection.startedFrom;
+    const source = from ? this.store.getRun(from.runId) : null;
+    const version = from ? source?.projection.artifacts[from.artifactVersionId] : undefined;
+    const copied =
+      from && version ? this.store.getArtifactText(from.runId, from.artifactVersionId) : null;
+    if (from && version && copied !== null)
+      request = request.replace(startPointText(version, from.runId, copied), '');
+    const outputId = run.projection.output?.artifactVersionIds[0];
+    const answer =
+      outputId && !run.projection.artifacts[outputId]?.media
+        ? this.store.getArtifactText(run.runId, outputId)
+        : null;
+    return {
+      runId: run.runId,
+      request,
+      answer,
+      status: run.projection.status,
+      artifactVersionId: answer === null ? null : (outputId ?? null),
+    };
+  }
+
+  /** Called inside the same transaction as settlement. Retain relation facts, not old bodies. */
+  private releaseSettledBodies(runId?: string) {
+    const summaries = this.store.listRuns();
+    const current = runId ? this.store.getRun(runId) : null;
+    const candidates = summaries
+      .filter(
+        (summary) =>
+          !runId ||
+          summary.runId === runId ||
+          (current?.sessionId && summary.sessionId === current.sessionId),
+      )
+      .map((summary) => this.store.getRun(summary.runId)!)
+      .filter((run) => canReleaseArtifactBodies(run.projection));
+    // Capture ordinary conversation before any source/final body is released.
+    for (const run of candidates)
+      if (!run.snapshot.meeting && !this.store.getConversationTurn(run.runId))
+        this.store.putConversationTurn(run.runId, this.primaryConversationTurn(run));
+    const changes: { runId: string; events: RunEvent[]; projection: RunProjection }[] = [];
+    for (const run of candidates) {
+      const latest = run.sessionId
+        ? summaries.find((summary) => {
+            if (summary.sessionId !== run.sessionId || summary.status !== 'succeeded') return false;
+            const candidate = this.store.getRun(summary.runId);
+            return (
+              candidate?.snapshot.meeting?.participantId === run.snapshot.meeting?.participantId &&
+              !!candidate?.projection.output?.artifactVersionIds.length
+            );
+          })
+        : null;
+      const superseded = !!latest && latest.runId !== run.runId;
+      const retained = superseded
+        ? []
+        : (run.projection.output?.artifactVersionIds ?? []).filter(
+            (id) => run.projection.artifacts[id]?.bodyAvailable !== false,
+          );
+      const released = Object.keys(run.projection.artifacts).filter(
+        (id) => !retained.includes(id) && run.projection.artifacts[id]?.bodyAvailable !== false,
+      );
+      if (released.length) {
+        const prepared = this.prepare(run, [
+          {
+            type: 'artifact.content_released',
+            payload: {
+              artifactVersionIds: released,
+              reason: superseded ? 'superseded' : 'run_settled',
+            },
+          },
+        ]);
+        this.write(run.runId, prepared.events, prepared.projection);
+        changes.push({ runId: run.runId, ...prepared });
+      }
+      const operational: string[] = [];
+      // A meeting participant owns one current context for its next turn, never a checkpoint archive.
+      if (run.snapshot.meeting && !superseded) {
+        const checkpoint = Object.values(run.projection.runtimeCheckpoints ?? {}).at(-1);
+        if (checkpoint) {
+          operational.push(checkpoint.manifestRef, checkpoint.contextRef);
+          const context = this.store.getArtifactText(run.runId, checkpoint.contextRef);
+          if (context) operational.push(...checkpointReferences(JSON.parse(context)));
+        }
+      }
+      // An interrupted reply stays readable as private partial output (workbench contract).
+      operational.push(...partialOutputRefs(this.store, run.runId, run.projection));
+      this.store.retainArtifactBodies(run.runId, [...retained, ...operational]);
+    }
+    return changes;
   }
 
   /** Delivers every event after `afterSeq` exactly once, in order, then follows live commits. */
@@ -3656,13 +3759,33 @@ export class Coordinator {
 
   /** Commits drafts (plus `extra` writes) atomically, then updates readers. */
   private commit(run: LiveRun, drafts: EventDraft[], extra?: (events: RunEvent[]) => void) {
+    // Settled hosts can still reconcile usage after another Run released their bodies.
+    // Rebase that terminal closure on the committed metadata before assigning sequences.
+    if (TERMINAL_RUN_STATUSES.has(run.projection.status)) {
+      const stored = this.store.getRun(run.runId);
+      if (stored && stored.projection.lastSeq > run.projection.lastSeq)
+        run.projection = stored.projection;
+    }
     const { events, projection } = this.prepare(run, drafts);
+    let committedProjection = projection;
+    let releases: ReturnType<Coordinator['releaseSettledBodies']> = [];
     this.persist(() => {
       this.write(run.runId, events, projection);
       extra?.(events);
+      if (canReleaseArtifactBodies(projection)) releases = this.releaseSettledBodies(run.runId);
+      const own = releases.find((change) => change.runId === run.runId);
+      if (own) {
+        committedProjection = own.projection;
+        events.push(...own.events);
+      }
     });
-    this.publish(run, projection);
-    notifyObservers(this.observers, projection, events, () => this.observerContext(run));
+    this.publish(run, committedProjection);
+    for (const released of releases)
+      if (released.runId !== run.runId)
+        for (const subscriber of this.subscribers)
+          if (subscriber.runId === released.runId)
+            void Promise.resolve().then(() => this.pump(subscriber));
+    notifyObservers(this.observers, committedProjection, events, () => this.observerContext(run));
     return events;
   }
 
@@ -3907,18 +4030,31 @@ export class Coordinator {
 
   private recover() {
     for (const summary of this.store.listRuns()) {
-      if (TERMINAL_RUN_STATUSES.has(summary.status)) continue;
       const stored = this.store.getRun(summary.runId);
       if (!stored) continue;
+      const terminal = TERMINAL_RUN_STATUSES.has(summary.status);
+      if (terminal && canReleaseArtifactBodies(stored.projection)) continue;
+      const drafts = this.interruption(stored.projection);
       const { events, projection } = this.prepare(
         { runId: summary.runId, projection: stored.projection },
-        this.interruption(stored.projection),
+        terminal
+          ? drafts.filter(
+              (event) => event.type !== 'run.interrupted' && event.type !== 'run.state_changed',
+            )
+          : drafts,
       );
       try {
         this.persist(() => this.write(summary.runId, events, projection));
       } catch {
         return;
       }
+    }
+    try {
+      this.persist(() => {
+        this.releaseSettledBodies();
+      });
+    } catch {
+      /* admission is closed */
     }
   }
 
@@ -4036,16 +4172,63 @@ export class Coordinator {
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
-        if (this.decisions) {
-          return this.decisions.decide({
-            runId: run.runId,
-            nodeId,
-            mode: step.mode,
-            iteration,
-            projection: run.projection,
-          });
+        const iterationId = this.openRoundOf(run, nodeId);
+        const decisionRevision = run.projection.controlRevision;
+        const decision: WorkflowDecision = this.decisions
+          ? {
+              branch: await this.decisions.decide({
+                runId: run.runId,
+                nodeId,
+                mode: step.mode,
+                iteration,
+                projection: run.projection,
+              }),
+              reasonCode: 'external_policy',
+              evidenceRefs: [],
+              configRevision: decisionRevision,
+            }
+          : await this.decide(run, nodeId, step.mode);
+        // The choice may have waited on a person or external policy. Never append a late
+        // routing fact to a cancelled Run or a different iteration.
+        await this.boundary(run);
+        if (iterationId !== this.openRoundOf(run, nodeId))
+          throw new Error('decision scope changed');
+        const next = step.branches[decision.branch as keyof typeof step.branches] ?? null;
+        const executionIds = new Set<string>();
+        const author = (id: string) => {
+          const executionId = run.projection.artifacts[id]?.authorExecutionId;
+          if (executionId) executionIds.add(executionId);
+        };
+        for (const ref of decision.evidenceRefs) {
+          if (ref.kind === 'artifact' || ref.kind === 'review') author(ref.id);
+          if (ref.kind === 'approval')
+            for (const id of run.projection.approvals[ref.id]?.subjectVersionIds ?? []) author(id);
+          if (ref.kind === 'task') {
+            const id = run.projection.tasks[ref.id]?.activeExecutionId;
+            if (id) executionIds.add(id);
+          }
         }
-        return this.decide(run, nodeId, step.mode);
+        this.commit(run, [
+          {
+            type: 'workflow.branch_selected',
+            payload: {
+              nodeId,
+              mode: step.mode,
+              iterationId,
+              configRevision: decision.configRevision,
+              selectedPort: decision.branch,
+              targetNodeId: next?.nodeId ?? null,
+              targetPort: next?.port ?? null,
+              reasonCode: decision.reasonCode,
+              evidenceRefs: decision.evidenceRefs,
+              executionRefs: [...executionIds].flatMap((id) => {
+                const execution = run.projection.executions[id];
+                return execution ? [{ executionId: id, attemptNo: execution.attemptNo }] : [];
+              }),
+            },
+          },
+        ]);
+        return decision.branch;
       },
       loopCapReached: async (loopId, rounds) => this.atLoopCap(run, loopId, rounds),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
@@ -5207,15 +5390,33 @@ export class Coordinator {
   // ── reviews and approvals ───────────────────────────────────
 
   /** The built-in decisions: review verdicts, the person's approvals, and simple rules. */
-  private async decide(run: LiveRun, nodeId: string, mode: DecisionNode['mode']): Promise<string> {
+  private async decide(
+    run: LiveRun,
+    nodeId: string,
+    mode: DecisionNode['mode'],
+  ): Promise<WorkflowDecision> {
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const round = this.openRoundOf(run, nodeId);
+    const choice = (
+      branch: string,
+      reasonCode: WorkflowDecision['reasonCode'],
+      evidenceRefs: WorkflowDecision['evidenceRefs'],
+    ): WorkflowDecision => ({
+      branch,
+      reasonCode,
+      evidenceRefs,
+      configRevision: run.projection.controlRevision,
+    });
     if (mode === 'rule') {
       const p = run.projection;
       const unfinished = Object.values(p.tasks).some(
         (t) => t.status !== 'completed' && !TERMINAL_TASK.has(t.status),
       );
-      return unfinished ? 'no' : 'yes';
+      return choice(
+        unfinished ? 'no' : 'yes',
+        unfinished ? 'tasks_unfinished' : 'required_tasks_completed',
+        Object.keys(p.tasks).map((id) => ({ kind: 'task', id })),
+      );
     }
     const bound = (node?.type === 'decision' ? node.inputBindings : []).flatMap((b) =>
       b.kind === 'task_output' && b.sourceNodeId
@@ -5232,7 +5433,9 @@ export class Coordinator {
         ...bound,
         ...(review ? [review] : []),
       ]);
-      return requested.decision;
+      return choice(await requested.decision, 'human_approval', [
+        { kind: 'approval', id: requested.approvalId },
+      ]);
     }
 
     // Review: the verdict counts only for the draft and criteria actually reviewed.
@@ -5276,26 +5479,54 @@ export class Coordinator {
           },
         },
       ]);
-      return verdict;
+      return choice(
+        verdict,
+        verdict !== recorded.verdict ? 'review_checks_failed' : 'review_verdict',
+        [
+          { kind: 'artifact', id: candidate.artifactVersionId },
+          { kind: 'review', id: reviewVersionId },
+          ...candidate.checks.map((check) => ({
+            kind: 'check' as const,
+            id: check.verificationId,
+          })),
+        ],
+      );
     }
     if (run.pendingCriteriaVersionId) {
       const requested = this.requestApproval(run, 'user_action', [
         recorded.targetVersionId,
         reviewVersionId,
       ]);
-      return (await requested.decision) === 'approve' ? 'revise' : 'reject';
+      return choice(
+        (await requested.decision) === 'approve' ? 'revise' : 'reject',
+        'criteria_changed',
+        [
+          { kind: 'review', id: reviewVersionId },
+          { kind: 'artifact', id: recorded.targetVersionId },
+          { kind: 'approval', id: requested.approvalId },
+        ],
+      );
     }
-    if (recorded.verdict !== 'inconclusive') return recorded.verdict;
+    if (recorded.verdict !== 'inconclusive')
+      return choice(recorded.verdict, 'review_verdict', [
+        { kind: 'review', id: reviewVersionId },
+        { kind: 'artifact', id: recorded.targetVersionId },
+      ]);
     // Not a usable verdict: the person decides whether the draft goes on.
     const requested = this.requestApproval(run, 'user_action', [
       recorded.targetVersionId,
       reviewVersionId,
     ]);
-    return (await requested.decision) === 'approve'
-      ? run.pendingCriteriaVersionId
-        ? 'revise'
-        : 'pass'
-      : 'reject';
+    const approved = (await requested.decision) === 'approve';
+    return choice(
+      approved ? (run.pendingCriteriaVersionId ? 'revise' : 'pass') : 'reject',
+      run.pendingCriteriaVersionId ? 'criteria_changed' : 'inconclusive_review_approval',
+      [
+        { kind: 'review', id: reviewVersionId },
+        { kind: 'artifact', id: recorded.targetVersionId },
+        { kind: 'approval', id: requested.approvalId },
+      ],
+    );
   }
 
   /** Validates a submitted review against what its reviewer was given. */
