@@ -357,7 +357,7 @@ const assigned = (
 ) => event(seq, 'task.attempt_assigned', { taskId, executionId, attemptNo }, ms);
 
 /** Three tasks: the writer's finished after a retry, the lead's is open, a review never started. */
-function taskFixture(ended: boolean) {
+function taskFixture(ended: boolean, selected?: string, onSelect: (id: string) => void = () => {}) {
   const events = [
     task(1, 'task_lead', 'lead', 0),
     task(2, 'task_writer', 'writer', 0),
@@ -392,8 +392,8 @@ function taskFixture(ended: boolean) {
           events={events}
           projection={projection}
           definition={linearCorral(['lead', 'writer', 'review'])}
-          selected={undefined}
-          onSelect={() => {}}
+          selected={selected}
+          onSelect={onSelect}
         />
       </IntlProvider>,
     ),
@@ -417,18 +417,37 @@ it('switches to a timeline per task drawn from its actual record, with no plan m
     'task_writer',
     'task_review',
   ]);
-  const writer = rows[1]?.getAttribute('aria-label') ?? '';
+  // A started task is named on its button; a waiting one on its row.
+  const name = (row: HTMLElement | undefined) =>
+    row?.querySelector('button')?.getAttribute('aria-label') ?? row?.getAttribute('aria-label');
+  const writer = name(rows[1]) ?? '';
   // Named by its node and what it submitted; it ran from its first attempt to its completion.
   expect(writer).toContain('writer · draft');
   expect(writer).toContain('0:08');
   expect(rows[1]?.dataset.status).toBe('done');
   // Never assigned: waiting, with no interval.
   expect(rows[2]?.dataset.status).toBe('queued');
-  expect(rows[2]?.getAttribute('aria-label')).not.toMatch(/\d:\d\d/);
+  expect(name(rows[2])).not.toMatch(/\d:\d\d/);
   // Nothing was planned, so nothing claims a plan, an ETA or a verdict.
   const board = container.querySelector('[data-task-id]')?.closest('[role="list"]');
   expect(board?.textContent).not.toMatch(/ETA|On plan|Over plan|ahead/);
   expect(board?.querySelector('.border-dashed')).toBeNull();
+});
+
+it('opens the latest attempt of a chosen task and marks the task of the selected execution', () => {
+  const onSelect = vi.fn();
+  const container = taskFixture(true, 'exec_w1', onSelect);
+  // No caption over the board.
+  expect(container.textContent).not.toContain('first assigned attempt');
+  const row = (id: string) => container.querySelector<HTMLElement>(`[data-task-id="${id}"]`);
+  // exec_w1 is the writer's first attempt: its task is the one marked.
+  expect(row('task_writer')?.querySelector('button')?.getAttribute('aria-pressed')).toBe('true');
+  expect(row('task_lead')?.querySelector('button')?.getAttribute('aria-pressed')).toBe('false');
+  act(() => row('task_writer')?.querySelector('button')?.click());
+  // The task's result came from its last attempt.
+  expect(onSelect).toHaveBeenCalledWith('exec_w2');
+  // A task that never started has nothing to open.
+  expect(row('task_review')?.querySelector('button')).toBeNull();
 });
 
 it('a live run keeps an unfinished task open', () => {

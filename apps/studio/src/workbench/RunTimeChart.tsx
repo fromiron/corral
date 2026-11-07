@@ -67,6 +67,8 @@ export function RunTimeChart(props: TimeChartProps) {
           events={props.events}
           projection={props.projection}
           definition={props.definition}
+          selected={props.selected}
+          onSelect={props.onSelect}
         />
       </TabPanel>
     </Tabs>

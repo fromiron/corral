@@ -28,10 +28,16 @@ export function RunTaskTimeline({
   events,
   projection,
   definition,
+  selected,
+  onSelect,
 }: {
   events: RunEvent[];
   projection: RunProjection | null;
   definition: CorralDefinition;
+  /** The selected execution; its task is outlined. */
+  selected?: string | undefined;
+  /** Opens a task's latest attempt, the one its result came from. */
+  onSelect?: (executionId: string) => void;
 }) {
   const t = useTranslations('RunMonitor.taskTimeline');
   const status = useTranslations('Status');
@@ -88,19 +94,27 @@ export function RunTaskTimeline({
         },
       ];
     });
-    return { steps, startedAt, lastAt };
+    return { steps, startedAt, lastAt, attempts };
   }, [events, projection, definition, live, status]);
   if (!board?.steps.length)
     return <p className="p-3 text-sm text-muted-foreground">{t('empty')}</p>;
   return (
     <section aria-label={t('title')} className="flex flex-col gap-3 p-3">
-      <p className="text-caption text-muted-foreground">{t('note')}</p>
       <PlanVsActual
         title={t('title')}
         steps={board.steps}
         startedAt={board.startedAt}
         {...(live ? {} : { now: board.lastAt })}
         size="compact"
+        selectedStepId={selected ? (projection?.executions[selected]?.taskId ?? null) : null}
+        {...(onSelect
+          ? {
+              onSelectStep: (taskId: string) => {
+                const attempt = board.attempts.get(taskId);
+                if (attempt) onSelect(attempt);
+              },
+            }
+          : {})}
         labels={{
           step: t('step'),
           time: t('time'),

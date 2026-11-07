@@ -4699,7 +4699,6 @@
     "byTask": "By task",
     "taskTimeline": {
       "title": "Time per task",
-      "note": "Each task runs from its first assigned attempt to its completion. Planned times are not recorded, so only actual intervals are shown.",
       "step": "Task",
       "time": "Elapsed",
       "row": "{label}: {status}, {took}",
