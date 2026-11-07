@@ -901,7 +901,7 @@ function LaneBlock({
             >
               <span
                 className={cn(
-                  'absolute inset-0',
+                  'absolute inset-0 rounded-[inherit]',
                   !tone && 'bg-active group-hover:bg-hover',
                   task.status === 'running' && piece === last && 'sheen',
                 )}

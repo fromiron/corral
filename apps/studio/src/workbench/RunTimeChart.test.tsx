@@ -323,6 +323,12 @@ it('breaks a span where its execution waited on another agent, keeping one selec
   for (const piece of pieces) expect(piece.className).toMatch(/\bbg-(surface-\d|background)\b/);
   expect(container.querySelectorAll('[data-execution-id="exec_lead"]')).toHaveLength(1);
   expect(lead?.getAttribute('aria-pressed')).toBe('true');
+  // The selection outline follows each block's own rounded edge.
+  for (const piece of pieces) {
+    const fill = piece.firstElementChild as HTMLElement;
+    expect(fill.style.boxShadow).toContain('var(--emphasis)');
+    expect(fill.className).toContain('rounded-[inherit]');
+  }
 });
 
 it('leaves a delegation from the block that ends where the wait begins', () => {
