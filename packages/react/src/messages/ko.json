@@ -631,6 +631,8 @@
     "count": "전체 {total, number}개 중 {shown, plural, one {#개} other {#개}}",
     "actor": "주체",
     "kind": "종류",
+    "elapsed": "경과",
+    "event": "내용",
     "execution": "실행",
     "all": "전체",
     "actors": {

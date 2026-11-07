@@ -631,6 +631,8 @@
     "count": "{shown, plural, one {# event} other {# events}} of {total, number}",
     "actor": "Actor",
     "kind": "Kind",
+    "elapsed": "Elapsed",
+    "event": "Event",
     "execution": "Execution",
     "all": "All",
     "actors": {

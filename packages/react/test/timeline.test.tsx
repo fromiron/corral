@@ -68,12 +68,13 @@ function event(runSeq: number, executionId: string, seconds: number): RunEvent {
   } as RunEvent;
 }
 
-function renderEvents() {
+function renderEvents(fill = false) {
   const { definition } = researchTeamDraft();
   const writer = definition.nodes.find((node) => node.id === 'write')?.label ?? 'write';
   render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
       <Timeline
+        fill={fill}
         session={sessionStore({
           runId: 'run_events',
           definition,
@@ -109,4 +110,33 @@ it('filters executions by agent name and attempt rather than by identifier', asy
   const options = screen.getAllByRole('option').map((option) => option.textContent ?? '');
   expect(options.some((option) => option.includes(`${writer} · attempt 2`))).toBe(true);
   expect(options.some((option) => option.includes('exec_'))).toBe(false);
+});
+
+it('names every column above the list', () => {
+  renderEvents(true);
+  const columns = screen.getByTestId('timeline-columns');
+  expect([...columns.children].map((cell) => cell.textContent)).toEqual([
+    '#',
+    'Elapsed',
+    'Actor',
+    'Event',
+    'Kind',
+  ]);
+});
+
+it('gives the list the full width until an event is chosen', async () => {
+  renderEvents(true);
+  const section = screen.getByRole('region', { name: 'Timeline' });
+  expect(section.className).not.toContain('grid-cols-');
+  const row = screen.getAllByTestId('timeline-row')[0] as HTMLElement;
+  await act(async () => fireEvent.click(within(row).getByRole('button')));
+  expect(section.className).toContain('grid-cols-');
+});
+
+it('marks each actor with its own icon', () => {
+  renderEvents(true);
+  const icon = (row: HTMLElement) =>
+    row.querySelector('[data-actor-icon]')?.getAttribute('data-actor-icon');
+  // Both fixture events are recorded by agents.
+  for (const row of screen.getAllByTestId('timeline-row')) expect(icon(row)).toBe('agent');
 });

@@ -1,5 +1,6 @@
 import type { RunEvent } from '@corral/contracts';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { Bot, Cog, type LucideIcon, User } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -139,7 +140,8 @@ export function Timeline({
       aria-labelledby="timeline-heading"
       className={
         fill
-          ? '@container flex h-full flex-col gap-4 p-4 @3xl:grid @3xl:grid-cols-[minmax(0,1fr)_18rem] @3xl:items-start'
+          ? // The detail column exists only once an event is chosen; until then the list is full width.
+            `@container flex h-full flex-col gap-4 p-4${selected ? ' @3xl:grid @3xl:grid-cols-[minmax(0,1fr)_18rem] @3xl:items-start' : ''}`
           : 'flex flex-col gap-4'
       }
     >
@@ -170,6 +172,17 @@ export function Timeline({
               kinds.map((k) => [k, k]),
             )}
             {filter(t('execution'), execution, setExecution, executionOptions)}
+          </div>
+          <div
+            data-testid="timeline-columns"
+            aria-hidden
+            className="flex gap-1.5 border-b border-border px-4 pb-1.5 text-caption text-muted-foreground"
+          >
+            <span className="w-12 shrink-0">#</span>
+            <span className="w-14 shrink-0">{t('elapsed')}</span>
+            <span className="w-20 shrink-0">{t('actor')}</span>
+            <span className="min-w-0 flex-1">{t('event')}</span>
+            <span className="shrink-0">{t('kind')}</span>
           </div>
           <div
             ref={scrollRef}
@@ -213,7 +226,10 @@ export function Timeline({
                         <span className="w-14 shrink-0 text-muted-foreground tabular-nums">
                           {elapsed(event)}
                         </span>
-                        <span className="w-16 shrink-0">{t(`actors.${event.actor.kind}`)}</span>
+                        <span className="flex w-20 shrink-0 items-center gap-1.5">
+                          <ActorIcon kind={event.actor.kind} />
+                          {t(`actors.${event.actor.kind}`)}
+                        </span>
                         <span className="min-w-0 truncate">
                           <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
                         </span>
@@ -243,7 +259,10 @@ export function Timeline({
               <dt className="text-muted-foreground">{t('kind')}</dt>
               <dd className="break-all font-mono">{selected.type}</dd>
               <dt className="text-muted-foreground">{t('actor')}</dt>
-              <dd>{t(`actors.${selected.actor.kind}`)}</dd>
+              <dd className="flex items-center gap-1.5">
+                <ActorIcon kind={selected.actor.kind} />
+                {t(`actors.${selected.actor.kind}`)}
+              </dd>
               {selected.executionId ? (
                 <>
                   <dt className="text-muted-foreground">{t('execution')}</dt>
@@ -266,5 +285,19 @@ export function Timeline({
         </KitCard>
       ) : null}
     </section>
+  );
+}
+
+/** Who recorded an event, recognisable at a glance; runtime records, the most common, stay quiet. */
+const ACTOR_ICONS: Record<RunEvent['actor']['kind'], { Icon: LucideIcon; color: string }> = {
+  user: { Icon: User, color: 'var(--emphasis)' },
+  agent: { Icon: Bot, color: 'var(--foreground)' },
+  runtime: { Icon: Cog, color: 'var(--muted-foreground)' },
+};
+
+function ActorIcon({ kind }: { kind: RunEvent['actor']['kind'] }) {
+  const { Icon, color } = ACTOR_ICONS[kind];
+  return (
+    <Icon size={14} aria-hidden data-actor-icon={kind} className="shrink-0" style={{ color }} />
   );
 }
