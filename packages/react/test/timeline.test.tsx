@@ -1,0 +1,112 @@
+import type { RunEvent } from '@corral/contracts';
+import type { RunProjection } from '@corral/core';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { IntlProvider } from 'use-intl';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { Timeline } from '../src/components/Timeline.tsx';
+import messages from '../src/messages/en.json' with { type: 'json' };
+import { projectionWith, researchTeamDraft, sessionStore } from '../src/stories/fixtures.tsx';
+
+beforeAll(() => {
+  // The virtual list measures its scroll box; give it a size in jsdom.
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    bottom: 600,
+    right: 800,
+    width: 800,
+    height: 600,
+    toJSON: () => ({}),
+  });
+});
+afterAll(() => vi.restoreAllMocks());
+
+const execution = (
+  executionId: string,
+  nodeId: string,
+  attemptNo = 1,
+): RunProjection['executions'][string] => ({
+  executionId,
+  nodeId,
+  taskId: 'task_write',
+  attemptNo,
+  parentExecutionId: null,
+  previousExecutionId: null,
+  depth: 0,
+  iterationId: null,
+  modelProfile: 'model-a',
+  configRevision: 0,
+  criteriaVersionId: null,
+  status: 'succeeded',
+  activity: null,
+  waitingOn: null,
+  modelCallIds: [],
+  error: null,
+});
+
+function event(runSeq: number, executionId: string, seconds: number): RunEvent {
+  return {
+    schemaVersion: '0.1',
+    eventId: `evt_${runSeq}`,
+    runId: 'run_events',
+    runSeq,
+    recordedAt: new Date(Date.UTC(2026, 10, 7, 0, 0, seconds)).toISOString(),
+    causedByEventIds: [],
+    actor: { kind: 'agent', id: executionId },
+    type: 'tool.requested',
+    executionId,
+    payload: {
+      executionId,
+      toolCallId: `tool_${runSeq}`,
+      name: 'write_artifact',
+      validatedArgs: {},
+    },
+  } as RunEvent;
+}
+
+function renderEvents() {
+  const { definition } = researchTeamDraft();
+  const writer = definition.nodes.find((node) => node.id === 'write')?.label ?? 'write';
+  render(
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <Timeline
+        session={sessionStore({
+          runId: 'run_events',
+          definition,
+          projection: projectionWith({
+            startedAt: '2026-11-07T00:00:00.000Z',
+            executions: {
+              exec_a: execution('exec_a', 'write'),
+              exec_b: execution('exec_b', 'write', 2),
+            },
+            executionOrder: ['exec_a', 'exec_b'],
+          }),
+          events: [event(1, 'exec_a', 0), event(2, 'exec_b', 65)],
+        })}
+      />
+    </IntlProvider>,
+  );
+  return writer;
+}
+
+it('shows elapsed time per row and opens details only for a chosen event', async () => {
+  renderEvents();
+  expect(screen.queryByTestId('timeline-selected')).toBeNull();
+  const rows = screen.getAllByTestId('timeline-row');
+  expect(rows[0]?.textContent).toContain('+0:00');
+  expect(rows[1]?.textContent).toContain('+1:05');
+  await act(async () => fireEvent.click(within(rows[1] as HTMLElement).getByRole('button')));
+  expect(screen.getByTestId('timeline-selected').textContent).toContain('tool.requested');
+});
+
+it('filters executions by agent name and attempt rather than by identifier', async () => {
+  const writer = renderEvents();
+  await act(async () => fireEvent.click(screen.getByRole('combobox', { name: 'Execution' })));
+  const options = screen.getAllByRole('option').map((option) => option.textContent ?? '');
+  expect(options.some((option) => option.includes(`${writer} · attempt 2`))).toBe(true);
+  expect(options.some((option) => option.includes('exec_'))).toBe(false);
+});

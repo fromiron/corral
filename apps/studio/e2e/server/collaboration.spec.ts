@@ -24,9 +24,10 @@ test('one run shows two delegated helpers and a question answered by a new respo
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   const monitor = page.getByTestId('run-monitor');
-  // Two helper executions in the run's activity, delegated by Research.
+  // Two helper executions in the work flow, delegated by Research.
+  await monitor.getByRole('tab', { name: 'Work flow', exact: true }).click();
   await expect(
-    monitor.getByTestId('run-activity').getByRole('button', { name: /^Research Helper\b/ }),
+    monitor.getByTestId('run-work-flow').getByRole('button', { name: /^Research Helper · exec_/ }),
   ).toHaveCount(2);
 
   // The question: from the Writer to a responder execution of its own, answered.

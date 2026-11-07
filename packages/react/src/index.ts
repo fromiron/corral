@@ -27,7 +27,12 @@ export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';
 export { type ComparedRun, RunComparison } from './components/RunComparison.tsx';
 export { RunControls } from './components/RunControls.tsx';
-export { DecisionDetail, type RunFlowCheck, RunFlowView } from './components/RunFlowView.tsx';
+export {
+  DecisionDetail,
+  type RunFlowCheck,
+  RunFlowDecisions,
+  RunFlowView,
+} from './components/RunFlowView.tsx';
 export { isHtmlDocument, ResultReader, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';

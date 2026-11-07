@@ -1,7 +1,7 @@
 import type { RunEvent } from '@corral/contracts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
   KitButton,
@@ -12,6 +12,7 @@ import {
   KitCardTitle,
   Select,
 } from '../design-kit/index.ts';
+import { formatClock } from '../design-kit/lib/agent-format.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
@@ -33,14 +34,20 @@ export function Timeline({
   session,
   selectedSeq,
   onSelectSeq,
+  fill = false,
 }: {
   session: RunSessionStore;
   selectedSeq?: number | undefined;
   onSelectSeq?: (seq: number) => void;
+  /** Fill the parent's height (the run workspace) instead of a fixed list height. */
+  fill?: boolean;
 }) {
   const t = useTranslations('Timeline');
+  const format = useFormatter();
+  const startedAt = useRunDisplay(session, (s) => s.projection?.startedAt ?? null);
   const events = useRunDisplay(session, (s) => s.events);
   const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
+  const iterations = useRunDisplay(session, (s) => s.projection?.iterations);
   const definition = useStore(session, (s) => s.definition);
   const nodeLabel = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -59,6 +66,31 @@ export function Timeline({
     () => [...new Set(events.flatMap((e) => (e.executionId ? [e.executionId] : [])))],
     [events],
   );
+  // Executions are chosen by agent, round and attempt; identifiers stay out of the list.
+  const executionOptions = useMemo(() => {
+    const seen = new Map<string, number>();
+    return executions.map((id): [string, string] => {
+      const view = executionViews?.[id];
+      const round = view?.iterationId ? iterations?.[view.iterationId]?.no : null;
+      const nodeId = view?.nodeId;
+      const base = [
+        (nodeId && definition?.nodes.find((n) => n.id === nodeId)?.label) || nodeId || id,
+        round ? t('round', { no: round }) : null,
+        view && view.attemptNo > 1 ? t('attempt', { no: view.attemptNo }) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      const count = (seen.get(base) ?? 0) + 1;
+      seen.set(base, count);
+      return [id, count > 1 ? `${base} (${count})` : base];
+    });
+  }, [executions, executionViews, iterations, definition, t]);
+  const origin = useMemo(() => {
+    const first = startedAt ?? events[0]?.recordedAt;
+    return first ? Date.parse(first) : null;
+  }, [startedAt, events]);
+  const elapsed = (event: RunEvent) =>
+    origin === null ? '' : `+${formatClock(Date.parse(event.recordedAt) - origin)}`;
   const shown = useMemo(
     () =>
       events.filter(
@@ -103,8 +135,15 @@ export function Timeline({
   );
 
   return (
-    <section aria-labelledby="timeline-heading" className="flex flex-col gap-4">
-      <KitCard>
+    <section
+      aria-labelledby="timeline-heading"
+      className={
+        fill
+          ? '@container flex h-full flex-col gap-4 p-4 @3xl:grid @3xl:grid-cols-[minmax(0,1fr)_18rem] @3xl:items-start'
+          : 'flex flex-col gap-4'
+      }
+    >
+      <KitCard className={fill ? 'flex min-h-0 flex-1 flex-col @3xl:h-full' : undefined}>
         <KitCardHeader>
           <h3 id="timeline-heading">
             <KitCardTitle>{t('heading')}</KitCardTitle>
@@ -115,7 +154,9 @@ export function Timeline({
             </span>
           </KitCardAction>
         </KitCardHeader>
-        <KitCardContent className="flex flex-col gap-3">
+        <KitCardContent
+          className={fill ? 'flex min-h-0 flex-1 flex-col gap-3' : 'flex flex-col gap-3'}
+        >
           <div className="flex flex-wrap gap-2">
             {filter(t('actor'), actor, (v) => setActor(v as ActorFilter), [
               ['user', t('actors.user')],
@@ -128,14 +169,13 @@ export function Timeline({
               setKind,
               kinds.map((k) => [k, k]),
             )}
-            {filter(
-              t('execution'),
-              execution,
-              setExecution,
-              executions.map((id) => [id, id]),
-            )}
+            {filter(t('execution'), execution, setExecution, executionOptions)}
           </div>
-          <div ref={scrollRef} data-testid="timeline-scroll" className="h-80 overflow-auto">
+          <div
+            ref={scrollRef}
+            data-testid="timeline-scroll"
+            className={fill ? 'min-h-48 flex-1 overflow-auto' : 'h-80 overflow-auto'}
+          >
             {shown.length === 0 ? (
               <p className="text-muted-foreground">{t('empty')}</p>
             ) : (
@@ -170,6 +210,9 @@ export function Timeline({
                         <span className="w-12 shrink-0 font-mono text-muted-foreground">
                           #{event.runSeq}
                         </span>
+                        <span className="w-14 shrink-0 text-muted-foreground tabular-nums">
+                          {elapsed(event)}
+                        </span>
                         <span className="w-16 shrink-0">{t(`actors.${event.actor.kind}`)}</span>
                         <span className="min-w-0 truncate">
                           <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
@@ -186,31 +229,42 @@ export function Timeline({
           </div>
         </KitCardContent>
       </KitCard>
-      <KitCard data-testid="timeline-selected">
-        <KitCardHeader>
-          <h4>
-            <KitCardTitle>{t('selected')}</KitCardTitle>
-          </h4>
-        </KitCardHeader>
-        <KitCardContent>
-          {selected ? (
-            <dl className="grid grid-cols-[6rem_1fr] gap-x-2">
+      {selected ? (
+        <KitCard data-testid="timeline-selected">
+          <KitCardHeader>
+            <h4>
+              <KitCardTitle>{t('selected')}</KitCardTitle>
+            </h4>
+          </KitCardHeader>
+          <KitCardContent>
+            <dl className="grid grid-cols-[6rem_1fr] gap-x-2 gap-y-1">
               <dt className="text-muted-foreground">#</dt>
               <dd>{selected.runSeq}</dd>
-              <dt className="text-muted-foreground">type</dt>
-              <dd>{selected.type}</dd>
-              <dt className="text-muted-foreground">actor</dt>
+              <dt className="text-muted-foreground">{t('kind')}</dt>
+              <dd className="break-all font-mono">{selected.type}</dd>
+              <dt className="text-muted-foreground">{t('actor')}</dt>
+              <dd>{t(`actors.${selected.actor.kind}`)}</dd>
+              {selected.executionId ? (
+                <>
+                  <dt className="text-muted-foreground">{t('execution')}</dt>
+                  <dd>
+                    {executionOptions.find(([id]) => id === selected.executionId)?.[1] ??
+                      labelOf(selected.executionId)}
+                  </dd>
+                </>
+              ) : null}
+              <dt className="text-muted-foreground">{t('recordedAt')}</dt>
               <dd>
-                {selected.actor.kind}:{selected.actor.id}
+                {format.dateTime(new Date(selected.recordedAt), {
+                  dateStyle: 'medium',
+                  timeStyle: 'medium',
+                })}{' '}
+                <span className="text-muted-foreground">{elapsed(selected)}</span>
               </dd>
-              <dt className="text-muted-foreground">recordedAt</dt>
-              <dd>{selected.recordedAt}</dd>
             </dl>
-          ) : (
-            <p className="text-muted-foreground">{t('none')}</p>
-          )}
-        </KitCardContent>
-      </KitCard>
+          </KitCardContent>
+        </KitCard>
+      ) : null}
     </section>
   );
 }

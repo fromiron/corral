@@ -16,7 +16,7 @@ test('a cancelled run keeps what it made as a partial result', async ({ page }) 
   await expect(page.getByTestId('run-status')).toContainText('Cancelled', { timeout: 15_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
 
-  await expect(page.getByTestId('run-activity')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   // What it made before it stopped is offered as partial, and opens as the artifact it is.
   const side = page.getByTestId('run-side');
   if (!(await side.isVisible()))

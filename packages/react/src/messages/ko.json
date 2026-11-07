@@ -355,7 +355,15 @@
       "needsYouList": "확인이 필요한 실행",
       "failedList": "실패한 실행",
       "showBranch": "{name} 아래 실행 {count}개 펼치기",
-      "foldBranch": "{name} 아래 실행 접기"
+      "foldBranch": "{name} 아래 실행 접기",
+      "question": "질문",
+      "sent": "보낸 것",
+      "questionStatus": {
+        "open": "답변 대기",
+        "answered": "답변됨",
+        "cancelled": "취소됨",
+        "timed_out": "시간 초과"
+      }
     }
   },
   "Reins": {
@@ -632,7 +640,9 @@
     },
     "empty": "이 필터에 맞는 이벤트가 없습니다.",
     "selected": "선택한 이벤트",
-    "none": "이벤트를 고르면 상세가 보입니다."
+    "round": "{no}회차",
+    "attempt": "{no}번째 시도",
+    "recordedAt": "기록 시각"
   },
   "Models": {
     "loadFailed": "모델 설정을 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.",
@@ -4657,7 +4667,6 @@
     "currentEvidence": "현재 파일 작업·검증·복구 정보는 최신 상태에서 확인할 수 있습니다.",
     "executionMissingAt": "실행 {executionId}은 이 시점에 존재하지 않습니다.",
     "noIntervals": "이 시점에 관측된 실행 구간이 없습니다.",
-    "lifespanNote": "대기를 포함한 관측 구간입니다. 끝나지 않은 실행은 마지막 기록 시점까지만 표시합니다.",
     "lifespan": "{start}부터 {end}까지 관측",
     "milliseconds": "{value}ms",
     "iteration": "반복 {number}회",
@@ -4699,7 +4708,10 @@
       "empty": "이 실행에 기록된 작업이 없습니다."
     },
     "closeResult": "결과 닫기",
-    "dockHeight": "보기 높이"
+    "dockHeight": "보기 높이",
+    "planCount": "작업 계획 {count}개",
+    "callBreakdown": "선택한 실행의 호출 시간",
+    "modelCall": "모델 요청 {no}"
   },
   "Failure": {
     "cancelled": "이 단계는 취소되었습니다.",

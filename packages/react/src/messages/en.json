@@ -355,7 +355,15 @@
       "needsYouList": "Executions that need you",
       "failedList": "Failed executions",
       "showBranch": "Show {count, plural, one {# execution} other {# executions}} under {name}",
-      "foldBranch": "Fold the executions under {name}"
+      "foldBranch": "Fold the executions under {name}",
+      "question": "Question",
+      "sent": "Sent",
+      "questionStatus": {
+        "open": "Waiting for an answer",
+        "answered": "Answered",
+        "cancelled": "Cancelled",
+        "timed_out": "Timed out"
+      }
     }
   },
   "Reins": {
@@ -632,7 +640,9 @@
     },
     "empty": "No events match these filters.",
     "selected": "Selected event",
-    "none": "Choose an event to see its details."
+    "round": "round {no}",
+    "attempt": "attempt {no}",
+    "recordedAt": "Recorded"
   },
   "Models": {
     "loadFailed": "Could not load model settings. Check the connection and try again.",
@@ -4657,7 +4667,6 @@
     "currentEvidence": "Current file, verification and recovery information is available in Latest.",
     "executionMissingAt": "Execution {executionId} does not exist at this point.",
     "noIntervals": "No execution intervals have been recorded at this point.",
-    "lifespanNote": "Observed lifetimes include waiting. Unfinished intervals stop at the last recorded event.",
     "lifespan": "Observed from {start} through {end}",
     "milliseconds": "{value} ms",
     "iteration": "Iteration {number}",
@@ -4699,7 +4708,10 @@
       "empty": "No tasks were recorded in this run."
     },
     "closeResult": "Close result",
-    "dockHeight": "Views height"
+    "dockHeight": "Views height",
+    "planCount": "{count, plural, one {# work plan} other {# work plans}}",
+    "callBreakdown": "Timed calls of the selected execution",
+    "modelCall": "Model request {no}"
   },
   "Failure": {
     "cancelled": "This step was cancelled.",

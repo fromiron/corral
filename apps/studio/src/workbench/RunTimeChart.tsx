@@ -256,13 +256,19 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
   if (!board || !shown)
     return <p className="p-3 text-sm text-muted-foreground">{t('noIntervals')}</p>;
   const calls = rows.find((row) => row.executionId === selected)?.calls ?? [];
+  const longest = Math.max(1, ...calls.map((call) => call.durationMs));
+  // Model calls go by their order in the execution, tools by name; identifiers stay out.
+  const modelOrder = calls.filter((call) => call.kind === 'model').map((call) => call.callId);
+  const callName = (call: (typeof calls)[number]) =>
+    call.kind === 'model'
+      ? t('modelCall', { no: modelOrder.indexOf(call.callId) + 1 })
+      : (projection?.toolCalls[call.callId]?.name ?? t('tool'));
   const milliseconds = (value: number) =>
     t('milliseconds', { value: format.number(value, { maximumFractionDigits: 0 }) });
   const now = 'cutoff' in shown ? shown.cutoff : live ? Math.max(clock, board.end) : board.end;
   return (
     <section aria-label={t('time')} className="flex h-full flex-col gap-3 overflow-auto p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-caption text-muted-foreground">{t('lifespanNote')}</p>
+      <div className="flex items-center justify-end gap-3">
         {live || reduce ? null : (
           <Button
             data-replay
@@ -288,10 +294,25 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
         size="compact"
       />
       {calls.length ? (
-        <ul className="flex min-w-0 flex-wrap gap-x-4 text-caption text-muted-foreground">
+        <ul
+          data-call-breakdown
+          aria-label={t('callBreakdown')}
+          className="grid min-w-0 grid-cols-[minmax(0,12rem)_1fr_auto] items-center gap-x-3 gap-y-1.5 text-caption text-muted-foreground"
+        >
           {calls.map((call) => (
-            <li key={`${call.kind}:${call.callId}`} className="min-w-0 break-all">
-              {t(call.kind)} · {call.callId} · {milliseconds(call.durationMs)}
+            <li key={`${call.kind}:${call.callId}`} className="contents">
+              <span className="truncate text-foreground">{callName(call)}</span>
+              <span className="h-1.5 min-w-0 rounded-full bg-muted" aria-hidden>
+                <span
+                  data-call-bar
+                  className="block h-full rounded-full"
+                  style={{
+                    width: `${Math.max(2, (call.durationMs / longest) * 100)}%`,
+                    background: call.kind === 'model' ? 'var(--emphasis)' : 'var(--success)',
+                  }}
+                />
+              </span>
+              <span className="text-right tabular-nums">{milliseconds(call.durationMs)}</span>
             </li>
           ))}
         </ul>

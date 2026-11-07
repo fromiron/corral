@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 test.use({ viewport: { width: 375, height: 812 } });
 
 const graph = (page: import('@playwright/test').Page) =>
-  page.getByRole('application', { name: 'Run graph' });
+  page.getByRole('group', { name: 'Run graph' });
 
 async function finishedRun(page: import('@playwright/test').Page) {
   await page.goto('/demo?template=starter&delay=100');
@@ -22,7 +22,7 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   const monitor = page.getByTestId('run-monitor');
   const views = monitor.getByRole('tablist', { name: 'Execution views' });
   await expect(views).toBeVisible();
-  const activity = monitor.getByTestId('run-activity');
+  const activity = monitor.getByTestId('run-work-flow');
   await expect(activity).toHaveCount(0);
   await expect(graph(page)).toBeVisible();
   const side = monitor.getByRole('complementary', { name: 'Details', exact: true });
@@ -36,7 +36,7 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
   await expect(flow).toBeVisible();
 
-  const selected = activity.locator('button[data-execution-id]').first();
+  const selected = activity.getByRole('button', { name: / · exec_/ }).first();
   await selected.click();
   await expect(side).toBeVisible();
   await expect(activity).toBeHidden();
@@ -77,9 +77,9 @@ test('the primary graph fits a short window and keeps its zoom across view and s
     .poll(() =>
       graph(page).evaluate((canvas) => {
         const bounds = canvas.getBoundingClientRect();
-        const viewport = canvas.querySelector('.react-flow__viewport');
-        const nodes = [...canvas.querySelectorAll('.react-flow__node')].map((node) =>
-          node.getBoundingClientRect(),
+        const viewport = canvas.querySelector('[data-graph-stage]');
+        const nodes = [...canvas.querySelectorAll('[data-agent-id] [data-run-status]')].map(
+          (node) => node.getBoundingClientRect(),
         );
         if (!viewport || !nodes.length) return false;
         const zoom = new DOMMatrixReadOnly(getComputedStyle(viewport).transform).m11;
@@ -98,7 +98,7 @@ test('the primary graph fits a short window and keeps its zoom across view and s
       }),
     )
     .toBe(true);
-  const viewport = graph(page).locator('.react-flow__viewport');
+  const viewport = graph(page).locator('[data-graph-stage]');
   const initial = await viewport.getAttribute('style');
   await graph(page)
     .getByRole('button', { name: /^zoom in$/i })
@@ -167,7 +167,7 @@ test.describe('touch inspection', () => {
     await finishedRun(page);
     const monitor = page.getByTestId('run-monitor');
     const canvas = graph(page);
-    const node = canvas.locator('.react-flow__node').getByRole('button');
+    const node = canvas.locator('[data-agent-id]').getByRole('button');
     await expect(node).toHaveCount(1);
     await node.tap();
     const popup = page.locator('[data-slot="popover-popup"]');

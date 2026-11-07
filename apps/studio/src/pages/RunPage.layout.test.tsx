@@ -1126,7 +1126,7 @@ it('primary views retain the graph when switching and keep the active view on a 
   ]);
   const graph = container.querySelector('[data-testid="layout"]');
   await tab('Work flow');
-  expect(container.querySelector('[data-testid="run-activity"]')?.closest('[hidden]')).toBeNull();
+  expect(container.querySelector('[data-testid="run-work-flow"]')?.closest('[hidden]')).toBeNull();
   await tab('Graph');
   expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
   await tab('Graph');

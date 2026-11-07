@@ -456,6 +456,39 @@ export function RunFlowView({
 }
 
 /** A recorded routing fact. Configuration options never become an inferred selection. */
+/** Recorded workflow decisions with their evidence, under the work flow; nothing without one. */
+export function RunFlowDecisions({
+  session,
+  definition,
+  onOpenArtifact,
+  checks = [],
+}: {
+  session: RunSessionStore;
+  definition: CorralDefinition;
+  onOpenArtifact: (id: string) => void;
+  checks?: readonly RunFlowCheck[];
+}) {
+  const t = useTranslations('RunFlow');
+  const projection = useStore(session, (s) => s.projection);
+  const events = useStore(session, (s) => s.events);
+  const decisions = useMemo(
+    () => buildRunFlow(projection, events, definition).decisions,
+    [projection, events, definition],
+  );
+  if (!projection || !decisions.length) return null;
+  return (
+    <section className="grid gap-4" aria-label={t('decisions')} data-testid="run-flow-decisions">
+      <h3 className="text-sm font-medium">{t('decisions')}</h3>
+      {decisions.map((decision) => (
+        <DecisionDetail
+          key={decision.id}
+          {...{ decision, definition, projection, onOpenArtifact, checks }}
+        />
+      ))}
+    </section>
+  );
+}
+
 export function DecisionDetail({
   decision,
   definition,

@@ -11,6 +11,7 @@ import {
   BudgetInspector,
   EffortJudgments,
   ExecutionTranscript,
+  ExecutionTree,
   FailureNotice,
   HarnessDetails,
   primaryWorkPlan,
@@ -19,7 +20,7 @@ import {
   RunActions,
   RunCanvas,
   type RunFlowCheck,
-  RunFlowView,
+  RunFlowDecisions,
   RunReason,
   RunResults,
   type RunSessionStore,
@@ -70,7 +71,7 @@ import { useServices } from '../services.tsx';
 import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
-import { RunActivity, RunPlanCard } from '../workbench/RunActivity.tsx';
+import { RunPlanStrip } from '../workbench/RunActivity.tsx';
 import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { RunViews } from '../workbench/RunViews.tsx';
@@ -320,9 +321,6 @@ function RunWorkspace({
   const [steeringId, setSteeringId] = useState<string | null>(null);
   const [steeringOpen, setSteeringOpen] = useState(false);
   const [steeringTargets, setSteeringTargets] = useState<Set<string>>(() => new Set());
-  const [plansExpanded, setPlansExpanded] = useState(false);
-  const [relationsOpen, setRelationsOpen] = useState(false);
-  const [relationsVisited, setRelationsVisited] = useState(false);
   const documentTrigger = useRef<HTMLElement | null>(null);
   const steeringTrigger = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -530,53 +528,30 @@ function RunWorkspace({
                   label: m('flow'),
                   testId: 'run-flow-tab',
                   render: () => (
-                    <div className="mx-auto grid w-full max-w-[760px] gap-5 px-6 py-5">
-                      {Object.keys(projection?.workPlans ?? {}).length > 1 ? (
-                        <Button
-                          variant="ghost"
-                          size="compact"
-                          className="justify-self-start"
-                          aria-expanded={plansExpanded}
-                          onClick={() => setPlansExpanded(!plansExpanded)}
-                        >
-                          {m('workPlans')} · {Object.keys(projection?.workPlans ?? {}).length}
-                        </Button>
-                      ) : null}
-                      {plansExpanded ? (
-                        <WorkPlanPanel session={session} />
-                      ) : projection ? (
-                        <RunPlanCard projection={projection} plan={plan} />
-                      ) : null}
+                    <div
+                      data-testid="run-work-flow"
+                      className="mx-auto grid w-full max-w-[1040px] gap-4 px-6 py-5"
+                    >
                       {projection ? (
-                        <RunActivity
-                          events={events}
+                        <RunPlanStrip
                           projection={projection}
-                          definition={definition}
-                          selected={execution}
-                          onSelect={chooseExecution}
-                          onOpenArtifact={openArtifact}
+                          plan={plan}
+                          planCount={Object.keys(projection.workPlans ?? {}).length}
+                          allPlans={<WorkPlanPanel session={session} />}
                         />
                       ) : null}
-                      <details
-                        open={relationsOpen}
-                        onToggle={(event) => {
-                          const open = event.currentTarget.open;
-                          setRelationsOpen(open);
-                          if (open) setRelationsVisited(true);
-                        }}
-                      >
-                        <summary>{m('relations')}</summary>
-                        {relationsVisited ? (
-                          <RunFlowView
-                            session={session}
-                            definition={definition}
-                            checks={checks}
-                            selectedExecutionId={execution ?? null}
-                            onSelectExecution={chooseExecution}
-                            onOpenArtifact={openArtifact}
-                          />
-                        ) : null}
-                      </details>
+                      <ExecutionTree
+                        session={session}
+                        onSteer={chooseExecution}
+                        selectedExecutionId={execution ?? null}
+                        compact
+                      />
+                      <RunFlowDecisions
+                        session={session}
+                        definition={definition}
+                        checks={checks}
+                        onOpenArtifact={openArtifact}
+                      />
                     </div>
                   ),
                 },
@@ -596,7 +571,7 @@ function RunWorkspace({
                 {
                   id: 'events',
                   label: `${m('events')} ${events.length}`,
-                  render: () => <Timeline session={session} />,
+                  render: () => <Timeline session={session} fill />,
                 },
               ]}
             />

@@ -177,7 +177,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(pills.getByRole('link')).toHaveCount(0);
     await page.getByTestId('dock-open-active-run').click();
     await expect(page).toHaveURL(new RegExp(`run=${current(corral).runId}`));
-    await expect(page.getByRole('application', { name: 'Run graph', exact: true })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
     await panelTab(page, 'Conversation');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(plan.getByRole('listitem')).toHaveCount(5);

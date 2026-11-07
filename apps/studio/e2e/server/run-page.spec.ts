@@ -62,7 +62,7 @@ async function finishedRun(
   const { runId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(page.getByRole('application', { name: 'Run graph', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
   return new URL(page.url()).pathname;
 }
@@ -83,7 +83,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
     'true',
   );
   await panelTab(page, 'Execution history');
-  const graph = page.getByRole('application', { name: 'Run graph', exact: true });
+  const graph = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(graph).toBeVisible();
   await panelTab(page, 'Conversation');
   const nextRunId = await page.evaluate(async ({ sessionId, corralId, definitionRevision }) => {
@@ -115,9 +115,9 @@ test('a run completed behind conversation fits its graph when opened and then pr
     .poll(() =>
       graph.evaluate((canvas) => {
         const bounds = canvas.getBoundingClientRect();
-        const viewport = canvas.querySelector('.react-flow__viewport');
-        const nodes = [...canvas.querySelectorAll('.react-flow__node')].map((node) =>
-          node.getBoundingClientRect(),
+        const viewport = canvas.querySelector('[data-graph-stage]');
+        const nodes = [...canvas.querySelectorAll('[data-agent-id] [data-run-status]')].map(
+          (node) => node.getBoundingClientRect(),
         );
         if (!viewport || !nodes.length) return false;
         const zoom = new DOMMatrixReadOnly(getComputedStyle(viewport).transform).m11;
@@ -138,7 +138,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
       }),
     )
     .toBe(true);
-  const viewport = graph.locator('.react-flow__viewport');
+  const viewport = graph.locator('[data-graph-stage]');
   const initial = await viewport.getAttribute('style');
   await graph.getByRole('button', { name: /^zoom in$/i }).click();
   await expect(viewport).not.toHaveAttribute('style', initial ?? '');
@@ -200,11 +200,13 @@ test('switching workspace views and reading a result preserves selection, scroll
   const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
   await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
   const flow = monitor.locator('[data-run-workspace-view="flow"]');
-  await expect(flow.getByTestId('run-flow')).toHaveCount(0);
-  await flow.locator('summary').filter({ hasText: 'Work relationships' }).click();
-  await expect(flow.getByTestId('run-flow')).toBeVisible();
+  await expect(flow.getByRole('tree')).toBeVisible();
   const side = page.getByTestId('run-side');
-  await monitor.getByTestId('run-activity').locator('button[data-execution-id]').first().click();
+  await flow
+    .getByRole('button', { name: / · exec_/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/execution=exec_/);
   const selectedExecution = new URL(page.url()).searchParams.get('execution');
   await monitor.getByRole('button', { name: 'Run info', exact: true }).click();
   await side.getByRole('tab', { name: 'Usage', exact: true }).click();
@@ -233,9 +235,9 @@ test('switching workspace views and reading a result preserves selection, scroll
   const eventTop = await eventList.evaluate((element) => element.scrollTop);
 
   await views.getByRole('tab', { name: 'Graph', exact: true }).click();
-  const graph = monitor.getByRole('application', { name: 'Run graph', exact: true });
+  const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
   await graph.getByRole('button', { name: /^zoom in$/i }).click();
-  const viewport = graph.locator('.react-flow__viewport');
+  const viewport = graph.locator('[data-graph-stage]');
   const transform = await viewport.getAttribute('style');
   await openResult(page);
   const document = monitor.getByTestId('run-document');
@@ -251,11 +253,12 @@ test('switching workspace views and reading a result preserves selection, scroll
   );
   await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
   await expect.poll(() => flow.evaluate((element) => element.scrollTop)).toBe(flowTop);
-  await expect(flow.locator(`button[data-execution-id="${selectedExecution}"]`)).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await expect(flow.getByTestId('run-flow')).toBeVisible();
+  await expect(
+    flow
+      .getByRole('treeitem', { selected: true })
+      .locator(`[data-execution-id="${selectedExecution}"]`)
+      .first(),
+  ).toBeVisible();
   await views.getByRole('tab', { name: /^Events \d+$/ }).click();
   await expect.poll(() => eventList.evaluate((element) => element.scrollTop)).toBe(eventTop);
   await expect(events.getByTestId('timeline-selected')).toHaveText(selectedText ?? '');
@@ -282,8 +285,8 @@ test('a graph preview opens its exact readable result directly and returns to th
   await monitor.getByRole('button', { name: 'Run info', exact: true }).click();
   await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
   const node = monitor
-    .getByRole('application', { name: 'Run graph', exact: true })
-    .locator(`.react-flow__node[data-id="${execution.nodeId}"]`)
+    .getByRole('group', { name: 'Run graph', exact: true })
+    .locator(`[data-agent-id="${execution.nodeId}"]`)
     .getByRole('button');
   await node.click();
   await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
@@ -336,8 +339,8 @@ test.describe('active graph preview', () => {
       await corral.open(`/runs/${runId}`);
       const monitor = page.getByTestId('run-monitor');
       const node = monitor
-        .getByRole('application', { name: 'Run graph', exact: true })
-        .locator(`.react-flow__node[data-id="${execution.nodeId}"]`)
+        .getByRole('group', { name: 'Run graph', exact: true })
+        .locator(`[data-agent-id="${execution.nodeId}"]`)
         .getByRole('button');
       await node.click();
       const row = page.locator(
@@ -371,8 +374,8 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
   await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
   await page
-    .getByTestId('run-activity')
-    .getByRole('button', { name: /^Research Helper\b/ })
+    .getByTestId('run-work-flow')
+    .getByRole('button', { name: /^Research Helper · exec_/ })
     .first()
     .click();
   await expect(page).toHaveURL(/execution=exec_/);
@@ -381,9 +384,10 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
   await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
   await expect(
     page
-      .getByRole('application', { name: 'Run graph', exact: true })
-      .locator('.react-flow__node[data-id="helper"]'),
-  ).toHaveClass(/selected/);
+      .getByRole('group', { name: 'Run graph', exact: true })
+      .locator('[data-agent-id="helper"]')
+      .getByRole('button'),
+  ).toHaveAttribute('aria-pressed', 'true');
   const side = page.getByTestId('run-side');
   await side.getByRole('button', { name: 'Reins', exact: true }).click();
   const reins = page.getByTestId('run-instructions');
@@ -392,8 +396,12 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
   await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
   await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
   await expect(
-    page.getByTestId('run-activity').locator(`button[data-execution-id="${executionId}"]`),
-  ).toHaveAttribute('aria-pressed', 'true');
+    page
+      .getByTestId('run-work-flow')
+      .getByRole('treeitem', { selected: true })
+      .locator(`[data-execution-id="${executionId}"]`)
+      .first(),
+  ).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
 
@@ -434,7 +442,7 @@ test('a long multiline request keeps graph, events and run information reachable
     await expect(graphTab).toBeInViewport({ ratio: 1 });
     await expect(eventsTab).toBeInViewport({ ratio: 1 });
     await expect(info).toBeInViewport({ ratio: 1 });
-    const graph = monitor.getByRole('application', { name: 'Run graph', exact: true });
+    const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
     await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
     await eventsTab.click();
     await expect(monitor.locator('[data-run-workspace-view="events"]')).toBeVisible();
@@ -555,7 +563,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}&atSeq=1`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page).not.toHaveURL(/[?&]atSeq=/);
-  await expect(page.getByRole('application', { name: 'Run graph', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await panelTab(page, 'Conversation');
   await expect(page).not.toHaveURL(/atSeq=/);
   await page.getByRole('link', { name: 'Open in Results', exact: true }).first().click();
@@ -574,16 +582,16 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   const historyTab = page.getByRole('tab', { name: 'Execution history', exact: true });
   await expect(historyTab).toBeVisible();
   await historyTab.click();
-  const flow = page.locator('.corral-flow').first();
+  const flow = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(flow).toBeVisible();
   await expect(flow).toHaveCSS('color-scheme', 'dark');
-  const node = flow.locator('.react-flow__node[data-id="research"]');
+  const node = flow.locator('[data-agent-id="research"]');
   const mark = node.locator('button > div').first();
   await expect(mark).toBeVisible();
   const darkSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
   const labels = await flow
-    .locator('.react-flow__edge[aria-label]')
-    .evaluateAll((edges) => edges.map((edge) => edge.getAttribute('aria-label')));
+    .locator('li[data-source][data-target]')
+    .evaluateAll((edges) => edges.map((edge) => edge.textContent));
   expect(labels.some((label) => /delegat/i.test(label ?? ''))).toBe(true);
   const selectNode = node.getByRole('button');
   await selectNode.focus();

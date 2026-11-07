@@ -78,7 +78,7 @@ test('a run on the local server saves first, finishes, and survives a reload', a
 
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
-  await expect(page.getByTestId('run-activity')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await page.reload();
   await openResult(page);
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');

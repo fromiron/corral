@@ -339,3 +339,61 @@ it('a live run keeps an unfinished task open', () => {
   const lead = container.querySelector<HTMLElement>('[data-task-id="task_lead"]');
   expect(lead?.dataset.status).toBe('running');
 });
+
+it('names the selected execution’s timed calls with a bar each, never by identifier or caption', () => {
+  const base = fixture();
+  const events = [
+    ...base.events,
+    event(
+      9,
+      'tool.requested',
+      {
+        executionId: 'exec_w2',
+        toolCallId: 'tool_secret_id',
+        name: 'write_artifact',
+        validatedArgs: {},
+      },
+      6000,
+    ),
+    event(
+      10,
+      'tool.started',
+      { executionId: 'exec_w2', toolCallId: 'tool_secret_id', effectId: 'effect_1' },
+      6000,
+    ),
+    event(
+      11,
+      'tool.finished',
+      { executionId: 'exec_w2', toolCallId: 'tool_secret_id', resultRef: null, error: null },
+      6500,
+    ),
+  ] as RunEvent[];
+  const projection = events.reduce(applyEvent, emptyProjection(RUN));
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  act(() =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunTimeChart
+          events={events}
+          projection={projection}
+          definition={base.definition}
+          selected="exec_w2"
+          onSelect={() => {}}
+        />
+      </IntlProvider>,
+    ),
+  );
+  roots.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  const items = [...container.querySelectorAll('[data-call-breakdown] li')];
+  expect(items).toHaveLength(1);
+  expect(items[0]?.textContent).toContain('write_artifact');
+  expect(items[0]?.textContent).toContain('500');
+  expect(items[0]?.querySelector('[data-call-bar]')).not.toBeNull();
+  expect(container.textContent).not.toContain('tool_secret_id');
+  expect(container.textContent).not.toContain('Observed lifetimes include waiting');
+});
