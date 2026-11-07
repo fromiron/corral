@@ -4693,8 +4693,6 @@
     "showPanel": "옆 패널 보기",
     "hidePanel": "옆 패널 숨기기",
     "results": "결과",
-    "replay": "다시 재생",
-    "stopReplay": "재생 멈추기",
     "timeViews": "시간축 보기",
     "byAgent": "에이전트별",
     "byTask": "작업별",

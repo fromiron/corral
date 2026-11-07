@@ -4693,8 +4693,6 @@
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",
     "results": "Results",
-    "replay": "Replay",
-    "stopReplay": "Stop replay",
     "timeViews": "Timeline views",
     "byAgent": "By agent",
     "byTask": "By task",
