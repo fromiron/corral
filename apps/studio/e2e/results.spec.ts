@@ -18,13 +18,11 @@ test('a cancelled run keeps what it made as a partial result', async ({ page }) 
 
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   // What it made before it stopped is offered as partial, and opens as the artifact it is.
-  const side = page.getByTestId('run-side');
-  if (!(await side.isVisible()))
-    await page.getByRole('button', { name: 'Show side panel', exact: true }).click();
-  const partial = side
+  const partial = page
+    .getByTestId('run-column')
     .getByRole('region', { name: 'Results', exact: true })
     .getByRole('button', { name: /Partial results$/ })
     .first();
   await partial.click();
-  await expect(side.getByTestId('artifact-viewer')).toBeVisible();
+  await expect(page.getByTestId('run-document').getByTestId('artifact-viewer')).toBeVisible();
 });

@@ -31,7 +31,7 @@ test('one run shows two delegated helpers and a question answered by a new respo
   ).toHaveCount(2);
 
   // The question: from the Writer to a responder execution of its own, answered.
-  await monitor.getByRole('button', { name: 'Show side panel', exact: true }).click();
+  await monitor.getByRole('button', { name: 'Run info', exact: true }).click();
   const details = monitor.getByRole('tabpanel', { name: 'Overview', exact: true });
   await details.getByRole('button', { name: /^Questions/ }).click();
   const question = page.locator('[data-testid^="question-"]');
@@ -44,8 +44,7 @@ test('one run shows two delegated helpers and a question answered by a new respo
 
   // A helper's submitted version opens from the Task Board, rendered safely.
   await details.getByRole('button', { name: /^Tasks/ }).click();
-  await expect(details.getByRole('region', { name: 'Tasks', exact: true })).toBeVisible();
-  const helperTask = page
+  const helperTask = details
     .locator('[data-testid^="task-"]')
     .filter({ hasText: 'Research Helper' })
     .first();
