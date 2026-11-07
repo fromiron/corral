@@ -300,13 +300,25 @@ it('breaks a span where its execution waited on another agent, keeping one selec
   const container = waitingFixture();
   const lead = container.querySelector('[data-execution-id="exec_lead"]');
   const pieces = [...(lead?.querySelectorAll('[data-lane-piece]') ?? [])] as HTMLElement[];
+  // A block near the right edge is placed from the right so it can open leftward.
+  const place = (piece: HTMLElement) => {
+    const width = Number.parseFloat(piece.style.width);
+    const left = piece.style.left
+      ? Number.parseFloat(piece.style.left)
+      : 100 - Number.parseFloat(piece.style.right) - width;
+    return [left, width];
+  };
   // 0–1 s and 6–8 s of an 8 s window: two blocks with the wait left empty between them.
-  expect(pieces.map((piece) => [piece.style.left, piece.style.width])).toEqual([
-    ['0%', '12.5%'],
-    ['75%', '25%'],
+  expect(pieces.map(place)).toEqual([
+    [0, 12.5],
+    [75, 25],
   ]);
-  // The name sits in the widest block, where it has room.
-  expect(lead?.querySelector<HTMLElement>('[data-lane-label]')?.style.left).toBe('75%');
+  // The name sits in the widest block, which opens to fit it on hover or focus.
+  const named = lead?.querySelector('[data-lane-label]')?.closest('[data-lane-piece]');
+  expect(named).toBe(pieces[1]);
+  expect(named?.className).toContain('group-hover:min-w-max');
+  // Every block has an opaque base, so hand-off lines never show through it.
+  for (const piece of pieces) expect(piece.className).toMatch(/\bbg-(surface-\d|background)\b/);
   expect(container.querySelectorAll('[data-execution-id="exec_lead"]')).toHaveLength(1);
   expect(lead?.getAttribute('aria-pressed')).toBe('true');
 });
