@@ -81,6 +81,7 @@ it('gathers check and task locations, marks stale ones and opens the exact line'
   const row = [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) =>
     button.textContent?.includes('src/a.ts:3:2'),
   );
+  expect(row?.getAttribute('title')).toBe('error TS1005: semicolon expected.');
   await act(async () => row?.click());
   expect(openDocument).toHaveBeenCalledWith(
     {

@@ -265,6 +265,107 @@ test('switching workspace views and reading a result preserves selection, scroll
   expect(corral.errors).toEqual([]);
 });
 
+test('a graph preview opens its exact readable result directly and returns to the node', async ({
+  page,
+  corral,
+}) => {
+  const runPath = await finishedRun(page, corral);
+  const runId = runPath.split('/').at(-1);
+  if (!runId) throw new Error('Run ID missing');
+  const { projection } = corral.server.coordinator.getSnapshot(runId);
+  const artifactId = projection.output?.artifactVersionIds[0];
+  const artifact = artifactId ? projection.artifacts[artifactId] : undefined;
+  const execution = artifact ? projection.executions[artifact.authorExecutionId] : undefined;
+  if (!artifact || !execution) throw new Error('Output artifact and its author are required');
+  const monitor = page.getByTestId('run-monitor');
+  const side = monitor.getByTestId('run-side');
+  await monitor.getByRole('button', { name: 'Run info', exact: true }).click();
+  await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
+  const node = monitor
+    .getByRole('application', { name: 'Run graph', exact: true })
+    .locator(`.react-flow__node[data-id="${execution.nodeId}"]`)
+    .getByRole('button');
+  await node.click();
+  await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
+  const row = page.locator(
+    `[data-slot="popover-popup"] li[data-execution-id="${execution.executionId}"]`,
+  );
+  const result = row.getByRole('button', {
+    name: `${artifact.name} v${artifact.version}`,
+    exact: true,
+  });
+  await expect(result).toHaveAccessibleDescription(
+    new RegExp(
+      `Agent execution ${projection.executionOrder.indexOf(execution.executionId) + 1}.*Attempt ${execution.attemptNo}`,
+    ),
+  );
+  await result.click();
+  const document = monitor.getByTestId('run-document');
+  await expect(document.getByTestId('artifact-viewer')).toBeVisible();
+  await expect(document).toBeFocused();
+  await expect(side).toBeHidden();
+  expect(new URL(page.url()).searchParams.get('artifact')).toBe(artifactId);
+  expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
+  await document.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await expect(node).toBeFocused();
+  await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+test.describe('active graph preview', () => {
+  let reply = Promise.resolve();
+  let releaseReply = () => {};
+  test.use({ agentReply: { reply: () => 'Deterministic response', beforeReply: () => reply } });
+
+  test('opens Reins for the chosen execution and keeps its draft when returning to the graph', async ({
+    page,
+    corral,
+  }) => {
+    reply = new Promise<void>((resolve) => {
+      releaseReply = resolve;
+    });
+    try {
+      const { runId } = await startRun(page, corral);
+      await expect
+        .poll(() => corral.server.coordinator.getSnapshot(runId).projection.executionOrder.length)
+        .toBeGreaterThan(0);
+      const { projection } = corral.server.coordinator.getSnapshot(runId);
+      const executionId = projection.executionOrder[0];
+      const execution = executionId ? projection.executions[executionId] : undefined;
+      if (!executionId || !execution) throw new Error('Active execution missing');
+      await corral.open(`/runs/${runId}`);
+      const monitor = page.getByTestId('run-monitor');
+      const node = monitor
+        .getByRole('application', { name: 'Run graph', exact: true })
+        .locator(`.react-flow__node[data-id="${execution.nodeId}"]`)
+        .getByRole('button');
+      await node.click();
+      const row = page.locator(
+        `[data-slot="popover-popup"] li[data-execution-id="${executionId}"]`,
+      );
+      const steer = row.getByRole('button', { name: 'Give instruction', exact: true });
+      await expect(steer).toHaveAccessibleDescription('Agent execution 1 · Attempt 1');
+      await steer.click();
+      const reins = monitor.getByTestId('run-instructions');
+      await expect(reins).toBeVisible();
+      await expect(reins).toBeFocused();
+      await expect(reins).toContainText('Agent execution 1');
+      await expect(monitor.getByTestId('run-side')).toBeHidden();
+      expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
+      await reins.getByLabel('Instruction', { exact: true }).fill('Keep this draft');
+      await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
+      await expect(node).toBeFocused();
+      await node.click();
+      await row.getByRole('button', { name: 'Give instruction', exact: true }).click();
+      await expect(reins.getByLabel('Instruction', { exact: true })).toHaveValue('Keep this draft');
+      await expect(reins).toContainText('Agent execution 1');
+      expect(corral.errors).toEqual([]);
+    } finally {
+      releaseReply();
+    }
+  });
+});
+
 test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
   await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
@@ -488,7 +589,11 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   await selectNode.focus();
   await page.keyboard.press('Enter');
   await expect(selectNode).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('region', { name: 'Research executions' })).toBeVisible();
+  await expect(
+    page
+      .locator('[data-slot="popover-popup"]')
+      .getByRole('region', { name: 'Research executions' }),
+  ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('dark-history.png') });
   await page.evaluate(() =>
     localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' })),

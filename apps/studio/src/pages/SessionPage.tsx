@@ -1276,11 +1276,12 @@ function ArtifactsPanel({
                 className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
                 aria-label={`${tr(item.kind)} ${item.label} · ${tw('runNumber', { number: runs.findIndex((run) => run.runId === item.runId) + 1 })} · ${item.author}`}
                 onClick={() => onOpen(item.runId, item.id)}
+                title={item.runId}
               >
                 <FileText className="text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.label}</span>
-                  <span className="truncate text-2xs text-muted-foreground" title={item.runId}>
+                  <span className="truncate text-2xs text-muted-foreground">
                     {[
                       tw('runNumber', {
                         number: runs.findIndex((run) => run.runId === item.runId) + 1,

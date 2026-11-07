@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, useReducedMotion } from 'motion/react';
-import { type MouseEventHandler, useId } from 'react';
+import { type MouseEventHandler, type ReactElement, type ReactNode, useId } from 'react';
 import { initials } from '../../lib/agent-format.ts';
 import { Elevated } from '../../lib/elevated.tsx';
 import { focusRing } from '../../lib/focus.ts';
@@ -29,6 +29,8 @@ export interface AgentGraphNodeProps {
   selected?: boolean;
   dimmed?: boolean;
   onClick?: MouseEventHandler<HTMLButtonElement>;
+  /** Compose the native button with a kit trigger without adding another focus target. */
+  renderTrigger?: (button: ReactElement) => ReactNode;
 }
 
 /** The source AgentGraph tile, separated from its fixed stage and popup for host composition. */
@@ -45,6 +47,7 @@ export function AgentGraphNode({
   selected = false,
   dimmed = false,
   onClick,
+  renderTrigger,
 }: AgentGraphNodeProps) {
   const reduce = useReducedMotion() ?? false;
   const descriptionId = useId();
@@ -52,6 +55,36 @@ export function AgentGraphNode({
   const Mark = resolveMark(logo);
   const tint =
     status === 'waiting' ? toneFill('amber') : status === 'failed' ? toneFill('red') : undefined;
+  const button = (
+    <motion.button
+      type="button"
+      className={cn('relative grid place-items-center rounded-[27%]', focusRing)}
+      style={{ width: diameter, height: diameter }}
+      whileHover={reduce ? undefined : { scale: 1.06 }}
+      animate={{ scale: selected ? 1.06 : 1 }}
+      transition={reduce ? { duration: 0 } : spring.fast}
+      aria-label={label}
+      aria-describedby={description ? descriptionId : undefined}
+      aria-pressed={selected}
+      title={label}
+      onClick={onClick}
+    >
+      <Elevated
+        offset={2}
+        className={cn(
+          'grid size-full place-items-center rounded-[27%]',
+          selected && 'ring-2 ring-[var(--emphasis)]',
+        )}
+        style={tint ? { background: tint } : undefined}
+      >
+        {Mark ? (
+          <Mark size={Math.round(diameter * 0.45)} />
+        ) : (
+          <span className="text-caption text-muted-foreground">{initials(name)}</span>
+        )}
+      </Elevated>
+    </motion.button>
+  );
   return (
     <div className="grid w-40 justify-items-center gap-1 text-center">
       <div
@@ -76,34 +109,7 @@ export function AgentGraphNode({
             aria-hidden
           />
         ) : null}
-        <motion.button
-          type="button"
-          className={cn('relative grid place-items-center rounded-[27%]', focusRing)}
-          style={{ width: diameter, height: diameter }}
-          whileHover={reduce ? undefined : { scale: 1.06 }}
-          animate={{ scale: selected ? 1.06 : 1 }}
-          transition={reduce ? { duration: 0 } : spring.fast}
-          aria-label={label}
-          aria-describedby={description ? descriptionId : undefined}
-          aria-pressed={selected}
-          title={label}
-          onClick={onClick}
-        >
-          <Elevated
-            offset={2}
-            className={cn(
-              'grid size-full place-items-center rounded-[27%]',
-              selected && 'ring-2 ring-[var(--emphasis)]',
-            )}
-            style={tint ? { background: tint } : undefined}
-          >
-            {Mark ? (
-              <Mark size={Math.round(diameter * 0.45)} />
-            ) : (
-              <span className="text-caption text-muted-foreground">{initials(name)}</span>
-            )}
-          </Elevated>
-        </motion.button>
+        {renderTrigger ? renderTrigger(button) : button}
       </div>
       <div className="grid max-w-full justify-items-center gap-1 bg-surface-2 px-1">
         <span

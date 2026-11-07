@@ -76,14 +76,30 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   await expect(writer).toContainText('2 executions');
   await expect(writer.locator('[data-run-status]')).toHaveAttribute('data-run-status', 'done');
 
-  await writer.click();
+  const writerButton = writer.getByRole('button');
+  await writerButton.click();
   const list = page.getByRole('region', { name: 'Writer executions' });
   await expect(list.getByRole('listitem')).toHaveCount(2);
-  await list.getByRole('button', { name: /Round 2/ }).click();
-  await expect(page).toHaveURL(/execution=exec_/);
-  const executionId = new URL(page.url()).searchParams.get('execution');
+  const round2 = list.getByRole('listitem').filter({ hasText: 'Round 2' });
+  const executionId = await round2.getAttribute('data-execution-id');
+  expect(executionId).toBeTruthy();
+  const round2Details = round2.getByRole('button', { name: 'Details', exact: true });
+  await expect(round2Details).toHaveAccessibleDescription(
+    /Agent execution \d+ · Round 2 · Attempt 1/,
+  );
+  await round2Details.click();
+  await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
   const monitor = page.getByTestId('run-monitor');
   const side = monitor.getByTestId('run-side');
+  await expect(side).toBeVisible();
+  await expect(side).toBeFocused();
+  await side.getByRole('button', { name: 'Close details', exact: true }).click();
+  await expect(writerButton).toBeFocused();
+  await writerButton.click();
+  await list
+    .locator(`li[data-execution-id="${executionId}"]`)
+    .getByRole('button', { name: 'Details', exact: true })
+    .click();
   const openReins = side.getByRole('button', { name: 'Reins', exact: true });
   await openReins.click();
   const reins = monitor.getByTestId('run-instructions');
@@ -121,6 +137,120 @@ test('the Run page shows the graph with execution counts, and a node leads to it
     /selected/,
   );
   await expect(writer).not.toHaveClass(/selected/);
+});
+
+test('quick inspection keeps the graph size and the existing execution inspector', async ({
+  page,
+}, testInfo) => {
+  await finishedTeamRun(page);
+  const monitor = page.getByTestId('run-monitor');
+  const side = monitor.getByTestId('run-side');
+  const canvas = graph(page);
+  const writer = canvas.locator('.react-flow__node[data-id="write"]').getByRole('button');
+  const research = canvas.locator('.react-flow__node[data-id="research"]').getByRole('button');
+  const width = (await canvas.boundingBox())?.width;
+  await writer.click();
+  const writerList = page.getByRole('region', { name: 'Writer executions' });
+  await expect(writerList.getByRole('listitem')).toHaveCount(2);
+  await expect(side).toBeHidden();
+  expect((await canvas.boundingBox())?.width).toBe(width);
+  await page.screenshot({ path: testInfo.outputPath('popover-desktop-multiple.png') });
+
+  await research.click();
+  const researchList = page.getByRole('region', { name: 'Research executions' });
+  await expect(researchList.getByRole('listitem')).toHaveCount(1);
+  await expect(writerList).toBeHidden();
+  await expect(page.locator('[data-slot="popover-popup"]')).toHaveCount(1);
+  await writer.click();
+  await expect(writerList).toBeVisible();
+  const selected = writerList.getByRole('listitem').first();
+  const selectedId = await selected.getAttribute('data-execution-id');
+  await selected.getByRole('button', { name: 'Details', exact: true }).click();
+  await expect(side.getByRole('heading', { name: 'Writer', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`execution=${selectedId}`));
+  const inspectedWidth = (await canvas.boundingBox())?.width;
+  await research.click();
+  await expect(researchList.getByRole('listitem')).toHaveCount(1);
+  await expect(side.getByRole('heading', { name: 'Writer', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`execution=${selectedId}`));
+  expect((await canvas.boundingBox())?.width).toBe(inspectedWidth);
+  await page.screenshot({ path: testInfo.outputPath('popover-desktop-inspector.png') });
+  await page.getByRole('button', { name: 'Close quick information', exact: true }).click();
+  await expect(researchList).toBeHidden();
+  await expect(side.getByRole('heading', { name: 'Writer', exact: true })).toBeVisible();
+});
+
+test('keyboard, outside click and graph movement dismiss quick information', async ({ page }) => {
+  await finishedTeamRun(page);
+  const canvas = graph(page);
+  const writer = canvas.locator('.react-flow__node[data-id="write"]').getByRole('button');
+  const list = page.getByRole('region', { name: 'Writer executions' });
+  const viewport = canvas.locator('.react-flow__viewport');
+  await canvas.getByRole('button', { name: /^zoom in$/i }).click();
+  const preferred = await viewport.getAttribute('style');
+  await writer.focus();
+  await page.keyboard.press('Enter');
+  await expect(list).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(list).toBeHidden();
+  await expect(writer).toBeFocused();
+  await expect(viewport).toHaveAttribute('style', preferred ?? '');
+
+  await writer.click();
+  await expect(list).toBeVisible();
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await expect(list).toBeHidden();
+  await expect(viewport).toHaveAttribute('style', preferred ?? '');
+
+  await writer.click();
+  await expect(list).toBeVisible();
+  const pane = canvas.locator('.react-flow__pane');
+  const box = await pane.boundingBox();
+  if (!box) throw new Error('Graph pane is not visible');
+  const scale = await viewport.evaluate(
+    (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).m11,
+  );
+  await page.mouse.move(box.x + 20, box.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 70, box.y + 45, { steps: 5 });
+  await page.mouse.up();
+  await expect(list).toBeHidden();
+  expect(
+    await viewport.evaluate(
+      (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).m11,
+    ),
+  ).toBe(scale);
+  await expect(writer).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('dismissing quick information on an outside control keeps focus on that control', async ({
+  page,
+}) => {
+  await finishedTeamRun(page);
+  const writer = graph(page).locator('.react-flow__node[data-id="write"]').getByRole('button');
+  await writer.click();
+  const list = page.getByRole('region', { name: 'Writer executions' });
+  await expect(list).toBeVisible();
+  const runInfo = page.getByRole('button', { name: 'Run info', exact: true });
+  await runInfo.click();
+  await expect(list).toBeHidden();
+  await expect(page.locator('[data-slot="popover-popup"]')).toHaveCount(0);
+  await expect(page.getByTestId('run-side')).toBeVisible();
+  await expect(runInfo).toBeFocused();
+});
+
+test('Escape after clicking a graph label restores focus to its node', async ({ page }) => {
+  await finishedTeamRun(page);
+  const writer = graph(page).locator('.react-flow__node[data-id="write"]');
+  const runInfo = page.getByRole('button', { name: 'Run info', exact: true });
+  await runInfo.focus();
+  await writer.getByText('Writer', { exact: true }).click();
+  const list = page.getByRole('region', { name: 'Writer executions' });
+  await expect(list).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(list).toBeHidden();
+  await expect(page.locator('[data-slot="popover-popup"]')).toHaveCount(0);
+  await expect(writer.getByRole('button')).toBeFocused();
 });
 
 test('the Run graph cannot be edited: dragging and Delete change nothing', async ({ page }) => {

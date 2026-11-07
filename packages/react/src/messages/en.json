@@ -570,6 +570,7 @@
     "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
     "executions": "Executions",
     "nodeExecutions": "{label} executions",
+    "allExecutions": "All executions",
     "noNodeExecutions": "This node has not run in this run.",
     "closeNode": "Close",
     "executionMissing": "{executionId} is not part of this run. Choose an execution from the list.",
@@ -954,6 +955,7 @@
     }
   },
   "RunCanvas": {
+    "closePreview": "Close quick information",
     "loading": "Loading agent activity…",
     "label": "Run graph",
     "layout": {

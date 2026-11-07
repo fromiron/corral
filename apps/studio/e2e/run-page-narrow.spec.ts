@@ -149,3 +149,52 @@ test('graph controls remain reachable after resizing to a short phone window', a
   await expect(canvas.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
   await expect(canvas.getByRole('button', { name: /^fit view$/i })).toBeInViewport();
 });
+
+test.describe('touch inspection', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  test('run information remains reachable by touch', async ({ page }) => {
+    await finishedRun(page);
+    await page.getByRole('button', { name: 'Run info', exact: true }).tap();
+    await expect(
+      page.getByTestId('run-side').getByRole('heading', { name: 'Run info', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('a single execution opens in a fitted popover and returns from details to its node', async ({
+    page,
+  }, testInfo) => {
+    await finishedRun(page);
+    const monitor = page.getByTestId('run-monitor');
+    const canvas = graph(page);
+    const node = canvas.locator('.react-flow__node').getByRole('button');
+    await expect(node).toHaveCount(1);
+    await node.tap();
+    const popup = page.locator('[data-slot="popover-popup"]');
+    await expect(popup).toBeVisible();
+    await expect(popup.getByRole('listitem')).toHaveCount(1);
+    await expect(monitor.getByTestId('run-side')).toBeHidden();
+    await expect(canvas).toBeVisible();
+    const bounds = await popup.boundingBox();
+    if (!bounds) throw new Error('Quick information is not visible');
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
+    await page.screenshot({ path: testInfo.outputPath('popover-narrow.png') });
+
+    const executionId = await popup.getByRole('listitem').getAttribute('data-execution-id');
+    await popup.getByRole('button', { name: 'Details', exact: true }).tap();
+    const side = monitor.getByTestId('run-side');
+    await expect(side).toBeVisible();
+    await expect(canvas).toBeHidden();
+    await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
+    await expect(side).toBeFocused();
+    await side.getByRole('button', { name: 'Close details', exact: true }).tap();
+    await expect(canvas).toBeVisible();
+    await expect(node).toBeFocused();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    ).toBeLessThanOrEqual(0);
+  });
+});

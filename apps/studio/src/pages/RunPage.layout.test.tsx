@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { type CorralDefinition, RunEvent } from '@corral/contracts';
-import type { CorralRecord, RuntimeTransport } from '@corral/core';
+import type {
+  ArtifactVersionView,
+  CorralRecord,
+  ExecutionView,
+  RuntimeTransport,
+} from '@corral/core';
 import { applyEvent, emptyProjection } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
-import { act, useState } from 'react';
+import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -62,20 +67,52 @@ vi.mock('@corral/react', async (original) => {
       definition,
       session,
       onSelectNode,
+      selectedNodeId,
+      renderNodePreview,
     }: {
       definition: CorralDefinition;
       session: RunSessionStore;
-      onSelectNode: (nodeId: string) => void;
-    }) => (
-      <div>
-        <output data-testid="layout">
-          {JSON.stringify({ definition, runId: session.getState().runId })}
-        </output>
-        <button type="button" data-testid="select-worker" onClick={() => onSelectNode('worker')}>
-          Select worker
-        </button>
-      </div>
-    ),
+      onSelectNode: (nodeId: string, trigger?: HTMLElement | null) => void;
+      selectedNodeId: string | null;
+      renderNodePreview?: (
+        nodeId: string,
+        controls: { close: () => void; trigger: HTMLElement | null },
+      ) => ReactNode;
+    }) => {
+      const [preview, setPreview] = useState<{ id: string; trigger: HTMLElement } | null>(null);
+      return (
+        <div>
+          <output data-testid="layout">
+            {JSON.stringify({ definition, runId: session.getState().runId })}
+          </output>
+          {['worker', 'reviewer'].map((id) => (
+            <button
+              key={id}
+              type="button"
+              data-testid={`select-${id}`}
+              aria-pressed={selectedNodeId === id}
+              onClick={(event) => {
+                setPreview({ id, trigger: event.currentTarget });
+                onSelectNode(id, event.currentTarget);
+              }}
+            >
+              Select {id}
+            </button>
+          ))}
+          {preview && renderNodePreview ? (
+            <div data-testid="node-preview">
+              <h3>
+                {definition.nodes.find((node) => node.id === preview.id)?.label ?? preview.id}
+              </h3>
+              {renderNodePreview(preview.id, {
+                close: () => setPreview(null),
+                trigger: preview.trigger,
+              })}
+            </div>
+          ) : null}
+        </div>
+      );
+    },
   };
 });
 
@@ -100,6 +137,7 @@ async function mount(
   search: RunDetailSearch = { view: 'run' },
   request?: string,
   holdNavigation = false,
+  agentIds = ['worker'],
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -111,7 +149,7 @@ async function mount(
     },
   );
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  const definition = linearCorral(['worker'], corralId);
+  const definition = linearCorral(agentIds, corralId);
   const projection = {
     ...emptyProjection('run_layout'),
     corralId,
@@ -170,6 +208,49 @@ async function mount(
   };
 }
 
+const graphExecution = (executionId: string, nodeId: string): ExecutionView => ({
+  executionId,
+  nodeId,
+  taskId: `task_${executionId}`,
+  attemptNo: 1,
+  parentExecutionId: null,
+  previousExecutionId: null,
+  depth: 0,
+  iterationId: null,
+  modelProfile: 'model-a',
+  configRevision: 0,
+  criteriaVersionId: null,
+  status: 'active',
+  activity: 'model',
+  waitingOn: null,
+  modelCallIds: [],
+  error: null,
+});
+
+async function populateGraph(run: RunSessionStore, executions: ExecutionView[]) {
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  const nodeExecutions: Record<string, string[]> = {};
+  for (const execution of executions) {
+    const ids = nodeExecutions[execution.nodeId] ?? [];
+    ids.push(execution.executionId);
+    nodeExecutions[execution.nodeId] = ids;
+  }
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        status: 'running',
+        executionOrder: executions.map((execution) => execution.executionId),
+        executions: Object.fromEntries(
+          executions.map((execution) => [execution.executionId, execution]),
+        ),
+        nodeExecutions,
+      },
+    }),
+  );
+}
+
 it('workspace opens the graph first and keeps the empty inspector closed even on wide screens', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container } = await mount('inline_team', null, {});
@@ -180,12 +261,450 @@ it('workspace opens the graph first and keeps the empty inspector closed even on
   expect(container.querySelector('[data-testid="run-dock"]')).toBeNull();
 });
 
+it('opens a node quick view without opening the inspector or changing execution navigation', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(true);
+  const before = navigations.length;
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  expect(side?.hidden).toBe(true);
+  expect(navigations).toHaveLength(before);
+  expect(container.querySelector('[data-testid="node-preview"]')?.textContent).toContain('worker');
+});
+
+it('keeps Run info open while quickly checking an agent', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  const info = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Run info',
+  );
+  await act(async () => info?.click());
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('[data-testid="run-facts"]')).not.toBeNull();
+  const before = navigations.length;
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('[data-testid="run-facts"]')).not.toBeNull();
+  expect(navigations).toHaveLength(before);
+  expect(container.querySelector('[data-testid="node-preview"]')).not.toBeNull();
+});
+
+it.each(['Run info', 'Needs your input'] as const)(
+  'keeps %s open when a deep-linked execution arrives during history replay',
+  async (label) => {
+    if (label === 'Needs your input') fixture.pending = 1;
+    const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
+    const control = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.startsWith(label),
+    );
+    expect(control).toBeDefined();
+    await act(async () => control?.click());
+    const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+    expect(side?.hidden).toBe(false);
+    expect(side?.querySelector('h2')?.textContent).toBe(label);
+    await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+    expect(side?.hidden).toBe(false);
+    expect(side?.querySelector('h2')?.textContent).toBe(label);
+  },
+);
+
+it('does not replace an inspected execution when another agent is quickly checked', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount(
+    'inline_team',
+    null,
+    { execution: 'exec_worker' },
+    undefined,
+    false,
+    ['worker', 'reviewer'],
+  );
+  await populateGraph(run, [
+    graphExecution('exec_worker', 'worker'),
+    graphExecution('exec_reviewer', 'reviewer'),
+  ]);
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('h2')?.textContent).toBe('worker');
+  const before = navigations.length;
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-reviewer"]')?.click(),
+  );
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('h2')?.textContent).toBe('worker');
+  expect(navigations).toHaveLength(before);
+  expect(container.querySelector('[data-testid="node-preview"]')?.textContent).toContain(
+    'reviewer',
+  );
+});
+
+it('opens an exact execution detail only after the quick view action and returns focus to its node', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await populateGraph(run, [
+    { ...graphExecution('exec_worker', 'worker'), attemptNo: 2, iterationId: 'round_2' },
+  ]);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        iterations: {
+          round_2: {
+            iterationId: 'round_2',
+            loopNodeId: 'loop',
+            no: 2,
+            criteriaVersionId: 'criteria',
+            outcome: null,
+          },
+        },
+      },
+    }),
+  );
+  const node = container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]');
+  node?.focus();
+  await act(async () => node?.click());
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  expect(preview?.textContent).toContain('Agent execution 1');
+  expect(preview?.textContent).toContain('Round 2');
+  expect(preview?.textContent).toContain('Attempt 2');
+  expect(preview?.textContent).not.toContain('All executions');
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(true);
+  const details = [...(preview?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent?.trim() === 'Details',
+  );
+  expect(details).toBeDefined();
+  details?.focus();
+  await act(async () => {
+    details?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(container.querySelector('[data-testid="node-preview"]')).toBeNull();
+  expect(navigations.at(-1)?.patch.execution).toBe('exec_worker');
+  expect(side?.hidden).toBe(false);
+  expect(side?.contains(document.activeElement)).toBe(true);
+  const heading = side?.querySelector('h2')?.parentElement?.textContent ?? '';
+  expect(heading).toContain('worker');
+  expect(heading).toContain('Agent execution 1');
+  expect(heading).toContain('Round 2');
+  expect(heading).toContain('Attempt 2');
+  const close = side?.querySelector<HTMLButtonElement>('button[aria-label="Close details"]');
+  await act(async () => {
+    close?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(document.activeElement).toBe(node);
+});
+
+it('limits quick executions to three, prioritizing active work and the latest other execution', async () => {
+  const { container, run } = await mount('inline_team', null, {});
+  await populateGraph(run, [
+    { ...graphExecution('old', 'worker'), status: 'succeeded', activity: null },
+    graphExecution('active', 'worker'),
+    { ...graphExecution('cancelled', 'worker'), status: 'cancelled', activity: null },
+    { ...graphExecution('waiting', 'worker'), status: 'waiting_message', activity: null },
+    { ...graphExecution('latest', 'worker'), status: 'succeeded', activity: null },
+  ]);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  const rows = [...(preview?.querySelectorAll('li') ?? [])];
+  expect(rows).toHaveLength(3);
+  const firstTwo = rows
+    .slice(0, 2)
+    .map((row) => row.textContent ?? '')
+    .join(' ');
+  expect(firstTwo).toContain('Agent execution 2');
+  expect(firstTwo).toContain('Agent execution 4');
+  expect(rows[2]?.textContent).toContain('Agent execution 5');
+  expect(preview?.textContent).not.toContain('Agent execution 1');
+  expect(preview?.textContent).not.toContain('Agent execution 3');
+  expect(
+    [...(preview?.querySelectorAll('button') ?? [])].some((button) =>
+      button.textContent?.trim().startsWith('All executions'),
+    ),
+  ).toBe(true);
+});
+
+it('describes each repeated quick action with its own execution identity', async () => {
+  const { container, run } = await mount('inline_team', null, {});
+  await populateGraph(run, [graphExecution('first', 'worker'), graphExecution('second', 'worker')]);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  for (const [id, number] of [
+    ['first', 1],
+    ['second', 2],
+  ] as const) {
+    const row = preview?.querySelector(`[data-execution-id="${id}"]`);
+    for (const label of ['Details', 'Give instruction']) {
+      const button = [...(row?.querySelectorAll('button') ?? [])].find(
+        (item) => item.textContent?.trim() === label,
+      );
+      expect(button).toBeDefined();
+      const description = (button?.getAttribute('aria-describedby') ?? '')
+        .split(/\s+/)
+        .map((reference) => document.getElementById(reference)?.textContent ?? '')
+        .join(' ');
+      expect(description).toContain(`Agent execution ${number}`);
+    }
+  }
+});
+
+it.each(['run', 'execution'] as const)(
+  'keeps details available but hides the quick instruction action when the %s is cancelling',
+  async (scope) => {
+    const { container, run } = await mount('inline_team', null, {});
+    await populateGraph(run, [
+      {
+        ...graphExecution('exec_worker', 'worker'),
+        status: scope === 'execution' ? 'cancelling' : 'active',
+      },
+      graphExecution('exec_other', 'worker'),
+      { ...graphExecution('exec_done', 'worker'), status: 'succeeded', activity: null },
+    ]);
+    if (scope === 'run') {
+      const projection = run.getState().projection;
+      if (!projection) throw new Error('Missing projection');
+      await act(async () => run.setState({ projection: { ...projection, status: 'cancelling' } }));
+    }
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+    );
+    const preview = container.querySelector('[data-testid="node-preview"]');
+    const row = (id: string) => preview?.querySelector(`[data-execution-id="${id}"]`);
+    const buttonNames = (id: string) =>
+      [...(row(id)?.querySelectorAll('button') ?? [])].map((button) => button.textContent?.trim());
+    const buttons = buttonNames('exec_worker');
+    expect(buttons).toContain('Details');
+    expect(buttons).not.toContain('Give instruction');
+    expect(buttonNames('exec_other').includes('Give instruction')).toBe(scope === 'execution');
+    expect(
+      [...(preview?.querySelectorAll('li') ?? [])].map((item) =>
+        item.getAttribute('data-execution-id'),
+      ),
+    ).toEqual(['exec_other', 'exec_worker', 'exec_done']);
+  },
+);
+
+it('shows a requested agent without inventing an execution or action', async () => {
+  const { container, run } = await mount('inline_team', null, {}, undefined, false, [
+    'worker',
+    'reviewer',
+  ]);
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        questions: {
+          q: {
+            questionId: 'q',
+            taskId: 'answer_q',
+            senderExecutionId: 'exec_worker',
+            targetNodeId: 'reviewer',
+            targetRoleId: 'reviewer_role',
+            body: 'Private question',
+            artifactRefs: [],
+            deadline: '2026-11-07T00:00:00.000Z',
+            status: 'open',
+            answer: null,
+          },
+        },
+      },
+    }),
+  );
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-reviewer"]')?.click(),
+  );
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  expect(preview?.textContent).toContain('This node has not run in this run.');
+  expect(preview?.textContent).not.toContain('Private question');
+  const names = [...(preview?.querySelectorAll('button') ?? [])].map((button) =>
+    button.textContent?.trim(),
+  );
+  expect(names).not.toContain('Details');
+  expect(names).not.toContain('Give instruction');
+  expect(container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(true);
+});
+
+it('opens the exact readable result in the centre and returns to the previously inspected execution', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount(
+    'inline_team',
+    null,
+    { execution: 'exec_reviewer' },
+    undefined,
+    false,
+    ['worker', 'reviewer'],
+  );
+  await populateGraph(run, [
+    graphExecution('exec_worker', 'worker'),
+    graphExecution('exec_reviewer', 'reviewer'),
+  ]);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  const draft: ArtifactVersionView = {
+    artifactVersionId: 'artv_draft_2',
+    artifactId: 'draft',
+    version: 2,
+    parentVersionId: null,
+    name: 'Draft',
+    contract: 'draft',
+    contentHash: 'hash',
+    byteLength: 10,
+    authorExecutionId: 'exec_worker',
+    modelCallId: null,
+    contextSnapshotId: null,
+    submitted: true,
+    configRevision: 0,
+    criteriaVersionId: null,
+    inputArtifactVersionIds: [],
+  };
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        artifacts: {
+          artv_draft_2: draft,
+          artv_retired: {
+            ...draft,
+            artifactVersionId: 'artv_retired',
+            version: 1,
+            bodyAvailable: false,
+          },
+        },
+        tasks: {
+          task_exec_worker: {
+            taskId: 'task_exec_worker',
+            nodeId: 'worker',
+            roleId: 'worker_role',
+            contract: 'draft',
+            status: 'in_progress',
+            activeExecutionId: 'exec_worker',
+            attemptCount: 1,
+            submittedArtifactVersionIds: ['artv_retired', 'artv_draft_2'],
+          },
+        },
+      },
+    }),
+  );
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.querySelector('h2')?.textContent).toBe('reviewer');
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  const buttons = [...(preview?.querySelectorAll('button') ?? [])];
+  expect(buttons.some((button) => /Draft\s*.*v1/i.test(button.textContent ?? ''))).toBe(false);
+  const result = buttons.find((button) => /Draft\s*.*v2/i.test(button.textContent ?? ''));
+  expect(result).toBeDefined();
+  await act(async () => result?.click());
+  expect(container.querySelector('[data-testid="node-preview"]')).toBeNull();
+  expect(
+    ['artifact', 'result'].some(
+      (key) => navigations.at(-1)?.patch[key as 'artifact' | 'result'] === 'artv_draft_2',
+    ),
+  ).toBe(true);
+  expect(
+    container.querySelector('[data-testid="run-document"] [data-testid="artifact"]')?.textContent,
+  ).toBe('artv_draft_2');
+  expect(side?.hidden).toBe(true);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="run-document"] button')?.click(),
+  );
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('h2')?.textContent).toBe('reviewer');
+});
+
+it('opens the requested execution instruction directly and preserves another execution’s draft', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    { execution: 'exec_worker' },
+    undefined,
+    false,
+    ['worker', 'reviewer'],
+  );
+  await populateGraph(run, [
+    graphExecution('exec_worker', 'worker'),
+    graphExecution('exec_reviewer', 'reviewer'),
+  ]);
+  const instruction = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Give instruction',
+  );
+  await act(async () => instruction?.click());
+  const original = container.querySelector<HTMLTextAreaElement>(
+    '[data-testid="reins-probe"] textarea',
+  );
+  expect(original).not.toBeNull();
+  if (original) original.value = 'Keep worker draft';
+  const back = [
+    ...container.querySelectorAll<HTMLButtonElement>('[data-testid="run-instructions"] button'),
+  ].find((button) => button.textContent?.includes('Back to work'));
+  await act(async () => back?.click());
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-reviewer"]')?.click(),
+  );
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.querySelector('h2')?.textContent).toBe('worker');
+  expect(container.querySelector('[data-testid="reins-probe"]')?.textContent).toBe('exec_worker');
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  const steer = [...(preview?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent?.trim() === 'Give instruction',
+  );
+  expect(steer).toBeDefined();
+  await act(async () => steer?.click());
+  expect(container.querySelector('[data-testid="node-preview"]')).toBeNull();
+  expect(container.querySelector<HTMLElement>('[data-testid="run-instructions"]')?.hidden).toBe(
+    false,
+  );
+  const probes = [...container.querySelectorAll<HTMLElement>('[data-testid="reins-probe"]')];
+  expect(probes.find((probe) => !probe.closest('[hidden]'))?.textContent).toBe('exec_reviewer');
+  expect(
+    probes.find((probe) => probe.textContent === 'exec_worker')?.querySelector('textarea'),
+  ).toBe(original);
+  expect(original?.value).toBe('Keep worker draft');
+});
+
 it('closes an empty selection inspector when Back removes the execution from the URL', async () => {
   const { container, navigate } = await mount('inline_team', null, { execution: 'exec_past' });
   const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
   expect(side?.hidden).toBe(false);
   await navigate({ execution: undefined });
   expect(side?.hidden).toBe(true);
+});
+
+it('closes a quick-view execution on Back while keeping its agent selected', async () => {
+  const { container, run, navigate } = await mount('inline_team', null, {});
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  const node = container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]');
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  await act(async () => node?.click());
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  const details = [...(preview?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent?.trim() === 'Details',
+  );
+  expect(details).toBeDefined();
+  await act(async () => details?.click());
+  expect(side?.hidden).toBe(false);
+  await navigate({ execution: undefined });
+  expect(side?.hidden).toBe(true);
+  expect(node?.getAttribute('aria-pressed')).toBe('true');
 });
 
 it('returns to the selected agent executions when Back leaves an execution', async () => {
@@ -197,10 +716,10 @@ it('returns to the selected agent executions when Back leaves an execution', asy
     run.setState({
       projection: {
         ...projection,
-        executionOrder: ['first', 'retry'],
-        nodeExecutions: { worker: ['first', 'retry'] },
+        executionOrder: ['first', 'retry', 'third', 'fourth'],
+        nodeExecutions: { worker: ['first', 'retry', 'third', 'fourth'] },
         executions: Object.fromEntries(
-          ['first', 'retry'].map((id, index) => [
+          ['first', 'retry', 'third', 'fourth'].map((id, index) => [
             id,
             {
               executionId: id,
@@ -219,20 +738,56 @@ it('returns to the selected agent executions when Back leaves an execution', asy
     container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
   );
   const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(true);
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  const all = [...(preview?.querySelectorAll('button') ?? [])].find((button) =>
+    button.textContent?.trim().startsWith('All executions'),
+  );
+  expect(all).toBeDefined();
+  await act(async () => all?.click());
   const list = () => side?.querySelector('[aria-label="worker executions"]');
-  expect(list()?.textContent).toContain('first');
-  expect(list()?.textContent).toContain('retry');
+  expect(list()?.querySelector('[data-execution-id="first"]')).not.toBeNull();
+  expect(list()?.querySelector('[data-execution-id="retry"]')).not.toBeNull();
   await act(async () =>
-    [...(list()?.querySelectorAll('button') ?? [])]
-      .find((button) => button.textContent?.includes('retry'))
-      ?.click(),
+    list()?.querySelector<HTMLButtonElement>('[data-execution-id="retry"] button')?.click(),
   );
   expect(list()).toBeNull();
   expect(side?.hidden).toBe(false);
   await navigate({ execution: undefined });
   expect(side?.hidden).toBe(false);
-  expect(list()?.textContent).toContain('first');
-  expect(list()?.textContent).toContain('retry');
+  expect(list()?.querySelector('[data-execution-id="first"]')).not.toBeNull();
+  expect(list()?.querySelector('[data-execution-id="retry"]')).not.toBeNull();
+});
+
+it('closes a listed execution and returns focus while URL navigation is pending', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigate } = await mount('inline_team', null, {}, undefined, true);
+  await populateGraph(
+    run,
+    ['first', 'second', 'third', 'fourth'].map((id) => graphExecution(id, 'worker')),
+  );
+  const node = container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]');
+  node?.focus();
+  await act(async () => node?.click());
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  const all = [...(preview?.querySelectorAll('button') ?? [])].find((button) =>
+    button.textContent?.trim().startsWith('All executions'),
+  );
+  expect(all).toBeDefined();
+  await act(async () => all?.click());
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  const details = side?.querySelector<HTMLButtonElement>('[data-execution-id="first"] button');
+  expect(details).not.toBeNull();
+  await act(async () => details?.click());
+  await navigate({ execution: 'first' });
+  expect(side?.hidden).toBe(false);
+  const close = side?.querySelector<HTMLButtonElement>('button[aria-label="Close details"]');
+  await act(async () => {
+    close?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(side?.hidden).toBe(true);
+  expect(document.activeElement).toBe(node);
 });
 
 it('does not reopen a completed approval panel when a later decision appears', async () => {
@@ -410,12 +965,18 @@ it('workspace changes inspected executions without silently retargeting an instr
   await act(async () =>
     container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
   );
-  const executions = container.querySelector('[aria-label="worker executions"]');
-  expect(executions?.textContent).toContain('exec_writer');
-  expect(executions?.textContent).toContain('exec_reviewer');
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  expect(preview?.querySelector('[data-execution-id="exec_writer"]')).not.toBeNull();
+  expect(preview?.querySelector('[data-execution-id="exec_reviewer"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="reins-probe"]')?.textContent).toBe('exec_writer');
+  const reviewerDetails = preview?.querySelector<HTMLButtonElement>(
+    '[data-execution-id="exec_reviewer"] button',
+  );
+  expect(reviewerDetails).not.toBeNull();
+  await act(async () => reviewerDetails?.click());
   expect(container.querySelector('[data-testid="reins-probe"]')?.textContent).toBe('exec_writer');
   expect(container.querySelector('[data-testid="reins-probe"] textarea')).toBe(draft);
-  await navigate({ execution: 'exec_reviewer' });
+  await navigate({ execution: 'exec_writer' });
   expect(container.querySelector('[data-testid="reins-probe"]')?.textContent).toBe('exec_writer');
   await navigate({ result: 'artv_result' });
   await act(async () =>

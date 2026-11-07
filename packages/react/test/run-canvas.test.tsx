@@ -256,7 +256,7 @@ describe('RunCanvas', () => {
     const button = writer?.querySelector('button');
     expect(button).toBeTruthy();
     fireEvent.click(button as Element);
-    expect(onSelectNode).toHaveBeenCalledWith('write');
+    expect(onSelectNode).toHaveBeenCalledWith('write', button);
     expect(screen.getByRole('application', { name: 'Run graph' })).toBeTruthy();
   });
 

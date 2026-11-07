@@ -15,10 +15,21 @@ import {
   ReactFlow,
   ReactFlowProvider,
 } from '@xyflow/react';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { AgentGraphNode, type AgentMark, type AgentStatus } from '../design-kit/index.ts';
+import {
+  AgentGraphNode,
+  type AgentMark,
+  type AgentStatus,
+  Button,
+  Popover,
+  PopoverClose,
+  PopoverCreateHandle,
+  PopoverPopup,
+  PopoverTitle,
+  PopoverTrigger,
+} from '../design-kit/index.ts';
 import {
   buildRunAgentGraph,
   type RunAgentGraph,
@@ -29,6 +40,7 @@ import { type ObservedAgentModel, observedAgentModels } from '../run/agent-model
 import { useRunDisplay } from '../run/display.tsx';
 import type { NodeRunStatus } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import { X } from '../ui/icons.ts';
 
 type AgentData = {
   name: string;
@@ -42,10 +54,12 @@ type AgentData = {
   description: string;
   lead: boolean;
   dimmed: boolean;
+  previewHandle?: ReturnType<typeof PopoverCreateHandle<string>>;
+  previewTriggerId: string;
 };
 
 const sides = [Position.Left, Position.Right, Position.Top, Position.Bottom];
-function RelationshipNode({ data, selected }: NodeProps<Node<AgentData>>) {
+function RelationshipNode({ id, data, selected }: NodeProps<Node<AgentData>>) {
   return (
     <div data-run-status={data.rawStatus}>
       {sides.flatMap((side) =>
@@ -65,7 +79,22 @@ function RelationshipNode({ data, selected }: NodeProps<Node<AgentData>>) {
           />
         )),
       )}
-      <AgentGraphNode {...data} selected={selected} />
+      <AgentGraphNode
+        {...data}
+        selected={selected}
+        renderTrigger={
+          data.previewHandle
+            ? (button) => (
+                <PopoverTrigger
+                  id={data.previewTriggerId}
+                  handle={data.previewHandle}
+                  payload={id}
+                  render={button}
+                />
+              )
+            : undefined
+        }
+      />
     </div>
   );
 }
@@ -156,14 +185,28 @@ export function RunCanvas({
   definition,
   selectedNodeId,
   onSelectNode,
+  renderNodePreview,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
   selectedNodeId: string | null;
-  onSelectNode: (nodeId: string | null) => void;
+  onSelectNode: (nodeId: string | null, trigger?: HTMLElement | null) => void;
+  renderNodePreview?: (
+    nodeId: string,
+    context: { close: () => void; trigger: HTMLElement | null },
+  ) => ReactNode;
 }) {
   const t = useTranslations('RunCanvas');
   const statusText = useTranslations('Canvas.nodeStatus');
+  const hasPreview = renderNodePreview !== undefined;
+  const previewId = useId();
+  const [previewHandle] = useState(() => PopoverCreateHandle<string>());
+  const previewTrigger = useRef<HTMLElement | null>(null);
+  const [restorePreviewFocus, setRestorePreviewFocus] = useState(true);
+  const closePreviewForNavigation = () => {
+    setRestorePreviewFocus(false);
+    previewHandle.close();
+  };
   const readGraph = useMemo(() => {
     let previous: RunProjection | null | undefined;
     let serialized = '';
@@ -291,10 +334,25 @@ export function RunCanvas({
               .join('; '),
             lead: node.lead,
             dimmed: !!selectedNodeId && !adjacent.has(node.id),
+            previewHandle: hasPreview ? previewHandle : undefined,
+            previewTriggerId: `${previewId}-${node.id}`,
           },
         };
       }),
-    [graph.nodes, positions, models, ended, selectedNodeId, adjacent, descriptions, t, statusText],
+    [
+      graph.nodes,
+      positions,
+      models,
+      ended,
+      selectedNodeId,
+      adjacent,
+      descriptions,
+      t,
+      statusText,
+      previewId,
+      previewHandle,
+      hasPreview,
+    ],
   );
   const edges = useMemo<Edge[]>(() => {
     const groups = new Map<string, RunAgentGraphRelation[]>();
@@ -387,8 +445,17 @@ export function RunCanvas({
               nodesConnectable={false}
               edgesFocusable={false}
               deleteKeyCode={null}
-              onNodeClick={(_event, node) => onSelectNode(node.id)}
-              onPaneClick={() => onSelectNode(null)}
+              onNodeClick={(event, node) => {
+                const button = event.currentTarget.querySelector('button');
+                onSelectNode(node.id, button);
+                // The label belongs to the same node; its native button remains the popup anchor.
+                if (renderNodePreview && !(event.target as Element).closest('button')) {
+                  button?.focus({ preventScroll: true });
+                  previewHandle.open(node.data.previewTriggerId);
+                }
+              }}
+              onPaneClick={() => previewHandle.close()}
+              onMoveStart={() => previewHandle.close()}
               elevateNodesOnSelect={false}
               fitView
               fitViewOptions={graphFit}
@@ -420,6 +487,45 @@ export function RunCanvas({
               </li>
             ))}
           </ul>
+        ) : null}
+        {renderNodePreview ? (
+          <Popover
+            handle={previewHandle}
+            onOpenChange={(open, details) => {
+              if (open) {
+                previewTrigger.current =
+                  details.trigger instanceof HTMLElement ? details.trigger : null;
+                setRestorePreviewFocus(true);
+              }
+            }}
+          >
+            {({ payload }) => {
+              const node = graph.nodes.find((item) => item.id === payload);
+              return node ? (
+                <PopoverPopup
+                  width="md"
+                  side="right"
+                  align="start"
+                  padding="compact"
+                  finalFocus={restorePreviewFocus}
+                >
+                  <div className="flex items-center justify-between gap-3 px-2 pb-2">
+                    <PopoverTitle className="min-w-0 truncate">{node.label}</PopoverTitle>
+                    <PopoverClose
+                      render={<Button variant="ghost" size="icon-compact" />}
+                      aria-label={t('closePreview')}
+                    >
+                      <X />
+                    </PopoverClose>
+                  </div>
+                  {renderNodePreview(node.id, {
+                    close: closePreviewForNavigation,
+                    trigger: previewTrigger.current,
+                  })}
+                </PopoverPopup>
+              ) : null;
+            }}
+          </Popover>
         ) : null}
       </div>
     </ReactFlowProvider>

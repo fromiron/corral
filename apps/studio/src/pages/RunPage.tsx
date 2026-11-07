@@ -1,5 +1,9 @@
-import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { pendingInteractions, type RunProjection } from '@corral/core';
+import {
+  type CorralDefinition,
+  TERMINAL_EXECUTION_STATUSES,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
+import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
 import {
   AgentStatusText,
   ApprovalPanel,
@@ -52,6 +56,7 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -308,6 +313,7 @@ function RunWorkspace({
   const prices = useModelPrices();
   const target = useSteerTarget(session, execution ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [listedNodeId, setListedNodeId] = useState<string | null>(null);
   const [panel, setPanel] = useState<'closed' | 'selection' | 'approval' | 'run'>(
     execution ? 'selection' : 'closed',
   );
@@ -325,6 +331,9 @@ function RunWorkspace({
   const trigger = useRef<HTMLElement | null>(null);
   const detailsButton = useRef<HTMLButtonElement>(null);
   const response = useRef<HTMLDivElement>(null);
+  const detailPane = useRef<HTMLElement>(null);
+  const documentPane = useRef<HTMLElement>(null);
+  const steeringPane = useRef<HTMLElement>(null);
   const hasOutput = useStore(session, (s) => s.outputText !== null);
   const workPlan = useRunWorkPlan(session, primaryWorkPlan(projection?.workPlans));
   const plan = 'plan' in workPlan.status ? workPlan.status.plan : null;
@@ -334,26 +343,43 @@ function RunWorkspace({
   useEffect(() => {
     if (hasOutput) markRunReviewed();
   }, [hasOutput]);
+  const executionNodeId = execution ? (projection?.executions[execution]?.nodeId ?? null) : null;
+  const routedExecution = useRef(execution);
   useEffect(() => {
-    if (execution) setPanel('selection');
-    else if (!selectedNodeId) setPanel((current) => (current === 'selection' ? 'closed' : current));
-  }, [execution, selectedNodeId]);
+    // Only navigation selects an inspector. Replayed data and local close/list changes do not.
+    if (routedExecution.current === execution) return;
+    routedExecution.current = execution;
+    if (execution) {
+      setPanel('selection');
+      setSelectedNodeId(executionNodeId);
+    } else if (listedNodeId) {
+      setSelectedNodeId(listedNodeId);
+    } else {
+      setPanel((current) => (current === 'selection' ? 'closed' : current));
+    }
+  }, [execution, executionNodeId, listedNodeId]);
   useEffect(() => {
     if (panel === 'approval' && pending === 0) setPanel('closed');
   }, [panel, pending]);
-  const rememberTrigger = () => {
-    trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const activeElement = () =>
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const rememberTrigger = (origin = activeElement()) => {
+    trigger.current = origin;
   };
-  const chooseExecution = (id: string) => {
-    rememberTrigger();
+  const chooseExecution = (id: string, origin = activeElement()) => {
+    rememberTrigger(origin);
+    const nodeId = projection?.executions[id]?.nodeId ?? null;
+    setSelectedNodeId(nodeId);
+    setListedNodeId((current) => (current === nodeId ? current : null));
     setPanel('selection');
     setDetail('overview');
     setSearch({ execution: id, artifact: undefined, result: undefined, view: undefined });
+    requestAnimationFrame(() => detailPane.current?.focus({ preventScroll: true }));
   };
-  const openArtifact = (id: string) => {
-    documentTrigger.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const openArtifact = (id: string, origin = activeElement()) => {
+    documentTrigger.current = origin;
     setSearch({ artifact: id, view: undefined, result: undefined });
+    requestAnimationFrame(() => documentPane.current?.focus({ preventScroll: true }));
   };
   const closeDocument = () => {
     setSearch({ artifact: undefined, result: undefined, view: undefined });
@@ -362,13 +388,13 @@ function RunWorkspace({
       else detailsButton.current?.focus();
     });
   };
-  const openSteering = () => {
-    if (!execution || !target) return;
-    steeringTrigger.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setSteeringId(execution);
-    setSteeringTargets((previous) => new Set(previous).add(execution));
+  const openSteering = (id: string, origin = activeElement()) => {
+    if (!projection?.executions[id]) return;
+    steeringTrigger.current = origin;
+    setSteeringId(id);
+    setSteeringTargets((previous) => new Set(previous).add(id));
     setSteeringOpen(true);
+    requestAnimationFrame(() => steeringPane.current?.focus({ preventScroll: true }));
   };
   const closeSteering = () => {
     setSteeringOpen(false);
@@ -380,16 +406,14 @@ function RunWorkspace({
     );
   };
   const closeDetail = () => {
-    setSelectedNodeId(null);
+    setListedNodeId(null);
     setPanel('closed');
     setSearch({ execution: undefined, artifact: undefined });
     requestAnimationFrame(() =>
       (trigger.current?.isConnected ? trigger.current : detailsButton.current)?.focus(),
     );
   };
-  const highlightedNode = execution
-    ? (projection?.executions[execution]?.nodeId ?? null)
-    : selectedNodeId;
+  const highlightedNode = selectedNodeId ?? executionNodeId;
   const selectedTarget = execution ? target : null;
   const results = projection ? runResults(projection) : null;
   return (
@@ -456,20 +480,47 @@ function RunWorkspace({
                         session={session}
                         definition={definition}
                         selectedNodeId={highlightedNode}
-                        onSelectNode={(id) => {
-                          rememberTrigger();
-                          setSelectedNodeId(id);
-                          if (id) {
-                            setDetail('overview');
-                            setPanel('selection');
-                            setSearch({
-                              execution: undefined,
-                              artifact: undefined,
-                              result: undefined,
-                              view: undefined,
-                            });
-                          } else closeDetail();
-                        }}
+                        onSelectNode={(id) => setSelectedNodeId(id)}
+                        renderNodePreview={(nodeId, { close, trigger: origin }) =>
+                          projection ? (
+                            <NodeExecutions
+                              projection={projection}
+                              definition={definition}
+                              nodeId={nodeId}
+                              selectedExecutionId={execution ?? null}
+                              preview
+                              onChoose={(id) => {
+                                close();
+                                chooseExecution(id, origin);
+                              }}
+                              onOpenArtifact={(id) => {
+                                close();
+                                openArtifact(id, origin);
+                              }}
+                              onSteer={(id) => {
+                                close();
+                                openSteering(id, origin);
+                              }}
+                              onShowAll={() => {
+                                close();
+                                rememberTrigger(origin);
+                                setListedNodeId(nodeId);
+                                setSelectedNodeId(nodeId);
+                                setPanel('selection');
+                                setDetail('overview');
+                                setSearch({
+                                  execution: undefined,
+                                  artifact: undefined,
+                                  result: undefined,
+                                  view: undefined,
+                                });
+                                requestAnimationFrame(() =>
+                                  detailPane.current?.focus({ preventScroll: true }),
+                                );
+                              }}
+                            />
+                          ) : null
+                        }
                       />
                     </div>
                   ),
@@ -551,9 +602,11 @@ function RunWorkspace({
             />
           </Main>
           <section
+            ref={documentPane}
+            tabIndex={-1}
             data-testid="run-document"
             hidden={!documentOpen}
-            className="min-h-0 flex-1 overflow-auto p-6"
+            className="min-h-0 flex-1 overflow-auto p-6 outline-none"
             aria-label={m('results')}
           >
             <Button variant="ghost" size="compact" onClick={closeDocument}>
@@ -579,8 +632,10 @@ function RunWorkspace({
             ) : null}
           </section>
           <section
+            ref={steeringPane}
+            tabIndex={-1}
             hidden={!steeringOpen || documentOpen}
-            className="min-h-0 flex-1 overflow-auto p-6"
+            className="min-h-0 flex-1 overflow-auto p-6 outline-none"
             data-testid="run-instructions"
           >
             <div className="mx-auto grid w-full max-w-[760px] gap-4">
@@ -622,6 +677,7 @@ function RunWorkspace({
           ) : null}
         </div>
         <aside
+          ref={detailPane}
           data-testid="run-side"
           hidden={!sideShown}
           tabIndex={-1}
@@ -633,15 +689,22 @@ function RunWorkspace({
         >
           <div className="grid gap-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="min-w-0 truncate text-subtitle font-medium">
-                {panel === 'approval'
-                  ? m('needsYou')
-                  : panel === 'run'
-                    ? m('runInfo')
-                    : (selectedTarget?.nodeLabel ??
-                      definition.nodes.find((node) => node.id === selectedNodeId)?.label ??
-                      m('details'))}
-              </h2>
+              <div className="min-w-0">
+                <h2 className="truncate text-subtitle font-medium">
+                  {panel === 'approval'
+                    ? m('needsYou')
+                    : panel === 'run'
+                      ? m('runInfo')
+                      : (selectedTarget?.nodeLabel ??
+                        definition.nodes.find((node) => node.id === listedNodeId)?.label ??
+                        m('details'))}
+                </h2>
+                {panel === 'selection' && execution && projection?.executions[execution] ? (
+                  <div className="text-caption text-muted-foreground">
+                    <ExecutionIdentity projection={projection} executionId={execution} />
+                  </div>
+                ) : null}
+              </div>
               <Button
                 variant="ghost"
                 size="icon-compact"
@@ -673,17 +736,21 @@ function RunWorkspace({
               {execution && projection && !projection.executions[execution] ? (
                 <p role="alert">{t('executionMissing', { executionId: execution })}</p>
               ) : null}
-              {selectedNodeId && !execution && projection && panel === 'selection' ? (
+              {listedNodeId && !execution && projection && panel === 'selection' ? (
                 <NodeExecutions
                   projection={projection}
                   definition={definition}
-                  nodeId={selectedNodeId}
+                  nodeId={listedNodeId}
                   selectedExecutionId={execution ?? null}
-                  onChoose={chooseExecution}
+                  onChoose={(id) => chooseExecution(id, trigger.current)}
                 />
               ) : null}
               {selectedTarget && panel === 'selection' ? (
-                <Button variant="primary" size="compact" onClick={openSteering}>
+                <Button
+                  variant="primary"
+                  size="compact"
+                  onClick={() => openSteering(selectedTarget.executionId)}
+                >
                   {selectedTarget.finished ? 'Reins' : m('steer')}
                 </Button>
               ) : null}
@@ -1093,58 +1160,163 @@ function loopLimit(projection: RunProjection, loopId: string): number | null {
   return typeof value === 'number' ? value : null;
 }
 
-/** A design node's executions in this run: one per Loop round, call and attempt. */
+function ExecutionIdentity({
+  projection,
+  executionId,
+}: {
+  projection: RunProjection;
+  executionId: string;
+}) {
+  const t = useTranslations('Run');
+  const reins = useTranslations('Reins');
+  const execution = projection.executions[executionId];
+  if (!execution) return null;
+  const number = projection.executionOrder.indexOf(executionId) + 1;
+  const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
+  const parts = [
+    number ? reins('executionNumber', { number }) : executionId,
+    ...(round ? [t('round', { no: round })] : []),
+    t('attempt', { no: execution.attemptNo }),
+  ];
+  return <span title={executionId}>{parts.join(' · ')}</span>;
+}
+
+/** Exact executions of one observed agent, either a quick list or its complete inspector. */
 function NodeExecutions({
   projection,
   definition,
   nodeId,
   selectedExecutionId,
   onChoose,
+  preview = false,
+  onShowAll,
+  onOpenArtifact,
+  onSteer,
 }: {
   projection: RunProjection;
   definition: CorralDefinition;
   nodeId: string;
   selectedExecutionId: string | null;
   onChoose: (executionId: string) => void;
+  preview?: boolean;
+  onShowAll?: () => void;
+  onOpenArtifact?: (artifactVersionId: string) => void;
+  onSteer?: (executionId: string) => void;
 }) {
   const t = useTranslations('RunPage');
-  const tr = useTranslations('Run');
   const m = useTranslations('RunMonitor');
+  const results = useTranslations('Results');
+  const identityPrefix = useId();
   const node = definition.nodes.find((n) => n.id === nodeId);
   const label = node?.label ?? nodeId;
-  const ids = projection.nodeExecutions[nodeId] ?? [];
+  const ids = (projection.nodeExecutions[nodeId] ?? []).filter(
+    (id) => projection.executions[id]?.nodeId === nodeId,
+  );
+  const runEnded = TERMINAL_RUN_STATUSES.has(projection.status);
+  const isActive = (id: string) => {
+    const execution = projection.executions[id];
+    return !!execution && !runEnded && !TERMINAL_EXECUTION_STATUSES.has(execution.status);
+  };
+  const visibleIds = preview
+    ? [...ids]
+        .reverse()
+        .sort((a, b) => Number(isActive(b)) - Number(isActive(a)))
+        .slice(0, 3)
+    : ids;
   return (
-    <section aria-label={t('nodeExecutions', { label })} className="flex flex-col gap-2 text-xs">
+    <section
+      aria-label={t('nodeExecutions', { label })}
+      className="flex flex-col gap-2 text-caption"
+    >
       {ids.length === 0 ? (
         <p className="text-muted-foreground">
           {node && node.type !== 'agent' ? m('nonAgentNode') : t('noNodeExecutions')}
         </p>
       ) : null}
-      <ul className="flex flex-col gap-1">
-        {ids.map((id) => {
+      <ul className="flex flex-col divide-y divide-line">
+        {visibleIds.map((id) => {
           const e = projection.executions[id];
           if (!e) return null;
-          const round = e.iterationId ? projection.iterations[e.iterationId]?.no : null;
+          const identityId = `${identityPrefix}-${id}`;
+          const artifacts = Object.values(projection.artifacts).filter(
+            (artifact) => artifact.authorExecutionId === id,
+          );
+          const latest = artifacts.at(-1);
+          const readable = artifacts
+            .filter((artifact) => canReadArtifactBody(projection, artifact.artifactVersionId))
+            .at(-1);
           return (
-            <li key={id}>
-              <Button
-                variant={id === selectedExecutionId ? 'secondary' : 'ghost'}
-                size="compact"
-                aria-pressed={id === selectedExecutionId}
-                onClick={() => onChoose(id)}
-                className="w-full justify-between"
-              >
-                <span>
-                  {round ? `${tr('round', { no: round })} · ` : ''}
-                  {e.attemptNo > 1 ? `${tr('attempt', { no: e.attemptNo })} · ` : ''}
-                  <span className="font-mono">{id}</span>
-                </span>
+            <li key={id} data-execution-id={id} className="grid gap-1 px-2 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 break-words">
+                  {latest ? (
+                    readable?.artifactVersionId === latest.artifactVersionId && onOpenArtifact ? (
+                      <Button
+                        variant="ghost"
+                        size="compact"
+                        className="max-w-full justify-start whitespace-normal text-left"
+                        aria-describedby={identityId}
+                        onClick={() => onOpenArtifact(latest.artifactVersionId)}
+                      >
+                        {results('itemName', { name: latest.name, version: latest.version })}
+                      </Button>
+                    ) : (
+                      <div className="font-medium">
+                        {results('itemName', { name: latest.name, version: latest.version })}
+                      </div>
+                    )
+                  ) : null}
+                  <div id={identityId}>
+                    <ExecutionIdentity projection={projection} executionId={id} />
+                  </div>
+                </div>
                 <StatusBadge status={e.status} />
-              </Button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <Button
+                  variant={id === selectedExecutionId ? 'secondary' : 'ghost'}
+                  size="compact"
+                  aria-pressed={id === selectedExecutionId}
+                  aria-describedby={identityId}
+                  onClick={() => onChoose(id)}
+                >
+                  {m('details')}
+                </Button>
+                {readable &&
+                readable.artifactVersionId !== latest?.artifactVersionId &&
+                onOpenArtifact ? (
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    aria-describedby={identityId}
+                    onClick={() => onOpenArtifact(readable.artifactVersionId)}
+                  >
+                    {results('itemName', { name: readable.name, version: readable.version })}
+                  </Button>
+                ) : null}
+                {isActive(id) &&
+                projection.status !== 'cancelling' &&
+                e.status !== 'cancelling' &&
+                onSteer ? (
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    aria-describedby={identityId}
+                    onClick={() => onSteer(id)}
+                  >
+                    {m('steer')}
+                  </Button>
+                ) : null}
+              </div>
             </li>
           );
         })}
       </ul>
+      {preview && ids.length > visibleIds.length ? (
+        <Button variant="ghost" size="compact" className="justify-start" onClick={onShowAll}>
+          {t('allExecutions')} · {ids.length}
+        </Button>
+      ) : null}
     </section>
   );
 }
