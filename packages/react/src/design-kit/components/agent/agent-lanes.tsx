@@ -8,6 +8,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
+  type CSSProperties,
   forwardRef,
   type HTMLAttributes,
   type KeyboardEvent,
@@ -26,6 +27,8 @@ import { fontWeights } from '../../lib/font-weight.ts';
 import { useShape } from '../../lib/shape-context.tsx';
 import { type SizeVariant, useSize } from '../../lib/size-context.tsx';
 import { spring } from '../../lib/springs.ts';
+import { SURFACE_BG } from '../../lib/surface-classes.ts';
+import { useSurface } from '../../lib/surface-context.tsx';
 import { cn } from '../../lib/utils.ts';
 import { Button } from '../ui/button.tsx';
 import {
@@ -74,6 +77,11 @@ interface LaneTask {
   statusLabel?: string;
   /** Waiting stretches inside the span, drawn as tinted bands. */
   waits?: { startedAt: number; endedAt: number }[];
+  /**
+   * Stretches when the work was elsewhere (waiting on another agent). The span is drawn as
+   * separate blocks around them and stays one selectable task.
+   */
+  gaps?: { startedAt: number; endedAt: number }[];
   /** Attributes for the span's button (ids, test hooks, data attributes). */
   buttonProps?: Record<`data-${string}`, string | undefined>;
 }
@@ -756,6 +764,21 @@ AgentLanes.displayName = 'AgentLanes';
 
 // ─── Block ───────────────────────────────────────────────────────────────────
 
+/** The worked stretches of [start, end] around its gaps, in order; empty gaps are ignored. */
+function blockPieces(start: number, end: number, gaps: LaneTask['gaps'] = []): [number, number][] {
+  const pieces: [number, number][] = [];
+  let from = start;
+  for (const gap of [...gaps].sort((a, b) => a.startedAt - b.startedAt)) {
+    const gapStart = Math.max(start, gap.startedAt);
+    const gapEnd = Math.min(end, gap.endedAt);
+    if (gapEnd <= gapStart || gapEnd <= from) continue;
+    if (gapStart > from) pieces.push([from, gapStart]);
+    from = gapEnd;
+  }
+  if (end > from || !pieces.length) pieces.push([from, Math.max(from, end)]);
+  return pieces;
+}
+
 function LaneBlock({
   agent,
   task,
@@ -794,9 +817,35 @@ function LaneBlock({
   const statusLabel = task.statusLabel ?? agentStatusLabels[task.status];
   const end = task.endedAt ?? now;
   const length = Math.max(1, pct(end) - pct(task.startedAt));
+  const at = (t: number) => ((pct(t) - pct(task.startedAt)) / length) * 100;
+  const pieces = blockPieces(task.startedAt, end, task.gaps).map(([from, to]) => ({
+    left: at(from),
+    width: at(to) - at(from),
+  }));
+  // The name goes in the widest block, where it has the most room.
+  const named = pieces.reduce((a, b) => (a && a.width >= b.width ? a : b), pieces[0]);
+  const surface = SURFACE_BG[useSurface()] ?? 'bg-background';
+  const last = pieces.at(-1);
+  // The name's natural width, so a short block can open to it with a transition.
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const [nameWidth, setNameWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = nameRef.current;
+    if (!el) return;
+    const measure = () => setNameWidth(el.offsetWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
     <li
-      className={cn('absolute', !live && 'min-w-1.5', task.status === 'waiting' && 'z-[2]')}
+      className={cn(
+        'absolute hover:z-[3] has-focus-visible:z-[3]',
+        !live && 'min-w-1.5',
+        task.status === 'waiting' && 'z-[2]',
+      )}
       style={{ left: `${left}%`, width: `${width}%`, top, height }}
     >
       <button
@@ -805,19 +854,12 @@ function LaneBlock({
         className={cn(
           size.type.caption,
           shape.bg,
-          'relative flex size-full items-center overflow-hidden px-2 whitespace-nowrap',
+          'group relative block size-full whitespace-nowrap',
           focusRingInset,
-          task.status === 'running' && 'sheen',
-          !tone && 'bg-active text-muted-foreground hover:bg-hover',
+          !tone && 'text-muted-foreground',
           open && 'brightness-[0.97]',
         )}
-        style={{
-          fontVariationSettings: fontWeights.semibold,
-          ...(tone && { background: tone.bg, color: tone.fg }),
-          ...(task.status === 'running' && { boxShadow: 'inset -2px 0 0 var(--emphasis)' }),
-          // Selection uses the kit's one accent, inside the span edge.
-          ...(selected && { boxShadow: 'inset 0 0 0 1.5px var(--emphasis)' }),
-        }}
+        style={{ fontVariationSettings: fontWeights.semibold, ...(tone && { color: tone.fg }) }}
         title={task.label}
         {...(onSelect
           ? { 'aria-pressed': selected }
@@ -825,28 +867,87 @@ function LaneBlock({
         aria-label={`${agent.name}: ${task.label} – ${statusLabel}, ${labels.timing(task, now)}`}
         onClick={onSelect ?? onToggle}
       >
-        {task.waits?.map((wait) => (
-          <span
-            key={wait.startedAt}
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0"
-            style={{
-              left: `${((pct(wait.startedAt) - pct(task.startedAt)) / length) * 100}%`,
-              width: `${((pct(wait.endedAt) - pct(wait.startedAt)) / length) * 100}%`,
-              background: toneFill('amber'),
-            }}
-          />
-        ))}
-        {task.tools && task.tools.length > 0 && (
-          <span className="mr-1.5 flex shrink-0 gap-1" aria-hidden>
-            {task.tools.map((tool, i) => {
-              const Mark = resolveMark(tool);
-              // biome-ignore lint/suspicious/noArrayIndexKey: tool marks may repeat and never reorder.
-              return Mark ? <Mark key={i} size={12} /> : null;
-            })}
-          </span>
-        )}
-        <span className="relative min-w-0 overflow-hidden text-start">{task.label}</span>
+        {pieces.map((piece) => {
+          const isNamed = piece === named;
+          const edge = [
+            task.status === 'running' && piece === last && 'inset -2px 0 0 var(--emphasis)',
+            // Selection uses the kit's one accent, inside each block's edge.
+            selected && 'inset 0 0 0 1.5px var(--emphasis)',
+          ]
+            .filter(Boolean)
+            .join(', ');
+          // A block near the right edge grows leftward when it opens to fit its name.
+          const fromRight = left + ((piece.left + piece.width) * width) / 100 > 70;
+          return (
+            <span
+              key={piece.left}
+              data-lane-piece
+              aria-hidden
+              className={cn(
+                shape.bg,
+                // An opaque base: hand-off lines pass under blocks, never through them.
+                surface,
+                'pointer-events-none absolute inset-y-0 min-w-0 overflow-hidden',
+                isNamed &&
+                  'transition-[min-width,box-shadow] duration-160 ease-[var(--ease-out-soft)] group-hover:min-w-[var(--lane-open)] group-hover:shadow-md group-focus-visible:min-w-[var(--lane-open)] motion-reduce:transition-none',
+              )}
+              style={{
+                ...(isNamed && ({ '--lane-open': `${nameWidth}px` } as CSSProperties)),
+                ...(fromRight
+                  ? { right: `${100 - piece.left - piece.width}%` }
+                  : { left: `${piece.left}%` }),
+                width: `${piece.width}%`,
+              }}
+            >
+              <span
+                className={cn(
+                  'absolute inset-0 rounded-[inherit]',
+                  !tone && 'bg-active group-hover:bg-hover',
+                  task.status === 'running' && piece === last && 'sheen',
+                )}
+                style={{
+                  ...(tone && { background: tone.bg }),
+                  ...(edge && { boxShadow: edge }),
+                }}
+              >
+                {task.waits?.map((wait) => {
+                  const from = at(wait.startedAt) - piece.left;
+                  const to = at(wait.endedAt) - piece.left;
+                  if (to <= 0 || from >= piece.width) return null;
+                  return (
+                    <span
+                      key={wait.startedAt}
+                      className="absolute inset-y-0"
+                      style={{
+                        left: `${(Math.max(0, from) / piece.width) * 100}%`,
+                        width: `${((Math.min(piece.width, to) - Math.max(0, from)) / piece.width) * 100}%`,
+                        background: toneFill('amber'),
+                      }}
+                    />
+                  );
+                })}
+              </span>
+              {isNamed && (
+                <span
+                  ref={nameRef}
+                  data-lane-label
+                  className="absolute inset-y-0 left-0 flex w-max items-center px-2"
+                >
+                  {task.tools && task.tools.length > 0 && (
+                    <span className="mr-1.5 flex shrink-0 gap-1">
+                      {task.tools.map((tool, i) => {
+                        const Mark = resolveMark(tool);
+                        // biome-ignore lint/suspicious/noArrayIndexKey: tool marks may repeat and never reorder.
+                        return Mark ? <Mark key={i} size={12} /> : null;
+                      })}
+                    </span>
+                  )}
+                  <span className="text-start">{task.label}</span>
+                </span>
+              )}
+            </span>
+          );
+        })}
       </button>
       {task.status === 'waiting' && (
         <Elevated

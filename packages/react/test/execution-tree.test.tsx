@@ -128,6 +128,76 @@ describe('execution card tree', () => {
     ]);
   });
 
+  it('names what each execution produced and sent, only on the sender card', () => {
+    const base = projection();
+    const session = sessionStore({
+      runId: 'run_tree',
+      definition: linearCorral(['research', 'writer']),
+      projection: {
+        ...base,
+        executions: {
+          ...base.executions,
+          exec_retry: {
+            ...(base.executions.exec_retry as RunProjection['executions'][string]),
+            modelCallIds: ['call_1'],
+          },
+        },
+        artifacts: {
+          draft_v1: {
+            artifactVersionId: 'draft_v1',
+            artifactId: 'draft',
+            version: 1,
+            parentVersionId: null,
+            name: 'draft',
+            contract: 'text',
+            contentHash: 'hash',
+            byteLength: 5,
+            authorExecutionId: 'exec_retry',
+            modelCallId: null,
+            contextSnapshotId: null,
+            submitted: true,
+            configRevision: 0,
+            criteriaVersionId: null,
+            inputArtifactVersionIds: [],
+            bodyAvailable: false,
+          },
+        },
+        artifactReads: { exec_lead: ['draft_v1'] },
+        questions: {
+          q1: {
+            questionId: 'q1',
+            taskId: 'task_answer',
+            senderExecutionId: 'exec_other',
+            targetNodeId: 'research',
+            targetRoleId: 'research_role',
+            body: 'Private question body',
+            artifactRefs: [],
+            deadline: '2026-11-07T00:00:00.000Z',
+            status: 'answered',
+            answer: { responderExecutionId: 'exec_lead', body: 'Private answer', evidenceRefs: [] },
+          },
+        },
+      },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionTree session={session} onSteer={() => {}} />
+      </IntlProvider>,
+    );
+    const sent = (id: string) =>
+      [...screen.getByTestId(`execution-${id}`).querySelectorAll('[data-handoff]')].map(
+        (item) => item.textContent,
+      );
+    const retry = screen.getByTestId('execution-exec_retry');
+    expect(retry.textContent).toContain('draft v1');
+    expect(retry.textContent).not.toMatch(/model request/);
+    expect(sent('exec_retry')).toEqual(['draft v1 → research']);
+    expect(sent('exec_other')).toEqual(['Question → research · Answered']);
+    // The receiver does not repeat what it was sent.
+    expect(sent('exec_lead')).toEqual([]);
+    expect(screen.queryByText(/Private/)).toBeNull();
+  });
+
   it('lists failures and waits in the header without sending a decision', async () => {
     renderTree();
     fireEvent.click(screen.getByRole('button', { name: /1 failed/ }));

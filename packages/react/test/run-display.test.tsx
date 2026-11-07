@@ -3,7 +3,7 @@ import { type ArtifactVersionView, applyEvent, emptyProjection } from '@corral/c
 import { linearCorral } from '@corral/testkit';
 import { act, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
-import { expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { ArtifactViewer } from '../src/components/ArtifactViewer.tsx';
 import { BudgetInspector } from '../src/components/BudgetInspector.tsx';
 import { ExecutionTranscript } from '../src/components/ExecutionTranscript.tsx';
@@ -13,9 +13,19 @@ import { ExecutionTree, RunOutput } from '../src/components/RunView.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { RunDisplayProvider, type RunDisplaySnapshot, useRunDisplay } from '../src/run/display.tsx';
 import { historicalStreams } from '../src/run/history.ts';
-import { runCanvasLayout } from '../src/run/layout.ts';
 import { nodeRunStatus } from '../src/run/selectors.ts';
 import { sessionStore } from '../src/stories/fixtures.tsx';
+
+beforeAll(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+afterAll(() => vi.restoreAllMocks());
 
 function artifact(id: string): ArtifactVersionView {
   return {
@@ -149,7 +159,6 @@ it('a display prefix keeps its observed metadata without restoring retired or fu
         <RunCanvas
           session={session}
           definition={definition}
-          layout={runCanvasLayout(definition, null)}
           selectedNodeId={null}
           onSelectNode={() => {}}
         />
@@ -166,7 +175,7 @@ it('a display prefix keeps its observed metadata without restoring retired or fu
   );
   expect(
     view.container
-      .querySelector('[data-id="worker"] [data-run-status]')
+      .querySelector('[data-agent-id="worker"] [data-run-status]')
       ?.getAttribute('data-run-status'),
   ).toBe(nodeRunStatus(snapshot.projection, 'worker'));
   expect(within(screen.getByTestId('tree')).getByTestId('execution-exec_past')).toBeInTheDocument();

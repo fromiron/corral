@@ -677,7 +677,13 @@ function NodeCard({ node, depth }: { node: AgentTreeNode; depth: number }) {
         </p>
       )}
       {node.detail ? (
-        <div className={cn(size.type.caption, 'relative z-[2] grid min-w-0 gap-1')}>
+        // Detail sits above the stretched card button; only its own controls take clicks.
+        <div
+          className={cn(
+            size.type.caption,
+            'pointer-events-none relative z-[2] grid min-w-0 gap-1 [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto',
+          )}
+        >
           {node.detail}
         </div>
       ) : null}

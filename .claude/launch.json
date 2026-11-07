@@ -16,6 +16,12 @@
       "port": 5173
     },
     {
+      "name": "live",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["corral", "dev"],
+      "port": 4317
+    },
+    {
       "name": "storybook",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [

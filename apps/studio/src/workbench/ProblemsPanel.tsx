@@ -181,6 +181,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                         variant="ghost"
                         size="compact"
                         onClick={() => void reveal(problem)}
+                        title={problem.message}
                         className="h-auto w-full justify-start gap-2 py-1 text-left font-normal"
                       >
                         <span
@@ -190,10 +191,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                         <span className="sr-only">{t(`severity.${problem.severity}`)}</span>
                         <span className="shrink-0 font-mono">{location}</span>
                         {problem.message !== location ? (
-                          <span
-                            className="min-w-0 flex-1 truncate text-muted-foreground"
-                            title={problem.message}
-                          >
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground">
                             {problem.message}
                           </span>
                         ) : null}

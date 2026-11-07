@@ -28,13 +28,7 @@ import type {
   WorkSession,
 } from '@corral/core';
 import { queuedSessionCommandId, validTextAttachments } from '@corral/core';
-import {
-  ExecutionSteering,
-  MessageBody,
-  runResults,
-  StatusBadge,
-  useCancelConfirmation,
-} from '@corral/react';
+import { MessageBody, runResults, StatusBadge, useCancelConfirmation } from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -203,7 +197,7 @@ import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { WorkFolderNotice } from '../workbench/WorkFolderNotice.tsx';
 import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx';
-import { OverviewAccess, OverviewPanel } from '../workbench/widgets/OverviewWidgets.tsx';
+import { OverviewAccess } from '../workbench/widgets/OverviewWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED } from './FilesViews.tsx';
@@ -988,7 +982,8 @@ function WorkTab({
   const { runFor, sessionFor, retainRun, workspaces } = useServices();
   const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
-  const messageId = sessionRoute.useSearch().message;
+  const currentSearch = sessionRoute.useSearch();
+  const messageId = currentSearch.message;
   useEffect(() => {
     if (!liveRunId) return;
     const release = retainRun(liveRunId);
@@ -1007,7 +1002,6 @@ function WorkTab({
       <ChatView
         centerEmpty
         key={session.sessionId}
-        aside={<OverviewPanel />}
         sessionId={session.sessionId}
         messageId={messageId}
         header={
@@ -1053,6 +1047,9 @@ function WorkTab({
         composer={
           <Composer
             key={session.sessionId}
+            runControlsOwnConfirmation={
+              currentSearch.panel !== 'run' || selectedRunId === active?.runId
+            }
             session={session}
             team={team}
             corrals={corrals}
@@ -1279,11 +1276,12 @@ function ArtifactsPanel({
                 className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
                 aria-label={`${tr(item.kind)} ${item.label} · ${tw('runNumber', { number: runs.findIndex((run) => run.runId === item.runId) + 1 })} · ${item.author}`}
                 onClick={() => onOpen(item.runId, item.id)}
+                title={item.runId}
               >
                 <FileText className="text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.label}</span>
-                  <span className="truncate text-2xs text-muted-foreground" title={item.runId}>
+                  <span className="truncate text-2xs text-muted-foreground">
                     {[
                       tw('runNumber', {
                         number: runs.findIndex((run) => run.runId === item.runId) + 1,
@@ -1731,6 +1729,7 @@ export function Composer({
   onChange,
   reference,
   onReferenceUsed,
+  runControlsOwnConfirmation = false,
 }: {
   session: WorkSession;
   team: CorralSummary | null;
@@ -1743,6 +1742,8 @@ export function Composer({
   onChange: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
+  /** The active session view already has one RunActions confirmation host. */
+  runControlsOwnConfirmation?: boolean;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
@@ -2120,15 +2121,6 @@ export function Composer({
   });
 
   const references = pickedReferences(text, picked);
-  const steeringRunId = intent === 'steer' ? (ownActive?.runId ?? null) : null;
-  const steeringSession = steeringRunId ? services.runFor(steeringRunId) : null;
-  useEffect(() => {
-    if (!steeringRunId || !steeringSession) return;
-    const release = services.retainRun(steeringRunId);
-    void steeringSession.getState().open(steeringRunId);
-    return release;
-  }, [steeringRunId, steeringSession, services]);
-
   const chips = picked.filter(
     (item, index) =>
       picked.findIndex((x) => x.id === item.id) === index &&
@@ -2989,9 +2981,7 @@ export function Composer({
       )}
       contentSlot={
         <>
-          {intent !== 'steer' ? (
-            <ComposerPlan showAllKey={planAllKey} onShowAllKeyChange={setPlanAllKey} />
-          ) : null}
+          <ComposerPlan showAllKey={planAllKey} onShowAllKeyChange={setPlanAllKey} />
           {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
           {viewingOtherRun ? (
             <Banner data-testid="viewed-run-warning" status="warning" size="compact">
@@ -3434,27 +3424,7 @@ export function Composer({
           />
         ) : null}
       </div>
-      {steeringSession && steerTarget ? (
-        <ExecutionSteering
-          session={steeringSession}
-          target={{
-            executionId: steerTarget,
-            nodeLabel: targetName(steerTarget),
-            finished: !targets.some((target) => target.id === steerTarget),
-          }}
-          compose={compose}
-          planSlot={
-            <ComposerPlan
-              variant="steering"
-              showAllKey={planAllKey}
-              onShowAllKeyChange={setPlanAllKey}
-            />
-          }
-          showToolActivity
-        />
-      ) : (
-        compose
-      )}
+      {compose}
       {queued.length > 0 ? (
         <section aria-label={t('queueHeading')} className="mx-3 rounded-t-xl bg-raised px-3 py-2">
           <div className="flex items-center justify-between gap-2">
@@ -3616,7 +3586,7 @@ export function Composer({
           </DialogFooter>
         </DialogPopup>
       </Dialog>
-      <Dialog open={confirmStop} onOpenChange={setConfirmStop}>
+      <Dialog open={confirmStop && !runControlsOwnConfirmation} onOpenChange={setConfirmStop}>
         <DialogPopup>
           <DialogHeader>
             <DialogTitle>{tr('cancelRun')}</DialogTitle>

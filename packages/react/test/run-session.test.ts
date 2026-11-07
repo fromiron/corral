@@ -10,6 +10,7 @@ import {
   Coordinator,
   emptyProjection,
   InProcessTransport,
+  type RuntimeSnapshot,
   type TransportHandlers,
 } from '@corral/core';
 import {
@@ -49,6 +50,209 @@ function until(store: ReturnType<typeof session>, check: (s: RunSessionState) =>
     });
   });
 }
+
+function replayEvent(runId: string, sequence: number): RunEvent {
+  return {
+    schemaVersion: '0.1',
+    eventId: `event_${sequence}`,
+    runId,
+    runSeq: sequence,
+    recordedAt: '2026-11-07T00:00:00.000Z',
+    actor: { kind: 'runtime', id: 'runtime' },
+    causedByEventIds: [],
+    type: 'task.created',
+    payload: {
+      taskId: `task_${sequence}`,
+      nodeId: 'writer',
+      roleId: 'writer_role',
+      contract: 'text',
+      dependsOnTaskIds: [],
+    },
+  } as RunEvent;
+}
+
+const replaySnapshot = (runId: string, seq: number): RuntimeSnapshot => ({
+  projection: { ...emptyProjection(runId), lastSeq: seq },
+  seq,
+});
+
+describe('initial run replay readiness', () => {
+  it('waits for the snapshot target and every event in its initial prefix', async () => {
+    let handlers!: TransportHandlers;
+    let finish!: (snapshot: RuntimeSnapshot) => void;
+    const snapshot = new Promise<RuntimeSnapshot>((resolve) => {
+      finish = resolve;
+    });
+    const subscribe = vi.fn((_runId: string, _after: number, next: TransportHandlers) => {
+      handlers = next;
+      return () => {};
+    });
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getSnapshot: () => snapshot,
+      subscribe,
+    } as never);
+    const opening = store.getState().open('run_replay');
+    await vi.waitFor(() => expect(subscribe).toHaveBeenCalledOnce());
+    expect(store.getState().initialLoadSeq).toBeNull();
+    handlers.onEvent(replayEvent('run_replay', 1));
+    await Promise.resolve();
+    expect(store.getState().projection?.lastSeq).toBe(1);
+    expect(store.getState().initialLoadSeq).toBeNull();
+    finish(replaySnapshot('run_replay', 3));
+    await opening;
+    expect(store.getState().initialLoadSeq).toBe(3);
+    handlers.onEvent(replayEvent('run_replay', 2));
+    await Promise.resolve();
+    expect(store.getState().projection?.lastSeq).toBe(2);
+    expect(store.getState().initialLoadSeq).toBe(3);
+    handlers.onEvent(replayEvent('run_replay', 3));
+    await Promise.resolve();
+    expect(store.getState().projection?.lastSeq).toBe(3);
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    store.getState().dispose();
+  });
+
+  it('is ready immediately when replay already passed the snapshot target', async () => {
+    let handlers!: TransportHandlers;
+    let finish!: (snapshot: RuntimeSnapshot) => void;
+    const snapshot = new Promise<RuntimeSnapshot>((resolve) => {
+      finish = resolve;
+    });
+    const subscribe = vi.fn((_runId: string, _after: number, next: TransportHandlers) => {
+      handlers = next;
+      return () => {};
+    });
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getSnapshot: () => snapshot,
+      subscribe,
+    } as never);
+    const opening = store.getState().open('run_caught_up');
+    await vi.waitFor(() => expect(subscribe).toHaveBeenCalledOnce());
+    handlers.onEvent(replayEvent('run_caught_up', 1));
+    handlers.onEvent(replayEvent('run_caught_up', 2));
+    await Promise.resolve();
+    expect(store.getState().projection?.lastSeq).toBe(2);
+    expect(store.getState().initialLoadSeq).toBeNull();
+    finish(replaySnapshot('run_caught_up', 2));
+    await opening;
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    store.getState().dispose();
+  });
+
+  it('ignores a previous run snapshot and replay after switching to another run', async () => {
+    const handlers = new Map<string, TransportHandlers>();
+    const resolvers = new Map<string, (snapshot: RuntimeSnapshot) => void>();
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getSnapshot: (id: string) =>
+        new Promise<RuntimeSnapshot>((resolve) => resolvers.set(id, resolve)),
+      subscribe: (id: string, _after: number, next: TransportHandlers) => {
+        handlers.set(id, next);
+        return () => {};
+      },
+    } as never);
+    const old = store.getState().open('run_old');
+    await vi.waitFor(() => expect(handlers.has('run_old')).toBe(true));
+    const current = store.getState().open('run_current');
+    await vi.waitFor(() => expect(handlers.has('run_current')).toBe(true));
+    expect(store.getState().initialLoadSeq).toBeNull();
+    resolvers.get('run_current')?.(replaySnapshot('run_current', 2));
+    await current;
+    expect(store.getState().initialLoadSeq).toBe(2);
+    handlers.get('run_old')?.onEvent(replayEvent('run_old', 1));
+    handlers.get('run_old')?.onError?.(new Error('obsolete replay failure'));
+    resolvers.get('run_old')?.(replaySnapshot('run_old', 0));
+    await old;
+    await Promise.resolve();
+    expect(store.getState().runId).toBe('run_current');
+    expect(store.getState().initialLoadSeq).toBe(2);
+    expect(store.getState().streamError).toBeNull();
+    expect(store.getState().projection?.lastSeq).toBe(0);
+    handlers.get('run_current')?.onEvent(replayEvent('run_current', 1));
+    handlers.get('run_current')?.onEvent(replayEvent('run_current', 2));
+    await Promise.resolve();
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    store.getState().dispose();
+  });
+
+  it('unblocks after snapshot failure and continues displaying later stream events', async () => {
+    let handlers!: TransportHandlers;
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getSnapshot: async () => {
+        throw new Error('snapshot unavailable');
+      },
+      subscribe: (_id: string, _after: number, next: TransportHandlers) => {
+        handlers = next;
+        return () => {};
+      },
+    } as never);
+    await store.getState().open('run_error');
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    expect(store.getState().streamError).toContain('snapshot unavailable');
+    handlers.onEvent(replayEvent('run_error', 1));
+    await Promise.resolve();
+    expect(store.getState().projection?.lastSeq).toBe(1);
+    store.getState().dispose();
+  });
+
+  it('unblocks after a replay stream error before reaching the snapshot target', async () => {
+    let handlers!: TransportHandlers;
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getSnapshot: async () => replaySnapshot('run_error', 2),
+      subscribe: (_id: string, _after: number, next: TransportHandlers) => {
+        handlers = next;
+        return () => {};
+      },
+    } as never);
+    await store.getState().open('run_error');
+    expect(store.getState().initialLoadSeq).toBe(2);
+    handlers.onError?.(new Error('replay disconnected'));
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    expect(store.getState().streamError).toContain('replay disconnected');
+    store.getState().dispose();
+  });
+
+  it('does not re-block when a delayed snapshot arrives after the replay stream fails', async () => {
+    let handlers!: TransportHandlers;
+    let finish!: (snapshot: RuntimeSnapshot) => void;
+    const snapshot = new Promise<RuntimeSnapshot>((resolve) => {
+      finish = resolve;
+    });
+    const subscribe = vi.fn((_runId: string, _after: number, next: TransportHandlers) => {
+      handlers = next;
+      return () => {};
+    });
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getSnapshot: () => snapshot,
+      subscribe,
+    } as never);
+    const opening = store.getState().open('run_error');
+    await vi.waitFor(() => expect(subscribe).toHaveBeenCalledOnce());
+    expect(store.getState().initialLoadSeq).toBeNull();
+    handlers.onError?.(new Error('replay disconnected'));
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    finish(replaySnapshot('run_error', 2));
+    await opening;
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    expect(store.getState().streamError).toContain('replay disconnected');
+    store.getState().dispose();
+  });
+
+  it('is ready without waiting when the transport has no snapshot API', async () => {
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      subscribe: () => () => {},
+    } as never);
+    await store.getState().open('run_no_snapshot');
+    expect(store.getState().initialLoadSeq).toBeUndefined();
+    store.getState().dispose();
+  });
+});
 
 describe('run session', () => {
   it('shares an in-flight same-run open and starts a fresh read after disposal', async () => {

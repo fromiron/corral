@@ -355,10 +355,19 @@
       "needsYouList": "확인이 필요한 실행",
       "failedList": "실패한 실행",
       "showBranch": "{name} 아래 실행 {count}개 펼치기",
-      "foldBranch": "{name} 아래 실행 접기"
+      "foldBranch": "{name} 아래 실행 접기",
+      "question": "질문",
+      "sent": "보낸 것",
+      "questionStatus": {
+        "open": "답변 대기",
+        "answered": "답변됨",
+        "cancelled": "취소됨",
+        "timed_out": "시간 초과"
+      }
     }
   },
   "Reins": {
+    "executionNumber": "에이전트 실행 {number}",
     "heading": "Reins",
     "noTarget": "실행을 시작하고 지시할 실행을 고르세요.",
     "target": "대상",
@@ -569,6 +578,7 @@
     "requests": "진행 중인 모델 요청 {count, plural, one {#개} other {#개}}",
     "executions": "실행",
     "nodeExecutions": "{label} 실행 목록",
+    "allExecutions": "전체 실행",
     "noNodeExecutions": "이 실행에서 이 노드는 실행되지 않았습니다.",
     "closeNode": "닫기",
     "executionMissing": "{executionId}은(는) 이 실행의 실행이 아닙니다. 목록에서 실행을 고르세요.",
@@ -621,6 +631,8 @@
     "count": "전체 {total, number}개 중 {shown, plural, one {#개} other {#개}}",
     "actor": "주체",
     "kind": "종류",
+    "elapsed": "경과",
+    "event": "내용",
     "execution": "실행",
     "all": "전체",
     "actors": {
@@ -630,7 +642,11 @@
     },
     "empty": "이 필터에 맞는 이벤트가 없습니다.",
     "selected": "선택한 이벤트",
-    "none": "이벤트를 고르면 상세가 보입니다."
+    "round": "{no}회차",
+    "attempt": "{no}번째 시도",
+    "causes": "원인",
+    "openExecution": "실행 열기",
+    "payload": "기록 내용"
   },
   "Models": {
     "loadFailed": "모델 설정을 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.",
@@ -953,14 +969,40 @@
     }
   },
   "RunCanvas": {
+    "closePreview": "빠른 정보 닫기",
+    "loading": "활동 기록을 불러오는 중…",
     "label": "실행 그래프",
     "layout": {
       "saved": "저장된 팀의 배치",
       "auto": "자동 배치"
     },
     "layoutNote": "위치일 뿐이며 실행 내용은 바꾸지 않습니다.",
-    "relationsLegend": "옅은 선: 정의 연결 · 굵은 선: 관측된 호출",
-    "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개"
+    "relationsLegend": "관측된 관계",
+    "empty": "아직 에이전트 활동이 없습니다",
+    "requested": "요청됨",
+    "models": "모델 {count}개",
+    "profiles": "모델 프로필 {count}개",
+    "unsettled": "최종 상태 미기록",
+    "relationship": "{source} → {target}: {relations}",
+    "relationCount": "{kind} {count}",
+    "relation": {
+      "delegate": "위임",
+      "question": "질문",
+      "answer": "응답",
+      "read": "자료 읽음",
+      "input": "모델 입력"
+    },
+    "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개",
+    "zoomIn": "확대",
+    "zoomOut": "축소",
+    "fit": "화면에 맞추기",
+    "state": {
+      "call": "지시",
+      "data": "자료 전달",
+      "ask": "확인 필요",
+      "failed": "실패",
+      "settled": "완료된 흐름"
+    }
   },
   "Judgments": {
     "heading": "추론 강도 판정",
@@ -2967,6 +3009,7 @@
     "noCopy": "작업 사본 없음",
     "noSession": "연결된 세션 작업 사본 없음",
     "context": "컨텍스트와 비용",
+    "contextOnly": "컨텍스트",
     "estimate": "메시지 약 {count, number}토큰",
     "unknown": "알 수 없음",
     "lastRequest": "이 실행의 마지막 기록된 요청",
@@ -4601,6 +4644,11 @@
     "agentDetails": "에이전트 활동"
   },
   "RunMonitor": {
+    "backToWork": "작업으로 돌아가기",
+    "runInfo": "실행 정보",
+    "steer": "지시하기",
+    "relations": "작업 관계",
+    "settings": "설정",
     "flow": "작업 흐름",
     "views": "실행 보기",
     "graph": "그래프",
@@ -4624,7 +4672,6 @@
     "currentEvidence": "현재 파일 작업·검증·복구 정보는 최신 상태에서 확인할 수 있습니다.",
     "executionMissingAt": "실행 {executionId}은 이 시점에 존재하지 않습니다.",
     "noIntervals": "이 시점에 관측된 실행 구간이 없습니다.",
-    "lifespanNote": "대기를 포함한 관측 구간입니다. 끝나지 않은 실행은 마지막 기록 시점까지만 표시합니다.",
     "lifespan": "{start}부터 {end}까지 관측",
     "milliseconds": "{value}ms",
     "iteration": "반복 {number}회",
@@ -4651,14 +4698,11 @@
     "showPanel": "옆 패널 보기",
     "hidePanel": "옆 패널 숨기기",
     "results": "결과",
-    "replay": "다시 재생",
-    "stopReplay": "재생 멈추기",
     "timeViews": "시간축 보기",
     "byAgent": "에이전트별",
     "byTask": "작업별",
     "taskTimeline": {
       "title": "작업별 시간",
-      "note": "작업마다 첫 시도가 배정된 때부터 완료될 때까지를 그립니다. 예정 시간은 기록되지 않아 실제 구간만 보입니다.",
       "step": "작업",
       "time": "경과",
       "row": "{label}: {status}, {took}",
@@ -4666,7 +4710,10 @@
       "empty": "이 실행에 기록된 작업이 없습니다."
     },
     "closeResult": "결과 닫기",
-    "dockHeight": "보기 높이"
+    "dockHeight": "보기 높이",
+    "planCount": "작업 계획 {count}개",
+    "callBreakdown": "선택한 실행의 호출 시간",
+    "modelCall": "모델 요청 {no}"
   },
   "Failure": {
     "cancelled": "이 단계는 취소되었습니다.",

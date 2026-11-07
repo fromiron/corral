@@ -4,7 +4,7 @@ import approvalDefinition from '../../../../examples/research-team.corral.json' 
   type: 'json',
 };
 import approvalLayout from '../../../../examples/research-team.layout.json' with { type: 'json' };
-import { panelTab, requestBox } from '../workbench.ts';
+import { openResult, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function startRun(
@@ -46,7 +46,12 @@ async function startRun(
       definitionRevision: saved.record.definitionRevision,
       mode: 'mock',
     });
-    return { runId: started.runId as string, sessionId: session.sessionId as string };
+    return {
+      runId: started.runId as string,
+      sessionId: session.sessionId as string,
+      corralId: saved.record.corralId as string,
+      definitionRevision: saved.record.definitionRevision as number,
+    };
   }, fixture);
 }
 
@@ -57,11 +62,96 @@ async function finishedRun(
   const { runId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await expect(page.getByTestId('run-activity')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
+  await expect(page.getByTestId('run-side')).toBeHidden();
   return new URL(page.url()).pathname;
 }
 
-test('live event counts keep event filters, selection and scroll in the dock', async ({
+test('a run completed behind conversation fits its graph when opened and then preserves the chosen zoom', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const started = await startRun(page, corral);
+  await expect
+    .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
+    .toBe('succeeded');
+  // The run workspace may already exist behind the active conversation tab.
+  await corral.open(`/sessions/${started.sessionId}`);
+  await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await panelTab(page, 'Execution history');
+  const graph = page.getByRole('group', { name: 'Run graph', exact: true });
+  await expect(graph).toBeVisible();
+  await panelTab(page, 'Conversation');
+  const nextRunId = await page.evaluate(async ({ sessionId, corralId, definitionRevision }) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const response = await fetch('/api/v1/runs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+      body: JSON.stringify({
+        schemaVersion: '0.1',
+        commandId: 'run-page-hidden-graph-fit',
+        sessionId,
+        corralId,
+        definitionRevision,
+        mode: 'mock',
+      }),
+    });
+    if (!response.ok) throw new Error(`run setup: ${response.status}`);
+    return (await response.json()).runId as string;
+  }, started);
+  await expect
+    .poll(() => corral.server.coordinator.getSnapshot(nextRunId).projection.status)
+    .toBe('succeeded');
+  await expect(page.getByTestId('composer-status-pills')).toContainText('Run #2');
+  await expect(graph).toBeHidden();
+  await panelTab(page, 'Execution history');
+  await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
+  await expect(graph).toBeVisible();
+  await expect
+    .poll(() =>
+      graph.evaluate((canvas) => {
+        const bounds = canvas.getBoundingClientRect();
+        const viewport = canvas.querySelector('[data-graph-stage]');
+        const nodes = [...canvas.querySelectorAll('[data-agent-id] [data-run-status]')].map(
+          (node) => node.getBoundingClientRect(),
+        );
+        if (!viewport || !nodes.length) return false;
+        const zoom = new DOMMatrixReadOnly(getComputedStyle(viewport).transform).m11;
+        // A hidden, zero-size first fit leaves the graph at its minimum scale. Small graphs
+        // may legitimately fit at maxZoom=1 without occupying half of a large canvas.
+        return (
+          zoom > 0.25 &&
+          nodes.every(
+            (node) =>
+              node.width > 40 &&
+              node.height > 20 &&
+              node.left >= bounds.left - 2 &&
+              node.right <= bounds.right + 2 &&
+              node.top >= bounds.top - 2 &&
+              node.bottom <= bounds.bottom + 2,
+          )
+        );
+      }),
+    )
+    .toBe(true);
+  const viewport = graph.locator('[data-graph-stage]');
+  const initial = await viewport.getAttribute('style');
+  await graph.getByRole('button', { name: /^zoom in$/i }).click();
+  await expect(viewport).not.toHaveAttribute('style', initial ?? '');
+  const preferred = await viewport.getAttribute('style');
+  await panelTab(page, 'Conversation');
+  await expect(graph).toBeHidden();
+  await panelTab(page, 'Execution history');
+  await expect(graph).toBeVisible();
+  await expect(viewport).toHaveAttribute('style', preferred ?? '');
+  expect(corral.errors).toEqual([]);
+});
+
+test('live event counts keep event filters, selection and scroll in the primary workspace', async ({
   page,
   corral,
 }) => {
@@ -71,12 +161,13 @@ test('live event counts keep event filters, selection and scroll in the dock', a
     layout: approvalLayout,
   });
   await corral.open(`/runs/${runId}`);
+  await page.getByRole('button', { name: /^Needs your input/ }).click();
   const approval = page.getByRole('button', { name: 'Continue with this version', exact: true });
   await expect(approval).toBeVisible();
-  const dock = page.getByTestId('run-dock');
-  const tab = dock.getByRole('tab', { name: /^Events \d+$/ });
+  const monitor = page.getByTestId('run-monitor');
+  const tab = monitor.getByRole('tab', { name: /^Events \d+$/ });
   await tab.click();
-  const events = dock.locator('[data-run-dock-panel="events"]');
+  const events = monitor.locator('[data-run-workspace-view="events"]');
   const kind = events.getByRole('combobox', { name: 'Kind', exact: true });
   await kind.click();
   await page.getByRole('option', { name: 'tool', exact: true }).click();
@@ -95,92 +186,279 @@ test('live event counts keep event filters, selection and scroll in the dock', a
   await expect(selected).toHaveText(selectedText ?? '');
   await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(top);
   await expect(tab).toHaveAttribute('aria-selected', 'true');
-  await page.screenshot({ path: test.info().outputPath('run-dock-live-events.png') });
+  await page.screenshot({ path: test.info().outputPath('run-workspace-live-events.png') });
   expect(corral.errors).toEqual([]);
 });
 
-test('switching and folding dock views preserves the column, side panel and graph', async ({
+test('switching workspace views and reading a result preserves selection, scroll and graph state', async ({
   page,
   corral,
 }) => {
-  await page.setViewportSize({ width: 1600, height: 600 });
+  await page.setViewportSize({ width: 1600, height: 500 });
   await finishedRun(page, corral);
   const monitor = page.getByTestId('run-monitor');
-  const dock = page.getByTestId('run-dock');
-  const column = page.getByTestId('run-column-scroll');
+  const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
+  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  const flow = monitor.locator('[data-run-workspace-view="flow"]');
+  await expect(flow.getByRole('tree')).toBeVisible();
   const side = page.getByTestId('run-side');
-  await monitor.getByTestId('run-activity').locator('button[data-execution-id]').first().click();
+  await flow
+    .getByRole('button', { name: / · exec_/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/execution=exec_/);
+  const selectedExecution = new URL(page.url()).searchParams.get('execution');
+  await monitor.getByRole('button', { name: 'Run info', exact: true }).click();
   await side.getByRole('tab', { name: 'Usage', exact: true }).click();
   await expect
     .poll(() => side.evaluate((element) => element.scrollHeight > element.clientHeight))
     .toBe(true);
   const sideBounds = await side.boundingBox();
-  if (!sideBounds) throw new Error('The default side panel must be visible');
+  if (!sideBounds) throw new Error('The selected execution side panel must be visible');
   // Scroll the panel's padding, not a nested table or log inside it.
   await page.mouse.move(sideBounds.x + sideBounds.width - 4, sideBounds.y + sideBounds.height / 2);
   await page.mouse.wheel(0, 180);
   await expect.poll(() => side.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const sideTop = await side.evaluate((element) => element.scrollTop);
-  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
-  const events = dock.locator('[data-run-dock-panel="events"]');
-  await events.focus();
-  await page.keyboard.press('End');
-  await expect
-    .poll(() =>
-      events.evaluate(
-        (element) =>
-          element.scrollTop > 0 &&
-          Math.abs(element.scrollTop - (element.scrollHeight - element.clientHeight)) < 1,
-      ),
-    )
-    .toBe(true);
-  const eventTop = await events.evaluate((element) => element.scrollTop);
-  await column.hover();
+  await flow.hover();
   await page.mouse.wheel(0, 150);
-  await expect.poll(() => column.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  const columnTop = await column.evaluate((element) => element.scrollTop);
+  await expect.poll(() => flow.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const flowTop = await flow.evaluate((element) => element.scrollTop);
+  await views.getByRole('tab', { name: /^Events \d+$/ }).click();
+  const events = monitor.locator('[data-run-workspace-view="events"]');
+  const eventList = events.getByTestId('timeline-scroll');
+  await eventList.getByRole('button').first().click();
+  const selectedText = await events.getByTestId('timeline-selected').textContent();
+  await eventList.hover();
+  await page.mouse.wheel(0, 180);
+  await expect.poll(() => eventList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const eventTop = await eventList.evaluate((element) => element.scrollTop);
 
-  await dock.getByRole('tab', { name: 'Graph', exact: true }).click();
-  const graph = monitor.getByRole('application', { name: 'Run graph', exact: true });
+  await views.getByRole('tab', { name: 'Graph', exact: true }).click();
+  const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
   await graph.getByRole('button', { name: /^zoom in$/i }).click();
-  const viewport = graph.locator('.react-flow__viewport');
+  const viewport = graph.locator('[data-graph-stage]');
   const transform = await viewport.getAttribute('style');
-  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
-  await expect.poll(() => events.evaluate((element) => element.scrollTop)).toBe(eventTop);
-  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
-  await expect(dock.locator('[data-run-dock-content]')).toBeHidden();
-  await dock.getByRole('tab', { name: /^Events \d+$/ }).click();
-  await expect.poll(() => events.evaluate((element) => element.scrollTop)).toBe(eventTop);
-  await dock.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await openResult(page);
+  const document = monitor.getByTestId('run-document');
+  await expect(document.getByTestId('result-body')).toBeVisible();
+  await expect(graph).toBeHidden();
+  await document.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', transform ?? '');
-  await expect.poll(() => column.evaluate((element) => element.scrollTop)).toBe(columnTop);
   await expect.poll(() => side.evaluate((element) => element.scrollTop)).toBe(sideTop);
   await expect(side.getByRole('tab', { name: 'Usage', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  await page.screenshot({ path: test.info().outputPath('run-dock-scroll-preserved.png') });
+  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await expect.poll(() => flow.evaluate((element) => element.scrollTop)).toBe(flowTop);
+  await expect(
+    flow
+      .getByRole('treeitem', { selected: true })
+      .locator(`[data-execution-id="${selectedExecution}"]`)
+      .first(),
+  ).toBeVisible();
+  await views.getByRole('tab', { name: /^Events \d+$/ }).click();
+  await expect.poll(() => eventList.evaluate((element) => element.scrollTop)).toBe(eventTop);
+  await expect(events.getByTestId('timeline-selected')).toHaveText(selectedText ?? '');
+  await views.getByRole('tab', { name: /^Events \d+$/ }).click();
+  await expect(events).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('run-workspace-scroll-preserved.png') });
   expect(corral.errors).toEqual([]);
 });
 
-test('a reload keeps the chosen execution and the saved layout', async ({ page, corral }) => {
+test('a graph preview opens its exact readable result directly and returns to the node', async ({
+  page,
+  corral,
+}) => {
+  const runPath = await finishedRun(page, corral);
+  const runId = runPath.split('/').at(-1);
+  if (!runId) throw new Error('Run ID missing');
+  const { projection } = corral.server.coordinator.getSnapshot(runId);
+  const artifactId = projection.output?.artifactVersionIds[0];
+  const artifact = artifactId ? projection.artifacts[artifactId] : undefined;
+  const execution = artifact ? projection.executions[artifact.authorExecutionId] : undefined;
+  if (!artifact || !execution) throw new Error('Output artifact and its author are required');
+  const monitor = page.getByTestId('run-monitor');
+  const side = monitor.getByTestId('run-side');
+  await monitor.getByRole('button', { name: 'Run info', exact: true }).click();
+  await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
+  const node = monitor
+    .getByRole('group', { name: 'Run graph', exact: true })
+    .locator(`[data-agent-id="${execution.nodeId}"]`)
+    .getByRole('button');
+  await node.click();
+  await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
+  const row = page.locator(
+    `[data-slot="popover-popup"] li[data-execution-id="${execution.executionId}"]`,
+  );
+  const result = row.getByRole('button', {
+    name: `${artifact.name} v${artifact.version}`,
+    exact: true,
+  });
+  await expect(result).toHaveAccessibleDescription(
+    new RegExp(
+      `Agent execution ${projection.executionOrder.indexOf(execution.executionId) + 1}.*Attempt ${execution.attemptNo}`,
+    ),
+  );
+  await result.click();
+  const document = monitor.getByTestId('run-document');
+  await expect(document.getByTestId('artifact-viewer')).toBeVisible();
+  await expect(document).toBeFocused();
+  await expect(side).toBeHidden();
+  expect(new URL(page.url()).searchParams.get('artifact')).toBe(artifactId);
+  expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
+  await document.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await expect(node).toBeFocused();
+  await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+test.describe('active graph preview', () => {
+  let reply = Promise.resolve();
+  let releaseReply = () => {};
+  test.use({ agentReply: { reply: () => 'Deterministic response', beforeReply: () => reply } });
+
+  test('opens Reins for the chosen execution and keeps its draft when returning to the graph', async ({
+    page,
+    corral,
+  }) => {
+    reply = new Promise<void>((resolve) => {
+      releaseReply = resolve;
+    });
+    try {
+      const { runId } = await startRun(page, corral);
+      await expect
+        .poll(() => corral.server.coordinator.getSnapshot(runId).projection.executionOrder.length)
+        .toBeGreaterThan(0);
+      const { projection } = corral.server.coordinator.getSnapshot(runId);
+      const executionId = projection.executionOrder[0];
+      const execution = executionId ? projection.executions[executionId] : undefined;
+      if (!executionId || !execution) throw new Error('Active execution missing');
+      await corral.open(`/runs/${runId}`);
+      const monitor = page.getByTestId('run-monitor');
+      const node = monitor
+        .getByRole('group', { name: 'Run graph', exact: true })
+        .locator(`[data-agent-id="${execution.nodeId}"]`)
+        .getByRole('button');
+      await node.click();
+      const row = page.locator(
+        `[data-slot="popover-popup"] li[data-execution-id="${executionId}"]`,
+      );
+      const steer = row.getByRole('button', { name: 'Give instruction', exact: true });
+      await expect(steer).toHaveAccessibleDescription('Agent execution 1 · Attempt 1');
+      await steer.click();
+      const reins = monitor.getByTestId('run-instructions');
+      await expect(reins).toBeVisible();
+      await expect(reins).toBeFocused();
+      await expect(reins).toContainText('Agent execution 1');
+      await expect(monitor.getByTestId('run-side')).toBeHidden();
+      expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
+      await reins.getByLabel('Instruction', { exact: true }).fill('Keep this draft');
+      await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
+      await expect(node).toBeFocused();
+      await node.click();
+      await row.getByRole('button', { name: 'Give instruction', exact: true }).click();
+      await expect(reins.getByLabel('Instruction', { exact: true })).toHaveValue('Keep this draft');
+      await expect(reins).toContainText('Agent execution 1');
+      expect(corral.errors).toEqual([]);
+    } finally {
+      releaseReply();
+    }
+  });
+});
+
+test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
-  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
-  await expect(page.getByText('Layout from the saved team')).toBeVisible();
+  await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
   await page
-    .getByTestId('run-activity')
-    .getByRole('button', { name: /^Research Helper\b/ })
+    .getByTestId('run-work-flow')
+    .getByRole('button', { name: /^Research Helper · exec_/ })
     .first()
     .click();
   await expect(page).toHaveURL(/execution=exec_/);
   const executionId = new URL(page.url()).searchParams.get('execution');
   await page.reload();
-  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();
-  const reins = page.getByRole('region', { name: 'Reins', exact: true });
-  await expect(reins).toContainText(`execution ${executionId}`);
+  await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
   await expect(
-    page.getByTestId('run-activity').locator(`button[data-execution-id="${executionId}"]`),
+    page
+      .getByRole('group', { name: 'Run graph', exact: true })
+      .locator('[data-agent-id="helper"]')
+      .getByRole('button'),
   ).toHaveAttribute('aria-pressed', 'true');
+  const side = page.getByTestId('run-side');
+  await side.getByRole('button', { name: 'Reins', exact: true }).click();
+  const reins = page.getByTestId('run-instructions');
+  await expect(reins).toContainText('Research Helper');
+  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
+  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await expect(
+    page
+      .getByTestId('run-work-flow')
+      .getByRole('treeitem', { selected: true })
+      .locator(`[data-execution-id="${executionId}"]`)
+      .first(),
+  ).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+test('a long multiline request keeps graph, events and run information reachable in the viewport', async ({
+  page,
+  corral,
+}) => {
+  const started = await startRun(page, corral);
+  const request = Array.from({ length: 10 }, (_, index) =>
+    `${index + 1}. Review the current layout and explain the findings with concrete examples. `.repeat(
+      3,
+    ),
+  ).join('\n');
+  await page.evaluate(
+    async ({ runId, sessionId, request }) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const response = await fetch(`/api/v1/sessions/${sessionId}/entries`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({ intent: 'next', text: request, state: 'started', runId }),
+      });
+      if (!response.ok) throw new Error(`entry setup: ${response.status}`);
+    },
+    { ...started, request },
+  );
+  await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  const monitor = page.getByTestId('run-monitor');
+  const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
+  const graphTab = views.getByRole('tab', { name: 'Graph', exact: true });
+  const eventsTab = views.getByRole('tab', { name: /^Events \d+$/ });
+  const info = monitor.getByRole('button', { name: 'Run info', exact: true });
+  for (const viewport of [
+    { width: 1280, height: 560 },
+    { width: 390, height: 664 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(graphTab).toBeInViewport({ ratio: 1 });
+    await expect(eventsTab).toBeInViewport({ ratio: 1 });
+    await expect(info).toBeInViewport({ ratio: 1 });
+    const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
+    await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+    await eventsTab.click();
+    await expect(monitor.locator('[data-run-workspace-view="events"]')).toBeVisible();
+    await graphTab.click();
+    await expect(graph).toBeVisible();
+    await info.click();
+    const details = page.getByTestId('run-side');
+    await expect(details).toBeVisible();
+    const close = details.getByRole('button', { name: 'Close details', exact: true });
+    await expect(close).toBeInViewport({ ratio: 1 });
+    await close.click();
+    await expect(graph).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  }
   expect(corral.errors).toEqual([]);
 });
 
@@ -197,10 +475,10 @@ test('an old view-point link opens current state without selecting a missing exe
   ).toHaveCount(0);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByRole('alert')).toContainText('exec_9999 is not part of this run');
-  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Reins', exact: true }).click();
-  const reins = page.getByRole('region', { name: 'Reins', exact: true });
-  await expect(reins.getByLabel('Instruction')).toHaveCount(0);
-  await expect(reins).not.toContainText('execution exec_');
+  const side = page.getByTestId('run-side');
+  await expect(side.getByRole('button', { name: 'Reins', exact: true })).toHaveCount(0);
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
 });
 
 test('ACTION-01 opens one scoped response host and keeps later typing focus', async ({
@@ -215,6 +493,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const action = page.getByTestId('dock-open-active-run');
   await expect(action).toContainText('response needed');
   await action.click();
+  await page.getByRole('button', { name: /^Needs your input/ }).click();
   const response = page.locator('[data-run-response]');
   await expect(response).toBeFocused();
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
@@ -222,12 +501,21 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   await expect(
     page.getByTestId('run-monitor').getByRole('region', { name: 'draft · Version 2', exact: true }),
   ).toBeVisible();
+  await page
+    .getByTestId('run-document')
+    .getByRole('button', { name: 'Back to work', exact: true })
+    .click();
+  await expect(response).toBeVisible();
   await response.getByRole('button', { name: 'review v2', exact: true }).click();
   await expect(
     page
       .getByTestId('run-monitor')
       .getByRole('region', { name: 'review · Version 2', exact: true }),
   ).toBeVisible();
+  await page
+    .getByTestId('run-document')
+    .getByRole('button', { name: 'Back to work', exact: true })
+    .click();
   await panelTab(page, 'Conversation');
   const input = requestBox(page);
   await input.fill('Keep typing while the run continues');
@@ -264,7 +552,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   expect(corral.errors).toEqual([]);
 });
 
-test('history announces its cursor, conversation clears it, and Results Back returns to chat', async ({
+test('legacy history links resolve current state, Results Back returns to chat, and graph follows the app theme', async ({
   page,
   corral,
 }, testInfo) => {
@@ -272,14 +560,10 @@ test('history announces its cursor, conversation clears it, and Results Back ret
   await expect
     .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
     .toBe('succeeded');
-  await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
+  await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}&atSeq=1`);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
-  await page
-    .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Previous', exact: true })
-    .click();
-  await expect(page.getByText('Historical view', { exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/atSeq=/);
+  await expect(page).not.toHaveURL(/[?&]atSeq=/);
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await panelTab(page, 'Conversation');
   await expect(page).not.toHaveURL(/atSeq=/);
   await page.getByRole('link', { name: 'Open in Results', exact: true }).first().click();
@@ -298,15 +582,35 @@ test('history announces its cursor, conversation clears it, and Results Back ret
   const historyTab = page.getByRole('tab', { name: 'Execution history', exact: true });
   await expect(historyTab).toBeVisible();
   await historyTab.click();
-  const flow = page.locator('.corral-flow').first();
+  const flow = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(flow).toBeVisible();
   await expect(flow).toHaveCSS('color-scheme', 'dark');
-  const node = flow.locator('.react-flow__node [data-slot="card"]').first();
-  await expect(node).toHaveCSS('background-color', 'rgb(37, 37, 37)');
-  const labels = await flow.locator('.react-flow__edge-text').allTextContents();
-  expect(labels.filter((label) => label === 'delegates')).toHaveLength(0);
-  expect(labels.some((label) => label.includes('observed'))).toBe(true);
+  const node = flow.locator('[data-agent-id="research"]');
+  const mark = node.locator('button > div').first();
+  await expect(mark).toBeVisible();
+  const darkSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const labels = await flow
+    .locator('li[data-source][data-target]')
+    .evaluateAll((edges) => edges.map((edge) => edge.textContent));
+  expect(labels.some((label) => /delegat/i.test(label ?? ''))).toBe(true);
+  const selectNode = node.getByRole('button');
+  await selectNode.focus();
+  await page.keyboard.press('Enter');
+  await expect(selectNode).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page
+      .locator('[data-slot="popover-popup"]')
+      .getByRole('region', { name: 'Research executions' }),
+  ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('dark-history.png') });
+  await page.evaluate(() =>
+    localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' })),
+  );
+  await page.reload();
+  await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+  await expect(flow).toHaveCSS('color-scheme', 'light');
+  const lightSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(lightSurface).not.toBe(darkSurface);
   expect(corral.errors).toEqual([]);
 });
 
@@ -355,8 +659,10 @@ test.describe('cancel recovery', () => {
         .getByRole('region', { name: 'Active run controls', exact: true })
         .getByRole('button', { name: 'Cancel whole run', exact: true })
         .click();
-      await page
-        .getByRole('dialog', { name: 'Cancel whole run', exact: true })
+      const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
+      await expect(confirmation).toHaveCount(1);
+      await expect(page.getByRole('dialog')).toHaveCount(1);
+      await confirmation
         .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
         .click();
       holdLifecycleReplies = false;
@@ -404,9 +710,11 @@ test.describe('cancel recovery', () => {
     await expect.poll(() => lifecycleReplies.length).toBeGreaterThan(0);
     const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
     await controls.getByRole('button', { name: 'Cancel whole run', exact: true }).click();
-    await expect(controls).toContainText('Cancellation has not been sent');
-    await page.reload();
     const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await expect(confirmation).toContainText('Cancellation has not been sent');
+    await page.reload();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
     await expect(confirmation).toContainText('Cancellation has not been sent');
     await confirmation
       .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })

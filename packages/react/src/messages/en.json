@@ -355,10 +355,19 @@
       "needsYouList": "Executions that need you",
       "failedList": "Failed executions",
       "showBranch": "Show {count, plural, one {# execution} other {# executions}} under {name}",
-      "foldBranch": "Fold the executions under {name}"
+      "foldBranch": "Fold the executions under {name}",
+      "question": "Question",
+      "sent": "Sent",
+      "questionStatus": {
+        "open": "Waiting for an answer",
+        "answered": "Answered",
+        "cancelled": "Cancelled",
+        "timed_out": "Timed out"
+      }
     }
   },
   "Reins": {
+    "executionNumber": "Agent execution {number}",
     "heading": "Reins",
     "noTarget": "Start a run and choose an execution to steer.",
     "target": "Target",
@@ -569,6 +578,7 @@
     "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
     "executions": "Executions",
     "nodeExecutions": "{label} executions",
+    "allExecutions": "All executions",
     "noNodeExecutions": "This node has not run in this run.",
     "closeNode": "Close",
     "executionMissing": "{executionId} is not part of this run. Choose an execution from the list.",
@@ -621,6 +631,8 @@
     "count": "{shown, plural, one {# event} other {# events}} of {total, number}",
     "actor": "Actor",
     "kind": "Kind",
+    "elapsed": "Elapsed",
+    "event": "Event",
     "execution": "Execution",
     "all": "All",
     "actors": {
@@ -630,7 +642,11 @@
     },
     "empty": "No events match these filters.",
     "selected": "Selected event",
-    "none": "Choose an event to see its details."
+    "round": "round {no}",
+    "attempt": "attempt {no}",
+    "causes": "Caused by",
+    "openExecution": "Open execution",
+    "payload": "Recorded content"
   },
   "Models": {
     "loadFailed": "Could not load model settings. Check the connection and try again.",
@@ -953,14 +969,40 @@
     }
   },
   "RunCanvas": {
+    "closePreview": "Close quick information",
+    "loading": "Loading agent activity…",
     "label": "Run graph",
     "layout": {
       "saved": "Layout from the saved team",
       "auto": "Arranged automatically"
     },
     "layoutNote": "Positions only; they do not change what ran.",
-    "relationsLegend": "Faint lines: definition · bold lines: observed calls",
-    "observedRelation": "{kind} · {count} observed · {active} in progress"
+    "relationsLegend": "Observed relationships",
+    "empty": "No agent activity yet",
+    "requested": "Requested",
+    "models": "{count} models",
+    "profiles": "{count} model profiles",
+    "unsettled": "Ended without a final state",
+    "relationship": "{source} → {target}: {relations}",
+    "relationCount": "{kind} {count}",
+    "relation": {
+      "delegate": "Delegation",
+      "question": "Question",
+      "answer": "Answer",
+      "read": "Read",
+      "input": "Model input"
+    },
+    "observedRelation": "{kind} · {count} observed · {active} in progress",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fit": "Fit view",
+    "state": {
+      "call": "Call",
+      "data": "Data",
+      "ask": "Needs you",
+      "failed": "Failed",
+      "settled": "Finished"
+    }
   },
   "Judgments": {
     "heading": "Effort judgments",
@@ -2967,6 +3009,7 @@
     "noCopy": "No working copy",
     "noSession": "No session working copy linked",
     "context": "Context and cost",
+    "contextOnly": "Context",
     "estimate": "About {count, number} message tokens",
     "unknown": "Unknown",
     "lastRequest": "Last recorded request for this execution",
@@ -4601,6 +4644,11 @@
     "agentDetails": "Agent activity"
   },
   "RunMonitor": {
+    "backToWork": "Back to work",
+    "runInfo": "Run info",
+    "steer": "Give instruction",
+    "relations": "Work relationships",
+    "settings": "Settings",
     "flow": "Work flow",
     "views": "Execution views",
     "graph": "Graph",
@@ -4624,7 +4672,6 @@
     "currentEvidence": "Current file, verification and recovery information is available in Latest.",
     "executionMissingAt": "Execution {executionId} does not exist at this point.",
     "noIntervals": "No execution intervals have been recorded at this point.",
-    "lifespanNote": "Observed lifetimes include waiting. Unfinished intervals stop at the last recorded event.",
     "lifespan": "Observed from {start} through {end}",
     "milliseconds": "{value} ms",
     "iteration": "Iteration {number}",
@@ -4651,14 +4698,11 @@
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",
     "results": "Results",
-    "replay": "Replay",
-    "stopReplay": "Stop replay",
     "timeViews": "Timeline views",
     "byAgent": "By agent",
     "byTask": "By task",
     "taskTimeline": {
       "title": "Time per task",
-      "note": "Each task runs from its first assigned attempt to its completion. Planned times are not recorded, so only actual intervals are shown.",
       "step": "Task",
       "time": "Elapsed",
       "row": "{label}: {status}, {took}",
@@ -4666,7 +4710,10 @@
       "empty": "No tasks were recorded in this run."
     },
     "closeResult": "Close result",
-    "dockHeight": "Views height"
+    "dockHeight": "Views height",
+    "planCount": "{count, plural, one {# work plan} other {# work plans}}",
+    "callBreakdown": "Timed calls of the selected execution",
+    "modelCall": "Model request {no}"
   },
   "Failure": {
     "cancelled": "This step was cancelled.",

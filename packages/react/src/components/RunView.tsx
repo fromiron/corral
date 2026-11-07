@@ -20,6 +20,7 @@ import {
   runFlowExecutionLoopId,
   selectRunFlowIterations,
 } from '../run/flow.ts';
+import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
@@ -443,14 +444,30 @@ export function ExecutionTree({
     const interval = intervals.get(id);
     const model = projection.modelProfiles[execution.modelProfile];
     const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
+    const handoffs = executionHandoffs(projection, id);
+    // A card names what its execution made, then where it sits among rounds and attempts.
+    const made = handoffs.flatMap((handoff) =>
+      handoff.kind === 'artifact' ? [`${handoff.name} v${handoff.version}`] : [],
+    );
     const task = [
+      made.join(', ') || null,
       execution.item ? t('item', execution.item) : null,
       round ? t('round', { no: round }) : null,
       execution.attemptNo > 1 ? t('attempt', { no: execution.attemptNo }) : null,
-      t('requests', { count: execution.modelCallIds.length }),
     ]
       .filter(Boolean)
       .join(' · ');
+    const sent = handoffs.flatMap((handoff) => {
+      const to = handoff.targets.map(labelOf).join(', ');
+      if (handoff.kind === 'artifact')
+        return to ? [{ id: handoff.id, text: `${handoff.name} v${handoff.version} → ${to}` }] : [];
+      return [
+        {
+          id: handoff.id,
+          text: `${tree('question')} → ${to} · ${tree(`questionStatus.${handoff.status}`)}`,
+        },
+      ];
+    });
     const children = (childrenOf.get(id) ?? []).flatMap((child) => node(child) ?? []);
     return {
       id,
@@ -459,7 +476,7 @@ export function ExecutionTree({
       ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
       status: executionAgentStatus(execution.status),
       statusLabel: statusLabel(execution.status),
-      task,
+      ...(task ? { task } : {}),
       ...(interval ? { startedAt: Date.parse(interval.startedAt) } : {}),
       ...(interval?.finished ? { endedAt: Date.parse(interval.endedAt) } : {}),
       ...(execution.waitingOn
@@ -471,12 +488,27 @@ export function ExecutionTree({
         : {}),
       ...(execution.error ? { error: execution.error } : {}),
       detail: (
-        <ExecutionDetail
-          id={id}
-          projection={projection}
-          streams={streams}
-          compact={compact || priorRound}
-        />
+        <>
+          {sent.length ? (
+            <ul aria-label={tree('sent')} className="flex flex-wrap gap-1">
+              {sent.map((item) => (
+                <li
+                  key={item.id}
+                  data-handoff
+                  className="rounded-md bg-muted px-1.5 text-caption text-muted-foreground"
+                >
+                  {item.text}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <ExecutionDetail
+            id={id}
+            projection={projection}
+            streams={streams}
+            compact={compact || priorRound}
+          />
+        </>
       ),
       cardProps: {
         id: `execution-${id}`,

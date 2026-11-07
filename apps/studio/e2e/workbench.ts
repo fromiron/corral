@@ -85,19 +85,19 @@ export async function chooseRun(page: Page, number: number) {
 }
 
 /**
- * Opens a result of the run page from its side panel: the first one, or the one whose card
- * matches `name`. A narrow page shows the panel first.
+ * Opens a result from the workspace's result list into the central document reader.
  */
 export async function openResult(page: Page, name?: RegExp) {
-  const side = page.getByTestId('run-side');
-  if (!(await side.isVisible()))
-    await page.getByRole('button', { name: 'Show side panel', exact: true }).click();
-  const section = side.getByRole('region', { name: 'Results', exact: true });
+  const section = page
+    .getByTestId('run-column')
+    .getByRole('region', { name: 'Results', exact: true })
+    .filter({ hasNot: page.getByTestId('run-results') });
   await (name
     ? section.getByRole('button', { name })
     : section.getByRole('button').first()
   ).click();
-  await expect(side.getByTestId('run-results')).toBeVisible();
+  await expect(page.getByTestId('run-document').getByTestId('run-results')).toBeVisible();
+  await expect(page.getByTestId('run-side')).toBeHidden();
 }
 
 /**

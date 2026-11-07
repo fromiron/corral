@@ -113,7 +113,7 @@ export function RunActions({
             // In a one-line bar the confirmation opens beside the button instead of growing the bar.
             <Popover open={confirming} onOpenChange={setConfirmCancel}>
               <PopoverTrigger render={cancelButton} />
-              <PopoverPopup align="end" side="bottom" width="sm">
+              <PopoverPopup align="end" side="bottom" width="sm" aria-label={t('cancelRun')}>
                 {confirmation}
               </PopoverPopup>
             </Popover>

@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { RunActivity, RunPlanCard } from './RunActivity.tsx';
+import { RunActivity, RunPlanCard, RunPlanStrip } from './RunActivity.tsx';
 
 const RUN = 'run_activity';
 const START = Date.parse('2026-10-15T00:00:00.000Z');
@@ -325,4 +325,46 @@ it('summarizes a work plan by its items and completed count', () => {
   expect(container.textContent).toContain('1/3 done');
   expect(container.textContent).toContain('Draft the summary');
   expect(container.querySelector('[data-summary-node]')).toBeNull();
+});
+
+it('folds the work plan into one line with progress and the current step until opened', () => {
+  const { projection } = fixture();
+  const container = show(
+    <RunPlanStrip
+      projection={projection}
+      plan={{
+        items: [
+          { id: 'a', title: 'Read the brief', status: 'completed' },
+          { id: 'b', title: 'Draft the summary', status: 'in_progress' },
+          { id: 'c', title: 'Check the sources', status: 'pending' },
+        ],
+      }}
+      planCount={1}
+      allPlans={<p>every plan</p>}
+    />,
+  );
+  const toggle = container.querySelector('button[aria-expanded]');
+  expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle?.textContent).toContain('1/3 done');
+  expect(toggle?.textContent).toContain('Draft the summary');
+  expect(container.textContent).not.toContain('Check the sources');
+  act(() => (toggle as HTMLButtonElement).click());
+  expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+  expect(container.textContent).toContain('Check the sources');
+  expect(container.textContent).not.toContain('every plan');
+});
+
+it('opens every plan when several were recorded, and shows nothing without one', () => {
+  const { projection } = fixture();
+  const several = show(
+    <RunPlanStrip projection={projection} plan={null} planCount={2} allPlans={<p>every plan</p>} />,
+  );
+  const toggle = several.querySelector('button[aria-expanded]') as HTMLButtonElement;
+  expect(toggle.textContent).toContain('2');
+  act(() => toggle.click());
+  expect(several.textContent).toContain('every plan');
+  const none = show(
+    <RunPlanStrip projection={projection} plan={null} planCount={0} allPlans={<p>every plan</p>} />,
+  );
+  expect(none.textContent).toBe('');
 });

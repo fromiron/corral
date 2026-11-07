@@ -268,3 +268,26 @@
   --xy-controls-button-color-hover: var(--foreground);
   --xy-controls-button-border-color: var(--border);
 }
+
+/* Run graph: a finished relation keeps its direction with a slow, sparse grey flow. */
+@keyframes flow-dash-slow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+.flow-dash.flow-dash-slow {
+  stroke-dasharray: 2 8;
+  animation: flow-dash-slow 4.5s linear infinite;
+}
+/* Without motion the dashes stop, so a mark at each midpoint carries the direction. */
+.run-graph-direction {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-dash.flow-dash-slow {
+    animation: none;
+  }
+  .run-graph-direction {
+    display: inline;
+  }
+}

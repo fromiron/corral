@@ -150,9 +150,16 @@ test.describe('viewed and active execution', () => {
       await expect(page.getByTestId('viewed-run-warning')).toContainText(
         'Viewing Run #1 while Run #2 is active',
       );
+      await expect(page.getByTestId('composer-destination')).toHaveText(
+        'Send to: next run in this session · queue',
+      );
+      const intent = page.getByRole('combobox', { name: 'What this is', exact: true });
+      await intent.click();
+      await page.getByRole('option', { name: /^Instruction/ }).click();
+      await expect(intent).toHaveAttribute('aria-expanded', 'false');
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
       await expect(page.getByTestId('composer-destination')).toContainText('instruction');
-      await page.getByRole('combobox', { name: 'What this is', exact: true }).click();
+      await intent.click();
       await page.getByRole('option', { name: /^Queue/ }).click();
       await box.fill('Keep this queued request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
@@ -166,6 +173,69 @@ test.describe('viewed and active execution', () => {
       await expect(page.getByTestId('composer-destination')).toHaveText(
         'Send to: next run in this session · queue',
       );
+      expect(corral.errors).toEqual([]);
+    } finally {
+      releaseReply();
+    }
+  });
+
+  test('the stop shortcut confirms the active run while viewing an older execution record', async ({
+    page,
+    corral,
+  }) => {
+    holdReply();
+    try {
+      await corral.open('/');
+      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      const box = requestBox(page);
+      await box.fill('First request');
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
+      const first = corral.server.coordinator.listRuns()[0];
+      if (!first) throw new Error('First run missing');
+      await page.getByRole('button', { name: 'Cancel whole run', exact: true }).first().click();
+      await page
+        .getByRole('dialog')
+        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
+        .click();
+      releaseReply();
+      await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
+
+      const sessionUrl = new URL(page.url());
+      sessionUrl.searchParams.set('run', first.runId);
+      await page.goto(sessionUrl.href);
+      holdReply();
+      await box.fill('Second request');
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      await expect(page.getByTestId('viewed-run-warning')).toContainText(
+        'Viewing Run #1 while Run #2 is active',
+      );
+      const second = corral.server.coordinator.listRuns()[0];
+      if (!second || second.runId === first.runId) throw new Error('Active run missing');
+      await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+      await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(first.runId);
+
+      const cancellations: { runId: string; type: string }[] = [];
+      page.on('request', (request) => {
+        if (request.method() !== 'POST' || !request.url().endsWith('/commands')) return;
+        const command = request.postDataJSON() as { runId: string; type: string };
+        if (command.type === 'cancel') cancellations.push(command);
+      });
+      await page.keyboard.press('ControlOrMeta+.');
+      const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
+      await expect(confirmation).toBeVisible();
+      expect(cancellations).toEqual([]);
+      expect(corral.server.coordinator.getSnapshot(second.runId).projection.status).toBe('running');
+      await confirmation
+        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
+        .click();
+      await expect
+        .poll(() => cancellations.map((command) => command.runId))
+        .toEqual([second.runId]);
+      releaseReply();
+      await expect
+        .poll(() => corral.server.coordinator.getSnapshot(second.runId).projection.status)
+        .toBe('cancelled');
       expect(corral.errors).toEqual([]);
     } finally {
       releaseReply();

@@ -1,184 +1,647 @@
-import type { CorralDefinition } from '@corral/contracts';
+import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import type { RunProjection } from '@corral/core';
+import { motion, useReducedMotion } from 'motion/react';
 import {
-  Background,
-  BaseEdge,
-  Controls,
-  type Edge,
-  type EdgeProps,
-  getBezierPath,
-  MarkerType,
-  type Node,
-  ReactFlow,
-  ReactFlowProvider,
-} from '@xyflow/react';
-import { useMemo } from 'react';
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
-import { StudioStoresProvider } from '../context.tsx';
-import { draftFromDefinition } from '../editor/model.ts';
-import { createEditorStore } from '../editor/store.ts';
+import { useStore } from 'zustand';
+import {
+  AgentCard,
+  AgentGraphNode,
+  type AgentMark,
+  type AgentStatus,
+  Button,
+  Popover,
+  PopoverClose,
+  PopoverCreateHandle,
+  PopoverPopup,
+  PopoverTitle,
+  PopoverTrigger,
+} from '../design-kit/index.ts';
+import { useShape } from '../design-kit/lib/shape-context.tsx';
+import { spring } from '../design-kit/lib/springs.ts';
+import { cn } from '../design-kit/lib/utils.ts';
+import {
+  buildRunAgentGraph,
+  type RunAgentGraph,
+  type RunAgentGraphRelation,
+} from '../run/agent-graph.ts';
+import { type AgentGraphPosition, layoutRunAgents } from '../run/agent-graph-layout.ts';
+import { type AgentGraphRoute, routeRelation } from '../run/agent-graph-routes.ts';
+import { type ObservedAgentModel, observedAgentModels } from '../run/agent-models.ts';
 import { useRunDisplay } from '../run/display.tsx';
-import type { RunCanvasLayout } from '../run/layout.ts';
-import { type ObservedRunRelation, observedRunRelations } from '../run/selectors.ts';
+import type { NodeRunStatus } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { flowEdges, flowNodes } from './CorralCanvas.tsx';
-import { type CanvasNodeData, nodeTypes } from './NodeViews.tsx';
-
-function ObservedEdge({
-  sourceX,
-  sourceY,
-  sourcePosition,
-  targetX,
-  targetY,
-  targetPosition,
-  label,
-  markerEnd,
-  style,
-}: EdgeProps) {
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
-  return (
-    <BaseEdge
-      path={path}
-      label={label}
-      labelX={labelX}
-      // Bottom port names need space; keep higher targets at their own path midpoint.
-      labelY={labelY < sourceY ? labelY : Math.max(labelY, sourceY + 40)}
-      markerEnd={markerEnd}
-      style={style}
-    />
-  );
-}
-
-const edgeTypes = { observed: ObservedEdge };
+import { ArrowRight, Maximize2, Minus, Plus, X } from '../ui/icons.ts';
 
 /**
- * The run's definition drawn with run state on each node. Read-only: it has
- * no drag, connect, delete or resize, and selecting a node only reports which node it was.
- * Nodes subscribe to their own status, so streamed text does not re-render the graph.
+ * The kit legend's Call, Answer (data), Needs you and Failed colours for work in progress;
+ * a finished relation keeps flowing slowly in grey so its direction stays readable.
  */
+type RelationState = 'call' | 'data' | 'ask' | 'failed' | 'settled';
+const stateColors: Record<RelationState, string> = {
+  call: 'var(--emphasis)',
+  data: 'var(--success)',
+  ask: 'var(--warning)',
+  failed: 'var(--destructive)',
+  settled: 'var(--muted-foreground)',
+};
+const relationStates: RelationState[] = ['call', 'data', 'ask', 'failed', 'settled'];
+
+// Node tile geometry from AgentGraphNode: a 160px column whose mark centre sits 28px down.
+const TILE = { halfWidth: 80, markCenter: 28, labelBottom: 100 } as const;
+const ZOOM = { min: 0.2, max: 2, step: 1.2 } as const;
+const FIT_PADDING = 48;
+
+interface Viewport {
+  x: number;
+  y: number;
+  k: number;
+}
+
+function kitStatus(status: NodeRunStatus): AgentStatus {
+  if (['active', 'model', 'tool', 'finalizing'].includes(status)) return 'running';
+  if (status === 'done') return 'done';
+  if (status === 'failed') return 'failed';
+  if (['cancelled', 'paused', 'pausing', 'cancelling'].includes(status)) return 'stopped';
+  if (status === 'waiting_approval') return 'waiting';
+  return 'queued';
+}
+
+function providerMark(provider: string | null | undefined): AgentMark | undefined {
+  if (!provider) return undefined;
+  if (provider.startsWith('anthropic')) return 'claude';
+  if (provider.startsWith('openai')) return 'openai';
+  if (provider.startsWith('google') || provider.startsWith('gemini')) return 'gemini';
+  if (provider.startsWith('mistral')) return 'mistral';
+  return undefined;
+}
+
+/** Work in progress wins (question, call, data), then a failure, then finished. */
+function relationState(relations: RunAgentGraphRelation[]): RelationState {
+  const active = relations.filter((relation) => relation.activeCount > 0);
+  if (active.some((relation) => relation.kind === 'question')) return 'ask';
+  if (active.some((relation) => relation.kind === 'delegate')) return 'call';
+  if (active.length) return 'data';
+  if (relations.some((relation) => relation.failedCount > 0)) return 'failed';
+  return 'settled';
+}
+
+function fitViewport(
+  positions: Iterable<AgentGraphPosition>,
+  width: number,
+  height: number,
+): Viewport {
+  const points = [...positions];
+  if (!points.length || !width || !height) return { x: 0, y: 0, k: 1 };
+  const minX = Math.min(...points.map((p) => p.x)) - TILE.halfWidth;
+  const maxX = Math.max(...points.map((p) => p.x)) + TILE.halfWidth;
+  const minY = Math.min(...points.map((p) => p.y)) - TILE.markCenter - 8;
+  const maxY = Math.max(...points.map((p) => p.y)) + TILE.labelBottom;
+  const k = Math.min(
+    1,
+    Math.max(
+      ZOOM.min,
+      Math.min(
+        (width - FIT_PADDING * 2) / (maxX - minX),
+        (height - FIT_PADDING * 2) / (maxY - minY),
+      ),
+    ),
+  );
+  return {
+    x: (width - (maxX - minX) * k) / 2 - minX * k,
+    y: (height - (maxY - minY) * k) / 2 - minY * k,
+    k,
+  };
+}
+
+interface GraphSnapshot {
+  graph: RunAgentGraph;
+  models: Record<string, ObservedAgentModel[]>;
+  ended: boolean;
+}
+
+interface Edge {
+  id: string;
+  source: string;
+  target: string;
+  route: AgentGraphRoute;
+  state: RelationState;
+  description: string;
+  label: string;
+}
+
+/** An observed relationship graph. Authoring nodes, ports and saved layout never enter this view. */
 export function RunCanvas({
   session,
   definition,
-  layout,
   selectedNodeId,
   onSelectNode,
+  renderNodePreview,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
-  layout: RunCanvasLayout;
   selectedNodeId: string | null;
-  onSelectNode: (nodeId: string | null) => void;
+  onSelectNode: (nodeId: string | null, trigger?: HTMLElement | null) => void;
+  renderNodePreview?: (
+    nodeId: string,
+    context: { close: () => void; trigger: HTMLElement | null },
+  ) => ReactNode;
 }) {
   const t = useTranslations('RunCanvas');
-  const tc = useTranslations('Canvas');
-  // Node views read node settings from an editor store; this one is never edited.
-  const editor = useMemo(
-    () => createEditorStore({ ...draftFromDefinition(definition), layout: layout.nodes }),
-    [definition, layout],
+  const statusText = useTranslations('Canvas.nodeStatus');
+  const reduce = useReducedMotion() ?? false;
+  const shape = useShape();
+  const hasPreview = renderNodePreview !== undefined;
+  const previewId = useId();
+  const [previewHandle] = useState(() => PopoverCreateHandle<string>());
+  const previewTrigger = useRef<HTMLElement | null>(null);
+  const [restorePreviewFocus, setRestorePreviewFocus] = useState(true);
+  const closePreviewForNavigation = () => {
+    setRestorePreviewFocus(false);
+    previewHandle.close();
+  };
+  const readGraph = useMemo(() => {
+    let previous: RunProjection | null | undefined;
+    let serialized = '';
+    return ({ projection }: { projection: RunProjection | null }) => {
+      if (projection === previous && serialized) return serialized;
+      previous = projection;
+      const graph = buildRunAgentGraph(projection, definition);
+      const models = Object.fromEntries(
+        graph.nodes.map((node) => [node.id, observedAgentModels(projection, node.executionIds)]),
+      );
+      serialized = JSON.stringify({
+        graph,
+        models,
+        ended: !!projection && TERMINAL_RUN_STATUSES.has(projection.status),
+      });
+      return serialized;
+    };
+  }, [definition]);
+  const signature = useRunDisplay(session, readGraph);
+  const { graph, models, ended } = useMemo(
+    () => JSON.parse(signature) as GraphSnapshot,
+    [signature],
   );
-  const nodes = useMemo<Node<CanvasNodeData>[]>(
-    () =>
-      flowNodes(definition.nodes, layout.nodes, selectedNodeId).map((node) => ({
-        ...node,
-        draggable: false,
-        connectable: false,
-        deletable: false,
-      })),
-    [definition.nodes, layout.nodes, selectedNodeId],
+  const readingInitialHistory = useStore(session, (state) => state.initialLoadSeq !== undefined);
+  const placed = useRef(new Map<string, AgentGraphPosition>());
+  const positions = useMemo(() => {
+    if (readingInitialHistory) return placed.current;
+    placed.current = layoutRunAgents(graph, placed.current);
+    return placed.current;
+  }, [graph, readingInitialHistory]);
+  const pane = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState<Viewport | null>(null);
+  const hasNodes = graph.nodes.length > 0;
+  const fit = useCallback(() => {
+    const element = pane.current;
+    if (!element) return;
+    setViewport(fitViewport(placed.current.values(), element.clientWidth, element.clientHeight));
+  }, []);
+  // Fit once, when the pane first has a size and the complete initial history is placed.
+  useLayoutEffect(() => {
+    const element = pane.current;
+    if (viewport || readingInitialHistory || !hasNodes || !element) return;
+    const measure = () => {
+      if (element.clientWidth > 0 && element.clientHeight > 0) fit();
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [viewport, hasNodes, readingInitialHistory, fit]);
+
+  const zoomAt = useCallback(
+    (factor: number, at?: { x: number; y: number }) => {
+      previewHandle.close();
+      setViewport((current) => {
+        if (!current) return current;
+        const element = pane.current;
+        const point = at ?? {
+          x: (element?.clientWidth ?? 0) / 2,
+          y: (element?.clientHeight ?? 0) / 2,
+        };
+        const k = Math.min(ZOOM.max, Math.max(ZOOM.min, current.k * factor));
+        return {
+          k,
+          x: point.x - ((point.x - current.x) * k) / current.k,
+          y: point.y - ((point.y - current.y) * k) / current.k,
+        };
+      });
+    },
+    [previewHandle],
   );
-  const relationSignature = useRunDisplay(session, (s) =>
-    JSON.stringify(observedRunRelations(s.projection, definition)),
+  useEffect(() => {
+    const element = pane.current;
+    if (!element) return;
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = element.getBoundingClientRect();
+      zoomAt(Math.exp(-event.deltaY * 0.002), {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      });
+    };
+    element.addEventListener('wheel', wheel, { passive: false });
+    return () => element.removeEventListener('wheel', wheel);
+  }, [zoomAt]);
+  const drag = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target as Element).closest('button')) return;
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || current.id !== event.pointerId) return;
+    const dx = event.clientX - current.x;
+    const dy = event.clientY - current.y;
+    if (!current.moved && Math.hypot(dx, dy) < 3) return;
+    if (!current.moved) previewHandle.close();
+    current.moved = true;
+    current.x = event.clientX;
+    current.y = event.clientY;
+    setViewport((value) => (value ? { ...value, x: value.x + dx, y: value.y + dy } : value));
+  };
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || current.id !== event.pointerId) return;
+    drag.current = null;
+    // A press on the empty stage that did not pan dismisses the quick view.
+    if (!current.moved) previewHandle.close();
+  };
+
+  const adjacent = useMemo(() => {
+    const set = new Set([selectedNodeId]);
+    for (const relation of graph.relations)
+      if (relation.source === selectedNodeId || relation.target === selectedNodeId) {
+        set.add(relation.source);
+        set.add(relation.target);
+      }
+    return set;
+  }, [graph.relations, selectedNodeId]);
+  const nameOf = useCallback(
+    (id: string) => graph.nodes.find((node) => node.id === id)?.label ?? id,
+    [graph.nodes],
   );
   const edges = useMemo<Edge[]>(() => {
-    const observed = JSON.parse(relationSignature) as ObservedRunRelation[];
-    return [
-      ...flowEdges(definition, (kind) => tc(`linkLabel.${kind}`))
-        .filter(
-          (edge) =>
-            !observed.some(
-              (relation) =>
-                relation.source === edge.source &&
-                relation.target === edge.target &&
-                relation.kind === edge.sourceHandle,
-            ),
+    const groups = new Map<string, RunAgentGraphRelation[]>();
+    for (const relation of graph.relations) {
+      const key = JSON.stringify([relation.source, relation.target]);
+      groups.set(key, [...(groups.get(key) ?? []), relation]);
+    }
+    const leads = new Set(graph.nodes.filter((node) => node.lead).map((node) => node.id));
+    return [...groups].map(([id, relations]) => {
+      const first = relations[0] as RunAgentGraphRelation;
+      const description = relations
+        .map((relation) =>
+          t('relationCount', { kind: t(`relation.${relation.kind}`), count: relation.count }),
         )
-        .map((edge) => ({
-          ...edge,
-          ariaLabel: typeof edge.label === 'string' ? edge.label : undefined,
-          label: observed.some(
-            (relation) => relation.source === edge.source && relation.kind === edge.sourceHandle,
-          )
-            ? undefined
-            : edge.label,
-          style: { ...edge.style, opacity: 0.4 },
-          deletable: false,
-          selectable: false,
-        })),
-      ...observed.map((relation) => ({
-        id: `observed:${relation.kind}:${relation.source}:${relation.target}`,
-        type: 'observed',
-        source: relation.source,
-        sourceHandle: relation.kind,
-        target: relation.target,
-        targetHandle: relation.targetHandle,
-        label: t('observedRelation', {
-          kind: tc(`linkLabel.${relation.kind}`),
-          count: relation.count,
-          active: relation.activeCount,
+        .join(' · ');
+      return {
+        id,
+        source: first.source,
+        target: first.target,
+        route: routeRelation({
+          source: first.source,
+          target: first.target,
+          from: positions.get(first.source) ?? { x: 0, y: 0 },
+          to: positions.get(first.target) ?? { x: 0, y: 0 },
+          leads,
+          opposite: groups.has(JSON.stringify([first.target, first.source])),
         }),
-        ariaLabel: t('observedRelation', {
-          kind: tc(`linkLabel.${relation.kind}`),
-          count: relation.count,
-          active: relation.activeCount,
+        state: relationState(relations),
+        description,
+        label: t('relationship', {
+          source: nameOf(first.source),
+          target: nameOf(first.target),
+          relations: description,
         }),
-        className: 'corral-observed-link',
-        style: {
-          stroke: relation.activeCount ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
-          strokeWidth: 2.5,
-        },
-        markerEnd: { type: MarkerType.ArrowClosed },
-        deletable: false,
-        selectable: false,
-        animated: false,
-      })),
-    ];
-  }, [definition, relationSignature, t, tc]);
-  return (
-    <StudioStoresProvider editor={editor} session={session} readOnly>
-      <ReactFlowProvider>
-        <div className="relative h-full w-full" role="application" aria-label={t('label')}>
-          <ReactFlow
-            className="corral-flow"
-            nodes={nodes}
-            edges={edges}
-            edgeTypes={edgeTypes}
-            nodeTypes={nodeTypes}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            edgesFocusable={false}
-            deleteKeyCode={null}
-            onNodeClick={(_event, node) => onSelectNode(node.id)}
-            onPaneClick={() => onSelectNode(null)}
-            elevateNodesOnSelect={false}
-            fitView
-            fitViewOptions={{ padding: 0.08, maxZoom: 1 }}
-            minZoom={0.2}
-            colorMode="system"
+      };
+    });
+  }, [graph, positions, nameOf, t]);
+
+  const nodeLayer = useMemo(
+    () =>
+      graph.nodes.map((node, index) => {
+        const position = positions.get(node.id) ?? { x: 0, y: 0 };
+        const recordedModels = models[node.id] ?? [];
+        const model =
+          recordedModels.length > 1
+            ? t(recordedModels.every((model) => model.identified) ? 'models' : 'profiles', {
+                count: recordedModels.length,
+              })
+            : recordedModels[0]?.name;
+        const provider = recordedModels.length === 1 ? recordedModels[0]?.provider : null;
+        const logo = providerMark(provider);
+        const summary = node.summary;
+        const unsettled =
+          ended && !['done', 'failed', 'cancelled', 'idle'].includes(summary.status);
+        const label = !node.executionIds.length
+          ? t('requested')
+          : unsettled
+            ? t('unsettled')
+            : statusText(summary.status);
+        const details = [
+          ...(node.executionIds.length > 1
+            ? [statusText('executions', { count: node.executionIds.length })]
+            : []),
+          ...(Object.keys(summary.counts).length > 1
+            ? Object.entries(summary.counts).map(([state, count]) =>
+                statusText('stateCount', { status: statusText(state), count: count ?? 0 }),
+              )
+            : []),
+          ...(summary.previousFailures
+            ? [statusText('previousFailures', { count: summary.previousFailures })]
+            : []),
+        ].join(' · ');
+        const triggerId = `${previewId}-${node.id}`;
+        return (
+          <div
+            key={node.id}
+            data-agent-id={node.id}
+            className="absolute top-0 left-0 size-0"
+            style={{
+              transform: `translate(${position.x}px, ${position.y}px)`,
+              zIndex: node.lead ? 2 : 1,
+            }}
           >
-            <Background />
-            <Controls showInteractive={false} />
-          </ReactFlow>
-          <p className="pointer-events-none absolute right-2 top-2 rounded bg-raised/90 px-2 py-0.5 text-2xs text-muted-foreground">
-            {t(`layout.${layout.source}`)} · {t('layoutNote')} · {t('relationsLegend')}
-          </p>
+            <motion.div
+              data-run-status={summary.status}
+              className="absolute"
+              style={{ left: -TILE.halfWidth, top: -TILE.markCenter }}
+              initial={reduce ? false : { opacity: 0, scale: 0.4 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ ...spring.moderate, delay: reduce ? 0 : Math.min(index, 8) * 0.07 }}
+            >
+              <AgentGraphNode
+                name={node.label}
+                {...(model ? { model } : {})}
+                {...(logo ? { logo } : {})}
+                status={unsettled ? 'stopped' : kitStatus(summary.status)}
+                statusLabel={label}
+                detail={details}
+                label={[node.label, model, label, details].filter(Boolean).join(' · ')}
+                description={edges
+                  .filter((edge) => edge.source === node.id || edge.target === node.id)
+                  .map((edge) => edge.label)
+                  .join('; ')}
+                lead={node.lead}
+                selected={selectedNodeId === node.id}
+                dimmed={!!selectedNodeId && !adjacent.has(node.id)}
+                onClick={(event) => onSelectNode(node.id, event.currentTarget)}
+                renderTrigger={
+                  hasPreview
+                    ? (button) => (
+                        <PopoverTrigger
+                          id={triggerId}
+                          handle={previewHandle}
+                          payload={node.id}
+                          render={button}
+                        />
+                      )
+                    : undefined
+                }
+              />
+            </motion.div>
+          </div>
+        );
+      }),
+    [
+      graph.nodes,
+      positions,
+      models,
+      ended,
+      edges,
+      selectedNodeId,
+      adjacent,
+      onSelectNode,
+      t,
+      statusText,
+      previewId,
+      previewHandle,
+      hasPreview,
+      reduce,
+    ],
+  );
+  const edgeLayer = useMemo(
+    () => (
+      <svg
+        className="pointer-events-none absolute top-0 left-0 overflow-visible"
+        width={1}
+        height={1}
+        aria-hidden
+      >
+        {edges.map((edge, index) => {
+          const flowing = edge.state !== 'failed';
+          const settled = edge.state === 'settled';
+          const touched = edge.source === selectedNodeId || edge.target === selectedNodeId;
+          const opacity = selectedNodeId && !touched ? 0.1 : 1;
+          const color = stateColors[edge.state];
+          const { label, angle } = edge.route;
+          // Flowing dashes run from sender to receiver (CSS `.flow-dash`, stopped under
+          // reduced motion, when the direction mark appears instead); a failure draws in once.
+          return (
+            <g key={edge.id}>
+              <motion.path
+                data-relation
+                data-source={edge.source}
+                data-target={edge.target}
+                data-relation-state={edge.state}
+                d={edge.route.d}
+                fill="none"
+                stroke={color}
+                strokeOpacity={settled ? 0.55 : 1}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                className={flowing ? cn('flow-dash', settled && 'flow-dash-slow') : undefined}
+                initial={reduce ? false : flowing ? { opacity: 0 } : { pathLength: 0 }}
+                animate={flowing ? { opacity } : { pathLength: 1, opacity }}
+                transition={{ ...spring.slow, delay: reduce ? 0 : Math.min(index, 12) * 0.06 }}
+              />
+              <path
+                data-direction-marker
+                className="run-graph-direction"
+                d="M-3 -3.5L1.5 0L-3 3.5"
+                transform={`translate(${label.x} ${label.y}) rotate(${angle})`}
+                fill="none"
+                stroke={color}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ opacity }}
+              />
+            </g>
+          );
+        })}
+      </svg>
+    ),
+    [edges, selectedNodeId, reduce],
+  );
+  const selectedRelations = selectedNodeId
+    ? edges.filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId)
+    : [];
+  const shownStates = relationStates.filter((state) => edges.some((edge) => edge.state === state));
+  return (
+    // The source AgentGraph names its stage as a group; a fieldset would imply form controls.
+    // biome-ignore lint/a11y/useSemanticElements: a labelled group of agent buttons, not a form.
+    <div className="flex h-full w-full flex-col p-3" role="group" aria-label={t('label')}>
+      <AgentCard className="flex min-h-0 flex-1 flex-col">
+        <div
+          ref={pane}
+          data-graph-pane
+          className="relative min-h-0 flex-1 touch-none overflow-hidden select-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          {viewport && !readingInitialHistory ? (
+            <div
+              data-graph-stage
+              className="absolute top-0 left-0 origin-top-left"
+              style={{
+                transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.k})`,
+              }}
+            >
+              {edgeLayer}
+              {nodeLayer}
+            </div>
+          ) : null}
+          {selectedRelations.length ? (
+            <ul className="pointer-events-none absolute top-3 left-3 grid justify-items-start gap-1">
+              {selectedRelations.map((edge) => (
+                <li
+                  key={edge.id}
+                  data-relation-label
+                  aria-hidden
+                  className={cn(
+                    shape.chip,
+                    'inline-flex items-center gap-1 whitespace-nowrap bg-muted px-1.5 text-caption text-muted-foreground',
+                  )}
+                >
+                  <span className="text-foreground">{nameOf(edge.source)}</span>
+                  <ArrowRight data-direction size={12} />
+                  <span className="text-foreground">{nameOf(edge.target)}</span>
+                  <span>{edge.description}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {readingInitialHistory || !hasNodes ? (
+            <p className="pointer-events-none absolute inset-0 grid place-items-center text-caption text-muted-foreground">
+              {t(readingInitialHistory ? 'loading' : 'empty')}
+            </p>
+          ) : null}
+          {viewport && hasNodes ? (
+            <div className="absolute bottom-3 left-3 flex flex-col gap-1">
+              <Button
+                variant="secondary"
+                size="icon-compact"
+                aria-label={t('zoomIn')}
+                onClick={() => zoomAt(ZOOM.step)}
+              >
+                <Plus />
+              </Button>
+              <Button
+                variant="secondary"
+                size="icon-compact"
+                aria-label={t('zoomOut')}
+                onClick={() => zoomAt(1 / ZOOM.step)}
+              >
+                <Minus />
+              </Button>
+              <Button
+                variant="secondary"
+                size="icon-compact"
+                aria-label={t('fit')}
+                onClick={() => {
+                  previewHandle.close();
+                  fit();
+                }}
+              >
+                <Maximize2 />
+              </Button>
+            </div>
+          ) : null}
         </div>
-      </ReactFlowProvider>
-    </StudioStoresProvider>
+        {shownStates.length ? (
+          <ul
+            aria-label={t('relationsLegend')}
+            className="flex shrink-0 flex-wrap justify-center gap-x-3.5 gap-y-1 px-2.5 py-2 text-caption text-muted-foreground"
+          >
+            {shownStates.map((state) => (
+              <li key={state} className="inline-flex items-center gap-1.5">
+                <svg width="20" height="8" aria-hidden>
+                  <path
+                    d="M2 4H18"
+                    stroke={stateColors[state]}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {t(`state.${state}`)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </AgentCard>
+      <ul className="sr-only">
+        {edges.map((edge) => (
+          <li key={edge.id} data-source={edge.source} data-target={edge.target}>
+            {edge.label}
+          </li>
+        ))}
+      </ul>
+      {renderNodePreview ? (
+        <Popover
+          handle={previewHandle}
+          onOpenChange={(open, details) => {
+            if (open) {
+              previewTrigger.current =
+                details.trigger instanceof HTMLElement ? details.trigger : null;
+              setRestorePreviewFocus(true);
+            }
+          }}
+        >
+          {({ payload }) => {
+            const node = graph.nodes.find((item) => item.id === payload);
+            return node ? (
+              <PopoverPopup
+                width="md"
+                side="right"
+                align="start"
+                padding="compact"
+                finalFocus={restorePreviewFocus}
+              >
+                <div className="flex items-center justify-between gap-3 px-2 pb-2">
+                  <PopoverTitle className="min-w-0 truncate">{node.label}</PopoverTitle>
+                  <PopoverClose
+                    render={<Button variant="ghost" size="icon-compact" />}
+                    aria-label={t('closePreview')}
+                  >
+                    <X />
+                  </PopoverClose>
+                </div>
+                {renderNodePreview(node.id, {
+                  close: closePreviewForNavigation,
+                  trigger: previewTrigger.current,
+                })}
+              </PopoverPopup>
+            ) : null;
+          }}
+        </Popover>
+      ) : null}
+    </div>
   );
 }

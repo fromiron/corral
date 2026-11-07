@@ -217,31 +217,128 @@ it('names each span by what its execution created and numbers only later attempt
   expect(span('exec_w1')).not.toContain('Attempt');
 });
 
-it('a live run marks now and an ended run offers a replay instead', () => {
+it('a live run marks now and an ended run offers no replay', () => {
   const live = show();
   expect(live.container.textContent).toContain('Now');
-  expect(live.container.querySelector('button[data-replay]')).toBeNull();
   const ended = show(undefined, true);
-  expect(ended.container.querySelector('button[data-replay]')).not.toBeNull();
+  expect(ended.container.querySelector('button[data-replay]')).toBeNull();
+  expect(ended.container.textContent).not.toContain('Replay');
 });
 
-it('a replay draws the recorded spans again from the start without changing the record', () => {
-  vi.useFakeTimers();
-  try {
-    const { container } = show(undefined, true);
-    const spans = () =>
-      [...container.querySelectorAll('[data-execution-id]')].map((span) =>
-        span.getAttribute('data-execution-id'),
-      );
-    expect(spans()).toEqual(expect.arrayContaining(['exec_lead', 'exec_w1', 'exec_w2']));
-    act(() => container.querySelector<HTMLButtonElement>('button[data-replay]')?.click());
-    act(() => vi.advanceTimersByTime(50));
-    expect(spans()).not.toContain('exec_w2');
-    act(() => vi.advanceTimersByTime(10_000));
-    expect(spans()).toEqual(expect.arrayContaining(['exec_lead', 'exec_w1', 'exec_w2']));
-  } finally {
-    vi.useRealTimers();
+const state = (seq: number, executionId: string, from: string, to: string, ms: number) =>
+  event(
+    seq,
+    'execution.state_changed',
+    // biome-ignore lint/suspicious/noExplicitAny: the test walks raw status strings.
+    { executionId, from: from as any, to: to as any, activity: null, waitingOn: null },
+    ms,
+  );
+
+/** The lead works, waits 1 s–6 s on its writer, then works on the writer's draft until 8 s. */
+function waitingFixture() {
+  const events = [
+    created(1, 'exec_lead', 'lead', 0),
+    state(2, 'exec_lead', 'queued', 'active', 0),
+    state(3, 'exec_lead', 'active', 'waiting_children', 1000),
+    created(4, 'exec_w', 'writer', 1500, { parent: 'exec_lead' }),
+    event(
+      5,
+      'artifact.version_created',
+      {
+        artifactId: 'artifact_draft',
+        artifactVersionId: 'draft_v1',
+        name: 'draft',
+        version: 1,
+        parentVersionId: null,
+        authorExecutionId: 'exec_w',
+        contract: 'text',
+        contentHash: 'a'.repeat(64),
+        byteLength: 10,
+        modelCallId: null,
+        contextSnapshotId: null,
+      },
+      5000,
+    ),
+    settled(6, 'exec_w', 'succeeded', 5000),
+    state(7, 'exec_lead', 'waiting_children', 'active', 6000),
+    event(
+      8,
+      'artifact.read',
+      { requestedRef: 'draft', resolvedVersionId: 'draft_v1', consumerExecutionId: 'exec_lead' },
+      6000,
+    ),
+    settled(9, 'exec_lead', 'succeeded', 8000),
+  ] as RunEvent[];
+  const projection = {
+    ...events.reduce(applyEvent, emptyProjection(RUN)),
+    status: 'succeeded' as const,
+  };
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  act(() =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunTimeChart
+          events={events}
+          projection={projection}
+          definition={linearCorral(['lead', 'writer'])}
+          selected="exec_lead"
+          onSelect={() => {}}
+        />
+      </IntlProvider>,
+    ),
+  );
+  roots.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  return container;
+}
+
+it('breaks a span where its execution waited on another agent, keeping one selectable span', () => {
+  const container = waitingFixture();
+  const lead = container.querySelector('[data-execution-id="exec_lead"]');
+  const pieces = [...(lead?.querySelectorAll('[data-lane-piece]') ?? [])] as HTMLElement[];
+  // A block near the right edge is placed from the right so it can open leftward.
+  const place = (piece: HTMLElement) => {
+    const width = Number.parseFloat(piece.style.width);
+    const left = piece.style.left
+      ? Number.parseFloat(piece.style.left)
+      : 100 - Number.parseFloat(piece.style.right) - width;
+    return [left, width];
+  };
+  // 0–1 s and 6–8 s of an 8 s window: two blocks with the wait left empty between them.
+  expect(pieces.map(place)).toEqual([
+    [0, 12.5],
+    [75, 25],
+  ]);
+  // The name sits in the widest block, which opens to fit it on hover or focus.
+  const named = lead?.querySelector('[data-lane-label]')?.closest('[data-lane-piece]');
+  expect(named).toBe(pieces[1]);
+  expect(named?.className).toContain('group-hover:min-w-[var(--lane-open)]');
+  // It opens with the kit's moderate transition rather than jumping.
+  expect(named?.className).toContain('duration-160');
+  // Every block has an opaque base, so hand-off lines never show through it.
+  for (const piece of pieces) expect(piece.className).toMatch(/\bbg-(surface-\d|background)\b/);
+  expect(container.querySelectorAll('[data-execution-id="exec_lead"]')).toHaveLength(1);
+  expect(lead?.getAttribute('aria-pressed')).toBe('true');
+  // The selection outline follows each block's own rounded edge.
+  for (const piece of pieces) {
+    const fill = piece.firstElementChild as HTMLElement;
+    expect(fill.style.boxShadow).toContain('var(--emphasis)');
+    expect(fill.className).toContain('rounded-[inherit]');
   }
+});
+
+it('leaves a delegation from the block that ends where the wait begins', () => {
+  const container = waitingFixture();
+  const path = (key: string) =>
+    container.querySelector(`[data-handoff="${key}"]`)?.getAttribute('d') ?? '';
+  // The board is 1000 units over 8 s: the wait begins at 125, the writer starts at 187.5.
+  expect(path('exec_lead>exec_w')).toMatch(/^M 125 /);
+  // The draft returns to where the lead resumes, the start of its second block.
+  expect(path('exec_w>exec_lead')).toMatch(/ 750 \S+$/);
 });
 
 const task = (seq: number, taskId: string, nodeId: string, ms: number) =>
@@ -260,7 +357,7 @@ const assigned = (
 ) => event(seq, 'task.attempt_assigned', { taskId, executionId, attemptNo }, ms);
 
 /** Three tasks: the writer's finished after a retry, the lead's is open, a review never started. */
-function taskFixture(ended: boolean) {
+function taskFixture(ended: boolean, selected?: string, onSelect: (id: string) => void = () => {}) {
   const events = [
     task(1, 'task_lead', 'lead', 0),
     task(2, 'task_writer', 'writer', 0),
@@ -295,8 +392,8 @@ function taskFixture(ended: boolean) {
           events={events}
           projection={projection}
           definition={linearCorral(['lead', 'writer', 'review'])}
-          selected={undefined}
-          onSelect={() => {}}
+          selected={selected}
+          onSelect={onSelect}
         />
       </IntlProvider>,
     ),
@@ -320,22 +417,99 @@ it('switches to a timeline per task drawn from its actual record, with no plan m
     'task_writer',
     'task_review',
   ]);
-  const writer = rows[1]?.getAttribute('aria-label') ?? '';
+  // A started task is named on its button; a waiting one on its row.
+  const name = (row: HTMLElement | undefined) =>
+    row?.querySelector('button')?.getAttribute('aria-label') ?? row?.getAttribute('aria-label');
+  const writer = name(rows[1]) ?? '';
   // Named by its node and what it submitted; it ran from its first attempt to its completion.
   expect(writer).toContain('writer · draft');
   expect(writer).toContain('0:08');
   expect(rows[1]?.dataset.status).toBe('done');
   // Never assigned: waiting, with no interval.
   expect(rows[2]?.dataset.status).toBe('queued');
-  expect(rows[2]?.getAttribute('aria-label')).not.toMatch(/\d:\d\d/);
+  expect(name(rows[2])).not.toMatch(/\d:\d\d/);
   // Nothing was planned, so nothing claims a plan, an ETA or a verdict.
   const board = container.querySelector('[data-task-id]')?.closest('[role="list"]');
   expect(board?.textContent).not.toMatch(/ETA|On plan|Over plan|ahead/);
   expect(board?.querySelector('.border-dashed')).toBeNull();
 });
 
+it('opens the latest attempt of a chosen task and marks the task of the selected execution', () => {
+  const onSelect = vi.fn();
+  const container = taskFixture(true, 'exec_w1', onSelect);
+  // No caption over the board.
+  expect(container.textContent).not.toContain('first assigned attempt');
+  const row = (id: string) => container.querySelector<HTMLElement>(`[data-task-id="${id}"]`);
+  // exec_w1 is the writer's first attempt: its task is the one marked.
+  expect(row('task_writer')?.querySelector('button')?.getAttribute('aria-pressed')).toBe('true');
+  expect(row('task_lead')?.querySelector('button')?.getAttribute('aria-pressed')).toBe('false');
+  act(() => row('task_writer')?.querySelector('button')?.click());
+  // The task's result came from its last attempt.
+  expect(onSelect).toHaveBeenCalledWith('exec_w2');
+  // A task that never started has nothing to open.
+  expect(row('task_review')?.querySelector('button')).toBeNull();
+});
+
 it('a live run keeps an unfinished task open', () => {
   const container = taskFixture(false);
   const lead = container.querySelector<HTMLElement>('[data-task-id="task_lead"]');
   expect(lead?.dataset.status).toBe('running');
+});
+
+it('names the selected execution’s timed calls with a bar each, never by identifier or caption', () => {
+  const base = fixture();
+  const events = [
+    ...base.events,
+    event(
+      9,
+      'tool.requested',
+      {
+        executionId: 'exec_w2',
+        toolCallId: 'tool_secret_id',
+        name: 'write_artifact',
+        validatedArgs: {},
+      },
+      6000,
+    ),
+    event(
+      10,
+      'tool.started',
+      { executionId: 'exec_w2', toolCallId: 'tool_secret_id', effectId: 'effect_1' },
+      6000,
+    ),
+    event(
+      11,
+      'tool.finished',
+      { executionId: 'exec_w2', toolCallId: 'tool_secret_id', resultRef: null, error: null },
+      6500,
+    ),
+  ] as RunEvent[];
+  const projection = events.reduce(applyEvent, emptyProjection(RUN));
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  act(() =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunTimeChart
+          events={events}
+          projection={projection}
+          definition={base.definition}
+          selected="exec_w2"
+          onSelect={() => {}}
+        />
+      </IntlProvider>,
+    ),
+  );
+  roots.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  const items = [...container.querySelectorAll('[data-call-breakdown] li')];
+  expect(items).toHaveLength(1);
+  expect(items[0]?.textContent).toContain('write_artifact');
+  expect(items[0]?.textContent).toContain('500');
+  expect(items[0]?.querySelector('[data-call-bar]')).not.toBeNull();
+  expect(container.textContent).not.toContain('tool_secret_id');
+  expect(container.textContent).not.toContain('Observed lifetimes include waiting');
 });
