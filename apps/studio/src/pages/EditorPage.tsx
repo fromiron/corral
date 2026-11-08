@@ -37,6 +37,7 @@ import {
   type EditorWorkingCopy,
   editorWorkingCopy,
   ownsSaveShortcut,
+  saveEditorCopy,
 } from '../workbench/editorDraft.ts';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
@@ -212,6 +213,7 @@ function Editor({
   workingCopy: EditorWorkingCopy;
 }) {
   const t = useTranslations('Editor');
+  const c = useTranslations('TeamEditor');
   const n = useTranslations('Navigation');
   const router = useRouter();
   const services = useServices();
@@ -264,46 +266,20 @@ function Editor({
 
   /** Saves the draft; resolves to the saved record, or null when saving failed. */
   const save = useCallback(async (): Promise<CorralRecord | null> => {
-    const { saved, saving } = workingCopy.getState();
-    if (saving) return null;
-    const current = editor.getState().draft;
-    if (current === saved.draft) {
-      workingCopy.setState({ message: { text: t('noChanges'), error: false } });
-      return saved.record;
-    }
-    workingCopy.setState({ saving: true });
-    try {
-      const result = await repository.save({
-        definition: current.definition,
-        layout: { nodes: current.layout, viewport: current.viewport },
-        expectedDefinitionRevision: saved.record.definitionRevision,
-      });
-      if (!result.ok) {
-        workingCopy.setState({ message: { text: result.message, error: true } });
-        return null;
-      }
-      workingCopy.setState({
-        saved: { record: result.record, draft: current },
-        message: {
-          text: t('savedResult', {
-            definition: String(result.changed.definition),
-            layout: String(result.changed.layout),
-          }),
-          error: false,
-        },
-      });
+    const result = await saveEditorCopy(workingCopy, repository, {
+      noChanges: t('noChanges'),
+      saved: (changed) =>
+        t('savedResult', {
+          definition: String(changed.definition),
+          layout: String(changed.layout),
+        }),
+    });
+    if (result?.wrote) {
       projectsChanged();
       await router.invalidate();
-      return result.record;
-    } catch (error) {
-      workingCopy.setState({
-        message: { text: error instanceof Error ? error.message : String(error), error: true },
-      });
-      return null;
-    } finally {
-      workingCopy.setState({ saving: false });
     }
-  }, [editor, repository, router, t, workingCopy]);
+    return result?.record ?? null;
+  }, [repository, router, t, workingCopy]);
 
   // The local server runs saved revisions only, so a run saves first.
   const beforeStart =
@@ -406,6 +382,15 @@ function Editor({
                 {t(inspectorOpen ? 'hideTools' : 'showTools')}
               </Button>
               <div className="ml-auto flex items-center gap-2">
+                {inSession ? null : (
+                  <Link
+                    to="/corrals/$corralId/compose"
+                    params={{ corralId: record.corralId }}
+                    className="text-caption text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    {c('composer')}
+                  </Link>
+                )}
                 <MarkdownAgentImport
                   editor={editor}
                   profiles={profiles}

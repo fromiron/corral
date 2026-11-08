@@ -130,3 +130,4 @@ export {
   type TeamLabels,
   type TeamWording,
 } from './team/draft.ts';
+export { TeamEditor } from './team-editor/TeamEditor.tsx';

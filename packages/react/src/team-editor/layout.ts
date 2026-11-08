@@ -321,21 +321,49 @@ export function layoutTeam(
     nextX = x + w + GEOMETRY.padX;
   }
 
+  const { edges, ports } = routeTeam(definition, items, collapsed);
+  return { items, edges, ports, bounds: boundsOf(items) };
+}
+
+/** Where the items reach: the area to fit in view. */
+export function boundsOf(items: ReadonlyMap<string, LaidItem>): Rect {
+  const rects = [...items.values()].map((i) => i.rect);
+  if (!rects.length) return { x: 0, y: 0, w: 0, h: 0 };
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  return {
+    x,
+    y,
+    w: Math.max(...rects.map((r) => r.x + r.w)) - x,
+    h: Math.max(...rects.map((r) => r.y + r.h)) - y,
+  };
+}
+
+/**
+ * Ports and connection routes for items already placed. Kept apart from placement so a
+ * relayout can redraw the connections at every frame while the items move.
+ */
+export function routeTeam(
+  definition: Pick<CorralDefinition, 'nodes' | 'controlEdges' | 'capabilityLinks'>,
+  items: ReadonlyMap<string, LaidItem>,
+  collapsed: ReadonlySet<string> = new Set(),
+): { edges: LaidEdge[]; ports: PortMark[] } {
+  const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
+  const shownAs = (id: string) => {
+    let shown = id;
+    const seen = new Set<string>();
+    for (let at = nodes.get(id)?.parentId; at && !seen.has(at); at = nodes.get(at)?.parentId) {
+      seen.add(at);
+      if (collapsed.has(at)) shown = at;
+    }
+    return shown;
+  };
   const ports = portsOf(definition, items, shownAs);
   const edges = [
     ...definition.controlEdges.flatMap((edge) => routeControl(edge, nodes, items, shownAs, ports)),
     ...definition.capabilityLinks.flatMap((link) => routeCall(link, items, shownAs)),
   ];
-  const rects = [...items.values()].map((i) => i.rect);
-  const bounds = rects.length
-    ? {
-        x: Math.min(...rects.map((r) => r.x)),
-        y: Math.min(...rects.map((r) => r.y)),
-        w: Math.max(...rects.map((r) => r.x + r.w)) - Math.min(...rects.map((r) => r.x)),
-        h: Math.max(...rects.map((r) => r.y + r.h)) - Math.min(...rects.map((r) => r.y)),
-      }
-    : { x: 0, y: 0, w: 0, h: 0 };
-  return { items, edges, ports: [...ports.values()], bounds };
+  return { edges, ports: [...ports.values()] };
 }
 
 // ── ports and routes ──────────────────────────────────────────────────────────
@@ -345,7 +373,7 @@ const portKey = (nodeId: string, port: string, side: 'in' | 'out') =>
 
 function portsOf(
   definition: Pick<CorralDefinition, 'nodes'>,
-  items: Map<string, LaidItem>,
+  items: ReadonlyMap<string, LaidItem>,
   shownAs: (id: string) => string,
 ): Map<string, PortMark> {
   const marks = new Map<string, PortMark>();
@@ -410,7 +438,7 @@ function underRoute(a: Point, lane: number, b: Point): string {
 function routeControl(
   edge: ControlEdge,
   nodes: Map<string, CorralNode>,
-  items: Map<string, LaidItem>,
+  items: ReadonlyMap<string, LaidItem>,
   shownAs: (id: string) => string,
   ports: Map<string, PortMark>,
 ): LaidEdge[] {
@@ -483,7 +511,7 @@ function routeControl(
 
 function routeCall(
   link: CapabilityLink,
-  items: Map<string, LaidItem>,
+  items: ReadonlyMap<string, LaidItem>,
   shownAs: (id: string) => string,
 ): LaidEdge[] {
   const from = shownAs(link.sourceNodeId);
@@ -491,6 +519,33 @@ function routeCall(
   const source = items.get(from);
   const target = items.get(to);
   if (!source || !target || from === to) return [];
+  const beside =
+    target.rect.y < source.rect.y + source.rect.h && source.rect.y < target.rect.y + target.rect.h;
+  if (beside) {
+    // Side by side, as callables in their row are: from one side across to the other.
+    const rightward = target.rect.x >= source.rect.x;
+    const a = {
+      x: rightward ? source.rect.x + source.rect.w : source.rect.x,
+      y: source.rect.y + source.rect.h / 2,
+    };
+    const b = {
+      x: rightward ? target.rect.x : target.rect.x + target.rect.w,
+      y: target.rect.y + target.rect.h / 2,
+    };
+    const bend = Math.max(24, Math.abs(b.x - a.x) / 2) * (rightward ? 1 : -1);
+    return [
+      {
+        id: link.id,
+        kind: 'call',
+        from,
+        to,
+        path: `M${a.x} ${a.y} C${a.x + bend} ${a.y} ${b.x - bend} ${b.y} ${b.x} ${b.y}`,
+        arrow: true,
+        insertAt: null,
+        label: { text: link.kind, at: { x: (a.x + b.x) / 2 - 12, y: Math.min(a.y, b.y) - 6 } },
+      },
+    ];
+  }
   const a = { x: source.rect.x + source.rect.w / 2, y: source.rect.y + source.rect.h };
   const b = { x: target.rect.x + target.rect.w / 2, y: target.rect.y };
   const bend = Math.max(24, Math.abs(b.y - a.y) / 2);

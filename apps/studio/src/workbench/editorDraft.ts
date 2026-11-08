@@ -103,3 +103,49 @@ export function discardEditorCopy(repository: CorralRepository, record: CorralRe
 export function hasUnsavedEditorCopy(repository: CorralRepository): boolean {
   return [...(copies.get(repository)?.values() ?? [])].some(dirty);
 }
+
+/**
+ * Saves the working copy's draft as the team's next revision. Resolves to the saved record and
+ * whether anything was written, or null when saving failed; the outcome is also left in
+ * `message` for the view to show.
+ */
+export async function saveEditorCopy(
+  copy: EditorWorkingCopy,
+  repository: CorralRepository,
+  text: {
+    noChanges: string;
+    saved: (changed: { definition: boolean; layout: boolean }) => string;
+  },
+): Promise<{ record: CorralRecord; wrote: boolean } | null> {
+  const { saved, saving, editor } = copy.getState();
+  if (saving) return null;
+  const current = editor.getState().draft;
+  if (current === saved.draft) {
+    copy.setState({ message: { text: text.noChanges, error: false } });
+    return { record: saved.record, wrote: false };
+  }
+  copy.setState({ saving: true });
+  try {
+    const result = await repository.save({
+      definition: current.definition,
+      layout: { nodes: current.layout, viewport: current.viewport },
+      expectedDefinitionRevision: saved.record.definitionRevision,
+    });
+    if (!result.ok) {
+      copy.setState({ message: { text: result.message, error: true } });
+      return null;
+    }
+    copy.setState({
+      saved: { record: result.record, draft: current },
+      message: { text: text.saved(result.changed), error: false },
+    });
+    return { record: result.record, wrote: true };
+  } catch (error) {
+    copy.setState({
+      message: { text: error instanceof Error ? error.message : String(error), error: true },
+    });
+    return null;
+  } finally {
+    copy.setState({ saving: false });
+  }
+}
