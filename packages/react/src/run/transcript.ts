@@ -53,10 +53,6 @@ export type TranscriptEntry =
       resultRef: string | null;
       /** The validated arguments as recorded; large values are already size-and-hash stubs. */
       args: Record<string, unknown>;
-      /** Recorded time of `tool.started`, when the call was observed to start. */
-      startedAt?: string;
-      /** From `tool.started` to `tool.finished`, only when both were recorded. */
-      latencyMs?: number;
     }
   | {
       kind: 'question';
@@ -232,15 +228,10 @@ function updateTool(tool: ToolEntry, event: ToolUpdate): void {
       tool.status = 'blocked';
       tool.detail = event.payload.reason;
       return;
-    case 'tool.started':
-      tool.startedAt = event.recordedAt;
-      return;
     case 'tool.finished':
       tool.status = event.payload.error ? 'failed' : 'finished';
       tool.detail = event.payload.error;
       tool.resultRef = event.payload.resultRef;
-      if (tool.startedAt)
-        tool.latencyMs = Math.max(0, Date.parse(event.recordedAt) - Date.parse(tool.startedAt));
   }
 }
 

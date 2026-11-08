@@ -9,7 +9,6 @@ import { executionAgentStatus, executionIntervals, executionToolEntries } from '
 import {
   AgentLanes,
   type AgentLanesLabels,
-  Button,
   formatClock,
   type LaneAgent,
   type LaneHandoff,
@@ -19,26 +18,25 @@ import {
   TabsList,
   useNow,
 } from '@corral/react/design-kit';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useMemo, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { RunTaskTimeline } from './RunTaskTimeline.tsx';
 import { toolMarks } from './toolMarks.ts';
 
-/** A replay draws the whole record in this long, however long the run took. */
-const REPLAY_MS = 4000;
+/** Waits that keep the work in the span: a person or another agent owes an answer. */
+const ASKS = new Set(['waiting_message', 'waiting_approval']);
 
-const REDUCED = '(prefers-reduced-motion: reduce)';
-/** Whether the person asked for less motion; a host without media queries counts as no. */
-function useReducedMotion() {
-  return useSyncExternalStore(
-    (change) => {
-      const query = window.matchMedia?.(REDUCED);
-      query?.addEventListener('change', change);
-      return () => query?.removeEventListener('change', change);
-    },
-    () => window.matchMedia?.(REDUCED).matches ?? false,
-    () => false,
-  );
+/** Where an execution waited on its children; an unfinished last wait of a live run is open. */
+function gapsOf(row: ReturnType<typeof executionIntervals>[number], open: boolean) {
+  return row.segments
+    .filter((segment) => segment.status === 'waiting_children')
+    .map((segment, i, all) => ({
+      startedAt: Date.parse(segment.startedAt),
+      endedAt:
+        open && i === all.length - 1 && segment === row.segments.at(-1)
+          ? Number.POSITIVE_INFINITY
+          : Date.parse(segment.endedAt),
+    }));
 }
 
 interface TimeChartProps {
@@ -69,6 +67,8 @@ export function RunTimeChart(props: TimeChartProps) {
           events={props.events}
           projection={props.projection}
           definition={props.definition}
+          selected={props.selected}
+          onSelect={props.onSelect}
         />
       </TabPanel>
     </Tabs>
@@ -78,16 +78,15 @@ export function RunTimeChart(props: TimeChartProps) {
 /**
  * The run's observed time as the kit's swimlanes: one lane per agent node, every execution
  * (each retry and Loop round) its own span named by what it created and marked with the tools
- * it used, waits tinted inside the span, and observed delegations linked. While the run is live
- * the open spans grow to the present; once it ended the window stops at the last record, and a
- * replay draws the record again from its start over the same window.
+ * it used, broken where it waited on another agent, answers and approvals tinted inside it, and
+ * observed delegations linked. While the run is live the open spans grow to the present; once it
+ * ended the window stops at the last record.
  */
 function AgentTimeline({ events, projection, definition, selected, onSelect }: TimeChartProps) {
   const t = useTranslations('RunMonitor');
   const lanesText = useTranslations('RunMonitor.lanes');
   const status = useTranslations('Status');
   const format = useFormatter();
-  const reduce = useReducedMotion();
   const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
   const clock = useNow(1000, live);
   const rows = useMemo(() => executionIntervals(events), [events]);
@@ -165,23 +164,32 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
             ...(marks.length ? { tools: marks } : {}),
             ...(used.length ? { details: used } : {}),
             ...(state === 'waiting' ? { ask: { title: statusLabel } } : {}),
+            // Waiting on another agent leaves the span; waiting on an answer or approval stays in it.
             waits: row.segments
-              .filter((segment) => segment.status.startsWith('waiting_'))
+              .filter((segment) => ASKS.has(segment.status))
               .map((segment) => ({
                 startedAt: Date.parse(segment.startedAt),
                 endedAt: Date.parse(segment.endedAt),
               })),
+            gaps: gapsOf(row, open),
             buttonProps: { 'data-execution-id': row.executionId },
           };
         }),
       };
     });
     const known = new Set(rows.map((row) => row.executionId));
+    const byId = new Map(rows.map((row) => [row.executionId, row]));
     const handoffs: LaneHandoff[] = rows.flatMap((row) => {
       const parent = projection?.executions[row.executionId]?.parentExecutionId;
-      return parent && known.has(parent)
-        ? [{ from: parent, to: row.executionId, fromAt: Date.parse(row.startedAt) }]
-        : [];
+      const from = parent ? byId.get(parent) : undefined;
+      if (!parent || !from) return [];
+      const childStart = Date.parse(row.startedAt);
+      const childEnd = Date.parse(row.endedAt);
+      // A delegation leaves where the parent stopped to wait for this child, when it did.
+      const gap = gapsOf(from, live && !TERMINAL_EXECUTION_STATUSES.has(from.status)).find(
+        (wait) => wait.endedAt >= childStart && wait.startedAt <= childEnd,
+      );
+      return [{ from: parent, to: row.executionId, fromAt: gap?.startedAt ?? childStart }];
     });
     // Work handed over: an artifact runs from its creation on the author's span to the moment
     // another execution read it or put it in its model input, once per pair of executions.
@@ -203,81 +211,23 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
     return { start, end, agents, handoffs };
   }, [rows, tools, created, authors, events, projection, definition, live, t, status]);
 
-  // The replay position, 0..1 of the record, or null when the board shows the record as is.
-  const [replay, setReplay] = useState<number | null>(null);
-  const replaying = replay !== null;
-  useEffect(() => {
-    if (!replaying) return;
-    let frame = 0;
-    let first: number | null = null;
-    const step = (at: number) => {
-      first ??= at;
-      const progress = (at - first) / REPLAY_MS;
-      if (progress >= 1) return setReplay(null);
-      setReplay(progress);
-      frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [replaying]);
-  useEffect(() => {
-    if (live || reduce) setReplay(null);
-  }, [live, reduce]);
-
-  const shown = useMemo(() => {
-    if (!board || replay === null) return board;
-    const cutoff = board.start + (board.end - board.start) * replay;
-    const agents = board.agents.map((agent) => ({
-      ...agent,
-      tasks: agent.tasks.flatMap((task) => {
-        if (task.startedAt > cutoff) return [];
-        if ((task.endedAt ?? board.end) <= cutoff) return [task];
-        const { endedAt: _ended, ask: _ask, ...growing } = task;
-        return [
-          {
-            ...growing,
-            status: 'running' as const,
-            waits: (task.waits ?? [])
-              .filter((wait) => wait.startedAt < cutoff)
-              .map((wait) => ({ ...wait, endedAt: Math.min(wait.endedAt, cutoff) })),
-          },
-        ];
-      }),
-    }));
-    const visible = new Set(agents.flatMap((agent) => agent.tasks.map((task) => task.id)));
-    return {
-      ...board,
-      agents,
-      handoffs: board.handoffs.filter((link) => visible.has(link.from) && visible.has(link.to)),
-      cutoff,
-    };
-  }, [board, replay]);
-
-  if (!board || !shown)
-    return <p className="p-3 text-sm text-muted-foreground">{t('noIntervals')}</p>;
+  if (!board) return <p className="p-3 text-sm text-muted-foreground">{t('noIntervals')}</p>;
   const calls = rows.find((row) => row.executionId === selected)?.calls ?? [];
+  const longest = Math.max(1, ...calls.map((call) => call.durationMs));
+  // Model calls go by their order in the execution, tools by name; identifiers stay out.
+  const modelOrder = calls.filter((call) => call.kind === 'model').map((call) => call.callId);
+  const callName = (call: (typeof calls)[number]) =>
+    call.kind === 'model'
+      ? t('modelCall', { no: modelOrder.indexOf(call.callId) + 1 })
+      : (projection?.toolCalls[call.callId]?.name ?? t('tool'));
   const milliseconds = (value: number) =>
     t('milliseconds', { value: format.number(value, { maximumFractionDigits: 0 }) });
-  const now = 'cutoff' in shown ? shown.cutoff : live ? Math.max(clock, board.end) : board.end;
+  const now = live ? Math.max(clock, board.end) : board.end;
   return (
     <section aria-label={t('time')} className="flex h-full flex-col gap-3 overflow-auto p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-caption text-muted-foreground">{t('lifespanNote')}</p>
-        {live || reduce ? null : (
-          <Button
-            data-replay
-            variant="ghost"
-            size="compact"
-            aria-pressed={replaying}
-            onClick={() => setReplay(replaying ? null : 0)}
-          >
-            {replaying ? t('stopReplay') : t('replay')}
-          </Button>
-        )}
-      </div>
       <AgentLanes
-        agents={shown.agents}
-        handoffs={shown.handoffs}
+        agents={board.agents}
+        handoffs={board.handoffs}
         startAt={board.start}
         now={now}
         {...(live ? {} : { endAt: board.end })}
@@ -288,10 +238,25 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
         size="compact"
       />
       {calls.length ? (
-        <ul className="flex min-w-0 flex-wrap gap-x-4 text-caption text-muted-foreground">
+        <ul
+          data-call-breakdown
+          aria-label={t('callBreakdown')}
+          className="grid min-w-0 grid-cols-[minmax(0,12rem)_1fr_auto] items-center gap-x-3 gap-y-1.5 text-caption text-muted-foreground"
+        >
           {calls.map((call) => (
-            <li key={`${call.kind}:${call.callId}`} className="min-w-0 break-all">
-              {t(call.kind)} · {call.callId} · {milliseconds(call.durationMs)}
+            <li key={`${call.kind}:${call.callId}`} className="contents">
+              <span className="truncate text-foreground">{callName(call)}</span>
+              <span className="h-1.5 min-w-0 rounded-full bg-muted" aria-hidden>
+                <span
+                  data-call-bar
+                  className="block h-full rounded-full"
+                  style={{
+                    width: `${Math.max(2, (call.durationMs / longest) * 100)}%`,
+                    background: call.kind === 'model' ? 'var(--emphasis)' : 'var(--success)',
+                  }}
+                />
+              </span>
+              <span className="text-right tabular-nums">{milliseconds(call.durationMs)}</span>
             </li>
           ))}
         </ul>

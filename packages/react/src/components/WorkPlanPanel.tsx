@@ -30,10 +30,14 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
   const [failedEvidence, setFailedEvidence] = useState<string | null>(null);
   const { status, retry } = useRunWorkPlan(session, view);
   const plan = 'plan' in status ? status.plan : null;
+  // A plan is named by the agent that wrote it, never by its execution identifier.
+  const nodeId = useRunDisplay(session, (s) => s.projection?.executions[view.executionId]?.nodeId);
+  const label = useStore(session, (s) => s.definition?.nodes.find((n) => n.id === nodeId)?.label);
+  const owner = view.scope === 'team' ? t('team') : (label ?? nodeId ?? t('execution'));
   return (
     <details open className="rounded-lg fill-group p-3 text-sm">
       <summary className="cursor-pointer font-medium">
-        {t('heading')} · {t(view.scope)} · {view.executionId} · v{view.revision}
+        {owner} · v{view.revision}
       </summary>
       {plan ? (
         <>

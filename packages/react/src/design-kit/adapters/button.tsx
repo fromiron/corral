@@ -74,7 +74,8 @@ export function Button({
   const defaultProps = {
     className: cn(
       // Existing callers pass icon and multi-part labels as children instead of icon slots.
-      '[&>span:last-child>span]:contents [&_svg]:shrink-0 [&_svg]:pointer-events-none',
+      // Keep the native control as the hit target, including text in display:contents labels.
+      '[&>span]:pointer-events-none [&>span:last-child>span]:contents [&_svg]:shrink-0 [&_svg]:pointer-events-none',
       sizes[size] === 'compact' || sizes[size] === 'icon-compact'
         ? "[&_svg:not([class*='size-'])]:size-3.5"
         : "[&_svg:not([class*='size-'])]:size-4",

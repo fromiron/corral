@@ -27,11 +27,17 @@ export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';
 export { type ComparedRun, RunComparison } from './components/RunComparison.tsx';
 export { RunControls } from './components/RunControls.tsx';
-export { DecisionDetail, type RunFlowCheck, RunFlowView } from './components/RunFlowView.tsx';
+export {
+  DecisionDetail,
+  type RunFlowCheck,
+  RunFlowDecisions,
+  RunFlowView,
+} from './components/RunFlowView.tsx';
 export { isHtmlDocument, ResultReader, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
+export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
 export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';

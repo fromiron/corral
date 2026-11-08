@@ -162,7 +162,6 @@ function useToolCalls(
     status: activityState && unfinished(tool) ? activityState.status : toolStatus[tool.status],
     statusLabel: activityState && unfinished(tool) ? activityState.label : t(`tool.${tool.status}`),
     args: tool.args,
-    ...(tool.latencyMs !== undefined ? { latencyMs: tool.latencyMs } : {}),
     ...(tool.detail ? { error: tool.detail } : {}),
     ...(tool.resultRef
       ? {

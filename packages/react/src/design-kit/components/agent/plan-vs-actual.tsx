@@ -95,6 +95,10 @@ interface PlanVsActualProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'
   size?: SizeVariant;
   /** Localized words; missing entries keep the kit's English. */
   labels?: Partial<PlanVsActualLabels>;
+  /** Selected step (outlined). */
+  selectedStepId?: string | null;
+  /** Makes each started step a button that selects it; steps not yet started stay plain rows. */
+  onSelectStep?: (stepId: string) => void;
 }
 
 const NICE = [
@@ -122,6 +126,8 @@ const PlanVsActualInner = forwardRef<HTMLDivElement, Omit<PlanVsActualProps, 'si
       budget,
       now: nowProp,
       labels: labelOverrides,
+      selectedStepId = null,
+      onSelectStep,
       className,
       ...props
     },
@@ -363,15 +369,26 @@ const PlanVsActualInner = forwardRef<HTMLDivElement, Omit<PlanVsActualProps, 'si
                 : s.status === 'running'
                   ? `${s.label}: running for ${formatClock(took ?? 0)} of ${formatClock(planDuration(s))} planned${s.cost !== undefined ? `, ${formatCost(s.cost)}` : ''}`
                   : `${s.label}: starts in about ${formatClock(Math.max(0, forecastStart - elapsed))}`;
+            const selectable = Boolean(onSelectStep) && s.start !== undefined;
+            const selected = selectedStepId === s.id;
             return (
               <StepRow
                 key={s.id}
                 index={i}
                 register={hover.registerItem}
-                aria-label={label}
+                {...(selectable ? { focusable: false } : { 'aria-label': label })}
                 data-status={s.status}
                 {...s.rowProps}
               >
+                {selectable && (
+                  <button
+                    type="button"
+                    aria-label={label}
+                    aria-pressed={selected}
+                    className={cn('absolute inset-0 z-[1]', focusRingInset)}
+                    onClick={() => onSelectStep?.(s.id)}
+                  />
+                )}
                 <span className="flex min-w-0 items-center gap-2">
                   <AgentStatusIcon status={s.status} size={14} />
                   <span
@@ -401,6 +418,7 @@ const PlanVsActualInner = forwardRef<HTMLDivElement, Omit<PlanVsActualProps, 'si
                       color={actualColor}
                       fill={16}
                       live={s.status === 'running' && live && !isOver}
+                      selected={selected}
                     />
                   )}
                   {isOver && overAt !== undefined && actualEnd !== undefined && (
@@ -491,11 +509,14 @@ PlanVsActualInner.displayName = 'PlanVsActualInner';
 function StepRow({
   index,
   register,
+  focusable = true,
   children,
   ...props
 }: {
   index: number;
   register: (index: number, el: HTMLElement | null) => void;
+  /** A selectable row is reached through its own button instead. */
+  focusable?: boolean;
 } & HTMLAttributes<HTMLDivElement> & {
     'data-status'?: string;
   }) {
@@ -507,11 +528,11 @@ function StepRow({
       ref={ref}
       role="listitem"
       // biome-ignore lint/a11y/noNoninteractiveTabindex: the source makes each step row focusable so its accessible summary can be read by keyboard.
-      tabIndex={0}
+      tabIndex={focusable ? 0 : undefined}
       data-fluid-hover-index={index}
       className={cn(
         'relative grid h-8 grid-cols-[188px_minmax(0,1fr)] gap-x-3.5 px-4',
-        focusRingInset,
+        focusable && focusRingInset,
       )}
       {...props}
     >
@@ -529,6 +550,7 @@ function Bar({
   fill,
   flatLeft,
   live,
+  selected,
 }: {
   from: number;
   to: number;
@@ -537,6 +559,8 @@ function Bar({
   fill: number;
   flatLeft?: boolean;
   live?: boolean;
+  /** Outlined with the kit's one accent, like a selected lane span. */
+  selected?: boolean;
 }) {
   return (
     <span
@@ -545,7 +569,9 @@ function Bar({
         left: pct(from, range),
         width: `max(2px, ${pct(Math.max(0, to - from), range)})`,
         background: tint(color, fill),
-        boxShadow: `inset 0 0 0 0.5px ${tint(color, 40)}`,
+        boxShadow: selected
+          ? 'inset 0 0 0 1.5px var(--emphasis)'
+          : `inset 0 0 0 0.5px ${tint(color, 40)}`,
       }}
     >
       {live && <span aria-hidden className="sheen block size-full rounded-[inherit]" />}

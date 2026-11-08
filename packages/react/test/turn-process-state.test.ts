@@ -103,7 +103,6 @@ describe('observed ThinkingSteps states', () => {
       status: 'finished',
       args: { path: 'src/app.ts' },
       resultRef: 'result_1',
-      latencyMs: 1000,
     });
     expect(result.steps).toBe(1);
   });

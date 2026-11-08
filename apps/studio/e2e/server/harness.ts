@@ -114,9 +114,28 @@ async function serve(
 
 function watchErrors(page: Page): string[] {
   const errors: string[] = [];
+  const absentConversationTurns = new Set<string>();
+  page.on('response', (response) => {
+    absentConversationTurns.delete(response.url());
+    // The optional stored turn does not exist before settlement; the client maps
+    // this exact GET/404 contract to null. Other resource failures remain errors.
+    if (
+      response.request().method() === 'GET' &&
+      response.status() === 404 &&
+      /^\/api\/v1\/runs\/[^/]+\/conversation-turn$/.test(new URL(response.url()).pathname)
+    )
+      absentConversationTurns.add(response.url());
+  });
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text());
+    if (message.type() !== 'error') return;
+    if (
+      message.text() ===
+        'Failed to load resource: the server responded with a status of 404 (Not Found)' &&
+      absentConversationTurns.has(message.location().url)
+    )
+      return;
+    errors.push(message.text());
   });
   return errors;
 }

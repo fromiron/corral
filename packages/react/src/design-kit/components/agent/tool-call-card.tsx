@@ -762,4 +762,4 @@ export type {
   ToolCallLabels,
   ToolCallStatus,
 };
-export { ToolCallCard, ToolCallGroup };
+export { highlightJson, ToolCallCard, ToolCallGroup, toJson as formatJson };

@@ -21,7 +21,8 @@ import {
   cn,
   formatClock,
 } from '@corral/react/design-kit';
-import { useMemo } from 'react';
+import { ChevronRight } from '@corral/react/icons';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 type PlanItem = { id: string; title: string; status: 'pending' | 'in_progress' | 'completed' };
@@ -88,6 +89,60 @@ export function RunPlanCard({
         wrapTitles
       />
     </AgentCard>
+  );
+}
+
+/**
+ * The work plan as one folded line above the work flow: progress and the step in hand. Opening it
+ * shows the full plan, or every plan when several were recorded. Without a plan there is no line.
+ */
+export function RunPlanStrip({
+  projection,
+  plan,
+  planCount,
+  allPlans,
+}: {
+  projection: RunProjection;
+  plan: { items: readonly PlanItem[] } | null;
+  planCount: number;
+  allPlans: ReactNode;
+}) {
+  const tw = useTranslations('Widgets');
+  const tm = useTranslations('RunMonitor');
+  const [open, setOpen] = useState(false);
+  const items = plan?.items ?? [];
+  if (!items.length && planCount < 2) return null;
+  const several = planCount > 1;
+  const done = items.filter((item) => item.status === 'completed').length;
+  const current =
+    items.find((item) => item.status === 'in_progress') ??
+    items.find((item) => item.status === 'pending');
+  return (
+    <div className="grid gap-2" data-testid="run-plan-strip">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-caption text-muted-foreground hover:bg-hover"
+      >
+        <ChevronRight
+          aria-hidden
+          size={14}
+          className={cn('shrink-0 transition-transform', open && 'rotate-90')}
+        />
+        <AgentStatusIcon status={runAgentStatus(projection.status)} size={12} />
+        <span className="shrink-0 text-foreground">
+          {several ? tm('planCount', { count: planCount }) : tw('planHeading')}
+        </span>
+        {items.length ? (
+          <span className="shrink-0 tabular-nums">
+            {tw('planCount', { done, total: items.length })}
+          </span>
+        ) : null}
+        {current ? <span className="min-w-0 truncate">· {current.title}</span> : null}
+      </button>
+      {open ? several ? allPlans : <RunPlanCard projection={projection} plan={plan} /> : null}
+    </div>
   );
 }
 

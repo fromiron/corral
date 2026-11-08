@@ -50,7 +50,7 @@ test('RESULT-03 default execution panel offers its actual results', async ({ pag
   await completedConversation(page);
   await panelTab(page, 'Execution history');
   const monitor = page.getByTestId('run-monitor');
-  await expect(monitor.getByTestId('run-activity')).toBeVisible();
+  await expect(monitor.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);
   const results = monitor.getByRole('navigation', { name: 'Results', exact: true });
   await expect(results).toBeVisible();

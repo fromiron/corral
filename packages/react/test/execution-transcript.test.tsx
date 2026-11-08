@@ -118,7 +118,7 @@ describe('buildTranscript (UX-A3)', () => {
     );
   });
 
-  it('tool entries carry their validated arguments and only an observed duration', async () => {
+  it('tool entries carry their validated arguments and no duration', async () => {
     const { state, writer } = await collaborationRun();
     const entries = buildTranscript(state.events, state.projection, state.streams, writer);
     const tools = entries.filter((e) => e.kind === 'tool');
@@ -126,11 +126,8 @@ describe('buildTranscript (UX-A3)', () => {
     for (const tool of tools) {
       if (tool.kind !== 'tool') continue;
       expect(tool.args).toEqual(expect.any(Object));
-      const started = state.events.some(
-        (e) => e.type === 'tool.started' && e.payload.toolCallId === tool.toolCallId,
-      );
-      if (started && tool.status === 'finished') expect(tool.latencyMs).toEqual(expect.any(Number));
-      else expect(tool.latencyMs).toBeUndefined();
+      // Call durations belong to the timeline, not the conversation.
+      expect('latencyMs' in tool).toBe(false);
     }
   });
 
@@ -251,5 +248,8 @@ describe('ExecutionTranscript (UX-A3)', () => {
     expect(group).toHaveAttribute('aria-expanded', 'true');
     const card = screen.getAllByRole('button', { name: /write_artifact/ })[0];
     expect(card?.closest('[data-status]')).toHaveAttribute('data-status', 'success');
+    // No call shows how long it took; the timeline answers that.
+    for (const button of screen.getAllByRole('button', { name: /write_artifact|Used \d+ tools?/ }))
+      expect(button.textContent).not.toMatch(/\d(ms|\.\ds)\b/);
   });
 });
