@@ -543,4 +543,44 @@ describe('team graph: what runs today', () => {
     expect(receipt.status).toBe('rejected');
     expect(receipt.error?.code).toBe('RUNTIME_UNSUPPORTED');
   });
+
+  it('resolves a reference team from saved teams at run start and refuses it as not runnable yet', async () => {
+    const inner = definition(
+      [agent('solo'), output('solo')],
+      [edge('e1', 'solo', 'out', 'output', 'in')],
+      'solo',
+      'y',
+    );
+    const outer = definition(
+      [
+        agent('plan'),
+        {
+          id: 'T',
+          type: 'team',
+          label: 'T',
+          source: { kind: 'reference', corralId: 'y', definitionRevision: 1 },
+        },
+        output('plan'),
+      ],
+      [edge('e1', 'plan', 'out', 'T', 'enter'), edge('e2', 'T', 'next', 'output', 'in')],
+      'plan',
+    );
+    const coordinator = new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+      corrals: {
+        getDefinition: (corralId, revision) =>
+          corralId === 'y' && revision === 1 ? (inner as CorralDefinition) : null,
+      },
+    });
+    const { runId, receipt } = await new InProcessTransport(coordinator).startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_reference',
+      definition: outer as CorralDefinition,
+      mode: 'mock',
+    });
+    expect(runId).toBeNull();
+    expect(receipt.error?.code).toBe('RUNTIME_UNSUPPORTED');
+  });
 });

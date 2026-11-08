@@ -1639,7 +1639,11 @@ export class Coordinator {
         message: 'referenced generated image is unavailable or exceeds vision input limits',
       });
     }
+    const corrals = this.corrals;
     const planned = planRun(referenced.definition, {
+      ...(corrals
+        ? { resolveTeam: (id: string, revision: number) => corrals.getDefinition(id, revision) }
+        : {}),
       runtimeCaps: {
         maxLoopIterations: this.policy.maxLoopIterations,
         maxSpawns: this.policy.maxSpawns,
