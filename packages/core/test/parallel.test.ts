@@ -116,9 +116,7 @@ const joins = (events: RunEvent[]) =>
 
 describe('parallel branches', () => {
   it('compiles a fan-out with a Join as runnable', () => {
-    expect(
-      compileDefinition(forked('all')).diagnostics.filter((d) => d.code === 'RUNTIME_UNSUPPORTED'),
-    ).toEqual([]);
+    expect(compileDefinition(forked('all')).ok).toBe(true);
     expect(planRun(forked('any')).ok).toBe(true);
   });
 

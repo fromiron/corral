@@ -74,7 +74,7 @@ export type DiagnosticCode =
   | 'REVIEW_CONTRACT'
   | 'REVIEW_WITHOUT_CRITERIA'
   | 'UNKNOWN_MODEL_PROFILE'
-  | 'RUNTIME_UNSUPPORTED';
+  | 'SPAWNS_CAPPED';
 
 export interface Diagnostic {
   code: DiagnosticCode;
@@ -201,11 +201,6 @@ export type CompileResult =
   | { ok: true; definition: CorralDefinition; plan: CompiledPlan; diagnostics: Diagnostic[] }
   | { ok: false; diagnostics: Diagnostic[] };
 
-/** What this installation's runtime enforces; the spec's hard caps when not given. */
-export interface RuntimeCaps {
-  maxSpawns: number;
-}
-
 export interface CompileOptions {
   /** Profiles the runtime can resolve; omitted in the editor before profiles are known. */
   knownModelProfiles?: readonly string[];
@@ -214,7 +209,6 @@ export interface CompileOptions {
    * Without it no reference resolves.
    */
   resolveTeam?: (corralId: string, definitionRevision: number) => unknown;
-  runtimeCaps?: RuntimeCaps;
 }
 
 export function compileDefinition(input: unknown, options: CompileOptions = {}): CompileResult {
@@ -243,7 +237,7 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
   checkReviewRecipes(context);
   checkModelProfiles(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
-  checkRuntimeSupport(context, options.runtimeCaps ?? SPEC_HARD_CAPS);
+  checkSpawnCap(context);
 
   return {
     ok: true,
@@ -1192,12 +1186,11 @@ const roundsOf = (loop: LoopNode) =>
     : loop.maxIterations;
 
 /** A warning for every construct the definition may hold but this runtime does not run yet. */
-function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
-  if (c.definition.limits.maxSpawns > caps.maxSpawns)
+function checkSpawnCap(c: Context) {
+  if (c.definition.limits.maxSpawns > SPEC_HARD_CAPS.maxSpawns)
     c.warn(
-      'RUNTIME_UNSUPPORTED',
-      `this runtime starts at most ${caps.maxSpawns} dynamic tasks per run`,
-      {},
+      'SPAWNS_CAPPED',
+      `runs start at most ${SPEC_HARD_CAPS.maxSpawns} child executions; the run uses its installation's cap`,
     );
 }
 

@@ -224,9 +224,7 @@ async function answer(
 
 describe('check decision', () => {
   it('compiles a check decision as runnable', () => {
-    expect(
-      compileDefinition(team()).diagnostics.filter((d) => d.code === 'RUNTIME_UNSUPPORTED'),
-    ).toEqual([]);
+    expect(compileDefinition(team()).ok).toBe(true);
   });
 
   it('runs every check in its own execution and takes fail when one fails', async () => {

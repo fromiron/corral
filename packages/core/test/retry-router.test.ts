@@ -168,8 +168,7 @@ describe('agent retry', () => {
     );
 
   it('compiles retry and error connections as runnable', () => {
-    const compiled = compileDefinition(retrying(2, 'fallback'));
-    expect(compiled.diagnostics.filter((d) => d.code === 'RUNTIME_UNSUPPORTED')).toEqual([]);
+    expect(compileDefinition(retrying(2, 'fallback')).ok).toBe(true);
     expect(planRun(retrying(2, 'fallback')).ok).toBe(true);
   });
 
@@ -251,9 +250,7 @@ describe('router', () => {
     );
 
   it('compiles a router as runnable and checks its model profile', () => {
-    expect(
-      compileDefinition(routed()).diagnostics.filter((d) => d.code === 'RUNTIME_UNSUPPORTED'),
-    ).toEqual([]);
+    expect(compileDefinition(routed()).ok).toBe(true);
     const unknown = compileDefinition(routed({ modelProfile: 'nowhere' }), {
       knownModelProfiles: base.roles.map((r) => r.modelProfile),
     });

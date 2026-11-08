@@ -3,12 +3,11 @@ import { type CompiledPlan, type CompileOptions, compileDefinition } from './com
 import { expandReferences } from './expand-teams.ts';
 
 // What the runtime executes: the same compiler as the editor (the editor is not a trust
-// boundary). The compiler accepts the whole team graph model; a definition that uses a construct
-// this runtime does not run yet carries RUNTIME_UNSUPPORTED warnings and is refused here.
-// Reference Teams are expanded into the definition the run keeps, which is compiled again.
+// boundary). Reference Teams are expanded into the definition the run keeps, which is compiled
+// again.
 
 export interface PlanIssue {
-  code: 'GRAPH_INVALID' | 'COMMAND_NOT_SUPPORTED' | 'RUNTIME_UNSUPPORTED';
+  code: 'GRAPH_INVALID' | 'COMMAND_NOT_SUPPORTED';
   message: string;
   nodeId?: string;
   edgeId?: string;
@@ -46,10 +45,6 @@ export function planRun(definition: unknown, options?: CompileOptions): RunPlan 
         .filter((d) => d.severity === 'error')
         .map((d) => issue('GRAPH_INVALID', d)),
     };
-  }
-  const unsupported = compiled.diagnostics.filter((d) => d.code === 'RUNTIME_UNSUPPORTED');
-  if (unsupported.length > 0) {
-    return { ok: false, issues: unsupported.map((d) => issue('RUNTIME_UNSUPPORTED', d)) };
   }
   return { ok: true, definition: compiled.definition, plan: compiled.plan };
 }

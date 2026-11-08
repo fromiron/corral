@@ -116,9 +116,11 @@ describe('workspace config and installation policy', () => {
   });
 
   it('names every definition limit above the installation caps', () => {
-    const policy = { ...SPEC_HARD_CAPS, maxSpawns: 10 };
+    const policy = { ...SPEC_HARD_CAPS, maxQuestions: 4 };
     expect(limitViolations(DEFAULT_LIMITS, policy)).toEqual([
-      'maxSpawns 12 is above this installation’s cap of 10',
+      'maxQuestions 6 is above this installation’s cap of 4',
     ]);
+    // A spawn limit above the cap is not a violation: the run uses the cap.
+    expect(limitViolations(DEFAULT_LIMITS, { ...SPEC_HARD_CAPS, maxSpawns: 10 })).toEqual([]);
   });
 });

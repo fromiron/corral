@@ -1681,13 +1681,11 @@ export class Coordinator {
       ...(corrals
         ? { resolveTeam: (id: string, revision: number) => corrals.getDefinition(id, revision) }
         : {}),
-      runtimeCaps: { maxSpawns: this.policy.maxSpawns },
     });
     if (!planned.ok) {
-      const code =
-        (['GRAPH_INVALID', 'RUNTIME_UNSUPPORTED'] as const).find((code) =>
-          planned.issues.some((i) => i.code === code),
-        ) ?? 'COMMAND_NOT_SUPPORTED';
+      const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
+        ? 'GRAPH_INVALID'
+        : 'COMMAND_NOT_SUPPORTED';
       const message = planned.issues
         .map((i) => `${i.nodeId ?? i.edgeId ?? i.linkId ?? 'graph'}: ${i.message}`)
         .join('; ');
@@ -2066,7 +2064,11 @@ export class Coordinator {
       stoppedSteps: new Set(),
       stepApprovals: new Map(),
       limitApproval: null,
-      limits: { ...definition.limits },
+      // A spawn limit above the installation's cap runs with the cap.
+      limits: {
+        ...definition.limits,
+        maxSpawns: Math.min(definition.limits.maxSpawns, this.policy.maxSpawns),
+      },
       criteriaVersionId: snapshot.criteriaVersionId,
       pendingCriteriaVersionId: null,
       nodePatches: new Map(),

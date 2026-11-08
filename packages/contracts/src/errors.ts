@@ -12,8 +12,6 @@ export const ErrorCode = z.enum([
   'STALE_CONTROL_REVISION',
   'IDEMPOTENCY_CONFLICT',
   'COMMAND_NOT_SUPPORTED',
-  /** A valid definition that uses a construct this runtime does not execute yet. */
-  'RUNTIME_UNSUPPORTED',
   'TARGET_NOT_FOUND',
   'TARGET_TERMINAL',
   'RUN_ALREADY_ACTIVE',

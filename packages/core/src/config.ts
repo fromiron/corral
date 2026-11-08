@@ -209,7 +209,6 @@ export function installationPolicy(config: WorkspaceConfig): InstallationPolicy 
 }
 
 const LIMIT_FIELDS = [
-  'maxSpawns',
   'maxQuestions',
   'questionTimeoutMs',
 ] as const satisfies readonly (keyof RunLimits & keyof InstallationPolicy)[];

@@ -12,10 +12,14 @@ import {
   InMemoryRunStore,
   InProcessTransport,
   type RunProjection,
+  SPEC_HARD_CAPS,
   waitForProjection,
 } from '../src/index.ts';
 
-// docs/specs/features/team-graph.md: "정한 깊이까지 위임한다".
+// docs/specs/features/team-graph.md: "정한 깊이까지 위임한다" and "설치 상한보다 큰 하위 실행 수는
+// 상한으로 실행한다".
+
+const ended = (p: RunProjection) => ['succeeded', 'failed', 'cancelled'].includes(p.status);
 
 const NEXT: Record<string, string> = {
   research: 'deep_b',
@@ -74,10 +78,8 @@ async function finish(host: AgentHost): Promise<AgentSettlement> {
 }
 
 describe('delegation deeper than two levels', () => {
-  it('compiles a depth limit of 3 without a runtime warning', () => {
-    const compiled = compileDefinition(chain(3));
-    expect(compiled.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
-    expect(compiled.diagnostics.map((d) => d.code)).not.toContain('RUNTIME_UNSUPPORTED');
+  it('compiles a depth limit of 3', () => {
+    expect(compileDefinition(chain(3)).ok).toBe(true);
   });
 
   it('runs down to the set depth and refuses one level more', async () => {
@@ -118,9 +120,7 @@ describe('delegation deeper than two levels', () => {
       mode: 'mock',
     });
     expect(receipt.error ?? null).toBeNull();
-    const final = await waitForProjection(transport, runId ?? '', (p: RunProjection) =>
-      ['succeeded', 'failed', 'cancelled'].includes(p.status),
-    );
+    const final = await waitForProjection(transport, runId ?? '', ended);
     const depthOf = (nodeId: string) =>
       Object.values(final.executions)
         .filter((execution) => execution.nodeId === nodeId)
@@ -136,5 +136,38 @@ describe('delegation deeper than two levels', () => {
         .map((event) => event.payload),
     ).toEqual([{ limitKind: 'depth', used: 3, max: 3 }]);
     expect(final.status).toBe('succeeded');
+  });
+});
+
+describe('a spawn limit above the installation cap', () => {
+  it('starts with the cap and refuses the child execution past it', async () => {
+    const store = new InMemoryRunStore();
+    const transport = new InProcessTransport(
+      new Coordinator({
+        store,
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        policy: { ...SPEC_HARD_CAPS, maxSpawns: 2 },
+        agents: new ScriptedAgentAdapter({ turns: 1 }),
+      }),
+    );
+    const definition = collaborationCorral('capped');
+    definition.limits = { ...definition.limits, maxSpawns: 5 };
+    const { runId, receipt } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'cmd_capped',
+      definition,
+      mode: 'mock',
+    });
+    expect(receipt.error ?? null).toBeNull();
+    const final = await waitForProjection(transport, runId ?? '', ended);
+    const events = store.readEvents(runId ?? '', 0);
+    const started = events.find((event) => event.type === 'run.started');
+    expect(started?.type === 'run.started' && started.payload.limits.maxSpawns).toBe(2);
+    expect(final.limits?.maxSpawns).toBe(2);
+    // Research starts two helpers; the writer's question would be the third.
+    expect(
+      events.filter((event) => event.type === 'limit.reached').map((event) => event.payload),
+    ).toEqual([{ limitKind: 'spawns', used: 2, max: 2 }]);
   });
 });

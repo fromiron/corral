@@ -33,24 +33,16 @@
 | 5. 병렬 | 완료 | 05918b82(명세), 9439bc19(명세: 기다림은 그 단계만), 7f3df913 |
 | 6. 하위 팀 | 완료 | 6a(`inline` Team): 18119a11(명세), 0a5f757c. 6b(참조 팀 펼치기): df6b40a5(명세), 구현은 `feat: expand reference Teams at run start`. 3997cf67(pi 1.5.0, GPT-6.1 Terra) |
 | 6c. 예산 폐지 | 완료 | fbafed99, 2cd2fa64(명세), 구현은 `feat: remove usage budgets` |
-| 7. 위임 깊이 | 진행 중 | 615dcd6b(명세), 깊이는 `feat: delegate deeper than two levels` |
+| 7. 위임 깊이 | 완료 | 615dcd6b(명세), 5464aaac, 281194e9(명세: 설치 상한을 넘는 `maxSpawns`), 구현은 `feat: run a spawn limit above the installation cap at the cap` |
 | 8. 포크와 중단점 | 시작 전 (명세 없음) | |
 | 마무리: 확장 E2E, 명세 정리 | 시작 전 | |
 
-런타임 단계(3–7)는 [실행 지원 범위](../specs/features/team-graph.md#실행-지원-범위)에서 해당 항목을 지우고, 컴파일러의 `RUNTIME_UNSUPPORTED` 규칙을 없애고, 실제로 실행하는 테스트가 통과하면 끝난다.
-
-- 3: Loop 둘 이상, 상자 안의 상자, Loop `budget`·`stallDetection`·`exhausted`, `maxIterations` 상한, Loop로 시작.
-- 4: Agent `retry`와 `error` 연결, `router` Decision과 `route` 승인.
-- 4b: `check` Decision. 내장 검사 실행, 세션 프로젝트 검사 설정 고정, 판정 없는 결과의 `check` 승인.
-- 5: 한 포트의 병렬 분기, Join.
-- 6: Team 노드(안에 둔 팀, 저장된 팀 참조), Team으로 시작.
-- 7: 2보다 큰 `maxDelegationDepth`, 설치 정책 상한을 넘는 `maxSpawns`.
-- 8: 실행 옵션이다. 명세부터 쓴다.
+런타임 단계(3–7)는 끝났다. 컴파일러의 `RUNTIME_UNSUPPORTED` 규칙과 실행 지원 범위 표는 없어졌고, 정의가 컴파일되면 런타임이 실행한다. 8단계는 실행 옵션이고 명세부터 쓴다.
 
 ## 다음 스텝
 
-1. 7단계(위임 깊이): 2보다 큰 `maxDelegationDepth`는 실행한다. 남은 것은 설치 정책 상한(기본 32)을 넘는 `maxSpawns`를 어떻게 할지다. 제품 계약 §9는 32를 하드 상한으로 두므로 사용자 결정이 필요하다.
-2. 8단계(포크와 중단점).
+1. 8단계(포크와 중단점): 결정은 끝났다. 끝난 Run의 최상위 단계에서 지금 정의로 새 Run을 시작하고(앞 단계 결과는 복사, 작업 사본은 그대로), 중단점은 단계 시작 직전에 그 단계만 멈춘다. 명세를 쓰고, 실패하는 테스트, 구현 순서로 간다.
+2. 마무리: 확장 E2E와 명세 정리.
 
 ## 남은 정리와 열린 질문
 

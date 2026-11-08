@@ -267,7 +267,7 @@
       "REVIEW_CONTRACT": "A review decision must read a reviewer's output.",
       "REVIEW_WITHOUT_CRITERIA": "{node} does not get the criteria, so its review cannot check them.",
       "ROUTER_ROUTES": "A router needs at least two routes with different ids.",
-      "RUNTIME_UNSUPPORTED": "This can be defined, but this runtime does not run it yet.",
+      "SPAWNS_CAPPED": "The child execution limit is above what runs allow. A run uses its installation’s limit.",
       "SCHEMA_INVALID": "{message}",
       "TEAM_INPUTS_INLINE": "Steps inside this Team read earlier steps by name; the Team takes no inputs.",
       "TEAM_NO_BODY": "Connect “body” to the first step inside the Team.",

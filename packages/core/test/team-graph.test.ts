@@ -288,7 +288,6 @@ describe('team graph: boxes', () => {
 
 describe('team graph: loops', () => {
   it('compiles two loops as runnable', () => {
-    expect(codes(warningsOf(twoLoops()))).not.toContain('RUNTIME_UNSUPPORTED');
     expect(planRun(twoLoops()).ok).toBe(true);
   });
 
@@ -338,7 +337,6 @@ describe('team graph: loops', () => {
     ];
     doc.entryNodeId = 'L1';
     expect(errorsOf(doc)).toEqual([]);
-    expect(codes(warningsOf(doc))).not.toContain('RUNTIME_UNSUPPORTED');
 
     doc.entryNodeId = 'd1';
     expect(codes(errorsOf(doc))).toContain('ENTRY_INVALID');
@@ -355,7 +353,6 @@ describe('team graph: parallel branches', () => {
   it('accepts the same branches meeting at a join, and runs them', () => {
     const doc = fanOut(join());
     expect(errorsOf(doc)).toEqual([]);
-    expect(codes(warningsOf(doc))).not.toContain('RUNTIME_UNSUPPORTED');
   });
 
   it('lets the exclusive branches of a decision meet without a join', () => {
@@ -447,8 +444,6 @@ describe('team graph: decisions and failure paths', () => {
     doc.limits = { ...DEFAULT_LIMITS, maxDelegationDepth: 3 };
     expect(CorralDefinition.safeParse(doc).success).toBe(true);
     expect(errorsOf(doc)).toEqual([]);
-    // Retries, the error port and a deeper delegation limit all run.
-    expect(codes(warningsOf(doc))).not.toContain('RUNTIME_UNSUPPORTED');
   });
 });
 
@@ -581,43 +576,21 @@ describe('team graph: team inputs', () => {
 });
 
 describe('team graph: what runs today', () => {
-  it('keeps a single-loop team runnable with no unsupported warnings', () => {
+  it('keeps a single-loop team runnable', () => {
     const result = compile(researchTeam);
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
-    expect(codes(result.diagnostics)).not.toContain('RUNTIME_UNSUPPORTED');
     expect(planRun(researchTeam).ok).toBe(true);
   });
 
   it('runs an inline Team', () => {
-    expect(codes(warningsOf(inlineTeam()))).not.toContain('RUNTIME_UNSUPPORTED');
     expect(planRun(inlineTeam()).ok).toBe(true);
   });
 
-  it('refuses to plan a run for a definition the runtime does not execute', () => {
-    const plan = planRun({ ...inlineTeam(), limits: { ...DEFAULT_LIMITS, maxSpawns: 33 } });
-    expect(plan.ok).toBe(false);
-    if (plan.ok) return;
-    expect(plan.issues).toContainEqual(expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED' }));
-  });
-
-  it('rejects starting such a run with the same code, without creating a run', async () => {
-    const coordinator = new Coordinator({
-      clock: new FakeClock(),
-      ids: new SequentialIdFactory(),
-      agents: new ScriptedAgentAdapter({ turns: 1 }),
-    });
-    const transport = new InProcessTransport(coordinator);
-    const { runId, receipt } = await transport.startRun({
-      schemaVersion: '0.1',
-      commandId: 'cmd_spawns',
-      definition: {
-        ...inlineTeam(),
-        limits: { ...DEFAULT_LIMITS, maxSpawns: 33 },
-      } as CorralDefinition,
-      mode: 'mock',
-    });
-    expect(runId).toBeNull();
-    expect(receipt.status).toBe('rejected');
-    expect(receipt.error?.code).toBe('RUNTIME_UNSUPPORTED');
+  it('plans a spawn limit above the product cap, with a SPAWNS_CAPPED warning', () => {
+    const doc = { ...inlineTeam(), limits: { ...DEFAULT_LIMITS, maxSpawns: 40 } };
+    expect(errorsOf(doc)).toEqual([]);
+    expect(codes(warningsOf(doc))).toContain('SPAWNS_CAPPED');
+    expect(planRun(doc).ok).toBe(true);
+    expect(codes(warningsOf(inlineTeam()))).not.toContain('SPAWNS_CAPPED');
   });
 });

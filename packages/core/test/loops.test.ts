@@ -426,7 +426,7 @@ describe('loop execution', () => {
       'loop',
     );
     const compiled = compileDefinition(definition);
-    expect(compiled.diagnostics.filter((d) => d.code === 'RUNTIME_UNSUPPORTED')).toEqual([]);
+    expect(compiled.ok).toBe(true);
     const transport = runtime(scripted({ l_decision: Array(11).fill('revise').concat('pass') }));
     const { runId } = await run(transport, definition);
     const final = await waitForProjection(transport, runId, finished);
