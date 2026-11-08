@@ -45,6 +45,7 @@ export function loopFlowFixture(count = 100, loadArtifact: () => Promise<void> =
       loopNodeId: 'review_loop',
       no,
       criteriaVersionId: 'criteria',
+      parentIterationId: null,
       outcome: no === count ? 'pass' : 'revise',
     };
     const execution: ExecutionView = {

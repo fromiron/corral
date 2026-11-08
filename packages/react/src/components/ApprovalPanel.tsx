@@ -8,7 +8,7 @@ import {
   RunCommandArgs,
   ToolPermissionPlan,
 } from '@corral/contracts';
-import { validToolPermissionPlan } from '@corral/core';
+import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -27,6 +27,12 @@ import type { RunSessionStore } from '../run/session.ts';
 import { InteractionPanel } from './InteractionPanel.tsx';
 import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
+
+/** A Loop that stopped for its budget or a stall is asked about in its own words. */
+const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
+  approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
+    ? `loop_${approval.loopStop}`
+    : approval.kind;
 
 /**
  * Decisions waiting for the person: each names the exact versions and the
@@ -157,7 +163,7 @@ export function ApprovalPanel({
                   ? 'rejectLsp'
                   : 'rejectCheck',
             )
-          : t(`rejectAs.${approval.kind}`)}
+          : t(`rejectAs.${copyKey(approval)}`)}
       </Button>
       <Button
         size="compact"
@@ -179,7 +185,7 @@ export function ApprovalPanel({
                     ? 'lspOnce'
                     : 'checkOnce',
               )
-            : t(`then.${approval.kind}`)
+            : t(`then.${copyKey(approval)}`)
         }
         onClick={() => void decide(approval.approvalId, 'approve')}
       >
@@ -191,7 +197,7 @@ export function ApprovalPanel({
                   ? 'approveLsp'
                   : 'approveCheck',
             )
-          : t(`approveAs.${approval.kind}`)}
+          : t(`approveAs.${copyKey(approval)}`)}
       </Button>
       {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
     </>
@@ -218,7 +224,7 @@ export function ApprovalPanel({
           >
             <AgentStatusIcon status="done" size={12} />
             {t('done', {
-              step: t(`kind.${approval.kind}`),
+              step: t(`kind.${copyKey(approval)}`),
               subject: label(approval.subjectVersionIds[0] ?? ''),
             })}
           </p>
@@ -253,7 +259,7 @@ export function ApprovalPanel({
                             ? 'lspHeading'
                             : 'checkHeading',
                       )
-                    : t(`kind.${approval.kind}`)}
+                    : t(`kind.${copyKey(approval)}`)}
                 </p>
                 {approval.tool && !compact ? (
                   <span className="truncate text-muted-foreground">
@@ -315,7 +321,7 @@ export function ApprovalPanel({
                 </div>
               ) : null}
               {compact || approval.tool ? null : (
-                <p className="text-muted-foreground">{t(`explain.${approval.kind}`)}</p>
+                <p className="text-muted-foreground">{t(`explain.${copyKey(approval)}`)}</p>
               )}
               {approval.tool ? null : (
                 <div className="flex flex-wrap items-center gap-1">

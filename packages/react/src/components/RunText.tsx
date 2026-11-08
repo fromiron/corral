@@ -163,7 +163,6 @@ const REASONS = new Set([
   'termination_unconfirmed',
   'execution_failed',
   'internal_error',
-  'loop_hard_cap_reached',
   'needs_user',
   'runner_finished_without_output',
   'loop_cap_declined',

@@ -331,7 +331,9 @@ export const LoopIterationStarted = event(
   z.strictObject({
     loopNodeId: Identifier,
     iterationId: Identifier,
-    no: z.int().min(1).max(10),
+    /** The round of the enclosing Loop this round runs in; absent before nested Loops ran. */
+    parentIterationId: Identifier.nullable().optional(),
+    no: z.int().min(1),
     pinnedCarryInputs: Ids,
     criteriaVersionId: Identifier,
   }),
@@ -341,7 +343,15 @@ export const LoopIterationFinished = event(
   z.strictObject({
     loopNodeId: Identifier,
     iterationId: Identifier,
-    outcome: z.enum(['pass', 'revise', 'inconclusive', 'cap_reached', 'cancelled']),
+    outcome: z.enum([
+      'pass',
+      'revise',
+      'inconclusive',
+      'cap_reached',
+      'budget_exhausted',
+      'stalled',
+      'cancelled',
+    ]),
     submittedVersionIds: Ids,
   }),
 );
@@ -350,6 +360,8 @@ export const ApprovalRequested = event(
   z.strictObject({
     approvalId: Identifier,
     kind: z.enum(['final_output', 'loop_cap', 'user_action']),
+    /** Why a Loop asks for another round: its round cap, its budget, or a stall. */
+    loopStop: z.enum(['cap_reached', 'budget_exhausted', 'stalled']).optional(),
     subjectVersionIds: Ids,
     criteriaVersionId: Identifier.nullable(),
     tool: z

@@ -364,6 +364,7 @@ it('opens an exact execution detail only after the quick view action and returns
             loopNodeId: 'loop',
             no: 2,
             criteriaVersionId: 'criteria',
+            parentIterationId: null,
             outcome: null,
           },
         },

@@ -1299,7 +1299,8 @@ describe('workspace configuration', () => {
     expect(number(row('질문 대기')[2] ?? '') * 1000).toBe(DEFAULT_LIMITS.questionTimeoutMs);
     expect(row('모델/문서 도구 timeout')[2]).toBe('무제한 / 30초');
     expect(row('전체 wall deadline')[2]).toBe('무제한');
-    expect(number(row('Loop 자동 회차')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxLoopIterations);
+    expect(row('Loop 회차 상한')[3]).toContain('설치 상한 없음');
+    expect(SPEC_HARD_CAPS).not.toHaveProperty('maxLoopIterations');
     expect(number(row('동적 위임 깊이')[2] ?? '')).toBe(DEFAULT_LIMITS.maxDelegationDepth);
   });
 });

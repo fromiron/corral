@@ -191,6 +191,7 @@ describe('decision and output node status (UX-A4)', () => {
     loopNodeId: 'review_loop',
     no,
     criteriaVersionId: 'c',
+    parentIterationId: null,
     outcome,
   });
 

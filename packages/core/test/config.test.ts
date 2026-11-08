@@ -20,7 +20,7 @@ describe('workspace config and installation policy', () => {
     expect(config.ok).toBe(true);
     if (!config.ok) return;
     expect(installationPolicy(config.config)).toEqual(SPEC_HARD_CAPS);
-    expect(limitViolations(DEFAULT_LIMITS, 2, SPEC_HARD_CAPS)).toEqual([]);
+    expect(limitViolations(DEFAULT_LIMITS, SPEC_HARD_CAPS)).toEqual([]);
   });
 
   it('accepts the automatic reasoning policy and leaves it optional', () => {
@@ -119,10 +119,9 @@ describe('workspace config and installation policy', () => {
   });
 
   it('names every definition limit above the installation caps', () => {
-    const policy = { ...SPEC_HARD_CAPS, maxModelCalls: 20, maxLoopIterations: 1 };
-    expect(limitViolations(DEFAULT_LIMITS, 2, policy)).toEqual([
+    const policy = { ...SPEC_HARD_CAPS, maxModelCalls: 20 };
+    expect(limitViolations(DEFAULT_LIMITS, policy)).toEqual([
       'maxModelCalls 40 is above this installation’s cap of 20',
-      'Loop rounds 2 is above this installation’s cap of 1',
     ]);
   });
 

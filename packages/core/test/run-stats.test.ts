@@ -135,6 +135,7 @@ function loop(projection: RunProjection, loopNodeId: string, outcomes: string[])
     projection.iterations[iterationId] = {
       iterationId,
       loopNodeId,
+      parentIterationId: null,
       no: index + 1,
       criteriaVersionId: 'criteria',
       outcome: outcome as RunProjection['iterations'][string]['outcome'],

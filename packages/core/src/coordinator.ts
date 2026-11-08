@@ -164,6 +164,7 @@ import { type RunStats, runStats } from './run-stats.ts';
 import {
   type GraphRunner,
   type IterationRef,
+  type LoopStop,
   type RoundOutcome,
   type RunnerCallbacks,
   type RunnerResult,
@@ -472,6 +473,11 @@ interface LiveRun {
   /** The open round of each Loop node. */
   rounds: Map<string, { no: number; iterationId: string }>;
   /**
+   * Each Loop since it was last entered: when, and the work its last finished round submitted
+   * (content hashes), for budgets and stall detection.
+   */
+  loopEntries: Map<string, { enteredMs: number; previousWork: string[] | null }>;
+  /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
    */
@@ -530,7 +536,6 @@ interface LiveRun {
   boundaryWaiters: Set<() => void>;
   cancelListeners: Map<string, Set<() => void>>;
   toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
-  capStop: 'declined' | 'hard_cap' | null;
 }
 
 interface OpenQuestion {
@@ -1645,10 +1650,7 @@ export class Coordinator {
       ...(corrals
         ? { resolveTeam: (id: string, revision: number) => corrals.getDefinition(id, revision) }
         : {}),
-      runtimeCaps: {
-        maxLoopIterations: this.policy.maxLoopIterations,
-        maxSpawns: this.policy.maxSpawns,
-      },
+      runtimeCaps: { maxSpawns: this.policy.maxSpawns },
     });
     if (!planned.ok) {
       const code =
@@ -1669,13 +1671,8 @@ export class Coordinator {
         });
       Object.assign(role, override);
     }
-    const loopRounds = Math.max(
-      0,
-      ...Object.values(planned.plan.loops).map((l) => l.maxIterations),
-    );
     const overCaps = limitViolations(
       planned.definition.limits,
-      loopRounds,
       this.policy,
       !planned.definition.executionPolicy?.budget,
     );
@@ -2015,7 +2012,7 @@ export class Coordinator {
         100,
         this.judgments?.settings.reasoning_effort.maxCalls ?? definition.limits.maxModelCalls,
       ),
-      capStop: null,
+      loopEntries: new Map(),
       limits: definition.executionPolicy?.budget
         ? {
             ...definition.limits,
@@ -2902,8 +2899,6 @@ export class Coordinator {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
       if (node.reviewRecipe && change.maxIterations > recipeAttempts(node.reviewRecipe))
         return refuse('LIMIT_REACHED', 'loop limit exceeds the pinned review recipe');
-      if (change.maxIterations > this.policy.maxLoopIterations)
-        return refuse('LIMIT_REACHED', 'loop cap exceeds installation policy');
       before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
       after = { maxIterations: change.maxIterations };
     } else if (change.kind === 'run_limits') {
@@ -4173,9 +4168,7 @@ export class Coordinator {
         return;
       // The person stopped it: at the Loop cap, at an approval, or after an inconclusive review.
       case 'cap_reached':
-        if (run.capStop === 'hard_cap')
-          this.failRun(run, `loop_hard_cap_reached: ${result.loopId}`);
-        else this.endRun(run, 'cancelled', `loop_cap_declined: ${result.loopId}`);
+        this.endRun(run, 'cancelled', `loop_cap_declined: ${result.loopId}`);
         return;
       case 'rejected':
         this.endRun(run, 'cancelled', `rejected: ${result.nodeId}`);
@@ -4254,7 +4247,8 @@ export class Coordinator {
         ]);
         return decision.branch;
       },
-      loopCapReached: async (loopId, rounds) => this.atLoopCap(run, loopId, rounds),
+      loopCapReached: async (loopId, rounds, reason) => this.atLoopCap(run, loopId, rounds, reason),
+      loopCheck: async (loopId) => this.loopStopOf(run, loopId),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
       loopEntered: async (loopId, no) => {
         await this.boundary(run);
@@ -4285,15 +4279,18 @@ export class Coordinator {
           run.pendingCriteriaVersionId = null;
         }
         const iterationId = this.ids.next('iteration');
+        if (no === 1)
+          run.loopEntries.set(loopId, { enteredMs: this.clock.monotonicMs(), previousWork: null });
         this.commit(run, [
           {
             type: 'loop.iteration_started',
             payload: {
               loopNodeId: loopId,
               iterationId,
+              parentIterationId: this.openRoundOf(run, loopId),
               no,
-              // What the previous round hands to this one, fixed now.
-              pinnedCarryInputs: this.carriedInto(run, loop.members, loopId),
+              // What the previous round of this entry hands to this one, fixed now.
+              pinnedCarryInputs: no === 1 ? [] : this.carriedInto(run, loop.members, loopId),
               criteriaVersionId: run.criteriaVersionId,
             },
           },
@@ -4321,6 +4318,8 @@ export class Coordinator {
         this.commit(run, [this.roundFinished(run, loopId, round.iterationId, outcome)]);
         if (outcome === 'pass') run.recipes.get(loopId)?.cancelDeadline();
         run.rounds.delete(loopId);
+        // Another round of this entry follows only a revise; anything else leaves the Loop.
+        if (outcome !== 'revise') run.loopEntries.delete(loopId);
       },
     };
   }
@@ -4944,9 +4943,14 @@ export class Coordinator {
       const source = binding.sourceNodeId ?? '';
       let versionId: string | undefined;
       if (binding.kind === 'task_output') {
-        // Inside a Loop, a producer in the same round is read from this round.
-        const sameRound = iterationId !== null && this.loopOf(run, source) !== null;
-        versionId = this.submittedOutputOf(run, source, sameRound ? iterationId : undefined)[0];
+        // Inside a Loop, a producer in a Loop is read from this round: the round itself, a Loop
+        // round around it, or a nested Loop's round inside it, never an earlier round.
+        const scoped = iterationId !== null && this.loopOf(run, source) !== null;
+        versionId = this.submittedOutputOf(
+          run,
+          source,
+          scoped ? (round) => this.sameRound(run, round, iterationId) : undefined,
+        )[0];
       }
       if (binding.kind === 'previous_iteration_output' && previousRound) {
         versionId = this.submittedOutputOf(run, source, previousRound)[0];
@@ -4961,19 +4965,44 @@ export class Coordinator {
     });
   }
 
+  /** The round before this one in the same entry of its Loop; round 1 has none. */
   private previousRound(run: LiveRun, iterationId: string): string | null {
     const current = run.projection.iterations[iterationId];
-    if (!current) return null;
+    if (!current || current.no <= 1) return null;
     const rounds = run.projection.loopIterations[current.loopNodeId] ?? [];
     return rounds[rounds.indexOf(iterationId) - 1] ?? null;
   }
 
-  /** The latest completed submission of a node, optionally within one Loop round. */
-  private submittedOutputOf(run: LiveRun, nodeId: string, iterationId?: string): string[] {
+  /** Whether `round` is `reader`, a Loop round around it, or a round nested inside it. */
+  private sameRound(run: LiveRun, round: string | null, reader: string): boolean {
+    const { iterations } = run.projection;
+    const chain = (from: string | null) => {
+      const ids: string[] = [];
+      for (let id = from; id; id = iterations[id]?.parentIterationId ?? null) ids.push(id);
+      return ids;
+    };
+    return chain(reader).includes(round ?? '') || chain(round).includes(reader);
+  }
+
+  /**
+   * The latest completed submission of a node, optionally within one Loop round (an id) or
+   * within the rounds a predicate accepts.
+   */
+  private submittedOutputOf(
+    run: LiveRun,
+    nodeId: string,
+    within?: string | ((round: string | null) => boolean),
+  ): string[] {
     const executions = run.projection.nodeExecutions[nodeId] ?? [];
     for (const executionId of [...executions].reverse()) {
       const execution = run.projection.executions[executionId];
-      if (iterationId !== undefined && execution?.iterationId !== iterationId) continue;
+      if (
+        within !== undefined &&
+        (typeof within === 'string'
+          ? execution?.iterationId !== within
+          : !within(execution?.iterationId ?? null))
+      )
+        continue;
       const task = run.projection.tasks[execution?.taskId ?? ''];
       if (task?.status === 'completed') return task.submittedArtifactVersionIds;
     }
@@ -5657,6 +5686,7 @@ export class Coordinator {
     kind: 'final_output' | 'loop_cap' | 'user_action',
     subjectVersionIds: string[],
     request?: { tool: NonNullable<EventPayload<'approval.requested'>['tool']>; body: string },
+    loopStop?: LoopStop,
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
     const decision = new Promise<'approve' | 'reject'>((resolve) => {
@@ -5675,6 +5705,7 @@ export class Coordinator {
               ? null
               : (run.pendingCriteriaVersionId ?? run.criteriaVersionId),
             ...(request ? { tool: request.tool } : {}),
+            ...(loopStop ? { loopStop } : {}),
           },
         },
         ...(request && ['paused', 'pausing'].includes(run.projection.status)
@@ -5835,6 +5866,7 @@ export class Coordinator {
     run: LiveRun,
     loopId: string,
     rounds: number,
+    reason: LoopStop,
   ): Promise<'continue' | 'stop'> {
     const recipe = run.recipes.get(loopId)?.recipe;
     if (recipe && rounds >= recipeAttempts(recipe)) {
@@ -5845,31 +5877,84 @@ export class Coordinator {
       );
       throw new Error('review recipe stopped');
     }
-    if (rounds >= this.policy.maxLoopIterations) {
-      run.capStop = 'hard_cap';
-      this.commit(run, [
-        {
-          type: 'limit.reached',
-          payload: {
-            limitKind: 'loop_iterations',
-            used: rounds,
-            reserved: 0,
-            max: this.policy.maxLoopIterations,
-          },
-        },
-      ]);
-      return 'stop';
-    }
     const members = run.plan.loops[loopId]?.members ?? [];
     const round = run.rounds.get(loopId)?.iterationId;
     const latest = members.flatMap((m) => this.submittedOutputOf(run, m, round));
-    const requested = this.requestApproval(run, 'loop_cap', latest);
+    const requested = this.requestApproval(run, 'loop_cap', latest, undefined, reason);
     if ((await requested.decision) === 'approve') {
       await this.boundary(run);
       return 'continue';
     }
-    run.capStop = 'declined';
     return 'stop';
+  }
+
+  /**
+   * Whether a Loop round below its cap must stop instead of repeating: the Loop's budget for
+   * this entry is spent, or this round resubmitted the previous round's work.
+   */
+  private loopStopOf(run: LiveRun, loopId: string): LoopStop | null {
+    const loop = run.plan.loops[loopId];
+    const entry = run.loopEntries.get(loopId);
+    const round = run.rounds.get(loopId)?.iterationId;
+    if (!loop || !entry || !round) return null;
+    const { projection } = run;
+    // Every round of this entry, and the rounds of Loops nested in them.
+    const entryRounds = new Set<string>();
+    const thisRound = new Set<string>([round]);
+    const under = (iterationId: string | null, roots: Set<string>): boolean => {
+      for (let id = iterationId; id; id = projection.iterations[id]?.parentIterationId ?? null)
+        if (roots.has(id)) return true;
+      return false;
+    };
+    const ofEntry = (projection.loopIterations[loopId] ?? []).slice(
+      -(run.rounds.get(loopId)?.no ?? 1),
+    );
+    for (const id of ofEntry) entryRounds.add(id);
+    /** The round a step's execution ran in, following called agents up to the step. */
+    const roundOf = (executionId: string): string | null => {
+      let execution = projection.executions[executionId];
+      while (execution?.parentExecutionId)
+        execution = projection.executions[execution.parentExecutionId];
+      return execution?.iterationId ?? null;
+    };
+    if (loop.budget) {
+      let calls = 0;
+      let tokens = 0;
+      for (const [executionId, execution] of Object.entries(projection.executions)) {
+        if (!under(roundOf(executionId), entryRounds)) continue;
+        for (const callId of execution.modelCallIds) {
+          calls += 1;
+          tokens += projection.modelCalls[callId]?.usage?.outputTokens ?? 0;
+        }
+      }
+      const { maxModelCalls, maxOutputTokens, maxWallMs } = loop.budget;
+      if (
+        (maxModelCalls !== undefined && calls >= maxModelCalls) ||
+        (maxOutputTokens !== undefined && tokens >= maxOutputTokens) ||
+        (maxWallMs !== undefined && this.clock.monotonicMs() - entry.enteredMs >= maxWallMs)
+      )
+        return 'budget_exhausted';
+    }
+    if (loop.stallDetection) {
+      // The work this round submitted; review results are judgments of it, not work.
+      const work = Object.values(projection.executions)
+        .filter(
+          (execution) => !execution.parentExecutionId && under(execution.iterationId, thisRound),
+        )
+        .flatMap((execution) => {
+          const task = projection.tasks[execution.taskId];
+          if (!task || task.contract === 'review') return [];
+          return task.submittedArtifactVersionIds.flatMap(
+            (id) => projection.artifacts[id]?.contentHash ?? [],
+          );
+        })
+        .sort();
+      const previous = entry.previousWork;
+      entry.previousWork = work;
+      if (work.length > 0 && previous && JSON.stringify(previous) === JSON.stringify(work))
+        return 'stalled';
+    }
+    return null;
   }
 
   /** The person's answer to a pending approval: once, for the exact subject. */

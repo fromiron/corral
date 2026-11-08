@@ -7099,10 +7099,21 @@
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
             },
+            "parentIterationId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "no": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 10
+              "maximum": 9007199254740991
             },
             "pinnedCarryInputs": {
               "type": "array",
@@ -7228,6 +7239,8 @@
                 "revise",
                 "inconclusive",
                 "cap_reached",
+                "budget_exhausted",
+                "stalled",
                 "cancelled"
               ]
             },
@@ -7345,6 +7358,14 @@
                 "final_output",
                 "loop_cap",
                 "user_action"
+              ]
+            },
+            "loopStop": {
+              "type": "string",
+              "enum": [
+                "cap_reached",
+                "budget_exhausted",
+                "stalled"
               ]
             },
             "subjectVersionIds": {

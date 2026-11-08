@@ -236,6 +236,7 @@ function loopSession(rounds = 100) {
       loopNodeId: 'review_loop',
       no,
       criteriaVersionId: 'criteria',
+      parentIterationId: null,
       outcome: no === rounds ? null : 'revise',
     };
     const writerId = `exec_write_${no}`;
@@ -357,6 +358,7 @@ describe('bounded loop execution tree', () => {
               loopNodeId: 'second_loop',
               no: 1,
               criteriaVersionId: 'criteria',
+              parentIterationId: null,
               outcome: 'revise',
             },
             second_2: {
@@ -364,6 +366,7 @@ describe('bounded loop execution tree', () => {
               loopNodeId: 'second_loop',
               no: 2,
               criteriaVersionId: 'criteria',
+              parentIterationId: null,
               outcome: null,
             },
           },

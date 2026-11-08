@@ -268,14 +268,9 @@ describe('team graph: boxes', () => {
 });
 
 describe('team graph: loops', () => {
-  it('compiles two loops but marks them as not runnable yet', () => {
-    const warnings = warningsOf(twoLoops());
-    expect(warnings).toContainEqual(
-      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'L1' }),
-    );
-    expect(warnings).toContainEqual(
-      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'L2' }),
-    );
+  it('compiles two loops as runnable', () => {
+    expect(codes(warningsOf(twoLoops()))).not.toContain('RUNTIME_UNSUPPORTED');
+    expect(planRun(twoLoops()).ok).toBe(true);
   });
 
   it('takes repeat only from a decision', () => {
@@ -325,9 +320,7 @@ describe('team graph: loops', () => {
     ];
     doc.entryNodeId = 'L1';
     expect(errorsOf(doc)).toEqual([]);
-    expect(warningsOf(doc)).toContainEqual(
-      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'L1' }),
-    );
+    expect(codes(warningsOf(doc))).not.toContain('RUNTIME_UNSUPPORTED');
 
     doc.entryNodeId = 'd1';
     expect(codes(errorsOf(doc))).toContain('ENTRY_INVALID');
@@ -518,11 +511,11 @@ describe('team graph: what runs today', () => {
   });
 
   it('refuses to plan a run for a definition the runtime does not execute', () => {
-    const plan = planRun(twoLoops());
+    const plan = planRun(fanOut(join()));
     expect(plan.ok).toBe(false);
     if (plan.ok) return;
     expect(plan.issues).toContainEqual(
-      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'L1' }),
+      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'M' }),
     );
   });
 
@@ -535,8 +528,8 @@ describe('team graph: what runs today', () => {
     const transport = new InProcessTransport(coordinator);
     const { runId, receipt } = await transport.startRun({
       schemaVersion: '0.1',
-      commandId: 'cmd_two_loops',
-      definition: twoLoops() as CorralDefinition,
+      commandId: 'cmd_join',
+      definition: fanOut(join()) as CorralDefinition,
       mode: 'mock',
     });
     expect(runId).toBeNull();

@@ -16,6 +16,7 @@ function projection(status: RunStatus, executions: Exec[], extra: Partial<RunPro
         loopNodeId: 'review_loop',
         no: e.round ?? 1,
         criteriaVersionId: 'crit_0001',
+        parentIterationId: null,
         outcome: null,
       };
     }

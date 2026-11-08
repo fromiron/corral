@@ -193,7 +193,6 @@ export type CompileResult =
 
 /** What this installation's runtime enforces; the spec's hard caps when not given. */
 export interface RuntimeCaps {
-  maxLoopIterations: number;
   maxSpawns: number;
 }
 
@@ -588,8 +587,6 @@ function checkReferences(c: Context, options: CompileOptions, teams: readonly st
 }
 
 // ── ports, decisions, boxes and boundaries ───────────────────────────────────
-
-const boxName = (node: CorralNode) => (node.type === 'loop' ? 'Loop' : 'Team');
 
 function checkStructure(c: Context) {
   const { definition } = c;
@@ -1114,14 +1111,11 @@ const roundsOf = (loop: LoopNode) =>
 function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
   const { definition } = c;
   const unsupported = (message: string, at: At = {}) => c.warn('RUNTIME_UNSUPPORTED', message, at);
-  const loops = definition.nodes.filter((n) => n.type === 'loop');
   const edgesFrom = (id: string, port: string) =>
     (c.outgoing.get(id) ?? []).filter((e) => e.sourcePort === port);
 
   for (const node of definition.nodes) {
     const at = { nodeId: node.id };
-    if (isBox(node) && node.parentId)
-      unsupported(`a ${boxName(node)} inside another box does not run yet`, at);
     switch (node.type) {
       case 'agent':
         if ((node.retry?.maxAttempts ?? 0) > 0) unsupported('retries do not run yet', at);
@@ -1132,21 +1126,13 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
         if (node.mode === 'check' || node.mode === 'router')
           unsupported(`${node.mode} decisions do not run yet`, at);
         break;
-      case 'loop':
-        if (loops.length > 1) unsupported('this runtime runs one Loop per team', at);
-        if (node.budget) unsupported('Loop budgets do not run yet', at);
-        if (node.stallDetection) unsupported('stall detection does not run yet', at);
-        if (edgesFrom(node.id, 'exhausted').length > 0)
-          unsupported('the "exhausted" path does not run yet', at);
-        if (roundsOf(node) > caps.maxLoopIterations)
-          unsupported(`this runtime runs at most ${caps.maxLoopIterations} rounds`, at);
-        break;
       case 'team':
         unsupported('Teams do not run yet', at);
         break;
       case 'join':
         unsupported('Joins do not run yet', at);
         break;
+      case 'loop':
       case 'output':
         break;
     }
@@ -1163,9 +1149,6 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
         nodeId: first.source,
       });
   }
-  const entry = c.nodes.get(definition.entryNodeId);
-  if (isBox(entry))
-    unsupported(`starting at a ${boxName(entry)} does not run yet`, { nodeId: entry.id });
   if (definition.limits.maxDelegationDepth > 2)
     unsupported('this runtime delegates at most two levels deep');
   if (definition.limits.maxSpawns > caps.maxSpawns)

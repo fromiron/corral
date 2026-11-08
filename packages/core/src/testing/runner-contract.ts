@@ -44,6 +44,9 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       async loopLeft(loopId, no, outcome) {
         log.push(`leave ${loopId}#${no} ${outcome}`);
       },
+      async loopCheck() {
+        return null;
+      },
       async loopCapReached(loopId, rounds) {
         const answer = capAnswers.shift() ?? 'stop';
         log.push(`cap ${loopId}#${rounds} ${answer}`);
@@ -99,7 +102,12 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         'leave review_loop#1 revise',
         'leave review_loop#2 cap_reached',
       ]);
-      expect(result).toEqual({ kind: 'cap_reached', loopId: 'review_loop', iterations: 2 });
+      expect(result).toEqual({
+        kind: 'cap_reached',
+        loopId: 'review_loop',
+        iterations: 2,
+        reason: 'cap_reached',
+      });
     });
 
     it('runs one more round past the cap only when told to continue', async () => {

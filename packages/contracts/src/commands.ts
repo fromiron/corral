@@ -87,7 +87,7 @@ export const PatchPayload = z.union([
   z.strictObject({
     kind: z.literal('loop_limit'),
     nodeId: Identifier,
-    maxIterations: z.int().min(1).max(10),
+    maxIterations: z.int().min(1),
   }),
   z.strictObject({
     kind: z.literal('run_limits'),

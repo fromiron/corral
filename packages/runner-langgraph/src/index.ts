@@ -1,11 +1,11 @@
 import {
   type CompiledPlan,
+  entryTarget,
   executeStep,
   type GraphRunner,
   type PlanTarget,
   type RunnerCallbacks,
   type RunnerResult,
-  SPEC_HARD_CAPS,
   type StopSignal,
   targetsOf,
 } from '@corral/core';
@@ -50,7 +50,7 @@ export class LangGraphRunner implements GraphRunner {
         if (signal?.aborted) return { target: null, result: { kind: 'stopped' } };
         const rounds = { ...state.rounds };
         const port = state.target?.port ?? 'in';
-        const outcome = await executeStep(step, port, rounds, callbacks);
+        const outcome = await executeStep(plan, step, port, rounds, callbacks);
         if (signal?.aborted) return { target: null, rounds, result: { kind: 'stopped' } };
         return 'end' in outcome
           ? { target: null, rounds, result: outcome.end }
@@ -69,12 +69,12 @@ export class LangGraphRunner implements GraphRunner {
     }
 
     const app = graph.compile();
-    // A runtime patch or approval can extend the Loop beyond its initial automatic cap.
-    const maxRounds = Object.keys(plan.loops).length ? SPEC_HARD_CAPS.maxLoopIterations : 1;
+    // Loops have no system round cap, and a person may approve more rounds, so a run with a
+    // Loop has no step limit; without one, each step runs once.
+    const looping = Object.keys(plan.loops).length > 0;
     const final = (await app.invoke(
-      { target: { nodeId: plan.entryNodeId, port: 'in' }, rounds: {}, result: null },
-      // Each round can visit every step once; leave room for the steps around the Loop.
-      { recursionLimit: Object.keys(plan.steps).length * (maxRounds + 1) + 10 },
+      { target: entryTarget(plan), rounds: {}, result: null },
+      { recursionLimit: looping ? Number.MAX_SAFE_INTEGER : Object.keys(plan.steps).length + 10 },
     )) as typeof State.State;
     if (!final.result) throw new Error('the graph ended without a result');
     return final.result;

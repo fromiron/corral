@@ -149,7 +149,9 @@
         "revise": "Revision requested",
         "inconclusive": "Inconclusive",
         "cap_reached": "Round limit reached",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "budget_exhausted": "Budget used up",
+        "stalled": "No change"
       },
       "mixed": "Multiple task states"
     }
@@ -767,12 +769,16 @@
     "kind": {
       "final_output": "Final output",
       "loop_cap": "Another review round?",
-      "user_action": "Your decision"
+      "user_action": "Your decision",
+      "loop_budget_exhausted": "Loop budget used up",
+      "loop_stalled": "Loop stopped changing"
     },
     "explain": {
       "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
       "loop_cap": "The Loop reached its round limit. Approve to run one more round, or reject to stop the run.",
-      "user_action": "The run waits for you. Approve to continue with these versions, or reject to stop."
+      "user_action": "The run waits for you. Approve to continue with these versions, or reject to stop.",
+      "loop_budget_exhausted": "This Loop used its budget and asked for another round. Approve to run one more round, or reject to stop the run.",
+      "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run."
     },
     "subject": "About",
     "criteria": "Criteria",
@@ -783,17 +789,23 @@
     "then": {
       "user_action": "Approving continues the run with these versions; rejecting stops it.",
       "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
-      "loop_cap": "Approving runs the review once more; rejecting stops the run."
+      "loop_cap": "Approving runs the review once more; rejecting stops the run.",
+      "loop_budget_exhausted": "Approving runs one more round over the budget; rejecting stops the run.",
+      "loop_stalled": "Approving runs one more round; rejecting stops the run."
     },
     "approveAs": {
       "user_action": "Continue with this version",
       "final_output": "Confirm as final result",
-      "loop_cap": "Review once more"
+      "loop_cap": "Review once more",
+      "loop_budget_exhausted": "Run one more round",
+      "loop_stalled": "Try once more"
     },
     "rejectAs": {
       "user_action": "Reject and stop",
       "final_output": "Do not confirm",
-      "loop_cap": "Stop here"
+      "loop_cap": "Stop here",
+      "loop_budget_exhausted": "Stop here",
+      "loop_stalled": "Stop here"
     },
     "checkHeading": "Approve check launch",
     "checkScope": "{execution} · attempt {attempt} · config r{revision} · {fingerprint} · tree {tree}",
@@ -1139,7 +1151,6 @@
     "termination_unconfirmed": "Stopping could not be confirmed",
     "execution_failed": "{node} failed",
     "internal_error": "An internal error stopped the run",
-    "loop_hard_cap_reached": "{node} reached the installation's round limit",
     "needs_user": "{node} needs your decision",
     "runner_finished_without_output": "The graph ended without an output",
     "loop_cap_declined": "You declined another round of {node}",

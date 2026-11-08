@@ -22,7 +22,6 @@ export interface InstallationPolicy {
   questionTimeoutMs: number;
   modelTimeoutMs: number;
   runDeadlineMs: number;
-  maxLoopIterations: number;
   maxArtifactBytes: number;
   /** Executions alive at once on this host, including waiting workers. */
   maxResidentExecutions: number;
@@ -42,7 +41,6 @@ export const SPEC_HARD_CAPS: InstallationPolicy = {
   questionTimeoutMs: 300_000,
   modelTimeoutMs: 300_000,
   runDeadlineMs: 3_600_000,
-  maxLoopIterations: 10,
   maxArtifactBytes: 1024 * 1024,
   maxResidentExecutions: 12,
 };
@@ -238,7 +236,6 @@ const LIMIT_FIELDS = [
 /** Every limit a definition asks for above what this installation allows. */
 export function limitViolations(
   limits: RunLimits,
-  loopRounds: number,
   policy: InstallationPolicy,
   unlimited = false,
 ): string[] {
@@ -250,7 +247,6 @@ export function limitViolations(
         field !== 'maxModelConcurrency' &&
         (!unlimited || ['maxSpawns', 'maxQuestions', 'questionTimeoutMs'].includes(field)),
     ).flatMap((field) => above(field, limits[field], policy[field])),
-    ...above('Loop rounds', loopRounds, policy.maxLoopIterations),
   ];
 }
 

@@ -196,6 +196,7 @@ export const LoopRounds: Story = {
               loopNodeId: 'revision',
               no,
               criteriaVersionId: 'criteria',
+              parentIterationId: null,
               outcome: no === 3 ? null : 'revise',
             },
           ]),

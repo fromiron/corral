@@ -289,27 +289,17 @@ describe('review loop and approvals', () => {
     }
   });
 
-  it('at the Loop cap no third round starts without the person, and approval cannot pass the hard cap', async () => {
+  it('at the Loop cap no third round starts without the person, who is told why', async () => {
     const alwaysRevise = { review: () => 'revise' as const };
     const transport = runtime(alwaysRevise);
     const { runId } = await start(transport);
     const atCap = await waitForProjection(transport, runId, (p) => pending(p) !== null);
-    expect(pending(atCap)?.kind).toBe('loop_cap');
+    expect(pending(atCap)).toMatchObject({ kind: 'loop_cap', loopStop: 'cap_reached' });
     expect(executionsOf(atCap, 'write')).toHaveLength(2);
     await drain();
     expect(executionsOf((await transport.getSnapshot(runId)).projection, 'write')).toHaveLength(2);
     await resolve(transport, runId, 'approve');
     await waitForProjection(transport, runId, (p) => executionsOf(p, 'write').length === 3);
-
-    // With the installation's hard cap at 2 rounds, the cap is final: no approval is offered.
-    const capped = runtime(alwaysRevise, { ...SPEC_HARD_CAPS, maxLoopIterations: 2 });
-    const second = await start(capped);
-    const final = await waitForProjection(capped, second.runId, done);
-    expect(Object.values(final.approvals)).toEqual([]);
-    expect(executionsOf(final, 'write')).toHaveLength(2);
-    expect(final.status).toBe('failed');
-    const limit = second.events.find((e) => e.type === 'limit.reached');
-    expect(limit?.type === 'limit.reached' && limit.payload.limitKind).toBe('loop_iterations');
   });
 
   it('an approval applies once and refuses a stale subject', async () => {

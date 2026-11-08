@@ -155,9 +155,11 @@ export interface EffectView {
 export interface IterationView {
   iterationId: string;
   loopNodeId: string;
+  /** The round of the enclosing Loop this round runs in; null at the top. */
+  parentIterationId: string | null;
   no: number;
   criteriaVersionId: string;
-  outcome: 'pass' | 'revise' | 'inconclusive' | 'cap_reached' | 'cancelled' | null;
+  outcome: EventPayload<'loop.iteration_finished'>['outcome'] | null;
 }
 
 /** A question from one execution to a callable role, answered by a new responder task. */
@@ -180,6 +182,8 @@ export interface QuestionView {
 export interface ApprovalView {
   approvalId: string;
   kind: 'final_output' | 'loop_cap' | 'user_action';
+  /** Why a Loop asks for another round. */
+  loopStop?: EventPayload<'approval.requested'>['loopStop'];
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
@@ -657,6 +661,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         criteriaVersionId,
         status: 'pending',
         ...(event.payload.tool ? { tool: event.payload.tool } : {}),
+        ...(event.payload.loopStop ? { loopStop: event.payload.loopStop } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
@@ -730,6 +735,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       const iteration: IterationView = {
         iterationId,
         loopNodeId,
+        parentIterationId: event.payload.parentIterationId ?? null,
         no,
         criteriaVersionId,
         outcome: null,

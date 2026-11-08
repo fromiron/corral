@@ -124,6 +124,7 @@ function loopFixture(rounds: number) {
       loopNodeId: 'loop',
       no,
       criteriaVersionId: 'criteria',
+      parentIterationId: null,
       outcome: no === rounds ? null : 'revise',
     };
     projection.loopIterations.loop = [...(projection.loopIterations.loop ?? []), iterationId];

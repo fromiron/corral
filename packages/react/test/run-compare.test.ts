@@ -27,9 +27,17 @@ describe('compareRuns', () => {
           loopNodeId: 'l',
           no: 1,
           criteriaVersionId: 'c',
+          parentIterationId: null,
           outcome: 'revise',
         },
-        i2: { iterationId: 'i2', loopNodeId: 'l', no: 2, criteriaVersionId: 'c', outcome: 'pass' },
+        i2: {
+          iterationId: 'i2',
+          loopNodeId: 'l',
+          no: 2,
+          criteriaVersionId: 'c',
+          parentIterationId: null,
+          outcome: 'pass',
+        },
       },
     });
     const b = run({

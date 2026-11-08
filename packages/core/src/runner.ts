@@ -13,8 +13,11 @@ export interface IterationRef {
 
 export type StepOutcome = { ok: true } | { ok: false; reason: string };
 
-/** How a Loop round ended: through `repeat` (revise), `exit` (pass), or neither. */
-export type RoundOutcome = 'pass' | 'revise' | 'inconclusive' | 'cap_reached';
+/** Why a round that asked to repeat stops instead: its round cap, its budget or a stall. */
+export type LoopStop = 'cap_reached' | 'budget_exhausted' | 'stalled';
+
+/** How a Loop round ended: through `repeat` (revise), `exit` (pass), or why it stopped. */
+export type RoundOutcome = 'pass' | 'revise' | 'inconclusive' | LoopStop;
 
 export interface RunnerCallbacks {
   /** Runs one scheduled agent step to a settled result. */
@@ -24,10 +27,15 @@ export interface RunnerCallbacks {
   finalize(outputNodeId: string): Promise<void>;
   loopEntered(loopId: string, no: number): Promise<void>;
   /**
-   * A Loop asked for another round past its cap: `continue` runs one more round,
-   * `stop` ends the walk with `cap_reached`. The Coordinator asks the person.
+   * A round below its cap asks to repeat: whether the Loop's budget is spent or it stalled.
+   * The round cap itself is the plan's `maxIterations`, which the runner checks.
    */
-  loopCapReached(loopId: string, rounds: number): Promise<'continue' | 'stop'>;
+  loopCheck(loopId: string, round: number): Promise<LoopStop | null>;
+  /**
+   * A Loop must stop and has no `exhausted` path: `continue` runs one more round, `stop` ends
+   * the walk with `cap_reached`. The Coordinator asks the person, giving the reason.
+   */
+  loopCapReached(loopId: string, rounds: number, reason: LoopStop): Promise<'continue' | 'stop'>;
   loopLeft(loopId: string, no: number, outcome: RoundOutcome): Promise<void>;
 }
 
@@ -35,8 +43,8 @@ export type RunnerResult =
   | { kind: 'finished'; outputNodeId: string }
   | { kind: 'failed'; nodeId: string; reason: string }
   | { kind: 'rejected'; nodeId: string }
-  /** A Loop asked for another round past its cap; the Coordinator asks the user. */
-  | { kind: 'cap_reached'; loopId: string; iterations: number }
+  /** A Loop had to stop, had no `exhausted` path, and the person declined another round. */
+  | { kind: 'cap_reached'; loopId: string; iterations: number; reason: LoopStop }
   /** A Decision took a branch that has no edge, such as review `inconclusive`. */
   | { kind: 'needs_user'; nodeId: string; branch: string }
   | { kind: 'stopped' };
@@ -58,12 +66,26 @@ const TERMINAL_BRANCHES: Record<string, (nodeId: string) => RunnerResult> = {
 /** Where a step leads: the next target, or how the run ends. */
 export type StepResult = { next: PlanTarget } | { end: RunnerResult };
 
+/** Where a run starts: a box is entered, any other step is run. */
+export function entryTarget(plan: CompiledPlan): PlanTarget {
+  const kind = plan.steps[plan.entryNodeId]?.kind;
+  return { nodeId: plan.entryNodeId, port: kind === 'loop' || kind === 'team' ? 'enter' : 'in' };
+}
+
+/** Whether `nodeId` sits somewhere inside the box `boxId`. */
+function inside(plan: CompiledPlan, nodeId: string, boxId: string): boolean {
+  for (let box = plan.boxes[nodeId]?.parentId ?? null; box; box = plan.boxes[box]?.parentId ?? null)
+    if (box === boxId) return true;
+  return false;
+}
+
 /**
  * The meaning of one plan step. Every runner executes steps through this, so they
  * may differ in how they walk the graph but never in what a step does. `rounds` holds the
- * current round of each Loop and is updated in place.
+ * current round of each open Loop and is updated in place: a Loop that is left is removed.
  */
 export async function executeStep(
+  plan: CompiledPlan,
   step: PlanStep,
   port: PlanTarget['port'],
   rounds: Record<string, number>,
@@ -73,6 +95,17 @@ export async function executeStep(
     loopId ? { loopId, no: rounds[loopId] ?? 1 } : null;
   const goTo = (next: PlanTarget | undefined): StepResult =>
     next ? { next } : { end: { kind: 'failed', nodeId: step.nodeId, reason: 'no next step' } };
+  const leave = async (loopId: string, outcome: RoundOutcome) => {
+    await callbacks.loopLeft(loopId, rounds[loopId] ?? 1, outcome);
+    delete rounds[loopId];
+  };
+  /** Control reached this Loop's exit or repeat from deeper inside: close the inner rounds. */
+  const closeInner = async (loopId: string) => {
+    const open = Object.keys(rounds).filter((id) => id !== loopId && inside(plan, id, loopId));
+    // Innermost first: a Loop inside another closes before it.
+    open.sort((a, b) => Number(inside(plan, a, b)) - Number(inside(plan, b, a))).reverse();
+    for (const id of open) await leave(id, 'pass');
+  };
 
   switch (step.kind) {
     case 'agent': {
@@ -99,26 +132,33 @@ export async function executeStep(
     }
     case 'loop': {
       const loopId = step.nodeId;
-      const done = rounds[loopId] ?? 1;
       if (port === 'enter') {
         rounds[loopId] = 1;
         await callbacks.loopEntered(loopId, 1);
         return goTo(step.body[0]);
       }
+      await closeInner(loopId);
+      const done = rounds[loopId] ?? 1;
       if (port === 'repeat') {
-        if (
-          done >= step.maxIterations &&
-          (await callbacks.loopCapReached(loopId, done)) === 'stop'
-        ) {
-          await callbacks.loopLeft(loopId, done, 'cap_reached');
-          return { end: { kind: 'cap_reached', loopId, iterations: done } };
+        const stop =
+          done >= step.maxIterations ? 'cap_reached' : await callbacks.loopCheck(loopId, done);
+        if (stop) {
+          const [exhausted] = step.exhausted;
+          if (exhausted) {
+            await leave(loopId, stop);
+            return { next: exhausted };
+          }
+          if ((await callbacks.loopCapReached(loopId, done, stop)) === 'stop') {
+            await leave(loopId, stop);
+            return { end: { kind: 'cap_reached', loopId, iterations: done, reason: stop } };
+          }
         }
         await callbacks.loopLeft(loopId, done, 'revise');
         rounds[loopId] = done + 1;
         await callbacks.loopEntered(loopId, done + 1);
         return goTo(step.body[0]);
       }
-      await callbacks.loopLeft(loopId, done, 'pass');
+      await leave(loopId, 'pass');
       return goTo(step.next[0]);
     }
     case 'team':
@@ -160,12 +200,12 @@ export class SequentialPlanRunner implements GraphRunner {
     signal?: StopSignal,
   ): Promise<RunnerResult> {
     const rounds: Record<string, number> = {};
-    let target: PlanTarget = { nodeId: plan.entryNodeId, port: 'in' };
+    let target: PlanTarget = entryTarget(plan);
     for (;;) {
       if (signal?.aborted) return { kind: 'stopped' };
       const step: PlanStep | undefined = plan.steps[target.nodeId];
       if (!step) throw new Error(`plan has no step ${target.nodeId}`);
-      const result = await executeStep(step, target.port, rounds, callbacks);
+      const result = await executeStep(plan, step, target.port, rounds, callbacks);
       // A step that settles after a stop must not start the next one.
       if (signal?.aborted) return { kind: 'stopped' };
       if ('end' in result) return result.end;

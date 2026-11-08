@@ -67,6 +67,7 @@ function projection(): RunProjection {
         loopNodeId: 'loop',
         no: 1,
         criteriaVersionId: 'c',
+        parentIterationId: null,
         outcome: 'revise',
       },
       iter_2: {
@@ -74,6 +75,7 @@ function projection(): RunProjection {
         loopNodeId: 'loop',
         no: 2,
         criteriaVersionId: 'c',
+        parentIterationId: null,
         outcome: null,
       },
     },

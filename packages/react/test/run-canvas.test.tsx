@@ -240,6 +240,7 @@ describe('RunCanvas', () => {
             loopNodeId: 'review_loop',
             no: 1,
             criteriaVersionId: 'criteria',
+            parentIterationId: null,
             outcome: 'revise',
           },
         },

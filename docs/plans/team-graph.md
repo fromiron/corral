@@ -26,8 +26,8 @@
 | 편집기: 자동 배치, 구조 편집, 명령 메뉴 | 완료 | d54c08b1, c5b9e17e, 58ea5214 |
 | 편집기: 명세, 패턴·참조 팀·전체 설정, 클래식 편집기 교체 | 완료 | d18391bc, b439e1a7, 88bea109 |
 | 편집기: 저장 배치 삭제, `getRevision` | 완료 | 26529d19 |
-| 실행 통계 레이어 | 완료 | e38660ec(명세), 구현은 `feat: show run stats in the team editor` |
-| 3. 루프 실행 | 시작 전 | |
+| 실행 통계 레이어 | 완료 | e38660ec(명세), 4490f0bb |
+| 3. 루프 실행 | 완료 | 22d72e0e, 915817de(명세), 구현은 `feat: run several, nested and budgeted loops` |
 | 4. 재시도와 새 판단 | 시작 전 | |
 | 5. 병렬 | 시작 전 | |
 | 6. 하위 팀 | 시작 전 | |
@@ -46,8 +46,8 @@
 
 ## 다음 스텝
 
-1. 3단계(루프 실행): [실행 지원 범위](../specs/features/team-graph.md#실행-지원-범위)의 Loop 항목부터. 이때 `constitution.md`의 "Loop 1개"와 `product-contract.md` §3.2·§9를 함께 고친다.
-2. 4단계(재시도와 새 판단). 끝나면 실행 통계의 재시도·router 갈래 수치가 실제로 채워진다.
+1. 4단계(재시도와 새 판단): Agent `retry`와 `error` 연결, `check`·`router` Decision. 끝나면 실행 통계의 재시도·router 갈래 수치가 실제로 채워진다.
+2. 5단계(병렬과 Join).
 
 ## 남은 정리와 열린 질문
 
@@ -57,6 +57,7 @@
 - `pnpm deps:check`는 Node ^24.15.0이 필요해 이 환경(24.14.0)에서 확인하지 못했다.
 - Storybook `Timeline` > Ten Thousand Events가 실패한다. 선택한 이벤트 패널에 `#3885`를 기대하지만, 12faa4d1부터 패널이 기록 내용을 보인다. `AgentSteering` > Short Composer는 간헐적으로 대비 검사에 실패한다.
 - 훅(도구 사용 전 동작, 추가 메시지)은 이 계획 밖이다.
+- Loop 예산·정체로 멈춘 승인 카드 문구는 단위 테스트로만 확인했다. 실제 화면에서는 마무리 단계 E2E에서 본다.
 
 ## 확인 방법
 
