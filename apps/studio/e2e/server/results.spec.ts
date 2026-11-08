@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
+import { usageTotals } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { chooseRun, openResult, panelTab, requestBox } from '../workbench.ts';
@@ -80,7 +81,7 @@ test('a completed run explains failed file steps and opens their reasons', async
   await page.getByRole('button', { name: 'Run info', exact: true }).click();
   await page.getByTestId('run-side').getByRole('tab', { name: 'Usage', exact: true }).click();
   await page.getByRole('button', { name: 'Usage by request' }).click();
-  const request = page.locator('[data-testid^="budget-call-"]').first();
+  const request = page.locator('[data-testid^="usage-call-"]').first();
   await expect(request.locator('span').first()).toContainText('Request 1');
   await expect(request.locator('span').first()).not.toContainText('call_');
   await expect(request.locator('details')).not.toHaveAttribute('open');
@@ -121,10 +122,10 @@ test('selected-run usage and unique result identities survive reload without cha
   if (!first) throw new Error('The first run is missing');
   const { projection } = corral.server.coordinator.getSnapshot(first.runId);
   await expect(overview.locator('[data-overview-widget="usage"]')).toContainText(
-    projection.budget.spent.toLocaleString('en-US'),
+    usageTotals(projection).outputTokens.toLocaleString('en-US'),
   );
   await overview.getByRole('button', { name: 'Open Usage details' }).click();
-  await expect(page.getByTestId('usage-detail')).toContainText('Settled output tokens');
+  await expect(page.getByTestId('usage-detail')).toContainText('Reported output tokens');
   await expect(page.getByTestId('usage-detail')).toContainText('Simulation usage');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');

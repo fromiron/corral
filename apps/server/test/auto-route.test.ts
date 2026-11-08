@@ -65,7 +65,7 @@ async function accountingSetup(maxModelConcurrency = 6) {
   registry.configureRequests({
     store: attempts,
     acquire: (signal) => coordinator.acquireAuxiliaryModelSlot(signal),
-    onUsage: (intent) => coordinator.settleAutoRouteUsage(intent),
+    onUsage: (intent) => coordinator.recordAutoRouteUsage(intent),
   });
   const starter = createAutoStarter<AbortSignal>({
     startRun: (request) => coordinator.startRun(request),
@@ -98,15 +98,11 @@ async function accountingSetup(maxModelConcurrency = 6) {
   const events = (runId: string) =>
     store
       .readEvents(runId, 0)
-      .filter(
-        (e) =>
-          (e.type === 'budget.reserved' || e.type === 'budget.settled') &&
-          e.payload.reservationId.startsWith('auto_route'),
-      );
+      .filter((e) => e.type === 'usage.recorded' && e.payload.kind === 'auto_route');
   return { registry, models, attempts, store, coordinator, starter, request, settled, events };
 }
 
-it('chooser reservations use every physical retry allowance and reported usage', async () => {
+it('chooser usage records every physical retry and its reported usage', async () => {
   const f = await accountingSetup();
   const allowances: number[] = [];
   const spy = vi.spyOn(f.models, 'streamSimple').mockImplementation((model, context, options) => {
@@ -143,20 +139,17 @@ it('chooser reservations use every physical retry allowance and reported usage',
   });
   const result = await f.starter.start(f.request, { fileTools: false });
   await f.settled(result.runId!);
-  const reserved = f.events(result.runId!).filter((e) => e.type === 'budget.reserved');
-  expect(reserved.map((e) => e.payload.amount.outputTokens)).toEqual(allowances);
   expect(allowances).toHaveLength(2);
   expect(allowances.every((cap) => cap > 256)).toBe(true);
   expect(
     f
       .events(result.runId!)
-      .filter((e) => e.type === 'budget.settled')
-      .map((e) => e.payload.actual.outputTokens),
+      .map((e) => (e.type === 'usage.recorded' ? e.payload.outputTokens : undefined)),
   ).toEqual([7, 700]);
   expect(result.autoRoute?.usage?.outputTokens).toBe(707);
   await f.starter.start(f.request, { fileTools: false });
   expect(spy).toHaveBeenCalledTimes(2);
-  expect(f.events(result.runId!)).toHaveLength(4);
+  expect(f.events(result.runId!)).toHaveLength(2);
 });
 
 it.each([false, true])(
@@ -182,14 +175,13 @@ it.each([false, true])(
     const result = await f.starter.start(f.request, { fileTools: false });
     const projection = await f.settled(result.runId!);
     expect(result.autoRoute?.usage).toEqual(reported ? { inputTokens: 0, outputTokens: 0 } : null);
-    const request = f.attempts.list()[0]!;
-    expect(projection.budget.unknownOutstanding).toBe(
-      reported ? 0 : request.prepared!.outputAllowance,
-    );
+    expect(Object.values(projection.usage).map((record) => record.outputTokens)).toEqual([
+      reported ? 0 : null,
+    ]);
   },
 );
 
-it('late chooser usage settles the original reservation once without changing the completed response', async () => {
+it('late chooser usage fills the original record once without changing the completed response', async () => {
   const f = await accountingSetup();
   vi.useFakeTimers();
   const delayed = createAssistantMessageEventStream();
@@ -203,7 +195,7 @@ it('late chooser usage settles the original reservation once without changing th
   const before = await f.settled(result.runId!);
   expect(result.autoRoute).toMatchObject({ source: 'fallback', fallback: 'timeout' });
   const request = f.attempts.list()[0]!;
-  expect(before.budget.unknownOutstanding).toBe(request.prepared!.outputAllowance);
+  expect(Object.values(before.usage).map((record) => record.outputTokens)).toEqual([null]);
   const message = fauxAssistantMessage(
     '{"template":"research_write_review","reason":"Late choice."}',
   );
@@ -211,14 +203,14 @@ it('late chooser usage settles the original reservation once without changing th
   delayed.push({ type: 'done', reason: 'stop', message });
   delayed.end(message);
   await vi.advanceTimersByTimeAsync(0);
-  f.coordinator.settleAutoRouteUsage(request.intent);
+  f.coordinator.recordAutoRouteUsage(request.intent);
+  f.coordinator.recordAutoRouteUsage(request.intent);
   const after = f.store.getRun(result.runId!)!.projection;
-  expect(after.budget.unknownOutstanding).toBe(0);
+  expect(Object.values(after.usage).map((record) => record.outputTokens)).toEqual([700]);
   expect(
     f
       .events(result.runId!)
-      .filter((e) => e.type === 'budget.settled')
-      .map((e) => e.payload.actual.outputTokens),
+      .map((e) => (e.type === 'usage.recorded' ? e.payload.outputTokens : undefined)),
   ).toEqual([null, 700]);
   expect(after.status).toBe(before.status);
   expect(after.artifacts).toEqual(before.artifacts);
@@ -344,9 +336,7 @@ it('chooser retry backoff does not consume either attempt response timeout', asy
     usage: { outputTokens: 20 },
   });
   await f.settled(result.runId!);
-  expect(f.events(result.runId!).filter((event) => event.type === 'budget.reserved')).toHaveLength(
-    2,
-  );
+  expect(f.events(result.runId!)).toHaveLength(2);
 });
 
 afterEach(() => {

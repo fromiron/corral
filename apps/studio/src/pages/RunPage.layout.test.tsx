@@ -1336,7 +1336,7 @@ it('does not list a cancelled tool as a failed step or choose it as the failure 
       scope: 'worker',
       epoch: 1,
       dispatched: true,
-      reservationId: null,
+      modelCallId: null,
       status: 'settled',
       outcome: id === 'stopped' ? 'cancelled' : 'failed',
     };

@@ -1702,7 +1702,7 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(s.events().filter((e) => e.type === 'model.request_recorded')).toMatchObject([
       { payload: { modelCallId: permit.modelCallId, ...record } },
     ]);
-    expect(s.events().filter((e) => e.type === 'budget.reserved')).toHaveLength(1);
+    expect(s.events().filter((e) => e.type === 'model.request_prepared')).toHaveLength(1);
     const archived = openRunArchive(
       exportRunArchive(s.store, s.input().runId, { privateTranscript: true }),
     );

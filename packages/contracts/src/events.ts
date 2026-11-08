@@ -112,7 +112,6 @@ export const RunStarted = event(
     resumedFrom: ResumedFrom.optional(),
     branchedFrom: BranchedFrom.optional(),
     limits: RunLimits,
-    usageLimits: z.literal('none').optional(),
     criteriaVersionId: Identifier.optional(),
     /** Judgment settings fixed for the run. Absent when the runtime has none. */
     decisions: RunDecisionSettings.optional(),
@@ -345,15 +344,7 @@ export const LoopIterationFinished = event(
   z.strictObject({
     loopNodeId: Identifier,
     iterationId: Identifier,
-    outcome: z.enum([
-      'pass',
-      'revise',
-      'inconclusive',
-      'cap_reached',
-      'budget_exhausted',
-      'stalled',
-      'cancelled',
-    ]),
+    outcome: z.enum(['pass', 'revise', 'inconclusive', 'cap_reached', 'stalled', 'cancelled']),
     submittedVersionIds: Ids,
   }),
 );
@@ -362,8 +353,8 @@ export const ApprovalRequested = event(
   z.strictObject({
     approvalId: Identifier,
     kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check']),
-    /** Why a Loop asks for another round: its round cap, its budget, or a stall. */
-    loopStop: z.enum(['cap_reached', 'budget_exhausted', 'stalled']).optional(),
+    /** Why a Loop asks for another round: its round cap or a stall. */
+    loopStop: z.enum(['cap_reached', 'stalled']).optional(),
     /** The connected routes a person may pick for a router that could not choose. */
     routes: z
       .array(z.strictObject({ id: Identifier, label: z.string().min(1) }))
@@ -531,7 +522,7 @@ export const CancelConfirmed = event(
   z.strictObject({ scope: CancelScope, settlementRefs: Ids, forced: z.boolean() }),
 );
 
-// ── effects, tools, models, budget ───────────────────────────────────────────
+// ── effects, tools, models, usage ────────────────────────────────────────────
 export const EffectAdmitted = event(
   'effect.admitted',
   z.strictObject({
@@ -539,7 +530,8 @@ export const EffectAdmitted = event(
     kind: z.enum(['model_request', 'tool', 'spawn', 'decision']),
     scope: Identifier,
     epoch: z.int().min(1),
-    reservationId: Identifier.nullable(),
+    /** The model call a model_request effect admits; null for every other effect. */
+    modelCallId: Identifier.nullable(),
   }),
 );
 export const EffectDispatchObserved = event(
@@ -633,49 +625,33 @@ export const ModelUsageReconciled = event(
   'model.usage_reconciled',
   ModelFinished.shape.payload.omit({ responseRef: true }),
 );
-export const BudgetReserved = event(
-  'budget.reserved',
+/**
+ * Usage spent outside the run's model calls: a team chooser call or an image generation.
+ * Unknown values are null, never zero; a later record with the same id fills only nulls.
+ */
+export const UsageRecorded = event(
+  'usage.recorded',
   z.strictObject({
-    reservationId: Identifier,
-    modelCallId: Identifier.nullable(),
-    amount: z.strictObject({
-      outputTokens: Count,
-      modelCalls: Count,
-      image: z.strictObject({ profileId: Identifier, costMicros: Count }).optional(),
-    }),
-    scope: Identifier,
-  }),
-);
-export const BudgetSettled = event(
-  'budget.settled',
-  z.strictObject({
-    reservationId: Identifier,
-    actual: z.strictObject({
-      outputTokens: Count.nullable(),
-      imageCostMicros: Count.nullable().optional(),
-      imageUsage: z
-        .strictObject({ inputTokens: Count.nullable(), outputTokens: Count.nullable() })
-        .optional(),
-    }),
-    unknownOutstanding: Count,
+    usageId: Identifier,
+    kind: z.enum(['auto_route', 'image']),
+    profileId: Identifier.nullable(),
+    inputTokens: Count.nullable(),
+    outputTokens: Count.nullable(),
+    costMicros: Count.nullable(),
   }),
 );
 export const LimitReached = event(
   'limit.reached',
   z.strictObject({
     limitKind: z.enum([
-      'model_calls',
-      'output_tokens',
       'spawns',
       'questions',
       'depth',
       'loop_iterations',
-      'deadline',
       'no_progress',
       'decision_calls',
     ]),
     used: Count,
-    reserved: Count,
     max: Count,
   }),
 );
@@ -907,8 +883,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ModelRequestPrepared,
   ModelFinished,
   ModelUsageReconciled,
-  BudgetReserved,
-  BudgetSettled,
+  UsageRecorded,
   LimitReached,
   CancelRequested,
   CancelConfirmed,

@@ -7,8 +7,6 @@ import {
   usageSummary,
 } from './selectors.ts';
 
-const limits = { maxOutputTokens: 64_000, maxModelCalls: 40 };
-
 function call(
   id: string,
   outputTokens: number | null,
@@ -40,27 +38,22 @@ function call(
 function run(): RunProjection {
   const projection = emptyProjection('run_overview');
   projection.status = 'succeeded';
-  projection.budget.spent = 930;
-  projection.budget.reserved = 0;
-  projection.budget.modelCalls = 4;
   projection.modelCalls = {
     a: call('a', 194),
     b: call('b', 63),
     c: call('c', null),
-    d: call('d', 500, false),
+    d: call('d', null, false),
   };
   return projection;
 }
 
 describe('overview usage widget', () => {
-  it('states output tokens and calls against their limits with a per-call chart', () => {
-    expect(usageSummary(run(), limits)).toEqual({
-      spent: 930,
-      reserved: 0,
-      unknown: 0,
-      tokenLimit: 64_000,
-      calls: 4,
-      callLimit: 40,
+  it('states reported output tokens and requests with a per-call chart, and no limit', () => {
+    expect(usageSummary(run())).toEqual({
+      outputTokens: 257,
+      requests: 4,
+      // c ended without usage; d is still running.
+      unknown: 1,
       // Finished calls with reported output, oldest first; a call still streaming is not a bar.
       perCall: [194, 63],
       // input of the finished calls; none of them reported cached input.
@@ -79,14 +72,14 @@ describe('overview usage widget', () => {
       e: call('e', null, false, { inputTokens: 9_000, cachedInputTokens: 9_000 }),
     };
     // The share counts only calls that reported both figures; an unreported cache is not zero.
-    expect(usageSummary(projection, limits)?.input).toEqual({
+    expect(usageSummary(projection)?.input).toEqual({
       tokens: 3_500,
       cached: 1_500,
       cacheShare: 0.5,
       cacheUnreported: 2,
     });
     projection.modelCalls = { d: call('d', 10, true, { inputTokens: null, cachedInputTokens: 5 }) };
-    expect(usageSummary(projection, limits)?.input).toBeNull();
+    expect(usageSummary(projection)?.input).toBeNull();
   });
 
   it('keeps incomplete input coverage visible beside the known-only total', () => {
@@ -96,25 +89,27 @@ describe('overview usage widget', () => {
       missing: { ...call('missing', 20), usage: null },
       streaming: call('streaming', 30, false),
     };
-    expect(usageSummary(projection, limits)).toMatchObject({
+    expect(usageSummary(projection)).toMatchObject({
       input: { tokens: 100 },
       inputUnreported: 1,
     });
     projection.modelCalls = { missing: { ...call('missing', 20), usage: null } };
-    expect(usageSummary(projection, limits)).toMatchObject({ input: null, inputUnreported: 1 });
+    expect(usageSummary(projection)).toMatchObject({ input: null, inputUnreported: 1 });
   });
 
-  it('names unconfirmed usage and a run without limits, never as zero', () => {
+  it('counts unreported usage apart, never as zero, and counts team choice requests', () => {
     const projection = run();
-    projection.budget.unknownOutstanding = 256;
-    projection.usageLimits = 'none';
-    expect(usageSummary(projection, limits)).toMatchObject({
-      unknown: 256,
-      tokenLimit: null,
-      callLimit: null,
-    });
+    projection.usage.route = {
+      usageId: 'route',
+      kind: 'auto_route',
+      profileId: null,
+      inputTokens: null,
+      outputTokens: null,
+      costMicros: null,
+    };
+    expect(usageSummary(projection)).toMatchObject({ outputTokens: 257, requests: 5, unknown: 2 });
     const empty = emptyProjection('run_empty');
-    expect(usageSummary(empty, limits)).toBeNull();
+    expect(usageSummary(empty)).toBeNull();
   });
 
   it('keeps the per-call chart to the latest twelve calls', () => {
@@ -122,9 +117,7 @@ describe('overview usage widget', () => {
     projection.modelCalls = Object.fromEntries(
       Array.from({ length: 15 }, (_, index) => [`c${index}`, call(`c${index}`, index + 1)]),
     );
-    expect(usageSummary(projection, limits)?.perCall).toEqual([
-      4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-    ]);
+    expect(usageSummary(projection)?.perCall).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
   });
 });
 
@@ -139,7 +132,7 @@ describe('overview widget order', () => {
     expect(
       overviewWidgets({
         chips: ['environment', 'changes', 'agents', 'context'],
-        usage: usageSummary(run(), limits),
+        usage: usageSummary(run()),
         results: [{ id: 'r', label: 'draft v1' }],
         action: { needsUser: true },
         live: true,
@@ -151,7 +144,7 @@ describe('overview widget order', () => {
     expect(
       overviewWidgets({
         chips: ['environment', 'changes', 'agents', 'context'],
-        usage: usageSummary(run(), limits),
+        usage: usageSummary(run()),
         results: [{ id: 'r', label: 'draft v1' }],
         action: { needsUser: false },
         live: false,
@@ -166,7 +159,7 @@ describe('overview widget order', () => {
   it('hides a widget with nothing to say', () => {
     expect(overviewWidgets(base)).toEqual([]);
     const idle = emptyProjection('run_idle');
-    expect(overviewWidgets({ ...base, usage: usageSummary(idle, limits) })).toEqual([]);
+    expect(overviewWidgets({ ...base, usage: usageSummary(idle) })).toEqual([]);
     expect(overviewWidgets({ ...base, results: [{ id: 'r', label: 'draft v1' }] })).toEqual([
       'results',
     ]);

@@ -132,8 +132,8 @@ export function buildTurnProcess(
     }
     const dispatched = new Set(
       Object.values(projection.effects).flatMap((effect) =>
-        effect.kind === 'model_request' && effect.dispatched && effect.reservationId
-          ? [effect.reservationId]
+        effect.kind === 'model_request' && effect.dispatched && effect.modelCallId
+          ? [effect.modelCallId]
           : [],
       ),
     );

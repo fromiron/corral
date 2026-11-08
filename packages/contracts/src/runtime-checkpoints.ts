@@ -92,7 +92,6 @@ export const ResumeRuntimeRequest = z.strictObject({
 });
 export type ResumeRuntimeRequest = z.infer<typeof ResumeRuntimeRequest>;
 export interface RuntimeCheckpointView extends RuntimeCheckpointRecord {
-  usageLimits?: 'none';
   sourceSeq: number;
   createdAt: string;
   runtime: 'pi-core' | 'pi-sdk';

@@ -49,7 +49,6 @@ export async function createFromTemplate(
     definition: {
       ...draft.definition,
       name: uniqueName,
-      executionPolicy: draft.definition.executionPolicy ?? { version: 2 },
     },
     expectedDefinitionRevision: null,
     ...(projectId ? { projectId } : {}),

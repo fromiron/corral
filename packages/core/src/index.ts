@@ -13,7 +13,6 @@ export {
 export * from './artifact-retention.ts';
 export * from './attachments.ts';
 export * from './auto-team.ts';
-export * from './budget.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';
 export * from './config.ts';
@@ -82,3 +81,4 @@ export * from './store/run-store.ts';
 export * from './team-draft.ts';
 export { toolDescriptorHash, toolPermissionPlan, validToolPermissionPlan } from './tool-policy.ts';
 export * from './transport.ts';
+export * from './usage.ts';

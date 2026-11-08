@@ -12,6 +12,7 @@ import {
   type CoordinatorDeps,
   InMemoryRunStore,
   InProcessTransport,
+  usageTotals,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -369,9 +370,9 @@ describe('Reins integration counterexamples', () => {
         attemptCount: attempt,
       });
       expect(s.projection().executions[previous]?.status).toBe('cancelled');
-      expect(s.projection().budget).toMatchObject({
-        spent: (attempt - 1) * 7,
-        unknownOutstanding: 0,
+      expect(usageTotals(s.projection())).toMatchObject({
+        outputTokens: (attempt - 1) * 7,
+        unknown: 0,
       });
       expect(
         store

@@ -103,21 +103,6 @@
           "minimum": 1,
           "maximum": 32
         },
-        "maxModelCalls": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
-        },
-        "maxOutputTokens": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 256000
-        },
-        "maxOutputTokensPerCall": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 4096
-        },
         "maxQuestions": {
           "type": "integer",
           "minimum": 0,
@@ -127,29 +112,14 @@
           "type": "integer",
           "minimum": 1000,
           "maximum": 300000
-        },
-        "modelTimeoutMs": {
-          "type": "integer",
-          "minimum": 1000,
-          "maximum": 300000
-        },
-        "runDeadlineMs": {
-          "type": "integer",
-          "minimum": 1000,
-          "maximum": 3600000
         }
       },
       "required": [
         "maxDelegationDepth",
         "maxModelConcurrency",
         "maxSpawns",
-        "maxModelCalls",
-        "maxOutputTokens",
-        "maxOutputTokensPerCall",
         "maxQuestions",
-        "questionTimeoutMs",
-        "modelTimeoutMs",
-        "runDeadlineMs"
+        "questionTimeoutMs"
       ],
       "additionalProperties": false
     }

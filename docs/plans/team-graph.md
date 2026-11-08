@@ -3,7 +3,7 @@
 작업용 문서다. 동작의 기준은 명세([팀 그래프 모델](../specs/features/team-graph.md), [팀 편집기](../specs/features/canvas.md))이고, 여기에는 순서와 진행 상황만 적는다. 계약을 여기에 옮겨 적지 않는다. 작업이 끝나면 이 문서를 지운다.
 
 - 브랜치: `feat/team-editor-kit`
-- 마지막 갱신: 2026-11-08
+- 마지막 갱신: 2026-11-09
 
 ## 목표
 
@@ -32,7 +32,7 @@
 | 4b. check Decision | 완료 | 45261960(명세), 839a953c |
 | 5. 병렬 | 완료 | 05918b82(명세), 9439bc19(명세: 기다림은 그 단계만), 7f3df913 |
 | 6. 하위 팀 | 완료 | 6a(`inline` Team): 18119a11(명세), 0a5f757c. 6b(참조 팀 펼치기): df6b40a5(명세), 구현은 `feat: expand reference Teams at run start`. 3997cf67(pi 1.5.0, GPT-6.1 Terra) |
-| 6c. 예산 폐지 | 시작 전 | |
+| 6c. 예산 폐지 | 완료 | fbafed99, 2cd2fa64(명세), 구현은 `feat: remove usage budgets` |
 | 7. 위임 깊이 | 시작 전 | |
 | 8. 포크와 중단점 | 시작 전 (명세 없음) | |
 | 마무리: 확장 E2E, 명세 정리 | 시작 전 | |
@@ -49,8 +49,8 @@
 
 ## 다음 스텝
 
-1. 6c단계(예산 폐지): 사용량 예산을 기능부터 UI까지 지운다. `executionPolicy.budget`(모델 호출, 출력 토큰, 요청별 출력 상한, 모델 timeout, wall deadline), Loop `budget`과 `budget_exhausted`, 옛 `RunLimits` 상한 필드, 예산 장부와 `LIMIT_REACHED`, `BudgetInspector`와 예산 설정·패치. 남기는 것: 사용량·비용 기록과 표시, 모델의 context·출력 한도, 동시성·spawn·깊이·질문 한도, 무진전 경고, Loop 회차 상한. 명세부터 고친다(제품 계약 §9 등).
-2. 7단계(위임 깊이).
+1. 7단계(위임 깊이): 2보다 큰 `maxDelegationDepth`, 설치 정책 상한을 넘는 `maxSpawns`. 명세부터 쓴다.
+2. 8단계(포크와 중단점).
 
 ## 남은 정리와 열린 질문
 
@@ -62,7 +62,9 @@
 - `pnpm deps:check`는 Node ^24.15.0이 필요해 이 환경(24.14.0)에서 확인하지 못했다.
 - Storybook `Timeline` > Ten Thousand Events가 실패한다. 선택한 이벤트 패널에 `#3885`를 기대하지만, 12faa4d1부터 패널이 기록 내용을 보인다. `AgentSteering` > Short Composer는 간헐적으로 대비 검사에 실패한다.
 - 훅(도구 사용 전 동작, 추가 메시지)은 이 계획 밖이다.
-- Loop 예산·정체로 멈춘 승인 카드 문구는 단위 테스트로만 확인했다. 실제 화면에서는 마무리 단계 E2E에서 본다.
+- Loop 정체로 멈춘 승인 카드 문구는 단위 테스트로만 확인했다. 실제 화면에서는 마무리 단계 E2E에서 본다.
+- 6c 이후 지운 필드(`executionPolicy`, Loop `budget`, 옛 `limits` 상한, 이미지 프로필의 호출·가격 상한)나 예산 이벤트가 든 저장 팀·실행은 읽히지 않는다. 개발 중이라 마이그레이션하지 않는다.
+- live 테스트(`tests/live`)의 상한은 이제 테스트가 거는 취소 시한과 모델의 출력 한도뿐이다.
 - `route` 승인 카드는 단위 테스트와 Storybook `Run/ApprovalPanel` > Route Choice로 확인했다. 실제 서버의 router 실행은 마무리 단계 E2E에서 본다.
 - check Decision은 가짜 검사 실행기로만 확인했다. 실제 작업 사본에서 등록 검사를 돌리는 경로는 마무리 단계 E2E에서 본다. `check` 승인 카드는 Storybook > No Check Verdict로 확인했다.
 

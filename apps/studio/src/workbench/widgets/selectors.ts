@@ -1,6 +1,6 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { canReadArtifactBody, type RunProjection } from '@corral/core';
+import { canReadArtifactBody, type RunProjection, usageTotals } from '@corral/core';
 
 export function availableResultLinks(
   projection: RunProjection | null,
@@ -427,7 +427,7 @@ export function presentContext(input: {
   };
 }
 
-/** Why an outcome is unclear: an effect, usage still held against the budget, or a stop. */
+/** Why an outcome is unclear: an effect, unreported usage, or a stop. */
 export type UnclearCause = 'effect' | 'model' | 'usage' | 'termination';
 
 export function actionRequired(input: {
@@ -481,9 +481,8 @@ export function actionCopy(action: ReturnType<typeof actionRequired>) {
 
 export function effectAttention(projection: RunProjection | null) {
   const effects = Object.values(projection?.effects ?? {});
-  const budgetUnknown =
-    (projection?.budget.unknownOutstanding ?? 0) > 0 ||
-    (projection?.budget.imageUnknownOutstandingMicros ?? 0) > 0;
+  const totals = projection ? usageTotals(projection) : null;
+  const usageUnknown = (totals?.unknown ?? 0) > 0 || (totals?.imageCostUnknown ?? 0) > 0;
   const terminationUnknown =
     projection?.statusReason?.endsWith('termination_unconfirmed') === true ||
     Object.values(projection?.executions ?? {}).some(
@@ -494,14 +493,14 @@ export function effectAttention(projection: RunProjection | null) {
   const unclearCauses: UnclearCause[] = [
     ...(unknown.some((effect) => effect.kind !== 'model_request') ? (['effect'] as const) : []),
     ...(unknown.some((effect) => effect.kind === 'model_request') ? (['model'] as const) : []),
-    ...(budgetUnknown ? (['usage'] as const) : []),
+    ...(usageUnknown ? (['usage'] as const) : []),
     ...(terminationUnknown ? (['termination'] as const) : []),
   ];
   return {
     failedEffects: effects.filter((effect) => effect.outcome === 'failed').length,
     // A confirmed cancellation is a settled outcome. Unknown effects, unconfirmed cleanup
-    // and still-held billing remain actionable even when the run was intentionally stopped.
-    unclearEffects: Math.max(unknownEffects, budgetUnknown || terminationUnknown ? 1 : 0),
+    // and unreported usage stay visible even when the run was intentionally stopped.
+    unclearEffects: Math.max(unknownEffects, usageUnknown || terminationUnknown ? 1 : 0),
     unclearCauses,
   };
 }
@@ -570,12 +569,11 @@ export type WidgetChip = 'context' | 'environment' | 'agents' | 'changes';
 
 /** What the Usage widget states about a run. Limits are null when none apply. */
 export interface UsageSummary {
-  spent: number;
-  reserved: number;
+  /** Output tokens the providers reported. */
+  outputTokens: number;
+  requests: number;
+  /** Requests that ended without reported output usage; never counted as zero. */
   unknown: number;
-  tokenLimit: number | null;
-  calls: number;
-  callLimit: number | null;
   /** Output tokens of the latest finished calls with reported usage, oldest first. */
   perCall: number[];
   /** reported input of finished calls; null when none reported it. */
@@ -596,25 +594,17 @@ export interface UsageInput {
 
 const PER_CALL_BARS = 12;
 
-export function usageSummary(
-  projection: RunProjection | null,
-  limits: { maxOutputTokens: number; maxModelCalls: number } | null,
-): UsageSummary | null {
+export function usageSummary(projection: RunProjection | null): UsageSummary | null {
   if (!projection) return null;
-  const { budget } = projection;
+  const totals = usageTotals(projection);
   const perCall = Object.values(projection.modelCalls).flatMap((call) =>
     call.finished && call.usage?.outputTokens != null ? [call.usage.outputTokens] : [],
   );
-  if (!budget.modelCalls && !budget.spent && !budget.unknownOutstanding && !perCall.length)
-    return null;
-  const unlimited = projection.usageLimits === 'none' || !limits;
+  if (!totals.requests && !perCall.length) return null;
   return {
-    spent: budget.spent,
-    reserved: budget.reserved,
-    unknown: budget.unknownOutstanding,
-    tokenLimit: unlimited ? null : limits.maxOutputTokens,
-    calls: budget.modelCalls,
-    callLimit: unlimited ? null : limits.maxModelCalls,
+    outputTokens: totals.outputTokens,
+    requests: totals.requests,
+    unknown: totals.unknown,
     perCall: perCall.slice(-PER_CALL_BARS),
     input: usageInput(projection),
     inputUnreported: Object.values(projection.modelCalls).filter(

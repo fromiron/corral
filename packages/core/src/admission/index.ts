@@ -20,7 +20,6 @@ import {
   WorkPlanUpdate,
 } from '@corral/contracts';
 import { utf8ToBytes } from '@noble/hashes/utils.js';
-import { admitModelRequest } from '../budget.ts';
 import type { InstallationPolicy } from '../config.ts';
 import { createsWaitCycle, NO_PROGRESS_TURNS, noProgressReached } from '../limits.ts';
 import type { RunProjection } from '../projection.ts';
@@ -35,8 +34,6 @@ import type { RunProjection } from '../projection.ts';
 export type AdmissionStage =
   /** Before a model slot is taken: whether this execution may make another request. */
   | 'model.request'
-  /** After the slot: whether the run's budget admits the request. */
-  | 'model.admit'
   /** Before waiting for the safe boundary: checks whose outcome a pause cannot change. */
   | 'tool.pre_boundary'
   /** At the safe boundary, when the agent proposes a call. */
@@ -45,9 +42,8 @@ export type AdmissionStage =
   | 'tool.execute';
 
 export interface LimitHit {
-  kind: 'model_calls' | 'output_tokens' | 'spawns' | 'questions' | 'depth' | 'no_progress';
+  kind: 'spawns' | 'questions' | 'depth' | 'no_progress';
   used: number;
-  reserved?: number;
   max: number;
 }
 
@@ -66,8 +62,6 @@ export interface ModelGateView {
   projection: RunProjection;
   limits: RunLimits;
   input: AgentStartInput;
-  /** An unlimited run, where the default usage gates do not apply. */
-  usageLimits?: 'none';
 }
 
 export interface ToolGateView extends ModelGateView {
@@ -108,7 +102,6 @@ export interface ToolGateView extends ModelGateView {
 
 export interface StageViews {
   'model.request': ModelGateView;
-  'model.admit': ModelGateView;
   'tool.pre_boundary': ToolGateView;
   'tool.authorize': ToolGateView;
   'tool.execute': ToolGateView;
@@ -268,7 +261,7 @@ export function notifyObservers(
 const noProgress: Gate<ModelGateView> = {
   id: 'no_progress',
   version: 1,
-  // every run, limited or not, waits for the person after six replies without progress.
+  // every run waits for the person after six replies without progress.
   check: ({ projection }) =>
     noProgressReached(projection.progress)
       ? {
@@ -277,28 +270,6 @@ const noProgress: Gate<ModelGateView> = {
           limit: { kind: 'no_progress', used: projection.progress.turns, max: NO_PROGRESS_TURNS },
         }
       : { kind: 'allow' },
-};
-
-const budget: Gate<ModelGateView> = {
-  id: 'budget',
-  version: 1,
-  check: ({ projection, limits, usageLimits }) => {
-    if (usageLimits) return { kind: 'allow' };
-    const admitted = admitModelRequest(projection.budget, limits);
-    return admitted.ok
-      ? { kind: 'allow' }
-      : {
-          kind: 'refuse',
-          code: 'LIMIT_REACHED',
-          message: `LIMIT_REACHED: ${admitted.limitKind}`,
-          limit: {
-            kind: admitted.limitKind,
-            used: admitted.used,
-            reserved: admitted.reserved,
-            max: admitted.max,
-          },
-        };
-  },
 };
 
 /** A reply to a question that has already closed. */
@@ -829,7 +800,6 @@ const limits: Gate<ToolGateView> = {
 /** Today's checks as gates, in today's order. */
 export const DEFAULT_GATES: AdmissionGates = {
   'model.request': [noProgress],
-  'model.admit': [budget],
   'tool.pre_boundary': [questionOpen],
   'tool.authorize': [roleAllowlist, limits],
   'tool.execute': [roleAllowlist, limits],

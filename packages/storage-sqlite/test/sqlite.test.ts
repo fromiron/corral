@@ -237,7 +237,7 @@ describe('Coordinator over a SQLite file', () => {
     const cached = new SqliteRunStore(dbA).getRun(runId ?? '')?.projection;
     if (!cached) throw new Error('expected running projection');
     const oldProjection: Partial<RunProjection> = { ...cached };
-    delete oldProjection.budget;
+    delete oldProjection.usage;
     dbA
       .prepare('UPDATE runs SET projection_json = ? WHERE id = ?')
       .run(JSON.stringify(oldProjection), runId);
@@ -287,7 +287,7 @@ describe('Coordinator over a SQLite file', () => {
     if (!runId) throw new Error('expected run');
     const done = await waitForProjection(transport, runId, settled);
     const legacy: Partial<RunProjection> = { ...done };
-    delete legacy.budget;
+    delete legacy.usage;
     const cached = JSON.stringify(legacy);
     db.prepare('UPDATE runs SET projection_json = ? WHERE id = ?').run(cached, runId);
     const events = store.readEvents(runId, 0);

@@ -321,7 +321,6 @@ describe('team graph: loops', () => {
     const doc = twoLoops();
     const l1 = doc.nodes.find((n: Doc) => n.id === 'L1');
     l1.maxIterations = 50;
-    l1.budget = { maxModelCalls: 40, maxWallMs: 1_200_000 };
     l1.stallDetection = true;
     doc.nodes.push(output('w1'));
     doc.nodes[doc.nodes.length - 1].id = 'report';

@@ -15,32 +15,19 @@ import { z } from 'zod';
 export interface InstallationPolicy {
   maxModelConcurrency: number;
   maxSpawns: number;
-  maxModelCalls: number;
-  maxOutputTokens: number;
-  maxOutputTokensPerCall: number;
   maxQuestions: number;
   questionTimeoutMs: number;
-  modelTimeoutMs: number;
-  runDeadlineMs: number;
   maxArtifactBytes: number;
   /** Executions alive at once on this host, including waiting workers. */
   maxResidentExecutions: number;
 }
 
-/**
- * The "hard cap" column of product contract §9. Timeouts have no cap in the spec; the definition schema's
- * maxima stand in for them.
- */
+/** The installation caps of product contract §9. Usage has no cap (§9). */
 export const SPEC_HARD_CAPS: InstallationPolicy = {
   maxModelConcurrency: 6,
   maxSpawns: 32,
-  maxModelCalls: 100,
-  maxOutputTokens: 256_000,
-  maxOutputTokensPerCall: 4_096,
   maxQuestions: 6,
   questionTimeoutMs: 300_000,
-  modelTimeoutMs: 300_000,
-  runDeadlineMs: 3_600_000,
   maxArtifactBytes: 1024 * 1024,
   maxResidentExecutions: 12,
 };
@@ -222,32 +209,18 @@ export function installationPolicy(config: WorkspaceConfig): InstallationPolicy 
 }
 
 const LIMIT_FIELDS = [
-  'maxModelConcurrency',
   'maxSpawns',
-  'maxModelCalls',
-  'maxOutputTokens',
-  'maxOutputTokensPerCall',
   'maxQuestions',
   'questionTimeoutMs',
-  'modelTimeoutMs',
-  'runDeadlineMs',
 ] as const satisfies readonly (keyof RunLimits & keyof InstallationPolicy)[];
 
 /** Every limit a definition asks for above what this installation allows. */
-export function limitViolations(
-  limits: RunLimits,
-  policy: InstallationPolicy,
-  unlimited = false,
-): string[] {
-  const above = (label: string, value: number, max: number) =>
-    value > max ? [`${label} ${value} is above this installation’s cap of ${max}`] : [];
-  return [
-    ...LIMIT_FIELDS.filter(
-      (field) =>
-        field !== 'maxModelConcurrency' &&
-        (!unlimited || ['maxSpawns', 'maxQuestions', 'questionTimeoutMs'].includes(field)),
-    ).flatMap((field) => above(field, limits[field], policy[field])),
-  ];
+export function limitViolations(limits: RunLimits, policy: InstallationPolicy): string[] {
+  return LIMIT_FIELDS.flatMap((field) =>
+    limits[field] > policy[field]
+      ? [`${field} ${limits[field]} is above this installation’s cap of ${policy[field]}`]
+      : [],
+  );
 }
 
 function stripUndefined<T extends object>(value: T): { [K in keyof T]: Exclude<T[K], undefined> } {

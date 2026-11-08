@@ -23,14 +23,14 @@ function reverseKeys(value: unknown): unknown {
 describe('definitionHash', () => {
   it('matches an independent JCS + SHA-256 implementation (Python json, sorted keys)', () => {
     expect(definitionHash(parse(minimal))).toBe(
-      'c88cafe442e7c85ce8ea54b627f728efbd96d8672009ca3ab6f7b1f9ba0150c1',
+      '709e5d78a5a5fe8f1e6d5c41b1385bfd6b9f589d808425a432cfcc1367793bc9',
     );
     // The example before its reviewer took the criteria input (#20), frozen.
     expect(definitionHash(parse(researchTeamBefore))).toBe(
-      '6ffe5923ea40cc955dab1734111a052988e265b6fde0b2e443c145d708ea2f85',
+      'e791e6ee7d2f933ea17a78bbbec3ae96185da731b9c5b1fa5f7cb11b6e468d88',
     );
     expect(definitionHash(parse(researchTeam))).toBe(
-      '0e28c765214ceb02f6b6f5165a865a35bb442a3ee483696a661e09c5d7729c97',
+      '5f825805d5d5e8e3c754d5b7fc66d829a0195739c12cdee61e70de9f3032a8d0',
     );
   });
 

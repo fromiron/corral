@@ -113,7 +113,7 @@ describe('buildTurnProcess', () => {
         scope: 'lead',
         epoch: 1,
         dispatched: true,
-        reservationId: null,
+        modelCallId: null,
         status: 'settled',
         outcome: id === 'stopped' ? 'cancelled' : 'failed',
       };

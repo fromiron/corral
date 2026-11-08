@@ -1,5 +1,5 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { BudgetInspector, HarnessDetails, type RunSessionStore } from '@corral/react';
+import { HarnessDetails, type RunSessionStore, UsageInspector } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -145,7 +145,7 @@ export function RunStatusCards({
               supported={Boolean(role?.harness) && projection.mode === 'live'}
             />
           ) : null}
-          <BudgetInspector session={session} prices={prices} />
+          <UsageInspector session={session} prices={prices} />
           {['interrupted', 'failed', 'cancelled'].includes(projection.status) &&
           projection.mode === 'live' ? (
             <RuntimeRecovery

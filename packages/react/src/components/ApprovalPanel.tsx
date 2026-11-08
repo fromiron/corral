@@ -28,7 +28,7 @@ import { InteractionPanel } from './InteractionPanel.tsx';
 import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
-/** A Loop that stopped for its budget or a stall is asked about in its own words. */
+/** A Loop that stopped for a stall is asked about in its own words. */
 const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
   approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
     ? `loop_${approval.loopStop}`

@@ -6,7 +6,6 @@ import {
   PreviewAppArgs,
   PreviewFileArgs,
   RunCommandArgs,
-  taskBriefForModel,
   UserInputRequest,
   WorkPlanUpdate,
 } from '@corral/contracts';
@@ -335,7 +334,7 @@ export function userPrompt(start: PromptStart): string {
     criteriaVersionId: start.criteriaVersionId,
     targetArtifactVersionId:
       start.role.outputContract === 'review' ? target?.artifactVersionId : undefined,
-    taskBrief: taskBriefForModel(start.taskBrief),
+    taskBrief: start.taskBrief,
   });
   return (
     (start.resumeContext && !start.meeting

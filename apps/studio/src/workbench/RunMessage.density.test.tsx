@@ -203,7 +203,7 @@ it.each(['en', 'ko'] as const)(
           scope: 'exec',
           epoch: 0,
           dispatched: true,
-          reservationId: null,
+          modelCallId: null,
           status: 'settled',
           outcome: 'cancelled',
         },

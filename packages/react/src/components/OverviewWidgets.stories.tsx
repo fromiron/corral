@@ -18,9 +18,15 @@ import type { ChatWidgetModel } from '../../../../apps/studio/src/workbench/widg
 function fixture(live = true): ChatWidgetModel {
   const projection = emptyProjection('overview_story');
   projection.status = live ? 'running' : 'succeeded';
-  projection.budget.spent = 930;
-  projection.budget.modelCalls = 4;
-  const usage = usageSummary(projection, null);
+  for (const [index, outputTokens] of [180, 260, 210, 280].entries()) {
+    projection.modelCalls[`call_${index}`] = {
+      modelCallId: `call_${index}`,
+      executionId: 'exec_writer',
+      finished: true,
+      usage: { outputTokens },
+    } as never;
+  }
+  const usage = usageSummary(projection);
   return {
     sessionId: 'overview_story_session',
     runId: projection.runId,

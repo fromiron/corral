@@ -15,6 +15,7 @@ import {
   InMemoryRunStore,
   InProcessTransport,
   SPEC_HARD_CAPS,
+  usageTotals,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -22,11 +23,7 @@ async function drain() {
   for (let i = 0; i < 100; i++) await Promise.resolve();
 }
 
-async function setup(
-  definition = linearCorral(['writer']),
-  hardOutput = SPEC_HARD_CAPS.maxOutputTokens,
-  cancelSettles = true,
-) {
+async function setup(definition = linearCorral(['writer']), cancelSettles = true) {
   const clock = new FakeClock();
   const hosts: AgentHost[] = [];
   const agents: AgentAdapter = {
@@ -49,25 +46,13 @@ async function setup(
     timers: clock,
     ids: new SequentialIdFactory(),
     agents,
-    policy: { ...SPEC_HARD_CAPS, maxOutputTokens: hardOutput },
+    policy: SPEC_HARD_CAPS,
   });
   const transport = new InProcessTransport(coordinator);
   const start = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start',
-    definition: {
-      ...definition,
-      executionPolicy: {
-        version: 2,
-        budget: {
-          maxModelCalls: definition.limits.maxModelCalls,
-          maxOutputTokens: definition.limits.maxOutputTokens,
-          maxOutputTokensPerCall: definition.limits.maxOutputTokensPerCall,
-          runDeadlineMs: definition.limits.runDeadlineMs,
-          modelTimeoutMs: definition.limits.modelTimeoutMs,
-        },
-      },
-    },
+    definition,
     mode: 'mock',
   });
   if (!start.runId) throw new Error(JSON.stringify(start.receipt.error));
@@ -101,54 +86,7 @@ const observe = (host: AgentHost, id: string, outputTokens: number | null) =>
     usage: { inputTokens: null, outputTokens },
   });
 
-describe('Coordinator budget and deadline integration', () => {
-  it('three concurrent admissions share the output reservation and cannot overspend it', async () => {
-    const definition = collaborationCorral();
-    definition.limits = { ...definition.limits, maxOutputTokens: 5_000 };
-    const s = await setup(definition);
-    const spawned = await s.host().invokeTool({
-      name: 'spawn_subagents',
-      args: { tasks: [1, 2].map((part) => ({ targetNodeId: 'helper', brief: `Part ${part}` })) },
-    });
-    expect(spawned.ok).toBe(true);
-    await drain();
-    const requests = await Promise.allSettled(s.hosts.map((host) => host.prepareModelRequest()));
-    const permits = requests.flatMap((result) =>
-      result.status === 'fulfilled' ? [result.value] : [],
-    );
-    expect(permits.map((permit) => permit.maxOutputTokens)).toEqual([4_096, 904]);
-    expect(requests.filter((result) => result.status === 'rejected')).toHaveLength(1);
-    expect(s.projection().budget).toMatchObject({
-      reserved: 5_000,
-      spent: 0,
-      unknownOutstanding: 0,
-      modelCalls: 2,
-    });
-    expect(s.events.filter((e) => e.type === 'budget.reserved')).toHaveLength(2);
-  });
-
-  it('a queued permit rechecks the model call limit after the previous request releases its slot', async () => {
-    const definition = collaborationCorral();
-    definition.limits = { ...definition.limits, maxModelConcurrency: 1, maxModelCalls: 1 };
-    const s = await setup(definition);
-    await s.host().invokeTool({
-      name: 'spawn_subagents',
-      args: { tasks: [{ targetNodeId: 'helper', brief: 'Part' }] },
-    });
-    await drain();
-    const first = await s.host().prepareModelRequest();
-    const next = s
-      .host(1)
-      .prepareModelRequest()
-      .then(
-        () => 'allowed',
-        () => 'blocked',
-      );
-    await observe(s.host(), first.modelCallId, 10);
-    expect(await next).toBe('blocked');
-    expect(s.projection().budget.modelCalls).toBe(1);
-  });
-
+describe('Coordinator model requests', () => {
   it('workers queued for a model slot pause and resume within the concurrency limit', async () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxModelConcurrency: 1 };
@@ -176,14 +114,13 @@ describe('Coordinator budget and deadline integration', () => {
     for (const [index, request] of pending.entries()) {
       const permit = await request;
       if (!permit) throw new Error('queued request was rejected after resume');
-      expect(s.projection().budget.modelCalls).toBe(index + 2);
-      expect(s.projection().budget.reserved).toBe(permit.maxOutputTokens);
+      expect(Object.keys(s.projection().modelCalls)).toHaveLength(index + 2);
       await observe(order[index] as AgentHost, permit.modelCallId, 10);
     }
     s.send('cancel', { scope: { kind: 'run' }, reason: 'cleanup' }, 'cancel');
     await drain();
     expect(paused.status).toBe('paused');
-    expect(paused.budget.modelCalls).toBe(1);
+    expect(Object.keys(paused.modelCalls)).toHaveLength(1);
   });
 
   it('cancelling a worker queued for a model slot rejects its request without consuming a slot', async () => {
@@ -241,7 +178,7 @@ describe('Coordinator budget and deadline integration', () => {
     await drain();
     const restarted = s.host(3).prepareModelRequest();
     await drain();
-    expect(s.projection().budget.modelCalls).toBe(1);
+    expect(Object.keys(s.projection().modelCalls)).toHaveLength(1);
     await observe(s.host(1), first.modelCallId, 10);
     const permit = await restarted;
     let nextState = 'pending';
@@ -254,8 +191,7 @@ describe('Coordinator budget and deadline integration', () => {
       });
     await drain();
     expect(nextState).toBe('pending');
-    expect(s.projection().budget.modelCalls).toBe(2);
-    expect(s.projection().budget.reserved).toBe(permit.maxOutputTokens);
+    expect(Object.keys(s.projection().modelCalls)).toHaveLength(2);
     await observe(s.host(3), permit.modelCallId, 10);
     await next;
     s.send('cancel', { scope: { kind: 'run' }, reason: 'cleanup' }, 'cancel');
@@ -264,99 +200,33 @@ describe('Coordinator budget and deadline integration', () => {
     expect(afterChildCancel).toBe('cancelled');
   });
 
-  it('explicit budget changes preserve reservations independently of legacy installation defaults', async () => {
-    const definition = linearCorral(['writer']);
-    definition.limits = { ...definition.limits, maxOutputTokens: 200, maxOutputTokensPerCall: 100 };
-    const s = await setup(definition, 500);
-    const host = s.host();
-    const first = await host.prepareModelRequest();
-    expect(
-      s.send('patch', { kind: 'run_limits', changes: { maxOutputTokens: 50 } }, 'lower', 0).error,
-    ).toBeUndefined();
-    expect(s.projection().budget.reserved).toBe(100);
-    await expect(host.prepareModelRequest()).rejects.toThrow();
-    await observe(host, first.modelCallId, 37);
-    const second = await host.prepareModelRequest();
-    expect(second.maxOutputTokens).toBe(13);
-    await observe(host, second.modelCallId, 10);
-    const revision = s.projection().controlRevision;
-    expect(
-      s.send(
-        'patch',
-        { kind: 'run_limits', changes: { maxOutputTokens: 600 } },
-        'escalate',
-        revision,
-      ).error,
-    ).toBeUndefined();
-    expect(
-      s.send(
-        'patch',
-        { kind: 'run_limits', changes: { maxOutputTokens: 500 } },
-        'raise',
-        revision + 1,
-      ).error,
-    ).toBeUndefined();
-    expect((await host.prepareModelRequest()).maxOutputTokens).toBe(100);
-    expect(s.projection().budget.spent).toBe(47);
-    expect(s.coordinator.getRunSnapshot(s.runId)?.definition.limits.maxOutputTokens).toBe(200);
-  });
-
-  it('cancellation retains unknown output and late usage settles without reviving the task', async () => {
+  it('cancellation leaves usage unknown and late usage fills it without reviving the task', async () => {
     const s = await setup();
     const host = s.host();
     const first = await host.prepareModelRequest();
     s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
     await waitForProjection(s.transport, s.runId, (p) => p.status === 'cancelled');
-    expect(s.projection().budget).toMatchObject({
-      spent: 0,
-      reserved: 0,
-      unknownOutstanding: 4_096,
+    expect(usageTotals(s.projection())).toMatchObject({ outputTokens: 0, inFlight: 0, unknown: 1 });
+    await observe(host, first.modelCallId, 37);
+    await observe(host, first.modelCallId, 37);
+    expect(usageTotals(s.projection())).toMatchObject({
+      outputTokens: 37,
+      inFlight: 0,
+      unknown: 0,
     });
-    await observe(host, first.modelCallId, 37);
-    await observe(host, first.modelCallId, 37);
-    expect(s.projection().budget).toMatchObject({ spent: 37, reserved: 0, unknownOutstanding: 0 });
     expect(s.projection().status).toBe('cancelled');
     expect(Object.values(s.projection().tasks).every((task) => task.status === 'cancelled')).toBe(
       true,
     );
     expect(
-      s.events.filter((e) => e.type === 'budget.settled' && e.payload.actual.outputTokens === 37),
+      s.events.filter(
+        (e) => e.type === 'model.usage_reconciled' && e.payload.normalizedUsage.outputTokens === 37,
+      ),
     ).toHaveLength(1);
   });
 
-  it('the wall deadline closes admission and cleans up even during user pause', async () => {
-    const definition = linearCorral(['writer']);
-    definition.limits = { ...definition.limits, runDeadlineMs: 1_000 };
-    const s = await setup(definition);
-    s.send('pause', { scope: 'run' }, 'pause');
-    s.clock.advance(1_000);
-    await drain();
-    expect(['failed', 'cancelled']).toContain(s.projection().status);
-    expect(
-      s.events.some((e) => e.type === 'limit.reached' && e.payload.limitKind === 'deadline'),
-    ).toBe(true);
-    await expect(s.host().prepareModelRequest()).rejects.toThrow();
-  });
-
-  it('each model request times out before the wall deadline and keeps unknown usage', async () => {
-    const definition = linearCorral(['writer']);
-    definition.limits = { ...definition.limits, modelTimeoutMs: 1_000 };
-    const s = await setup(definition);
-    const permit = await s.host().prepareModelRequest();
-    await s.host().modelRequestDispatched?.(permit.modelCallId);
-    s.clock.advance(1_000);
-    await drain();
-    expect(
-      Object.values(s.projection().executions).every((e) =>
-        ['cancelled', 'failed'].includes(e.status),
-      ),
-    ).toBe(true);
-    expect(s.projection().budget).toMatchObject({ reserved: 0, unknownOutstanding: 4_096 });
-    await expect(s.host().prepareModelRequest()).rejects.toThrow();
-  });
-
   it('the ten-second cleanup deadline fails unconfirmed termination without false confirmation', async () => {
-    const s = await setup(linearCorral(['writer']), SPEC_HARD_CAPS.maxOutputTokens, false);
+    const s = await setup(linearCorral(['writer']), false);
     await s.host().prepareModelRequest();
     s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
     s.clock.advance(9_999);
@@ -367,7 +237,7 @@ describe('Coordinator budget and deadline integration', () => {
     await drain();
     expect(s.projection().status).toBe('failed');
     expect(s.projection().statusReason).toBe('termination_unconfirmed');
-    expect(s.projection().budget).toMatchObject({ reserved: 0, unknownOutstanding: 4_096 });
+    expect(usageTotals(s.projection())).toMatchObject({ inFlight: 0, unknown: 1 });
     expect(s.events.some((e) => e.type === 'cancel.confirmed')).toBe(false);
   });
 
@@ -381,7 +251,7 @@ describe('Coordinator budget and deadline integration', () => {
     const pending = host.prepareModelRequest().catch(() => null);
     await drain();
     expect(s.projection().status).toBe('awaiting_user');
-    expect(s.projection().budget.modelCalls).toBe(6);
+    expect(Object.keys(s.projection().modelCalls)).toHaveLength(6);
     expect(
       s.events.some((e) => e.type === 'limit.reached' && e.payload.limitKind === 'no_progress'),
     ).toBe(true);
@@ -400,7 +270,7 @@ describe('Coordinator budget and deadline integration', () => {
       ).status,
     ).toBe('applied');
     expect(await pending).not.toBeNull();
-    expect(s.projection().budget.modelCalls).toBe(7);
+    expect(Object.keys(s.projection().modelCalls)).toHaveLength(7);
     s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
     await drain();
   });
@@ -511,7 +381,7 @@ describe('Coordinator budget and deadline integration', () => {
     await drain();
     expect(result).toBe('pending');
     expect(s.projection().status).toBe('paused');
-    expect(s.projection().budget.modelCalls).toBe(0);
+    expect(Object.keys(s.projection().modelCalls)).toHaveLength(0);
     s.send('resume', { scope: 'run' }, 'resume');
     await pending;
     expect(result).toBe('permitted');
@@ -519,7 +389,7 @@ describe('Coordinator budget and deadline integration', () => {
     await drain();
   });
 
-  it('seeded commands preserve admission, ownership, budget and replay invariants', async () => {
+  it('seeded commands preserve admission, ownership, usage and replay invariants', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(
@@ -568,7 +438,7 @@ describe('Coordinator budget and deadline integration', () => {
             } else if (step.kind === 'patch') {
               s.send(
                 'patch',
-                { kind: 'run_limits', changes: { maxOutputTokens: (step.slot + 1) * 500 } },
+                { kind: 'run_limits', changes: { maxSpawns: step.slot + 1 } },
                 `patch_${step.slot}`,
                 p.controlRevision,
               );
@@ -593,13 +463,10 @@ describe('Coordinator budget and deadline integration', () => {
             }
             await drain();
             const next = s.projection();
-            expect(next.budget.spent).toBeGreaterThanOrEqual(spent);
-            spent = next.budget.spent;
-            expect(
-              [next.budget.spent, next.budget.reserved, next.budget.unknownOutstanding].every(
-                (n) => n >= 0,
-              ),
-            ).toBe(true);
+            const usage = usageTotals(next);
+            expect(usage.outputTokens).toBeGreaterThanOrEqual(spent);
+            spent = usage.outputTokens;
+            expect(Object.values(usage).every((n) => n >= 0)).toBe(true);
             for (const task of Object.values(next.tasks)) {
               const active = Object.values(next.executions).filter(
                 (execution) =>
@@ -621,10 +488,8 @@ describe('Coordinator budget and deadline integration', () => {
             if (e.type === 'run.state_changed') admissionOpen = e.payload.to === 'running';
             if (e.type === 'effect.admitted') expect(admissionOpen).toBe(true);
           }
-          const reservations = s.events.filter((e) => e.type === 'budget.reserved');
-          expect(new Set(reservations.map((e) => e.payload.reservationId)).size).toBe(
-            reservations.length,
-          );
+          const prepared = s.events.filter((e) => e.type === 'model.request_prepared');
+          expect(new Set(prepared.map((e) => e.payload.modelCallId)).size).toBe(prepared.length);
         },
       ),
       { seed: 2026101509, numRuns: 80 },
@@ -675,8 +540,8 @@ describe('Coordinator budget and deadline integration', () => {
       await observe(host, request.modelCallId, 10);
       const events = store.readEvents(start.runId, 0);
       expect(events.some((e) => e.recordedAt === clock.nowIso())).toBe(true);
-      expect(events.some((e) => e.type === 'budget.settled')).toBe(true);
-      expect(coordinator.getSnapshot(start.runId).projection.budget.spent).toBe(10);
+      expect(events.some((e) => e.type === 'model.finished')).toBe(true);
+      expect(usageTotals(coordinator.getSnapshot(start.runId).projection).outputTokens).toBe(10);
     } finally {
       realClock.mockRestore();
       vi.unstubAllGlobals();

@@ -70,7 +70,7 @@ describe('observed ThinkingSteps states', () => {
     ]);
     p.effects.model = {
       kind: 'model_request',
-      reservationId: 'c1',
+      modelCallId: 'c1',
       scope: 'lead',
       dispatched: true,
     } as never;

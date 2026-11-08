@@ -759,7 +759,7 @@ describe('editing profiles and endpoints from the Models page', () => {
   it('lists the catalog without credentials, and saving changes only the two model keys', async () => {
     const fake = makeFake();
     fake.respond();
-    const context = await start(fake, FAKE_PROFILES, { hardCaps: { maxModelCalls: 50 } });
+    const context = await start(fake, FAKE_PROFILES, { hardCaps: { maxSpawns: 20 } });
     await signIn(context.json);
     const catalog = (await context.json('/model-catalog')).body as {
       providerId: string;
@@ -806,7 +806,7 @@ describe('editing profiles and endpoints from the Models page', () => {
     expect(saved.body.modelProfiles[1].workerIsolation).toBe('linux-bwrap');
     expect(saved.body.revision).not.toBe(current.body.revision);
     const file = configOf(context.workspace);
-    expect(file.hardCaps).toEqual({ maxModelCalls: 50 });
+    expect(file.hardCaps).toEqual({ maxSpawns: 20 });
     expect(file.modelProfiles[0]).toEqual({
       id: 'model-a',
       provider: 'openai',

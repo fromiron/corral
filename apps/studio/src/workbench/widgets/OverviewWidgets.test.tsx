@@ -29,9 +29,18 @@ afterEach(async () => {
 function model(patch: Partial<ChatWidgetModel> = {}): ChatWidgetModel {
   const projection = emptyProjection('run_overview');
   projection.status = 'succeeded';
-  projection.budget.spent = 930;
-  projection.budget.modelCalls = 4;
-  projection.budget.unknownOutstanding = 256;
+  for (const [id, outputTokens] of [
+    ['a', 500],
+    ['b', 300],
+    ['c', 130],
+    ['d', null],
+  ] as const)
+    projection.modelCalls[id] = {
+      modelCallId: id,
+      executionId: 'exec',
+      finished: true,
+      usage: outputTokens === null ? null : { outputTokens },
+    } as never;
   return {
     sessionId: 'session',
     runId: 'run_overview',
@@ -76,7 +85,7 @@ function model(patch: Partial<ChatWidgetModel> = {}): ChatWidgetModel {
     tools: [],
     results: [{ id: 'artv_1', label: 'draft v1' }],
     environment: null,
-    usage: usageSummary(projection, { maxOutputTokens: 64_000, maxModelCalls: 40 }),
+    usage: usageSummary(projection),
     cost: null,
     action: actionRequired({
       pendingApprovals: 0,
@@ -128,8 +137,9 @@ it('shows the run in kit widgets whose details open in place', async () => {
   const usage = container.querySelector<HTMLElement>('[data-overview-widget="usage"]');
   expect(usage?.querySelector('[data-slot="card"]')).not.toBeNull();
   expect(usage?.textContent).toContain('930');
-  expect(usage?.textContent).toContain('4 of 40 model calls');
-  expect(usage?.textContent).toContain('256 unconfirmed tokens held');
+  expect(usage?.textContent).toContain('4 model calls');
+  expect(usage?.textContent).toContain('1 request did not report usage');
+  expect(usage?.textContent).not.toMatch(/limit|held|budget/i);
   expect(container.querySelector('[data-overview-widget="context"]')?.textContent).toContain('71%');
   const changes = container.querySelector('[data-overview-widget="changes"]');
   expect(changes?.textContent).toContain('+2,589');
@@ -259,22 +269,20 @@ it('identifies an older selected run without changing its usage or results', asy
   );
 });
 
-it('names a run without limits and hides widgets with nothing to say', async () => {
+it('hides widgets with nothing to say', async () => {
   const projection = emptyProjection('run_overview');
   projection.status = 'succeeded';
-  projection.budget.spent = 120;
-  projection.budget.modelCalls = 1;
-  projection.usageLimits = 'none';
+  projection.modelCalls.only = {
+    modelCallId: 'only',
+    executionId: 'exec',
+    finished: true,
+    usage: { outputTokens: 120 },
+  } as never;
   const container = await render(
-    model({
-      chips: [],
-      results: [],
-      usage: usageSummary(projection, { maxOutputTokens: 64_000, maxModelCalls: 40 }),
-    }),
+    model({ chips: [], results: [], usage: usageSummary(projection) }),
   );
   expect(widgets(container)).toEqual(['usage']);
   expect(container.textContent).toContain('1 model call');
-  expect(container.textContent).not.toContain(' of 40');
 });
 
 it('a run that cannot be read offers a retry for the same run', async () => {

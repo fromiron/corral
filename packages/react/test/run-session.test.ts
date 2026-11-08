@@ -666,7 +666,7 @@ describe('Reins command session', () => {
     const receipt = await store.getState().sendCommand({
       type: 'patch',
       expectedControlRevision: 6,
-      payload: { kind: 'run_limits', changes: { maxOutputTokens: 500 } },
+      payload: { kind: 'run_limits', changes: { maxSpawns: 4 } },
     });
     expect(receipt.status).toBe('rejected');
     expect(store.getState().receipts[receipt.commandId]).toEqual(receipt);

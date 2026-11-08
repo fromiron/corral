@@ -18,8 +18,8 @@ import type {
   WaitingOn,
 } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { applyBudgetEvent, type BudgetState, emptyBudget } from './budget.ts';
 import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.ts';
+import { applyUsageRecord, type UsageRecordView } from './usage.ts';
 
 // Read model rebuilt only from committed events. The same reducer runs in the
 // coordinator and in every client, so a replayed log and a live view cannot drift.
@@ -147,7 +147,8 @@ export interface EffectView {
   scope: string;
   epoch: number;
   dispatched: boolean;
-  reservationId: string | null;
+  /** The model call a model_request effect admits. */
+  modelCallId: string | null;
   status: 'admitted' | 'settled';
   outcome: 'succeeded' | 'failed' | 'cancelled' | 'unknown' | null;
 }
@@ -256,9 +257,8 @@ export interface RunProjection {
   patches: Record<string, PatchView>;
   currentCriteriaVersionId: string | null;
   limits: RunLimits | null;
-  /** An unlimited run or a meeting, where `limits` are not applied. */
-  usageLimits?: 'none';
-  budget: BudgetState;
+  /** Usage spent outside the model calls (chooser calls, images), by usage id. */
+  usage: Record<string, UsageRecordView>;
   progress: ProgressState;
   /** The final approval behind the output, when the Output required one. */
   outputApprovalId: string | null;
@@ -316,7 +316,7 @@ export function emptyProjection(runId: string): RunProjection {
     patches: {},
     currentCriteriaVersionId: null,
     limits: null,
-    budget: emptyBudget(),
+    usage: {},
     progress: emptyProgress(),
     outputApprovalId: null,
     artifactReads: {},
@@ -362,9 +362,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         startedAt: event.recordedAt,
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
-        ...(event.payload.usageLimits || event.payload.meeting
-          ? { usageLimits: 'none' as const }
-          : {}),
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
         decisionSettings: event.payload.decisions ?? null,
       };
@@ -725,7 +722,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         scope,
         epoch,
         dispatched: false,
-        reservationId: event.payload.reservationId,
+        modelCallId: event.payload.modelCallId,
         status: 'admitted',
         outcome: null,
       };
@@ -844,13 +841,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
             }
           : {}),
         ...(patch.kind === 'run_limits' && p.limits
-          ? {
-              limits: { ...p.limits, ...patch.after },
-              ...(patch.after.maxModelCalls !== undefined ||
-              patch.after.maxOutputTokens !== undefined
-                ? { usageLimits: undefined }
-                : {}),
-            }
+          ? { limits: { ...p.limits, ...patch.after } }
           : {}),
       };
     }
@@ -883,10 +874,9 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           [event.payload.scope === 'team' ? 'team' : event.payload.executionId]: event.payload,
         },
       };
-    case 'budget.reserved':
-    case 'budget.settled':
-      return { ...p, budget: applyBudgetEvent(p.budget, event) };
-    // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
+    case 'usage.recorded':
+      return { ...p, usage: applyUsageRecord(p.usage, event.payload) };
+    // Committed facts that later phases project (review P5, Reins P6). Until then
     // they are kept in the log only.
     case 'harness.loaded':
     case 'harness.simulated':
@@ -964,6 +954,9 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         },
       };
     }
+    default:
+      // A stored log can hold event types this version no longer records (e.g. `budget.*`).
+      return p;
   }
 }
 

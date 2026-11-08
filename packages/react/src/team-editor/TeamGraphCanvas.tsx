@@ -605,11 +605,6 @@ export function TeamGraphCanvas({
                   <KitBadge size="compact" color="gray">
                     {summary(node)}
                   </KitBadge>
-                  {node.type === 'loop' && node.budget?.maxModelCalls ? (
-                    <KitBadge size="compact" color="gray">
-                      {t('budgetCalls', { count: node.budget.maxModelCalls })}
-                    </KitBadge>
-                  ) : null}
                   <span className="grow" />
                   <Button
                     variant="ghost"

@@ -1272,9 +1272,9 @@ describe('workspace configuration', () => {
     await mkdir(join(workspace, '.corral'));
     writeFileSync(
       join(workspace, '.corral', 'config.json'),
-      JSON.stringify({ schemaVersion: '0.1', hardCaps: { maxModelCalls: 500 } }),
+      JSON.stringify({ schemaVersion: '0.1', hardCaps: { maxSpawns: 500 } }),
     );
-    await expect(start({ workspace })).rejects.toThrow(/hardCaps\.maxModelCalls/);
+    await expect(start({ workspace })).rejects.toThrow(/hardCaps\.maxSpawns/);
   });
 
   it('matches the product contract §9 table: defaults and hard caps', () => {
@@ -1291,14 +1291,13 @@ describe('workspace configuration', () => {
     const number = (text: string) => Number((text.match(/[\d,]+/)?.[0] ?? '').replaceAll(',', ''));
     expect(number(row('실행당 동적 생성')[2] ?? '')).toBe(DEFAULT_LIMITS.maxSpawns);
     expect(number(row('실행당 동적 생성')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxSpawns);
-    expect(row('실행당 모델 요청')[2]).toBe('무제한');
-    expect(row('총 출력 토큰 예산')[2]).toBe('무제한');
+    expect(section).toContain('실행에 사용량 예산은 없다.');
+    expect(section).not.toMatch(/\| (실행당 모델 요청|총 출력 토큰 예산|전체 wall deadline)/);
     expect(row('요청별 출력 토큰 상한')[2]).toBe('모델 능력·남은 컨텍스트');
     expect(number(row('동시 모델 요청')[2] ?? '')).toBe(DEFAULT_LIMITS.maxModelConcurrency);
     expect(number(row('실행당 질문')[2] ?? '')).toBe(DEFAULT_LIMITS.maxQuestions);
     expect(number(row('질문 대기')[2] ?? '') * 1000).toBe(DEFAULT_LIMITS.questionTimeoutMs);
-    expect(row('모델/문서 도구 timeout')[2]).toBe('무제한 / 30초');
-    expect(row('전체 wall deadline')[2]).toBe('무제한');
+    expect(row('모델/문서 도구 timeout')[2]).toBe('없음 / 30초');
     expect(row('Loop 회차 상한')[3]).toContain('설치 상한 없음');
     expect(SPEC_HARD_CAPS).not.toHaveProperty('maxLoopIterations');
     expect(number(row('동적 위임 깊이')[2] ?? '')).toBe(DEFAULT_LIMITS.maxDelegationDepth);

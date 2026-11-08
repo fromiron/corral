@@ -24,7 +24,6 @@ import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
-import { BudgetInspector } from './BudgetInspector.tsx';
 import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
@@ -32,6 +31,7 @@ import { RunActions } from './RunActions.tsx';
 import { RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
+import { UsageInspector } from './UsageInspector.tsx';
 
 /** Run status, executions and output, from committed events only. Needs no editor. */
 export function RunView({
@@ -90,7 +90,7 @@ export function RunView({
           {simulatedHarness ? (
             <p className="text-xs text-muted-foreground">{t('harnessSimulation')}</p>
           ) : null}
-          <BudgetInspector session={session} prices={prices} />
+          <UsageInspector session={session} prices={prices} />
           <HarnessDetails session={session} />
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">{t('status')}</span>

@@ -352,15 +352,10 @@ describe('loop execution', () => {
     expect(final.nodeExecutions.fallback).toHaveLength(1);
   });
 
-  it('asks with the reason when the budget is spent and exhausted is unconnected', async () => {
+  it('asks with the reason when the cap is reached and exhausted is unconnected', async () => {
     const body = reviewedBody('loop', 'l');
     const definition = team(
-      [
-        research,
-        loop('loop', { maxIterations: 5, budget: { maxModelCalls: 1 } }),
-        ...body.nodes,
-        output('l_write'),
-      ],
+      [research, loop('loop', { maxIterations: 1 }), ...body.nodes, output('l_write')],
       [edge('research', 'out', 'loop', 'enter'), ...body.edges, edge('loop', 'next', 'output')],
     );
     const transport = runtime(scripted({}));
@@ -368,7 +363,7 @@ describe('loop execution', () => {
     const answer = async (decision: 'approve' | 'reject') => {
       const waiting = await waitForProjection(transport, runId, (p) => pendingApproval(p) !== null);
       const approval = pendingApproval(waiting);
-      expect(approval).toMatchObject({ kind: 'loop_cap', loopStop: 'budget_exhausted' });
+      expect(approval).toMatchObject({ kind: 'loop_cap', loopStop: 'cap_reached' });
       await transport.sendCommand({
         schemaVersion: '0.1',
         commandId: `cmd_${++edgeNo}`,
@@ -388,7 +383,7 @@ describe('loop execution', () => {
     expect(final.status).toBe('cancelled');
     expect(rounds(final, 'loop')).toEqual([
       [1, 'revise'],
-      [2, 'budget_exhausted'],
+      [2, 'cap_reached'],
     ]);
   });
 

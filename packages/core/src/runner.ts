@@ -1,7 +1,7 @@
 import type { CompiledPlan, PlanStep, PlanTarget } from './compiler/index.ts';
 
 // GraphRunner port. A runner only walks the compiled plan and
-// asks the Coordinator to act: it never owns Task state, budgets or artifacts. Each activation
+// asks the Coordinator to act: it never owns Task state, usage or artifacts. Each activation
 // is identified by (nodeId, iteration), which the Coordinator turns into an activation key so a
 // replayed or retried step cannot start a second Task.
 
@@ -13,8 +13,8 @@ export interface IterationRef {
 
 export type StepOutcome = { ok: true } | { ok: false; reason: string };
 
-/** Why a round that asked to repeat stops instead: its round cap, its budget or a stall. */
-export type LoopStop = 'cap_reached' | 'budget_exhausted' | 'stalled';
+/** Why a round that asked to repeat stops instead: its round cap or a stall. */
+export type LoopStop = 'cap_reached' | 'stalled';
 
 /** How a Loop round ended: through `repeat` (revise), `exit` (pass), or why it stopped. */
 export type RoundOutcome = 'pass' | 'revise' | 'inconclusive' | 'cancelled' | LoopStop;
@@ -30,7 +30,7 @@ export interface RunnerCallbacks {
   finalize(outputNodeId: string): Promise<void>;
   loopEntered(loopId: string, no: number): Promise<void>;
   /**
-   * A round below its cap asks to repeat: whether the Loop's budget is spent or it stalled.
+   * A round below its cap asks to repeat: whether it stalled.
    * The round cap itself is the plan's `maxIterations`, which the runner checks.
    */
   loopCheck(loopId: string, round: number): Promise<LoopStop | null>;

@@ -8,7 +8,6 @@ import {
   AgentStatusText,
   ApprovalPanel,
   ArtifactViewer,
-  BudgetInspector,
   EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
@@ -28,6 +27,7 @@ import {
   StatusBadge,
   TaskBoard,
   Timeline,
+  UsageInspector,
   useRunDisplay,
   useRunWorkPlan,
   useSteerTarget,
@@ -780,7 +780,7 @@ function RunWorkspace({
                     <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
-                    <BudgetInspector session={session} prices={prices} />
+                    <UsageInspector session={session} prices={prices} />
                     <EffortJudgments session={session} />
                   </TabPanel>
                 </Tabs>

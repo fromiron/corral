@@ -283,10 +283,6 @@ function ContextWidget({ model }: { model: ChatWidgetModel }) {
 function UsageWidget({ model, usage }: { model: ChatWidgetModel; usage: UsageSummary }) {
   const t = useTranslations('Widgets.overview');
   const format = useFormatter();
-  const calls =
-    usage.callLimit == null
-      ? t('callsNoLimit', { used: usage.calls })
-      : t('calls', { used: usage.calls, max: usage.callLimit });
   return (
     <DetailWidget
       label={t('openDetail', { name: t('usage') })}
@@ -294,23 +290,16 @@ function UsageWidget({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
         <Frame icon={Coins} title={t('usage')}>
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
-              <Figure value={format.number(usage.spent)} unit={t('outputTokens')} />
+              <Figure value={format.number(usage.outputTokens)} unit={t('outputTokens')} />
               <p className="mt-0.5 text-caption text-muted-foreground">
-                {[
-                  calls,
-                  usage.tokenLimit == null
-                    ? null
-                    : t('tokenLimit', { max: format.number(usage.tokenLimit) }),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
+                {t('calls', { used: usage.requests })}
               </p>
             </div>
             <CallSparkline values={usage.perCall} />
           </div>
           {usage.unknown > 0 ? (
             <p className="mt-2 text-caption text-warning">
-              {t('unknownHeld', { count: format.number(usage.unknown) })}
+              {t('unknownUsage', { count: usage.unknown })}
             </p>
           ) : null}
         </Frame>
@@ -334,7 +323,7 @@ function CallSparkline({ values }: { values: number[] }) {
 
 function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSummary }) {
   const t = useTranslations('Widgets.overview');
-  const tb = useTranslations('Budget');
+  const tb = useTranslations('Usage');
   const format = useFormatter();
   const cost = model.cost;
   const costLines = cost
@@ -353,13 +342,8 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
       ].filter((line): line is string => Boolean(line))
     : [];
   const rows: [string, string][] = [
-    [t('spent'), format.number(usage.spent)],
-    [t('held'), format.number(usage.reserved + usage.unknown)],
-    [t('limit'), usage.tokenLimit == null ? t('noLimit') : format.number(usage.tokenLimit)],
-    [
-      t('modelCalls'),
-      usage.callLimit == null ? String(usage.calls) : `${usage.calls} / ${usage.callLimit}`,
-    ],
+    [t('spent'), format.number(usage.outputTokens)],
+    [t('modelCalls'), String(usage.requests)],
     ...(usage.input
       ? ([
           [t('inputTokens'), format.number(usage.input.tokens)],
@@ -401,9 +385,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
         <p className="text-caption text-muted-foreground">{t('simulatedUsage')}</p>
       ) : null}
       {usage.unknown > 0 ? (
-        <p className="text-caption text-warning">
-          {t('unknownHeld', { count: format.number(usage.unknown) })}
-        </p>
+        <p className="text-caption text-warning">{t('unknownUsage', { count: usage.unknown })}</p>
       ) : null}
       {usage.input && usage.input.cached != null && usage.input.cacheUnreported > 0 ? (
         <p className="text-caption text-muted-foreground">
@@ -416,7 +398,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
         </p>
       ) : null}
       <Button size="compact" variant="secondary" render={<RunLink model={model} />}>
-        {t('fullBudget')}
+        {t('openRun')}
       </Button>
     </div>
   );

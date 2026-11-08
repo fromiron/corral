@@ -205,6 +205,8 @@ export class SqliteRunStore implements RunStore {
     // New optional metadata does not require replaying retired event types (e.g. Ultra).
     if (projection && !Object.hasOwn(projection, 'workflowBranches'))
       projection = { ...projection, workflowBranches: {} };
+    if (projection && !Object.hasOwn(projection, 'usage'))
+      projection = { ...projection, usage: {} };
     // Cached projections from older phases are rebuilt; committed snapshots and events stay immutable.
     if (!projection || Object.keys(initial).some((key) => !Object.hasOwn(projection, key))) {
       projection = this.readEvents(runId, 0).reduce(applyEvent, initial);

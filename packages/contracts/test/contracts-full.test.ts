@@ -165,7 +165,7 @@ describe('event contract', () => {
       },
       {
         type: 'limit.reached',
-        payload: { limitKind: 'model_calls', used: 40, reserved: 0, max: 40 },
+        payload: { limitKind: 'spawns', used: 12, max: 12 },
       },
       {
         type: 'review.recorded',

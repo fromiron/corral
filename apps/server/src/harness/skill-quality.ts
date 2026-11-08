@@ -209,13 +209,6 @@ export class SkillQualityService {
           harness: { profileId, revision: 1 },
         });
         definition.roles[0]!.allowedCollaborationTools = ['read_artifact', 'submit_result'];
-        definition.limits = {
-          ...definition.limits,
-          maxModelCalls: 4,
-          maxOutputTokensPerCall: 1024,
-          maxOutputTokens: 4096,
-          runDeadlineMs: 60000,
-        };
         variants.push({
           id: variant,
           corral: variant,
@@ -308,7 +301,7 @@ export class SkillQualityService {
               modelHashes: Object.values(snapshot?.models ?? {}).map(hash),
               modelCalls: row.modelCalls,
               outputTokens: row.outputTokens,
-              unknownTokens: row.unknownTokensHeld,
+              unknownCalls: row.unknownCalls,
             });
             this.write(view);
           },

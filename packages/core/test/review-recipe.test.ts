@@ -69,9 +69,6 @@ function fixture(overrides: Partial<ReviewRecipeRevision> = {}) {
     criteriaFiles: [],
     maxAttempts: 3,
     maxRepairs: 2,
-    maxWallMs: 10000,
-    maxModelCalls: 20,
-    maxOutputTokens: 20000,
     ...overrides,
   };
   Object.assign(loop, { reviewRecipe: recipe });
@@ -321,22 +318,6 @@ describe('bounded review recipes (H6)', () => {
         .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'check_stale'),
     ).toBe(true);
   });
-  it('an over-reported last model response cannot bypass the recipe token cap', async () => {
-    const definition = fixture({ maxOutputTokens: 100 });
-    definition.executionPolicy = { version: 2, budget: { maxOutputTokens: 10000 } };
-    const s = runtime(definition, {
-      review: () => 'pass',
-      reply: (_turn, input) => (input.nodeId === 'review' ? 'x'.repeat(150) : 'small'),
-    });
-    const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
-    expect(final.status).toBe('failed');
-    expect(final.output).toBeNull();
-    expect(
-      s
-        .events()
-        .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'token_limit'),
-    ).toBe(true);
-  });
   it('automatically checks each submission and a failed check overrides a passing review', async () => {
     const s = checked(['fail', 'pass']);
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
@@ -463,40 +444,6 @@ describe('bounded review recipes (H6)', () => {
         .some(
           (event) => event.type === 'recipe.stopped' && event.payload.reason === 'review_invalid',
         ),
-    ).toBe(true);
-  });
-  it('recipe call allowance and deadline are enforced before another model request', async () => {
-    const limited = fixture({ maxModelCalls: 1 });
-    limited.executionPolicy = { version: 2, budget: { maxModelCalls: 20 } };
-    const s = runtime(limited);
-    const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
-    expect(final.status).toBe('failed');
-    expect(final.budget.modelCalls).toBe(2);
-    expect(
-      s
-        .events()
-        .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'call_limit'),
-    ).toBe(true);
-    const entered = new Gate(),
-      release = new Gate();
-    const timedDefinition = fixture({ maxWallMs: 1000 });
-    timedDefinition.executionPolicy = { version: 2, budget: { runDeadlineMs: 10000 } };
-    const timed = runtime(timedDefinition, {
-      beforeReply: async (_turn, input) => {
-        if (input.nodeId !== 'write') return;
-        entered.open();
-        await release.wait();
-      },
-    });
-    await entered.wait();
-    timed.clock.advance(1001);
-    release.open();
-    const ended = await waitForProjection(timed.transport, timed.runId, (p) => terminal(p.status));
-    expect(ended.status).toBe('failed');
-    expect(
-      timed
-        .events()
-        .some((event) => event.type === 'recipe.stopped' && event.payload.reason === 'deadline'),
     ).toBe(true);
   });
   it('criteria and loop patches cannot loosen the recipe', async () => {

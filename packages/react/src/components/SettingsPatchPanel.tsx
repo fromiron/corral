@@ -1,4 +1,5 @@
 import { PatchPayload, type ReasoningPolicy, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { usageTotals } from '@corral/core';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -17,15 +18,7 @@ import { ReasoningSelect } from './ReasoningSelect.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
 type PatchKind = PatchPayload['kind'];
-type Field =
-  | 'prompt'
-  | 'modelProfile'
-  | 'reasoning'
-  | 'maxIterations'
-  | 'criteria'
-  | 'maxOutputTokens'
-  | 'maxModelCalls'
-  | 'maxSpawns';
+type Field = 'prompt' | 'modelProfile' | 'reasoning' | 'maxIterations' | 'criteria' | 'maxSpawns';
 
 export function SettingsPatchPanel({
   session,
@@ -41,7 +34,7 @@ export function SettingsPatchPanel({
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
   const [kind, setKind] = useState<PatchKind>('run_limits');
   const [selectedNode, setSelectedNode] = useState(nodeId ?? '');
-  const [field, setField] = useState<Field>('maxOutputTokens');
+  const [field, setField] = useState<Field>('maxSpawns');
   const [proposed, setProposed] = useState('');
   const [reasoning, setReasoning] = useState<ReasoningPolicy | null>(null);
   const [reasoningModel, setReasoningModel] = useState('');
@@ -86,11 +79,7 @@ export function SettingsPatchPanel({
   const limits = projection.limits ?? definition.limits;
   const current =
     kind === 'run_limits'
-      ? field !== 'maxSpawns' &&
-        (projection.usageLimits === 'none' ||
-          limits[field as 'maxOutputTokens' | 'maxModelCalls'] === Number.MAX_SAFE_INTEGER)
-        ? t('unlimited')
-        : String(limits[field as 'maxOutputTokens' | 'maxModelCalls' | 'maxSpawns'])
+      ? String(limits.maxSpawns)
       : kind === 'criteria'
         ? criteriaId
           ? (criteriaText ?? t('loadingCriteria'))
@@ -101,7 +90,7 @@ export function SettingsPatchPanel({
   const target = kind === 'run_limits' || kind === 'criteria' ? projection.runId : (node?.id ?? '');
   const fields: Field[] =
     kind === 'run_limits'
-      ? ['maxOutputTokens', 'maxModelCalls', 'maxSpawns']
+      ? ['maxSpawns']
       : kind === 'node_future'
         ? ['prompt', 'modelProfile', 'reasoning']
         : kind === 'loop_limit'
@@ -111,7 +100,7 @@ export function SettingsPatchPanel({
     setKind(next);
     setField(
       next === 'run_limits'
-        ? 'maxOutputTokens'
+        ? 'maxSpawns'
         : next === 'node_future'
           ? 'prompt'
           : next === 'loop_limit'
@@ -323,12 +312,7 @@ export function SettingsPatchPanel({
                         ? t('unchanged', { count: liveCount })
                         : t('snapshotsUnchanged')}
                     </p>
-                    <p>
-                      {t('spent', {
-                        spent: projection.budget.spent,
-                        held: projection.budget.reserved + projection.budget.unknownOutstanding,
-                      })}
-                    </p>
+                    <p>{t('spent', { spent: usageTotals(projection).outputTokens })}</p>
                     {projection.controlRevision !== preview.revision ? (
                       <p role="alert" className="text-warning">
                         {t('stale')}

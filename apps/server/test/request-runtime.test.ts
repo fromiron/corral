@@ -1,6 +1,12 @@
 import { once } from 'node:events';
 import type { ModelAttempt } from '@corral/contracts';
-import { Coordinator, InProcessTransport, SPEC_HARD_CAPS, waitForProjection } from '@corral/core';
+import {
+  Coordinator,
+  InProcessTransport,
+  SPEC_HARD_CAPS,
+  usageTotals,
+  waitForProjection,
+} from '@corral/core';
 import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import {
   createAssistantMessageEventStream,
@@ -269,7 +275,7 @@ it('a cancelled execution retains its physical slot and late usage reconciles th
   expect(started.runId, JSON.stringify(started.receipt)).not.toBeNull();
   const transport = new InProcessTransport(coordinator);
   await expect
-    .poll(() => coordinator.getSnapshot(started.runId!).projection.budget.modelCalls)
+    .poll(() => Object.keys(coordinator.getSnapshot(started.runId!).projection.modelCalls).length)
     .toBe(1);
   const running = coordinator.getSnapshot(started.runId!).projection;
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -302,7 +308,8 @@ it('a cancelled execution retains its physical slot and late usage reconciles th
     .toBe(true);
   (await next)();
   const after = coordinator.getSnapshot(started.runId!).projection;
-  expect(after).toMatchObject({ status: 'cancelled', budget: { spent: 3, unknownOutstanding: 0 } });
+  expect(after.status).toBe('cancelled');
+  expect(usageTotals(after)).toMatchObject({ outputTokens: 3, unknown: 0 });
   expect(after.executionOrder).toEqual(running.executionOrder);
   expect([...records.values()][0]).toMatchObject({
     status: 'cancelled',

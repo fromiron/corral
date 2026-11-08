@@ -294,9 +294,6 @@ describe('file tools switch', () => {
       criteriaFiles: [],
       maxAttempts: 2,
       maxRepairs: 1,
-      maxWallMs: 10000,
-      maxModelCalls: 20,
-      maxOutputTokens: 10000,
     };
     const on = updateNode(draft, 'review_loop', { reviewRecipe: recipe });
     expect(on.definition.nodes.find((node) => node.id === 'review_loop')).toHaveProperty(

@@ -7,7 +7,6 @@ import {
   type DecisionNodeMode,
   type DecisionRule,
   type JoinNode,
-  type LoopBudget,
   type LoopNode,
   type RouterRoute,
   type TargetPort,
@@ -145,7 +144,6 @@ export interface LoopPlan {
   nodeId: string;
   parentId: string | null;
   maxIterations: number;
-  budget: LoopBudget | null;
   stallDetection: boolean;
   body: PlanTarget[];
   /** Direct members in execution order. */
@@ -1273,7 +1271,6 @@ function lower(c: Context, graph: Graph): CompiledPlan {
           nodeId: id,
           parentId: base.parentId,
           maxIterations: roundsOf(node),
-          budget: node.budget ?? null,
           stallDetection: node.stallDetection ?? false,
           body: targetsOf(id, 'body'),
           members: membersInOrder(id),

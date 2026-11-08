@@ -59,6 +59,6 @@ export function explainDefinition(input: {
       { id: 'e1', source: 'explainer', sourcePort: 'out', target: 'output', targetPort: 'in' },
     ],
     capabilityLinks: [],
-    limits: { ...DEFAULT_LIMITS, maxModelCalls: Math.min(DEFAULT_LIMITS.maxModelCalls, 4) },
+    limits: DEFAULT_LIMITS,
   };
 }

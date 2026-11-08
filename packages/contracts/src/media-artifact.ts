@@ -36,9 +36,6 @@ export const ImageGenerationProfile = z.strictObject({
   modelId: z.string().min(1).max(200),
   api: z.literal('openai-images'),
   timeoutMs: z.int().min(1000).max(600000),
-  maxCallsPerRun: z.int().min(1).max(16),
-  /** A configured upper price bound; unknown pricing is never treated as zero. */
-  maxCostUsdPerCall: z.number().positive().max(100),
 });
 export type ImageGenerationProfile = z.infer<typeof ImageGenerationProfile>;
 export interface ImageGenerationOwner {

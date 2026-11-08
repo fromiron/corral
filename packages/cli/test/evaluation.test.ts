@@ -74,9 +74,6 @@ it('counts a correct candidate rejected by a recipe and records the repair linea
     checkIds: [],
     maxAttempts: 1,
     maxRepairs: 0,
-    maxWallMs: 10000,
-    maxModelCalls: 20,
-    maxOutputTokens: 20000,
   };
   const report = await runSuite(
     runtime(),

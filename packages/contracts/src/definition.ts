@@ -167,18 +167,10 @@ export const DecisionNode = z.discriminatedUnion('mode', [
 export type DecisionNode = z.infer<typeof DecisionNode>;
 export type DecisionNodeMode = DecisionNode['mode'];
 
-export const LoopBudget = z.strictObject({
-  maxModelCalls: z.int().min(1).optional(),
-  maxOutputTokens: z.int().min(1).optional(),
-  maxWallMs: z.int().min(1000).optional(),
-});
-export type LoopBudget = z.infer<typeof LoopBudget>;
-
 export const LoopNode = z.strictObject({
   ...nodeBase,
   type: z.literal('loop'),
   maxIterations: z.int().min(1),
-  budget: LoopBudget.optional(),
   stallDetection: z.boolean().optional(),
   reviewRecipe: ReviewRecipeRevision.optional(),
 });
@@ -274,13 +266,8 @@ export const RunLimits = z.strictObject({
   maxDelegationDepth: z.int().min(1),
   maxModelConcurrency: z.int().min(1),
   maxSpawns: z.int().min(1),
-  maxModelCalls: z.int().min(1),
-  maxOutputTokens: z.int().min(1),
-  maxOutputTokensPerCall: z.int().min(1),
   maxQuestions: z.int().min(0).max(6),
   questionTimeoutMs: z.int().min(1000).max(300000),
-  modelTimeoutMs: z.int().min(1000),
-  runDeadlineMs: z.int().min(1000),
 });
 export type RunLimits = z.infer<typeof RunLimits>;
 
@@ -289,13 +276,8 @@ export const DEFAULT_LIMITS: RunLimits = {
   maxDelegationDepth: 2,
   maxModelConcurrency: 6,
   maxSpawns: 12,
-  maxModelCalls: 40,
-  maxOutputTokens: 64000,
-  maxOutputTokensPerCall: 4096,
   maxQuestions: 6,
   questionTimeoutMs: 120000,
-  modelTimeoutMs: 180000,
-  runDeadlineMs: 3600000,
 };
 
 /** What a run works on: the brief and the completion criteria. */
@@ -319,8 +301,6 @@ export const TaskBrief = z.strictObject({
   verificationScope: z.enum(['targeted', 'release']),
   canModifyFiles: z.boolean(),
   limits: RunLimits,
-  /** An unlimited run: `limits` are not applied. */
-  usageLimits: z.literal('none').optional(),
   sourceRefs: z
     .array(z.strictObject({ name: z.string().min(1), artifactVersionId: Identifier.nullable() }))
     .max(1000),
@@ -328,55 +308,10 @@ export const TaskBrief = z.strictObject({
 });
 export type TaskBrief = z.infer<typeof TaskBrief>;
 
-/** Model-visible metadata excludes inactive legacy caps and internal unlimited sentinels. */
-export function taskBriefForModel(brief: TaskBrief | undefined) {
-  if (!brief) return undefined;
-  const {
-    maxModelCalls,
-    maxOutputTokens,
-    maxOutputTokensPerCall,
-    modelTimeoutMs,
-    runDeadlineMs,
-    ...resources
-  } = brief.limits;
-  const budget = {
-    maxModelCalls,
-    maxOutputTokens,
-    maxOutputTokensPerCall,
-    modelTimeoutMs,
-    runDeadlineMs,
-  };
-  return {
-    ...brief,
-    limits: resources,
-    usageBudget:
-      brief.usageLimits === 'none'
-        ? null
-        : Object.fromEntries(
-            Object.entries(budget).filter(([, value]) => value < Number.MAX_SAFE_INTEGER),
-          ),
-  };
-}
-
-export const ExecutionPolicy = z.strictObject({
-  version: z.literal(2),
-  budget: z
-    .strictObject({
-      maxModelCalls: z.int().positive().optional(),
-      maxOutputTokens: z.int().positive().optional(),
-      maxOutputTokensPerCall: z.int().positive().optional(),
-      runDeadlineMs: z.int().min(1000).optional(),
-      modelTimeoutMs: z.int().min(1000).optional(),
-    })
-    .optional(),
-});
-export type ExecutionPolicy = z.infer<typeof ExecutionPolicy>;
-
 export const CorralDefinition = z.strictObject({
   sourceTeam: z
     .strictObject({ corralId: Identifier, name: z.string().min(1), revision: z.int().min(1) })
     .optional(),
-  executionPolicy: ExecutionPolicy.optional(),
   planOwnerRoleId: Identifier.optional(),
   schemaVersion: SchemaVersion,
   id: Identifier,

@@ -95,7 +95,6 @@ import {
   type ToolOutcome,
   type ToolPermissionPlan,
   type ToolProposal,
-  taskBriefForModel,
   UserInputRequest,
   VerificationReport,
   validUserAnswers,
@@ -119,12 +118,6 @@ import {
 import { canReadArtifactBody, canReleaseArtifactBodies } from './artifact-retention.ts';
 import { validTextAttachments } from './attachments.ts';
 import { type AutoStart, autoDefinition } from './auto-team.ts';
-import {
-  admitImageRequest,
-  admitModelRequest,
-  settlementFor,
-  UNLIMITED_OUTPUT_TOKENS_PER_CALL,
-} from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
 import { BuiltInCheckRunner, CHECK_ROLE_ID, CHECKS_INPUT, checkRole } from './check-runner.ts';
 import type { CompiledPlan } from './compiler/index.ts';
@@ -136,6 +129,7 @@ import {
 } from './context-checkpoint.ts';
 import {
   createDecisionHub,
+  DECISION_HARD_CAP,
   type JudgmentConfig,
   requestTiming,
   resolveDecisionSettings,
@@ -182,6 +176,12 @@ import {
   type StoredRun,
 } from './store/run-store.ts';
 import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
+import {
+  applyUsageRecord,
+  FALLBACK_OUTPUT_TOKENS,
+  type UsageRecordView,
+  usageRecordChanges,
+} from './usage.ts';
 
 // The single place domain state is decided. A command is validated and
 // turned into events; the events, the projection they produce, the command record and artifact
@@ -357,7 +357,6 @@ export interface CoordinatorDeps {
       args: GenerateImageArgs,
       profile: ImageGenerationProfile,
       cancellation: ToolCancellation,
-      reservedCostUsd: number,
       referenceImages?: ImageInput[],
     ): Promise<ImageGenerationResult>;
   };
@@ -463,13 +462,10 @@ interface RecipeCandidate {
 }
 interface RecipeRun {
   recipe: ReviewRecipeRevision;
-  cancelDeadline(): void;
   candidates: Map<string, RecipeCandidate>;
   failureSignature?: string;
 }
 interface LiveRun {
-  /** An unlimited run: `limits` are not applied; only a person's cancel stops it. */
-  usageLimits?: 'none';
   recipes: Map<string, RecipeRun>;
   runId: string;
   snapshot: RunSnapshot;
@@ -486,7 +482,7 @@ interface LiveRun {
    * Each Loop since it was last entered: when, and the work its last finished round submitted
    * (content hashes), for budgets and stall detection.
    */
-  loopEntries: Map<string, { enteredMs: number; previousWork: string[] | null }>;
+  loopEntries: Map<string, { previousWork: string[] | null }>;
   /** Steps of branches an `any` Join stopped (`node@round`): they start and decide nothing. */
   stoppedSteps: Set<string>;
   /** Approvals a step is waiting on, by node, so stopping its branch can withdraw them. */
@@ -533,8 +529,6 @@ interface LiveRun {
   limits: RunLimits;
   criteriaVersionId: string;
   pendingCriteriaVersionId: string | null;
-  cancelDeadline: () => void;
-  requestDeadlines: Map<string, () => void>;
   nodePatches: Map<
     string,
     {
@@ -934,8 +928,6 @@ export class Coordinator {
     if (source.projection.currentCriteriaVersionId !== manifest.criteriaVersionId)
       blockers.push('criteria_changed');
     if (
-      source.projection.budget.reserved ||
-      source.projection.budget.unknownOutstanding ||
       Object.values(source.projection.effects).some(
         (effect) =>
           effect.kind !== 'spawn' && (effect.status === 'admitted' || effect.outcome === 'unknown'),
@@ -1033,28 +1025,14 @@ export class Coordinator {
       )
         blockers.push('files_changed_or_uncertain');
     } else if (this.files?.available(runId)) blockers.push('files_changed_or_uncertain');
-    const limits = { ...(source.projection.limits ?? source.snapshot.definition.limits) };
-    if (!source.projection.usageLimits) {
-      limits.maxModelCalls -= source.projection.budget.modelCalls;
-      limits.maxOutputTokens -=
-        source.projection.budget.spent +
-        source.projection.budget.reserved +
-        source.projection.budget.unknownOutstanding;
-      limits.maxOutputTokensPerCall = Math.min(
-        limits.maxOutputTokensPerCall,
-        Math.max(1, limits.maxOutputTokens),
-      );
-      if (limits.maxModelCalls < 1 || limits.maxOutputTokens < 1) blockers.push('budget_exhausted');
-    }
     return {
       ...record,
       sourceSeq: source.projection.lastSeq,
       createdAt: manifest.createdAt,
       runtime: manifest.runtime,
-      ...(source.projection.usageLimits ? { usageLimits: source.projection.usageLimits } : {}),
       ready: !blockers.length,
       blockers: [...new Set(blockers)],
-      limits: limits.maxModelCalls > 0 && limits.maxOutputTokens > 0 ? limits : null,
+      limits: source.projection.limits ?? source.snapshot.definition.limits,
     };
   }
 
@@ -1127,23 +1105,6 @@ export class Coordinator {
         definition.roles = [recovery.state.role];
         definition.input.criteria = [recovery.state.criteria];
         definition.limits = preview.limits;
-        definition.executionPolicy =
-          preview.usageLimits === 'none'
-            ? { version: 2 }
-            : {
-                version: 2,
-                budget: {
-                  maxModelCalls: preview.limits.maxModelCalls,
-                  maxOutputTokens: preview.limits.maxOutputTokens,
-                  maxOutputTokensPerCall: preview.limits.maxOutputTokensPerCall,
-                  ...(definition.executionPolicy?.budget?.modelTimeoutMs !== undefined
-                    ? { modelTimeoutMs: definition.executionPolicy.budget.modelTimeoutMs }
-                    : {}),
-                  ...(definition.executionPolicy?.budget?.runDeadlineMs !== undefined
-                    ? { runDeadlineMs: definition.executionPolicy.budget.runDeadlineMs }
-                    : {}),
-                },
-              };
         return this.startRunWithRecovery(
           {
             schemaVersion: '0.1',
@@ -1198,7 +1159,6 @@ export class Coordinator {
         checkpointId: files?.checkpointId ?? null,
         tree: files?.tree ?? null,
         modelProfile: [...new Set(definition.roles.map((role) => role.modelProfile))].join(', '),
-        ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
         limits: definition.limits,
       };
       return {
@@ -1388,7 +1348,6 @@ export class Coordinator {
       checkpointId: recovery?.manifest.checkpointId ?? null,
       tree: files?.tree ?? null,
       modelProfile: role.modelProfile,
-      ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
       limits: definition.limits,
     };
     return {
@@ -1743,11 +1702,7 @@ export class Coordinator {
         });
       Object.assign(role, override);
     }
-    const overCaps = limitViolations(
-      planned.definition.limits,
-      this.policy,
-      !planned.definition.executionPolicy?.budget,
-    );
+    const overCaps = limitViolations(planned.definition.limits, this.policy);
     if (overCaps.length > 0) return refuse({ code: 'GRAPH_INVALID', message: overCaps.join('; ') });
     // Every profile resolves now, so the run never meets an unusable model halfway.
     const models: Record<string, ModelProfileSnapshot> = {};
@@ -2062,9 +2017,8 @@ export class Coordinator {
                   (p) => p.id === 'local-model' && p.privacy === 'local',
                 )?.version ?? null,
               maxCalls: Math.min(
-                100,
-                this.judgments.settings.reasoning_effort.maxCalls ??
-                  definition.limits.maxModelCalls,
+                DECISION_HARD_CAP,
+                this.judgments.settings.reasoning_effort.maxCalls ?? DECISION_HARD_CAP,
               ),
               ...(this.judgments.settings.reasoning_effort.allowExternal &&
               this.judgments.settings.reasoning_effort.external
@@ -2085,7 +2039,6 @@ export class Coordinator {
       handles: new Map(),
       rounds: new Map(),
       recipes: new Map(),
-      ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
       taskOutcomes: new Map(),
       questions: new Map(),
@@ -2106,32 +2059,16 @@ export class Coordinator {
         (p) => p.id === 'local-model' && p.privacy === 'local',
       ),
       reasoningMaxCalls: Math.min(
-        100,
-        this.judgments?.settings.reasoning_effort.maxCalls ?? definition.limits.maxModelCalls,
+        DECISION_HARD_CAP,
+        this.judgments?.settings.reasoning_effort.maxCalls ?? DECISION_HARD_CAP,
       ),
       loopEntries: new Map(),
       stoppedSteps: new Set(),
       stepApprovals: new Map(),
       limitApproval: null,
-      limits: definition.executionPolicy?.budget
-        ? {
-            ...definition.limits,
-            maxModelCalls:
-              definition.executionPolicy.budget.maxModelCalls ?? Number.MAX_SAFE_INTEGER,
-            maxOutputTokens:
-              definition.executionPolicy.budget.maxOutputTokens ?? Number.MAX_SAFE_INTEGER,
-            maxOutputTokensPerCall:
-              definition.executionPolicy.budget.maxOutputTokensPerCall ?? Number.MAX_SAFE_INTEGER,
-            runDeadlineMs:
-              definition.executionPolicy.budget.runDeadlineMs ?? Number.MAX_SAFE_INTEGER,
-            modelTimeoutMs:
-              definition.executionPolicy.budget.modelTimeoutMs ?? Number.MAX_SAFE_INTEGER,
-          }
-        : { ...definition.limits },
+      limits: { ...definition.limits },
       criteriaVersionId: snapshot.criteriaVersionId,
       pendingCriteriaVersionId: null,
-      cancelDeadline: () => {},
-      requestDeadlines: new Map(),
       nodePatches: new Map(),
       assignments: new Map(),
       executionOutcomes: new Map(),
@@ -2154,7 +2091,6 @@ export class Coordinator {
           ...(snapshot.permissionMode ? { permissionMode: snapshot.permissionMode } : {}),
           modelProfiles: Object.values(models),
           limits: run.limits,
-          ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
           criteriaVersionId: snapshot.criteriaVersionId,
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
           ...(snapshot.checks ? { checks: snapshot.checks } : {}),
@@ -2168,15 +2104,12 @@ export class Coordinator {
           ...(snapshot.branchedFrom ? { branchedFrom: snapshot.branchedFrom } : {}),
           ...(this.judgments
             ? {
-                decisions: resolveDecisionSettings(this.judgments, {
-                  mode: request.mode,
-                  maxModelCalls: definition.limits.maxModelCalls,
-                }),
+                decisions: resolveDecisionSettings(this.judgments, { mode: request.mode }),
               }
             : {}),
         },
       },
-      ...this.chooserBudget(
+      ...this.chooserUsage(
         { runId, snapshot, projection: run.projection, sessionId: request.sessionId },
         request.commandId,
       ),
@@ -2247,28 +2180,6 @@ export class Coordinator {
     }
     this.live.set(runId, run);
     this.publish(run, projection);
-    if (definition.executionPolicy?.budget?.runDeadlineMs !== undefined)
-      run.cancelDeadline = this.timers.after(run.limits.runDeadlineMs, () => {
-        if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-        this.commit(run, [
-          {
-            type: 'limit.reached',
-            payload: {
-              limitKind: 'deadline',
-              used: run.limits.runDeadlineMs,
-              reserved: 0,
-              max: run.limits.runDeadlineMs,
-            },
-          },
-        ]);
-        this.submit({
-          schemaVersion: '0.1',
-          runId,
-          commandId: `deadline_${runId}`,
-          type: 'cancel',
-          payload: { scope: { kind: 'run' }, reason: 'run_deadline' },
-        });
-      });
     this.schedule(run, async () => {
       await this.files?.prepareRun?.(runId);
       if (!TERMINAL_RUN_STATUSES.has(run.projection.status)) await this.drive(run);
@@ -2865,13 +2776,6 @@ export class Coordinator {
       }));
       for (const executionId of unsettled) {
         this.releaseSlots(run, executionId, false);
-        for (const call of Object.values(run.projection.modelCalls))
-          if (call.executionId === executionId) {
-            run.requestDeadlines.get(call.modelCallId)?.();
-            run.requestDeadlines.delete(call.modelCallId);
-            const settled = settlementFor(run.projection.budget, call.modelCallId, null);
-            if (settled) timedOut.push({ type: 'budget.settled', payload: settled });
-          }
         for (const effect of Object.values(run.projection.effects))
           if (effect.scope === executionId && effect.status === 'admitted')
             timedOut.push({
@@ -3003,23 +2907,10 @@ export class Coordinator {
       before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
       after = { maxIterations: change.maxIterations };
     } else if (change.kind === 'run_limits') {
-      for (const [key, value] of Object.entries(change.changes))
-        if (key === 'maxSpawns' && value > this.policy.maxSpawns)
-          return refuse('LIMIT_REACHED', `${key} exceeds installation policy`);
-      before = Object.fromEntries(
-        Object.keys(change.changes).map((k) => [k, run.limits[k as keyof typeof run.limits]]),
-      );
-      after = {
-        ...(run.usageLimits &&
-        (change.changes.maxModelCalls !== undefined || change.changes.maxOutputTokens !== undefined)
-          ? {
-              maxModelCalls: Number.MAX_SAFE_INTEGER,
-              maxOutputTokens: Number.MAX_SAFE_INTEGER,
-              maxOutputTokensPerCall: Number.MAX_SAFE_INTEGER,
-            }
-          : {}),
-        ...change.changes,
-      };
+      if (change.changes.maxSpawns > this.policy.maxSpawns)
+        return refuse('LIMIT_REACHED', 'maxSpawns exceeds installation policy');
+      before = { maxSpawns: run.limits.maxSpawns };
+      after = { maxSpawns: change.changes.maxSpawns };
     } else {
       if (run.snapshot.definition.nodes.some((node) => node.type === 'loop' && node.reviewRecipe))
         return refuse(
@@ -3094,11 +2985,6 @@ export class Coordinator {
       if (loop) loop.maxIterations = change.maxIterations;
     } else if (change.kind === 'run_limits') {
       run.limits = { ...run.limits, ...after };
-      if (
-        change.changes.maxModelCalls !== undefined ||
-        change.changes.maxOutputTokens !== undefined
-      )
-        delete run.usageLimits;
     } else {
       run.pendingCriteriaVersionId = String(after.criteriaVersionId);
       for (const [oldId, resolve] of [...run.approvals]) {
@@ -3928,7 +3814,7 @@ export class Coordinator {
               kind: 'decision',
               scope: executionId,
               epoch: attemptNo,
-              reservationId: null,
+              modelCallId: null,
             },
           },
         ]);
@@ -4041,9 +3927,7 @@ export class Coordinator {
       }
     }
     if (TERMINAL_RUN_STATUSES.has(projection.status)) {
-      for (const recipe of run.recipes.values()) recipe.cancelDeadline();
       this.live.delete(run.runId);
-      run.cancelDeadline();
       this.wake(run);
       this.files?.releaseRun?.(
         run.runId,
@@ -4174,10 +4058,6 @@ export class Coordinator {
   /** Ends what a dead process left open, without starting anything again. */
   private interruption(p: RunProjection): EventDraft[] {
     const drafts: EventDraft[] = [];
-    for (const reservationId of Object.keys(p.budget.reservations)) {
-      const settled = settlementFor(p.budget, reservationId, null);
-      if (settled) drafts.push({ type: 'budget.settled', payload: settled });
-    }
     for (const effect of Object.values(p.effects)) {
       if (effect.status !== 'admitted') continue;
       // It may have reached the provider; nobody knows. It is never dispatched again.
@@ -4364,9 +4244,6 @@ export class Coordinator {
           run.recipes.set(loopId, {
             recipe,
             candidates: new Map(),
-            cancelDeadline: run.usageLimits
-              ? () => {}
-              : this.timers.after(recipe.maxWallMs, () => this.stopRecipe(run, loopId, 'deadline')),
           });
           if (recipe.criteriaFiles.length) {
             try {
@@ -4383,8 +4260,7 @@ export class Coordinator {
           run.pendingCriteriaVersionId = null;
         }
         const iterationId = this.ids.next('iteration');
-        if (no === 1)
-          run.loopEntries.set(loopId, { enteredMs: this.clock.monotonicMs(), previousWork: null });
+        if (no === 1) run.loopEntries.set(loopId, { previousWork: null });
         this.commit(run, [
           {
             type: 'loop.iteration_started',
@@ -4453,7 +4329,6 @@ export class Coordinator {
         const round = run.rounds.get(loopId);
         if (round?.no !== no) throw new Error(`Loop ${loopId} round ${no} is not open`);
         this.commit(run, [this.roundFinished(run, loopId, round.iterationId, outcome)]);
-        if (outcome === 'pass') run.recipes.get(loopId)?.cancelDeadline();
         run.rounds.delete(loopId);
         // Another round of this entry follows only a revise; anything else leaves the Loop.
         if (outcome !== 'revise') run.loopEntries.delete(loopId);
@@ -4500,35 +4375,6 @@ export class Coordinator {
     return loopId && state ? { loopId, state } : null;
   }
 
-  private recipeUsage(run: LiveRun, loopId: string) {
-    const reservations = Object.values(run.projection.budget.reservations).filter(
-      (reservation) => this.recipeForExecution(run, reservation.scope)?.loopId === loopId,
-    );
-    const tokens = reservations.reduce(
-      (total, reservation) => total + (reservation.actual ?? reservation.reserved),
-      0,
-    );
-    return { calls: reservations.length, tokens };
-  }
-
-  private recipeAllowance(run: LiveRun, executionId: string): number {
-    const context = this.recipeForExecution(run, executionId);
-    if (!context || run.usageLimits) return Number.POSITIVE_INFINITY;
-    const { loopId, state } = context;
-    const { calls, tokens: used } = this.recipeUsage(run, loopId);
-    const reason =
-      calls >= state.recipe.maxModelCalls
-        ? 'call_limit'
-        : used >= state.recipe.maxOutputTokens
-          ? 'token_limit'
-          : null;
-    if (reason) {
-      this.stopRecipe(run, loopId, reason);
-      throw new Error(`review recipe stopped: ${reason}`);
-    }
-    return state.recipe.maxOutputTokens - used;
-  }
-
   private recipeSubmission(
     run: LiveRun,
     input: AgentStartInput,
@@ -4572,9 +4418,6 @@ export class Coordinator {
     state: RecipeRun,
     candidate: RecipeCandidate,
   ): Promise<RecipeStopReason | null> {
-    const usage = this.recipeUsage(run, loopId);
-    if (!run.usageLimits && usage.tokens > state.recipe.maxOutputTokens) return 'token_limit';
-    if (!run.usageLimits && usage.calls > state.recipe.maxModelCalls) return 'call_limit';
     if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
     if (candidate.checks.length !== state.recipe.checkIds.length) return 'check_error';
     const tree = candidate.checks[0]?.tree;
@@ -5179,7 +5022,6 @@ export class Coordinator {
         ['write_file', 'delete_file', 'move_file', 'run_command'].includes(tool),
       ),
       limits: { ...run.limits },
-      ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
       sourceRefs: input.inputs.map((source) => ({
         name: source.name,
         artifactVersionId: source.artifactVersionId ?? source.sourceRef ?? null,
@@ -5231,7 +5073,7 @@ export class Coordinator {
           kind: 'spawn',
           scope: executionId,
           epoch: attemptNo,
-          reservationId: null,
+          modelCallId: null,
         },
       },
       {
@@ -5457,18 +5299,8 @@ export class Coordinator {
           : 'the agent finished without submit_result'
         : settlement.error;
     this.releaseSlots(run, input.executionId, settlement.terminationMode !== 'unconfirmed');
-    for (const call of Object.values(run.projection.modelCalls))
-      if (call.executionId === input.executionId) {
-        run.requestDeadlines.get(call.modelCallId)?.();
-        run.requestDeadlines.delete(call.modelCallId);
-      }
 
     const drafts: EventDraft[] = [];
-    for (const call of Object.values(run.projection.modelCalls))
-      if (call.executionId === input.executionId) {
-        const settled = settlementFor(run.projection.budget, call.modelCallId, null);
-        if (settled) drafts.push({ type: 'budget.settled', payload: settled });
-      }
     drafts.push(
       {
         type: 'execution.settled',
@@ -5552,7 +5384,8 @@ export class Coordinator {
 
   // ── model slots ───────────────────────────────────────────────────────────
 
-  private chooserBudget(
+  /** The team chooser's calls as usage records; one that adds nothing known is skipped. */
+  private chooserUsage(
     run: {
       runId: string;
       snapshot: RunSnapshot;
@@ -5563,7 +5396,18 @@ export class Coordinator {
   ): EventDraft[] {
     const route = run.snapshot.autoRoute;
     if (!route || route.source === 'local') return [];
-    const requests = this.modelAttempts
+    const record = (
+      usageId: string,
+      usage: { inputTokens: number | null; outputTokens: number | null } | null,
+    ): UsageRecordView => ({
+      usageId,
+      kind: 'auto_route',
+      profileId: route.modelProfile,
+      inputTokens: usage?.inputTokens ?? null,
+      outputTokens: usage?.outputTokens ?? null,
+      costMicros: null,
+    });
+    const records = this.modelAttempts
       ? this.modelAttempts
           .list(commandId)
           .filter(
@@ -5575,52 +5419,22 @@ export class Coordinator {
               (attempt.intent.owner.sessionId ?? null) === (run.sessionId ?? null) &&
               attempt.prepared,
           )
-          .map((attempt) => ({
-            id: `auto_route:${attempt.attemptId}`,
-            allowance: attempt.prepared!.outputAllowance,
-            actual: attempt.usage.outputTokens,
-          }))
+          .map((attempt) => record(`auto_route:${attempt.attemptId}`, attempt.usage))
       : route.usage
-        ? [
-            {
-              id: 'auto_route',
-              allowance: route.usage.outputTokens,
-              actual: route.usage.outputTokens,
-            },
-          ]
+        ? [record('auto_route', route.usage)]
         : [];
+    let known = run.projection.usage;
     const drafts: EventDraft[] = [];
-    for (const request of requests) {
-      const previous = run.projection.budget.reservations[request.id];
-      if (
-        previous?.status === 'settled' ||
-        (previous?.status === 'unknown' && request.actual === null)
-      )
-        continue;
-      if (!previous)
-        drafts.push({
-          type: 'budget.reserved',
-          payload: {
-            reservationId: request.id,
-            modelCallId: null,
-            scope: run.runId,
-            amount: { outputTokens: request.allowance, modelCalls: 1 },
-          },
-        });
-      drafts.push({
-        type: 'budget.settled',
-        payload: {
-          reservationId: request.id,
-          actual: { outputTokens: request.actual },
-          unknownOutstanding: request.actual === null ? request.allowance : 0,
-        },
-      });
+    for (const usage of records) {
+      if (known[usage.usageId] && !usageRecordChanges(known, usage)) continue;
+      known = applyUsageRecord(known, usage);
+      drafts.push({ type: 'usage.recorded', payload: usage });
     }
     return drafts;
   }
 
-  /** Host usage can settle the original choice after its Run has finished, without resuming it. */
-  settleAutoRouteUsage(intent: ModelRequestIntent) {
+  /** Host usage can complete the original choice's record after its Run has finished, without resuming it. */
+  recordAutoRouteUsage(intent: ModelRequestIntent) {
     if (
       intent.owner.kind !== 'chooser' ||
       intent.owner.id !== intent.requestId ||
@@ -5632,7 +5446,7 @@ export class Coordinator {
     if (!stored || (stored.sessionId ?? null) !== (intent.owner.sessionId ?? null)) return;
     const live = this.live.get(stored.runId);
     const run = { ...stored, projection: live?.projection ?? stored.projection };
-    const drafts = this.chooserBudget(run, intent.requestId);
+    const drafts = this.chooserUsage(run, intent.requestId);
     if (!drafts.length) return;
     if (live) this.commit(live, drafts);
     else {
@@ -6370,53 +6184,19 @@ export class Coordinator {
     return 'stop';
   }
 
-  /**
-   * Whether a Loop round below its cap must stop instead of repeating: the Loop's budget for
-   * this entry is spent, or this round resubmitted the previous round's work.
-   */
+  /** Whether a Loop round below its cap must stop instead of repeating: it resubmitted the previous round's work. */
   private loopStopOf(run: LiveRun, loopId: string): LoopStop | null {
     const loop = run.plan.loops[loopId];
     const entry = run.loopEntries.get(loopId);
     const round = run.rounds.get(loopId)?.iterationId;
     if (!loop || !entry || !round) return null;
     const { projection } = run;
-    // Every round of this entry, and the rounds of Loops nested in them.
-    const entryRounds = new Set<string>();
     const thisRound = new Set<string>([round]);
     const under = (iterationId: string | null, roots: Set<string>): boolean => {
       for (let id = iterationId; id; id = projection.iterations[id]?.parentIterationId ?? null)
         if (roots.has(id)) return true;
       return false;
     };
-    const ofEntry = (projection.loopIterations[loopId] ?? []).slice(
-      -(run.rounds.get(loopId)?.no ?? 1),
-    );
-    for (const id of ofEntry) entryRounds.add(id);
-    /** The round a step's execution ran in, following called agents up to the step. */
-    const roundOf = (executionId: string): string | null => {
-      let execution = projection.executions[executionId];
-      while (execution?.parentExecutionId)
-        execution = projection.executions[execution.parentExecutionId];
-      return execution?.iterationId ?? null;
-    };
-    if (loop.budget) {
-      let calls = 0;
-      let tokens = 0;
-      for (const [executionId, execution] of Object.entries(projection.executions)) {
-        if (!under(roundOf(executionId), entryRounds)) continue;
-        for (const callId of execution.modelCallIds) {
-          calls += 1;
-          tokens += projection.modelCalls[callId]?.usage?.outputTokens ?? 0;
-        }
-      }
-      const { maxModelCalls, maxOutputTokens, maxWallMs } = loop.budget;
-      if (
-        (maxModelCalls !== undefined && calls >= maxModelCalls) ||
-        (maxOutputTokens !== undefined && tokens >= maxOutputTokens) ||
-        (maxWallMs !== undefined && this.clock.monotonicMs() - entry.enteredMs >= maxWallMs)
-      )
-        return 'budget_exhausted';
-    }
     if (loop.stallDetection) {
       // The work this round submitted; review results are judgments of it, not work.
       const work = Object.values(projection.executions)
@@ -7336,7 +7116,7 @@ export class Coordinator {
             : [];
         }),
         artifactReads: run.projection.artifactReads[executionId] ?? [],
-        taskBrief: taskBriefForModel(input.taskBrief) ?? null,
+        taskBrief: input.taskBrief ?? null,
         item: input.item ?? null,
         targetArtifactVersionId:
           input.role.outputContract === 'review'
@@ -7540,7 +7320,6 @@ export class Coordinator {
                 payload: {
                   limitKind: refusal.limit.kind,
                   used: refusal.limit.used,
-                  reserved: refusal.limit.reserved ?? 0,
                   max: refusal.limit.max,
                 },
               } satisfies EventDraft,
@@ -7593,7 +7372,6 @@ export class Coordinator {
           ? {
               ...proposal.args,
               imageProfile: run.snapshot.imageProfiles?.[input.role.id],
-              reservedCostUsd: run.snapshot.imageProfiles?.[input.role.id]?.maxCostUsdPerCall,
             }
           : proposal.args,
       );
@@ -7713,7 +7491,7 @@ export class Coordinator {
             kind: 'tool',
             scope: executionId,
             epoch: input.attemptNo,
-            reservationId: null,
+            modelCallId: null,
           },
         },
         { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
@@ -8088,7 +7866,7 @@ export class Coordinator {
                       kind: 'tool',
                       scope: executionId,
                       epoch: input.attemptNo,
-                      reservationId: null,
+                      modelCallId: null,
                     },
                   },
                   {
@@ -8410,13 +8188,7 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (!WORKING.has(run.projection.status));
           requireActive();
-          const view: ModelGateView = {
-            projection: run.projection,
-            limits: run.limits,
-            input,
-            ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
-          };
-          this.recipeAllowance(run, executionId);
+          const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
           const request = runGates(this.gates['model.request'], view);
           if (request.kind === 'refuse') this.refuseModelRequest(run, request);
           if (request.kind === 'require_approval') {
@@ -8429,7 +8201,6 @@ export class Coordinator {
                   payload: {
                     limitKind: request.limit.kind,
                     used: request.limit.used,
-                    reserved: request.limit.reserved ?? 0,
                     max: request.limit.max,
                   },
                 },
@@ -8567,67 +8338,9 @@ export class Coordinator {
             this.releaseSlot(run);
             throw error;
           }
-          let recipeRemaining: number;
-          try {
-            recipeRemaining = this.recipeAllowance(run, executionId);
-          } catch (error) {
-            this.releaseSlot(run);
-            throw error;
-          }
-          const limits = run.limits;
-          const admit = runGates(this.gates['model.admit'], {
-            projection: run.projection,
-            limits,
-            input,
-            ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
-          });
-          if (admit.kind !== 'allow') {
-            this.releaseSlot(run);
-            this.refuseModelRequest(
-              run,
-              admit.kind === 'refuse'
-                ? admit
-                : {
-                    kind: 'refuse',
-                    code: 'CAPABILITY_DENIED',
-                    message: 'admission cannot wait for approval after a slot is held',
-                  },
-            );
-          }
-          // The reservation itself is the Coordinator's: even without a budget gate, a request the
-          // budget cannot cover is not admitted.
-          const admitted = run.usageLimits
-            ? {
-                ok: true as const,
-                maxOutputTokens:
-                  input.model.maxOutputTokens ??
-                  run.snapshot.definition.limits.maxOutputTokensPerCall,
-              }
-            : admitModelRequest(run.projection.budget, {
-                ...limits,
-                maxOutputTokensPerCall: Math.min(
-                  limits.maxOutputTokensPerCall,
-                  input.model.maxOutputTokens ??
-                    run.snapshot.definition.limits.maxOutputTokensPerCall,
-                ),
-              });
-          if (!admitted.ok) {
-            this.releaseSlot(run);
-            this.commit(run, [
-              {
-                type: 'limit.reached',
-                payload: {
-                  limitKind: admitted.limitKind,
-                  used: admitted.used,
-                  reserved: admitted.reserved,
-                  max: admitted.max,
-                },
-              },
-            ]);
-            throw new Error(`LIMIT_REACHED: ${admitted.limitKind}`);
-          }
+          // Corral sets no output cap of its own: the model's maximum, or the fallback estimate.
+          const maxOutputTokens = input.model.maxOutputTokens ?? FALLBACK_OUTPUT_TOKENS;
           const modelCallId = this.ids.next('model_call');
-          admitted.maxOutputTokens = Math.min(admitted.maxOutputTokens, recipeRemaining);
           const contextSnapshotId = this.ids.next('context_snapshot');
           const effectId = this.ids.next('effect');
           run.slots.held.set(modelCallId, executionId);
@@ -8656,16 +8369,6 @@ export class Coordinator {
                   } satisfies EventDraft,
                 ]
               : []),
-            {
-              type: 'budget.reserved',
-              executionId,
-              payload: {
-                reservationId: modelCallId,
-                modelCallId,
-                scope: executionId,
-                amount: { outputTokens: admitted.maxOutputTokens, modelCalls: 1 },
-              },
-            },
             ...directiveIds.map(
               (directiveId): EventDraft => ({
                 type: 'directive.attached',
@@ -8704,38 +8407,17 @@ export class Coordinator {
                 kind: 'model_request',
                 scope: executionId,
                 epoch: input.attemptNo,
-                reservationId: modelCallId,
+                modelCallId,
               },
             },
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
           this.modelTransports.set(modelCallId, { run, input, observe: host.observe, queueWaitMs });
-          if (run.snapshot.definition.executionPolicy?.budget?.modelTimeoutMs !== undefined)
-            run.requestDeadlines.set(
-              modelCallId,
-              this.timers.after(run.limits.modelTimeoutMs, () => {
-                if (
-                  run.projection.effects[effectId]?.status !== 'admitted' ||
-                  TERMINAL_RUN_STATUSES.has(run.projection.status)
-                )
-                  return;
-                this.submit({
-                  schemaVersion: '0.1',
-                  runId: run.runId,
-                  commandId: `timeout_${modelCallId}`,
-                  type: 'cancel',
-                  payload: {
-                    scope: { kind: 'execution', executionId },
-                    reason: 'model_request_timeout',
-                  },
-                });
-              }),
-            );
           return {
             modelCallId,
             contextSnapshotId,
             profile: input.modelProfile,
-            maxOutputTokens: admitted.maxOutputTokens,
+            maxOutputTokens,
             directives: queued,
             ...(this.parentQuestions(run, input).length
               ? { parentQuestions: this.parentQuestions(run, input) }
@@ -8793,21 +8475,14 @@ export class Coordinator {
         this.modelTransports.delete(observation.modelCallId);
         const call = run.projection.modelCalls[observation.modelCallId];
         if (!call || call.executionId !== executionId) throw new Error('unknown model call');
-        run.requestDeadlines.get(observation.modelCallId)?.();
-        run.requestDeadlines.delete(observation.modelCallId);
         if (run.slots.held.delete(observation.modelCallId)) this.releaseSlot(run);
         const effectId =
           Object.values(run.projection.effects).find(
             (effect) =>
               effect.kind === 'model_request' &&
               effect.scope === executionId &&
-              effect.reservationId === observation.modelCallId,
+              effect.modelCallId === observation.modelCallId,
           )?.effectId ?? null;
-        const budget = settlementFor(
-          run.projection.budget,
-          observation.modelCallId,
-          observation.usage.outputTokens,
-        );
         const late =
           call.finished ||
           run.cancelRequested.has(executionId) ||
@@ -8832,9 +8507,7 @@ export class Coordinator {
             ? ('reported' as const)
             : ('unknown' as const),
         };
-        const drafts: EventDraft[] = budget
-          ? [{ type: 'budget.settled', executionId, payload: budget }]
-          : [];
+        const drafts: EventDraft[] = [];
         if (late) {
           const addsUsage =
             call.usage === null ||
@@ -8870,7 +8543,7 @@ export class Coordinator {
             payload: { effectId, outcome: late ? 'unknown' : 'succeeded' },
           });
         const warningRef =
-          !late && run.usageLimits && run.projection.progress.turns === NO_PROGRESS_TURNS - 1
+          !late && run.projection.progress.turns === NO_PROGRESS_TURNS - 1
             ? `notice_${observation.modelCallId}`
             : null;
         const warning =
@@ -9027,7 +8700,6 @@ export class Coordinator {
           payload: {
             limitKind: refusal.limit.kind,
             used: refusal.limit.used,
-            reserved: refusal.limit.reserved ?? 0,
             max: refusal.limit.max,
           },
         },
@@ -9902,34 +9574,8 @@ export class Coordinator {
     } catch {
       return refuse('image reference is unavailable or exceeds image input limits');
     }
-    const admitted = admitImageRequest(run.projection.budget, run.limits, profile);
-    if (!admitted.ok) return refuse('image generation call/cost limit reached');
-    const reservationId = tool.effectId;
-    // Admission is durable before any awaited operation. Unknown attempts retain their cost bound.
-    this.commit(run, [
-      {
-        type: 'budget.reserved',
-        executionId: input.executionId,
-        payload: {
-          reservationId,
-          modelCallId: null,
-          scope: input.executionId,
-          amount: {
-            outputTokens: 0,
-            modelCalls: 1,
-            image: {
-              profileId: profile.profileId,
-              costMicros: admitted.costMicros,
-            },
-          },
-        },
-      },
-      ...tool.opening.map((draft) =>
-        draft.type === 'effect.admitted'
-          ? { ...draft, payload: { ...draft.payload, reservationId } }
-          : draft,
-      ),
-    ]);
+    // Admission is durable before any awaited operation.
+    this.commit(run, tool.opening);
     const listeners = run.cancelListeners.get(input.executionId) ?? new Set<() => void>();
     run.cancelListeners.set(input.executionId, listeners);
     let timedOut = false,
@@ -9937,6 +9583,21 @@ export class Coordinator {
     let dispatched = false,
       actualCostMicros: number | null = null;
     let imageUsage: ImageGenerationResult['usage'] | undefined;
+    const imageRecord = (
+      costMicros: number | null,
+      usage: ImageGenerationResult['usage'] | undefined,
+    ): UsageRecordView => {
+      const count = (value: number | null | undefined) =>
+        typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+      return {
+        usageId: tool.effectId,
+        kind: 'image',
+        profileId: profile.profileId,
+        inputTokens: count(usage?.inputTokens),
+        outputTokens: count(usage?.outputTokens),
+        costMicros,
+      };
+    };
     const cancellation: ToolCancellation = {
       get aborted() {
         return (
@@ -9977,7 +9638,6 @@ export class Coordinator {
         imageArgs,
         profile,
         cancellation,
-        admitted.costMicros / 1_000_000,
         referenceImages,
       );
       if (
@@ -9993,7 +9653,6 @@ export class Coordinator {
       const text = canonicalJson({
         media,
         profileId: profile.profileId,
-        reservedCostUsd: profile.maxCostUsdPerCall,
         costUsd: result.costUsd,
         usage: result.usage,
       });
@@ -10001,15 +9660,9 @@ export class Coordinator {
         run,
         [
           {
-            type: 'budget.settled',
+            type: 'usage.recorded',
             executionId: input.executionId,
-            payload: settlementFor(
-              run.projection.budget,
-              reservationId,
-              0,
-              actualCostMicros,
-              imageUsage,
-            )!,
+            payload: imageRecord(actualCostMicros, imageUsage),
           },
           {
             type: 'artifact.version_created',
@@ -10042,17 +9695,14 @@ export class Coordinator {
           error !== null &&
           'outcome' in error &&
           error.outcome === 'not_started');
-      const settlement = settlementFor(
-        run.projection.budget,
-        reservationId,
-        0,
-        knownNotStarted ? 0 : actualCostMicros,
-        imageUsage,
-      );
-      if (settlement)
-        this.commit(run, [
-          { type: 'budget.settled', executionId: input.executionId, payload: settlement },
-        ]);
+      // A call that never started spent nothing; any other may have been billed.
+      if (!knownNotStarted) {
+        const record = imageRecord(actualCostMicros, imageUsage);
+        if (usageRecordChanges(run.projection.usage, record))
+          this.commit(run, [
+            { type: 'usage.recorded', executionId: input.executionId, payload: record },
+          ]);
+      }
       if (run.projection.effects[tool.effectId]?.status === 'admitted')
         this.commit(run, [
           {

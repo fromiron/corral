@@ -287,15 +287,15 @@ export function InspectorSheet({
   } else if (view === 'team') {
     title = t('teamSettings');
     const limits = definition.limits;
-    const limitField = (key: keyof typeof limits, label: string, scale = 1) => (
+    const limitField = (key: keyof typeof limits, label: string) => (
       <Field label={label}>
         <Input
           type="number"
           min={1}
-          value={String(Math.round(limits[key] / scale))}
+          value={String(limits[key])}
           onChange={(e) => {
             const value = number(e.target.value);
-            if (value && value > 0) apply(patchTeam(draft, { limits: { [key]: value * scale } }));
+            if (value && value > 0) apply(patchTeam(draft, { limits: { [key]: value } }));
           }}
           {...batch}
         />
@@ -327,11 +327,8 @@ export function InspectorSheet({
         <section className="grid gap-3">
           {heading(f('limits'))}
           <div className="grid grid-cols-2 gap-3">
-            {limitField('maxModelCalls', f('maxModelCalls'))}
-            {limitField('maxOutputTokens', f('maxOutputTokens'))}
             {limitField('maxDelegationDepth', f('maxDelegationDepth'))}
             {limitField('maxSpawns', f('maxSpawns'))}
-            {limitField('runDeadlineMs', f('runDeadlineSeconds'), 1000)}
           </div>
         </section>
       </>
@@ -434,7 +431,7 @@ export function InspectorSheet({
   );
 }
 
-/** The settings the team graph model adds: retries, notes, budgets, checks, routes and teams. */
+/** The settings the team graph model adds: retries, notes, checks, routes and teams. */
 function MoreFields({
   editor,
   node,
@@ -563,36 +560,6 @@ function MoreFields({
     case 'loop':
       return (
         <>
-          <fieldset className="grid grid-cols-3 gap-2">
-            <legend className="mb-1 text-caption text-muted-foreground">{f('budget')}</legend>
-            {(
-              [
-                ['maxModelCalls', 'maxModelCalls', 1],
-                ['maxOutputTokens', 'maxOutputTokens', 1],
-                ['maxWallSeconds', 'maxWallMs', 1000],
-              ] as const
-            ).map(([key, field, scale]) => {
-              const value = node.budget?.[field];
-              return (
-                <Field key={key} label={f(key)}>
-                  <Input
-                    type="number"
-                    min={1}
-                    placeholder={f('unset')}
-                    value={value === undefined ? '' : String(Math.round(value / scale))}
-                    onChange={(e) => {
-                      const n = number(e.target.value);
-                      const budget = { ...node.budget };
-                      if (n && n > 0) budget[field] = n * scale;
-                      else delete budget[field];
-                      patch({ budget: Object.keys(budget).length ? budget : undefined });
-                    }}
-                    {...batch}
-                  />
-                </Field>
-              );
-            })}
-          </fieldset>
           <Checkbox
             label={f('stallDetection')}
             checked={node.stallDetection ?? false}

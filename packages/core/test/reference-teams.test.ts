@@ -237,9 +237,6 @@ describe('reference teams: expansion', () => {
       checkIds: [],
       maxAttempts: 2,
       maxRepairs: 1,
-      maxWallMs: 10000,
-      maxModelCalls: 20,
-      maxOutputTokens: 20000,
     };
     expect(plan(reviewed, {}).ok).toBe(true);
     const planned = plan(outer(), { y: reviewed });

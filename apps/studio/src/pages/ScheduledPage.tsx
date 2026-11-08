@@ -172,8 +172,8 @@ export function ScheduledPage() {
       </p>
       <p className="text-sm text-muted-foreground">
         {text(
-          'Requests use the normal Auto team, its model and budget limits, and your selected permission mode. Approval requests wait in the session. Disabling or deleting a schedule does not cancel an already started run.',
-          '일반 Auto 팀과 해당 모델·예산 한도, 선택한 권한 모드를 사용합니다. 승인이 필요하면 세션에서 기다립니다. 예약 비활성화·삭제는 이미 시작한 실행을 취소하지 않습니다.',
+          'Requests use the normal Auto team, its model, and your selected permission mode. Approval requests wait in the session. Disabling or deleting a schedule does not cancel an already started run.',
+          '일반 Auto 팀과 해당 모델, 선택한 권한 모드를 사용합니다. 승인이 필요하면 세션에서 기다립니다. 예약 비활성화·삭제는 이미 시작한 실행을 취소하지 않습니다.',
         )}
       </p>
       {mode !== 'server' ? (

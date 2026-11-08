@@ -445,7 +445,6 @@ async function createCorralServer(
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
-  await corrals.migrateExecutionPolicies();
   let registry: ModelRegistry | null = null;
   if (options.live) {
     assertOutsideWorkspace(options.live.configDir, workspace.root);
@@ -464,7 +463,6 @@ async function createCorralServer(
           : {}),
         endpoints,
         configRevision: workspace.configRevision,
-        maxOutputTokensPerCall: workspace.policy.maxOutputTokensPerCall,
       },
     );
     await registry.refreshStatus();
@@ -629,15 +627,8 @@ async function createCorralServer(
         return image.success ? image.data : null;
       },
       resolve: (id) => imageProfiles.resolve(id)?.profile ?? null,
-      generate: (owner, args, profile, cancellation, reservedCostUsd, referenceImages) =>
-        imageGeneration.generate(
-          owner,
-          args,
-          cancellation,
-          reservedCostUsd,
-          profile,
-          referenceImages,
-        ),
+      generate: (owner, args, profile, cancellation, referenceImages) =>
+        imageGeneration.generate(owner, args, cancellation, profile, referenceImages),
     },
     runtimeRecovery: {
       confirm: async () => {
@@ -669,7 +660,7 @@ async function createCorralServer(
   });
   registry?.configureRequests({
     store: modelAttempts,
-    onUsage: (intent) => coordinator.settleAutoRouteUsage(intent),
+    onUsage: (intent) => coordinator.recordAutoRouteUsage(intent),
     acquire: (signal) => coordinator.acquireAuxiliaryModelSlot(signal),
     adopt: (intent) => coordinator.adoptModelSlot(intent),
     now: () => new Date(clock.nowIso()),

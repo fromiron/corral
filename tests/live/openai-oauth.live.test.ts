@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PiAgentAdapter, processChannel, WORKER_ENTRY } from '@corral/adapter-pi';
 import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { Coordinator, InProcessTransport, waitForProjection } from '@corral/core';
+import { Coordinator, InProcessTransport, usageTotals, waitForProjection } from '@corral/core';
 import {
   DEFAULT_PROFILES,
   FileCredentialStore,
@@ -97,7 +97,6 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke', () => {
       const definition = linearCorral(['writer'], 'live-smoke');
       definition.input.brief = 'Reply with one short sentence naming a primary colour.';
       for (const role of definition.roles) role.modelProfile = profile;
-      definition.limits = { ...definition.limits, maxModelCalls: 3, maxOutputTokensPerCall: 256 };
       const { runId, receipt } = await transport.startRun({
         schemaVersion: '0.1',
         commandId: `cmd_live_${profile}`,
@@ -175,12 +174,6 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke', () => {
     definition.roles[0]!.modelProfile = 'model-a';
     definition.roles[0]!.allowedWorkTools = [];
     definition.roles[0]!.allowedCollaborationTools = [];
-    definition.limits = {
-      ...definition.limits,
-      maxModelCalls: 1,
-      maxOutputTokensPerCall: 256,
-      runDeadlineMs: 60000,
-    };
     const started = await transport.startRun({
       schemaVersion: '0.1',
       commandId: 'live_abort_start',
@@ -210,7 +203,7 @@ describe.skipIf(!enabled)('OpenAI sign-in live smoke', () => {
         modelRequests: calls,
         textChunks: streamed,
         payloads: events.filter((event) => event.type === 'model.payload_recorded').length,
-        unknown: final.budget.unknownOutstanding,
+        unknown: usageTotals(final).unknown,
       });
       expect(calls).toBe(1);
       expect(streamed).toBeGreaterThanOrEqual(3);

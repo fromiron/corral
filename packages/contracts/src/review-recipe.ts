@@ -23,9 +23,6 @@ export const ReviewRecipeRevision = z.strictObject({
     ),
   maxAttempts: z.int().min(1).max(10),
   maxRepairs: z.int().min(0).max(9),
-  maxWallMs: z.int().min(1000).max(3600000),
-  maxModelCalls: z.int().min(1).max(100),
-  maxOutputTokens: z.int().min(1).max(256000),
 });
 export type ReviewRecipeRevision = z.infer<typeof ReviewRecipeRevision>;
 export const RecipeStopReason = z.enum([
@@ -33,9 +30,6 @@ export const RecipeStopReason = z.enum([
   'repair_limit',
   'repeated_output',
   'repeated_failure',
-  'call_limit',
-  'token_limit',
-  'deadline',
   'criteria_changed',
   'check_error',
   'check_stale',

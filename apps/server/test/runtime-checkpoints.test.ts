@@ -75,7 +75,6 @@ it.each([false, true])(
         sessionId: 'session_resume',
         definition: {
           ...linearCorral(['writer']),
-          limits: { ...linearCorral(['writer']).limits, maxModelCalls: 1 },
           roles: linearCorral(['writer']).roles.map((role) => ({
             ...role,
             allowedWorkTools: ['write_artifact', 'read_document'],

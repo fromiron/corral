@@ -945,33 +945,6 @@ export function createKeyValueCorralRepository(
   const persist = (result: SaveResult): SaveResult =>
     result.ok && result.changed.definition ? (write(result.record) ?? result) : result;
 
-  // Write the backup/receipt first: an interrupted browser migration can resume without losing revision 1.
-  for (const id of readIndex()) {
-    const before = read(id);
-    if (!before || before.definition.executionPolicy) continue;
-    const result = planSave(
-      before,
-      {
-        definition: { ...before.definition, executionPolicy: { version: 2 } },
-        expectedDefinitionRevision: before.definitionRevision,
-      },
-      context(),
-    );
-    if (!result.ok) throw new Error(result.message);
-    const key = `${PREFIX}cr052:${id}:${before.definitionRevision}`;
-    if (store.getItem(key) === null)
-      store.setItem(
-        key,
-        JSON.stringify({
-          before,
-          afterRevision: result.record.definitionRevision,
-          afterHash: result.record.definitionHash,
-        }),
-      );
-    const written = persist(result);
-    if (!written.ok) throw new Error(written.message);
-  }
-
   return {
     async list() {
       return readIndex()

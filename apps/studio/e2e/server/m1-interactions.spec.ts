@@ -132,7 +132,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await expect.poll(() => current().projection.status).toBe('succeeded');
   await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
-  const calls = current().projection.budget.modelCalls;
+  const calls = Object.keys(current().projection.modelCalls).length;
   await page.reload();
   await expect(page.getByTestId('chat-result')).toContainText('Attachment verified');
   await page.getByRole('list', { name: 'Attached text files' }).locator('summary').click();
@@ -144,7 +144,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
       .getByRole('img', { name: 'pixel.png' })
       .evaluate((element: HTMLImageElement) => element.naturalWidth),
   ).toBe(1);
-  expect(current().projection.budget.modelCalls).toBe(calls);
+  expect(Object.keys(current().projection.modelCalls)).toHaveLength(calls);
   await page.getByRole('button', { name: 'View run', exact: true }).click();
   await page
     .getByTestId('run-monitor')
