@@ -5476,7 +5476,9 @@ export class Coordinator {
         ? this.submittedOutputOf(
             run,
             b.sourceNodeId,
-            round && this.loopOf(run, b.sourceNodeId) ? round : undefined,
+            round && this.loopOf(run, b.sourceNodeId)
+              ? (at) => this.sameRound(run, at, round)
+              : undefined,
           )
         : [],
     );
@@ -5879,7 +5881,9 @@ export class Coordinator {
     }
     const members = run.plan.loops[loopId]?.members ?? [];
     const round = run.rounds.get(loopId)?.iterationId;
-    const latest = members.flatMap((m) => this.submittedOutputOf(run, m, round));
+    const latest = members.flatMap((m) =>
+      this.submittedOutputOf(run, m, round ? (at) => this.sameRound(run, at, round) : undefined),
+    );
     const requested = this.requestApproval(run, 'loop_cap', latest, undefined, reason);
     if ((await requested.decision) === 'approve') {
       await this.boundary(run);

@@ -133,14 +133,18 @@ function scripted(script: Record<string, string[]>): DecisionPolicy {
   return { decide: async ({ nodeId }) => script[nodeId]?.shift() ?? 'revise' };
 }
 
-function runtime(decisions: DecisionPolicy, agents: Partial<ScriptedAgentOptions> = {}) {
+/** Without `decisions`, the Coordinator decides from the recorded reviews itself. */
+function runtime(
+  decisions: DecisionPolicy | undefined,
+  agents: Partial<ScriptedAgentOptions> = {},
+) {
   const clock = new FakeClock();
   return new InProcessTransport(
     new Coordinator({
       clock,
       ids: new SequentialIdFactory(),
       timers: clock,
-      decisions,
+      ...(decisions ? { decisions } : {}),
       agents: new ScriptedAgentAdapter({ turns: 1, ...agents }),
     }),
   );
@@ -287,6 +291,34 @@ describe('loop execution', () => {
     expect(rounds(final, 'loop_b')).toEqual([[1, 'pass']]);
     expect(rounds(final, 'loop_a')).toEqual([[1, 'pass']]);
     expect(final.nodeExecutions.a_review).toBeUndefined();
+  });
+
+  it('decides in the outer Loop from a review made inside the inner Loop', async () => {
+    const inner = reviewedBody('loop_b', 'b');
+    const definition = team(
+      [
+        research,
+        loop('loop_a'),
+        loop('loop_b', {}, 'loop_a'),
+        ...inner.nodes,
+        decision('a_decision', 'b_review', 'loop_a'),
+        output('b_write'),
+      ],
+      [
+        edge('research', 'out', 'loop_a', 'enter'),
+        edge('loop_a', 'body', 'loop_b', 'enter'),
+        ...inner.edges,
+        edge('loop_b', 'next', 'a_decision'),
+        edge('a_decision', 'pass', 'loop_a', 'exit'),
+        edge('a_decision', 'revise', 'loop_a', 'repeat'),
+        edge('loop_a', 'next', 'output'),
+      ],
+    );
+    const transport = runtime(undefined, { review: () => 'pass' });
+    const { runId } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(rounds(final, 'loop_a')).toEqual([[1, 'pass']]);
   });
 
   it('leaves through exhausted at the round cap without asking', async () => {
