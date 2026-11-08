@@ -43,7 +43,7 @@ flowchart TB
 
 | 데이터 | 쓰기 권한 | 캐시/사본 | 금지 |
 |---|---|---|---|
-| 정의·레이아웃 | DefinitionService 트랜잭션 | 편집기 draft | live Run에 draft를 직접 덮기 |
+| 정의 | DefinitionService 트랜잭션 | 편집기 draft | live Run에 draft를 직접 덮기 |
 | Run/Task/Execution/Approval | Coordinator | SQL projection, UI projection | Pi/GraphRunner가 직접 terminal 확정 |
 | event seq·controlRevision | Coordinator | UI watermark | timestamp로 seq 대체 |
 | 외부 요청 permit·예산 예약 | Coordinator | worker의 단회성 permit | worker가 자식 예산 새로 만들기 |
@@ -64,7 +64,6 @@ flowchart TB
 | `corralId` | 저장한 정의의 안정 ID |
 | `definitionRevision` | 의미 있는 정의 편집 순번 |
 | `definitionHash` | 정규화한 정의·내장 프롬프트의 SHA-256 |
-| `layoutRevision` | 좌표·크기 등 화면 편집 순번, definitionHash와 독립 |
 | `runId` | 실행 한 번 |
 | `controlRevision` | 사용자가 패치/개입 정책을 변경할 때의 revision. token delta마다 바뀌지 않음 |
 | `runSeq` | 모든 영속 RunEvent의 순서, Run 내부에서 단조 증가 |
@@ -82,7 +81,7 @@ flowchart TB
 
 ID는 주입 가능한 UUID 생성기로 만들고 순서는 ID가 아니라 runSeq로 판단한다. wall 시각은 ISO UTC, timeout은 monotonic clock을 사용한다. UI에서 로컬 시간으로 변환한다. 테스트는 Clock/ID provider를 주입한다.
 
-정규화는 객체 키 정렬·정의용 배열의 안정 순서·UTF-8 직렬화를 명세한다. `NaN`, 함수, undefined, 날짜 객체 같은 JSON 외 타입은 거절한다. 레이아웃·사용자 secret·실행 시각을 definitionHash에 넣지 않는다. 실제 provider/model ID와 단가·기능 해석은 RunSnapshot에 별도로 고정한다.
+정규화는 객체 키 정렬·정의용 배열의 안정 순서·UTF-8 직렬화를 명세한다. `NaN`, 함수, undefined, 날짜 객체 같은 JSON 외 타입은 거절한다. 사용자 secret·실행 시각을 definitionHash에 넣지 않는다. 실제 provider/model ID와 단가·기능 해석은 RunSnapshot에 별도로 고정한다.
 
 ## 4. 정의와 compiler
 
@@ -90,7 +89,7 @@ ID는 주입 가능한 UUID 생성기로 만들고 순서는 ID가 아니라 run
 
 기본 확장자는 `.corral.json`이다. D&D 에디터가 이 정의를 생성한다. YAML은 MVP의 필수 입력이 아니다. 코드로 정의를 만들 수 있지만 그것이 유일한 설계 방식이 되어서는 안 된다.
 
-정의에는 `schemaVersion, id, name, entryNodeId, input, roles, nodes, controlEdges, capabilityLinks, limits`를 둔다. layout은 별도 JSON이다. prompt는 MVP에서 정의 안의 문자열로 저장한다. 나중에 파일 참조를 도입할 경우 Run 시작 시 본문까지 snapshot해야 한다.
+정의에는 `schemaVersion, id, name, entryNodeId, input, roles, nodes, controlEdges, capabilityLinks, limits`를 둔다. 노드 위치는 저장하지 않는다. 편집기와 실행 화면이 정의에서 계산한다. prompt는 MVP에서 정의 안의 문자열로 저장한다. 나중에 파일 참조를 도입할 경우 Run 시작 시 본문까지 snapshot해야 한다.
 
 역할: `id, prompt, modelProfile, allowedWorkTools, outputContract`. Agent node는 `roleId, invocation, inputBindings, outputName, parentId?, retry?`를 가진다. 동일 역할의 여러 노드를 구분해 patch를 적용할 수 있다. 노드 종류별 필드는 [팀 그래프 모델](features/team-graph.md#정의-스키마)을 따른다.
 
@@ -350,7 +349,6 @@ DB는 로컬 디스크에 둔다. 네트워크 파일시스템의 WAL 지원을 
 |---|---|
 | corrals | id, name, current_revision |
 | definition_versions | corral_id + revision UNIQUE, definition_hash, canonical_json |
-| layouts | corral_id + layout_revision, definition_revision, layout_json |
 | documents | id, source, content_hash, text_body, imported_at, owner_scope |
 | runs | id, base_definition_hash, snapshot_json, status, control_revision, last_seq, process_epoch |
 | commands | run_id + command_id UNIQUE, payload_hash, receipt_json |
@@ -379,7 +377,7 @@ DB는 로컬 디스크에 둔다. 네트워크 파일시스템의 WAL 지원을 
 | POST `/api/v1/session` | [bootstrap 인증 계약](api-contract.md) | localhost/Origin 검증 |
 | GET/POST `/api/v1/corrals` | 목록/새 정의 | schema validation |
 | GET/PUT `/api/v1/corrals/:id` | 정의 저장·불러오기 | If-Match definition revision |
-| PUT `/api/v1/corrals/:id/layout` | 레이아웃 저장 | 독립 layout revision |
+| GET `/api/v1/corrals/:id/revisions/:revision` | 저장된 정의 revision 하나 | 참조 팀 확인·열기 |
 | POST `/api/v1/corrals/validate` | 정의 → 오류·실행 계획 요약 | 실행 효과 없음 |
 | POST `/api/v1/runs` | corralId + definitionRevision + 입력 + mode + commandId | run 생성 멱등성·한 개 active 제한 |
 | GET `/api/v1/runs/:id/snapshot` | projection + lastSeq | 일관된 DB snapshot |
@@ -408,13 +406,13 @@ slow client queue가 상한을 넘으면 무제한 메모리 축적 대신 연�
 
 ### 13.1 데이터 소유
 
-Zustand의 editor store는 draft definition/layout, 실행 projection store는 정규화된 read model, Reins store는 form/pending command, stream store는 진행 중 텍스트를 가진다. TanStack Query는 정의 목록·과거 기록·문서 상세 같은 요청 캐시를 맡는다. 동일한 live Run의 진실을 Query와 Zustand 두 곳에서 독립적으로 변경하지 않는다.
+Zustand의 editor store는 draft definition과 되돌리기 기록, 실행 projection store는 정규화된 read model, Reins store는 form/pending command, stream store는 진행 중 텍스트를 가진다. TanStack Query는 정의 목록·과거 기록·문서 상세 같은 요청 캐시를 맡는다. 동일한 live Run의 진실을 Query와 Zustand 두 곳에서 독립적으로 변경하지 않는다.
 
-React Flow controlled nodes/edges는 definition+layout의 selector 결과다. drag 이벤트는 위치 store를 갱신하고 드래그 끝에 persist한다. model delta가 nodes 배열을 통째로 새로 만들지 않는다. Run overlay는 nodeId별 작은 selector를 구독한다. [S02, S08]
+팀 편집기 캔버스는 정의와 접힘 상태에서 계산한 배치를 그린다. 편집은 순수 명령으로 새 초안을 만들고, 배치가 바뀌면 그려진 위치에서 새 위치로 옮겨 간다. 실행 화면의 그래프는 nodeId별 작은 selector를 구독한다. [S02, S08]
 
 ### 13.2 컴포넌트
 
-`CorralCanvas`, `NodePalette`, `AgentNodeView`, `DecisionNodeView`, `LoopGroupView`, `OutputNodeView`, `ConnectionInspector`, `ValidationPanel`, `ExecutionTree`, `WaitingReasonLink`, `TaskBoard`, `MessageThread`, `ArtifactDiff`, `ReinsPanel`, `DirectiveReceipt`, `BudgetInspector`, `ApprovalCard`를 분리한다.
+`TeamEditor`, `StructureTree`, `TeamGraphCanvas`, `InspectorSheet`, 명령 메뉴, `ExecutionTree`, `WaitingReasonLink`, `TaskBoard`, `MessageThread`, `ArtifactDiff`, `ReinsPanel`, `DirectiveReceipt`, `BudgetInspector`, `ApprovalCard`를 분리한다.
 
 처음부터 공개 UI 라이브러리가 되는 것은 아니지만 `packages/react`에 제품용 컴포넌트와 Storybook story를 둔다. 노드의 안/밖 선택 상태, 길어진 이름, 대기/취소/오류, 좁은 폭, keyboard focus를 각각 story로 만든다.
 
@@ -422,11 +420,11 @@ React Flow controlled nodes/edges는 definition+layout의 selector 결과다. dr
 
 Canvas를 대형 채팅 메시지 렌더링과 분리한다. Timeline/실행 트리는 TanStack Virtual을 사용해 가상화하고, 전체 트리 flatten은 memoized selector로 계산한다. 이벤트는 16~50ms 단위로 화면 반영을 모을 수 있지만 영속 순서와 제어 receipt를 누락하지 않는다.
 
-자동 배치는 기존 [layout 구현](../../packages/react/src/run/layout.ts)을 재사용한다. 사용자가 정한 위치를 실행 이벤트 때문에 재배치하지 않으며 graph compiler와 결합하지 않는다. React Flow Pro 전용 예제 코드를 제품의 필수 의존성으로 두지 않는다. Undo/Redo·멀티선택은 공개 API와 자체 command history로 구현한다.
+팀 그래프의 배치는 [팀 편집기 배치](../../packages/react/src/team-editor/layout.ts) 하나가 정하며 편집기와 실행 화면의 흐름 보기가 함께 쓴다. 배치는 graph compiler와 결합하지 않고 실행 이벤트 때문에 바뀌지 않는다. 캔버스는 외부 그래프 라이브러리 없이 디자인 키트로 그린다. Undo/Redo·멀티선택은 자체 command history로 구현한다.
 
 ### 13.4 접근성
 
-드래그 이외에 `Add node` 메뉴와 source/target 선택 방식의 연결 대안을 둔다. 키보드 focus와 그래프 선택을 구별하며 Reins에서 Escape 시 원래 실행 항목으로 복귀한다. 상태 설명은 aria-live에 매 token마다 읽히지 않게 중요 전이만 알린다.
+드래그 이외에 팔레트 버튼·명령 메뉴와 포트별 연결 대상 선택을 둔다. 키보드 focus와 그래프 선택을 구별하며 Reins에서 Escape 시 원래 실행 항목으로 복귀한다. 상태 설명은 aria-live에 매 token마다 읽히지 않게 중요 전이만 알린다.
 
 IME composing 동안 Enter는 전송·저장·노드 단축키를 실행하지 않는다. 색과 애니메이션은 보조이며 prefers-reduced-motion에서 흐르는 선 애니메이션을 끈다. 자동 접근성 검사만으로 접근성을 모두 보장한다고 보고하지 않는다. [S03, S18]
 

@@ -20,9 +20,10 @@
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문·레이아웃은 필요 시 조회 |
-| POST /corrals | 정의+레이아웃, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
-| GET /corrals/:id | — | definition/layout/revisions |
+| GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문은 필요 시 조회 |
+| POST /corrals | 정의, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
+| GET /corrals/:id | — | 현재 definition/revision |
+| GET /corrals/:id/revisions/:revision | — | 그 revision의 저장된 definition. 없는 팀·revision은 `TARGET_NOT_FOUND` |
 | PUT /corrals/:id | If-Match definition revision,definition | conflict 검사 후 저장; 실행 중 Run 원본에는 영향 없음 |
 | POST /corrals/validate | 현재 draft definition | diagnostics + executable IR summary; side effect 없음 |
 | POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,sessionId?,conversation?,references? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED`. `conversation {throughRunId}`는 같은 세션의 끝난 Run까지의 요청·답을 Coordinator 기록에서 복사해 대화 차례로 보내고 `run.started.conversation`에 출처·hash를 남김. 세션 없음·없는 Run·다른 세션·끝나지 않은 Run은 `TARGET_NOT_FOUND`, 산출물 크기 한도를 넘는 오래된 차례는 빠지고 그 수를 기록. `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED` |

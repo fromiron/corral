@@ -17,7 +17,7 @@
 
 Run·Task·Execution·Approval, event sequence, control revision, 실행 효과의 permit·예산·완료는 Coordinator 경로에서 확정한다. Pi와 GraphRunner는 실행 어댑터이며, UI store는 관찰용 투영이다. 스트리밍 delta나 어댑터 반환만으로 Run 성공을 확정하지 않는다.
 
-정의·레이아웃·설정·import·금고의 저장은 각 기존 서비스의 revision·원자 저장 경로를 따른다. 모든 설정 변경을 새로운 Coordinator 원장으로 옮기거나, 반대로 설정 저장소가 실행 효과를 직접 확정하게 만들지 않는다.
+정의·설정·import·금고의 저장은 각 기존 서비스의 revision·원자 저장 경로를 따른다. 모든 설정 변경을 새로운 Coordinator 원장으로 옮기거나, 반대로 설정 저장소가 실행 효과를 직접 확정하게 만들지 않는다.
 
 영속 이벤트와 현재 SQL 투영의 트랜잭션 경계를 지킨다. 실행 당시 snapshot과 산출물 버전은 불변이다. 편집 draft나 미래 설정 변경은 과거 Run의 입력을 바꾸지 않는다.
 

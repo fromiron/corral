@@ -6,7 +6,7 @@ Feature: Corral MVP의 설계·협업·실시간 개입
     When Agent와 Output을 드롭하고 포트를 연결한다
     And 추가 검토 Agent를 중간에 삽입하여 저장한다
     Then mock 실행은 추가 검토 단계를 거쳐야 한다
-    And 레이아웃만 이동해도 definitionHash는 유지되어야 한다
+    And 바꾸지 않은 정의를 다시 저장해도 definitionHash는 유지되어야 한다
 
   Scenario: 부모 대기가 자식 실행 슬롯을 막지 않는다
     Given 모델 동시성 한도가 3이다
