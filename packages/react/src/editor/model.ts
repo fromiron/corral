@@ -138,7 +138,8 @@ export function emptyDraft(corralId = 'untitled', name = 'Untitled Corral'): Edi
   };
 }
 
-function nextId(
+/** A fresh id with this prefix, and the counters that remember it. */
+export function nextId(
   draft: EditorDraft,
   prefix: string,
 ): { id: string; counters: Record<string, number> } {
@@ -619,7 +620,10 @@ export function connectCapability(
  * Proposes an input for a newly connected node: the nearest agent before it. Review decisions
  * read the nearest reviewer; Outputs and other decisions read the nearest work product.
  */
-function withSuggestedBinding(definition: CorralDefinition, consumerId: string): CorralDefinition {
+export function withSuggestedBinding(
+  definition: CorralDefinition,
+  consumerId: string,
+): CorralDefinition {
   const consumer = definition.nodes.find((n) => n.id === consumerId);
   if (!consumer || !('inputBindings' in consumer)) return definition;
   const roleOf = (id: string) => {
@@ -804,16 +808,18 @@ export function findNode(draft: EditorDraft, nodeId: string): CorralNode | undef
   return draft.definition.nodes.find((n) => n.id === nodeId);
 }
 
-function withDefinition(draft: EditorDraft, definition: CorralDefinition): EditorDraft {
+export function withDefinition(draft: EditorDraft, definition: CorralDefinition): EditorDraft {
   return { ...draft, definition: { ...definition, entryNodeId: entryOf(definition) } };
 }
 
-/** Keeps the entry pointing at the scheduled agent where the flow starts. */
+/** Keeps the entry pointing where the flow starts: a scheduled agent, else a Loop or Team. */
 function entryOf(definition: CorralDefinition): string {
   const targets = new Set(definition.controlEdges.map((e) => e.target));
-  const candidates = definition.nodes.filter(
-    (n) => n.type === 'agent' && n.invocation === 'scheduled' && !n.parentId && !targets.has(n.id),
-  );
+  const starts = definition.nodes.filter((n) => !n.parentId && !targets.has(n.id));
+  const candidates = [
+    ...starts.filter((n) => n.type === 'agent' && n.invocation === 'scheduled'),
+    ...starts.filter((n) => n.type === 'loop' || n.type === 'team'),
+  ];
   if (candidates.some((n) => n.id === definition.entryNodeId)) return definition.entryNodeId;
   return candidates[0]?.id ?? definition.entryNodeId;
 }

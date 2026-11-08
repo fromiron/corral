@@ -1,0 +1,602 @@
+import type { ControlEdge, CorralDefinition, CorralNode, TargetPort } from '@corral/contracts';
+import {
+  boxBoundaryViolation,
+  DECISION_RULE,
+  inputPortsOf,
+  isBox,
+  isWithin,
+  outputPortsOf,
+  sourceSide,
+  wouldCreateCycle,
+} from '@corral/core';
+import {
+  addNode,
+  type EditorDraft,
+  nextId,
+  removeNode,
+  withDefinition,
+  withSuggestedBinding,
+} from '../editor/model.ts';
+
+// Structural edits for the team editor (docs/specs/features/team-graph.md). Every gesture is a
+// pure function of the draft: the canvas, the structure tree and the command menu only choose
+// which one to call. Layout is automatic, so none of these take a position.
+
+export type StepKind =
+  | 'agent'
+  | 'review'
+  | 'approval'
+  | 'rule'
+  | 'check'
+  | 'router'
+  | 'loop'
+  | 'team'
+  | 'join'
+  | 'output';
+
+/** Where a new step goes: on a connection, after a node, into a box, or on its own. */
+export type Placement =
+  | { kind: 'empty' }
+  | { kind: 'edge'; edgeId: string }
+  | { kind: 'after'; nodeId: string }
+  | { kind: 'into'; boxId: string };
+
+export type EditRejection =
+  | 'unknownNode'
+  | 'selfConnection'
+  | 'callableInControlFlow'
+  | 'invalidSourcePort'
+  | 'invalidTargetPort'
+  | 'duplicate'
+  | 'boxBoundary'
+  | 'cycle'
+  | 'repeatNeedsDecision'
+  | 'noNextStep'
+  | 'mixedBoxes'
+  | 'notABox';
+
+export type EditResult =
+  | { ok: true; draft: EditorDraft; nodeId?: string }
+  | { ok: false; reason: EditRejection };
+
+export interface PortRequest {
+  source: string;
+  sourcePort: string;
+  target: string;
+  targetPort: TargetPort;
+}
+
+const nodesOf = (definition: CorralDefinition) => new Map(definition.nodes.map((n) => [n.id, n]));
+
+/** The port a step continues from: agent and join `out`, a decision's first branch, a box's `next`. */
+export function primaryOut(node: CorralNode): string | null {
+  if (node.type === 'output') return null;
+  if (node.type === 'loop' || node.type === 'team') return 'next';
+  return outputPortsOf(node)[0] ?? null;
+}
+
+/** The port a step is entered through. */
+export function primaryIn(node: CorralNode): TargetPort | null {
+  if (node.type === 'loop' || node.type === 'team') return 'enter';
+  return inputPortsOf(node)[0] ?? null;
+}
+
+// ── connections ──────────────────────────────────────────────────────────────
+
+/** The connection rule while dragging a port and after dropping it. One port may fan out. */
+export function checkPorts(
+  draft: EditorDraft,
+  request: PortRequest,
+): { ok: true } | { ok: false; reason: EditRejection } {
+  const { definition } = draft;
+  const nodes = nodesOf(definition);
+  const source = nodes.get(request.source);
+  const target = nodes.get(request.target);
+  if (!source || !target) return { ok: false, reason: 'unknownNode' };
+  if (source.id === target.id && !isBox(source)) return { ok: false, reason: 'selfConnection' };
+  const callable = (n: CorralNode) => n.type === 'agent' && n.invocation === 'callable';
+  if (callable(source) || callable(target)) return { ok: false, reason: 'callableInControlFlow' };
+  if (!outputPortsOf(source).includes(request.sourcePort))
+    return { ok: false, reason: 'invalidSourcePort' };
+  if (!inputPortsOf(target).includes(request.targetPort))
+    return { ok: false, reason: 'invalidTargetPort' };
+  if (
+    definition.controlEdges.some(
+      (e) =>
+        e.source === request.source &&
+        e.sourcePort === request.sourcePort &&
+        e.target === request.target &&
+        e.targetPort === request.targetPort,
+    )
+  )
+    return { ok: false, reason: 'duplicate' };
+  if (boxBoundaryViolation(nodes, request)) return { ok: false, reason: 'boxBoundary' };
+  if (request.targetPort === 'repeat' && source.type !== 'decision')
+    return { ok: false, reason: 'repeatNeedsDecision' };
+  if (wouldCreateCycle(definition.nodes, definition.controlEdges, request))
+    return { ok: false, reason: 'cycle' };
+  return { ok: true };
+}
+
+export function connectPorts(draft: EditorDraft, request: PortRequest): EditResult {
+  const check = checkPorts(draft, request);
+  if (!check.ok) return check;
+  const { id, counters } = nextId(draft, 'edge');
+  let definition: CorralDefinition = {
+    ...draft.definition,
+    controlEdges: [...draft.definition.controlEdges, { id, ...request }],
+  };
+  definition = withSuggestedBinding(definition, request.target);
+  return { ok: true, draft: withDefinition({ ...draft, counters }, definition) };
+}
+
+// ── adding steps ─────────────────────────────────────────────────────────────
+
+function createStep(
+  draft: EditorDraft,
+  kind: StepKind,
+  parentId: string | null,
+): { draft: EditorDraft; nodeId: string } {
+  const placed = (
+    created: { draft: EditorDraft; nodeId: string },
+    patch: (node: CorralNode) => CorralNode = (node) => node,
+  ) => {
+    const nodes = created.draft.definition.nodes.map((node) =>
+      node.id === created.nodeId ? patch(parentId ? { ...node, parentId } : node) : node,
+    );
+    return {
+      nodeId: created.nodeId,
+      draft: withDefinition(created.draft, { ...created.draft.definition, nodes }),
+    };
+  };
+  const fresh = (prefix: string, build: (id: string, index: number) => CorralNode) => {
+    const { id, counters } = nextId(draft, prefix);
+    const node = build(id, counters[prefix] as number);
+    return placed({
+      nodeId: id,
+      draft: {
+        ...draft,
+        counters,
+        definition: { ...draft.definition, nodes: [...draft.definition.nodes, node] },
+      },
+    });
+  };
+  const numbered = (base: string, index: number) => (index === 1 ? base : `${base} ${index}`);
+  switch (kind) {
+    case 'agent':
+    case 'output':
+      return placed(addNode(draft, kind, { x: 0, y: 0 }));
+    case 'loop':
+      return placed(addNode(draft, 'loop', { x: 0, y: 0 }), (node) =>
+        node.type === 'loop' ? { ...node, maxIterations: 3 } : node,
+      );
+    case 'review':
+    case 'approval':
+    case 'rule':
+      return placed(addNode(draft, 'decision', { x: 0, y: 0 }), (node) =>
+        node.type === 'decision'
+          ? {
+              id: node.id,
+              type: 'decision',
+              label: node.label,
+              ...(node.parentId ? { parentId: node.parentId } : {}),
+              mode: kind,
+              rule: DECISION_RULE[kind],
+              inputBindings: node.inputBindings,
+            }
+          : node,
+      );
+    case 'check':
+      return fresh('check', (id, index) => ({
+        id,
+        type: 'decision',
+        label: numbered('Check', index),
+        mode: 'check',
+        checkIds: ['tests'],
+        inputBindings: [],
+      }));
+    case 'router':
+      return fresh('router', (id, index) => ({
+        id,
+        type: 'decision',
+        label: numbered('Router', index),
+        mode: 'router',
+        routes: [
+          { id: 'route_a', label: 'A' },
+          { id: 'route_b', label: 'B' },
+        ],
+        inputBindings: [],
+      }));
+    case 'team':
+      return fresh('team', (id, index) => ({
+        id,
+        type: 'team',
+        label: numbered('Team', index),
+        source: { kind: 'inline' },
+      }));
+    case 'join':
+      return fresh('join', (id, index) => ({
+        id,
+        type: 'join',
+        label: numbered('Join', index),
+        policy: 'all',
+      }));
+  }
+}
+
+function withEdges(
+  draft: EditorDraft,
+  remove: (edge: ControlEdge) => boolean,
+  add: Omit<ControlEdge, 'id'>[],
+  bind: string[],
+): EditorDraft {
+  let next = draft;
+  const added: ControlEdge[] = [];
+  for (const edge of add) {
+    const { id, counters } = nextId(
+      {
+        ...next,
+        definition: {
+          ...next.definition,
+          controlEdges: [...next.definition.controlEdges, ...added],
+        },
+      },
+      'edge',
+    );
+    next = { ...next, counters };
+    added.push({ id, ...edge });
+  }
+  let definition: CorralDefinition = {
+    ...next.definition,
+    controlEdges: [...next.definition.controlEdges.filter((e) => !remove(e)), ...added],
+  };
+  for (const id of bind) definition = withSuggestedBinding(definition, id);
+  return withDefinition(next, definition);
+}
+
+/** Adds a step: on a connection it goes in between, after a node it takes over its next steps. */
+export function placeStep(draft: EditorDraft, kind: StepKind, at: Placement): EditResult {
+  const { definition } = draft;
+  const nodes = nodesOf(definition);
+  switch (at.kind) {
+    case 'empty': {
+      const created = createStep(draft, kind, null);
+      return { ok: true, ...created };
+    }
+    case 'edge': {
+      const edge = definition.controlEdges.find((e) => e.id === at.edgeId);
+      if (!edge) return { ok: false, reason: 'unknownNode' };
+      const decision = ['review', 'approval', 'rule', 'check', 'router'].includes(kind);
+      if (edge.targetPort === 'repeat' && !decision)
+        return { ok: false, reason: 'repeatNeedsDecision' };
+      const created = createStep(draft, kind, sourceSide(nodes, edge));
+      const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
+      const into = primaryIn(step) as TargetPort;
+      const out = primaryOut(step);
+      return {
+        ok: true,
+        nodeId: created.nodeId,
+        draft: withEdges(
+          created.draft,
+          (e) => e.id === edge.id,
+          [
+            { source: edge.source, sourcePort: edge.sourcePort, target: step.id, targetPort: into },
+            ...(out
+              ? [
+                  {
+                    source: step.id,
+                    sourcePort: out,
+                    target: edge.target,
+                    targetPort: edge.targetPort,
+                  },
+                ]
+              : []),
+          ],
+          [step.id],
+        ),
+      };
+    }
+    case 'after': {
+      const before = nodes.get(at.nodeId);
+      if (!before) return { ok: false, reason: 'unknownNode' };
+      const port = primaryOut(before);
+      if (!port || (before.type === 'agent' && before.invocation === 'callable'))
+        return { ok: false, reason: 'noNextStep' };
+      const created = createStep(draft, kind, before.parentId ?? null);
+      const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
+      const into = primaryIn(step) as TargetPort;
+      const out = primaryOut(step);
+      const following = definition.controlEdges.filter(
+        (e) => e.source === before.id && e.sourcePort === port && e.targetPort !== 'repeat',
+      );
+      const moved = out ? new Set(following.map((e) => e.id)) : new Set<string>();
+      return {
+        ok: true,
+        nodeId: created.nodeId,
+        draft: withEdges(
+          created.draft,
+          (e) => moved.has(e.id),
+          [
+            { source: before.id, sourcePort: port, target: step.id, targetPort: into },
+            ...(out
+              ? following.map((e) => ({
+                  source: step.id,
+                  sourcePort: out,
+                  target: e.target,
+                  targetPort: e.targetPort,
+                }))
+              : []),
+          ],
+          [step.id],
+        ),
+      };
+    }
+    case 'into': {
+      const box = nodes.get(at.boxId);
+      if (!isBox(box) || (box.type === 'team' && box.source.kind === 'reference'))
+        return { ok: false, reason: 'notABox' };
+      const body = definition.controlEdges.filter(
+        (e) => e.source === box.id && e.sourcePort === 'body',
+      );
+      const lastStep = definition.controlEdges.find(
+        (e) =>
+          e.target === box.id &&
+          e.targetPort === 'exit' &&
+          nodes.get(e.source)?.parentId === box.id,
+      );
+      if (body.length > 0 && lastStep)
+        return placeStep(draft, kind, { kind: 'edge', edgeId: lastStep.id });
+      const created = createStep(draft, kind, box.id);
+      if (body.length > 0) return { ok: true, ...created };
+      const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
+      const out = primaryOut(step);
+      return {
+        ok: true,
+        nodeId: created.nodeId,
+        draft: withEdges(
+          created.draft,
+          () => false,
+          [
+            {
+              source: box.id,
+              sourcePort: 'body',
+              target: step.id,
+              targetPort: primaryIn(step) as TargetPort,
+            },
+            ...(out
+              ? [{ source: step.id, sourcePort: out, target: box.id, targetPort: 'exit' as const }]
+              : []),
+          ],
+          [step.id],
+        ),
+      };
+    }
+  }
+}
+
+// ── boxes ────────────────────────────────────────────────────────────────────
+
+/**
+ * Puts sibling steps into a new Loop or Team. Connections into them now enter the box and its
+ * body leads to the same steps; connections out of them leave through the box. Exits to an
+ * outer box's exit or repeat stay as they are: a step may leave several boxes at once.
+ */
+export function wrapIn(
+  draft: EditorDraft,
+  ids: readonly string[],
+  kind: 'loop' | 'team',
+): EditResult {
+  const { definition } = draft;
+  const nodes = nodesOf(definition);
+  const members = ids.map((id) => nodes.get(id));
+  if (members.length === 0 || members.some((n) => !n)) return { ok: false, reason: 'unknownNode' };
+  const parentId = members[0]?.parentId ?? null;
+  if (members.some((n) => (n?.parentId ?? null) !== parentId))
+    return { ok: false, reason: 'mixedBoxes' };
+  if (members.some((n) => n?.type === 'agent' && n.invocation === 'callable'))
+    return { ok: false, reason: 'callableInControlFlow' };
+
+  const created = createStep(draft, kind, parentId);
+  const boxId = created.nodeId;
+  const inside = new Set(ids);
+  const within = (id: string) => {
+    for (let at: string | undefined = id; at; at = nodes.get(at)?.parentId)
+      if (inside.has(at)) return true;
+    return false;
+  };
+  const ancestorPort = (edge: ControlEdge) =>
+    (edge.targetPort === 'exit' || edge.targetPort === 'repeat') &&
+    parentId !== null &&
+    isWithin(nodes, parentId, edge.target);
+
+  const entering = definition.controlEdges.filter(
+    (e) =>
+      inside.has(e.target) &&
+      !within(e.source) &&
+      e.targetPort !== 'exit' &&
+      e.targetPort !== 'repeat',
+  );
+  const leaving = definition.controlEdges.filter(
+    (e) => within(e.source) && !within(e.target) && !ancestorPort(e),
+  );
+  const firstSteps = entering.length
+    ? entering
+    : ids
+        .filter((id) => !definition.controlEdges.some((e) => e.target === id && within(e.source)))
+        .map((id) => {
+          const node = nodes.get(id) as CorralNode;
+          return { target: id, targetPort: primaryIn(node) as TargetPort };
+        });
+  const unique = <T extends { target: string; targetPort: TargetPort }>(list: T[]) => [
+    ...new Map(list.map((e) => [`${e.target}\u0000${e.targetPort}`, e])).values(),
+  ];
+
+  let next = withDefinition(created.draft, {
+    ...created.draft.definition,
+    nodes: created.draft.definition.nodes.map((n) =>
+      inside.has(n.id) ? { ...n, parentId: boxId } : n,
+    ),
+  });
+  const reroute = new Set([...entering, ...leaving].map((e) => e.id));
+  next = withEdges(
+    next,
+    (e) => reroute.has(e.id),
+    [
+      ...entering.map((e) => ({
+        source: e.source,
+        sourcePort: e.sourcePort,
+        target: boxId,
+        targetPort: 'enter' as const,
+      })),
+      ...unique(firstSteps).map((e) => ({
+        source: boxId,
+        sourcePort: 'body',
+        target: e.target,
+        targetPort: e.targetPort,
+      })),
+      ...leaving.map((e) => ({
+        source: e.source,
+        sourcePort: e.sourcePort,
+        target: boxId,
+        targetPort: 'exit' as const,
+      })),
+      ...unique(leaving).map((e) => ({
+        source: boxId,
+        sourcePort: 'next',
+        target: e.target,
+        targetPort: e.targetPort,
+      })),
+    ],
+    [],
+  );
+  // Several connections into one port collapse to one.
+  const seen = new Set<string>();
+  const controlEdges = next.definition.controlEdges.filter((e) => {
+    const key = [e.source, e.sourcePort, e.target, e.targetPort].join('\u0000');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return {
+    ok: true,
+    nodeId: boxId,
+    draft: withDefinition(next, { ...next.definition, controlEdges }),
+  };
+}
+
+/** Moves a step into a box, or out to the top level with `null`. */
+export function setParent(draft: EditorDraft, id: string, parentId: string | null): EditResult {
+  const nodes = nodesOf(draft.definition);
+  const node = nodes.get(id);
+  if (!node) return { ok: false, reason: 'unknownNode' };
+  if (parentId !== null) {
+    const box = nodes.get(parentId);
+    if (!isBox(box) || (box.type === 'team' && box.source.kind === 'reference'))
+      return { ok: false, reason: 'notABox' };
+    if (isWithin(nodes, parentId, id)) return { ok: false, reason: 'boxBoundary' };
+  }
+  const nodesNext = draft.definition.nodes.map((n) => {
+    if (n.id !== id) return n;
+    const { parentId: _old, ...rest } = n;
+    return (parentId ? { ...rest, parentId } : rest) as CorralNode;
+  });
+  return { ok: true, draft: withDefinition(draft, { ...draft.definition, nodes: nodesNext }) };
+}
+
+// ── removing ─────────────────────────────────────────────────────────────────
+
+/**
+ * Removes nodes, connections and call links. A removed box hands its members to its own box
+ * and joins what entered it to its first steps and its last steps to what came after it.
+ */
+export function removeItems(draft: EditorDraft, ids: readonly string[]): EditorDraft {
+  let next = draft;
+  const gone = new Set(ids);
+  const controlEdges = next.definition.controlEdges.filter((e) => !gone.has(e.id));
+  const capabilityLinks = next.definition.capabilityLinks.filter((l) => !gone.has(l.id));
+  next = withDefinition(next, { ...next.definition, controlEdges, capabilityLinks });
+  for (const id of ids) {
+    const node = next.definition.nodes.find((n) => n.id === id);
+    if (!node) continue;
+    if (isBox(node)) next = unwrap(next, node.id);
+    next = removeNode(next, id);
+  }
+  return next;
+}
+
+function unwrap(draft: EditorDraft, boxId: string): EditorDraft {
+  const { definition } = draft;
+  const box = definition.nodes.find((n) => n.id === boxId);
+  const parentId = box?.parentId;
+  const edges = definition.controlEdges;
+  const into = edges.filter((e) => e.target === boxId && e.targetPort === 'enter');
+  const body = edges.filter((e) => e.source === boxId && e.sourcePort === 'body');
+  const last = edges.filter((e) => e.target === boxId && e.targetPort === 'exit');
+  const after = edges.filter((e) => e.source === boxId && e.sourcePort === 'next');
+  const nodes = definition.nodes.map((n) => {
+    if (n.parentId !== boxId) return n;
+    const { parentId: _box, ...rest } = n;
+    return (parentId ? { ...rest, parentId } : rest) as CorralNode;
+  });
+  return withEdges(
+    withDefinition(draft, { ...definition, nodes }),
+    (e) => e.source === boxId || e.target === boxId,
+    [
+      ...into.flatMap((a) =>
+        body.map((b) => ({
+          source: a.source,
+          sourcePort: a.sourcePort,
+          target: b.target,
+          targetPort: b.targetPort,
+        })),
+      ),
+      ...last.flatMap((a) =>
+        after.map((b) => ({
+          source: a.source,
+          sourcePort: a.sourcePort,
+          target: b.target,
+          targetPort: b.targetPort,
+        })),
+      ),
+    ],
+    [],
+  );
+}
+
+// ── settings ─────────────────────────────────────────────────────────────────
+
+/** Sets fields of one node; `undefined` removes an optional field. The compiler validates. */
+export function patchNode(
+  draft: EditorDraft,
+  id: string,
+  patch: Record<string, unknown>,
+): EditorDraft {
+  const nodes = draft.definition.nodes.map((node) => {
+    if (node.id !== id) return node;
+    const next: Record<string, unknown> = { ...node, ...patch };
+    for (const [key, value] of Object.entries(patch)) if (value === undefined) delete next[key];
+    return next as CorralNode;
+  });
+  return withDefinition(draft, { ...draft.definition, nodes });
+}
+
+export interface TeamPatch {
+  name?: string;
+  brief?: string;
+  criteria?: string[];
+  limits?: Partial<CorralDefinition['limits']>;
+}
+
+export function patchTeam(draft: EditorDraft, patch: TeamPatch): EditorDraft {
+  const { definition } = draft;
+  return withDefinition(draft, {
+    ...definition,
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    input: {
+      ...definition.input,
+      ...(patch.brief !== undefined ? { brief: patch.brief } : {}),
+      ...(patch.criteria !== undefined ? { criteria: patch.criteria } : {}),
+    },
+    limits: { ...definition.limits, ...patch.limits },
+  });
+}
