@@ -129,16 +129,26 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 - **사람이 고르기.** 제출이 route id가 아니거나 선택 실행이 실패하면 `route` 승인으로 사람에게 묻는다. 승인에는 연결된 route만 정의 순서대로 보인다. 사람이 route 하나를 골라 승인하면 그 route로 간다(`reasonCode: human_route`). 거절하면 Run이 취소된다. 확인 대상은 router 입력 버전과 선택 실행의 제출이고, 둘 다 없으면 Run 기준 버전이다.
 - **기록.** 어느 쪽이든 `workflow.branch_selected`(`mode: router`)를 남기며, 선택 실행의 제출과 승인을 근거로 단다.
 
+### check 실행
+
+- **시작 조건.** check Decision이 있는 Run은 작업 세션에서 시작해야 한다. Run 시작은 그 세션 프로젝트의 등록 검사 설정을 고정하고(`RunSnapshot.checks`: 프로젝트, 설정 revision·hash, 모든 check Decision의 `checkIds`), 그 Run이 신뢰된 작업 사본을 쓰게 한다. 세션이 없거나, 검사가 등록돼 있지 않거나, 검사 실행기나 작업 사본을 쓸 수 없으면 `CAPABILITY_DENIED`로 거절하고 Run을 만들지 않는다.
+- **검사 실행.** check에 닿으면 check 노드의 새 Task로 내장 검사 실행 하나를 시작한다. 모델을 부르지 않고, 노드의 `checkIds`를 순서대로 고정한 설정의 `run_check`로 작업 사본에서 실행한 뒤 결과 요약을 제출한다. 신뢰하지 않은 fingerprint는 지금처럼 검사 실행 승인을 받는다([하네스 계약](../harness-contract.md) H5). Loop 안이면 그 회차의 실행이다.
+- **판정.**
+  - 바뀌지 않은 tree에서 끝까지 돌아 `fail`이 나온 검사가 하나라도 있으면 `fail`로 간다.
+  - 모든 검사가 바뀌지 않은 tree에서 끝까지 돌아 `pass`이면 `pass`로 간다.
+  - 그 밖(오류, 시간 초과, 취소, 실행 중 바뀐 tree, 판정 불가, 실행 승인 거절, 검사 실행 자체의 실패)은 판정이 없다. 판정 없는 결과를 `pass`나 `fail`로 바꾸지 않는다.
+- **판정이 없을 때.** `check` 승인으로 사람을 기다린다. 승인하면 같은 Task의 다음 시도로 검사를 다시 실행하고 같은 규칙으로 판정한다. 거절하면 Run이 취소된다. 확인 대상은 검사 실행의 제출이고, 없으면 Run 기준 버전이다.
+- **기록.** `workflow.branch_selected`(`mode: check`, `reasonCode: check_verdict`)에 검사 보고서와 요약을 근거로 단다.
+
 ### 실행 지원 범위
 
 정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
 
 - Team 노드와 Join 노드.
-- `check` Decision.
 - 한 포트에 연결이 둘 이상인 병렬 분기.
 - 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
 
-compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router가 여기에 포함된다.
+compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check가 여기에 포함된다.
 
 ### 계획 IR
 
@@ -242,6 +252,26 @@ Scenario: router가 고르지 못하면 사람이 고른다
   Then fix로 가고 human_route가 남는다
   When 다른 Run에서 사용자가 같은 승인을 거절한다
   Then 그 Run은 취소된다
+
+Scenario: check가 검사 결과로 갈래를 고른다
+  Given 세션 프로젝트에 등록된 검사 types와 tests를 고르는 check Decision이 있다
+  When types가 pass, tests가 fail로 끝난다
+  Then fail로 가고, check 노드의 검사 실행이 두 검사의 보고서를 근거로 남긴다
+  When 다른 Run에서 두 검사가 모두 pass로 끝난다
+  Then pass로 간다
+
+Scenario: 판정이 없으면 다시 돌릴지 묻는다
+  Given check Decision의 검사가 오류로 끝난다
+  Then check 승인을 요청하고 pass나 fail로 가지 않는다
+  When 사용자가 승인하고 다시 돈 검사가 pass로 끝난다
+  Then 같은 Task의 둘째 시도가 pass로 간다
+  When 다른 Run에서 사용자가 거절한다
+  Then 그 Run은 취소된다
+
+Scenario: 검사를 실행할 수 없으면 시작하지 않는다
+  Given 세션 없이 시작하거나 세션 프로젝트에 등록되지 않은 검사를 고른 check Decision
+  When 실행을 시작한다
+  Then CAPABILITY_DENIED로 거절되고 Run이 만들어지지 않는다
 
 Scenario: 연결 안 된 출구를 고르면 Run이 멈춘다
   Given review Decision의 revise에 연결이 없다
