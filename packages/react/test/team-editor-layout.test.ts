@@ -144,9 +144,14 @@ describe('team editor layout', () => {
 describe('team editor layout: reference teams', () => {
   it('draws a reference team as a tile: its steps live in the other team', () => {
     const { draft, nodeId } = ok(
-      placeStep(chain(1), 'team', { kind: 'after', nodeId: 'agent_1' }, {
-        reference: { corralId: 'other_team', definitionRevision: 2, name: 'Other team' },
-      }),
+      placeStep(
+        chain(1),
+        'team',
+        { kind: 'after', nodeId: 'agent_1' },
+        {
+          reference: { corralId: 'other_team', definitionRevision: 2, name: 'Other team' },
+        },
+      ),
     );
     const l = layout(draft);
     expect(l.items.get(nodeId)?.kind).toBe('tile');

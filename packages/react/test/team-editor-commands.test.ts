@@ -355,9 +355,14 @@ describe('team editor commands: patterns on the selection', () => {
 describe('team editor commands: reference teams', () => {
   it('adds another saved team as a reference at its saved revision', () => {
     const { draft, nodeId } = ok(
-      placeStep(chain(1), 'team', { kind: 'after', nodeId: 'agent_1' }, {
-        reference: { corralId: 'other_team', definitionRevision: 4, name: 'Other team' },
-      }),
+      placeStep(
+        chain(1),
+        'team',
+        { kind: 'after', nodeId: 'agent_1' },
+        {
+          reference: { corralId: 'other_team', definitionRevision: 4, name: 'Other team' },
+        },
+      ),
     );
     const team = node(draft, nodeId);
     expect(team?.type === 'team' ? team.source : null).toEqual({
