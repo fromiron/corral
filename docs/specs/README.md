@@ -9,7 +9,7 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | 작업 | 문서 |
 |---|---|
 | 제품 범위·기본 흐름·비협상 항목 | [product.md](product.md), [constitution.md](constitution.md) |
-| 제품·Reins·예산·보안 상세 | [product-contract.md](product-contract.md) |
+| 제품·Reins·사용량·보안 상세 | [product-contract.md](product-contract.md) |
 | 상태 소유·실행·취소·파일 효과 | [architecture.md](architecture.md), [execution-and-safety.md](execution-and-safety.md), [technical-design.md](technical-design.md) |
 | 프로젝트·세션·컴포저·편집기·Git·터미널 | [workbench.md](workbench.md) |
 | 채팅 위젯·현황 카드·Todo | [chat-widgets-contract.md](chat-widgets-contract.md) |

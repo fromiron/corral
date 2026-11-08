@@ -8,7 +8,7 @@
 
 **React/Vite + Fastify + Run Coordinator + LangGraph.js 어댑터 + Pi agent-core worker + SQLite**를 채택한다. LangGraph와 Pi는 제품 상태의 독립 소유자가 아니다. XState·Redux·Temporal·Redis·LiteLLM을 동시에 추가하지 않는다.
 
-LangGraph는 검증된 정적 control flow를 순회하고 노드 실행을 Coordinator에 요청한다. Task·메시지·개입·예산·산출물·Run terminal 상태는 Coordinator가 확정한다. LangGraph의 실행 반환은 성공의 제안이며, 필수 Task·승인·활성 후손 검증 없이 Run을 성공시킬 수 없다.
+LangGraph는 검증된 정적 control flow를 순회하고 노드 실행을 Coordinator에 요청한다. Task·메시지·개입·사용량·산출물·Run terminal 상태는 Coordinator가 확정한다. LangGraph의 실행 반환은 성공의 제안이며, 필수 Task·승인·활성 후손 검증 없이 Run을 성공시킬 수 없다.
 
 MVP에서는 LangGraph의 영속 checkpointer와 `interrupt()`에 제품의 스티어링을 맡기지 않는다. 제품의 pause/approval은 Coordinator의 취소 가능한 경계 대기다. 그래프 state에는 runId, 참조 ID, 제어 결과만 두고 대화·메시지·Task 보드를 복제하지 않는다. 재시작 후 실행 복구가 없으므로 이 경계가 가능하다. LangGraph의 interrupt는 재진입 시 노드 앞부분을 다시 실행할 수 있어, 장수 Pi 세션의 중간 정지를 동일시하지 않는다. [S05]
 
@@ -46,7 +46,7 @@ flowchart TB
 | 정의 | DefinitionService 트랜잭션 | 편집기 draft | live Run에 draft를 직접 덮기 |
 | Run/Task/Execution/Approval | Coordinator | SQL projection, UI projection | Pi/GraphRunner가 직접 terminal 확정 |
 | event seq·controlRevision | Coordinator | UI watermark | timestamp로 seq 대체 |
-| 외부 요청 permit·예산 예약 | Coordinator | worker의 단회성 permit | worker가 자식 예산 새로 만들기 |
+| 외부 요청 permit·사용량 기록 | Coordinator | worker의 단회성 permit | worker가 자체 사용량 원장 만들기 |
 | 대화 컨텍스트 | 요청 전 Coordinator가 스냅샷 확정, Pi는 실행용 사본 | Pi 세션 | 과거 요청 snapshot 수정 |
 | 스트리밍 텍스트 | worker 관측 → 스트림 채널 | UI buffer | 토큰 delta로 도메인 완료 추론 |
 | 산출물 본문·버전 | ArtifactService, Coordinator tx 내부 | 읽기 전용 UI | 동일 version UPDATE |
@@ -99,9 +99,9 @@ ID는 주입 가능한 UUID 생성기로 만들고 순서는 ID가 아니라 run
 
 참조 팀은 주입한 정의 출처(`CompileOptions.resolveTeam`)에서 읽어 따로 컴파일하고, 그 계획을 팀 노드 아래에 둔다. compiler는 저장소를 직접 열지 않는다. 사용자가 넣은 코드/함수를 eval하지 않는다. `review`·`approval`·`rule` Decision의 rule은 `review_verdict`, `required_tasks_submitted`, `human_approval`의 enum으로만 선택한다. `check`는 등록 검사, `router`는 이름 붙인 route 중 모델의 선택으로 분기한다. 수식 언어는 없다.
 
-상자 소속은 `parentId`로 묶고, 경계·순환·루프 완결성·병렬 합류 규칙은 [팀 그래프 모델의 구조 규칙](features/team-graph.md#구조-규칙)을 따른다. `repeat`가 회차 상한·예산·정체에 걸리면 `exhausted`로 가고, 연결이 없으면 새 본문을 호출하기 전에 Approval을 생성한다([루프 실행](features/team-graph.md#루프-실행)).
+상자 소속은 `parentId`로 묶고, 경계·순환·루프 완결성·병렬 합류 규칙은 [팀 그래프 모델의 구조 규칙](features/team-graph.md#구조-규칙)을 따른다. `repeat`가 회차 상한·정체에 걸리면 `exhausted`로 가고, 연결이 없으면 새 본문을 호출하기 전에 Approval을 생성한다([루프 실행](features/team-graph.md#루프-실행)).
 
-GraphRunner의 node callback은 `requestExecution(runId,nodeId,iterationId)`를 요청한다. 동일 계획 활성화가 실수로 재진입해도 activationKey의 unique 제약으로 Task를 중복 생성하지 않는다. LangGraph node retry는 MVP에서 비활성화하고 재시도는 Corral의 시도·예산 계약으로만 처리한다.
+GraphRunner의 node callback은 `requestExecution(runId,nodeId,iterationId)`를 요청한다. 동일 계획 활성화가 실수로 재진입해도 activationKey의 unique 제약으로 Task를 중복 생성하지 않는다. LangGraph node retry는 MVP에서 비활성화하고 재시도는 Corral의 시도 계약으로만 처리한다.
 
 ### 4.3 일반 분기와 병렬의 범위
 
@@ -140,7 +140,7 @@ command는 의도, event는 확정된 사실, effect는 프로그램 밖에서 �
 
 로컬에서 `effect.admitted`를 확정하는 순간이 신규 실행 허용의 선형화 지점이다. 취소 fence 이후 대상 scope의 새 effect를 admit하지 않는다. 취소 이전에 이미 허가된 worker 요청의 실제 network 시작 관측이 나중에 도착할 수 있으므로 시간순 start 이벤트만으로 위반을 오판하지 않는다.
 
-분산 공급자의 ‘정확히 한 번 실행’은 보장하지 않는다. timeout으로 성공 여부가 불명확한 요청을 조용히 자동 재시도하지 않는다. 읽기 성격의 안전한 요청에만 명시된 재시도 정책을 적용하고 매번 새 modelCallId/예산을 기록한다.
+분산 공급자의 ‘정확히 한 번 실행’은 보장하지 않는다. timeout으로 성공 여부가 불명확한 요청을 조용히 자동 재시도하지 않는다. 읽기 성격의 안전한 요청에만 명시된 재시도 정책을 적용하고 매번 새 modelCallId와 사용량을 기록한다.
 
 crash 이후 pending effect를 자동 재발행하지 않는다. 실행 기록용 effect intent는 남기지만 recovery 정책은 Run interrupted다. 향후 crash resume을 도입할 때 별도 설계해야 한다.
 
@@ -151,12 +151,11 @@ crash 이후 pending effect를 자동 재발행하지 않는다. 실행 기록�
 | stage | 시점 | 기본 gate (등록 순서) | 거절 결과 |
 |---|---|---|---|
 | `model.request` | 모델 슬롯을 잡기 전 | `no_progress@1`(사용자 승인 요구) | `limit.reached` 후 승인 대기, 반려 시 실행 실패 |
-| `model.admit` | 슬롯을 잡은 뒤 | `budget@1` | 슬롯 반환, `limit.reached` |
 | `tool.pre_boundary` | 안전 경계 대기 전 | `question_open@1` | reply는 `observation.late` + `TARGET_TERMINAL`, 그 밖은 `tool.blocked` |
 | `tool.authorize` | 경계에서 제안 시 | `role_allowlist@1`, `limits@1` | `tool.blocked`, 필요 시 `limit.reached` |
 | `tool.execute` | 실행 직전 재검사 | `role_allowlist@1`, `limits@1` | 실행 거절 |
 
-`role_allowlist`는 도구 이름·인자 형식·capability link·소유·읽기 범위를, `limits`는 위임 깊이·spawn·상주 용량·질문 수·산출물 크기를 본다. 도구마다 형식·권한 검사가 한도 검사보다 먼저였으므로 둘로 나눠도 검사 순서는 그대로다. 예산 예약량(maxOutputTokens)은 gate가 아니라 Coordinator가 계산하며, budget gate가 빠진 설정에서도 예산을 넘는 요청은 admit하지 않는다.
+`role_allowlist`는 도구 이름·인자 형식·capability link·소유·읽기 범위를, `limits`는 위임 깊이·spawn·상주 용량·질문 수·산출물 크기를 본다. 도구마다 형식·권한 검사가 한도 검사보다 먼저였으므로 둘로 나눠도 검사 순서는 그대로다. 요청별 출력 상한은 gate가 아니라 Coordinator가 모델 능력과 남은 컨텍스트로 계산한다.
 
 gate는 읽기 전용 view를 받는 동기 순수 함수다. 첫 거절에서 멈추고, 예외는 `POLICY_ERROR` 거절이다. view는 깊은 읽기 전용 proxy이며 쓰기는 예외가 된다. commit된 사실은 frozen이라 proxy는 같은 종류의 빈 shadow를 감싸고 실제 값을 읽어 온다(frozen 속성에 다른 객체를 돌려줄 수 없는 Proxy 불변식 때문). observer(`model.prepared`, `model.finished`, `tool.finished`)는 commit 뒤 비동기로 실행되며 Coordinator가 fence를 확인한 sink로만 기록한다. 안전 경계·슬롯·승인 생성·ID·commit은 gate가 아니다. 기본 집합은 리팩터 전 golden 이벤트 열(`packages/core/test/golden/`)과 바이트 단위로 같아야 한다.
 
@@ -237,7 +236,7 @@ interface AgentHost {
 
 ### 7.3 요청 생명주기
 
-`request.proposed → admission/budget/context snapshot → worker dispatch → response stream → finalized usage/message → tool proposals → next request`.
+`request.proposed → admission/context snapshot → worker dispatch → response stream → finalized usage/message → tool proposals → next request`.
 
 도구 호출 순서는 첫 MVP에서 인스턴스 안에서는 sequential로 고정한다. 여러 child worker는 병렬 실행한다. 이 선택으로 지시 전달·대기·취소의 경계를 단순화한다. 병렬 tool batch의 전체 구현은 후속 작업으로 둔다.
 
@@ -259,7 +258,7 @@ worker가 killed라도 원격 서비스의 실제 처리 완료 여부는 모를
 
 ### 8.1 슬롯
 
-모델 호출 semaphore와 tool 호출 semaphore를 구분한다. 준비 대기 중 Task나 child 종료를 기다리는 parent가 모델 슬롯을 잡지 않는다. 예산 예약은 슬롯 admission과 같은 직렬 경로에서 처리하되, 오랫동안 semaphore를 기다리는 작업에 무제한 예산을 미리 묶지 않는다.
+모델 호출 semaphore와 tool 호출 semaphore를 구분한다. 준비 대기 중 Task나 child 종료를 기다리는 parent가 모델 슬롯을 잡지 않는다.
 
 resident worker는 총 활성/대기 instance 12개로 제한한다. 동적 spawn/ask는 자식 worker 용량을 먼저 원자적으로 예약하고, 부족하면 전체 요청을 `RESOURCE_CAPACITY`로 거절한다. 부모를 먼저 waiting으로 바꾼 뒤 worker를 무기한 queue에 넣지 않는다. 모델 호출 permit 대기는 FIFO queue로 처리해도 되지만 resident process 용량 대기와 혼동하지 않는다. spawn batch는 용량 예약 전 일부만 생성하지 않는다. 기다리는 부모가 process 슬롯을 채워 자식을 시작할 수 없게 되는 반례를 테스트한다.
 
@@ -274,7 +273,7 @@ resident worker는 총 활성/대기 instance 12개로 제한한다. 동적 spaw
 | `read_artifact` | scope 안의 artifactId/version | 해석된 버전과 read event |
 | `submit_result` | 허용 artifactVersionIds | 입력·출력 계약 검증 후 공식 출력 확정 |
 
-일반 도구는 `search`, `read_document`, `write_artifact`. 역할에 필요한 protocol tool만 노출한다. 모델은 runId/owner/depth/budget 값을 생성하지 않는다. 서버가 context에서 채운다.
+일반 도구는 `search`, `read_document`, `write_artifact`. 역할에 필요한 protocol tool만 노출한다. 모델은 runId/owner/depth 값을 생성하지 않는다. 서버가 context에서 채운다.
 
 ### 8.3 질문 응답
 
@@ -312,15 +311,15 @@ directive 내용은 snapshot에서 역추적 가능해야 한다. 스냅샷은 �
 
 Final Approval은 draftVersionId + reviewVersionId + criteriaVersionId를 묶은 대상을 가진다. 기준 patch는 Loop가 아직 종료되지 않은 상태에서만 허용하며 다음 회차 기준으로 적용한다. pending 기준 변경이 있으면 옛 기준 pass로 Loop를 종료하지 않고 다음 회차 진입 확인으로 이동한다. 이미 Loop가 종료되어 Final Approval에 도달했다면 기준 변경은 `CRITERIA_CHANGE_REQUIRES_NEW_RUN`으로 거절한다. 완료한 그래프 구간을 몰래 되돌리지 않는다. Loop 내부의 승인 요청은 기준 변경 시 stale로 바꾸고 새 대상 snapshot으로 다시 만든다. UI에서 ‘승인’만 눌러 새 버전이 자동 포함되지 않는다.
 
-## 10. 예산·patch·경합
+## 10. 사용량·patch·경합
 
-### 10.1 예약 장부
+### 10.1 사용량 기록
 
-예산은 `spentKnown + reserved + spentUnknown`으로 구분한다. 요청 permit 발급 시 perCallMaxOutput을 예약하고, 공급자가 usage를 반환하면 실제 사용으로 정산한다. 미확인 취소는 보수적으로 예약분을 unknown에 이동한다. 나중에 같은 modelCallId의 usage가 확인되면 한 번만 정산한다.
+사용량은 model call마다 공급자가 반환한 usage로 기록하며, 상한이나 예약은 없다. 사용량을 모르는 채 끝난 요청은 미확인으로 남긴다. 나중에 같은 modelCallId의 usage가 확인되면 한 번만 기록한다.
 
-환급과 추가 사용 반영은 같은 트랜잭션에서 처리한다. modelCallFinished 이벤트 재전송이 비용을 두 번 더하지 않는다. input/cached/reasoning tokens는 공급자 의미가 다르므로 rawUsage와 normalizedUsage를 함께 저장한다. 모든 토큰 수를 무조건 합산해 청구 토큰이라고 부르지 않는다.
+modelCallFinished 이벤트 재전송이 비용을 두 번 더하지 않는다. input/cached/reasoning tokens는 공급자 의미가 다르므로 rawUsage와 normalizedUsage를 함께 저장한다. 모든 토큰 수를 무조건 합산해 청구 토큰이라고 부르지 않는다.
 
-금액 예약은 보조 정책이다. rate card가 없으면 금액은 null과 이유를 반환한다. 출력 토큰 한도만 확실히 지원되는 프로필이라면 그 한도와 모델 요청 수로 통제하고 금액 hard guarantee를 주장하지 않는다.
+금액은 출처 있는 rate card로만 추정한다. rate card가 없으면 금액은 null과 이유를 반환한다.
 
 ### 10.2 패치 충돌
 
@@ -337,7 +336,6 @@ queued execution의 설정 freeze는 `execution.activated` 시점이다. 생성�
 | cancel vs tool completion | cancel 먼저 | 감사·usage만 허용, Task 부활 금지 |
 | reply vs question timeout | timeout 먼저 | late reply ignored |
 | approve vs criteria patch | patch 먼저 | STALE_APPROVAL |
-| budget decrease vs admission | admission 먼저 | 이미 예약한 요청 유지/명시 cancel. 사용량 초기화 금지 |
 | restart vs 늦은 이전 결과 | restart epoch 먼저 | 이전 epoch 결과는 감사만, 새 시도 오염 금지 |
 | D&D template edit vs live Run | 별개 definition revision | Run base snapshot 불변 |
 
@@ -361,7 +359,6 @@ DB는 로컬 디스크에 둔다. 네트워크 파일시스템의 WAL 지원을 
 | run_patches | id, run_id, control_revision UNIQUE per run, before_after_json, effective_scope |
 | approvals | id, target_snapshot_hash, status, resolved_by, resolution_command_id UNIQUE |
 | model_calls | id, execution_id, permit_id UNIQUE, context_snapshot_id, lifecycle, raw_usage_json |
-| budget_ledger | reservation_id UNIQUE, model_call_id, amounts, status |
 | effect_intents | effect_id UNIQUE, owner_scope, epoch, kind, status, payload_ref |
 | context_snapshots | id, execution_id, model_call_id UNIQUE, canonical_json, hash |
 
@@ -412,7 +409,7 @@ Zustand의 editor store는 draft definition과 되돌리기 기록, 실행 proje
 
 ### 13.2 컴포넌트
 
-`TeamEditor`, `StructureTree`, `TeamGraphCanvas`, `InspectorSheet`, 명령 메뉴, `ExecutionTree`, `WaitingReasonLink`, `TaskBoard`, `MessageThread`, `ArtifactDiff`, `ReinsPanel`, `DirectiveReceipt`, `BudgetInspector`, `ApprovalCard`를 분리한다.
+`TeamEditor`, `StructureTree`, `TeamGraphCanvas`, `InspectorSheet`, 명령 메뉴, `ExecutionTree`, `WaitingReasonLink`, `TaskBoard`, `MessageThread`, `ArtifactDiff`, `ReinsPanel`, `DirectiveReceipt`, `UsageInspector`, `ApprovalCard`를 분리한다.
 
 처음부터 공개 UI 라이브러리가 되는 것은 아니지만 `packages/react`에 제품용 컴포넌트와 Storybook story를 둔다. 노드의 안/밖 선택 상태, 길어진 이름, 대기/취소/오류, 좁은 폭, keyboard focus를 각각 story로 만든다.
 

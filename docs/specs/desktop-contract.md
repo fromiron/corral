@@ -11,11 +11,11 @@
 | ABS-03 | Hashline 편집 | read 근거, broker, 원자 쓰기, diff | 태그/ops 엔진과 별도 편집 방식 |
 | ABS-04 | 파일·HTML·로컬 앱 미리보기 | FilePanel, diff, 기존 브라우저 MCP | preview lease, 분리된 렌더링, 실제 작업 사본 origin |
 | ABS-05 | 모델 카탈로그·설정 가져오기·사고 강도 | ModelRegistry, credentials, reasoning | 카탈로그 cache, import preview/commit, capability 대조 |
-| ABS-06 | 동시 세션·Run | Coordinator live Map, Run별 events/예산 | 다중 실행 admission, host 용량, 사본 경합, UI 구독 |
+| ABS-06 | 동시 세션·Run | Coordinator live Map, Run별 events/사용량 | 다중 실행 admission, host 용량, 사본 경합, UI 구독 |
 | ABS-07 | Windows/macOS 패키지·트레이·업데이트·절전 방지·단축키 | Electron shell, Linux 패키지, commandRegistry | OS별 runtime packaging, update lifecycle, 사용자 바인딩 |
 | ABS-08 | 예약 실행 | 세션 요청, Coordinator, 승인·알림 | 영속 일정·발화 claim·중복/놓친 실행 정책 |
 | ABS-09 | 프로젝트 열기·복제·지침·메모리 | 프로젝트/폴더 연결, 참조, 입력 snapshot | clone 작업, 문서 관리와 명시 참조 |
-| ABS-10 | 이미지 생성 | 모델 credential store, effect/예산, Artifacts | 생성 provider operation, 바이너리 버전 |
+| ABS-10 | 이미지 생성 | 모델 credential store, effect/사용량, Artifacts | 생성 provider operation, 바이너리 버전 |
 | ABS-11 | Markdown 위임 정의 가져오기 | callable Agent, capability link, spawn_subagents | parser, 권한/모델 매핑 preview |
 | ABS-12 | 확장 패키지 | harness package import, 스킬·MCP·신뢰한 확장 | 통합 manifest/review/업데이트·비활성화 |
 | ABS-13 | 암호화 설정 금고 | 설정 revision, credential store | 9개 도메인 schema, 암호화·충돌·적용 journal |
@@ -31,7 +31,7 @@ flowchart LR
   UI["Studio / Desktop / CLI"] --> API["typed command / receipt"]
   SCH["예약 dispatcher"] --> API
   VO["음성 입력 adapter"] --> API
-  API --> CO["Coordinator: admission · intent · budget · state"]
+  API --> CO["Coordinator: admission · intent · usage · state"]
   PI["Pi worker: 도구 제안"] --> CO
   CO --> BR["Server broker: 파일 · 명령 · preview · provider"]
   BR --> FX["소유한 실제 프로세스 / 파일 / 외부 호출"]
@@ -53,7 +53,7 @@ flowchart LR
 
 ### 4.2 코드와 변경 범위
 
-실제 패키지·owner는 [구조](architecture.md)와 각 기능의 현재 코드를 확인한다. 도구 추가 시 enum뿐 아니라 compiler·생성 schema·역할 편집기·worker·review-only 필터·예산·결과 renderer 소비처를 함께 확인한다. 과거 계획의 파일명 제안을 새 모듈 생성 지시로 사용하지 않는다.
+실제 패키지·owner는 [구조](architecture.md)와 각 기능의 현재 코드를 확인한다. 도구 추가 시 enum뿐 아니라 compiler·생성 schema·역할 편집기·worker·review-only 필터·결과 renderer 소비처를 함께 확인한다. 과거 계획의 파일명 제안을 새 모듈 생성 지시로 사용하지 않는다.
 
 ## 5. 기능별 구현
 
@@ -81,7 +81,7 @@ flowchart LR
 |---|---|---|---|
 | Ask | 허용 | 호출별 승인 | 호출별 승인 |
 | Accept edits | 허용 | 허용된 관리 사본의 파일 변경만 자동 허용 | 승인 |
-| Auto | 허용 | 기존 capability/정책 안에서 허용 | 기존 capability/정책·예산 안에서 허용 |
+| Auto | 허용 | 기존 capability/정책 안에서 허용 | 기존 capability/정책 안에서 허용 |
 
 유효 권한은 역할 capability ∩ harness/strict ∩ 프로젝트 신뢰 ∩ 기존 permissionPolicies ∩ 모드 프리셋이다. 어느 층의 deny도 Auto가 뒤집지 않는다. review-only에는 편집·명령 쓰기·이미지 생성 권한을 붙이지 않는다. “테스트 명령”이라는 이름만으로 셸을 읽기 전용 분류하지 않는다.
 
@@ -132,14 +132,14 @@ flowchart LR
 - 읽기/질문 Run은 고정 입력·tree snapshot을 읽는다. writer가 바꾸는 mutable 파일을 중간 상태로 읽지 않는다.
 - writer 판정은 최종 허용 도구·native extension·shell/service capability로 한다. 자연어 요청이나 셸 명령 추측으로 read-only를 선언하지 않는다.
 - 서로 다른 worktree의 writer는 병행할 수 있고, 같은 worktree에는 writer owner가 하나다. 같은 원본에 대한 merge/review apply에는 별도 원본 저장소 잠금을 적용한다.
-- 읽기 Run의 사후 writer 승격은 하지 않는다. 수정 요청은 명시한 새 writer Run으로 시작한다. 이렇게 해야 이미 부여한 읽기/예산/권한을 소급 변경하지 않는다.
+- 읽기 Run의 사후 writer 승격은 하지 않는다. 수정 요청은 명시한 새 writer Run으로 시작한다. 이렇게 해야 이미 부여한 읽기/권한을 소급 변경하지 않는다.
 - 시작 검사는 `startRunWithRecovery`, `startRefusal`, auto team, explain, queue, CLI, 예약의 모든 입구에서 같은 admission을 쓴다. 사본 잠금 획득과 실행 예약 사이의 경합을 막는다.
 - host 전체의 모델 요청·resident worker·process 수 상한과 Run별 상한을 함께 적용한다. 현재 Run별 `acquireSlot`만 두면 Run 수만큼 총량이 늘어난다. 공정한 대기와 취소 시 슬롯 반환을 검증한다.
 - `RunSessionStore`를 `(hostId, runId)` 단위로 소유·해제한다. 세션은 여러 진행 Run을 표시할 수 있고 UI의 선택 Run은 별도다. 세션 전환이 다른 Run의 pause/approval/steer 대상을 바꾸지 않는다.
 - busy, queue 자동 시작, sidebar 배지, root active-run 링크, widget plan/context, toast/notification, SSE 재접속과 cursor를 모두 대상별로 바꾼다. 단일 전역 SSE/store에 모든 Run의 projection을 덮어쓰지 않는다.
 - `terminationUnconfirmed`/`restoringFiles` 등의 현재 전역 차단을 점검한다. 사본/실행에 국한된 장애는 그 owner를 격리하고, DB 장애처럼 공통 장애만 전체에 전파한다.
 
-**완료:** A writer + B reader + 다른 사본 C writer가 동시에 진행한다. 같은 사본의 두 번째 writer는 명시 대기/거절된다. B의 승인·취소가 A/C에 작용하지 않고, 각 Run의 산출물·예산·SSE 재열람이 맞아야 한다.
+**완료:** A writer + B reader + 다른 사본 C writer가 동시에 진행한다. 같은 사본의 두 번째 writer는 명시 대기/거절된다. B의 승인·취소가 A/C에 작용하지 않고, 각 Run의 산출물·사용량·SSE 재열람이 맞아야 한다.
 
 ### ABS-07 — 실제 Windows/macOS 앱과 앱 수명
 
@@ -155,7 +155,7 @@ flowchart LR
 
 ### ABS-08 — 예약 실행
 
-- 서버에 `Schedule`과 `ScheduledOccurrence`를 저장한다. 일정에는 timezone, 규칙, 활성 여부, 대상 host/project/session, prompt/ref와 실행 설정 revision, 권한/예산을 둔다.
+- 서버에 `Schedule`과 `ScheduledOccurrence`를 저장한다. 일정에는 timezone, 규칙, 활성 여부, 대상 host/project/session, prompt/ref와 실행 설정 revision, 권한을 둔다.
 - 앱/선택 호스트 서버가 살아 있을 때 실행한다. 화면의 타이머나 Electron renderer가 유일한 scheduler가 되어서는 안 된다.
 - 발화 key는 schedule ID + revision + 예정 UTC 시각이다. SQLite unique claim과 안정된 commandId로 중복 poll/창/응답 유실을 흡수한다.
 - 일반 요청의 auto-team·권한·Coordinator 시작 경로를 사용한다. private 메서드를 직접 호출하거나 일정 전용 모델 루프를 만들지 않는다.
@@ -176,7 +176,7 @@ flowchart LR
 ### ABS-10 — 이미지 생성과 산출물
 
 - `generate_image` 제안 도구는 명시된 image profile과 실제 provider operation을 사용한다. 미설정/미지원이면 설정 경로를 보여 주고 다른 모델로 몰래 대체하지 않는다.
-- 모델 registry/credential store를 재사용하고 Coordinator에서 호출·금액/횟수/시간 상한을 예약·정산한다. 취소 후 청구/결과 여부가 모호하면 unknown으로 남긴다.
+- 모델 registry/credential store를 재사용한다. Coordinator가 호출마다 공급자 사용량과 금액을 한 번 기록하며 호출 수·금액에 상한을 두지 않는다. 호출 시간은 image profile의 timeout을 따른다. 취소 후 청구/결과 여부가 모호하면 unknown으로 남긴다.
 - binary artifact descriptor에 MIME·bytes·dimensions·hash·blobRef·author/run/effect·버전을 둔다. 기존 text artifact를 유지하고 export/viewer/review/read-artifact 소비자를 함께 확장한다.
 - 제한된 immutable blob 저장과 metadata commit/journal을 설계한다. 성공 이벤트만 있고 bytes가 없는 상태를 성공으로 읽지 않으며 orphan 정리를 제공한다.
 - 생성 원본 크기를 입력용 PNG 제한에 맞추려고 조용히 축소하지 않는다. 출력 크기 정책과 미리보기 derivative를 분리한다.
@@ -187,7 +187,7 @@ flowchart LR
 - explorer/code-reviewer/test-runner/fixer/ui-designer를 포함한 문서 후보를 preview한다. parser는 frontmatter의 이름·설명·prompt·tool·model을 읽고 오류/미지원 필드를 표시한다.
 - `Read/Glob/Grep/Bash/Edit/Write/Task…`를 Corral의 실제 capability와 매핑한다. 이름만 비슷한 도구를 자동 동등 취급하지 않는다. 없는 도구를 선택한 정의는 import 단계에서 알려 준다.
 - 저장 결과는 Corral definition의 callable Agent와 명시한 capability link다. 실행 중 임의 역할 생성이나 별도 sidecar 위임 큐를 만들지 않는다.
-- 자식은 부모 capability의 부분집합과 기존 depth/spawn/예산 상한을 따른다. 고정 상한 10을 그대로 두지 않는다.
+- 자식은 부모 capability의 부분집합과 기존 depth/spawn 상한을 따른다. 고정 상한 10을 그대로 두지 않는다.
 - `ask_user`와 Run 제어는 자식이 직접 행사하지 않도록 import된 역할에서 제외하고, 필요한 질문은 부모에게 기존 ask/reply 경로로 보낸다. 기존 수동 팀의 계약을 몰래 바꾸지 않는다.
 
 ### ABS-12 — 스킬·MCP·서버 확장 패키지
@@ -229,7 +229,7 @@ flowchart LR
 - 확정 발화는 idle이면 일반 next 요청, 실행 중이면 명시 대상 steer다. 승인 대기로 steer 대상이 없으면 그 이유와 queue/다음 요청 선택을 제공한다.
 - 발화 ID·최종 transcript·commandId를 결합해 partial transcript/재연결 중복 제출을 막는다. Reins의 accepted/delivered 의미를 그대로 쓴다.
 - 원본 오디오를 파일·로그·DB에 저장하지 않는다. 마이크 buffer는 종료 시 폐기한다. 확정된 사용자 텍스트는 일반 세션 기록이 된다는 점을 UI에 표시한다.
-- 앱 종료/호스트 전환/권한 철회 시 장치와 socket을 정리한다. 음성 token/비용·시간 상한도 운영 예산에 표시한다.
+- 앱 종료/호스트 전환/권한 철회 시 장치와 socket을 정리한다. 음성 token/비용·시간 상한과 사용량은 Run 사용량과 함께 표시한다.
 - provider 종류와 계정 사용 가능 여부는 실제 지원 API로 확인한다. 비공개 endpoint나 하드코딩 model ID를 지원 근거로 두지 않는다.
 
 ## 7. 호환성과 데이터 migration
@@ -261,8 +261,8 @@ flowchart LR
 | ABS-07 | OS별 설치→작업→tray/awake→종료/업데이트 | 개발 경로 의존, 활성 작업 중 강제 설치, orphan server, 키보드/IME 회귀 |
 | ABS-08 | 일정 발화 1회→Run→승인→재열람 | 중복 tick/reconnect, DST 중복, 숨은 catch-up, 비활성화 후 늦은 시작 |
 | ABS-09 | clone→연결→명시 자료 참조 | 기존 폴더 덮기, 자동 신뢰/commit, 지침 자동 권한 상승, 과거 context 변경 |
-| ABS-10 | 이미지 생성→버전/검토/export | review-only 생성, 미지원 provider 대체, bytes 없는 성공, 늦은 결과 이중 과금 정산 |
-| ABS-11 | 정의 import→callable→spawn | 알 수 없는 도구 조용한 허용, 부모보다 넓은 권한, depth/budget 우회 |
+| ABS-10 | 이미지 생성→버전/검토/export | review-only 생성, 미지원 provider 대체, bytes 없는 성공, 늦은 결과의 사용량 이중 기록 |
+| ABS-11 | 정의 import→callable→spawn | 알 수 없는 도구 조용한 허용, 부모보다 넓은 권한, depth/spawn 우회 |
 | ABS-12 | package review→managed tool→upgrade | 설치만으로 실행, trust 자동 확대, 활성 버전 삭제, 임의 renderer DB 접근 |
 | ABS-13 | 두 장치 설정 병합·복구 | 위조/오래된 ciphertext, credential 무단 포함, 자동화 자동 활성화, partial apply |
 | ABS-14 | 원격 실행→재접속→receipt 복구 | 다른 host command/cursor, localhost fallback, origin/인증 우회 |

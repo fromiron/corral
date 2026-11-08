@@ -82,7 +82,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/:id/meeting/handoffs/:commandId/cancel | — | 취소 의도를 저장하고 시작/Run 취소를 확인. 확인 실패는 uncertain으로 남겨 같은 인계에서 재확인 |
 | POST /sessions/:id/meeting/handoffs/:commandId/rediscuss | `{commandId,mode}` | 종료된 결과·출처 ID를 고정해 새 대화 메시지로 보낸다. 자동 토론 없음 |
 | POST /runs/explain | `{commandId, sessionId, question, modelProfile, mode, startFrom?}` | 결과 질문 Run(에이전트 하나). 세션의 프로젝트에 기록. 도구 없는 최종 답 역할로 답한다. Studio 입력창은 더 이상 쓰지 않으며 기존 클라이언트용으로 유지 |
-| POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, conversation?, references?, team?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 비용은 실행 예산에 포함. `team: 'none' \| 'auto' \| {corralId}`를 주면 선택 요청 없이 대화 리드 한 명으로 시작하고 `autoRoute`는 null. none은 명시 요청 때만 부르는 helper, auto는 자동 팀 역할, corralId는 그 Corral의 역할을 리드의 위임 대상으로 준다. 없는 Corral은 `TARGET_NOT_FOUND` |
+| POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, conversation?, references?, team?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 호출은 실행 사용량에 포함. `team: 'none' \| 'auto' \| {corralId}`를 주면 선택 요청 없이 대화 리드 한 명으로 시작하고 `autoRoute`는 null. none은 명시 요청 때만 부르는 helper, auto는 자동 팀 역할, corralId는 그 Corral의 역할을 리드의 위임 대상으로 준다. 없는 Corral은 `TARGET_NOT_FOUND` |
 | POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 시작 전 취소는 세션 범위의 영구 명령으로 저장하고 선택을 중단한다. 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |
 | GET·PUT·PATCH·DELETE /projects/:id/workspace | PUT `{path}`, PATCH `{trusted?, verifyCommands?}` | 작업 폴더 연결·신뢰·검증 명령. Corral 데이터 안 폴더는 `CAPABILITY_DENIED` |
 | GET·POST·DELETE /sessions/:id/worktree | — | 세션 작업 복사본(신뢰한 Git 저장소의 HEAD에서). 응답은 기존 필드에 `bindingId`·`copyGeneration`을 포함하며 같은 session 사본 재생성 시 generation 증가. active/uncertain reader·writer가 있는 사본 제거는 거절 |
@@ -297,7 +297,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `directive.undelivered` | reason |
 | `patch.committed` | patchId,scope,before,after,controlRevision |
 | `patch.activated` | patchId,executionId|iterationId |
-| `effect.admitted` | effectId,scope,epoch,reservationId |
+| `effect.admitted` | effectId,scope,epoch,modelCallId(모델 요청 효과만) |
 | `effect.dispatch_observed` | effectId,providerRequestId |
 | `effect.settled` | effectId,outcome |
 | `tool.requested` | toolCallId,name,validatedArgs |
@@ -308,9 +308,8 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: requested,resolved,source,judged,ladder,policyVersion,judgeVersion,fallback,escalated). 자동 추론 규칙과 fallback 이유는 [로컬 AI](features/local-intelligence.md)가 정한다. 이전 정책으로 저장된 실행 기록은 읽기만 한다 |
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
-| `budget.reserved` | reservationId,amount,scope |
-| `budget.settled` | reservationId,actual,unknownOutstanding |
-| `limit.reached` | limitKind,used,reserved,max |
+| `usage.recorded` | usageId,kind(`auto_route`·`image`),profileId,inputTokens,outputTokens,costMicros. Run의 모델 호출 밖에서 쓴 사용량(팀 선택 호출, 이미지 생성)을 호출마다 기록한다. 모르는 값은 null이며 0으로 두지 않는다. 나중에 확인된 값은 같은 usageId로 null이던 값만 채운다. 시작하지 않은 이미지 호출은 기록하지 않는다 |
+| `limit.reached` | limitKind,used,max |
 | `cancel.requested` | scope,fenceSeq,reason |
 | `cancel.confirmed` | scope,settlementRefs |
 | `observation.late` | originalEvent,whyIgnored |

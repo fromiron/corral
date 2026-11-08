@@ -8,7 +8,7 @@
 
 1. **여섯 종류의 노드.** 팀은 Agent, Decision, Loop, Team, Join, Output으로 만든다. Agent는 `scheduled` 또는 `callable`이다. Decision은 `review`, `approval`, `rule`, `check`, `router` 중 하나이며 모드마다 나가는 포트가 다르다.
 2. **상자.** Loop와 Team은 다른 노드를 담는 상자다. 상자 안에 상자를 담을 수 있다. 루프를 몇 개 두든, 팀을 루프로 감싸든, 루프 안에 팀을 두든 정의할 수 있다.
-3. **루프.** 몸체는 노드 하나 이상이다. 다시 도는 길(`repeat`)은 결정 노드에서만 들어오고, 끝나는 길(`exit`)이 있어야 한다. 반복 상한은 1 이상의 정수이며 시스템 상한은 없다. 상한·루프 예산·정체 감지에 걸리면 `exhausted`로 나가고, 연결이 없으면 사용자에게 묻는다.
+3. **루프.** 몸체는 노드 하나 이상이다. 다시 도는 길(`repeat`)은 결정 노드에서만 들어오고, 끝나는 길(`exit`)이 있어야 한다. 반복 상한은 1 이상의 정수이며 시스템 상한은 없다. 상한이나 정체 감지에 걸리면 `exhausted`로 나가고, 연결이 없으면 사용자에게 묻는다.
 4. **병렬과 합류.** 한 출력 포트에 연결을 여러 개 두면 그 대상들이 동시에 실행되는 분기가 된다. 동시에 살아 있을 수 있는 분기가 다시 만나는 곳은 Join이어야 한다. Join은 모든 분기(`all`) 또는 첫 분기(`any`)를 기다린다. 결정의 서로 다른 분기처럼 동시에 살아 있을 수 없는 경로는 Join 없이 한 노드로 모일 수 있다.
 5. **실패 경로.** Agent는 실패하면 정한 횟수만큼 다시 시도한다. 그래도 실패하면 `error` 포트로 나가며, 연결이 없으면 Run이 실패한다.
 6. **팀 상자의 두 출처.** 같은 정의 안에서 노드를 묶은 팀(`inline`)과, 저장된 다른 팀의 정해진 revision을 가져다 쓰는 팀(`reference`)이 있다. 참조 팀은 원본이 바뀌어도 고정한 revision을 쓴다.
@@ -26,7 +26,7 @@
 | 공통 | `id`, `type`, `label`, `parentId?`(담고 있는 Loop 또는 Team), `note?`(실행에 쓰지 않음, 정의 revision에는 포함) |
 | Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0) |
 | Decision | `mode`, `inputBindings`(1개 이상). `review`·`approval`·`rule`은 모드별 `rule` 하나. `check`는 `checkIds`(등록 검사 1개 이상). `router`는 `routes: { id, label, description? }[]`(2개 이상, id 고유)와 선택적 `modelProfile` |
-| Loop | `maxIterations`(1 이상), `budget?: { maxModelCalls?, maxOutputTokens?, maxWallMs? }`, `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
+| Loop | `maxIterations`(1 이상), `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
 | Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }`, `inputBindings?`(reference Team만) |
 | Join | `policy: 'all' \| 'any'` |
 | Output | `inputBindings`(1개 이상), `requireApproval` |
@@ -101,15 +101,13 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 ### 루프 실행
 
-- **진입.** Loop의 `enter`로 들어오거나 Loop가 시작 노드이면 1회차를 연다. 들어올 때마다 회차 번호, 예산, 정체 비교를 새로 시작한다.
+- **진입.** Loop의 `enter`로 들어오거나 Loop가 시작 노드이면 1회차를 연다. 들어올 때마다 회차 번호와 정체 비교를 새로 시작한다.
 - **회차 기록.** 회차는 그때 열려 있는 바깥 Loop의 회차를 부모로 기록한다(`loop.iteration_started.parentIterationId`). 이전 회차 출력(`previous_iteration_output`)은 같은 진입의 바로 앞 회차에서만 오며, 1회차에는 없다.
 - **다시 돌기.** Decision이 `repeat`로 보내면 차례로 확인한다.
   1. 끝난 회차 수가 회차 상한에 닿았다: `cap_reached`. 상한은 `maxIterations`이고, `loop_limit` 패치가 있으면 그 값이다. 리뷰 레시피가 있으면 레시피의 시도 수를 넘지 않는다. 설치 상한은 없다.
-  2. 예산을 다 썼다: `budget_exhausted`.
-  3. 정체했다: `stalled`.
+  2. 정체했다: `stalled`.
 
   어느 것에도 걸리지 않으면 이 회차를 `revise`로 끝내고 다음 회차를 연다.
-- **예산.** 이번 진입 뒤 이 Loop의 회차와 그 안쪽 Loop 회차에서 실행된 단계, 그리고 그 단계가 호출한 에이전트가 쓴 모델 호출 수와 보고된 출력 토큰, 진입 뒤 흐른 시간을 센다. 다시 돌기를 요청할 때만 확인하며 진행 중인 작업을 끊지 않는다. Run 전체 예산은 따로 적용된다.
 - **정체.** `stallDetection`이 켜져 있을 때, 이번 회차와 그 안쪽 Loop 회차에서 제출한 산출물의 내용 hash 집합이 같은 진입의 바로 앞 회차와 같으면 정체다. 검토 결과(`review` 출력 계약)는 비교하지 않는다. 비교할 산출물이 없는 회차는 정체로 보지 않는다.
 - **소진.** `exhausted`에 연결이 있으면 회차를 그 이유로 끝내고 Loop를 떠나 그리로 간다. 연결이 없으면 이유와 함께 한 회차 더 돌지 사용자에게 묻는다(`loop_cap` 승인, `loopStop`). 승인하면 회차를 `revise`로 끝내고 다음 회차를 열며, 다음 다시 돌기에서 같은 확인을 한다. 거절하면 회차를 그 이유로 끝내고 Run을 취소한다.
 - **나가기.** Loop의 `exit`로 들어오면 회차를 `pass`로 끝내고 `next`로 간다. 여러 겹 바깥 상자의 `exit`나 `repeat`로 바로 가면, 그 사이 안쪽 Loop의 열린 회차는 모두 `pass`로 끝난다.
@@ -120,7 +118,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
   - 다음 시도는 `attemptNo`가 하나 크고 `previousExecutionId`로 앞 시도를 가리키며, 같은 회차에 속한다.
   - 입력은 앞 시도와 같은 입력 버전에 `previous_attempt_error` 하나를 더한 것이다. 앞 시도의 오류 문구이며 2,000자까지 자른다. 앞 시도의 기록과 산출물은 그대로 남는다.
   - 취소로 끝난 실행, 종료를 확인하지 못한 실행, Run이 진행 중이 아닐 때 끝난 실행은 다시 시도하지 않는다. 일시정지 중이면 재개한 뒤 시작한다.
-  - 시도마다 모델 호출은 Run 예산과 admission을, Loop 안이면 그 Loop의 예산도 따른다.
+  - 시도마다 모델 호출은 admission을 따른다.
 - **실패 경로.** 마지막 시도까지 실패하면 `error`에 연결이 있을 때 그리로 간다. 그 연결이 바로 가리키는 Agent는 입력 `step_error`를 더 받는다: 실패한 단계 이름, 시도 수, 마지막 오류 문구(2,000자까지). `error`에 연결이 없으면 Run은 `execution_failed`로 실패한다.
 
 ### router 실행
@@ -184,7 +182,7 @@ compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실�
 
 - 시작 단계
 - 단계별 다음 단계 목록(병렬이면 여럿)
-- 상자 트리와 Loop별 회차 상한·예산
+- 상자 트리와 Loop별 회차 상한
 - Join 정책
 - callable 관계
 - 참조 팀마다 그 팀의 컴파일된 계획(팀 노드 id 아래)
@@ -225,9 +223,9 @@ Scenario: 회차 상한에서 exhausted로 나간다
   Then 2회차가 cap_reached로 끝나고 사용자에게 묻지 않고 F가 실행된다
 
 Scenario: exhausted가 없으면 이유와 함께 묻는다
-  Given 예산이 모델 호출 1회인 Loop의 검토가 revise를 고르고 exhausted에 연결이 없다
+  Given maxIterations 1인 Loop의 검토가 revise를 고르고 exhausted에 연결이 없다
   When 첫 회차가 다시 돌기를 요청한다
-  Then budget_exhausted를 이유로 한 loop_cap 승인을 요청한다
+  Then cap_reached를 이유로 한 loop_cap 승인을 요청한다
   When 사용자가 승인한다
   Then 2회차가 열린다
   When 사용자가 다음 질문을 거절한다
@@ -447,7 +445,7 @@ Scenario: 이해하지 못하는 필드
 
 ## 보안·성능·접근성
 
-- 사용자 코드와 수식을 평가하지 않는다. router는 이름 붙인 route 중 하나를 모델이 고르게 하며, 그 모델 호출은 Run 예산과 admission을 따른다. check는 등록 검사만 실행한다.
+- 사용자 코드와 수식을 평가하지 않는다. router는 이름 붙인 route 중 하나를 모델이 고르게 하며, 그 모델 호출은 admission을 따른다. check는 등록 검사만 실행한다.
 - 참조 팀은 같은 사용자가 읽을 수 있는 정의만 가져온다. Run 시작 시 펼친 정의를 스냅샷으로 고정하고, 원본이 바뀌어도 그 Run은 바뀌지 않는다.
 - 가져오기 크기 제한(1 MiB)과 strict schema는 그대로다. 참조 순환을 금지하므로 펼친 결과는 유한하다.
 - 편집 화면의 접근성과 성능은 [팀 편집기](canvas.md)가 정한다.
