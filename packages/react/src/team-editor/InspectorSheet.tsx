@@ -156,7 +156,7 @@ export function InspectorSheet({
     const node = nodes.get(nodeId);
     if (!node || !('inputBindings' in node)) return;
     editor.getState().updateNode(nodeId, {
-      inputBindings: [...node.inputBindings, { kind: 'run_input', name: 'criteria' }],
+      inputBindings: [...(node.inputBindings ?? []), { kind: 'run_input', name: 'criteria' }],
     });
   };
   const heading = (text: string) => (

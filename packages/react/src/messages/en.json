@@ -273,6 +273,7 @@
       "ROUTER_ROUTES": "A router needs at least two routes with different ids.",
       "RUNTIME_UNSUPPORTED": "This can be defined, but this runtime does not run it yet.",
       "SCHEMA_INVALID": "{message}",
+      "TEAM_INPUTS_INLINE": "Steps inside this Team read earlier steps by name; the Team takes no inputs.",
       "TEAM_NO_BODY": "Connect “body” to the first step inside the Team.",
       "TEAM_NO_EXIT": "Connect a step inside the Team to “exit”.",
       "TEAM_NO_MEMBERS": "Put at least one step inside the Team.",

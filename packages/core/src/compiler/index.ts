@@ -56,6 +56,7 @@ export type DiagnosticCode =
   | 'TEAM_NO_MEMBERS'
   | 'TEAM_NO_BODY'
   | 'TEAM_NO_EXIT'
+  | 'TEAM_INPUTS_INLINE'
   | 'TEAM_REF_NOT_FOUND'
   | 'TEAM_REF_CYCLE'
   | 'TEAM_REF_INVALID'
@@ -512,7 +513,7 @@ function checkIdentity(c: Context) {
       c.error('UNKNOWN_REFERENCE', `box ${node.parentId} does not exist`, { nodeId: node.id });
     }
     if ('inputBindings' in node) {
-      for (const binding of node.inputBindings) {
+      for (const binding of node.inputBindings ?? []) {
         if (binding.sourceNodeId && !c.nodes.has(binding.sourceNodeId)) {
           c.error(
             'UNKNOWN_REFERENCE',
@@ -692,6 +693,12 @@ function checkStructure(c: Context) {
           if (!out.includes('next')) deadEnd('connect "next" to the step after the Team');
           break;
         }
+        if (node.inputBindings?.length)
+          c.error(
+            'TEAM_INPUTS_INLINE',
+            'steps inside an inline Team read earlier steps by name; the Team takes no inputs',
+            at,
+          );
         if (c.membersOf(node.id).length === 0)
           c.error('TEAM_NO_MEMBERS', 'put at least one step inside the Team', at);
         if (!out.includes('body'))
@@ -1097,7 +1104,7 @@ function checkBindings(c: Context, graph: Graph) {
     const bad = (why: string) => c.error('BINDING_SOURCE', why, { nodeId: node.id });
     const callable = c.isCallable(node.id);
     const before = graph.ancestors.get(node.id) ?? new Set<string>();
-    for (const binding of node.inputBindings) {
+    for (const binding of node.inputBindings ?? []) {
       const label = `input "${binding.name}"`;
       const source = binding.sourceNodeId ? c.nodes.get(binding.sourceNodeId) : undefined;
       switch (binding.kind) {
@@ -1106,8 +1113,11 @@ function checkBindings(c: Context, graph: Graph) {
             bad(`${label}: run inputs are "brief" and "criteria"`);
           break;
         case 'task_output':
-          if (source?.type !== 'agent' || source.invocation !== 'scheduled') {
-            bad(`${label} must read a scheduled agent's output`);
+          if (
+            !(source?.type === 'agent' && source.invocation === 'scheduled') &&
+            !(source?.type === 'team' && source.source.kind === 'reference')
+          ) {
+            bad(`${label} must read a scheduled agent or a referenced Team`);
           } else if (!callable && !before.has(source.id)) {
             bad(`${label} reads ${source.id}, which does not run before this node`);
           }
@@ -1192,7 +1202,7 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
     const at = { nodeId: node.id };
     switch (node.type) {
       case 'team':
-        unsupported('Teams do not run yet', at);
+        if (node.source.kind === 'reference') unsupported('referenced Teams do not run yet', at);
         break;
       case 'agent':
       case 'decision':

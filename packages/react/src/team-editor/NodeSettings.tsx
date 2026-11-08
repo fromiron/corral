@@ -339,7 +339,9 @@ export function NodeSettings({
         </>
       ) : null}
 
-      {'inputBindings' in node ? <InputsEditor editor={editor} node={node} draft={draft} /> : null}
+      {node.type !== 'team' && 'inputBindings' in node ? (
+        <InputsEditor editor={editor} node={node} draft={draft} />
+      ) : null}
       {node.type === 'agent' && node.invocation === 'scheduled' ? (
         <Calls editor={editor} nodeId={node.id} draft={draft} />
       ) : null}

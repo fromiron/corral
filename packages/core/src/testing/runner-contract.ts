@@ -87,6 +87,71 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
     return planOf(definition);
   }
 
+  const link = (
+    id: string,
+    source: string,
+    sourcePort: string,
+    target: string,
+    targetPort: string,
+  ) => ({
+    id,
+    source,
+    sourcePort,
+    target,
+    targetPort: targetPort as 'in',
+  });
+
+  /** p → inline Team t [ a ] → q → output; without p the run starts at t. */
+  function teamed(startAtTeam = false) {
+    const definition = linearCorral(startAtTeam ? ['a', 'q'] : ['p', 'a', 'q']);
+    definition.nodes.push({ id: 't', type: 'team', label: 't', source: { kind: 'inline' } });
+    for (const node of definition.nodes) if (node.id === 'a') node.parentId = 't';
+    definition.entryNodeId = startAtTeam ? 't' : 'p';
+    definition.controlEdges = [
+      ...(startAtTeam ? [] : [link('pt', 'p', 'out', 't', 'enter')]),
+      link('ta', 't', 'body', 'a', 'in'),
+      link('at', 'a', 'out', 't', 'exit'),
+      link('tq', 't', 'next', 'q', 'in'),
+      link('qo', 'q', 'out', 'output', 'in'),
+    ];
+    return planOf(definition);
+  }
+
+  /**
+   * Inline Team t [ Loop l [ a → router d (again: l.repeat, leave: t.exit, done: l.exit) ] ]
+   * → q → output. `leave` leaves the Loop and the Team in one step.
+   */
+  function loopInTeam() {
+    const definition = linearCorral(['a', 'q']);
+    definition.nodes.push(
+      { id: 't', type: 'team', label: 't', source: { kind: 'inline' } },
+      { id: 'l', type: 'loop', label: 'l', parentId: 't', maxIterations: 3 },
+      {
+        id: 'd',
+        type: 'decision',
+        label: 'd',
+        parentId: 'l',
+        mode: 'router',
+        routes: ['again', 'leave', 'done'].map((id) => ({ id, label: id })),
+        inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'a' }],
+      },
+    );
+    for (const node of definition.nodes) if (node.id === 'a') node.parentId = 'l';
+    definition.entryNodeId = 't';
+    definition.controlEdges = [
+      link('tl', 't', 'body', 'l', 'enter'),
+      link('la', 'l', 'body', 'a', 'in'),
+      link('ad', 'a', 'out', 'd', 'in'),
+      link('dl', 'd', 'again', 'l', 'repeat'),
+      link('dt', 'd', 'leave', 't', 'exit'),
+      link('dx', 'd', 'done', 'l', 'exit'),
+      link('lt', 'l', 'next', 't', 'exit'),
+      link('tq', 't', 'next', 'q', 'in'),
+      link('qo', 'q', 'out', 'output', 'in'),
+    ];
+    return planOf(definition);
+  }
+
   /** Holds each named step until released; the recorder answers once it is. */
   function held(callbacks: RunnerCallbacks, log: string[], names: string[]) {
     const releases = new Map<string, (ok: boolean) => void>();
@@ -269,6 +334,41 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       hold.release('a', false);
       expect(await result).toEqual({ kind: 'failed', nodeId: 'a', reason: 'a failed' });
       expect(log).not.toContain('join j');
+    });
+
+    it('runs the members of an inline Team between the steps around it', async () => {
+      const { log, callbacks } = recorder();
+      expect(await makeRunner().run(teamed(), callbacks)).toEqual({
+        kind: 'finished',
+        outputNodeId: 'output',
+      });
+      expect(log).toEqual(['activate p', 'activate a', 'activate q', 'finalize output']);
+    });
+
+    it('starts at an inline Team with its first member', async () => {
+      const { log, callbacks } = recorder();
+      await makeRunner().run(teamed(true), callbacks);
+      expect(log).toEqual(['activate a', 'activate q', 'finalize output']);
+    });
+
+    it('closes a Loop round inside a Team that a member leaves through the Team exit', async () => {
+      const { log, callbacks } = recorder({ d: ['again', 'leave'] });
+      expect(await makeRunner().run(loopInTeam(), callbacks)).toEqual({
+        kind: 'finished',
+        outputNodeId: 'output',
+      });
+      expect(log).toEqual([
+        'enter l#1',
+        'activate a#1',
+        'decide d#1 → again',
+        'leave l#1 revise',
+        'enter l#2',
+        'activate a#2',
+        'decide d#2 → leave',
+        'leave l#2 pass',
+        'activate q',
+        'finalize output',
+      ]);
     });
 
     it('stops without further steps once aborted', async () => {

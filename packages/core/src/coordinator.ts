@@ -5055,7 +5055,9 @@ export class Coordinator {
       !contextRef &&
       !item &&
       spec.assignment.kind === 'scheduled' &&
-      node.inputBindings.some((binding) => binding.kind === 'run_input' && binding.name === 'brief')
+      (node.inputBindings ?? []).some(
+        (binding) => binding.kind === 'run_input' && binding.name === 'brief',
+      )
         ? SessionConversation.parse(
             JSON.parse(this.store.getArtifactText(run.runId, SESSION_CONVERSATION) ?? 'null'),
           )
@@ -5114,7 +5116,7 @@ export class Coordinator {
         ...spec.given,
         ...this.resolveInputs(
           run,
-          item ? [{ kind: 'run_input', name: 'criteria' }] : node.inputBindings,
+          item ? [{ kind: 'run_input', name: 'criteria' }] : (node.inputBindings ?? []),
           spec.iterationId,
         ),
       ],
@@ -6576,7 +6578,7 @@ export class Coordinator {
     const definition = run.snapshot.definition;
     return members.flatMap((memberId) => {
       const node = definition.nodes.find((n) => n.id === memberId);
-      const bindings = node && 'inputBindings' in node ? node.inputBindings : [];
+      const bindings = (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [];
       return bindings.flatMap((b) =>
         b.kind === 'previous_iteration_output' && b.sourceNodeId
           ? this.submittedOutputOf(run, b.sourceNodeId, previous)

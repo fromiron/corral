@@ -273,6 +273,7 @@
       "ROUTER_ROUTES": "라우터에는 id가 서로 다른 갈래가 둘 이상 있어야 합니다.",
       "RUNTIME_UNSUPPORTED": "정의할 수 있지만 현재 런타임은 아직 실행하지 않습니다.",
       "SCHEMA_INVALID": "{message}",
+      "TEAM_INPUTS_INLINE": "이 Team 안의 단계가 앞 단계를 이름으로 읽습니다. Team은 입력을 받지 않습니다.",
       "TEAM_NO_BODY": "본문을 Team 안의 첫 단계에 연결하세요.",
       "TEAM_NO_EXIT": "Team 안의 단계 하나를 종료에 연결하세요.",
       "TEAM_NO_MEMBERS": "Team 안에 단계를 하나 이상 넣으세요.",

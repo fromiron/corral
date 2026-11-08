@@ -198,6 +198,8 @@ export const TeamNode = z.strictObject({
   ...nodeBase,
   type: z.literal('team'),
   source: TeamSource,
+  /** A reference Team's inputs: its child run's brief. An inline Team takes none. */
+  inputBindings: bindings(0).optional(),
 });
 export type TeamNode = z.infer<typeof TeamNode>;
 

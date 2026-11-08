@@ -124,9 +124,9 @@ export async function executeStep(
     await callbacks.loopLeft(loopId, rounds[loopId] ?? 1, outcome);
     delete rounds[loopId];
   };
-  /** Control reached this Loop's exit or repeat from deeper inside: close the inner rounds. */
-  const closeInner = async (loopId: string) => {
-    const open = Object.keys(rounds).filter((id) => id !== loopId && inside(plan, id, loopId));
+  /** Control reached this box's exit (or a Loop's repeat) from deeper inside: close inner rounds. */
+  const closeInner = async (boxId: string) => {
+    const open = Object.keys(rounds).filter((id) => id !== boxId && inside(plan, id, boxId));
     // Innermost first: a Loop inside another closes before it.
     open.sort((a, b) => Number(inside(plan, a, b)) - Number(inside(plan, b, a))).reverse();
     for (const id of open) await leave(id, 'pass');
@@ -193,9 +193,14 @@ export async function executeStep(
       // A Join that gathers branches is the walker's; one fed by a single branch passes on.
       if (step.gathers) throw new Error(`${step.nodeId} gathers branches; the walker joins them`);
       return goTo(step.next, 'out');
-    case 'team':
-      // The compiler marks Teams RUNTIME_UNSUPPORTED and run start refuses them.
-      throw new Error('team steps do not run in this runtime');
+    case 'team': {
+      // The compiler marks referenced Teams RUNTIME_UNSUPPORTED and run start refuses them.
+      if (step.source === 'reference') throw new Error('referenced Teams do not run yet');
+      if (port === 'enter') return goTo(step.body, 'body');
+      // A member reached exit, perhaps from inside a Loop in the Team: close those rounds.
+      await closeInner(step.nodeId);
+      return goTo(step.next, 'next');
+    }
     case 'output':
       await callbacks.finalize(step.nodeId);
       return { end: { kind: 'finished', outputNodeId: step.nodeId } };

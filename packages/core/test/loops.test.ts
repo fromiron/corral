@@ -440,23 +440,82 @@ describe('loop execution', () => {
     expect(rounds(final, 'loop').at(-1)).toEqual([12, 'pass']);
   });
 
-  it('still refuses what the runtime does not run', () => {
+  it('runs through an inline Team, and a Team that starts the run', async () => {
     const definition = team(
       [
         research,
         { id: 'team', type: 'team', label: 'team', source: { kind: 'inline' } } as CorralNode,
         { ...plain('a'), parentId: 'team' },
-        output('a'),
+        plain('b'),
+        output('b'),
       ],
       [
         edge('research', 'out', 'team', 'enter'),
         edge('team', 'body', 'a'),
         edge('a', 'out', 'team', 'exit'),
-        edge('team', 'next', 'output'),
+        edge('team', 'next', 'b'),
+        edge('b', 'out', 'output'),
       ],
     );
-    const planned = planRun(definition);
-    expect(planned.ok).toBe(false);
-    expect(!planned.ok && planned.issues.every((i) => i.code === 'RUNTIME_UNSUPPORTED')).toBe(true);
+    expect(compileDefinition(definition).diagnostics).toEqual([]);
+    const transport = runtime(undefined);
+    const { runId } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(final.executionOrder.map((id) => final.executions[id]?.nodeId)).toEqual([
+      'research',
+      'a',
+      'b',
+    ]);
+
+    const fromTeam = team(
+      definition.nodes.filter((n) => n.id !== 'research'),
+      definition.controlEdges.filter((e) => e.source !== 'research'),
+      'team',
+    );
+    const started = await run(transport, fromTeam);
+    const second = await waitForProjection(transport, started.runId, finished);
+    expect(second.status).toBe('succeeded');
+    expect(second.executionOrder.map((id) => second.executions[id]?.nodeId)).toEqual(['a', 'b']);
+  });
+
+  it('runs an inline Team inside a Loop afresh each round, leaving through the Loop from inside it', async () => {
+    const body = reviewedBody('loop', 'l');
+    const definition = team(
+      [
+        research,
+        loop('loop'),
+        {
+          id: 'c',
+          type: 'team',
+          label: 'c',
+          parentId: 'loop',
+          source: { kind: 'inline' },
+        } as CorralNode,
+        ...body.nodes.map((n) => ({ ...n, parentId: 'c' })),
+        output('l_write'),
+      ],
+      [
+        edge('research', 'out', 'loop', 'enter'),
+        edge('loop', 'body', 'c', 'enter'),
+        edge('c', 'body', 'l_write'),
+        ...body.edges.filter((e) => e.source !== 'loop'),
+        edge('loop', 'next', 'output'),
+      ],
+    );
+    expect(compileDefinition(definition).diagnostics.filter((d) => d.severity === 'error')).toEqual(
+      [],
+    );
+    const transport = runtime(scripted({ l_decision: ['revise', 'pass'] }));
+    const { runId } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(rounds(final, 'loop')).toEqual([
+      [1, 'revise'],
+      [2, 'pass'],
+    ]);
+    const writes = (final.nodeExecutions.l_write ?? []).map((id) => final.executions[id]);
+    expect(writes).toHaveLength(2);
+    expect(new Set(writes.map((e) => e?.taskId)).size).toBe(2);
   });
 });

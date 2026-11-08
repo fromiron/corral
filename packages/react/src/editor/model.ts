@@ -406,7 +406,7 @@ export function removeNode(draft: EditorDraft, nodeId: string): EditorDraft {
         const { parentId: _loop, ...rest } = next;
         next = rest as CorralNode;
       }
-      if ('inputBindings' in next) {
+      if ('inputBindings' in next && next.inputBindings) {
         const inputBindings = next.inputBindings.filter((b) => b.sourceNodeId !== nodeId);
         if (inputBindings.length !== next.inputBindings.length) next = { ...next, inputBindings };
       }
@@ -548,9 +548,10 @@ export function withSuggestedBinding(
     return wantsReview ? contract === 'review' : contract !== 'review';
   };
   const source = nearestUpstream(definition, consumerId, accept);
-  if (!source || consumer.inputBindings.some((b) => b.sourceNodeId === source)) return definition;
+  const existing = consumer.inputBindings ?? [];
+  if (!source || existing.some((b) => b.sourceNodeId === source)) return definition;
   const sourceNode = definition.nodes.find((n) => n.id === source) as AgentNode;
-  const names = new Set(consumer.inputBindings.map((b) => b.name));
+  const names = new Set(existing.map((b) => b.name));
   let name = sourceNode.outputName;
   for (let i = 2; names.has(name); i++) name = `${sourceNode.outputName}_${i}`;
   const binding: InputBinding = { kind: 'task_output', name, sourceNodeId: source };
@@ -558,7 +559,7 @@ export function withSuggestedBinding(
     ...definition,
     nodes: definition.nodes.map((n) =>
       n.id === consumerId && 'inputBindings' in n
-        ? { ...n, inputBindings: [...n.inputBindings, binding] }
+        ? { ...n, inputBindings: [...(n.inputBindings ?? []), binding] }
         : n,
     ),
   };

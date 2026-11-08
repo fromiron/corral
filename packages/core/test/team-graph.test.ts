@@ -187,7 +187,7 @@ function fanOut(merge: Doc = agent('M', { inputBindings: from('A') })): Doc {
   );
 }
 
-/** P → T (inline Team: body → R → exit) → output. A Team does not run yet. */
+/** P → T (inline Team: body → R → exit) → output. */
 function inlineTeam(): Doc {
   return definition(
     [
@@ -202,6 +202,24 @@ function inlineTeam(): Doc {
       edge('e3', 'R', 'out', 'T', 'exit'),
       edge('e4', 'T', 'next', 'output', 'in'),
     ],
+    'P',
+  );
+}
+
+/** P → T (reference to a saved team) → output, with no team source: it does not run yet. */
+function referenced(): Doc {
+  return definition(
+    [
+      agent('P'),
+      {
+        id: 'T',
+        type: 'team',
+        label: 'T',
+        source: { kind: 'reference', corralId: 'y', definitionRevision: 1 },
+      },
+      output('P'),
+    ],
+    [edge('e1', 'P', 'out', 'T', 'enter'), edge('e2', 'T', 'next', 'output', 'in')],
     'P',
   );
 }
@@ -522,6 +540,67 @@ describe('team graph: reference teams', () => {
   });
 });
 
+describe('team graph: team inputs', () => {
+  /** plan → T (reference to y, reading plan) → after (reading T) → output */
+  const reading = (source: Doc): Doc =>
+    definition(
+      [
+        agent('plan'),
+        { ...source, id: 'T', type: 'team', label: 'T' },
+        agent('after', { inputBindings: from('T') }),
+        output('after'),
+      ],
+      [
+        edge('e1', 'plan', 'out', 'T', 'enter'),
+        edge('e2', 'T', 'next', 'after', 'in'),
+        edge('e3', 'after', 'out', 'output', 'in'),
+      ],
+      'plan',
+    );
+  const saved = definition(
+    [agent('solo'), output('solo')],
+    [edge('e1', 'solo', 'out', 'output', 'in')],
+    'solo',
+    'y',
+  );
+  const options: CompileOptions = { resolveTeam: () => saved };
+  const reference = {
+    source: { kind: 'reference', corralId: 'y', definitionRevision: 1 },
+    inputBindings: from('plan'),
+  };
+
+  it('lets a reference Team take inputs and be read by the steps after it', () => {
+    const doc = reading(reference);
+    expect(CorralDefinition.safeParse(doc).success).toBe(true);
+    expect(errorsOf(doc, options)).toEqual([]);
+  });
+
+  it('checks a reference Team input like any other input', () => {
+    const doc = reading({ ...reference, inputBindings: from('after') });
+    expect(errorsOf(doc, options)).toContainEqual(
+      expect.objectContaining({ code: 'BINDING_SOURCE', nodeId: 'T' }),
+    );
+  });
+
+  it('refuses inputs on an inline Team, and reading an inline Team', () => {
+    const doc = inlineTeam();
+    doc.nodes.find((n: Doc) => n.id === 'T').inputBindings = from('P');
+    expect(errorsOf(doc)).toContainEqual(
+      expect.objectContaining({ code: 'TEAM_INPUTS_INLINE', nodeId: 'T' }),
+    );
+    const read = inlineTeam();
+    read.nodes.push(agent('after', { inputBindings: from('T') }));
+    read.nodes.find((n: Doc) => n.id === 'output').inputBindings = from('after');
+    read.controlEdges = read.controlEdges.map((e: Doc) =>
+      e.id === 'e4' ? { ...e, target: 'after' } : e,
+    );
+    read.controlEdges.push(edge('e5', 'after', 'out', 'output', 'in'));
+    expect(errorsOf(read)).toContainEqual(
+      expect.objectContaining({ code: 'BINDING_SOURCE', nodeId: 'after' }),
+    );
+  });
+});
+
 describe('team graph: what runs today', () => {
   it('keeps a single-loop team runnable with no unsupported warnings', () => {
     const result = compile(researchTeam);
@@ -530,8 +609,19 @@ describe('team graph: what runs today', () => {
     expect(planRun(researchTeam).ok).toBe(true);
   });
 
+  it('runs an inline Team', () => {
+    expect(codes(warningsOf(inlineTeam()))).not.toContain('RUNTIME_UNSUPPORTED');
+    expect(planRun(inlineTeam()).ok).toBe(true);
+  });
+
   it('refuses to plan a run for a definition the runtime does not execute', () => {
-    const plan = planRun(inlineTeam());
+    const saved = definition(
+      [agent('solo'), output('solo')],
+      [edge('e1', 'solo', 'out', 'output', 'in')],
+      'solo',
+      'y',
+    );
+    const plan = planRun(referenced(), { resolveTeam: () => saved });
     expect(plan.ok).toBe(false);
     if (plan.ok) return;
     expect(plan.issues).toContainEqual(
@@ -548,8 +638,11 @@ describe('team graph: what runs today', () => {
     const transport = new InProcessTransport(coordinator);
     const { runId, receipt } = await transport.startRun({
       schemaVersion: '0.1',
-      commandId: 'cmd_team',
-      definition: inlineTeam() as CorralDefinition,
+      commandId: 'cmd_depth',
+      definition: {
+        ...inlineTeam(),
+        limits: { ...DEFAULT_LIMITS, maxDelegationDepth: 3 },
+      } as CorralDefinition,
       mode: 'mock',
     });
     expect(runId).toBeNull();
