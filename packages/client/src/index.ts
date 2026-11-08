@@ -1196,6 +1196,15 @@ export class RestCorralRepository implements CorralRepository {
     return (await response.json()) as CorralRecord;
   }
 
+  async getRevision(corralId: string, definitionRevision: number) {
+    const response = await this.http.request(
+      `/corrals/${encodeURIComponent(corralId)}/revisions/${definitionRevision}`,
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as CorralDefinition;
+  }
+
   save(request: SaveRequest): Promise<SaveResult> {
     const body = { definition: request.definition, layout: request.layout };
     if (request.expectedDefinitionRevision === null)

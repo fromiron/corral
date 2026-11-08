@@ -78,6 +78,28 @@ export function describeCorralRepositoryContract(
       expect(stale).toMatchObject({ ok: false, error: 'revision_conflict' });
     });
 
+    it('reads each saved definition revision, and nothing for one never saved', async () => {
+      const repo = makeRepository();
+      const created = await repo.save({
+        definition: team(),
+        layout: { nodes: layoutNodes(), viewport },
+        expectedDefinitionRevision: null,
+      });
+      if (!created.ok) throw new Error(created.message);
+      const { corralId } = created.record;
+      const edited = { ...created.record.definition, name: 'Second revision' };
+      const second = await repo.save({
+        definition: edited,
+        layout: { nodes: layoutNodes(), viewport },
+        expectedDefinitionRevision: 1,
+      });
+      if (!second.ok) throw new Error(second.message);
+      expect((await repo.getRevision(corralId, 1))?.name).toBe(team().name);
+      expect((await repo.getRevision(corralId, 2))?.name).toBe('Second revision');
+      expect(await repo.getRevision(corralId, 3)).toBeNull();
+      expect(await repo.getRevision('corral_missing', 1)).toBeNull();
+    });
+
     it('lists, reads, duplicates under a new id, and removes', async () => {
       const repo = makeRepository();
       const created = await repo.save({

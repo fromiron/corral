@@ -6,7 +6,7 @@ import {
   CanvasLayout,
   type Clock,
   CommandError,
-  type CorralDefinition,
+  CorralDefinition,
   CorralDefinitionDraft,
   HarnessBindingRef,
   type ImageAttachment,
@@ -226,6 +226,11 @@ export type SaveResult =
 export interface CorralRepository {
   list(): Promise<CorralSummary[]>;
   get(corralId: string): Promise<CorralRecord | null>;
+  /**
+   * A saved revision as a runnable definition, as a run would read it; null when that revision
+   * was never saved or is not runnable yet.
+   */
+  getRevision(corralId: string, definitionRevision: number): Promise<CorralDefinition | null>;
   save(request: SaveRequest): Promise<SaveResult>;
   duplicate(corralId: string, name: string): Promise<SaveResult>;
   remove(corralId: string): Promise<void>;
@@ -735,6 +740,9 @@ const INDEX_KEY = `${PREFIX}index`;
 const PROJECTS_KEY = `${PREFIX}projects`;
 const SESSIONS_KEY = `${PREFIX}sessions`;
 const recordKey = (corralId: string) => `${PREFIX}corral:${corralId}`;
+// Every saved definition revision stays readable: reference Teams and runs name one.
+const revisionKey = (corralId: string, revision: number) =>
+  `${PREFIX}definition:${corralId}:${revision}`;
 
 const StoredRecord = z.strictObject({
   corralId: z.string().min(1),
@@ -938,6 +946,10 @@ export function createKeyValueCorralRepository(
   const write = (record: CorralRecord): SaveResult | null => {
     try {
       store.setItem(recordKey(record.corralId), JSON.stringify(record));
+      store.setItem(
+        revisionKey(record.corralId, record.definitionRevision),
+        JSON.stringify(record.definition),
+      );
       const index = readIndex();
       if (!index.includes(record.corralId))
         store.setItem(INDEX_KEY, JSON.stringify([...index, record.corralId]));
@@ -1004,6 +1016,11 @@ export function createKeyValueCorralRepository(
 
     async get(corralId) {
       return read(corralId);
+    },
+
+    async getRevision(corralId, definitionRevision) {
+      const raw = store.getItem(revisionKey(corralId, definitionRevision));
+      return raw === null ? null : (CorralDefinition.safeParse(safeJson(raw)).data ?? null);
     },
 
     async save(request) {

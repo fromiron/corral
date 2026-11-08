@@ -6,7 +6,7 @@
 
 ## 1. 아키텍처 결정
 
-**React/Vite/React Flow + Fastify + Run Coordinator + LangGraph.js 어댑터 + Pi agent-core worker + SQLite**를 채택한다. LangGraph와 Pi는 제품 상태의 독립 소유자가 아니다. XState·Redux·Temporal·Redis·LiteLLM을 동시에 추가하지 않는다.
+**React/Vite + Fastify + Run Coordinator + LangGraph.js 어댑터 + Pi agent-core worker + SQLite**를 채택한다. LangGraph와 Pi는 제품 상태의 독립 소유자가 아니다. XState·Redux·Temporal·Redis·LiteLLM을 동시에 추가하지 않는다.
 
 LangGraph는 검증된 정적 control flow를 순회하고 노드 실행을 Coordinator에 요청한다. Task·메시지·개입·예산·산출물·Run terminal 상태는 Coordinator가 확정한다. LangGraph의 실행 반환은 성공의 제안이며, 필수 Task·승인·활성 후손 검증 없이 Run을 성공시킬 수 없다.
 

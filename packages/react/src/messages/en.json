@@ -503,13 +503,6 @@
     "stale": "Outdated",
     "error": "Error"
   },
-  "Toolbar": {
-    "undo": "Undo",
-    "redo": "Redo",
-    "shortcuts": "Undo: Ctrl+Z · Redo: Ctrl+Shift+Z",
-    "tidy": "Arrange graph",
-    "tidyHint": "Moves boxes only; the team does not change"
-  },
   "Workspace": {
     "heading": "Teams",
     "new": "New team",
@@ -567,21 +560,19 @@
   },
   "Editor": {
     "name": "Team name",
-    "revisions": "Team version {definition} · Layout version {layout}",
+    "revisions": "Version {definition}",
     "unsaved": "Unsaved changes",
     "saved": "All changes saved",
     "save": "Save",
     "saving": "Saving…",
-    "savedResult": "Saved. {definition, select, true {New definition revision.} other {Definition unchanged.}} {layout, select, true {New layout revision.} other {Layout unchanged.}}",
+    "savedResult": "Saved. {definition, select, true {New revision.} other {Definition unchanged.}}",
     "noChanges": "Nothing to save.",
     "export": "Export JSON",
     "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
     "openRun": "Open execution page",
     "backToSession": "Back to the session",
     "appliesNextRun": "Saved changes apply from the session's next run; runs already started keep their team.",
-    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view.",
-    "showTools": "Show team tools",
-    "hideTools": "Hide team tools"
+    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view."
   },
   "RunPage": {
     "retry": "Retry loading run",
@@ -1227,8 +1218,7 @@
       "projects": "Projects",
       "sessions": "Open a session"
     },
-    "draftTeam": "Draft a team from a goal",
-    "tidy": "Arrange the graph layout"
+    "draftTeam": "Draft a team from a goal"
   },
   "Shortcuts": {
     "edit": "Change shortcut for {command}",
@@ -4987,7 +4977,6 @@
       "unset": "No limit"
     },
     "connections": "Connections",
-    "noConnections": "Nothing connected yet.",
     "connectTo": "Connect {port} to…",
     "removeConnection": "Remove the connection from {source} to {target}",
     "connection": "Connection",
@@ -5022,9 +5011,6 @@
     "saving": "Saving…",
     "saved": "Saved",
     "unsaved": "Unsaved changes",
-    "teams": "Teams",
-    "classicEditor": "Classic editor",
-    "composer": "Composer",
     "patterns": {
       "reviewLoop": "Wrap in a review loop",
       "checkLoop": "Wrap in a check loop",
@@ -5043,10 +5029,7 @@
     "savedTeams": "Saved teams",
     "addReference": "Add {name}",
     "referenceDescription": "Runs that team as saved, v{revision}",
-    "duplicate": "Duplicate",
     "testRun": "Test run",
-    "hideRun": "Close test run",
-    "exportJson": "Export JSON",
-    "importJson": "Import JSON"
+    "hideRun": "Close test run"
   }
 }

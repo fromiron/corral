@@ -503,13 +503,6 @@
     "stale": "유효하지 않음",
     "error": "오류"
   },
-  "Toolbar": {
-    "undo": "실행 취소",
-    "redo": "다시 실행",
-    "shortcuts": "실행 취소: Ctrl+Z · 다시 실행: Ctrl+Shift+Z",
-    "tidy": "그래프 자동 배치",
-    "tidyHint": "상자 위치만 바꾸며 팀 정의는 바뀌지 않습니다"
-  },
   "Workspace": {
     "heading": "팀",
     "new": "새 팀",
@@ -567,21 +560,19 @@
   },
   "Editor": {
     "name": "팀 이름",
-    "revisions": "팀 구성 버전 {definition} · 화면 배치 버전 {layout}",
+    "revisions": "버전 {definition}",
     "unsaved": "저장하지 않은 변경",
     "saved": "모두 저장됨",
     "save": "저장",
     "saving": "저장하는 중…",
-    "savedResult": "저장했습니다. {definition, select, true {정의의 새 revision.} other {정의는 그대로.}} {layout, select, true {레이아웃의 새 revision.} other {레이아웃은 그대로.}}",
+    "savedResult": "저장했습니다. {definition, select, true {정의의 새 revision.} other {정의는 그대로.}}",
     "noChanges": "저장할 것이 없습니다.",
     "export": "JSON 내보내기",
     "leaveUnsaved": "저장하지 않고 나갈까요? 저장하지 않은 변경이 사라집니다.",
     "openRun": "실행 상세 열기",
     "backToSession": "세션으로 돌아가기",
     "appliesNextRun": "저장한 변경은 세션의 다음 실행부터 적용돼요. 이미 시작한 실행은 그대로예요.",
-    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다.",
-    "showTools": "팀 도구 열기",
-    "hideTools": "팀 도구 접기"
+    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다."
   },
   "RunPage": {
     "retry": "실행 다시 불러오기",
@@ -1227,8 +1218,7 @@
       "projects": "프로젝트",
       "sessions": "세션 열기"
     },
-    "draftTeam": "목표에서 팀 초안 만들기",
-    "tidy": "그래프 배치 자동 정리"
+    "draftTeam": "목표에서 팀 초안 만들기"
   },
   "Shortcuts": {
     "edit": "{command} 단축키 변경",
@@ -4987,7 +4977,6 @@
       "unset": "한도 없음"
     },
     "connections": "연결",
-    "noConnections": "아직 연결된 것이 없습니다.",
     "connectTo": "{port} 연결할 곳…",
     "removeConnection": "{source}에서 {target}(으)로 가는 연결 삭제",
     "connection": "연결",
@@ -5022,9 +5011,6 @@
     "saving": "저장하는 중…",
     "saved": "저장됨",
     "unsaved": "저장하지 않은 변경",
-    "teams": "팀",
-    "classicEditor": "기존 편집기",
-    "composer": "구성 편집기",
     "patterns": {
       "reviewLoop": "검토 루프로 감싸기",
       "checkLoop": "검사 루프로 감싸기",
@@ -5043,10 +5029,7 @@
     "savedTeams": "저장된 팀",
     "addReference": "{name} 추가",
     "referenceDescription": "저장된 v{revision} 그대로 실행",
-    "duplicate": "복제",
     "testRun": "시험 실행",
-    "hideRun": "시험 실행 닫기",
-    "exportJson": "JSON 내보내기",
-    "importJson": "JSON 가져오기"
+    "hideRun": "시험 실행 닫기"
   }
 }

@@ -1,5 +1,6 @@
 import {
   type PointerEvent as ReactPointerEvent,
+  type SetStateAction,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -63,26 +64,33 @@ export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: Graph
   const read = useRef({ bounds, onMove, onTap, canPan });
   read.current = { bounds, onMove, onTap, canPan };
 
+  // Until the person moves the view, it follows the pane: a panel opening beside it refits.
+  const moved = useRef(false);
   const fit = useCallback(() => {
     const element = pane.current;
     if (!element) return;
+    moved.current = false;
     setViewport(fitBounds(read.current.bounds(), element.clientWidth, element.clientHeight));
   }, []);
-  // Fit once, when the pane first has a size and the content is ready.
   useLayoutEffect(() => {
     const element = pane.current;
-    if (viewport || !ready || !element) return;
+    if (!ready || !element) return;
     const measure = () => {
-      if (element.clientWidth > 0 && element.clientHeight > 0) fit();
+      if (!moved.current && element.clientWidth > 0 && element.clientHeight > 0) fit();
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [viewport, ready, fit]);
+  }, [ready, fit]);
+  const moveTo = useCallback((next: SetStateAction<Viewport | null>) => {
+    moved.current = true;
+    setViewport(next);
+  }, []);
 
   const zoomAt = useCallback((factor: number, at?: { x: number; y: number }) => {
     read.current.onMove?.();
+    moved.current = true;
     setViewport((current) => {
       if (!current) return current;
       const element = pane.current;
@@ -115,6 +123,7 @@ export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: Graph
 
   /** Moves the view by a screen distance, as the arrow keys and a drag do. */
   const panBy = useCallback((dx: number, dy: number) => {
+    moved.current = true;
     setViewport((value) => (value ? { ...value, x: value.x + dx, y: value.y + dy } : value));
   }, []);
 
@@ -132,6 +141,7 @@ export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: Graph
     const dy = event.clientY - current.y;
     if (!current.moved && Math.hypot(dx, dy) < 3) return;
     if (!current.moved) read.current.onMove?.();
+    moved.current = true;
     current.moved = true;
     current.x = event.clientX;
     current.y = event.clientY;
@@ -147,7 +157,8 @@ export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: Graph
   return {
     pane,
     viewport,
-    setViewport,
+    /** Moves the view on the caller's behalf; it stops following the pane's size. */
+    setViewport: moveTo,
     fit,
     zoomAt,
     panBy,

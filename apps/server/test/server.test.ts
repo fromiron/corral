@@ -462,6 +462,11 @@ describe('REST: Corrals and runs', () => {
     expect(stale).toMatchObject({ ok: false, error: 'revision_conflict' });
     expect((await repo.list()).map((c) => c.name)).toEqual(['Renamed']);
     expect(await repo.get('corral_missing')).toBeNull();
+    // A reference Team reads the revision it names, not the latest one.
+    expect((await repo.getRevision(record.corralId, 1))?.name).toBe(record.definition.name);
+    expect((await repo.getRevision(record.corralId, 2))?.name).toBe('Renamed');
+    expect(await repo.getRevision(record.corralId, 9)).toBeNull();
+    expect(await repo.getRevision('corral_missing', 1)).toBeNull();
 
     // The revision travels as If-Match (API-Contract §1); without it nothing is saved.
     const noPrecondition = await call(`${server.url}/api/v1/corrals/${record.corralId}`, {

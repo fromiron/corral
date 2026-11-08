@@ -1,6 +1,5 @@
 import { CanvasLayout, CorralDefinition, type Receipt } from '@corral/contracts';
 import { emptyProjection, type RunProjection } from '@corral/core';
-import { ReactFlowProvider } from '@xyflow/react';
 import type { ReactNode } from 'react';
 import { createStore } from 'zustand/vanilla';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
@@ -85,7 +84,7 @@ export function StudioFrame({
 }) {
   return (
     <StudioStoresProvider editor={createEditorStore(draft)} session={session}>
-      <ReactFlowProvider>{children}</ReactFlowProvider>
+      {children}
     </StudioStoresProvider>
   );
 }

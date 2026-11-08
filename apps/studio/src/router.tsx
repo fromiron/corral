@@ -22,7 +22,6 @@ import { RunPage } from './pages/RunPage.tsx';
 import { ScheduledPage } from './pages/ScheduledPage.tsx';
 import { SessionPage } from './pages/SessionPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
-import { TeamEditorPage } from './pages/TeamEditorPage.tsx';
 import { VaultSettingsPage } from './pages/VaultSettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
@@ -215,18 +214,6 @@ export const editorRoute = createRoute({
   component: EditorPage,
 });
 
-/** The structure-first team composer, beside the classic editor on the same working copy. */
-export const composeRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/corrals/$corralId/compose',
-  loader: async ({ context, params }) => {
-    const record = await context.services.repository.get(params.corralId);
-    if (!record) throw notFound();
-    return record;
-  },
-  component: TeamEditorPage,
-});
-
 export const runRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/runs/$runId',
@@ -379,7 +366,6 @@ export function createStudioRouter(services: StudioServices) {
       reviewRoute,
       demoRoute,
       editorRoute,
-      composeRoute,
       runRoute,
       modelSettingsRoute,
       vaultSettingsRoute,

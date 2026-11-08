@@ -4,8 +4,6 @@ export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/Arti
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
 export { BudgetInspector } from './components/BudgetInspector.tsx';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
-export { CorralCanvas, NODE_DRAG_TYPE } from './components/CorralCanvas.tsx';
-export { EditorToolbar, isTextEditingEvent, TIDY_EVENT } from './components/EditorToolbar.tsx';
 export { EffortJudgments } from './components/EffortJudgments.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {
@@ -17,8 +15,6 @@ export { FailureNotice } from './components/FailureNotice.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { InteractionPanel } from './components/InteractionPanel.tsx';
 export { MessageBody } from './components/MessageBody.tsx';
-export { NodeInspector } from './components/NodeInspector.tsx';
-export { NodePalette } from './components/NodePalette.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningSummary } from './components/ReasoningSummary.tsx';
@@ -41,7 +37,6 @@ export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
 export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';
-export { ValidationPanel } from './components/ValidationPanel.tsx';
 export { primaryWorkPlan, useRunWorkPlan, WorkPlanPanel } from './components/WorkPlanPanel.tsx';
 export { StudioStoresProvider, useStudioStores } from './context.tsx';
 export * from './editor/model.ts';
@@ -130,4 +125,5 @@ export {
   type TeamLabels,
   type TeamWording,
 } from './team/draft.ts';
+export type { Pattern, TeamReference } from './team-editor/commands.ts';
 export { TeamEditor } from './team-editor/TeamEditor.tsx';

@@ -21,11 +21,15 @@ test('canvas handles receive a pointer connection', async ({ page, corral }) => 
   await corral.open('/');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team', exact: true }).click();
+  const canvas = page.locator('[data-team-canvas]');
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  // With nothing selected the output lands on its own, unconnected.
+  await canvas.press('Escape');
   await page.getByRole('button', { name: 'Add Output', exact: true }).click();
-  const agent = page.locator('.react-flow__node[data-id="agent_1"]');
-  const output = page.locator('.react-flow__node[data-id="output_1"]');
-  await agent.locator('[data-handleid="out"]').dragTo(output.locator('[data-handleid="in"]'));
-  await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+  await expect(canvas.locator('[data-edge]')).toHaveCount(0);
+  await canvas
+    .locator('[data-port="agent_1:out"]')
+    .dragTo(canvas.locator('[data-node="output_1"]').first());
+  await expect(canvas.locator('[data-edge]')).toHaveCount(1);
   expect(corral.errors).toEqual([]);
 });

@@ -1,5 +1,4 @@
 import type { RunSummary } from '@corral/core';
-import { TIDY_EVENT } from '@corral/react';
 import { Button, Kbd } from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
@@ -450,21 +449,6 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         },
       }),
     );
-    // Only in the editor: the canvas listens for the tidy event.
-    const editing = /\/corrals\/[^/]+\/edit$|^\/demo$/.test(window.location.pathname);
-    const tidy: AppCommand[] = editing
-      ? [
-          {
-            id: 'editor:tidy',
-            title: t('tidy'),
-            group: t('groups.editor'),
-            keywords: ['arrange', 'layout', 'tidy', '정리', '배치'],
-            run: () => {
-              window.dispatchEvent(new Event(TIDY_EVENT));
-            },
-          },
-        ]
-      : [];
     const draftTeam: AppCommand = {
       id: 'create:team-draft',
       title: t('draftTeam'),
@@ -508,7 +492,6 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     // What this screen can do comes first, then moving around, then making things.
     const help = registered.find((c) => c.id === 'help:shortcuts');
     return [
-      ...tidy,
       ...registered.filter((c) => c.id !== 'help:shortcuts'),
       ...dynamic,
       ...go,
