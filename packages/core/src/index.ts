@@ -75,6 +75,7 @@ export { fixedReasoning, reasoningPolicyOf } from './reasoning.ts';
 export * from './repository/index.ts';
 export { reviewCriteriaHash } from './review-recipe.ts';
 export * from './run-plan.ts';
+export * from './run-stats.ts';
 export * from './runner.ts';
 export * from './session-runs.ts';
 export * from './store/run-store.ts';

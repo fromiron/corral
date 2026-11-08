@@ -98,6 +98,8 @@ function request(message: DemoRequest): Promise<unknown> {
       return transport.listRuns(...message.args);
     case 'getRunDefinition':
       return transport.getRunDefinition(...message.args);
+    case 'getRunStats':
+      return transport.getRunStats(...message.args);
   }
 }
 

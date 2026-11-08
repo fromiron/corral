@@ -4989,6 +4989,25 @@
     "addReference": "Add {name}",
     "referenceDescription": "Runs that team as saved, v{revision}",
     "testRun": "Test run",
-    "hideRun": "Close test run"
+    "hideRun": "Close test run",
+    "stats": {
+      "toggle": "Run stats",
+      "summary": "Version {revision} · {count, plural, one {# run} other {# runs}}",
+      "empty": "No finished live runs of version {revision}",
+      "loading": "Loading run stats…",
+      "failed": "Could not load run stats",
+      "rounds": "avg {average} rounds",
+      "cap": "cap {hit}/{of}",
+      "branch": "{port} {count}",
+      "tokens": "{share} of tokens",
+      "failures": "{count} failed",
+      "retries": "{count} retried",
+      "idle": "Not run",
+      "runRounds": "{count, plural, one {# round} other {# rounds}}",
+      "runSelected": "{count, plural, one {# time} other {# times}}",
+      "runTokens": "{count, number} tokens",
+      "runFailures": "{count} failed",
+      "runRetries": "{count} retried"
+    }
   }
 }

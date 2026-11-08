@@ -4,6 +4,7 @@ import { animate, useReducedMotion } from 'motion/react';
 import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useEffect,
   useId,
@@ -61,6 +62,8 @@ export interface TeamGraphCanvasProps {
   onDelete: (ids: string[]) => void;
   /** How much of the canvas's right side a floating panel covers. */
   insetRight?: number;
+  /** Shown just under a step or box, by node id (run stats); the row gap leaves room for it. */
+  annotations?: ReadonlyMap<string, ReactNode> | undefined;
 }
 
 type Shown = LaidItem & { opacity?: number };
@@ -132,6 +135,7 @@ export function TeamGraphCanvas({
   onConnect,
   onDelete,
   insetRight = 0,
+  annotations,
 }: TeamGraphCanvasProps) {
   const t = useTranslations('TeamEditor');
   const portName = useTranslations('Canvas.ports');
@@ -843,6 +847,24 @@ export function TeamGraphCanvas({
               </button>
             );
           })}
+          {annotations
+            ? ordered.map((item) => {
+                const shown = annotations.get(item.id);
+                return shown ? (
+                  <div
+                    key={`stats:${item.id}`}
+                    className="absolute z-20"
+                    style={{
+                      left: item.rect.x + 8,
+                      top: item.rect.y + item.rect.h + 4,
+                      opacity: item.opacity,
+                    }}
+                  >
+                    {shown}
+                  </div>
+                ) : null;
+              })
+            : null}
           {outPorts.map((port) => {
             const key = `${port.nodeId}:${port.port}`;
             const active = wire?.from.nodeId === port.nodeId && wire.from.port === port.port;

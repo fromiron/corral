@@ -16,7 +16,7 @@ import {
   useStudioStores,
 } from '@corral/react';
 import { Button, KitBadge, Select } from '@corral/react/design-kit';
-import { Play, Redo2, Undo2 } from '@corral/react/icons';
+import { Activity, Play, Redo2, Undo2 } from '@corral/react/icons';
 import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -44,6 +44,7 @@ import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useRunMode } from '../workbench/useRunMode.ts';
+import { useRunStats } from '../workbench/useRunStats.ts';
 import { useSavedTeams } from '../workbench/useSavedTeams.ts';
 
 export function EditorPage() {
@@ -230,6 +231,9 @@ function Editor({
   const canRedo = useStore(editor, (s) => s.canRedo);
   const teams = useSavedTeams(record, draft.definition);
   const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
+  const [statsOn, setStatsOn] = useState(false);
+  const revision = saved.record.definitionRevision;
+  const runStats = useRunStats(services.transport, statsOn, record.corralId, revision);
   const runId = useId();
   // Undo back to the saved draft returns the same object, so identity is the dirty check.
   const dirty = saving || draft !== saved.draft;
@@ -347,6 +351,28 @@ function Editor({
             </p>
           ) : null}
           <span className="grow" />
+          {runStats.status === 'off' ? null : (
+            <span
+              role="status"
+              className={`text-caption ${runStats.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              {runStats.status === 'loading'
+                ? c('stats.loading')
+                : runStats.status === 'failed'
+                  ? c('stats.failed')
+                  : runStats.stats.runs.length
+                    ? c('stats.summary', { revision, count: runStats.stats.runs.length })
+                    : c('stats.empty', { revision })}
+            </span>
+          )}
+          <Button
+            variant="tertiary"
+            size="compact"
+            aria-pressed={statsOn}
+            onClick={() => setStatsOn((on) => !on)}
+          >
+            <Activity /> {c('stats.toggle')}
+          </Button>
           {toolbar}
           <Button
             variant="ghost"
@@ -402,6 +428,12 @@ function Editor({
             onOpenTeam={(corralId) =>
               void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
             }
+            runStats={
+              runStats.status === 'ready'
+                ? { stats: runStats.stats, definition: saved.record.definition }
+                : null
+            }
+            onOpenRun={(runId) => void navigate({ to: '/runs/$runId', params: { runId } })}
             loopSettings={(node) => (
               <LoopRecipeSettings
                 key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}

@@ -88,6 +88,7 @@ export function createDemoRuntime(): {
     getConversationTurn: (...args) => request('getConversationTurn', ...args),
     listRuns: () => request('listRuns'),
     getRunDefinition: (...args) => request('getRunDefinition', ...args),
+    getRunStats: (...args) => request('getRunStats', ...args),
     subscribe(runId, afterSeq, handlers) {
       const id = ++nextId;
       if (failure) {

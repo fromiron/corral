@@ -1,7 +1,9 @@
-import { isBox } from '@corral/core';
+import type { CorralDefinition } from '@corral/contracts';
+import { isBox, type RunStats } from '@corral/core';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -55,6 +57,8 @@ import { InspectorSheet, PATTERNS, type SheetView } from './InspectorSheet.tsx';
 import { ADDABLE, KIND_ICON } from './kinds.ts';
 import { layoutTeam } from './layout.ts';
 import type { LoopSettings, ProfileOption, RoleSettings } from './NodeSettings.tsx';
+import { RunStatsFigures } from './RunStatsFigures.tsx';
+import { statFigures } from './runStats.ts';
 import { StructureTree } from './StructureTree.tsx';
 import { STEP_DRAG_TYPE, TeamGraphCanvas, type TeamSelection } from './TeamGraphCanvas.tsx';
 
@@ -74,6 +78,9 @@ export interface TeamEditorProps {
   /** The saved definition a reference Team points at, once the host has loaded it. */
   resolveTeam?: ((corralId: string, definitionRevision: number) => unknown) | undefined;
   onOpenTeam?: ((corralId: string) => void) | undefined;
+  /** Run stats of the saved revision, laid over the canvas while the host shows them. */
+  runStats?: { stats: RunStats; definition: CorralDefinition } | null | undefined;
+  onOpenRun?: ((runId: string) => void) | undefined;
 }
 
 const NONE: TeamSelection = { nodes: [], edge: null };
@@ -92,6 +99,8 @@ export function TeamEditor({
   teams = NO_TEAMS,
   resolveTeam,
   onOpenTeam,
+  runStats = null,
+  onOpenRun,
 }: TeamEditorProps) {
   const t = useTranslations('TeamEditor');
   const reduced = useReducedMotion() ?? false;
@@ -360,6 +369,26 @@ export function TeamEditor({
     }
   };
 
+  const annotations = useMemo(() => {
+    if (!runStats) return undefined;
+    const figures = statFigures(definition, runStats.definition, runStats.stats);
+    const shown = new Map<string, ReactNode>();
+    for (const [nodeId, list] of figures) {
+      const node = definition.nodes.find((candidate) => candidate.id === nodeId);
+      if (node)
+        shown.set(
+          nodeId,
+          <RunStatsFigures
+            node={node}
+            figures={list}
+            stats={runStats.stats}
+            onOpenRun={onOpenRun}
+          />,
+        );
+    }
+    return shown;
+  }, [runStats, definition, onOpenRun]);
+
   const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
@@ -402,6 +431,7 @@ export function TeamEditor({
           onConnect={(request) => apply(connectPorts(editor.getState().draft, request))}
           onDelete={remove}
           insetRight={sheetOpen ? 368 : 0}
+          annotations={annotations}
         />
         <div
           role="toolbar"

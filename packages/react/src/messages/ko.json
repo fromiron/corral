@@ -4989,6 +4989,25 @@
     "addReference": "{name} 추가",
     "referenceDescription": "저장된 v{revision} 그대로 실행",
     "testRun": "시험 실행",
-    "hideRun": "시험 실행 닫기"
+    "hideRun": "시험 실행 닫기",
+    "stats": {
+      "toggle": "실행 통계",
+      "summary": "버전 {revision} · 실행 {count}개",
+      "empty": "버전 {revision}의 끝난 실제 실행 없음",
+      "loading": "실행 통계 불러오는 중…",
+      "failed": "실행 통계를 불러오지 못함",
+      "rounds": "평균 {average}회",
+      "cap": "상한 {hit}/{of}",
+      "branch": "{port} {count}",
+      "tokens": "토큰 {share}",
+      "failures": "실패 {count}",
+      "retries": "재시도 {count}",
+      "idle": "실행 안 됨",
+      "runRounds": "{count}회",
+      "runSelected": "{count}번",
+      "runTokens": "토큰 {count, number}",
+      "runFailures": "실패 {count}",
+      "runRetries": "재시도 {count}"
+    }
   }
 }

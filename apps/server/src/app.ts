@@ -918,6 +918,17 @@ async function createCorralServer(
       return definition ?? fail(reply, 'TARGET_NOT_FOUND', 'no such Corral revision');
     },
   );
+  app.get<{ Params: { corralId: string; revision: string } }>(
+    '/api/v1/corrals/:corralId/revisions/:revision/stats',
+    async (request, reply) => {
+      const revision = Number(request.params.revision);
+      const definition = Number.isSafeInteger(revision)
+        ? await corrals.getRevision(request.params.corralId, revision)
+        : null;
+      if (!definition) return fail(reply, 'TARGET_NOT_FOUND', 'no such Corral revision');
+      return coordinator.runStats(request.params.corralId, revision);
+    },
+  );
   app.put<{ Params: { corralId: string } }>('/api/v1/corrals/:corralId', async (request, reply) => {
     const expectedDefinitionRevision = ifMatchRevision(request.headers['if-match']);
     if (expectedDefinitionRevision === null) {

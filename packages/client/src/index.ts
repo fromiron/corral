@@ -259,6 +259,7 @@ import type {
   ProjectResult,
   ProjectSummary,
   RunArchive,
+  RunStats,
   RunSummary,
   RuntimeSnapshot,
   RuntimeTransport,
@@ -833,6 +834,12 @@ export class HttpSseTransport implements RuntimeTransport {
     if (response.status === 404) return null;
     if (!response.ok) throw await apiError(response);
     return ((await response.json()) as { definition: CorralDefinition }).definition;
+  }
+
+  getRunStats(corralId: string, definitionRevision: number): Promise<RunStats> {
+    return this.http.json(
+      `/corrals/${encodeURIComponent(corralId)}/revisions/${definitionRevision}/stats`,
+    );
   }
 
   exportRun(runId: string, options: { privateTranscript?: boolean } = {}): Promise<RunArchive> {

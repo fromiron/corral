@@ -160,6 +160,7 @@ import {
 } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun } from './run-plan.ts';
+import { type RunStats, runStats } from './run-stats.ts';
 import {
   type GraphRunner,
   type IterationRef,
@@ -3393,6 +3394,13 @@ export class Coordinator {
 
   listRuns(): RunSummary[] {
     return this.store.listRuns();
+  }
+
+  /** Recent finished live runs of one saved revision, step by step. */
+  runStats(corralId: string, definitionRevision: number): RunStats {
+    return runStats({ corralId, definitionRevision }, this.store.listRuns(), (runId) =>
+      this.store.getRun(runId),
+    );
   }
 
   /** Whether a run-creation command is already recorded (a resend, not a new run). */
