@@ -28,7 +28,8 @@
 | 편집기: 저장 배치 삭제, `getRevision` | 완료 | 26529d19 |
 | 실행 통계 레이어 | 완료 | e38660ec(명세), 4490f0bb |
 | 3. 루프 실행 | 완료 | 22d72e0e, 915817de(명세), 구현은 `feat: run several, nested and budgeted loops` |
-| 4. 재시도와 새 판단 | 시작 전 | |
+| 4. 재시도, 실패 경로, router | 진행 중 | 3cf75135(3단계 보완) |
+| 4b. check Decision | 시작 전 | |
 | 5. 병렬 | 시작 전 | |
 | 6. 하위 팀 | 시작 전 | |
 | 7. 위임 깊이 | 시작 전 | |
@@ -38,7 +39,8 @@
 런타임 단계(3–7)는 [실행 지원 범위](../specs/features/team-graph.md#실행-지원-범위)에서 해당 항목을 지우고, 컴파일러의 `RUNTIME_UNSUPPORTED` 규칙을 없애고, 실제로 실행하는 테스트가 통과하면 끝난다.
 
 - 3: Loop 둘 이상, 상자 안의 상자, Loop `budget`·`stallDetection`·`exhausted`, `maxIterations` 상한, Loop로 시작.
-- 4: Agent `retry`와 `error` 연결, `check`·`router` Decision.
+- 4: Agent `retry`와 `error` 연결, `router` Decision과 `route` 승인.
+- 4b: `check` Decision. 등록 검사의 주인이 지금은 실행(execution)이나 수동 세션뿐이라, Decision이 주인인 검사와 Run 시작에서 고정하는 프로젝트 검사 설정이 필요하다. 진짜 pass·fail이 아닌 결과(오류, 시간 초과, 취소, 바뀐 tree, 판정 불가)는 그 노드에서 사람을 기다린다.
 - 5: 한 포트의 병렬 분기, Join.
 - 6: Team 노드(안에 둔 팀, 저장된 팀 참조), Team으로 시작.
 - 7: 2보다 큰 `maxDelegationDepth`, 설치 정책 상한을 넘는 `maxSpawns`.
@@ -46,8 +48,8 @@
 
 ## 다음 스텝
 
-1. 4단계(재시도와 새 판단): Agent `retry`와 `error` 연결, `check`·`router` Decision. 끝나면 실행 통계의 재시도·router 갈래 수치가 실제로 채워진다.
-2. 5단계(병렬과 Join).
+1. 4단계: 명세는 [재시도와 실패 경로](../specs/features/team-graph.md#재시도와-실패-경로)·[router 실행](../specs/features/team-graph.md#router-실행). 실패 테스트부터 쓴다. 끝나면 실행 통계의 재시도·router 갈래 수치가 실제로 채워진다.
+2. 4b단계(check Decision), 그다음 5단계(병렬과 Join).
 
 ## 남은 정리와 열린 질문
 

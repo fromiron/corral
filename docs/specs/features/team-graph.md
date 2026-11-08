@@ -88,7 +88,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 9. **연결되지 않은 출구.**
    - Decision과 router의 출구, Loop의 `exhausted`, Agent의 `error`가 연결되지 않아도 정의는 유효하다.
    - 연결 안 된 Decision 출구는 경고한다.
-   - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 사용자 확인을 기다린다. 연결 안 된 `reject`가 선택되면 Run을 끝낸다.
+   - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 `needs_user`로 실패한다. 이유에 노드와 출구가 남는다. 연결 안 된 `reject`가 선택되면 Run은 취소된다.
    - router는 route가 둘 미만이면 오류다.
 10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다.
 11. **그 밖의 검사.** 스키마·버전, 중복 id, 존재하지 않는 참조, 포트 방향, 입력 바인딩의 생산자, review 계약, 모델 기능 호환, 허용 목록을 기존처럼 검사한다. 정의 규모는 개수만으로 거절하지 않는다([제품 계약](../product-contract.md) §9).
@@ -112,17 +112,33 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 - **소진.** `exhausted`에 연결이 있으면 회차를 그 이유로 끝내고 Loop를 떠나 그리로 간다. 연결이 없으면 이유와 함께 한 회차 더 돌지 사용자에게 묻는다(`loop_cap` 승인, `loopStop`). 승인하면 회차를 `revise`로 끝내고 다음 회차를 열며, 다음 다시 돌기에서 같은 확인을 한다. 거절하면 회차를 그 이유로 끝내고 Run을 취소한다.
 - **나가기.** Loop의 `exit`로 들어오면 회차를 `pass`로 끝내고 `next`로 간다. 여러 겹 바깥 상자의 `exit`나 `repeat`로 바로 가면, 그 사이 안쪽 Loop의 열린 회차는 모두 `pass`로 끝난다.
 
+### 재시도와 실패 경로
+
+- **재시도.** scheduled Agent의 실행(execution)이 `failed`로 끝나고 Run이 아직 진행 중이면, 같은 Task의 다음 시도를 곧바로 시작한다. `retry.maxAttempts`번까지 다시 시도하므로 시도는 모두 `1 + maxAttempts`번이다.
+  - 다음 시도는 `attemptNo`가 하나 크고 `previousExecutionId`로 앞 시도를 가리키며, 같은 회차에 속한다.
+  - 입력은 앞 시도와 같은 입력 버전에 `previous_attempt_error` 하나를 더한 것이다. 앞 시도의 오류 문구이며 2,000자까지 자른다. 앞 시도의 기록과 산출물은 그대로 남는다.
+  - 취소로 끝난 실행, 종료를 확인하지 못한 실행, Run이 진행 중이 아닐 때 끝난 실행은 다시 시도하지 않는다. 일시정지 중이면 재개한 뒤 시작한다.
+  - 시도마다 모델 호출은 Run 예산과 admission을, Loop 안이면 그 Loop의 예산도 따른다.
+- **실패 경로.** 마지막 시도까지 실패하면 `error`에 연결이 있을 때 그리로 간다. 그 연결이 바로 가리키는 Agent는 입력 `step_error`를 더 받는다: 실패한 단계 이름, 시도 수, 마지막 오류 문구(2,000자까지). `error`에 연결이 없으면 Run은 `execution_failed`로 실패한다.
+
+### router 실행
+
+- **고르는 실행.** router에 닿으면 router 노드의 새 Task로 실행 하나를 시작한다. 이 실행은 내장 선택 역할로 돈다: 정해진 지시문, 도구 없음, `text` 출력. 모델은 router의 `modelProfile`, 없으면 첫 `task_output` 입력을 만든 Agent 역할의 모델, 그것도 없으면 정의의 첫 역할 모델이다. Run 시작에서 다른 모델과 함께 고정한다.
+- **입력.** router의 입력 바인딩과 `routes` 입력 하나를 받는다. `routes`는 route마다 id, 이름, 설명이다. Loop 안이면 그 회차의 실행이다.
+- **선택.** 제출한 글을 앞뒤 공백 없이 route id와 비교해 같은 route를 고른다(`reasonCode: model_route`). 고른 route에 연결이 없으면 [연결되지 않은 출구](#구조-규칙)처럼 처리한다. 선택 실행은 재시도하지 않는다.
+- **사람이 고르기.** 제출이 route id가 아니거나 선택 실행이 실패하면 `route` 승인으로 사람에게 묻는다. 승인에는 연결된 route만 정의 순서대로 보인다. 사람이 route 하나를 골라 승인하면 그 route로 간다(`reasonCode: human_route`). 거절하면 Run이 취소된다. 확인 대상은 router 입력 버전과 선택 실행의 제출이고, 둘 다 없으면 Run 기준 버전이다.
+- **기록.** 어느 쪽이든 `workflow.branch_selected`(`mode: router`)를 남기며, 선택 실행의 제출과 승인을 근거로 단다.
+
 ### 실행 지원 범위
 
 정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
 
 - Team 노드와 Join 노드.
-- `check`·`router` Decision.
+- `check` Decision.
 - 한 포트에 연결이 둘 이상인 병렬 분기.
-- Agent의 `retry.maxAttempts` 1 이상과 `error` 연결.
 - 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
 
-compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀이 여기에 포함된다.
+compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router가 여기에 포함된다.
 
 ### 계획 IR
 
@@ -193,6 +209,44 @@ Scenario: 루프로 시작하는 팀
   Given 시작 노드가 Loop인 정의
   When 실행한다
   Then Loop의 1회차부터 실행된다
+
+Scenario: 실패한 Agent를 다시 시도한다
+  Given retry.maxAttempts 2인 Agent W의 첫 시도가 실패한다
+  When 실행한다
+  Then W의 같은 Task에 attemptNo 2인 시도가 시작되고, 첫 시도와 같은 입력 버전과 첫 시도의 오류를 받는다
+  When 둘째 시도가 성공한다
+  Then Run은 W의 다음 단계로 이어지고 첫 시도의 기록이 남는다
+
+Scenario: 재시도를 다 쓰면 실패 경로로 간다
+  Given retry.maxAttempts 1인 Agent W가 매번 실패하고 W의 error가 Agent F로 이어진다
+  When 실행한다
+  Then W는 두 번 시도되고 F가 W의 이름, 시도 수, 마지막 오류를 step_error로 받아 실행된다
+  Given W의 error에 연결이 없다
+  Then Run은 execution_failed로 실패한다
+
+Scenario: 취소된 실행은 다시 시도하지 않는다
+  Given retry.maxAttempts 2인 Agent W가 실행 중이다
+  When 사용자가 Run을 취소한다
+  Then W의 새 시도는 시작되지 않는다
+
+Scenario: router가 모델로 route를 고른다
+  Given route fix와 ship이 모두 연결된 router R의 선택 실행이 "ship"을 제출한다
+  When 실행한다
+  Then ship으로 가고 workflow.branch_selected에 model_route와 그 제출이 근거로 남는다
+
+Scenario: router가 고르지 못하면 사람이 고른다
+  Given router R의 선택 실행이 route id가 아닌 글을 제출한다
+  When 실행한다
+  Then 연결된 route를 보이는 route 승인을 요청한다
+  When 사용자가 fix를 골라 승인한다
+  Then fix로 가고 human_route가 남는다
+  When 다른 Run에서 사용자가 같은 승인을 거절한다
+  Then 그 Run은 취소된다
+
+Scenario: 연결 안 된 출구를 고르면 Run이 멈춘다
+  Given review Decision의 revise에 연결이 없다
+  When 검토가 revise를 고른다
+  Then Run은 needs_user로 실패한다
 
 Scenario: 루프 안의 루프와 팀을 감싼 루프를 정의한다
   Given Loop A 안에 Loop B와 inline Team C가 있고 C 안에 Agent와 review Decision이 있다
