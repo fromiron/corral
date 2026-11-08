@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AutoRoute } from './auto-team.ts';
-import { CancelScope, StartFrom } from './commands.ts';
+import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
 import {
   DecisionFailureReason,
   DecisionPrivacy,
@@ -118,6 +118,10 @@ export const RunStarted = event(
     reasoningApply: ReasoningApplySettings.optional(),
     /** The earlier version whose text this run's brief starts from. */
     startedFrom: StartFrom.optional(),
+    /** The finished run and step this run forked from, and the results copied from it. */
+    forkedFrom: ForkFrom.extend({
+      carried: z.array(z.strictObject({ nodeId: Identifier, artifactVersionIds: Ids })).max(200),
+    }).optional(),
     /** The session turns this run carries as conversation. */
     conversation: ContinuedConversation.optional(),
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
@@ -348,11 +352,18 @@ export const LoopIterationFinished = event(
     submittedVersionIds: Ids,
   }),
 );
+/** The run's whole breakpoint list after a start or a `set_breakpoints` command. */
+export const BreakpointsChanged = event(
+  'breakpoints.changed',
+  z.strictObject({ nodeIds: z.array(Identifier).max(200) }),
+);
 export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check']),
+    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check', 'breakpoint']),
+    /** The step a `breakpoint` approval holds before it starts. */
+    nodeId: Identifier.optional(),
     /** Why a Loop asks for another round: its round cap or a stall. */
     loopStop: z.enum(['cap_reached', 'stalled']).optional(),
     /** The connected routes a person may pick for a router that could not choose. */
@@ -866,6 +877,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   LoopIterationFinished,
   ApprovalRequested,
   ApprovalResolved,
+  BreakpointsChanged,
   DirectiveAccepted,
   DirectiveAttached,
   DirectiveDispatched,

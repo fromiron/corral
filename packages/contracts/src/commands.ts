@@ -166,6 +166,18 @@ export const CompactContextCommand = z.strictObject({
 });
 export type CompactContextCommand = z.infer<typeof CompactContextCommand>;
 
+/** The step breakpoints of a run: scheduled Agents and Decisions that wait before they start. */
+export const Breakpoints = z.array(Identifier).max(200);
+export type Breakpoints = z.infer<typeof Breakpoints>;
+
+/** Replace the run's breakpoints; the change applies from the next step that starts. */
+export const SetBreakpointsCommand = z.strictObject({
+  ...optionalRevision,
+  type: z.literal('set_breakpoints'),
+  payload: z.strictObject({ nodeIds: Breakpoints }),
+});
+export type SetBreakpointsCommand = z.infer<typeof SetBreakpointsCommand>;
+
 export const RunCommand = z.discriminatedUnion('type', [
   CompactContextCommand,
   AnswerExtensionUiCommand,
@@ -177,6 +189,7 @@ export const RunCommand = z.discriminatedUnion('type', [
   PatchCommand,
   ResolveApprovalCommand,
   RestartTaskCommand,
+  SetBreakpointsCommand,
 ]);
 export type RunCommand = z.infer<typeof RunCommand>;
 export type RunCommandType = RunCommand['type'];
@@ -188,6 +201,13 @@ export type RunCommandType = RunCommand['type'];
  */
 export const StartFrom = z.strictObject({ runId: Identifier, artifactVersionId: Identifier });
 export type StartFrom = z.infer<typeof StartFrom>;
+
+/**
+ * Start a new Run at a top-level step of a finished Run of the same session. Earlier steps do not
+ * run again: the results the remaining steps read are copied from that Run.
+ */
+export const ForkFrom = z.strictObject({ runId: Identifier, nodeId: Identifier });
+export type ForkFrom = z.infer<typeof ForkFrom>;
 
 /** A path inside the work folder: relative, no `..`, no drive or leading slash. */
 const ReferencePath = z
@@ -247,6 +267,8 @@ export const StartRunRequest = z.strictObject({
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
   roleOverrides: RoleRunOverrides.optional(),
+  forkFrom: ForkFrom.optional(),
+  breakpoints: Breakpoints.optional(),
   /** The auto choice this run's definition came from; set by the runtime's starter. */
   autoRoute: AutoRoute.optional(),
   /** the session request a conversation start came from, so a resend finds this run. */
@@ -277,5 +299,7 @@ export const CreateRunRequest = z.strictObject({
   references: RunReferences.optional(),
   harnessOverrides: HarnessOverrides.optional(),
   roleOverrides: RoleRunOverrides.optional(),
+  forkFrom: ForkFrom.optional(),
+  breakpoints: Breakpoints.optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

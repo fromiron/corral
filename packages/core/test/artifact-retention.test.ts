@@ -20,10 +20,14 @@ function setup() {
   const inner = new ScriptedAgentAdapter({
     turns: 1,
     appendNotes: false,
-    script: async (input) =>
-      input.inputs.some((part) => part.text === 'FAIL')
-        ? { outcome: 'failed', error: 'fixture failure' }
-        : null,
+    script: async (input, host) => {
+      if (input.inputs.some((part) => part.text === 'FAIL'))
+        return { outcome: 'failed', error: 'fixture failure' };
+      // A draft the step writes but does not submit.
+      if (input.nodeId === 'writer' && input.inputs.some((part) => part.text === 'DRAFT'))
+        await host.invokeTool({ name: 'write_artifact', args: { text: 'unsubmitted draft' } });
+      return null;
+    },
   });
   const coordinator = new Coordinator({
     store,
@@ -38,6 +42,14 @@ function setup() {
   });
   const transport = new InProcessTransport(coordinator);
   return { store, coordinator, transport, hosts };
+}
+/** The last completed submission of a node. */
+function submitted(p: Awaited<ReturnType<typeof finish>>['p'], nodeId: string) {
+  for (const id of [...(p.nodeExecutions[nodeId] ?? [])].reverse()) {
+    const task = p.tasks[p.executions[id]?.taskId ?? ''];
+    if (task?.status === 'completed') return task.submittedArtifactVersionIds;
+  }
+  return [];
 }
 async function finish(s: ReturnType<typeof setup>, commandId: string, brief: string) {
   const definition = linearCorral(['writer', 'editor']);
@@ -54,14 +66,17 @@ async function finish(s: ReturnType<typeof setup>, commandId: string, brief: str
   return { runId: result.runId!, p };
 }
 describe('artifact body lifetime', () => {
-  it('releases intermediate bodies after settlement while retaining provenance and the final result', async () => {
+  it('releases intermediate bodies after settlement while retaining provenance, step results and the final result', async () => {
     const s = setup();
-    const { runId, p } = await finish(s, 'cmd_first', 'first');
+    const { runId, p } = await finish(s, 'cmd_first', 'DRAFT');
     const final = p.output!.artifactVersionIds[0]!;
-    const old = Object.keys(p.artifacts).filter((id) => id !== final);
+    const step = submitted(p, 'writer')[0]!;
+    const old = Object.keys(p.artifacts).filter((id) => id !== final && id !== step);
     expect(old.length).toBeGreaterThan(0);
     for (const id of old) expect(s.store.getArtifactText(runId, id)).toBeNull();
     expect(s.store.getArtifactText(runId, final)).toBeTruthy();
+    expect(s.store.getArtifactText(runId, step)).toBeTruthy();
+    expect(s.coordinator.getArtifactText(runId, step)).toBeTruthy();
     expect(s.store.readEvents(runId, 0).some((e) => e.type === 'artifact.content_released')).toBe(
       true,
     );
@@ -113,10 +128,11 @@ describe('artifact body lifetime', () => {
     expect(store.getArtifactText(runId!, 'operational')).toBeNull();
     expect(() => store.putArtifactText(runId!, 'operational', 'late')).toThrow();
   });
-  it('a failed newer run does not discard the previous successful result', async () => {
+  it('a failed newer run does not discard the previous successful result or its step results', async () => {
     const s = setup();
     const first = await finish(s, 'cmd_first', 'first');
     const id = first.p.output!.artifactVersionIds[0]!;
+    const step = submitted(first.p, 'writer')[0]!;
     const original = s.store.getArtifactText(first.runId, id);
     const definition = linearCorral(['writer']);
     definition.input.brief = 'FAIL';
@@ -129,6 +145,7 @@ describe('artifact body lifetime', () => {
     });
     await waitForProjection(s.transport, failed.runId!, (p) => p.status === 'failed');
     expect(s.store.getArtifactText(first.runId, id)).toBe(original);
+    expect(s.store.getArtifactText(first.runId, step)).toBeTruthy();
     expect(s.coordinator.getConversationTurn(failed.runId!)?.answer).toBeNull();
   });
   it('accepts late usage after another run released the old final without closing admission', async () => {
@@ -151,9 +168,12 @@ describe('artifact body lifetime', () => {
     const s = setup();
     const first = await finish(s, 'cmd_first', 'first');
     const final = first.p.output!.artifactVersionIds[0]!;
+    const step = submitted(first.p, 'writer')[0]!;
     const answer = s.store.getArtifactText(first.runId, final);
     await finish(s, 'cmd_second', 'second');
     expect(s.store.getArtifactText(first.runId, final)).toBeNull();
+    expect(s.store.getArtifactText(first.runId, step)).toBeNull();
+    expect(s.coordinator.getArtifactText(first.runId, step)).toBeNull();
     expect(s.coordinator.getConversationTurn(first.runId)?.answer).toBe(answer);
     expect(() => s.store.putArtifactText(first.runId, final, 'resurrected')).toThrow();
   });

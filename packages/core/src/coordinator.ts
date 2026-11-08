@@ -85,6 +85,7 @@ import {
   type RuntimeFiles,
   type Scheduler,
   SessionConversation,
+  type SetBreakpointsCommand,
   StartRunRequest,
   type SteerCommand,
   type StreamFrame,
@@ -115,7 +116,12 @@ import {
   runGates,
   type ToolGateView,
 } from './admission/index.ts';
-import { canReadArtifactBody, canReleaseArtifactBodies } from './artifact-retention.ts';
+import {
+  canReadArtifactBody,
+  canReleaseArtifactBodies,
+  stepResult,
+  stepResultIds,
+} from './artifact-retention.ts';
 import { validTextAttachments } from './attachments.ts';
 import { type AutoStart, autoDefinition } from './auto-team.ts';
 import { canonicalJson } from './canonical-json.ts';
@@ -136,6 +142,7 @@ import {
 } from './decisions/index.ts';
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
+import { carriedSources, forkPlan, forkSteps } from './fork.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
@@ -154,7 +161,7 @@ import {
   reasoningPolicyOf,
 } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
-import { planRun } from './run-plan.ts';
+import { planRun, type RunPlan } from './run-plan.ts';
 import { type RunStats, runStats } from './run-stats.ts';
 import {
   type GraphRunner,
@@ -1586,6 +1593,33 @@ export class Coordinator {
       });
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
+    // A fork takes its request and criteria from the finished run of this session it forks.
+    const forkFrom = 'forkFrom' in request ? request.forkFrom : undefined;
+    const forkSource = forkFrom ? this.store.getRun(forkFrom.runId) : null;
+    if (forkFrom) {
+      if (
+        ('input' in request && request.input !== undefined) ||
+        request.startFrom !== undefined ||
+        request.references?.length
+      )
+        return refuse({
+          code: 'SCHEMA_INVALID',
+          message: 'a fork takes its request from the run it forks',
+        });
+      if (
+        !forkSource ||
+        !TERMINAL_RUN_STATUSES.has(forkSource.projection.status) ||
+        (forkSource.sessionId ?? null) !== (request.sessionId ?? null)
+      )
+        return refuse({
+          code: 'TARGET_NOT_FOUND',
+          message: `no finished run ${forkFrom.runId} in this session`,
+        });
+      resolved.definition = {
+        ...(resolved.definition as CorralDefinition),
+        input: forkSource.snapshot.definition.input,
+      };
+    }
     const meeting = 'meeting' in request ? request.meeting : undefined;
     let meetingContext: RuntimeCheckpointState | undefined;
     if (meeting) {
@@ -1700,6 +1734,12 @@ export class Coordinator {
         });
       Object.assign(role, override);
     }
+    const breakpoints = [...new Set(request.breakpoints ?? [])];
+    const breakpointError = this.breakpointError(planned.definition, breakpoints);
+    if (breakpointError) return refuse({ code: 'TARGET_NOT_FOUND', message: breakpointError });
+    const fork =
+      forkFrom && forkSource ? this.forkCopies(planned, forkSource, forkFrom.nodeId) : null;
+    if (fork && 'error' in fork) return refuse(fork.error);
     const overCaps = limitViolations(planned.definition.limits, this.policy);
     if (overCaps.length > 0) return refuse({ code: 'GRAPH_INVALID', message: overCaps.join('; ') });
     // Every profile resolves now, so the run never meets an unusable model halfway.
@@ -1922,6 +1962,10 @@ export class Coordinator {
       return refuse({ code: 'CAPABILITY_DENIED', message: 'branch model or resources changed' });
     const runId = this.ids.next('run');
     const definition = planned.definition;
+    const carried = fork?.carried.map((copy) => ({
+      ...copy,
+      artifactVersionIds: copy.texts.map(() => this.ids.next('artifact_version')),
+    }));
     const writesFiles =
       checks !== undefined ||
       definition.roles.some((role) =>
@@ -2030,7 +2074,8 @@ export class Coordinator {
     const run: LiveRun = {
       runId,
       snapshot,
-      plan: planned.plan,
+      // A fork runs from its step; the definition and its own start step stay as they are.
+      plan: forkFrom && fork ? forkPlan(planned.plan, forkFrom.nodeId, fork.reached) : planned.plan,
       projection: emptyProjection(runId),
       stop: { aborted: false },
       activations: new Map(),
@@ -2099,6 +2144,17 @@ export class Coordinator {
           ...(snapshot.imageProfiles ? { imageProfiles: snapshot.imageProfiles } : {}),
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
+          ...(forkFrom && carried
+            ? {
+                forkedFrom: {
+                  ...forkFrom,
+                  carried: carried.map(({ nodeId, artifactVersionIds }) => ({
+                    nodeId,
+                    artifactVersionIds,
+                  })),
+                },
+              }
+            : {}),
           ...(snapshot.conversation ? { conversation: snapshot.conversation } : {}),
           ...(snapshot.autoRoute ? { autoRoute: snapshot.autoRoute } : {}),
           ...(snapshot.meeting ? { meeting: snapshot.meeting } : {}),
@@ -2111,6 +2167,16 @@ export class Coordinator {
             : {}),
         },
       },
+      ...(breakpoints.length
+        ? [
+            {
+              type: 'breakpoints.changed' as const,
+              actor: USER,
+              commandId: request.commandId,
+              payload: { nodeIds: breakpoints },
+            },
+          ]
+        : []),
       ...this.chooserUsage(
         { runId, snapshot, projection: run.projection, sessionId: request.sessionId },
         request.commandId,
@@ -2161,6 +2227,9 @@ export class Coordinator {
           );
         for (const image of images)
           this.store.putArtifactText(runId, image.imageId, canonicalJson(image));
+        for (const copy of carried ?? [])
+          for (const [index, id] of copy.artifactVersionIds.entries())
+            this.store.putArtifactText(runId, id, copy.texts[index] ?? '');
         this.store.putArtifactText(
           runId,
           snapshot.criteriaVersionId,
@@ -2187,6 +2256,54 @@ export class Coordinator {
       if (!TERMINAL_RUN_STATUSES.has(run.projection.status)) await this.drive(run);
     });
     return { runId, receipt };
+  }
+
+  /**
+   * What a fork at `nodeId` copies from its source run: the results the remaining nodes read
+   * from nodes it does not run again. A required result the source no longer has refuses it.
+   */
+  private forkCopies(
+    planned: Extract<RunPlan, { ok: true }>,
+    source: StoredRun,
+    nodeId: string,
+  ):
+    | { carried: { nodeId: string; texts: string[] }[]; reached: Set<string> }
+    | { error: CommandError } {
+    if (!source.snapshot.definition.nodes.some((node) => node.id === nodeId))
+      return {
+        error: { code: 'TARGET_NOT_FOUND', message: `run ${source.runId} has no step ${nodeId}` },
+      };
+    const steps = forkSteps(planned.definition, planned.plan, nodeId);
+    if ('error' in steps) return { error: steps.error };
+    const carried: { nodeId: string; texts: string[] }[] = [];
+    let bytes = 0;
+    for (const [sourceNodeId, required] of carriedSources(
+      planned.definition,
+      planned.plan,
+      steps.reached,
+    )) {
+      const ids = stepResult(source.projection, sourceNodeId);
+      const texts = ids.map((id) => this.getArtifactText(source.runId, id));
+      if (!ids.length || texts.some((text) => text === null)) {
+        if (!required) continue;
+        return {
+          error: {
+            code: 'TARGET_NOT_FOUND',
+            message: `run ${source.runId} keeps no result of ${sourceNodeId}`,
+          },
+        };
+      }
+      for (const text of texts) bytes += utf8ToBytes(text ?? '').length;
+      if (bytes > this.policy.maxArtifactBytes)
+        return {
+          error: {
+            code: 'LIMIT_REACHED',
+            message: `the copied results are larger than this installation's ${this.policy.maxArtifactBytes} byte artifact cap`,
+          },
+        };
+      carried.push({ nodeId: sourceNodeId, texts: texts as string[] });
+    }
+    return { carried, reached: steps.reached };
   }
 
   private resolveDefinition(
@@ -2613,6 +2730,7 @@ export class Coordinator {
       return refuse('TARGET_TERMINAL', 'the run is cancelling');
     if (command.type === 'patch') return this.patch(run, command, payloadHash);
     if (command.type === 'restart_task') return this.restart(run, command, payloadHash);
+    if (command.type === 'set_breakpoints') return this.setBreakpoints(run, command, payloadHash);
     if (command.type === 'pause') {
       const current = run.projection.status;
       if (current === 'cancelling') return refuse('TARGET_TERMINAL', 'the run is cancelling');
@@ -3637,11 +3755,26 @@ export class Coordinator {
           })
         : null;
       const superseded = !!latest && latest.runId !== run.runId;
-      const retained = superseded
-        ? []
-        : (run.projection.output?.artifactVersionIds ?? []).filter(
-            (id) => run.projection.artifacts[id]?.bodyAvailable !== false,
-          );
+      // Step results stay so the run can be forked, until a later run of its session succeeds.
+      const later = summaries.slice(
+        0,
+        Math.max(
+          summaries.findIndex((summary) => summary.runId === run.runId),
+          0,
+        ),
+      );
+      const stepsSuperseded =
+        !!run.snapshot.meeting ||
+        (!!run.sessionId &&
+          later.some(
+            (summary) => summary.sessionId === run.sessionId && summary.status === 'succeeded',
+          ));
+      const retained = [
+        ...new Set([
+          ...(superseded ? [] : (run.projection.output?.artifactVersionIds ?? [])),
+          ...(stepsSuperseded ? [] : stepResultIds(run.projection)),
+        ]),
+      ].filter((id) => run.projection.artifacts[id]?.bodyAvailable !== false);
       const released = Object.keys(run.projection.artifacts).filter(
         (id) => !retained.includes(id) && run.projection.artifacts[id]?.bodyAvailable !== false,
       );
@@ -4166,6 +4299,7 @@ export class Coordinator {
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
         const iterationId = this.openRoundOf(run, nodeId);
+        if (!(await this.passBreakpoint(run, nodeId, iterationId))) return null;
         const decisionRevision = run.projection.controlRevision;
         // A router asks its own chooser and a check runs its checks; an external policy decides
         // the other modes.
@@ -4773,6 +4907,8 @@ export class Coordinator {
     iterationId: string | null,
   ): Promise<StepOutcome> {
     await this.boundary(run);
+    if (!(await this.passBreakpoint(run, nodeId, iterationId)))
+      return { ok: false, reason: 'stopped at its breakpoint' };
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const retries = node?.type === 'agent' ? (node.retry?.maxAttempts ?? 0) : 0;
     let prepared = this.prepareExecution(run, {
@@ -5253,6 +5389,8 @@ export class Coordinator {
     within?: string | ((round: string | null) => boolean),
   ): string[] {
     const executions = run.projection.nodeExecutions[nodeId] ?? [];
+    // A node a fork did not run again reads as the result the fork copied for it.
+    if (!executions.length) return stepResult(run.projection, nodeId);
     for (const executionId of [...executions].reverse()) {
       const execution = run.projection.executions[executionId];
       if (
@@ -5963,6 +6101,7 @@ export class Coordinator {
             ...(request ? { tool: request.tool } : {}),
             ...(loopStop ? { loopStop } : {}),
             ...(routes ? { routes } : {}),
+            ...(kind === 'breakpoint' && step ? { nodeId: step } : {}),
           },
         },
         ...(request && ['paused', 'pausing'].includes(run.projection.status)
@@ -5974,6 +6113,106 @@ export class Coordinator {
         : undefined,
     );
     return { approvalId, decision };
+  }
+
+  /**
+   * A step with a breakpoint waits before it starts, on its inputs. True when it may start: the
+   * person continued. A person who stops there cancels the run; a stopped branch or run ends the
+   * wait without starting the step.
+   */
+  private async passBreakpoint(
+    run: LiveRun,
+    nodeId: string,
+    iterationId: string | null,
+  ): Promise<boolean> {
+    if (!run.projection.breakpoints.includes(nodeId)) return true;
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    let inputs: string[] = [];
+    try {
+      inputs = this.resolveInputs(
+        run,
+        (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [],
+        iterationId,
+      ).flatMap((input) => (input.artifactVersionId ? [input.artifactVersionId] : []));
+    } catch {
+      // A missing input fails the step when it starts, as without a breakpoint.
+    }
+    const requested = this.requestApproval(
+      run,
+      'breakpoint',
+      inputs.length
+        ? [...new Set(inputs)]
+        : [run.pendingCriteriaVersionId ?? run.criteriaVersionId],
+      undefined,
+      undefined,
+      undefined,
+      nodeId,
+    );
+    if ((await requested.decision) === 'approve') {
+      await this.boundary(run);
+      return WORKING.has(run.projection.status);
+    }
+    const approval = run.projection.approvals[requested.approvalId];
+    if (approval?.status === 'pending' && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+      // The run was cancelled under it: the approval closes with it.
+      this.commit(run, [
+        {
+          type: 'approval.resolved',
+          payload: {
+            approvalId: requested.approvalId,
+            decision: 'reject',
+            actor: RUNTIME.id,
+            subjectVersionIds: approval.subjectVersionIds,
+            reason: 'cancelled',
+          },
+        },
+      ]);
+    else if (
+      approval?.status === 'rejected' &&
+      WORKING.has(run.projection.status) &&
+      !run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)
+    )
+      this.submit({
+        schemaVersion: '0.1',
+        runId: run.runId,
+        commandId: `breakpoint_${requested.approvalId}`,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason: 'breakpoint_rejected' },
+      });
+    return false;
+  }
+
+  /** A run's breakpoints: scheduled Agents and Decisions of its definition only. */
+  private breakpointError(definition: CorralDefinition, nodeIds: readonly string[]) {
+    for (const id of nodeIds) {
+      const node = definition.nodes.find((n) => n.id === id);
+      if (
+        !node ||
+        !(node.type === 'decision' || (node.type === 'agent' && node.invocation === 'scheduled'))
+      )
+        return `${id} is not a scheduled Agent or Decision of this team`;
+    }
+    return null;
+  }
+
+  private setBreakpoints(
+    run: LiveRun,
+    command: SetBreakpointsCommand,
+    payloadHash: string,
+  ): Receipt {
+    const nodeIds = [...new Set(command.payload.nodeIds)];
+    const error = this.breakpointError(run.snapshot.definition, nodeIds);
+    if (error)
+      return this.refuseControl(command, payloadHash, { code: 'TARGET_NOT_FOUND', message: error });
+    const same = canonicalJson(nodeIds) === canonicalJson(run.projection.breakpoints);
+    return this.controlReceipt(
+      run,
+      command,
+      payloadHash,
+      same ? [] : [{ type: 'breakpoints.changed', payload: { nodeIds } }],
+      'applied',
+      'immediate',
+    );
   }
 
   /** A stopped branch's step waits on nothing: its open approvals end as cancelled. */

@@ -115,6 +115,11 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "breakpoints.changed",
+    "requiredContent": "nodeIds",
+    "status": "payload_schema_to_implement"
+  },
+  {
     "type": "directive.accepted",
     "requiredContent": "directiveId,target,body,commandId",
     "status": "payload_schema_to_implement"

@@ -2,6 +2,7 @@ import { linearCorral } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import { type CompiledPlan, compileDefinition } from '../compiler/index.ts';
+import { forkPlan, reachableFrom } from '../fork.ts';
 import type { GraphRunner, IterationRef, RunnerCallbacks } from '../runner.ts';
 
 /**
@@ -203,6 +204,29 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         'activate review#2',
         'decide review_decision#2 → pass',
         'leave review_loop#2 pass',
+        'decide approval → approve',
+        'finalize output',
+      ]);
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+    });
+
+    // docs/specs/features/fork-and-breakpoints.md: a fork runs from its step only.
+    it('runs a fork plan from a top-level Loop without the steps before it', async () => {
+      const { log, callbacks } = recorder({
+        review_decision: ['pass'],
+        approval: ['approve'],
+      });
+      const plan = planOf(researchTeam);
+      const result = await makeRunner().run(
+        forkPlan(plan, 'review_loop', reachableFrom(plan, 'review_loop')),
+        callbacks,
+      );
+      expect(log).toEqual([
+        'enter review_loop#1',
+        'activate write#1',
+        'activate review#1',
+        'decide review_decision#1 → pass',
+        'leave review_loop#1 pass',
         'decide approval → approve',
         'finalize output',
       ]);

@@ -7,7 +7,10 @@ export function canReadArtifactBody(projection: RunProjection | null, id: string
   const artifact = projection.artifacts[id];
   if (artifact?.bodyAvailable === false) return false;
   if (TERMINAL_RUN_STATUSES.has(projection.status))
-    return !!artifact && !!projection.output?.artifactVersionIds.includes(id);
+    return (
+      (!!artifact && !!projection.output?.artifactVersionIds.includes(id)) ||
+      stepResultIds(projection).includes(id)
+    );
   if (!artifact) return true; // Caller validates operational refs (criteria, tool payloads, images).
   if (projection.output?.artifactVersionIds.includes(id)) return true;
   if (
@@ -47,4 +50,28 @@ export function canReleaseArtifactBodies(projection: RunProjection): boolean {
     Object.values(projection.executions).every((e) => TERMINAL_EXECUTION_STATUSES.has(e.status)) &&
     Object.values(projection.effects).every((e) => e.status === 'settled')
   );
+}
+
+/** A node's last completed submission in a run, or the result a fork copied for it. */
+export function stepResult(projection: RunProjection, nodeId: string): string[] {
+  const executions = projection.nodeExecutions[nodeId] ?? [];
+  for (const id of [...executions].reverse()) {
+    const task = projection.tasks[projection.executions[id]?.taskId ?? ''];
+    if (task?.status === 'completed') return task.submittedArtifactVersionIds;
+  }
+  if (executions.length) return [];
+  return projection.forkedFrom?.carried.find((c) => c.nodeId === nodeId)?.artifactVersionIds ?? [];
+}
+
+/**
+ * The step results a finished run keeps with its final result, so it can be forked: each node's
+ * last completed submission and every result its own fork copied.
+ */
+export function stepResultIds(projection: RunProjection): string[] {
+  return [
+    ...new Set([
+      ...Object.keys(projection.nodeExecutions).flatMap((nodeId) => stepResult(projection, nodeId)),
+      ...(projection.forkedFrom?.carried.flatMap((c) => c.artifactVersionIds) ?? []),
+    ]),
+  ];
 }

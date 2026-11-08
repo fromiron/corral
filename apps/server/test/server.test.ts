@@ -1731,3 +1731,80 @@ it('serves partial output only through the authenticated workspace snapshot, nev
     expect(await response.text()).not.toContain('PRIVATE incomplete prefix');
   }
 });
+
+// docs/specs/features/fork-and-breakpoints.md over the local server.
+describe('fork and breakpoints', () => {
+  it('pauses at a breakpoint, then forks the finished run from a step', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const project = await repo.createProject({ name: 'Fork' });
+    if (!project.ok) throw new Error(project.message);
+    const corral = await repo.save({
+      definition: linearCorral(['a', 'b'], 'ab'),
+      expectedDefinitionRevision: null,
+      projectId: project.project.projectId,
+    });
+    if (!corral.ok) throw new Error(corral.message);
+    const session = await repo.createSession({
+      projectId: project.project.projectId,
+      title: '',
+      objective: 'Fork a run',
+      corralId: corral.record.corralId,
+    });
+    if (!session.ok) throw new Error(session.message);
+    const sessionId = session.session.sessionId;
+    const begin = (commandId: string, extra: object) =>
+      transport.startRun({
+        schemaVersion: '0.1',
+        commandId,
+        corralId: corral.record.corralId,
+        definitionRevision: corral.record.definitionRevision,
+        mode: 'mock',
+        sessionId,
+        ...extra,
+      });
+
+    const first = await begin('cmd_bp', { breakpoints: ['b'] });
+    expect(first.receipt.error ?? null).toBeNull();
+    const runId = first.runId ?? '';
+    const waiting = await waitForProjection(transport, runId, (p) =>
+      Object.values(p.approvals).some((a) => a.status === 'pending'),
+    );
+    const approval = Object.values(waiting.approvals).find((a) => a.status === 'pending');
+    expect(approval?.kind).toBe('breakpoint');
+    expect(approval?.nodeId).toBe('b');
+    const resolved = await transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cmd_bp_go',
+      runId,
+      type: 'resolve_approval',
+      expectedControlRevision: waiting.controlRevision,
+      payload: {
+        approvalId: approval?.approvalId ?? '',
+        decision: 'approve',
+        subjectVersionId: approval?.subjectVersionIds[0] ?? '',
+      },
+    });
+    expect(resolved.error ?? null).toBeNull();
+    const done = await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
+    const aVersion = approval?.subjectVersionIds[0] ?? '';
+    const aText = await transport.getArtifactText(runId, aVersion);
+    expect(aText).toBeTruthy();
+    expect(done.breakpoints).toEqual(['b']);
+
+    const fork = await begin('cmd_fork', { forkFrom: { runId, nodeId: 'b' } });
+    expect(fork.receipt.error ?? null).toBeNull();
+    const forked = await waitForProjection(transport, fork.runId ?? '', (p) =>
+      ['succeeded', 'failed', 'cancelled'].includes(p.status),
+    );
+    expect(forked.status).toBe('succeeded');
+    expect(forked.forkedFrom?.runId).toBe(runId);
+    expect(forked.nodeExecutions.a).toBeUndefined();
+    const copy = forked.forkedFrom?.carried[0]?.artifactVersionIds[0] ?? '';
+    expect(await transport.getArtifactText(fork.runId ?? '', copy)).toBe(aText);
+    // The source's step results ended with the fork's success.
+    expect(await transport.getArtifactText(runId, aVersion)).toBeNull();
+  });
+});

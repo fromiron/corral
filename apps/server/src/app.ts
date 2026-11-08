@@ -3321,6 +3321,9 @@ async function createCorralServer(
       const known =
         projection &&
         (projection.artifacts[versionId] ||
+          projection.forkedFrom?.carried.some((copy) =>
+            copy.artifactVersionIds.includes(versionId),
+          ) ||
           coordinator
             .getRunSnapshot(runId)
             ?.definition.input.images?.some((image) => image.imageId === versionId) ||

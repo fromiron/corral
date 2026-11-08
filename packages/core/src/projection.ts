@@ -186,6 +186,8 @@ export interface ApprovalView {
   /** Why a Loop asks for another round. */
   loopStop?: EventPayload<'approval.requested'>['loopStop'];
   routes?: EventPayload<'approval.requested'>['routes'];
+  /** The step a `breakpoint` approval holds before it starts. */
+  nodeId?: string;
   /** The route the person picked, once a `route` approval is approved. */
   routeId?: string;
   /** The exact versions this decision is about; the first is the one being approved. */
@@ -225,6 +227,10 @@ export interface RunProjection {
   modelProfiles: Record<string, ModelProfileSnapshot>;
   /** The earlier version this run's brief starts from; null otherwise. */
   startedFrom: { runId: string; artifactVersionId: string } | null;
+  /** The finished run and step this run forked from, with the results it copied; null otherwise. */
+  forkedFrom: NonNullable<EventPayload<'run.started'>['forkedFrom']> | null;
+  /** Steps that wait before they start (scheduled Agents and Decisions). */
+  breakpoints: string[];
   runId: string;
   corralId: string | null;
   definitionHash: string | null;
@@ -325,6 +331,8 @@ export function emptyProjection(runId: string): RunProjection {
     output: null,
     decisionSettings: null,
     startedFrom: null,
+    forkedFrom: null,
+    breakpoints: [],
     modelProfiles: {},
     startedAt: null,
     endedAt: null,
@@ -359,6 +367,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         definitionHash: event.payload.definitionHash,
         mode: event.payload.mode,
         startedFrom: event.payload.startedFrom ?? null,
+        forkedFrom: event.payload.forkedFrom ?? null,
         startedAt: event.recordedAt,
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
@@ -665,9 +674,12 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         ...(event.payload.tool ? { tool: event.payload.tool } : {}),
         ...(event.payload.loopStop ? { loopStop: event.payload.loopStop } : {}),
         ...(event.payload.routes ? { routes: event.payload.routes } : {}),
+        ...(event.payload.nodeId ? { nodeId: event.payload.nodeId } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
+    case 'breakpoints.changed':
+      return { ...p, breakpoints: event.payload.nodeIds };
     case 'approval.resolved': {
       const approval = p.approvals[event.payload.approvalId];
       if (!approval) return p;
