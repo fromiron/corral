@@ -110,6 +110,19 @@ export {
   AccordionTrigger,
   AccordionTrigger as KitAccordionTrigger,
 } from './components/ui/accordion.tsx';
+export {
+  CommandMenu,
+  CommandMenuDialog,
+  type CommandMenuDialogProps,
+  CommandMenuEmpty,
+  CommandMenuFooter,
+  CommandMenuInput,
+  CommandMenuItem,
+  type CommandMenuItemData,
+  CommandMenuList,
+  type CommandMenuProps,
+  CommandMenuShortcut,
+} from './components/ui/command-menu.tsx';
 export { Badge as KitBadge } from './components/ui/badge.tsx';
 export {
   Banner,
