@@ -40,7 +40,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 **Corral은 제품명인 동시에, 팀·작업 그래프·도구 권한·공유 예산을 감싸는 실행 경계다.** Loop와 같은 의미로 사용하지 않는다. 팀 하나가 여러 번 반복될 수 있으므로 팀의 경계와 반복 제어는 분리해야 한다.
 
-MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Agent·Decision·Output을 배치한다. Corral 중첩·재사용 Subflow는 현재 지원 계약이 아니다. 이렇게 하면 이름 때문에 다섯 번째 실행 노드나 새로운 중첩 런타임이 생기지 않는다.
+캔버스 전체가 하나의 Corral이다. 그 안에 Loop·Team 상자와 Agent·Decision·Join·Output을 배치한다. Team 상자는 같은 정의 안의 묶음이거나 저장된 다른 Corral의 고정 revision이며, 실행할 때는 하나의 Corral 안으로 펼쳐진다. 그래서 Team은 새 실행 경계나 별도 예산을 만들지 않는다. 규칙은 [팀 그래프 모델](features/team-graph.md)을 따른다.
 
 | 제품/UI 용어 | 코드의 정식 타입·단위 | 의미와 경계 |
 |---|---|---|
@@ -74,7 +74,7 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 | 영역 | 필수 제공 |
 |---|---|
 | 편집 | 실제 노드 D&D·연결·삭제·속성 편집·저장·불러오기·복제·Undo/Redo |
-| 그래프 | Agent / Decision / Loop / Output. 검토 Loop 1개, 중첩 없음. 실행 입력은 Corral 설정 |
+| 그래프 | Agent / Decision / Loop / Team / Join / Output. 정의 규칙과 현재 실행 지원 범위는 [팀 그래프 모델](features/team-graph.md). 실행 입력은 Corral 설정 |
 | 협업 | 고정 담당 작업, 질문·답변·결과 제출, 명시된 상대 역할, 동적 자식 호출 |
 | 산출물 | Markdown/일반 텍스트와 구조화된 JSON 검토 결과. 불변 버전·diff·읽은 버전 기록 |
 | 관찰 | 설계 그래프의 상태 겹침, 실제 실행 트리, 협업 로그, 대기 대상, 사용량 |
@@ -89,7 +89,7 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 
 ### 3.2 현재 경계와 별도 후속 범위
 
-실행 중 그래프 구조 변경, 임의 역할 생성, 자유로운 병렬 그래프와 `join:any`, 다중 사용자 편집, 중첩 Corral/Subflow, 과거 산출물 직접 수정, 같은 작업 사본의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다.
+실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 같은 작업 사본의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의할 수 있으며, 현재 실행하지 않는 구성은 [팀 그래프 모델의 실행 지원 범위](features/team-graph.md#실행-지원-범위)에서 실행 시작 전에 거절한다.
 
 일반 명령·service와 Hashline은 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·예산·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
@@ -131,28 +131,21 @@ MVP의 캔버스 전체가 하나의 Corral이다. 그 안에 Loop 영역과 Age
 
 ## 5. 그래프의 실행 의미
 
-### 5.1 네 노드
+노드·포트·상자·병렬과 컴파일 규칙, 현재 실행 지원 범위는 [팀 그래프 모델](features/team-graph.md)이 정한다. 이 절은 그 모델에 대한 제품의 약속만 적는다.
 
-| 노드 | 설정 | 실행 결과 |
-|---|---|---|
-| Agent | roleId, invocation, 입력 바인딩, 출력 계약, 모델 프로필, 도구/협업 허용 목록 | Task와 ExecutionInstance를 만들고 제출물을 다음 단계에 전달 |
-| Decision | `review` / `approval` / 제한된 `rule` 중 하나 | 이름이 있는 분기 결과. 임의 JavaScript 평가 없음 |
-| Loop | 본문 노드, 진입/반복/완료 포트, 자동 회차 상한 | 특정 회차 입력으로 본문 실행. 반복 판단은 구조화 결과만 사용 |
-| Output | 제출할 버전의 바인딩, 최종 승인 여부 | 필수 작업·판정·승인 검증 후 최종 버전 확정 |
+### 5.1 노드와 호출
 
-Agent의 `invocation`은 `scheduled` 또는 `callable`이다. callable은 실제 그래프 순서에서 자동 실행하지 않으며, 다른 Agent가 허용된 관계로 호출할 때만 실행한다. 팔레트상 새 노드 종류가 아니라 Agent의 속성이다.
+Agent의 `invocation`은 `scheduled` 또는 `callable`이다. callable은 실제 그래프 순서에서 자동 실행하지 않으며, 다른 Agent가 허용된 관계로 호출할 때만 실행한다. 팔레트상 새 노드 종류가 아니라 Agent의 속성이다. Decision은 이름 있는 분기 결과만 내며 임의 JavaScript를 평가하지 않는다. Output은 필수 작업·판정·승인을 검증한 뒤 최종 버전을 확정한다.
 
 ### 5.2 연결 종류
 
-**Control edge:** 다음 단계 실행을 뜻한다. Agent/Decision/Loop/Output의 정해진 포트 사이에 연결한다.
+**Control edge:** 다음 단계 실행을 뜻한다. 노드와 상자의 정해진 포트 사이에 연결한다. 한 포트의 연결이 여럿이면 동시에 실행되는 분기다.
 
 **Capability link:** `delegate` 또는 `question`을 허용하는 관계다. 실행 순서를 뜻하지 않는다. 별도 선 모양·핸들·레이어로 표시한다. 실제 호출은 Timeline과 실행 트리에 별도로 나타난다. 허용된 선이 있다는 이유만으로 호출됐다고 표시하지 않는다.
 
 이벤트 스트림과 데이터 산출물의 연결을 control edge에 혼합하지 않는다. 입력 바인딩은 해당 노드 속성에서 선택한다. 범용 타입 설계기는 없지만, `text`, `notes`, `draft`, `review` 등 지원 계약의 호환성 검사는 한다.
 
-### 5.3 Loop 포트 규약
-
-Loop에는 외부 진입 `enter`, 본문 시작 `body`, 내부 재시도 `repeat`, 내부 통과 `exit`, 외부 다음 단계 `next` 포트를 둔다. 본문에 포함된 노드는 `loopId`를 가진다. 중첩 Loop는 금지한다.
+### 5.3 Loop
 
 ```mermaid
 flowchart LR
@@ -166,13 +159,11 @@ flowchart LR
   A -->|approve| O[Output]
 ```
 
-위 그림의 `Loop completed`는 설명을 위한 상태이며 별도 편집 노드가 아니다. 실제 정의에서는 Decision의 pass가 같은 Loop의 exit 포트로 들어간다. compiler는 이 순환을 **회차 1회 실행 함수 + 상한 검사**로 변환한다. 임의 DFS로 화살표를 따라 무한 순환시키지 않는다.
+위 그림의 `Loop completed`는 설명을 위한 상태이며 별도 편집 노드가 아니다. 실제 정의에서는 Decision의 pass가 같은 Loop의 exit 포트로 들어간다. compiler는 이 순환을 **회차 1회 실행 함수 + 상한 검사**로 변환한다. 임의 DFS로 화살표를 따라 무한 순환시키지 않는다. 반복 판단은 구조화된 결과만 쓴다.
 
 ### 5.4 실행 전 검증
 
-스키마/버전·중복 ID·존재하지 않는 참조·지원하지 않는 노드·포트 방향·출력 포트의 중복 control 연결·진입점/종료점·도달 가능성·Loop 외 순환·본문 경계 침범·누락 상한·허용 목록·입력 생산자·review 계약·모델 기능 호환을 검사한다. callable 노드는 control edge가 없어도 유효한 capability 경로가 있으면 고립으로 판정하지 않는다.
-
-runtime에서도 같은 한도·권한을 재검사한다. 편집기 검증은 신뢰 경계가 아니다. 버전이나 필드를 이해하지 못하는 import는 조용히 무시하지 않고 오류로 반환한다.
+검사 항목은 [팀 그래프 모델의 구조 규칙](features/team-graph.md#구조-규칙)을 따른다. runtime에서도 같은 한도·권한을 재검사한다. 편집기 검증은 신뢰 경계가 아니다. 버전이나 필드를 이해하지 못하는 import는 조용히 무시하지 않고 오류로 반환한다.
 
 ## 6. 대표 협업 시나리오
 
@@ -295,7 +286,7 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 | 항목 | 기본값 | 조절·적용 |
 |---|---:|---|
 | 캔버스 정의 규모 | 고정 개수 상한 없음 | 정의·초안·가져오기·컴파일에서 노드·역할·control edge·capability link와 역할별 설정 맵의 개수만으로 거절하지 않는다. 파일·요청 크기, 각 항목의 내용·권한, Loop 구조·반복 상한과 실행 자원 제한은 유지한다. |
-| Loop 수·중첩 | 1 / 중첩 없음 | 기존 그래프 계약 |
+| Loop 수·중첩 | 정의는 제한 없음 | 실행은 [팀 그래프 모델의 실행 지원 범위](features/team-graph.md#실행-지원-범위)를 따름 |
 | Loop 자동 회차 | 2 | 사용자 패치로 10까지 |
 | 동적 위임 깊이 | 2 | 최초 scheduled agent=0 |
 | 동시 모델 요청 | 6 | 양의 정수로 설정. host·Run 자원 admission, 대기는 슬롯 사용 안 함 |

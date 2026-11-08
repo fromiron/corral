@@ -1,0 +1,212 @@
+# 기능 명세: 팀 그래프 모델
+
+- 상태: accepted (2026-11-08)
+- 기준: [제품 계약](../product-contract.md) §2.1, §3, [기술 설계](../technical-design.md) §4. 노드·포트·상자·병렬·컴파일 규칙의 정본은 이 문서다.
+- 비목표: 실행 중 구조 변경, 사용자 코드·수식 평가, 범용 데이터 타입 설계기. 단계별 hook(도구 사용 전 동작, 에이전트에게 추가 메시지 보내기를 GUI로 붙이는 것)은 없다. 편집 화면의 조작은 [Canvas](canvas.md)가 정한다.
+
+## 사용자 관측 동작
+
+1. **여섯 종류의 노드.** 팀은 Agent, Decision, Loop, Team, Join, Output으로 만든다. Agent는 `scheduled` 또는 `callable`이다. Decision은 `review`, `approval`, `rule`, `check`, `router` 중 하나이며 모드마다 나가는 포트가 다르다.
+2. **상자.** Loop와 Team은 다른 노드를 담는 상자다. 상자 안에 상자를 담을 수 있다. 루프를 몇 개 두든, 팀을 루프로 감싸든, 루프 안에 팀을 두든 정의할 수 있다.
+3. **루프.** 몸체는 노드 하나 이상이다. 다시 도는 길(`repeat`)은 결정 노드에서만 들어오고, 끝나는 길(`exit`)이 있어야 한다. 반복 상한은 1 이상의 정수이며 시스템 상한은 없다. 상한·루프 예산·정체 감지에 걸리면 `exhausted`로 나가고, 연결이 없으면 사용자에게 묻는다.
+4. **병렬과 합류.** 한 출력 포트에 연결을 여러 개 두면 그 대상들이 동시에 실행되는 분기가 된다. 동시에 살아 있을 수 있는 분기가 다시 만나는 곳은 Join이어야 한다. Join은 모든 분기(`all`) 또는 첫 분기(`any`)를 기다린다. 결정의 서로 다른 분기처럼 동시에 살아 있을 수 없는 경로는 Join 없이 한 노드로 모일 수 있다.
+5. **실패 경로.** Agent는 실패하면 정한 횟수만큼 다시 시도한다. 그래도 실패하면 `error` 포트로 나가며, 연결이 없으면 Run이 실패한다.
+6. **팀 상자의 두 출처.** 같은 정의 안에서 노드를 묶은 팀(`inline`)과, 저장된 다른 팀의 정해진 revision을 가져다 쓰는 팀(`reference`)이 있다. 참조 팀은 원본이 바뀌어도 고정한 revision을 쓴다.
+7. **메모.** 모든 노드에 실행에 쓰이지 않는 메모를 달 수 있다.
+8. **진단.** 컴파일러가 구조 문제를 노드·연결 단위로 돌려준다. 오류가 있으면 실행할 수 없다. 경고는 실행을 막지 않는다. 정의할 수 있지만 현재 런타임이 실행하지 않는 구성은 경고로 알리고, 실행 시작에서 거절한다([실행 지원 범위](#실행-지원-범위)).
+
+## 계약
+
+### 정의 스키마
+
+정본은 `packages/contracts/src/definition.ts`의 Zod다. 아래는 그 요약이다.
+
+| 노드 | 필드 |
+|---|---|
+| 공통 | `id`, `type`, `label`, `parentId?`(담고 있는 Loop 또는 Team), `note?`(실행에 쓰지 않음, 정의 revision에는 포함) |
+| Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0) |
+| Decision | `mode`, `inputBindings`(1개 이상). `review`·`approval`·`rule`은 모드별 `rule` 하나. `check`는 `checkIds`(등록 검사 1개 이상). `router`는 `routes: { id, label, description? }[]`(2개 이상, id 고유)와 선택적 `modelProfile` |
+| Loop | `maxIterations`(1 이상), `budget?: { maxModelCalls?, maxOutputTokens?, maxWallMs? }`, `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
+| Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }` |
+| Join | `policy: 'all' \| 'any'` |
+| Output | `inputBindings`(1개 이상), `requireApproval` |
+
+- `controlEdges`는 `{ id, source, sourcePort, target, targetPort }`다. `sourcePort`는 아래 포트 표의 이름이거나 router의 route id다.
+- `capabilityLinks`(`delegate`, `question`)는 호출 허용이며 순서가 아니다. 의미는 [제품 계약](../product-contract.md) §7을 따른다.
+- `limits.maxDelegationDepth`는 1 이상의 정수다(기본 2). `limits.maxSpawns`는 1 이상의 정수다.
+- `entryNodeId`는 최상위의 유일한 시작 노드다. 시작 노드는 scheduled Agent, Loop, Team 중 하나다.
+
+### 포트 표
+
+포트 표는 `@corral/core` compiler 한 곳에서 정의하고, 편집기의 연결 규칙과 compiler가 함께 쓴다.
+
+| 노드 | 들어오는 포트 | 나가는 포트 |
+|---|---|---|
+| Agent (scheduled) | `in` | `out`, `error` |
+| Agent (callable) | 없음 (capability link의 대상) | 없음 |
+| Decision `review` | `in` | `pass`, `revise` |
+| Decision `approval` | `in` | `approve`, `reject` |
+| Decision `rule` | `in` | `yes`, `no` |
+| Decision `check` | `in` | `pass`, `fail` |
+| Decision `router` | `in` | route id마다 하나 |
+| Loop | 밖에서 `enter`, 안에서 `repeat`·`exit` | 안으로 `body`, 밖으로 `next`·`exhausted` |
+| Team | 밖에서 `enter`, 안에서 `exit` | 안으로 `body`, 밖으로 `next` |
+| Join | `in` (2개 이상) | `out` |
+| Output | `in` | 없음 |
+
+### 구조 규칙
+
+compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 곳마다 진단을 만든다.
+
+1. **소속.** `parentId`는 같은 정의의 Loop 또는 `inline` Team을 가리킨다. 소속은 순환하지 않는다. `reference` Team은 구성원을 가질 수 없다.
+2. **상자 경계.** control edge는 다음 경우만 허용한다.
+   - 같은 상자 안의 두 노드 사이.
+   - 같은 상자 안의 노드에서 이웃 상자의 `enter`로.
+   - 상자의 `body`에서 그 상자의 직접 구성원으로.
+   - 상자 안의 노드에서 자신을 담은 어느 조상 상자의 `exit`, 또는 조상 Loop의 `repeat`로. 여러 겹을 한 번에 나갈 수 있다.
+   - 상자의 `next`·`exhausted`에서 그 상자와 같은 상자 안의 노드로.
+
+   바깥에서 상자의 구성원으로 바로 들어가는 연결은 거절한다.
+3. **순환.** control 순환은 Loop의 `repeat`를 거칠 때만 허용한다.
+4. **루프 완결성.**
+   - `body`에 연결이 하나 이상 있다.
+   - `exit`로 들어오는 연결이 하나 이상 있다.
+   - `repeat`로 들어오는 연결이 하나 이상 있고, 모두 Decision 포트에서 나온다.
+   - 몸체에서 시작한 모든 경로는 이 Loop나 조상 상자의 `exit`·`repeat`, Output, 또는 `error` 경로에서 끝난다.
+5. **팀 완결성.** `inline` Team은 구성원이 하나 이상이고 `body`가 연결돼 있다. `next`가 연결돼 있으면 `exit`로 들어오는 연결이 하나 이상 있다.
+6. **참조 팀.**
+   - 참조한 Corral과 revision은 compiler에 주입한 정의 출처에서 찾을 수 있어야 한다.
+   - 참조는 직접이든 간접이든 순환하지 않는다.
+   - 참조 팀은 원본의 시작 노드가 `enter`가 되고, 원본의 Output이 `exit`가 된다. 원본 Output의 `requireApproval`은 `exit` 전 승인으로 유지한다.
+   - compiler는 참조 팀을 `팀 노드 id/원본 노드 id`의 이름으로 펼친다. 역할도 같은 방식으로 이름을 나눈다.
+7. **병렬과 합류.**
+   - 한 포트의 연결이 둘 이상이면 동시에 실행되는 분기다.
+   - Join이 아닌 노드나 상자 포트로 들어오는 연결 가운데, 동시에 살아 있을 수 있는 분기에서 온 것이 둘 이상이면 오류다.
+   - Join으로 들어오는 연결이 하나뿐이면 경고다.
+   - `any` Join은 첫 분기가 도착하면 나머지 분기를 취소한다.
+8. **같은 작업 사본에 쓰는 병렬 분기.** 파일을 쓰는 도구를 가진 Agent가 동시에 살아 있을 수 있는 분기에 둘 이상 있으면 경고한다. 분기들은 같은 세션 작업 사본을 쓰며 파일 효과는 분기마다 격리되지 않는다.
+9. **연결되지 않은 출구.**
+   - Decision과 router의 출구, Loop의 `exhausted`, Agent의 `error`가 연결되지 않아도 정의는 유효하다.
+   - 연결 안 된 Decision 출구는 경고한다.
+   - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 사용자 확인을 기다린다. 연결 안 된 `reject`가 선택되면 Run을 끝낸다.
+   - router는 route가 둘 미만이면 오류다.
+10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다.
+11. **그 밖의 검사.** 스키마·버전, 중복 id, 존재하지 않는 참조, 포트 방향, 입력 바인딩의 생산자, review 계약, 모델 기능 호환, 허용 목록을 기존처럼 검사한다. 정의 규모는 개수만으로 거절하지 않는다([제품 계약](../product-contract.md) §9).
+
+### 진단
+
+진단은 `{ code, severity, message, nodeId?, edgeId?, linkId? }`이고 `severity`는 `error` 또는 `warning`이다. `code`는 `packages/core/src/compiler`의 고정 enum이며 UI 문구는 메시지 카탈로그에서 code로 찾는다. 위 규칙마다 code가 하나씩 있다. 편집기는 진단을 해당 노드·연결 위에 표시한다.
+
+### 실행 지원 범위
+
+정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
+
+- Loop가 둘 이상인 정의.
+- 상자 안의 상자.
+- Team 노드와 Join 노드.
+- `check`·`router` Decision.
+- 한 포트에 연결이 둘 이상인 병렬 분기.
+- Loop의 `budget`, `stallDetection: true`, `exhausted` 연결, 설치 정책 상한을 넘는 `maxIterations`.
+- Agent의 `retry.maxAttempts` 1 이상과 `error` 연결.
+- 시작 노드가 Loop나 Team인 정의.
+- 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
+
+compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 지금처럼 실행한다. Loop 하나와 리뷰 레시피를 쓰는 기존 팀이 여기에 포함된다.
+
+### 계획 IR
+
+유효한 정의만 `CompiledPlan`이 된다. 계획은 다음을 담는다.
+
+- 시작 단계
+- 단계별 다음 단계 목록(병렬이면 여럿)
+- 상자 트리와 Loop별 회차 상한·예산
+- Join 정책
+- callable 관계
+- 펼친 참조 팀
+- 요약
+
+Loop는 회차 한 번을 실행하는 함수와 상한 검사로 바뀌며, 화살표를 따라 무한히 도는 탐색으로 실행하지 않는다.
+
+## 수용 시나리오
+
+```gherkin
+Scenario: 루프가 둘인 정의는 컴파일되지만 아직 실행하지 않는다
+  Given 최상위에 Loop 두 개를 순서대로 둔 정의
+  When 정의를 컴파일한다
+  Then 오류는 없고 두 Loop에 RUNTIME_UNSUPPORTED 경고가 있다
+  When 이 정의로 실행을 시작한다
+  Then RUNTIME_UNSUPPORTED로 거절되고 Run이 만들어지지 않는다
+
+Scenario: 루프 안의 루프와 팀을 감싼 루프를 정의한다
+  Given Loop A 안에 Loop B와 inline Team C가 있고 C 안에 Agent와 review Decision이 있다
+  When 정의를 컴파일한다
+  Then 소속·경계 오류는 없다
+
+Scenario: 조상 루프의 출구로 여러 겹을 한 번에 나간다
+  Given Team C 안의 review Decision이 pass를 Loop A의 exit에, revise를 Loop A의 repeat에 잇는다
+  When 정의를 컴파일한다
+  Then 경계 오류는 없다
+
+Scenario: 다시 도는 길은 결정에서만 들어온다
+  Given Loop 안의 Agent out이 그 Loop의 repeat로 이어진다
+  When 정의를 컴파일한다
+  Then 그 연결에 오류가 있다
+
+Scenario: 끝나는 길이 없는 루프
+  Given exit로 들어오는 연결이 없는 Loop
+  When 정의를 컴파일한다
+  Then 그 Loop에 오류가 있다
+
+Scenario: 바깥에서 상자 구성원으로 바로 들어갈 수 없다
+  Given 최상위 Agent의 out이 Loop 안의 Agent in으로 이어진다
+  When 정의를 컴파일한다
+  Then 그 연결에 경계 오류가 있다
+
+Scenario: 병렬 분기가 합류 없이 만나면 오류다
+  Given Agent P의 out이 Agent A와 B로 이어지고 A와 B의 out이 모두 Agent C로 이어진다
+  When 정의를 컴파일한다
+  Then C로 들어오는 연결에 오류가 있다
+  When C를 Join(all)으로 바꾼다
+  Then 그 오류는 없다
+
+Scenario: 결정의 두 분기는 합류 없이 모일 수 있다
+  Given review Decision의 pass와 revise가 모두 Agent C로 이어진다
+  When 정의를 컴파일한다
+  Then 병렬 합류 오류는 없다
+
+Scenario: 같은 작업 사본에 쓰는 병렬 분기는 경고한다
+  Given 파일 쓰기 도구를 가진 Agent 둘이 서로 다른 병렬 분기에 있다
+  When 정의를 컴파일한다
+  Then 두 Agent에 경고가 있고 정의는 유효하다
+
+Scenario: 참조 팀의 순환
+  Given 팀 X가 팀 Y의 revision을 참조하고 Y가 X의 revision을 참조한다
+  When X를 컴파일한다
+  Then 참조 순환 오류가 있다
+
+Scenario: 찾을 수 없는 참조 팀
+  Given 정의 출처에 없는 revision을 참조하는 Team
+  When 정의를 컴파일한다
+  Then 그 Team에 오류가 있다
+
+Scenario: route가 하나뿐인 router
+  Given route가 하나인 router Decision
+  When 정의를 컴파일한다
+  Then 그 Decision에 오류가 있다
+
+Scenario: 지금 실행할 수 있는 정의는 그대로 실행된다
+  Given Loop 하나와 리뷰 레시피를 쓰는 기존 팀 정의
+  When 정의를 컴파일하고 실행을 시작한다
+  Then RUNTIME_UNSUPPORTED 진단이 없고 Run이 시작된다
+
+Scenario: 이해하지 못하는 필드
+  Given 스키마에 없는 필드가 든 정의를 가져온다
+  Then 조용히 버리지 않고 오류로 거절한다
+```
+
+## 보안·성능·접근성
+
+- 사용자 코드와 수식을 평가하지 않는다. router는 이름 붙인 route 중 하나를 모델이 고르게 하며, 그 모델 호출은 Run 예산과 admission을 따른다. check는 등록 검사만 실행한다.
+- 참조 팀은 같은 사용자가 읽을 수 있는 정의만 가져온다. Run 시작 시 펼친 정의를 스냅샷으로 고정하고, 원본이 바뀌어도 그 Run은 바뀌지 않는다.
+- 가져오기 크기 제한(1 MiB)과 strict schema는 그대로다. 참조 순환을 금지하므로 펼친 결과는 유한하다.
+- 편집 화면의 접근성과 성능은 [Canvas](canvas.md)가 정한다.

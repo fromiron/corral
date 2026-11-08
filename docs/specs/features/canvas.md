@@ -1,7 +1,7 @@
 # 기능 명세: Canvas — 정의를 만드는 경험
 
 - 상태: accepted (2026-10-15)
-- 기준: [스펙](../product-contract.md) §4.1–4.2, §5, [기술 설계](../technical-design.md) §4, §13
+- 기준: [스펙](../product-contract.md) §4.1–4.2, §5, [팀 그래프 모델](team-graph.md), [기술 설계](../technical-design.md) §4, §13
 - 비목표: Loop·Decision의 **실행**(GraphRunner·검토 루프는 [기술 설계](../technical-design.md)), 서버 저장, 실행 중 구조 변경, 자동 레이아웃
 
 ## 사용자 관측 동작
@@ -19,17 +19,7 @@
 ## 계약
 
 - **정의 원본:** `packages/contracts`의 Zod. 현재 JSON Schema는 생성물(`packages/contracts/generated/`)이며 `pnpm contracts:check`가 최신인지 검사한다. 현재 생성물과 Zod는 같은 fixture에 같은 판정을 내야 한다. `contracts/*.schema.json`은 [초기 seed](../../../contracts/README.md)이며, 현재 규격과 공유하는 초기 fixture만 호환성을 검사한다. 노드 수 정책은 [사용량 예산과 자원 정책](../product-contract.md#9-사용량-예산과-자원-정책)을 따른다.
-- **포트 표:** 한 곳(`@corral/core` compiler)에서 정의하고 캔버스 연결 규칙과 compiler가 함께 쓴다.
-
-| 노드 | 들어오는 포트 | 나가는 포트 |
-|---|---|---|
-| Agent (scheduled) | `in` | `out` |
-| Agent (callable) | 없음 (capability link의 대상) | 없음 |
-| Decision `review` | `in` | `pass`, `revise` |
-| Decision `approval` | `in` | `approve`, `reject` |
-| Decision `rule` | `in` | `yes`, `no` |
-| Loop | `enter`, `repeat`, `exit` | `body`, `next` |
-| Output | `in` | 없음 |
+- **포트 표와 구조 규칙:** [팀 그래프 모델](team-graph.md)이 정한다. 캔버스 연결 규칙과 compiler가 같은 포트 표를 쓴다.
 
 - **진단:** `{ code, severity, message, nodeId?, edgeId?, linkId? }`. `code`는 고정 enum이며 UI 문구는 메시지 카탈로그에서 code로 찾는다.
 - **IR:** 유효한 정의만 `CompiledPlan`(entry, 단계별 다음 노드, Loop 본문·회차 상한, callable 관계, 요약)으로 바뀐다.

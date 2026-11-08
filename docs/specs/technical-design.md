@@ -92,23 +92,23 @@ ID는 주입 가능한 UUID 생성기로 만들고 순서는 ID가 아니라 run
 
 정의에는 `schemaVersion, id, name, entryNodeId, input, roles, nodes, controlEdges, capabilityLinks, limits`를 둔다. layout은 별도 JSON이다. prompt는 MVP에서 정의 안의 문자열로 저장한다. 나중에 파일 참조를 도입할 경우 Run 시작 시 본문까지 snapshot해야 한다.
 
-역할: `id, prompt, modelProfile, allowedWorkTools, outputContract`. Agent node는 `roleId, invocation, inputBindings, outputName, loopId?`를 가진다. 동일 역할의 여러 노드를 구분해 patch를 적용할 수 있다.
+역할: `id, prompt, modelProfile, allowedWorkTools, outputContract`. Agent node는 `roleId, invocation, inputBindings, outputName, parentId?, retry?`를 가진다. 동일 역할의 여러 노드를 구분해 patch를 적용할 수 있다. 노드 종류별 필드는 [팀 그래프 모델](features/team-graph.md#정의-스키마)을 따른다.
 
 ### 4.2 compiler 파이프라인
 
-`JSON parse → version/schema validation → references/ports validation → capability reachability → Loop-boundary validation → input binding validation → IR lowering → plan summary`.
+`JSON parse → version/schema validation → team reference resolution → references/ports validation → containment·box-boundary validation → cycle·parallel-merge validation → capability reachability → input binding validation → runtime support check → IR lowering → plan summary`.
 
-IR은 `AgentStep / DecisionStep / ReviewLoop / OutputStep`와 정적 연결이다. 사용자가 넣은 코드/함수를 eval하지 않는다. rule은 `review_verdict`, `required_tasks_submitted`, `human_approval`의 enum으로만 선택한다. 수식 언어는 MVP 밖이다.
+참조 팀은 주입한 정의 출처에서 읽어 `팀 노드 id/원본 노드 id`로 펼친다. compiler는 저장소를 직접 열지 않는다. 사용자가 넣은 코드/함수를 eval하지 않는다. `review`·`approval`·`rule` Decision의 rule은 `review_verdict`, `required_tasks_submitted`, `human_approval`의 enum으로만 선택한다. `check`는 등록 검사, `router`는 이름 붙인 route 중 모델의 선택으로 분기한다. 수식 언어는 없다.
 
-Loop 본문은 `loopId`로 묶는다. 외부 edge는 enter/next, 내부 종료는 repeat/exit만 허용한다. 이 경계를 통과하지 않는 외부↔본문 연결은 거절한다. 각 본문 경로는 Loop로 반환하거나 명시적으로 실패한다. `repeat`가 자동 회차 상한을 넘어가면 새 본문을 호출하기 전에 Approval을 생성한다.
+상자 소속은 `parentId`로 묶고, 경계·순환·루프 완결성·병렬 합류 규칙은 [팀 그래프 모델의 구조 규칙](features/team-graph.md#구조-규칙)을 따른다. `repeat`가 자동 회차 상한을 넘어가면 새 본문을 호출하기 전에 Approval을 생성한다.
 
 GraphRunner의 node callback은 `requestExecution(runId,nodeId,iterationId)`를 요청한다. 동일 계획 활성화가 실수로 재진입해도 activationKey의 unique 제약으로 Task를 중복 생성하지 않는다. LangGraph node retry는 MVP에서 비활성화하고 재시도는 Corral의 시도·예산 계약으로만 처리한다.
 
 ### 4.3 일반 분기와 병렬의 범위
 
-root에서는 정적 Agent 순서, 승인/검토 분기, Output을 지원한다. 임의 DAG의 모든 fan-out/fan-in 의미는 지원하지 않는다. 병렬성은 명시적 동적 child tasks와 전체 합류(`all`)에서 제공한다. 지원하지 않는 연결은 에디터에서 생성되더라도 검증 오류로 막는다.
+정적 병렬 분기와 Join(`all`·`any`)의 의미는 [팀 그래프 모델](features/team-graph.md)이 정한다. 동적 병렬성은 명시적 child tasks와 전체 합류(`all`)로 제공한다. 현재 런타임이 실행하지 않는 구성은 compiler가 `RUNTIME_UNSUPPORTED` 경고로 드러내고 실행 시작에서 거절한다.
 
-이 제한은 “그림은 자유롭게 그리고 실행은 다른 방식으로 한다”는 뜻이 아니다. **지원하는 연결 의미를 UI에 드러내고 그 범위 안의 편집은 모두 실행**한다.
+“그림은 자유롭게 그리고 실행은 다른 방식으로 한다”는 일은 없다. **정의할 수 있는 구성 중 실행하지 않는 것은 편집 중에 드러내고, 실행하는 구성은 그린 의미대로 실행**한다.
 
 ## 5. Coordinator 명령 처리
 
