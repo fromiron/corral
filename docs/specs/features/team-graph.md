@@ -162,15 +162,21 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
   - 구성원은 Team 밖 단계와 같은 Run에서 같은 규칙(재시도와 실패 경로, 병렬과 Join, 사람을 기다리기)으로 실행한다.
   - 구성원이 `exit`에 닿으면 Team 안에서 열린 Loop 회차를 `pass`로 닫고 `next`로 이어진다.
   - 구성원이 조상 상자의 `exit`·`repeat`로 바로 나가면 Team도 함께 나간다.
+- **참조 팀.** Run을 시작할 때 고정한 revision의 정의를 그 Team 안에 펼쳐 Run 스냅샷에 고정한다. 펼친 뒤에는 `inline` Team처럼 실행하며, 새 Run이나 별도 실행 경계를 만들지 않는다.
+  - 펼친 노드·역할·연결·capability link의 id는 `<Team id>.<원래 id>`다. 참조 팀 안의 참조 팀도 같은 방식으로 펼친다.
+  - 원본의 시작 노드가 Team의 `body`로 이어진다. 원본 Output으로 들어오던 연결은 Team의 `exit`로 간다.
+  - 원본 Output이 `requireApproval`이면 그 자리에 Output과 같은 입력을 읽는 approval Decision(`<Team id>.<Output id>`)을 둔다. 승인하면 `exit`로 가고, 거절하면 Run이 취소된다.
+  - 구성원이 읽는 `run_input` brief는 Team의 `inputBindings`로 바뀐다. Team에 입력이 없으면 Run의 brief를 읽는다. criteria는 Run의 것을 읽는다. 원본의 리뷰 레시피가 Run과 다른 criteria hash를 고정했으면 실행 시작에서 거절한다.
+  - 다른 단계가 Team을 `task_output`으로 읽으면 원본 Output이 모은 입력을 받는다. 원본 Output이 여럿이면 그 입력을 모두 optional로 받는다.
+  - 원본의 `limits`, `executionPolicy`, `input`, `planOwnerRoleId`는 쓰지 않고 Run의 것을 따른다.
 
 ### 실행 지원 범위
 
 정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
 
-- 참조 팀(`reference` Team).
 - 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
 
-compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check, 병렬 분기와 Join, `inline` Team과 Team으로 시작하는 팀이 여기에 포함된다.
+compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check, 병렬 분기와 Join, `inline`·참조 Team과 Team으로 시작하는 팀이 여기에 포함된다.
 
 ### 계획 IR
 
@@ -190,9 +196,9 @@ Loop는 회차 한 번을 실행하는 함수와 상한 검사로 바뀌며, 화
 
 ```gherkin
 Scenario: 아직 실행하지 않는 구성은 실행 전에 거절한다
-  Given 참조 팀을 둔 정의
+  Given maxDelegationDepth가 3인 정의
   When 정의를 컴파일한다
-  Then 오류는 없고 Team에 RUNTIME_UNSUPPORTED 경고가 있다
+  Then 오류는 없고 RUNTIME_UNSUPPORTED 경고가 있다
   When 이 정의로 실행을 시작한다
   Then RUNTIME_UNSUPPORTED로 거절되고 Run이 만들어지지 않는다
 
@@ -255,6 +261,26 @@ Scenario: 루프 안의 팀과 팀 안의 루프
   Then C의 구성원이 A의 회차마다 새 Task로 실행되고 A의 next로 간다
   Given inline Team T 안의 Loop L 안에서 Decision이 T의 exit로 바로 나간다
   Then L의 열린 회차가 pass로 끝나고 T의 next로 간다
+
+Scenario: 참조 팀을 펼쳐 실행한다
+  Given 저장된 팀 Y(시작 W → Output, W는 run_input brief를 읽음)를 참조하는 Team T가 P의 출력을 입력으로 받고, T 다음 Q가 T를 읽는다
+  When 실행한다
+  Then Run 스냅샷에 T.W가 T 안의 구성원으로 있고, T.W는 brief 대신 P의 출력을 받는다
+  And Q는 T.W의 출력을 받고 Run이 끝난다
+  When 그 뒤 Y가 새 revision으로 저장된다
+  Then 이미 시작한 Run의 스냅샷은 바뀌지 않는다
+
+Scenario: 참조 팀 Output의 승인
+  Given 참조한 팀의 Output이 requireApproval이다
+  When 그 Team의 마지막 단계가 끝난다
+  Then T.output 승인을 요청하고, 승인하면 Team 다음 단계로 간다
+  When 다른 Run에서 거절한다
+  Then 그 Run은 취소된다
+
+Scenario: 참조 팀의 리뷰 레시피가 다른 criteria를 고정했다
+  Given 참조한 팀의 Loop 리뷰 레시피 criteria hash가 Run의 criteria와 다르다
+  When 실행을 시작한다
+  Then 거절되고 Run이 만들어지지 않는다
 
 Scenario: inline Team은 입력을 받거나 읽히지 않는다
   Given inputBindings를 둔 inline Team이나, inline Team을 task_output으로 읽는 Agent

@@ -31,7 +31,8 @@
 | 4. 재시도, 실패 경로, router | 완료 | f4eaaabb(명세), 6ca57f69, 3cf75135(3단계 보완) |
 | 4b. check Decision | 완료 | 45261960(명세), 839a953c |
 | 5. 병렬 | 완료 | 05918b82(명세), 9439bc19(명세: 기다림은 그 단계만), 7f3df913 |
-| 6. 하위 팀 | 진행 중 | 6a(`inline` Team): 18119a11(명세), 구현은 `feat: run inline Teams` |
+| 6. 하위 팀 | 진행 중 | 6a(`inline` Team): 18119a11(명세), 0a5f757c |
+| 6c. 예산 폐지 | 시작 전 | |
 | 7. 위임 깊이 | 시작 전 | |
 | 8. 포크와 중단점 | 시작 전 (명세 없음) | |
 | 마무리: 확장 E2E, 명세 정리 | 시작 전 | |
@@ -48,11 +49,13 @@
 
 ## 다음 스텝
 
-1. 6b단계: 참조 팀을 자식 Run으로 실행한다. 정해진 것: 자식은 부모의 남은 예산 안에서 쓰고 사용량은 부모에 합친다. 자식이 기다리는 승인은 부모 Run에서 답한다. 자식이 실패하면 부모도 그 Team에서 실패하고, 자식을 멈추거나 거절하면 부모가 취소된다. Team `inputBindings`가 자식의 brief가 되고, 참조 팀을 읽으면 그 Output이 모은 것을 받는다.
-2. 7단계(위임 깊이).
+1. 6b단계: 참조 팀을 Run 시작 때 펼친다. 명세는 [팀 실행](../specs/features/team-graph.md#팀-실행). 편집기에 참조 팀 입력과 참조 팀을 읽는 입력 출처를 더한다.
+2. 6c단계(예산 폐지): 사용량 예산을 기능부터 UI까지 지운다. `executionPolicy.budget`(모델 호출, 출력 토큰, 요청별 출력 상한, 모델 timeout, wall deadline), Loop `budget`과 `budget_exhausted`, 옛 `RunLimits` 상한 필드, 예산 장부와 `LIMIT_REACHED`, `BudgetInspector`와 예산 설정·패치. 남기는 것: 사용량·비용 기록과 표시, 모델의 context·출력 한도, 동시성·spawn·깊이·질문 한도, 무진전 경고, Loop 회차 상한. 명세부터 고친다(제품 계약 §9 등).
+3. 7단계(위임 깊이).
 
 ## 남은 정리와 열린 질문
 
+- `packages/cli/test/evaluation.test.ts`의 두 테스트가 cf5074b0(develop, 산출물 본문 수명 제한)부터 실패한다. 평가가 후보 산출물 본문을 읽을 때 이미 해제되어 `candidateCorrect`가 null이 된다. 이 작업과 별개다.
 - 병렬 분기와 Join은 단위·runner 공통 테스트로만 확인했다. 브라우저 E2E는 마무리 단계에서 한다.
 - 확장 E2E 13개가 옛 선택자를 쓴다(마무리 단계에서): `accessibility`, `editor-responsive`, `palette`, `performance/performance`, `studio`, `team-config`, `server/harness-recipe`, `server/markdown-agent-import`, `server/models`, `server/projects`, `server/reasoning-scope`, `server/server`, `server/team-config`.
 - `/demo`에서 저장하면 수정이 사라진다. 데모 loader가 템플릿 id로 팀을 찾는데, 새 팀은 항상 새 id를 받아서 저장할 때마다 데모 팀을 다시 만든다. main에도 있던 문제다.
