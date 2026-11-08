@@ -13,7 +13,7 @@
 5. **실패 경로.** Agent는 실패하면 정한 횟수만큼 다시 시도한다. 그래도 실패하면 `error` 포트로 나가며, 연결이 없으면 Run이 실패한다.
 6. **팀 상자의 두 출처.** 같은 정의 안에서 노드를 묶은 팀(`inline`)과, 저장된 다른 팀의 정해진 revision을 가져다 쓰는 팀(`reference`)이 있다. 참조 팀은 원본이 바뀌어도 고정한 revision을 쓴다.
 7. **메모.** 모든 노드에 실행에 쓰이지 않는 메모를 달 수 있다.
-8. **진단.** 컴파일러가 구조 문제를 노드·연결 단위로 돌려준다. 오류가 있으면 실행할 수 없다. 경고는 실행을 막지 않는다. 정의할 수 있지만 현재 런타임이 실행하지 않는 구성은 경고로 알리고, 실행 시작에서 거절한다([실행 지원 범위](#실행-지원-범위)).
+8. **진단.** 컴파일러가 구조 문제를 노드·연결 단위로 돌려준다. 오류가 있으면 실행할 수 없다. 경고는 실행을 막지 않는다.
 
 ## 계약
 
@@ -168,13 +168,9 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
   - 다른 단계가 Team을 `task_output`으로 읽으면 원본 Output이 모은 입력을 받는다. 원본 Output이 여럿이면 그 입력을 모두 optional로 받는다.
   - 원본의 `limits`, `input`, `planOwnerRoleId`는 쓰지 않고 Run의 것을 따른다.
 
-### 실행 지원 범위
+### 실행 한도
 
-정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
-
-- 설치 정책 상한을 넘는 `maxSpawns`.
-
-compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check, 병렬 분기와 Join, `inline`·참조 Team과 Team으로 시작하는 팀이 여기에 포함된다.
+런타임은 위 모델 전체를 실행한다. `limits.maxSpawns`가 설치 정책의 하위 실행 상한([제품 계약](../product-contract.md) §9)보다 크면 실행은 설치 상한까지만 하위 실행을 만든다. compiler는 제품 상한(32)을 넘는 값에 `SPAWNS_CAPPED` 경고를 낸다. Run이 실제로 쓰는 한도는 `run.started`의 `limits`에 남고 실행 정보에 보인다.
 
 ### 계획 IR
 
@@ -193,12 +189,14 @@ Loop는 회차 한 번을 실행하는 함수와 상한 검사로 바뀌며, 화
 ## 수용 시나리오
 
 ```gherkin
-Scenario: 아직 실행하지 않는 구성은 실행 전에 거절한다
-  Given maxSpawns가 설치 정책 상한보다 큰 정의
+Scenario: 설치 상한보다 큰 하위 실행 수는 상한으로 실행한다
+  Given maxSpawns가 40이고 설치 정책의 하위 실행 상한이 32인 정의
   When 정의를 컴파일한다
-  Then 오류는 없고 RUNTIME_UNSUPPORTED 경고가 있다
+  Then 오류는 없고 SPAWNS_CAPPED 경고가 있다
   When 이 정의로 실행을 시작한다
-  Then RUNTIME_UNSUPPORTED로 거절되고 Run이 만들어지지 않는다
+  Then Run이 시작되고 run.started의 limits.maxSpawns는 32다
+  When 하위 실행 32개를 만든 뒤 하나 더 만들려 한다
+  Then 거절되고 limit.reached(spawns)가 남는다
 
 Scenario: 루프 두 개를 차례로 돈다
   Given 최상위에 Loop A와 Loop B를 차례로 두고 각 Loop 안의 검토가 첫 회차에 revise, 둘째 회차에 pass를 고른다
@@ -239,7 +237,7 @@ Scenario: 같은 산출물을 다시 내면 정체로 본다
 Scenario: 설치 상한보다 많은 회차를 정할 수 있다
   Given maxIterations 25인 Loop
   When 정의를 컴파일하고 실행을 시작한다
-  Then RUNTIME_UNSUPPORTED 진단이 없고 Run이 시작된다
+  Then 오류 없이 Run이 시작된다
 
 Scenario: 루프로 시작하는 팀
   Given 시작 노드가 Loop인 정의
@@ -436,16 +434,11 @@ Scenario: route가 하나뿐인 router
 Scenario: 정한 깊이까지 위임한다
   Given maxDelegationDepth가 3이고 scheduled Agent A가 B에, B가 C에, C가 D에, D가 C에 위임할 수 있는 정의
   When 정의를 컴파일한다
-  Then 오류와 RUNTIME_UNSUPPORTED 경고가 없다
+  Then 오류가 없다
   When 실행에서 A가 B를, B가 C를, C가 D를 부른다
   Then D의 실행은 깊이 3으로 만들어진다
   When D가 C를 부르려 한다
   Then 깊이 한도로 거절되고 limit.reached(depth)가 남는다
-
-Scenario: 지금 실행할 수 있는 정의는 그대로 실행된다
-  Given Loop 하나와 리뷰 레시피를 쓰는 기존 팀 정의
-  When 정의를 컴파일하고 실행을 시작한다
-  Then RUNTIME_UNSUPPORTED 진단이 없고 Run이 시작된다
 
 Scenario: 이해하지 못하는 필드
   Given 스키마에 없는 필드가 든 정의를 가져온다

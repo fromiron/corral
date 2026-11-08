@@ -105,7 +105,7 @@ GraphRunner의 node callback은 `requestExecution(runId,nodeId,iterationId)`를 
 
 ### 4.3 일반 분기와 병렬의 범위
 
-정적 병렬 분기와 Join(`all`·`any`)의 의미는 [팀 그래프 모델](features/team-graph.md)이 정한다. 동적 병렬성은 명시적 child tasks와 전체 합류(`all`)로 제공한다. 현재 런타임이 실행하지 않는 구성은 compiler가 `RUNTIME_UNSUPPORTED` 경고로 드러내고 실행 시작에서 거절한다.
+정적 병렬 분기와 Join(`all`·`any`)의 의미는 [팀 그래프 모델](features/team-graph.md)이 정한다. 동적 병렬성은 명시적 child tasks와 전체 합류(`all`)로 제공한다.
 
 “그림은 자유롭게 그리고 실행은 다른 방식으로 한다”는 일은 없다. **정의할 수 있는 구성 중 실행하지 않는 것은 편집 중에 드러내고, 실행하는 구성은 그린 의미대로 실행**한다.
 

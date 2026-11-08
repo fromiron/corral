@@ -73,7 +73,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 | 영역 | 필수 제공 |
 |---|---|
 | 편집 | 실제 노드 D&D·연결·삭제·속성 편집·저장·불러오기·복제·Undo/Redo |
-| 그래프 | Agent / Decision / Loop / Team / Join / Output. 정의 규칙과 현재 실행 지원 범위는 [팀 그래프 모델](features/team-graph.md). 실행 입력은 Corral 설정 |
+| 그래프 | Agent / Decision / Loop / Team / Join / Output. 정의와 실행 규칙은 [팀 그래프 모델](features/team-graph.md). 실행 입력은 Corral 설정 |
 | 협업 | 고정 담당 작업, 질문·답변·결과 제출, 명시된 상대 역할, 동적 자식 호출 |
 | 산출물 | Markdown/일반 텍스트와 구조화된 JSON 검토 결과. 불변 버전·diff·읽은 버전 기록 |
 | 관찰 | 설계 그래프의 상태 겹침, 실제 실행 트리, 협업 로그, 대기 대상, 사용량 |
@@ -88,7 +88,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ### 3.2 현재 경계와 별도 후속 범위
 
-실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 같은 작업 사본의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의할 수 있으며, 현재 실행하지 않는 구성은 [팀 그래프 모델의 실행 지원 범위](features/team-graph.md#실행-지원-범위)에서 실행 시작 전에 거절한다.
+실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 같은 작업 사본의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의하고 실행할 수 있다.
 
 일반 명령·service와 Hashline은 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
@@ -130,7 +130,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ## 5. 그래프의 실행 의미
 
-노드·포트·상자·병렬과 컴파일 규칙, 현재 실행 지원 범위는 [팀 그래프 모델](features/team-graph.md)이 정한다. 이 절은 그 모델에 대한 제품의 약속만 적는다.
+노드·포트·상자·병렬과 컴파일·실행 규칙은 [팀 그래프 모델](features/team-graph.md)이 정한다. 이 절은 그 모델에 대한 제품의 약속만 적는다.
 
 ### 5.1 노드와 호출
 
@@ -285,12 +285,12 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 | 항목 | 기본값 | 조절·적용 |
 |---|---:|---|
 | 캔버스 정의 규모 | 고정 개수 상한 없음 | 정의·초안·가져오기·컴파일에서 노드·역할·control edge·capability link와 역할별 설정 맵의 개수만으로 거절하지 않는다. 파일·요청 크기, 각 항목의 내용·권한, Loop 구조·반복 상한과 실행 자원 제한은 유지한다. |
-| Loop 수·중첩 | 정의는 제한 없음 | 실행은 [팀 그래프 모델의 실행 지원 범위](features/team-graph.md#실행-지원-범위)를 따름 |
+| Loop 수·중첩 | 제한 없음 | 정의와 실행 모두 |
 | Loop 회차 상한 | Loop의 `maxIterations` | `loop_limit` 패치로 바꿈. 설치 상한 없음. 다 쓰면 `exhausted` 경로나 사용자 확인([루프 실행](features/team-graph.md#루프-실행)) |
 | 동적 위임 깊이 | 2 | 정의의 `limits.maxDelegationDepth`로 바꿈. 설치 상한 없음. 최초 scheduled agent=0 |
 | 동시 모델 요청 | 6 | 양의 정수로 설정. host·Run 자원 admission, 대기는 슬롯 사용 안 함 |
 | resident execution | 12 | 대기 worker 포함, 모델 동시성과 별도 |
-| 실행당 동적 생성 | 12 | 사용자 패치로 32까지. 질문 응답 생성 포함 |
+| 실행당 동적 생성 | 12 | 사용자 패치로 32까지. 정의 값이 설치 상한보다 크면 설치 상한으로 실행([실행 한도](features/team-graph.md#실행-한도)). 질문 응답 생성 포함 |
 | 요청별 출력 토큰 상한 | 모델 능력·남은 컨텍스트 | 구독 전송의 미지원 출력 cap은 강제됐다고 표시하지 않음 |
 | 실행당 질문 | 6 | 한 실행의 열린 질문 최대 1개 |
 | 질문 대기 | 120초 | user pause 동안 논리 질문 타이머 중지 |
