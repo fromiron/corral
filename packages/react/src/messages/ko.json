@@ -343,7 +343,9 @@
         "cancelled": "취소됨",
         "timed_out": "시간 초과"
       }
-    }
+    },
+    "breakpoints": "시작 전에 멈출 단계",
+    "breakpointsCount": "시작 전에 멈출 단계 · {count}"
   },
   "Reins": {
     "executionNumber": "에이전트 실행 {number}",
@@ -593,7 +595,12 @@
       "tasks": "작업 {done}/{total}",
       "toolCalls": "도구 호출 {count}회",
       "modelRequests": "모델 요청 {count}회"
-    }
+    },
+    "forkedFrom": "갈라진 곳",
+    "forkedFromLink": "{runId} 실행의 {step}",
+    "pauseBefore": "이 단계 전에 멈춤",
+    "forkHere": "여기서 다시 실행",
+    "forkFailed": "시작하지 못했습니다: {message}"
   },
   "Timeline": {
     "heading": "타임라인",
@@ -768,7 +775,8 @@
       "user_action": "사용자 결정",
       "loop_stalled": "Loop 결과가 그대로임",
       "route": "갈 길 고르기",
-      "check": "검사 판정 없음"
+      "check": "검사 판정 없음",
+      "breakpoint": "{step} 시작 전 멈춤"
     },
     "explain": {
       "final_output": "승인하면 바로 이 버전이 출력이 됩니다. 더 새 버전은 따로 승인해야 합니다.",
@@ -776,7 +784,8 @@
       "user_action": "실행이 사용자를 기다립니다. 승인하면 이 버전들로 계속하고, 반려하면 멈춥니다.",
       "loop_stalled": "이번 회차가 지난 회차와 같은 결과를 냈습니다. 승인하면 그래도 한 번 더 돌고, 반려하면 실행을 멈춥니다.",
       "route": "라우터가 다음 길을 고르지 못했습니다. 길을 하나 골라 계속하거나 실행을 멈추세요.",
-      "check": "검사가 통과도 실패도 하지 않았습니다. 오류, 시간 초과, 중단, 또는 실행 중 작업 사본이 바뀌었습니다. 승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춥니다."
+      "check": "검사가 통과도 실패도 하지 않았습니다. 오류, 시간 초과, 중단, 또는 실행 중 작업 사본이 바뀌었습니다. 승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춥니다.",
+      "breakpoint": "이 단계는 아직 시작하지 않았습니다. 계속하면 지금 설정으로 시작합니다."
     },
     "subject": "대상",
     "criteria": "기준",
@@ -790,7 +799,8 @@
       "loop_cap": "승인하면 검토를 한 번 더 하고, 반려하면 실행을 멈춰요.",
       "loop_stalled": "승인하면 한 번 더 돌고, 반려하면 실행을 멈춰요.",
       "route": "이 길로 실행을 이어 갑니다.",
-      "check": "승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춰요."
+      "check": "승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춰요.",
+      "breakpoint": "지금 설정으로 이 단계를 시작합니다. 중단하면 실행을 취소합니다."
     },
     "approveAs": {
       "user_action": "이 버전으로 계속",
@@ -798,7 +808,8 @@
       "loop_cap": "한 번 더 검토",
       "loop_stalled": "한 번 더 해 보기",
       "route": "이 길로 계속",
-      "check": "검사 다시 실행"
+      "check": "검사 다시 실행",
+      "breakpoint": "계속"
     },
     "rejectAs": {
       "user_action": "반려하고 멈춤",
@@ -806,7 +817,8 @@
       "loop_cap": "여기서 멈춤",
       "loop_stalled": "여기서 멈춤",
       "route": "여기서 멈춤",
-      "check": "여기서 멈춤"
+      "check": "여기서 멈춤",
+      "breakpoint": "실행 중단"
     },
     "checkHeading": "검사 실행 승인",
     "checkScope": "{execution} · 시도 {attempt} · 설정 r{revision} · 실행 해시 {fingerprint} · 파일 상태 {tree}",

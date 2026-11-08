@@ -343,7 +343,9 @@
         "cancelled": "Cancelled",
         "timed_out": "Timed out"
       }
-    }
+    },
+    "breakpoints": "Pause before steps",
+    "breakpointsCount": "Pause before steps · {count}"
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
@@ -593,7 +595,12 @@
       "tasks": "{done}/{total} tasks",
       "toolCalls": "{count, plural, one {# tool call} other {# tool calls}}",
       "modelRequests": "{count, plural, one {# model request} other {# model requests}}"
-    }
+    },
+    "forkedFrom": "Forked from",
+    "forkedFromLink": "{step} of run {runId}",
+    "pauseBefore": "Pause before this step",
+    "forkHere": "Run again from here",
+    "forkFailed": "Could not start: {message}"
   },
   "Timeline": {
     "heading": "Timeline",
@@ -768,7 +775,8 @@
       "user_action": "Your decision",
       "loop_stalled": "Loop stopped changing",
       "route": "Choose a route",
-      "check": "Checks gave no verdict"
+      "check": "Checks gave no verdict",
+      "breakpoint": "Paused before {step}"
     },
     "explain": {
       "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
@@ -776,7 +784,8 @@
       "user_action": "The run waits for you. Approve to continue with these versions, or reject to stop.",
       "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run.",
       "route": "The router could not choose where the work goes next. Pick a route to continue, or stop the run.",
-      "check": "The checks did not pass or fail: one errored, timed out, was stopped, or ran on a changed working copy. Approve to run them again, or reject to stop the run."
+      "check": "The checks did not pass or fail: one errored, timed out, was stopped, or ran on a changed working copy. Approve to run them again, or reject to stop the run.",
+      "breakpoint": "The step has not started. Continue starts it with the current settings."
     },
     "subject": "About",
     "criteria": "Criteria",
@@ -790,7 +799,8 @@
       "loop_cap": "Approving runs the review once more; rejecting stops the run.",
       "loop_stalled": "Approving runs one more round; rejecting stops the run.",
       "route": "Continues the run along this route.",
-      "check": "Approving runs the checks again; rejecting stops the run."
+      "check": "Approving runs the checks again; rejecting stops the run.",
+      "breakpoint": "Starts this step with the current settings; stopping cancels the run."
     },
     "approveAs": {
       "user_action": "Continue with this version",
@@ -798,7 +808,8 @@
       "loop_cap": "Review once more",
       "loop_stalled": "Try once more",
       "route": "Continue along this route",
-      "check": "Run checks again"
+      "check": "Run checks again",
+      "breakpoint": "Continue"
     },
     "rejectAs": {
       "user_action": "Reject and stop",
@@ -806,7 +817,8 @@
       "loop_cap": "Stop here",
       "loop_stalled": "Stop here",
       "route": "Stop here",
-      "check": "Stop here"
+      "check": "Stop here",
+      "breakpoint": "Stop the run"
     },
     "checkHeading": "Approve check launch",
     "checkScope": "{execution} · attempt {attempt} · config r{revision} · {fingerprint} · tree {tree}",

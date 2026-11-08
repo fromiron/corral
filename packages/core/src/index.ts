@@ -41,6 +41,7 @@ export {
 } from './decisions/index.ts';
 export { definitionHash } from './definition-hash.ts';
 export * from './evaluation.ts';
+export * from './fork.ts';
 export * from './fuzzy.ts';
 export * from './history.ts';
 export * from './interactions.ts';

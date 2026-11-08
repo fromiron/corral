@@ -34,19 +34,20 @@
 | 6. 하위 팀 | 완료 | 6a(`inline` Team): 18119a11(명세), 0a5f757c. 6b(참조 팀 펼치기): df6b40a5(명세), 구현은 `feat: expand reference Teams at run start`. 3997cf67(pi 1.5.0, GPT-6.1 Terra) |
 | 6c. 예산 폐지 | 완료 | fbafed99, 2cd2fa64(명세), 구현은 `feat: remove usage budgets` |
 | 7. 위임 깊이 | 완료 | 615dcd6b(명세), 5464aaac, 281194e9(명세: 설치 상한을 넘는 `maxSpawns`), 구현은 `feat: run a spawn limit above the installation cap at the cap` |
-| 8. 포크와 중단점 | 시작 전 (명세 없음) | |
+| 8. 포크와 중단점 | 완료 | 8e241977·d047d238(명세), 6d7c35de(런타임), 화면은 `feat: fork and breakpoint controls in the studio` |
 | 마무리: 확장 E2E, 명세 정리 | 시작 전 | |
 
-런타임 단계(3–7)는 끝났다. 컴파일러의 `RUNTIME_UNSUPPORTED` 규칙과 실행 지원 범위 표는 없어졌고, 정의가 컴파일되면 런타임이 실행한다. 8단계는 실행 옵션이고 명세부터 쓴다.
+런타임 단계(3–7)는 끝났다. 컴파일러의 `RUNTIME_UNSUPPORTED` 규칙과 실행 지원 범위 표는 없어졌고, 정의가 컴파일되면 런타임이 실행한다. 8단계 명세는 [포크와 중단점](../specs/features/fork-and-breakpoints.md)이다.
 
 ## 다음 스텝
 
-1. 8단계(포크와 중단점): 결정은 끝났다. 끝난 Run의 최상위 단계에서 지금 정의로 새 Run을 시작하고(앞 단계 결과는 복사, 작업 사본은 그대로), 중단점은 단계 시작 직전에 그 단계만 멈춘다. 명세를 쓰고, 실패하는 테스트, 구현 순서로 간다.
-2. 마무리: 확장 E2E와 명세 정리.
+1. 마무리: 확장 E2E 13개를 새 선택자로 고치고, 아래 남은 정리를 처리한 뒤 이 계획 문서를 지운다.
 
 ## 남은 정리와 열린 질문
 
-- `packages/cli/test/evaluation.test.ts`의 두 테스트가 cf5074b0(develop, 산출물 본문 수명 제한)부터 실패한다. 평가가 후보 산출물 본문을 읽을 때 이미 해제되어 `candidateCorrect`가 null이 된다. 이 작업과 별개다.
+- 포크는 저장된 팀으로 시작한 Run만 대상이다. 대화의 자동 팀 Run은 비목표로 두었다. 끝난 Run은 이제 단계 결과를 남기므로, cf5074b0부터 실패하던 `packages/cli/test/evaluation.test.ts` 두 테스트가 다시 통과한다.
+- 실행 중 중단점 켜기·끄기는 단위 테스트로만 확인했다(모의 실행이 너무 빨리 끝난다). 시작 전 중단점, 중단점 승인 카드, 포크와 `갈라진 곳` 표시는 실제 화면에서 확인했다.
+- `packages/react/test/team-editor.test.tsx` > offers a referenced Team as an input source는 간헐적으로 실패한다. 8단계 변경 전에도 같았다.
 - 병렬 분기와 Join은 단위·runner 공통 테스트로만 확인했다. 브라우저 E2E는 마무리 단계에서 한다.
 - 확장 E2E 13개가 옛 선택자를 쓴다(마무리 단계에서): `accessibility`, `editor-responsive`, `palette`, `performance/performance`, `studio`, `team-config`, `server/harness-recipe`, `server/markdown-agent-import`, `server/models`, `server/projects`, `server/reasoning-scope`, `server/server`, `server/team-config`.
 - `/demo`에서 저장하면 수정이 사라진다. 데모 loader가 템플릿 id로 팀을 찾는데, 새 팀은 항상 새 id를 받아서 저장할 때마다 데모 팀을 다시 만든다. main에도 있던 문제다.

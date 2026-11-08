@@ -21,6 +21,7 @@ export function RunControls({
   onClearStartFrom,
   harnessOverrides,
   roleOverrides,
+  breakpoints,
   mode: chosenMode,
   onModeChange,
   startDisabled = false,
@@ -34,6 +35,8 @@ export function RunControls({
   onClearStartFrom?: () => void;
   harnessOverrides?: HarnessOverrides;
   roleOverrides?: RoleRunOverrides;
+  /** Steps the run pauses before. */
+  breakpoints?: readonly string[];
   mode?: 'mock' | 'live';
   onModeChange?: (mode: 'mock' | 'live') => void;
   /** A shared save may still be pending after a settings detour. */
@@ -68,6 +71,7 @@ export function RunControls({
             : undefined,
           harnessOverrides,
           roleOverrides,
+          breakpoints,
         );
       const runId = session.getState().runId;
       if (runId) onStarted?.(runId);

@@ -64,6 +64,7 @@ export function ApprovalPanel({
   const headingId = useId();
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
+  const nodes = useStore(session, (s) => s.definition?.nodes);
   const approvals = useMemo(
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
     [all],
@@ -133,6 +134,11 @@ export function ApprovalPanel({
     );
   const label = (id: string) =>
     artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
+  /** What waits; a breakpoint names the step it holds. */
+  const kindText = (approval: ApprovalView) =>
+    t(`kind.${copyKey(approval)}`, {
+      step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
+    });
   const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
     setBusy(true);
     try {
@@ -251,7 +257,7 @@ export function ApprovalPanel({
           >
             <AgentStatusIcon status="done" size={12} />
             {t('done', {
-              step: t(`kind.${copyKey(approval)}`),
+              step: kindText(approval),
               subject: label(approval.subjectVersionIds[0] ?? ''),
             })}
           </p>
@@ -286,7 +292,7 @@ export function ApprovalPanel({
                             ? 'lspHeading'
                             : 'checkHeading',
                       )
-                    : t(`kind.${copyKey(approval)}`)}
+                    : kindText(approval)}
                 </p>
                 {approval.tool && !compact ? (
                   <span className="truncate text-muted-foreground">

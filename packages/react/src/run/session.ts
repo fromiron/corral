@@ -64,6 +64,8 @@ export interface RunSessionState {
     startFrom?: StartFrom,
     harnessOverrides?: HarnessOverrides,
     roleOverrides?: RoleRunOverrides,
+    /** Steps this run pauses before; for this run only. */
+    breakpoints?: readonly string[],
   ): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
@@ -508,7 +510,15 @@ export function createRunSession(
       commandError: null,
       unconfirmedCommands: {},
 
-      async start(definition, saved, mode = 'mock', startFrom, harnessOverrides, roleOverrides) {
+      async start(
+        definition,
+        saved,
+        mode = 'mock',
+        startFrom,
+        harnessOverrides,
+        roleOverrides,
+        breakpoints,
+      ) {
         reset();
         const version = generation;
         const commandId = newCommandId();
@@ -516,6 +526,7 @@ export function createRunSession(
           ...(startFrom ? { startFrom } : {}),
           ...(harnessOverrides && Object.keys(harnessOverrides).length ? { harnessOverrides } : {}),
           ...(roleOverrides && Object.keys(roleOverrides).length ? { roleOverrides } : {}),
+          ...(breakpoints?.length ? { breakpoints: [...breakpoints] } : {}),
         };
         try {
           const { runId, receipt } = await transport.startRun(

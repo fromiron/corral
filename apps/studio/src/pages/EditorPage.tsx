@@ -40,6 +40,7 @@ import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
 import { settingsInteractionBlocked, settingsOnlyTransition } from '../workbench/navigation.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
+import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { useModelProfiles } from '../workbench/useModels.ts';
@@ -498,6 +499,7 @@ function RunSide({
   const runMode = useRunMode(projectId, 'corral', definition.id);
   const profiles = useModelProfiles();
   const [roleOverrides, setRoleOverrides] = useState<RoleRunOverrides>({});
+  const [breakpoints, setBreakpoints] = useState<string[]>([]);
   const roles = definition.roles.map((role) => ({
     roleId: role.id,
     name: role.name,
@@ -543,6 +545,7 @@ function RunSide({
           value={harnessOverrides}
           onChange={(value) => setSelection({ key, value })}
         />
+        <RunBreakpoints nodes={definition.nodes} value={breakpoints} onChange={setBreakpoints} />
       </details>
       {runMode.error ? <p role="alert">{t('modeSaveFailed')}</p> : null}
       <RunControls
@@ -551,12 +554,14 @@ function RunSide({
         onModeChange={runMode.select}
         harnessOverrides={harnessOverrides}
         roleOverrides={roleOverrides}
+        breakpoints={breakpoints.filter((id) => definition.nodes.some((node) => node.id === id))}
         onStarted={() => {
           setSetupOpen(false);
           onStarted();
           setChosen(null);
           setSelection(null);
           setRoleOverrides({});
+          setBreakpoints([]);
           setViewing(null);
           setStartFrom(null);
         }}
