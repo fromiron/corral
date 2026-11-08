@@ -179,7 +179,10 @@ export function TeamGraphCanvas({
     for (const d of diagnostics) {
       const id = d.nodeId ?? d.edgeId ?? d.linkId;
       if (!id) continue;
-      const text = codeText.has(d.code) ? codeText(d.code, { message: d.message }) : d.message;
+      const node = d.nodeId ? definition.nodes.find((n) => n.id === d.nodeId) : undefined;
+      const text = codeText.has(d.code)
+        ? codeText(d.code, { message: d.message, node: node?.label ?? d.nodeId ?? '' })
+        : d.message;
       const entry = byId.get(id) ?? { severity: 'warning', text: [] };
       if (d.severity === 'error') entry.severity = 'error';
       entry.text.push(text);

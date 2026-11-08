@@ -536,6 +536,8 @@ export function ExecutionTree({
       onSelect={(agent) => onSteer(agent.id)}
       labels={labels}
       size="compact"
+      // The column shrinks to the panel; cards truncate instead of widening it.
+      className="grid-cols-[minmax(0,1fr)]"
       {...(now === undefined ? {} : { now })}
     />
   );

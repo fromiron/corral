@@ -7,7 +7,12 @@ import { type EditorDraft, emptyDraft } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
-import { type EditResult, patchNode, placeStep } from '../src/team-editor/commands.ts';
+import {
+  applyPattern,
+  type EditResult,
+  patchNode,
+  placeStep,
+} from '../src/team-editor/commands.ts';
 import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
 
 // The team editor's own behaviour (docs/specs/features/canvas.md), through its controls.
@@ -44,10 +49,29 @@ const canvasNode = (id: string) =>
 const choose = async (combobox: string | RegExp, option: string | RegExp) => {
   const user = userEvent.setup();
   await user.click(screen.getByRole('combobox', { name: combobox }));
-  await user.click(screen.getByRole('option', { name: option }));
+  // The list renders a moment after the click under load.
+  await user.click(await screen.findByRole('option', { name: option }));
 };
 
 describe('team editor', () => {
+  it('names the reviewer in the canvas mark of a missing-criteria warning', () => {
+    const { draft } = ok(applyPattern(chain(1), 'reviewLoop', ['agent_1']));
+    const contracts = new Map(draft.definition.roles.map((r) => [r.id, r.outputContract]));
+    const reviewer = draft.definition.nodes.find(
+      (n) => n.type === 'agent' && contracts.get(n.roleId) === 'review',
+    );
+    if (reviewer?.type !== 'agent') throw new Error('the pattern made no reviewer');
+    renderEditor(
+      patchNode(draft, reviewer.id, {
+        inputBindings: reviewer.inputBindings.filter((b) => b.kind !== 'run_input'),
+      }),
+    );
+    const mark = canvasNode(reviewer.id).querySelector('[data-problem]');
+    expect(mark?.getAttribute('title')).toContain(
+      `${reviewer.label} does not get the criteria, so its review cannot check them.`,
+    );
+  });
+
   it('lists the problems and brings the chosen one into view', async () => {
     // A rule reads the agent's output, so what is left is its unconnected branches.
     const review = ok(placeStep(chain(1), 'rule', { kind: 'after', nodeId: 'agent_1' }));
