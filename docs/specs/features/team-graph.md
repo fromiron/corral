@@ -150,7 +150,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
   - 그 분기 안에서 열린 Loop 회차는 `cancelled`로 끝난다.
   - 멈춘 분기의 기록과 산출물은 남는다. 늦게 도착한 분기는 무시한다.
 - **기록.** Join이 이어질 때 `workflow.joined`(Join, 회차, 정책, 멈춘 분기의 단계)를 남긴다.
-- **사람을 기다리기.** 한 단계가 승인·선택·다시 확인을 기다리면 그 단계만 멈춘다. 다른 분기와 실행은 계속 진행한다. Run 전체에 걸린 한도(무진전, 사용 한도)는 Run 단위 개입이므로 하나만 열리고, 거기 닿은 실행은 모두 그 하나를 기다린다.
+- **사람을 기다리기.** 한 단계가 승인·선택·다시 확인을 기다리면 그 단계만 멈춘다. 다른 분기와 실행은 계속 진행한다. Run 전체에 걸린 한도(무진전)는 Run 단위 개입이므로 하나만 열리고, 거기 닿은 실행은 모두 그 하나를 기다린다.
 - **끝나기.** 한 분기가 Run을 끝내면(실패 경로 없는 실패, `needs_user`, 거절, 회차 상한에서 멈춤) 다른 분기도 함께 멈춘다.
 - **작업 사본.** 분기들은 같은 세션 작업 사본을 쓰며 파일 작업은 하나씩 차례로 적용된다. 분기마다 사본을 나누지 않는다.
 
@@ -172,7 +172,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
 
-- 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
+- 설치 정책 상한을 넘는 `maxSpawns`.
 
 compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check, 병렬 분기와 Join, `inline`·참조 Team과 Team으로 시작하는 팀이 여기에 포함된다.
 
@@ -194,7 +194,7 @@ Loop는 회차 한 번을 실행하는 함수와 상한 검사로 바뀌며, 화
 
 ```gherkin
 Scenario: 아직 실행하지 않는 구성은 실행 전에 거절한다
-  Given maxDelegationDepth가 3인 정의
+  Given maxSpawns가 설치 정책 상한보다 큰 정의
   When 정의를 컴파일한다
   Then 오류는 없고 RUNTIME_UNSUPPORTED 경고가 있다
   When 이 정의로 실행을 시작한다
@@ -432,6 +432,15 @@ Scenario: route가 하나뿐인 router
   Given route가 하나인 router Decision
   When 정의를 컴파일한다
   Then 그 Decision에 오류가 있다
+
+Scenario: 정한 깊이까지 위임한다
+  Given maxDelegationDepth가 3이고 scheduled Agent A가 B에, B가 C에, C가 D에, D가 C에 위임할 수 있는 정의
+  When 정의를 컴파일한다
+  Then 오류와 RUNTIME_UNSUPPORTED 경고가 없다
+  When 실행에서 A가 B를, B가 C를, C가 D를 부른다
+  Then D의 실행은 깊이 3으로 만들어진다
+  When D가 C를 부르려 한다
+  Then 깊이 한도로 거절되고 limit.reached(depth)가 남는다
 
 Scenario: 지금 실행할 수 있는 정의는 그대로 실행된다
   Given Loop 하나와 리뷰 레시피를 쓰는 기존 팀 정의
