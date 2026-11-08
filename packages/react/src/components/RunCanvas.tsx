@@ -1,17 +1,7 @@
 import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import { motion, useReducedMotion } from 'motion/react';
-import {
-  type ReactNode,
-  type PointerEvent as ReactPointerEvent,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type ReactNode, useCallback, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -41,7 +31,8 @@ import { type ObservedAgentModel, observedAgentModels } from '../run/agent-model
 import { useRunDisplay } from '../run/display.tsx';
 import type { NodeRunStatus } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { ArrowRight, Maximize2, Minus, Plus, X } from '../ui/icons.ts';
+import { ArrowRight, X } from '../ui/icons.ts';
+import { type Bounds, useGraphViewport, ZoomControls } from './GraphViewport.tsx';
 
 /**
  * The kit legend's Call, Answer (data), Needs you and Failed colours for work in progress;
@@ -59,14 +50,6 @@ const relationStates: RelationState[] = ['call', 'data', 'ask', 'failed', 'settl
 
 // Node tile geometry from AgentGraphNode: a 160px column whose mark centre sits 28px down.
 const TILE = { halfWidth: 80, markCenter: 28, labelBottom: 100 } as const;
-const ZOOM = { min: 0.2, max: 2, step: 1.2 } as const;
-const FIT_PADDING = 48;
-
-interface Viewport {
-  x: number;
-  y: number;
-  k: number;
-}
 
 function kitStatus(status: NodeRunStatus): AgentStatus {
   if (['active', 'model', 'tool', 'finalizing'].includes(status)) return 'running';
@@ -96,31 +79,14 @@ function relationState(relations: RunAgentGraphRelation[]): RelationState {
   return 'settled';
 }
 
-function fitViewport(
-  positions: Iterable<AgentGraphPosition>,
-  width: number,
-  height: number,
-): Viewport {
+function graphBounds(positions: Iterable<AgentGraphPosition>): Bounds | null {
   const points = [...positions];
-  if (!points.length || !width || !height) return { x: 0, y: 0, k: 1 };
-  const minX = Math.min(...points.map((p) => p.x)) - TILE.halfWidth;
-  const maxX = Math.max(...points.map((p) => p.x)) + TILE.halfWidth;
-  const minY = Math.min(...points.map((p) => p.y)) - TILE.markCenter - 8;
-  const maxY = Math.max(...points.map((p) => p.y)) + TILE.labelBottom;
-  const k = Math.min(
-    1,
-    Math.max(
-      ZOOM.min,
-      Math.min(
-        (width - FIT_PADDING * 2) / (maxX - minX),
-        (height - FIT_PADDING * 2) / (maxY - minY),
-      ),
-    ),
-  );
+  if (!points.length) return null;
   return {
-    x: (width - (maxX - minX) * k) / 2 - minX * k,
-    y: (height - (maxY - minY) * k) / 2 - minY * k,
-    k,
+    minX: Math.min(...points.map((p) => p.x)) - TILE.halfWidth,
+    maxX: Math.max(...points.map((p) => p.x)) + TILE.halfWidth,
+    minY: Math.min(...points.map((p) => p.y)) - TILE.markCenter - 8,
+    maxY: Math.max(...points.map((p) => p.y)) + TILE.labelBottom,
   };
 }
 
@@ -200,86 +166,14 @@ export function RunCanvas({
     placed.current = layoutRunAgents(graph, placed.current);
     return placed.current;
   }, [graph, readingInitialHistory]);
-  const pane = useRef<HTMLDivElement>(null);
-  const [viewport, setViewport] = useState<Viewport | null>(null);
   const hasNodes = graph.nodes.length > 0;
-  const fit = useCallback(() => {
-    const element = pane.current;
-    if (!element) return;
-    setViewport(fitViewport(placed.current.values(), element.clientWidth, element.clientHeight));
-  }, []);
-  // Fit once, when the pane first has a size and the complete initial history is placed.
-  useLayoutEffect(() => {
-    const element = pane.current;
-    if (viewport || readingInitialHistory || !hasNodes || !element) return;
-    const measure = () => {
-      if (element.clientWidth > 0 && element.clientHeight > 0) fit();
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [viewport, hasNodes, readingInitialHistory, fit]);
-
-  const zoomAt = useCallback(
-    (factor: number, at?: { x: number; y: number }) => {
-      previewHandle.close();
-      setViewport((current) => {
-        if (!current) return current;
-        const element = pane.current;
-        const point = at ?? {
-          x: (element?.clientWidth ?? 0) / 2,
-          y: (element?.clientHeight ?? 0) / 2,
-        };
-        const k = Math.min(ZOOM.max, Math.max(ZOOM.min, current.k * factor));
-        return {
-          k,
-          x: point.x - ((point.x - current.x) * k) / current.k,
-          y: point.y - ((point.y - current.y) * k) / current.k,
-        };
-      });
-    },
-    [previewHandle],
-  );
-  useEffect(() => {
-    const element = pane.current;
-    if (!element) return;
-    const wheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const rect = element.getBoundingClientRect();
-      zoomAt(Math.exp(-event.deltaY * 0.002), {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      });
-    };
-    element.addEventListener('wheel', wheel, { passive: false });
-    return () => element.removeEventListener('wheel', wheel);
-  }, [zoomAt]);
-  const drag = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as Element).closest('button')) return;
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const current = drag.current;
-    if (!current || current.id !== event.pointerId) return;
-    const dx = event.clientX - current.x;
-    const dy = event.clientY - current.y;
-    if (!current.moved && Math.hypot(dx, dy) < 3) return;
-    if (!current.moved) previewHandle.close();
-    current.moved = true;
-    current.x = event.clientX;
-    current.y = event.clientY;
-    setViewport((value) => (value ? { ...value, x: value.x + dx, y: value.y + dy } : value));
-  };
-  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const current = drag.current;
-    if (!current || current.id !== event.pointerId) return;
-    drag.current = null;
+  const { pane, viewport, fit, zoomAt, paneHandlers } = useGraphViewport({
+    bounds: () => graphBounds(placed.current.values()),
+    ready: hasNodes && !readingInitialHistory,
+    onMove: () => previewHandle.close(),
     // A press on the empty stage that did not pan dismisses the quick view.
-    if (!current.moved) previewHandle.close();
-  };
+    onTap: () => previewHandle.close(),
+  });
 
   const adjacent = useMemo(() => {
     const set = new Set([selectedNodeId]);
@@ -501,10 +395,7 @@ export function RunCanvas({
           ref={pane}
           data-graph-pane
           className="relative min-h-0 flex-1 touch-none overflow-hidden select-none"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          {...paneHandlers}
         >
           {viewport && !readingInitialHistory ? (
             <div
@@ -544,35 +435,14 @@ export function RunCanvas({
             </p>
           ) : null}
           {viewport && hasNodes ? (
-            <div className="absolute bottom-3 left-3 flex flex-col gap-1">
-              <Button
-                variant="secondary"
-                size="icon-compact"
-                aria-label={t('zoomIn')}
-                onClick={() => zoomAt(ZOOM.step)}
-              >
-                <Plus />
-              </Button>
-              <Button
-                variant="secondary"
-                size="icon-compact"
-                aria-label={t('zoomOut')}
-                onClick={() => zoomAt(1 / ZOOM.step)}
-              >
-                <Minus />
-              </Button>
-              <Button
-                variant="secondary"
-                size="icon-compact"
-                aria-label={t('fit')}
-                onClick={() => {
-                  previewHandle.close();
-                  fit();
-                }}
-              >
-                <Maximize2 />
-              </Button>
-            </div>
+            <ZoomControls
+              labels={{ zoomIn: t('zoomIn'), zoomOut: t('zoomOut'), fit: t('fit') }}
+              onZoom={(factor) => zoomAt(factor)}
+              onFit={() => {
+                previewHandle.close();
+                fit();
+              }}
+            />
           ) : null}
         </div>
         {shownStates.length ? (
