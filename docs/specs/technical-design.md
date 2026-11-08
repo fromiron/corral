@@ -417,7 +417,7 @@ Zustand의 editor store는 draft definition과 되돌리기 기록, 실행 proje
 
 Canvas를 대형 채팅 메시지 렌더링과 분리한다. Timeline/실행 트리는 TanStack Virtual을 사용해 가상화하고, 전체 트리 flatten은 memoized selector로 계산한다. 이벤트는 16~50ms 단위로 화면 반영을 모을 수 있지만 영속 순서와 제어 receipt를 누락하지 않는다.
 
-팀 그래프의 배치는 [팀 편집기 배치](../../packages/react/src/team-editor/layout.ts) 하나가 정하며 편집기와 실행 화면의 흐름 보기가 함께 쓴다. 배치는 graph compiler와 결합하지 않고 실행 이벤트 때문에 바뀌지 않는다. 캔버스는 외부 그래프 라이브러리 없이 디자인 키트로 그린다. Undo/Redo·멀티선택은 자체 command history로 구현한다.
+편집기의 팀 그래프 배치는 [팀 편집기 배치](../../packages/react/src/team-editor/layout.ts) 하나가 정한다. 배치는 graph compiler와 결합하지 않고 실행 이벤트 때문에 바뀌지 않는다. 실행 화면의 관계도와 작업 흐름은 정의 그래프가 아니라 관측된 관계로 배치하며([실행 기록 관찰](features/execution-monitor.md)), 편집기와는 이동·확대 무대([GraphViewport](../../packages/react/src/components/GraphViewport.tsx))만 함께 쓴다. 캔버스는 외부 그래프 라이브러리 없이 디자인 키트로 그린다. Undo/Redo·멀티선택은 자체 command history로 구현한다.
 
 ### 13.4 접근성
 

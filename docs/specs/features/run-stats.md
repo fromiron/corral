@@ -1,6 +1,6 @@
 # 기능 명세: 실행 통계 — 팀 편집기에서 본 최근 실행
 
-- 상태: accepted (2026-11-08)
+- 상태: implemented
 - 기준: [팀 편집기](canvas.md), [팀 그래프 모델](team-graph.md), [실행 기록 관찰](execution-monitor.md)
 - 비목표: 실행 중인 상태 표시, 한 실행의 기록을 캔버스에 겹쳐 보이기(실행은 [실행 기록 관찰](execution-monitor.md)에서 본다), 모의 실행, 여러 revision 합산, 통화 비용 환산
 

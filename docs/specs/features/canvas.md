@@ -1,6 +1,6 @@
 # 기능 명세: 팀 편집기 — 정의를 만드는 경험
 
-- 상태: accepted (2026-11-08)
+- 상태: implemented
 - 기준: [스펙](../product-contract.md) §4.1–4.2, §5, [팀 그래프 모델](team-graph.md), [기술 설계](../technical-design.md) §4, §13
 - 비목표: Loop·Decision의 **실행**(GraphRunner·검토 루프는 [기술 설계](../technical-design.md)), 실행 중 구조 변경, 사람이 정하는 노드 위치, 실행 기록을 편집기 캔버스에 겹쳐 보이기(실행은 [실행 기록 관찰](execution-monitor.md)에서 본다), 승인 단계를 넣는 패턴
 
