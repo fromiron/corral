@@ -1717,13 +1717,10 @@ export class Coordinator {
         : {}),
     });
     if (!planned.ok) {
-      const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
-        ? 'GRAPH_INVALID'
-        : 'COMMAND_NOT_SUPPORTED';
       const message = planned.issues
         .map((i) => `${i.nodeId ?? i.edgeId ?? i.linkId ?? 'graph'}: ${i.message}`)
         .join('; ');
-      return refuse({ code, message });
+      return refuse({ code: 'GRAPH_INVALID', message });
     }
     for (const [roleId, override] of Object.entries(request.roleOverrides ?? {})) {
       const role = planned.definition.roles.find((role) => role.id === roleId);

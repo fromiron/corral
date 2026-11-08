@@ -7,7 +7,7 @@ import { expandReferences } from './expand-teams.ts';
 // again.
 
 export interface PlanIssue {
-  code: 'GRAPH_INVALID' | 'COMMAND_NOT_SUPPORTED';
+  code: 'GRAPH_INVALID';
   message: string;
   nodeId?: string;
   edgeId?: string;
