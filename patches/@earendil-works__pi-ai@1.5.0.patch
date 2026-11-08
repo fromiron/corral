@@ -1,11 +1,13 @@
+diff --git a/dist/api/bedrock-converse-stream.js b/dist/api/bedrock-converse-stream.js
+index 1bb9396..4c630bf 100644
 --- a/dist/api/bedrock-converse-stream.js
 +++ b/dist/api/bedrock-converse-stream.js
-@@ -50,6 +50,8 @@
+@@ -51,6 +51,8 @@ export const stream = (model, context, options = {}) => {
          // `credentials` is not set on the client config. See #6957.
          const optionsProfile = options.profile || options.env?.AWS_PROFILE;
          const config = {
 +            // Corral: one provider HTTP attempt per host permit when maxRetries is zero.
 +            ...(options.maxRetries === undefined ? {} : { maxAttempts: options.maxRetries + 1 }),
              profile: optionsProfile || getProviderEnvValue("AWS_PROFILE", options.env),
+             customUserAgent: bedrockUserAgent(options.identity),
          };
-         const configuredRegion = getConfiguredBedrockRegion(options);

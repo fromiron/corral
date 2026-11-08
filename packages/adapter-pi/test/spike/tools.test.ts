@@ -1,5 +1,6 @@
-import { fauxAssistantMessage, fauxToolCall, Type } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hashOf, spikeSession } from './sdk-session.ts';
 

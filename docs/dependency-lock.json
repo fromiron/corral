@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-20T14:19:00.244Z",
-  "node": "v24.19.0",
+  "generatedAt": "2026-11-08T13:08:00.961Z",
+  "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
   "dependencies": [
@@ -80,10 +80,10 @@
     },
     {
       "name": "@earendil-works/pi-agent-core",
-      "version": "1.3.0",
+      "version": "1.5.0",
       "license": "MIT",
-      "integrity": "sha512-2jvpxZs47PFD5mSQb/yK0pGHJ5yO7Nu22u9mFjHbSLRgu62vZ9rupimDSIp4arnqOadyv0AWvYHtCSpFoJV7ag==",
-      "published": "2026-10-15T19:09:49.999Z",
+      "integrity": "sha512-FOj+jXj48DbzMycR/ghNa2KcsqWmvOln24e0FnQOVgnd8vn5H79g335WdHaZUVdRo+zCeogb40/qPPlCWFuvmA==",
+      "published": "2026-11-02T10:57:12.137Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -126,17 +126,34 @@
       "peerDependencies": null,
       "scope": "runtime",
       "usedBy": [
+        "@corral/live-tests"
+      ]
+    },
+    {
+      "name": "@earendil-works/pi-ai",
+      "version": "1.5.0",
+      "license": "MIT",
+      "integrity": "sha512-VeWxNqTHSqRCf8AcY/6kvNwh+neRL6MPxZPePVztIQy6qqK9MR/YoCSN/ZgDnIyCD3pqEXgRyQbzk4KV4uvjbg==",
+      "published": "2026-11-02T10:57:51.240Z",
+      "repository": "git+https://github.com/earendil-works/pi.git",
+      "gitHead": null,
+      "engines": {
+        "node": ">=22.19.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
         "@corral/adapter-pi",
-        "@corral/live-tests",
+        "@corral/pi-runtime-port",
         "@corral/server"
       ]
     },
     {
       "name": "@earendil-works/pi-coding-agent",
-      "version": "1.3.0",
+      "version": "1.5.0",
       "license": "MIT",
-      "integrity": "sha512-V/WoCjA2hQSe3QLWIUB24cTRdtEdeLiIzkDqU5RMXV6VWuD+KGZnzVBMhglwdnQTySkehZsjt8a3g6Jd2g4nnw==",
-      "published": "2026-10-15T19:13:30.662Z",
+      "integrity": "sha512-xNDZ5kqowO6Z03FS2gwAkPEGk1ssxVcYKQ6qZId84mFEvwACvvyc2l0vAMOS+c5zvxLRMLBE9r4y44IGYkMJaQ==",
+      "published": "2026-11-02T11:05:09.564Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -150,10 +167,10 @@
     },
     {
       "name": "@earendil-works/pi-mcp",
-      "version": "1.3.0",
+      "version": "1.5.0",
       "license": "MIT",
-      "integrity": "sha512-lbktLplmdGamM2t460Q0ziNEfpUEHDTVNf79g/AialJ3XZ+SHgNqa/OJXRR+fU+GV/l+gBhRPcyP8XkQlv8Avw==",
-      "published": "2026-10-15T19:11:17.908Z",
+      "integrity": "sha512-DURw3IwHCTMHV8CzUJWVp9css27NowsCWfXt4xg2r09IZ+P1O/Uq58hp0hb9WJO0dbkaKGXKBIkV4LVXcu2nlg==",
+      "published": "2026-11-02T10:58:49.258Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -519,6 +536,7 @@
         "@corral/desktop",
         "@corral/live-tests",
         "@corral/local-intelligence",
+        "@corral/pi-runtime-port",
         "@corral/server",
         "@corral/storage-sqlite",
         "@corral/testkit",
@@ -1161,6 +1179,22 @@
       "usedBy": [
         "@corral/react",
         "@corral/studio"
+      ]
+    },
+    {
+      "name": "typebox",
+      "version": "1.3.27",
+      "license": "MIT",
+      "integrity": "sha512-zu+jc1pcy4UiNThxikUr36f0Rybk9PEeCg/NE6adeWr/SKsdNO4EzZHYRDlv2YCVAfj3Odq3dESSo/jNyoBXzA==",
+      "published": "2026-09-05T04:10:13.630Z",
+      "repository": "git+https://github.com/sinclairzx81/typebox.git",
+      "gitHead": null,
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/adapter-pi",
+        "@corral/pi-runtime-port"
       ]
     },
     {
