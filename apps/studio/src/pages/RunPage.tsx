@@ -62,7 +62,6 @@ import {
   Fragment,
   type ReactElement,
   type ReactNode,
-  type RefObject,
   useEffect,
   useId,
   useMemo,
@@ -85,6 +84,7 @@ import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { RunViews } from '../workbench/RunViews.tsx';
 import { runFlowChecks } from '../workbench/runFlowChecks.ts';
 import { toolMarks } from '../workbench/toolMarks.ts';
+import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
@@ -839,21 +839,6 @@ function RunInstructions({
 }) {
   const target = useSteerTarget(session, executionId);
   return <ReinsPanel session={session} target={target} compact />;
-}
-
-/** Whether the element's own width is at least `min` px (the Run container, not the window). */
-function useContainerAtLeast(ref: RefObject<HTMLElement | null>, min: number) {
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setWide(el.clientWidth >= min);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref, min]);
-  return wide;
 }
 
 /**

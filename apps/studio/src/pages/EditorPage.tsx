@@ -43,6 +43,7 @@ import { panelKey } from '../workbench/panels/registry.ts';
 import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
+import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useRunMode } from '../workbench/useRunMode.ts';
 import { useRunStats } from '../workbench/useRunStats.ts';
@@ -241,6 +242,11 @@ function Editor({
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const shell = useRef<HTMLDivElement>(null);
+  // The test run sits beside the editor while the editor keeps 640px next to its narrowest panel.
+  const body = useRef<HTMLDivElement>(null);
+  const roomBeside = useContainerAtLeast(body, 640 + 320);
+  const runBeside = runOpen && !inSession && roomBeside;
+  const runInPlace = runOpen && !inSession && !roomBeside;
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
@@ -419,44 +425,48 @@ function Editor({
           </Button>
         </header>
         <div
-          className={`grid min-h-0 ${runOpen && !inSession ? 'grid-cols-[minmax(0,1fr)_minmax(320px,400px)]' : 'grid-cols-1'}`}
+          ref={body}
+          className={`grid min-h-0 ${runBeside ? 'grid-cols-[minmax(640px,1fr)_minmax(320px,400px)]' : 'grid-cols-1'}`}
         >
-          <TeamEditor
-            editor={editor}
-            profiles={profiles}
-            teams={teams.references}
-            resolveTeam={teams.resolve}
-            onOpenTeam={(corralId) =>
-              void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
-            }
-            runStats={
-              runStats.status === 'ready'
-                ? { stats: runStats.stats, definition: saved.record.definition }
-                : null
-            }
-            onOpenRun={(runId) => void navigate({ to: '/runs/$runId', params: { runId } })}
-            loopSettings={(node) => (
-              <LoopRecipeSettings
-                key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
-                node={node}
-                projectId={record.projectId}
-              />
-            )}
-            roleSettings={(role, nodeId) => (
-              <HarnessRoleSettings
-                key={nodeId}
-                role={role}
-                nodeId={nodeId}
-                projectId={record.projectId}
-              />
-            )}
-          />
+          {/* Too narrow for both, the test run takes the editor's place; the editor keeps its state. */}
+          <div className="grid min-h-0 grid-rows-[minmax(0,1fr)]" hidden={runInPlace}>
+            <TeamEditor
+              editor={editor}
+              profiles={profiles}
+              teams={teams.references}
+              resolveTeam={teams.resolve}
+              onOpenTeam={(corralId) =>
+                void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
+              }
+              runStats={
+                runStats.status === 'ready'
+                  ? { stats: runStats.stats, definition: saved.record.definition }
+                  : null
+              }
+              onOpenRun={(runId) => void navigate({ to: '/runs/$runId', params: { runId } })}
+              loopSettings={(node) => (
+                <LoopRecipeSettings
+                  key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
+                  node={node}
+                  projectId={record.projectId}
+                />
+              )}
+              roleSettings={(role, nodeId) => (
+                <HarnessRoleSettings
+                  key={nodeId}
+                  role={role}
+                  nodeId={nodeId}
+                  projectId={record.projectId}
+                />
+              )}
+            />
+          </div>
           {inSession ? null : (
             <aside
               id={runId}
               aria-label={c('testRun')}
               hidden={!runOpen}
-              className="min-h-0 overflow-auto border-l border-border p-3"
+              className={`min-h-0 overflow-auto p-3 ${runBeside ? 'border-l border-border' : ''}`}
             >
               <RunSide
                 startDisabled={saving}

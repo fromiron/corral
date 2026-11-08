@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { editorSettings, teamCanvas, teamNode } from './workbench.ts';
 
 test('a narrow editor opens on the whole team, and a rename in its settings saves', async ({
   page,
@@ -60,6 +61,47 @@ test('test-run approvals stay inside the run panel at 768px', async ({ page }) =
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+});
+
+test("at 768px the test run takes the editor's place and gives it back as it was", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/demo?delay=150');
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  const canvas = teamCanvas(page);
+  const palette = page.getByRole('toolbar', { name: 'Steps' });
+  const settings = editorSettings(page);
+  const name = settings.getByRole('textbox', { name: 'Name', exact: true }).first();
+  // The demo opens its guided test run, which has the editor's whole width here.
+  await expect(panel).toBeVisible({ timeout: 20_000 });
+  await expect(canvas).toBeHidden();
+  await expect(palette).toBeHidden();
+  expect((await panel.boundingBox())?.width).toBeGreaterThan(700);
+  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  await teamNode(page, 'write').click();
+  await expect(name).toHaveValue('Writer');
+  await page.getByRole('button', { name: 'Test run', exact: true }).click();
+  await expect(panel).toBeVisible();
+  await expect(canvas).toBeHidden();
+  await expect(palette).toBeHidden();
+  await expect(settings).toBeHidden();
+  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  await expect(panel).toBeHidden();
+  await expect(name).toHaveValue('Writer');
+  await expect(teamNode(page, 'write')).toBeInViewport();
+});
+
+test('a wide editor keeps the test run beside the canvas', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/demo?delay=150');
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  const canvas = teamCanvas(page);
+  await expect(panel).toBeVisible({ timeout: 20_000 });
+  await expect(canvas).toBeVisible();
+  const [left, right] = [await canvas.boundingBox(), await panel.boundingBox()];
+  expect(left && right && left.x + left.width <= right.x + 1).toBe(true);
+  expect(left?.width).toBeGreaterThanOrEqual(640 - 272);
 });
 
 test('call links are dashed and named in both themes', async ({ page }, testInfo) => {
