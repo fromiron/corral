@@ -1,5 +1,6 @@
 import { FAKE_CODEX_ACCESS, FAKE_REDIRECT_OK } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
+import { addAgentAndOutput, openTestRun, teamCanvas } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 /** Models live under Settings (Workbench polish: one way into settings). */
@@ -16,15 +17,8 @@ test.use({ live: true });
 async function agentToOutput(page: Page) {
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
-  await page.getByRole('button', { name: 'Add Agent' }).click();
-  await page.getByRole('button', { name: 'Add Output' }).click();
-  await page
-    .locator('.react-flow__node[data-id="agent_1"] .react-flow__handle[data-handleid="out"]')
-    .dragTo(
-      page.locator('.react-flow__node[data-id="output_1"] .react-flow__handle[data-handleid="in"]'),
-    );
-  await expect(page.getByText('Ready to run.')).toBeVisible();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await addAgentAndOutput(page);
+  await openTestRun(page);
 }
 
 test('signing in from Settings shows status and expiry, never the token', async ({
@@ -63,7 +57,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   await agentToOutput(page);
   await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
   await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Settings → Models');
 
@@ -91,7 +85,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
       }),
     )
     .toBe(true);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Live answer from the model.');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
@@ -126,7 +120,7 @@ test.describe('a borrowed Codex CLI login', () => {
     await page
       .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
       .click();
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+    await openTestRun(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer through the Codex login.');
     expect(corral.fake?.seen.tokens.length).toBeGreaterThan(0);
@@ -160,7 +154,7 @@ test('an API key typed under Models runs live, is never shown, and can be remove
   await agentToOutput(page);
   await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
   await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
   expect(corral.fake?.seen.tokens.every((token) => token === 'sk-e2e-entered-secret')).toBe(true);
@@ -204,7 +198,7 @@ test.describe('a keyless OpenAI-compatible endpoint', () => {
     await page
       .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
       .click();
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+    await openTestRun(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer from the local model.');
     expect(corral.endpoint?.authorizations.every((a) => a === 'Bearer no-key')).toBe(true);
@@ -257,7 +251,7 @@ test('asks the signed-in model for a team draft once and opens it after review',
   await expect(dialog.getByLabel('Name of role 2')).toHaveValue('Copywriter');
   await dialog.getByRole('button', { name: 'Open in editor' }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
-  await expect(page.locator('.react-flow__node', { hasText: 'Copywriter' })).toHaveCount(1);
+  await expect(teamCanvas(page).locator('[data-node]', { hasText: 'Copywriter' })).toHaveCount(1);
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   await openModels(page);
   const usage = page.getByRole('region', { name: 'Model request history' });

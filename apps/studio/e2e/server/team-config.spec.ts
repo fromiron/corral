@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { editorSettings, requestBox, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function call(page: Page, path: string, body?: unknown, method = 'POST') {
@@ -142,14 +142,13 @@ test.describe('saved team roles', () => {
         .getByRole('button', { name: 'Actions for Role refresh', exact: true })
         .click();
       await page.getByRole('menuitem', { name: 'Open team design', exact: true }).click();
-      await page.locator('.react-flow__node[data-id="writer"]').click();
-      await page
-        .locator('[data-inspector-node="writer"]')
+      await teamNode(page, 'writer').click();
+      await editorSettings(page)
         .getByRole('textbox', { name: 'Name', exact: true })
         .first()
         .fill(`Writer r${revision}`);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
-      await expect(page.getByTestId('revisions')).toContainText(`Team version ${revision}`);
+      await expect(page.getByTestId('revisions')).toContainText(`Version ${revision}`);
       await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
       await expect(page.getByRole('banner')).toContainText(`· r${revision}`);
       await expect(page.getByTestId('models-not-ready')).toContainText(

@@ -20,54 +20,68 @@ async function newCorral(page: Page, query = '') {
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
 }
 
-async function dropFromPalette(page: Page, kind: string, x: number, y: number) {
-  await page
-    .locator(`[data-palette-item="${kind}"]`)
-    .dragTo(page.locator('.react-flow__pane'), { targetPosition: { x, y } });
-}
+const canvas = (page: Page) => page.locator('[data-team-canvas]');
+const nodes = (page: Page) => canvas(page).locator('[data-node]');
+const edges = (page: Page) => canvas(page).locator('[data-edge]');
+const settings = (page: Page) => page.getByRole('complementary', { name: 'Settings' });
+const noProblems = (page: Page) => page.getByRole('button', { name: 'No problems', exact: true });
 
-function handle(page: Page, nodeId: string, port: string) {
-  return page.locator(
-    `.react-flow__node[data-id="${nodeId}"] .react-flow__handle[data-handleid="${port}"]`,
-  );
+/**
+ * Drags a palette step onto the canvas's empty lower-left corner: away from the palette, from
+ * the fitted cards in the middle, and from the settings sheet on the right.
+ */
+async function dropOnCanvas(page: Page, kind: string) {
+  const box = await canvas(page).boundingBox();
+  if (!box) throw new Error('canvas not rendered');
+  await page
+    .getByRole('button', { name: `Add ${kind}`, exact: true })
+    .dragTo(canvas(page), { targetPosition: { x: 40, y: box.height - 40 } });
 }
 
 async function buildAgentToOutput(page: Page) {
-  await dropFromPalette(page, 'agent', 160, 200);
-  await dropFromPalette(page, 'output', 520, 200);
-  await expect(page.locator('.react-flow__node')).toHaveCount(2);
-  await handle(page, 'agent_1', 'out').dragTo(handle(page, 'output_1', 'in'));
-  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await dropOnCanvas(page, 'Agent');
+  await expect(nodes(page)).toHaveCount(1);
+  // A drop on empty canvas ignores the selection, so the output lands unconnected.
+  await dropOnCanvas(page, 'Output');
+  await expect(nodes(page)).toHaveCount(2);
+  await expect(edges(page)).toHaveCount(0);
+  await canvas(page)
+    .locator('[data-port="agent_1:out"]')
+    .dragTo(canvas(page).locator('[data-node="output_1"]').first());
+  await expect(edges(page)).toHaveCount(1);
+  await expect(noProblems(page)).toBeVisible();
 }
 
-test('nodes dropped on an empty canvas and connected run as drawn', async ({ page }) => {
+async function openTestRun(page: Page) {
+  const open = page.getByRole('button', { name: 'Test run', exact: true });
+  if (await open.isVisible()) await open.click();
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+test('steps dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
   await newCorral(page, '?delay=50');
   await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
 
   await buildAgentToOutput(page);
-  await expect(page.getByRole('tab', { name: 'Design', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
   const brief = 'Compare notebook formats for field notes.';
-  await page.getByLabel('Run brief').fill(brief);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  await settings(page).getByRole('textbox', { name: 'Brief', exact: true }).fill(brief);
+  const panel = await openTestRun(page);
+  await panel.getByRole('button', { name: 'Run', exact: true }).click();
 
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByTestId('run-output')).toContainText(
     'Simulated Agent 1 reply, request 2 of 2. No model was called.',
   );
   await expect(page.getByTestId('run-output')).toContainText(brief);
-  await expect(page.locator('[data-execution-id]')).toHaveCount(1);
-  await expect(
-    page.locator('.react-flow__node[data-id="agent_1"] [data-run-status="done"]'),
-  ).toBeVisible();
+  await expect(panel.locator('[data-execution-id]')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
-test('saving a layout move bumps only the layout revision, and survives reload', async ({
+test('a saved team survives a settings detour and a reload, and saving it unchanged keeps its version', async ({
   page,
 }) => {
   await newCorral(page);
@@ -76,28 +90,23 @@ test('saving a layout move bumps only the layout revision, and survives reload',
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByTestId('settings-sidebar')).toBeVisible();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-  await expect(page.locator('.react-flow__node')).toHaveCount(2);
-  await expect(page.getByText('● Unsaved changes', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByTestId('revisions')).toHaveText('Team version 2 · Layout version 2');
+  await expect(nodes(page)).toHaveCount(2);
+  await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  await save.click();
+  await expect(page.getByTestId('revisions')).toHaveText('Version 2');
+  await expect(save).toBeDisabled();
 
-  const node = page.locator('.react-flow__node[data-id="agent_1"]');
-  const before = await node.boundingBox();
-  if (!before) throw new Error('node not rendered');
-  // React Flow starts a drag after real pointer movement, so move in steps.
-  await page.mouse.move(before.x + before.width / 2, before.y + 12);
-  await page.mouse.down();
-  await page.mouse.move(before.x + before.width / 2 + 40, before.y + 160, { steps: 12 });
-  await page.mouse.up();
-  await expect(page.getByText('Unsaved changes')).toBeVisible();
-  await page.keyboard.press('Control+s');
-  await expect(page.getByTestId('revisions')).toHaveText('Team version 2 · Layout version 3');
+  // An edit undone back to the saved team leaves nothing to save.
+  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await expect(save).toBeEnabled();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(save).toBeDisabled();
 
   await page.reload();
-  await expect(page.locator('.react-flow__node')).toHaveCount(2);
-  await expect(page.getByTestId('revisions')).toHaveText('Team version 2 · Layout version 3');
-  const after = await page.locator('.react-flow__node[data-id="agent_1"]').boundingBox();
-  expect(after?.y).not.toBe(before?.y);
+  await expect(nodes(page)).toHaveCount(2);
+  await expect(edges(page)).toHaveCount(1);
+  await expect(page.getByTestId('revisions')).toHaveText('Version 2');
 });
 
 test('an imported team with a Loop validates and runs through its review and approvals', async ({
@@ -111,14 +120,15 @@ test('an imported team with a Loop validates and runs through its review and app
     .locator('input[type=file]')
     .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
   await expect(page).toHaveURL(/\/edit$/);
-  await expect(page.locator('.react-flow__node')).toHaveCount(9);
-  await expect(page.locator('.corral-call-link')).toHaveCount(3);
-  await expect(page.getByTestId('runtime-limits')).toHaveCount(0);
-  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await expect(nodes(page)).toHaveCount(9);
+  await expect(canvas(page).locator('[data-box]')).toHaveCount(1);
+  // Call links are the dashed connections, named by what they do.
+  await expect(edges(page).filter({ hasText: /^(delegates|asks)$/ })).toHaveCount(3);
+  await expect(noProblems(page)).toBeVisible();
 
   // Two review rounds, then the person approves the decision and the final output.
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  const panel = await openTestRun(page);
+  await panel.getByRole('button', { name: 'Run', exact: true }).click();
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
@@ -129,34 +139,42 @@ test('an imported team with a Loop validates and runs through its review and app
   await expect(page.locator('[data-testid^="approval-"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 
-  // Break the Loop boundary with the keyboard path: research → write skips "enter".
-  await page.locator('.react-flow__node[data-id="research"]').click();
-  await page.getByRole('button', { name: /^Remove connection to / }).click();
-  await expect(page.getByTestId('diagnostics')).toContainText('flow never reaches');
+  // Cutting the way into the Loop leaves its steps unreachable, and the problem names them.
+  await canvas(page).locator('[data-node="research"]').click();
+  await settings(page)
+    .getByRole('button', { name: /^Remove the connection from / })
+    .click();
+  await expect(noProblems(page)).toHaveCount(0);
+  await page.getByRole('button', { name: /^\d+ problems?$/ }).click();
+  await expect(settings(page)).toContainText('The flow never reaches');
 });
 
-test('keyboard-only connection, duplicate, and one-step undo', async ({ page }) => {
+test('a connection from the settings list, a wrap and one-step undo work without a pointer path', async ({
+  page,
+}) => {
   await newCorral(page);
-  await page.getByRole('button', { name: 'Add Agent' }).click();
-  await page.getByRole('button', { name: 'Add Output' }).click();
-  await page.locator('.react-flow__node[data-id="agent_1"]').click();
+  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  // With nothing selected the output lands on its own, unconnected.
+  await canvas(page).press('Escape');
+  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
+  await expect(edges(page)).toHaveCount(0);
+  await canvas(page).locator('[data-node="agent_1"]').click();
 
-  await page.getByRole('combobox', { name: 'From out', exact: true }).click();
-  await page.getByRole('option', { name: 'Output · in', exact: true }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await expect(page.locator('.react-flow__edge')).toHaveCount(1);
-  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await settings(page).getByRole('combobox', { name: 'Connect out to…', exact: true }).click();
+  await page.getByRole('option', { name: 'Output', exact: true }).click();
+  await expect(edges(page)).toHaveCount(1);
+  await expect(noProblems(page)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Duplicate' }).click();
-  await expect(page.locator('.react-flow__node[data-id="agent_2"]')).toBeVisible();
+  await settings(page).getByRole('button', { name: 'Wrap in a Loop', exact: true }).click();
+  await expect(canvas(page).locator('[data-box]')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(page.locator('.react-flow__node[data-id="agent_2"]')).toHaveCount(0);
-  await page.locator('.react-flow__pane').click();
-  await page.keyboard.press('Control+z');
-  await expect(page.locator('.react-flow__edge')).toHaveCount(0);
-  await page.keyboard.press('Control+Shift+z');
-  await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(canvas(page).locator('[data-box]')).toHaveCount(0);
+  await expect(edges(page)).toHaveCount(1);
+  await canvas(page).press('Control+z');
+  await expect(edges(page)).toHaveCount(0);
+  await canvas(page).press('Control+Shift+z');
+  await expect(edges(page)).toHaveCount(1);
 });
 
 test('the workspace and editor have no serious automated accessibility violations', async ({
@@ -172,13 +190,19 @@ test('the workspace and editor have no serious automated accessibility violation
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
   await buildAgentToOutput(page);
-  await page.locator('.react-flow__node[data-id="agent_1"]').click();
+  // The view keeps the selected output clear of the sheet, so the agent is chosen from the list.
+  await page
+    .getByRole('complementary', { name: 'Team structure' })
+    .getByRole('button', { name: 'Agent 1', exact: true })
+    .click();
+  await expect(settings(page).getByRole('heading', { name: 'Agent', exact: true })).toBeVisible();
   expect(await serious()).toEqual([]);
 });
 
 test('a reviewer without the criteria is flagged, and one click gives it them (#20)', async ({
   page,
 }) => {
+  const errors = await trackErrors(page);
   await page.goto('/');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
@@ -197,12 +221,18 @@ test('a reviewer without the criteria is flagged, and one click gives it them (#
       ),
     ]);
   await expect(page).toHaveURL(/\/edit$/);
-  const warnings = page.getByTestId('warnings');
-  await expect(warnings).toContainText('does not get the criteria');
-  // The Corral still runs; the warning says what the review will miss.
-  await expect(page.getByText('Ready to run.')).toBeVisible();
-  await warnings.getByRole('button', { name: 'Add a criteria input' }).click();
-  await expect(warnings).toHaveCount(0);
-  await page.locator('.react-flow__node[data-id="review"]').click();
-  await expect(page.getByText('criteria · Run input')).toBeVisible();
+  // A warning: the team still runs, and the problem says what the review will miss.
+  await page.getByRole('button', { name: '1 problem', exact: true }).click();
+  const problem = settings(page).getByRole('button', { name: /does not get the criteria/ });
+  await expect(problem).toBeVisible();
+  await problem.click();
+  await expect(
+    settings(page).getByRole('textbox', { name: 'Name', exact: true }).first(),
+  ).toHaveValue('검토');
+  await settings(page).getByRole('button', { name: 'Add a criteria input', exact: true }).click();
+  await expect(noProblems(page)).toBeVisible();
+  await expect(settings(page).getByRole('group', { name: 'Inputs', exact: true })).toContainText(
+    'criteria · Run input',
+  );
+  expect(errors).toEqual([]);
 });

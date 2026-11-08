@@ -6,9 +6,11 @@ test('Ctrl+K opens the command palette; typing filters and Enter runs the comman
   page,
 }) => {
   await page.goto('/');
+  // A cold dev server under parallel workers can take a while to serve the first page.
   await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
     'aria-selected',
     'true',
+    { timeout: 20_000 },
   );
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
@@ -19,8 +21,8 @@ test('Ctrl+K opens the command palette; typing filters and Enter runs the comman
   await expect(palette.getByRole('option').first()).toHaveText(/Research team/);
   await input.press('Enter');
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
-  await expect(page.getByLabel('Team name')).toHaveValue('Research team');
-  await expect(page.locator('.react-flow__node')).toHaveCount(9);
+  await expect(page.getByRole('heading', { name: 'Research team', level: 1 })).toBeVisible();
+  await expect(page.locator('[data-team-canvas] [data-node]')).toHaveCount(9);
 });
 
 test('the palette closes with Escape, and an IME composition Enter does not run a command', async ({

@@ -1,4 +1,5 @@
 import definition from '../../../../examples/research-team.corral.json' with { type: 'json' };
+import { teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('pins a review recipe in the Loop editor and explains its stop in the Run and Inbox', async ({
@@ -29,15 +30,12 @@ test('pins a review recipe in the Loop editor and explains its stop in the Run a
     { definition },
   );
   await page.goto(`${corral.server.url}/corrals/${ids.corralId}/edit`);
-  await page
-    .locator('.react-flow__node[data-id="review_loop"]')
-    .getByText('검토 반복', { exact: true })
-    .click();
+  await teamNode(page, 'review_loop').click();
   await page.getByLabel('Maximum generation attempts', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Pin review recipe', exact: true }).click();
   await expect(page.getByText('Pinned recipe revision 1', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   const runId = await page.evaluate(async ({ corralId, sessionId }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const record = await (await fetch(`/api/v1/corrals/${corralId}`)).json();
