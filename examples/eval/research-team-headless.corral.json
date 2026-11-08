@@ -125,7 +125,7 @@
       "id": "write",
       "type": "agent",
       "label": "Writer",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "roleId": "writer",
       "invocation": "scheduled",
       "inputBindings": [
@@ -153,7 +153,7 @@
       "id": "review",
       "type": "agent",
       "label": "Reviewer",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "roleId": "reviewer",
       "invocation": "scheduled",
       "inputBindings": [
@@ -173,7 +173,7 @@
       "id": "review_decision",
       "type": "decision",
       "label": "Review decision",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "mode": "review",
       "rule": "review_verdict",
       "inputBindings": [

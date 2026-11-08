@@ -279,7 +279,9 @@ describe('editor model: layout versus definition', () => {
     const draft = draftFromDefinition(team(), layout());
     const changed = draftToDefinition(updateNode(draft, 'review_decision', { mode: 'approval' }));
     const decision = changed.nodes.find((n) => n.id === 'review_decision');
-    expect(decision?.type === 'decision' && decision.rule).toBe('human_approval');
+    expect(decision?.type === 'decision' && 'rule' in decision && decision.rule).toBe(
+      'human_approval',
+    );
     expect(changed.controlEdges.some((e) => e.source === 'review_decision')).toBe(false);
   });
 });
@@ -328,7 +330,7 @@ describe('arranging the canvas', () => {
     }
     // Top-level nodes and the Loop box do not overlap one another.
     const top = team()
-      .nodes.filter((n) => !('loopId' in n && n.loopId))
+      .nodes.filter((n) => !n.parentId)
       .map((n) => box(n.id));
     for (const [i, a] of top.entries()) {
       for (const b of top.slice(i + 1)) {

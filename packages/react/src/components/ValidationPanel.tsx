@@ -39,7 +39,7 @@ export function ValidationPanel() {
   // A reviewer without the criteria (#20): add the run input "criteria" to that node.
   const giveCriteria = (nodeId: string) => {
     const node = draft.definition.nodes.find((n) => n.id === nodeId);
-    if (!node || node.type === 'loop') return;
+    if (!node || !('inputBindings' in node)) return;
     editor.getState().updateNode(nodeId, {
       inputBindings: [...node.inputBindings, { kind: 'run_input', name: 'criteria' }],
     });

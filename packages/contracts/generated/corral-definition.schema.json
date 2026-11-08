@@ -370,17 +370,21 @@
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
               },
-              "type": {
-                "type": "string",
-                "const": "agent"
-              },
               "label": {
                 "type": "string",
                 "minLength": 1
               },
-              "loopId": {
+              "parentId": {
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "type": {
+                "type": "string",
+                "const": "agent"
               },
               "roleId": {
                 "type": "string",
@@ -436,12 +440,26 @@
               "outputName": {
                 "type": "string",
                 "minLength": 1
+              },
+              "retry": {
+                "type": "object",
+                "properties": {
+                  "maxAttempts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "maxAttempts"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
               "id",
-              "type",
               "label",
+              "type",
               "roleId",
               "invocation",
               "inputBindings",
@@ -450,90 +468,293 @@
             "additionalProperties": false
           },
           {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "parentId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "decision"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "review",
+                      "approval",
+                      "rule"
+                    ]
+                  },
+                  "rule": {
+                    "type": "string",
+                    "enum": [
+                      "review_verdict",
+                      "required_tasks_submitted",
+                      "human_approval"
+                    ]
+                  },
+                  "inputBindings": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "run_input",
+                            "task_output",
+                            "previous_iteration_output",
+                            "explicit_version",
+                            "question_answer"
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "sourceNodeId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "artifactVersionId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "optional": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "type",
+                  "mode",
+                  "rule",
+                  "inputBindings"
+                ],
+                "additionalProperties": false
               },
-              "type": {
-                "type": "string",
-                "const": "decision"
-              },
-              "label": {
-                "type": "string",
-                "minLength": 1
-              },
-              "loopId": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-              },
-              "mode": {
-                "type": "string",
-                "enum": [
-                  "review",
-                  "approval",
-                  "rule"
-                ]
-              },
-              "rule": {
-                "type": "string",
-                "enum": [
-                  "review_verdict",
-                  "required_tasks_submitted",
-                  "human_approval"
-                ]
-              },
-              "inputBindings": {
-                "minItems": 1,
-                "maxItems": 20,
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "run_input",
-                        "task_output",
-                        "previous_iteration_output",
-                        "explicit_version",
-                        "question_answer"
-                      ]
-                    },
-                    "name": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "sourceNodeId": {
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "parentId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "decision"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "const": "check"
+                  },
+                  "checkIds": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
                       "type": "string",
                       "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-                    },
-                    "artifactVersionId": {
-                      "type": "string",
-                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-                    },
-                    "optional": {
-                      "type": "boolean"
                     }
                   },
-                  "required": [
-                    "kind",
-                    "name"
-                  ],
-                  "additionalProperties": false
-                }
+                  "inputBindings": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "run_input",
+                            "task_output",
+                            "previous_iteration_output",
+                            "explicit_version",
+                            "question_answer"
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "sourceNodeId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "artifactVersionId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "optional": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "type",
+                  "mode",
+                  "checkIds",
+                  "inputBindings"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "parentId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "decision"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "const": "router"
+                  },
+                  "routes": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "description": {
+                          "type": "string",
+                          "maxLength": 2000
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "label"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "modelProfile": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "inputBindings": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "run_input",
+                            "task_output",
+                            "previous_iteration_output",
+                            "explicit_version",
+                            "question_answer"
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "sourceNodeId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "artifactVersionId": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                        },
+                        "optional": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "type",
+                  "mode",
+                  "routes",
+                  "inputBindings"
+                ],
+                "additionalProperties": false
               }
-            },
-            "required": [
-              "id",
-              "type",
-              "label",
-              "mode",
-              "rule",
-              "inputBindings"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -542,18 +763,50 @@
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
               },
-              "type": {
-                "type": "string",
-                "const": "loop"
-              },
               "label": {
                 "type": "string",
                 "minLength": 1
               },
+              "parentId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "type": {
+                "type": "string",
+                "const": "loop"
+              },
               "maxIterations": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 10
+                "maximum": 9007199254740991
+              },
+              "budget": {
+                "type": "object",
+                "properties": {
+                  "maxModelCalls": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "maxWallMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "stallDetection": {
+                "type": "boolean"
               },
               "reviewRecipe": {
                 "type": "object",
@@ -660,8 +913,8 @@
             },
             "required": [
               "id",
-              "type",
               "label",
+              "type",
               "maxIterations"
             ],
             "additionalProperties": false
@@ -673,13 +926,133 @@
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
               },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "parentId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 4000
+              },
               "type": {
                 "type": "string",
-                "const": "output"
+                "const": "team"
+              },
+              "source": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "inline"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "reference"
+                      },
+                      "corralId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      },
+                      "definitionRevision": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "corralId",
+                      "definitionRevision"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "type",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
               },
               "label": {
                 "type": "string",
                 "minLength": 1
+              },
+              "parentId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "type": {
+                "type": "string",
+                "const": "join"
+              },
+              "policy": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "any"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "type",
+              "policy"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "parentId": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "type": {
+                "type": "string",
+                "const": "output"
               },
               "inputBindings": {
                 "minItems": 1,
@@ -727,8 +1100,8 @@
             },
             "required": [
               "id",
-              "type",
               "label",
+              "type",
               "inputBindings",
               "requireApproval"
             ],
@@ -753,17 +1126,7 @@
           },
           "sourcePort": {
             "type": "string",
-            "enum": [
-              "out",
-              "body",
-              "next",
-              "pass",
-              "revise",
-              "approve",
-              "reject",
-              "yes",
-              "no"
-            ]
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
           },
           "target": {
             "type": "string",
@@ -831,8 +1194,9 @@
       "type": "object",
       "properties": {
         "maxDelegationDepth": {
-          "type": "number",
-          "const": 2
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "maxModelConcurrency": {
           "type": "integer",
@@ -842,7 +1206,7 @@
         "maxSpawns": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 32
+          "maximum": 9007199254740991
         },
         "maxModelCalls": {
           "type": "integer",

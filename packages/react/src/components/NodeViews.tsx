@@ -258,7 +258,7 @@ export function LoopNodeView({ id, selected, isConnectable }: NodeProps<Node<Can
   const node = useNode(id);
   const members = useStore(
     editor,
-    (s) => s.draft.definition.nodes.filter((n) => 'loopId' in n && n.loopId === id).length,
+    (s) => s.draft.definition.nodes.filter((n) => n.parentId === id).length,
   );
   const patchedLimit = useRunDisplay(session, (s) => {
     let revision = -1;

@@ -358,7 +358,7 @@ function NodeProperties({
         </>
       ) : null}
 
-      {node.type === 'decision' ? (
+      {node.type === 'decision' && 'rule' in node ? (
         <label htmlFor={`${id}-mode`} className="flex flex-col gap-1 text-caption">
           {t('mode')}
           <Select
@@ -410,7 +410,7 @@ function NodeProperties({
           <Select
             id={`${id}-loop`}
             label={t('loopMembership')}
-            value={('loopId' in node && node.loopId) || ''}
+            value={node.parentId || ''}
             onValueChange={(value) => editor.getState().setLoopMembership(node.id, value || null)}
             options={[
               { value: '', label: t('notInLoop') },
@@ -420,7 +420,7 @@ function NodeProperties({
         </label>
       ) : null}
 
-      {node.type !== 'loop' ? <InputsEditor node={node} draft={draft} /> : null}
+      {'inputBindings' in node ? <InputsEditor node={node} draft={draft} /> : null}
       <NextSteps node={node} draft={draft} />
       {node.type === 'agent' ? <Calls nodeId={node.id} draft={draft} /> : null}
 
@@ -449,7 +449,7 @@ function InputsEditor({
   node,
   draft,
 }: {
-  node: Exclude<CorralNode, { type: 'loop' }>;
+  node: Extract<CorralNode, { inputBindings: unknown }>;
   draft: EditorDraft;
 }) {
   const t = useTranslations('Inspector');

@@ -128,7 +128,7 @@ function researchTeam(): DemoTemplate {
         id: 'write',
         type: 'agent',
         label: 'Writer',
-        loopId: 'review_loop',
+        parentId: 'review_loop',
         roleId: 'writer',
         invocation: 'scheduled',
         inputBindings: [
@@ -152,7 +152,7 @@ function researchTeam(): DemoTemplate {
         id: 'review',
         type: 'agent',
         label: 'Reviewer',
-        loopId: 'review_loop',
+        parentId: 'review_loop',
         roleId: 'reviewer',
         invocation: 'scheduled',
         // The criteria text, so the review is against what the person asked for (#20).
@@ -166,7 +166,7 @@ function researchTeam(): DemoTemplate {
         id: 'review_decision',
         type: 'decision',
         label: 'Review decision',
-        loopId: 'review_loop',
+        parentId: 'review_loop',
         mode: 'review',
         rule: 'review_verdict',
         inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'review' }],

@@ -1,7 +1,6 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import seedSchema from '../../../contracts/corral-definition.schema.json' with { type: 'json' };
-import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   CorralDefinition,
   CorralDefinitionDraft,
@@ -22,15 +21,14 @@ function mutate(base: Json, change: (doc: Json & { [k: string]: any }) => void):
   return doc;
 }
 
-const valid: [string, unknown][] = [
-  ['examples/research-team.corral.json', researchTeam],
-  ['minimal Agent→Output', minimal],
-];
+// The seed schema predates the team graph model (docs/specs/features/canvas.md): it is checked
+// only against the fixtures it shares with the current schema.
+const valid: [string, unknown][] = [['minimal Agent→Output', minimal]];
 
 const invalid: [string, Json][] = [
   ['unknown node type', mutate(minimal, (d) => (d.nodes[0].type = 'shell'))],
   ['canvas coordinates inside the definition', mutate(minimal, (d) => (d.nodes[0].x = 120))],
-  ['delegation depth 3', mutate(minimal, (d) => (d.limits.maxDelegationDepth = 3))],
+  ['delegation depth 0', mutate(minimal, (d) => (d.limits.maxDelegationDepth = 0))],
   ['role without prompt', mutate(minimal, (d) => delete d.roles[0].prompt)],
   ['identifier starting with a digit', mutate(minimal, (d) => (d.entryNodeId = '1writer'))],
   ['unsupported schema version', mutate(minimal, (d) => (d.schemaVersion = '0.2'))],
@@ -71,7 +69,7 @@ describe('CorralDefinition', () => {
     if (!role) throw new Error('Missing fixture role.');
     const cases = [
       { ...definition, roles: [{ ...role, prompt: '' }, ...definition.roles.slice(1)] },
-      { ...definition, limits: { ...definition.limits, maxDelegationDepth: 3 } },
+      { ...definition, limits: { ...definition.limits, maxDelegationDepth: 0 } },
     ];
     for (const candidate of cases) {
       expect(CorralDefinition.safeParse(candidate).success).toBe(false);

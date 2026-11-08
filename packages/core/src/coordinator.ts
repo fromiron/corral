@@ -216,10 +216,13 @@ export interface DefinitionSource {
   getDefinition(corralId: string, definitionRevision: number): CorralDefinition | null;
 }
 
+/** Decision modes this runtime executes. */
+type RunnableDecisionMode = Exclude<DecisionNode['mode'], 'check' | 'router'>;
+
 export interface DecisionInput {
   runId: string;
   nodeId: string;
-  mode: DecisionNode['mode'];
+  mode: RunnableDecisionMode;
   iteration: IterationRef | null;
   projection: RunProjection;
 }
@@ -1636,11 +1639,17 @@ export class Coordinator {
         message: 'referenced generated image is unavailable or exceeds vision input limits',
       });
     }
-    const planned = planRun(referenced.definition);
+    const planned = planRun(referenced.definition, {
+      runtimeCaps: {
+        maxLoopIterations: this.policy.maxLoopIterations,
+        maxSpawns: this.policy.maxSpawns,
+      },
+    });
     if (!planned.ok) {
-      const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
-        ? 'GRAPH_INVALID'
-        : 'COMMAND_NOT_SUPPORTED';
+      const code =
+        (['GRAPH_INVALID', 'RUNTIME_UNSUPPORTED'] as const).find((code) =>
+          planned.issues.some((i) => i.code === code),
+        ) ?? 'COMMAND_NOT_SUPPORTED';
       const message = planned.issues
         .map((i) => `${i.nodeId ?? i.edgeId ?? i.linkId ?? 'graph'}: ${i.message}`)
         .join('; ');
@@ -4172,6 +4181,9 @@ export class Coordinator {
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
+        // The compiler marks these RUNTIME_UNSUPPORTED and run start refuses them.
+        if (step.mode === 'check' || step.mode === 'router')
+          throw new Error(`${step.mode} decisions do not run in this runtime`);
         const iterationId = this.openRoundOf(run, nodeId);
         const decisionRevision = run.projection.controlRevision;
         const decision: WorkflowDecision = this.decisions
@@ -4193,7 +4205,7 @@ export class Coordinator {
         await this.boundary(run);
         if (iterationId !== this.openRoundOf(run, nodeId))
           throw new Error('decision scope changed');
-        const next = step.branches[decision.branch as keyof typeof step.branches] ?? null;
+        const next = step.branches[decision.branch]?.[0] ?? null;
         const executionIds = new Set<string>();
         const author = (id: string) => {
           const executionId = run.projection.artifacts[id]?.authorExecutionId;
@@ -5393,7 +5405,7 @@ export class Coordinator {
   private async decide(
     run: LiveRun,
     nodeId: string,
-    mode: DecisionNode['mode'],
+    mode: RunnableDecisionMode,
   ): Promise<WorkflowDecision> {
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const round = this.openRoundOf(run, nodeId);
@@ -5442,9 +5454,9 @@ export class Coordinator {
     const reviewVersionId = bound[0];
     if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
     const recorded = this.recordReview(run, reviewVersionId);
-    const recipe =
-      node && 'loopId' in node && node.loopId ? run.recipes.get(node.loopId) : undefined;
-    if (recipe && node && 'loopId' in node && node.loopId) {
+    const recipeLoopId = node?.parentId;
+    const recipe = recipeLoopId ? run.recipes.get(recipeLoopId) : undefined;
+    if (recipe && recipeLoopId) {
       const candidateExecution =
         run.projection.nodeExecutions[recipe.recipe.candidateNodeId]?.at(-1);
       const candidate = candidateExecution ? recipe.candidates.get(candidateExecution) : undefined;
@@ -5453,12 +5465,12 @@ export class Coordinator {
         recorded.targetVersionId !== candidate.artifactVersionId ||
         recorded.verdict === 'inconclusive'
       ) {
-        this.stopRecipe(run, node.loopId, 'review_invalid', candidate?.artifactVersionId);
+        this.stopRecipe(run, recipeLoopId, 'review_invalid', candidate?.artifactVersionId);
         throw new Error('review recipe stopped');
       }
-      const problem = await this.recipeBoundaryProblem(run, node.loopId, recipe, candidate);
+      const problem = await this.recipeBoundaryProblem(run, recipeLoopId, recipe, candidate);
       if (problem) {
-        this.stopRecipe(run, node.loopId, problem, candidate.artifactVersionId);
+        this.stopRecipe(run, recipeLoopId, problem, candidate.artifactVersionId);
         throw new Error('review recipe stopped');
       }
       const tree = candidate.checks[0]?.tree ?? null;
@@ -5469,7 +5481,7 @@ export class Coordinator {
         {
           type: 'recipe.evaluated',
           payload: {
-            ...this.recipeHead(run, node.loopId, recipe.recipe),
+            ...this.recipeHead(run, recipeLoopId, recipe.recipe),
             iterationId: round as string,
             candidateVersionId: candidate.artifactVersionId,
             reviewVersionId,
@@ -5985,8 +5997,7 @@ export class Coordinator {
   }
 
   private loopOf(run: LiveRun, nodeId: string): string | null {
-    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
-    return node && 'loopId' in node && node.loopId ? node.loopId : null;
+    return run.plan.steps[nodeId]?.loopId ?? null;
   }
 
   private openRoundOf(run: LiveRun, nodeId: string): string | null {

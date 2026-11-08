@@ -105,12 +105,29 @@ describe('review artifact contract', () => {
 });
 
 describe('definition contract (generated schema)', () => {
-  it('agrees with the seed schema and Zod', () => {
+  it('agrees with the seed schema and Zod on the fixtures they share', () => {
     expectParity(definitionSeed, generatedDefinition, CorralDefinition, [
-      ['research team', researchTeam, true],
       ['minimal', minimal, true],
       ['unknown node type', mutate(minimal, (d) => (d.nodes[0].type = 'shell')), false],
-      ['delegation depth 3', mutate(minimal, (d) => (d.limits.maxDelegationDepth = 3)), false],
+      ['delegation depth 0', mutate(minimal, (d) => (d.limits.maxDelegationDepth = 0)), false],
+    ]);
+  });
+
+  it('agrees with Zod on the team graph model the seed predates', () => {
+    expectParity(null, generatedDefinition, CorralDefinition, [
+      ['research team', researchTeam, true],
+      ['delegation depth 3', mutate(minimal, (d) => (d.limits.maxDelegationDepth = 3)), true],
+      [
+        'old loopId membership',
+        mutate(researchTeam, (d) => {
+          for (const node of d.nodes)
+            if (node.parentId) {
+              node.loopId = node.parentId;
+              delete node.parentId;
+            }
+        }),
+        false,
+      ],
     ]);
   });
 });

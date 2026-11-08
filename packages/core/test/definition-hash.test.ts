@@ -28,10 +28,10 @@ describe('definitionHash', () => {
     );
     // The example before its reviewer took the criteria input (#20), frozen.
     expect(definitionHash(parse(researchTeamBefore))).toBe(
-      'f205cf04c3656c2baede01ab6cbc2158830fa73a2a4a3e68f5f8f4eb515492b1',
+      '6ffe5923ea40cc955dab1734111a052988e265b6fde0b2e443c145d708ea2f85',
     );
     expect(definitionHash(parse(researchTeam))).toBe(
-      '814abf228161a7189f51285354711d37342533caa465368f7df569932acfac4a',
+      '0e28c765214ceb02f6b6f5165a865a35bb442a3ee483696a661e09c5d7729c97',
     );
   });
 

@@ -15,7 +15,7 @@ const definition: CorralDefinition = linearCorral(
   'performance_fixture',
 );
 for (const node of definition.nodes) {
-  if (node.type === 'agent' && node.id !== 'entry') node.loopId = 'loop';
+  if (node.type === 'agent' && node.id !== 'entry') node.parentId = 'loop';
 }
 const reviewer = definition.roles.at(-1);
 if (!reviewer) throw new Error('Fixture has no reviewer');
@@ -26,7 +26,7 @@ definition.nodes.push(
     id: 'decision',
     type: 'decision',
     label: 'Review',
-    loopId: 'loop',
+    parentId: 'loop',
     mode: 'review',
     rule: 'review_verdict',
     inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'agent_16' }],

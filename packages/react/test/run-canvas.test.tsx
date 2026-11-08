@@ -93,7 +93,7 @@ describe('run canvas layout', () => {
       // Loop members sit inside their Loop's area.
       const loop = result.nodes.review_loop;
       for (const node of definition.nodes) {
-        if (!('loopId' in node) || node.loopId !== 'review_loop') continue;
+        if (node.parentId !== 'review_loop') continue;
         const box = result.nodes[node.id];
         expect(box && loop?.width && loop.height).toBeTruthy();
         if (!box || !loop?.width || !loop.height) continue;

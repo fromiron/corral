@@ -68,7 +68,9 @@ export function flowNodes(
   layout: EditorDraft['layout'],
   selectedNodeId: string | null,
 ): Node<CanvasNodeData>[] {
-  return definitionNodes.map((node) => {
+  return definitionNodes.flatMap((node) => {
+    // This canvas draws the four kinds it creates; Team and Join boxes come with the new editor.
+    if (node.type === 'team' || node.type === 'join') return [];
     const box = layout[node.id] ?? { x: 0, y: 0 };
     return {
       id: node.id,
@@ -178,7 +180,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
         if (change.type === 'position' && change.position) {
           const node = findNode(editor.getState().draft, change.id);
           // A moving Loop carries its members; ignore their own position changes in that case.
-          if (node && 'loopId' in node && node.loopId && movingLoops.has(node.loopId)) continue;
+          if (node?.parentId && movingLoops.has(node.parentId)) continue;
           state.moveNode(change.id, change.position);
         }
         if (change.type === 'select' && change.selected) state.select(change.id);
@@ -303,7 +305,7 @@ export function CorralCanvas({ onNodeSelect }: { onNodeSelect?: () => void } = {
       const height = node.measured?.height ?? 60;
       const center = { x: node.position.x + width / 2, y: node.position.y + height / 2 };
       const inside = loopAt(state.draft, center);
-      const from = current.loopId ?? null;
+      const from = current.parentId ?? null;
       if (inside === from) return null;
       const loopId = (inside ?? from) as string;
       return {

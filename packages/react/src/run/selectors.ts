@@ -110,13 +110,13 @@ export function decisionRunStatus(
     id: string;
     type: string;
     mode?: string;
-    loopId?: string | null;
+    parentId?: string | null;
     requireApproval?: boolean;
   },
 ): { status: NodeRunStatus; count: number } {
   if (!projection) return { status: 'idle', count: 0 };
-  if (node.type === 'decision' && node.mode === 'review' && node.loopId) {
-    const decided = (projection.loopIterations[node.loopId] ?? []).filter((id) => {
+  if (node.type === 'decision' && node.mode === 'review' && node.parentId) {
+    const decided = (projection.loopIterations[node.parentId] ?? []).filter((id) => {
       const outcome = projection.iterations[id]?.outcome;
       return outcome === 'pass' || outcome === 'revise' || outcome === 'inconclusive';
     }).length;

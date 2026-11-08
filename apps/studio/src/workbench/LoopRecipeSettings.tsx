@@ -13,7 +13,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
   const definition = useStore(editor, (state) => state.draft.definition);
   const t = useTranslations('Recipe');
   const members = definition.nodes.flatMap((item) =>
-    item.type === 'agent' && item.loopId === node.id ? [item] : [],
+    item.type === 'agent' && item.parentId === node.id ? [item] : [],
   );
   const candidates = members.filter(
     (item) => definition.roles.find((role) => role.id === item.roleId)?.outputContract !== 'review',

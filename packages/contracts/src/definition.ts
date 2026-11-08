@@ -95,42 +95,122 @@ export type AgentRole = z.infer<typeof AgentRole>;
 
 const bindings = (min: number) => z.array(InputBinding).min(min).max(20);
 
-export const AgentNode = z.strictObject({
+/**
+ * Fields every node has. `parentId` names the Loop or inline Team that holds the node; `note` is
+ * for people only and never reaches a run (docs/specs/features/team-graph.md).
+ */
+const nodeBase = {
   id: Identifier,
-  type: z.literal('agent'),
   label: z.string().min(1),
-  loopId: Identifier.optional(),
+  parentId: Identifier.optional(),
+  note: z.string().max(4000).optional(),
+};
+
+export const AgentNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('agent'),
   roleId: Identifier,
   invocation: z.enum(['scheduled', 'callable']),
   inputBindings: bindings(0),
   outputName: z.string().min(1),
+  /** Further attempts after a failure; then the `error` port. */
+  retry: z.strictObject({ maxAttempts: z.int().min(0) }).optional(),
 });
 export type AgentNode = z.infer<typeof AgentNode>;
 
-export const DecisionNode = z.strictObject({
-  id: Identifier,
+export const DecisionRule = z.enum([
+  'review_verdict',
+  'required_tasks_submitted',
+  'human_approval',
+]);
+export type DecisionRule = z.infer<typeof DecisionRule>;
+
+export const RuleDecisionNode = z.strictObject({
+  ...nodeBase,
   type: z.literal('decision'),
-  label: z.string().min(1),
-  loopId: Identifier.optional(),
   mode: z.enum(['review', 'approval', 'rule']),
-  rule: z.enum(['review_verdict', 'required_tasks_submitted', 'human_approval']),
+  rule: DecisionRule,
   inputBindings: bindings(1),
 });
+
+/** Branches on registered checks only: no user code or expression is evaluated. */
+export const CheckDecisionNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('decision'),
+  mode: z.literal('check'),
+  checkIds: z.array(Identifier).min(1).max(20),
+  inputBindings: bindings(1),
+});
+
+export const RouterRoute = z.strictObject({
+  id: Identifier,
+  label: z.string().min(1),
+  description: z.string().max(2000).optional(),
+});
+export type RouterRoute = z.infer<typeof RouterRoute>;
+
+/** A model picks one of the named routes; each route id is one outgoing port. */
+export const RouterDecisionNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('decision'),
+  mode: z.literal('router'),
+  routes: z.array(RouterRoute).max(20),
+  modelProfile: Identifier.optional(),
+  inputBindings: bindings(1),
+});
+
+export const DecisionNode = z.discriminatedUnion('mode', [
+  RuleDecisionNode,
+  CheckDecisionNode,
+  RouterDecisionNode,
+]);
 export type DecisionNode = z.infer<typeof DecisionNode>;
+export type DecisionNodeMode = DecisionNode['mode'];
+
+export const LoopBudget = z.strictObject({
+  maxModelCalls: z.int().min(1).optional(),
+  maxOutputTokens: z.int().min(1).optional(),
+  maxWallMs: z.int().min(1000).optional(),
+});
+export type LoopBudget = z.infer<typeof LoopBudget>;
 
 export const LoopNode = z.strictObject({
-  id: Identifier,
+  ...nodeBase,
   type: z.literal('loop'),
-  label: z.string().min(1),
-  maxIterations: z.int().min(1).max(10),
+  maxIterations: z.int().min(1),
+  budget: LoopBudget.optional(),
+  stallDetection: z.boolean().optional(),
   reviewRecipe: ReviewRecipeRevision.optional(),
 });
 export type LoopNode = z.infer<typeof LoopNode>;
 
+export const TeamSource = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('inline') }),
+  z.strictObject({
+    kind: z.literal('reference'),
+    corralId: Identifier,
+    definitionRevision: z.int().min(1),
+  }),
+]);
+export type TeamSource = z.infer<typeof TeamSource>;
+
+export const TeamNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('team'),
+  source: TeamSource,
+});
+export type TeamNode = z.infer<typeof TeamNode>;
+
+export const JoinNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('join'),
+  policy: z.enum(['all', 'any']),
+});
+export type JoinNode = z.infer<typeof JoinNode>;
+
 export const OutputNode = z.strictObject({
-  id: Identifier,
+  ...nodeBase,
   type: z.literal('output'),
-  label: z.string().min(1),
   inputBindings: bindings(1),
   requireApproval: z.boolean(),
 });
@@ -140,17 +220,25 @@ export const CorralNode = z.discriminatedUnion('type', [
   AgentNode,
   DecisionNode,
   LoopNode,
+  TeamNode,
+  JoinNode,
   OutputNode,
 ]);
 export type CorralNode = z.infer<typeof CorralNode>;
 export type NodeType = CorralNode['type'];
+/** Nodes that hold other nodes. */
+export type BoxNode = LoopNode | TeamNode;
 
+/** Named ports of the port table; a router adds one port per route id. */
 export const SourcePort = z.enum([
   'out',
+  'error',
   'body',
   'next',
+  'exhausted',
   'pass',
   'revise',
+  'fail',
   'approve',
   'reject',
   'yes',
@@ -163,7 +251,8 @@ export type TargetPort = z.infer<typeof TargetPort>;
 export const ControlEdge = z.strictObject({
   id: Identifier,
   source: Identifier,
-  sourcePort: SourcePort,
+  /** A port of the port table, or a router route id. */
+  sourcePort: Identifier,
   target: Identifier,
   targetPort: TargetPort,
 });
@@ -180,9 +269,9 @@ export const CapabilityLink = z.strictObject({
 export type CapabilityLink = z.infer<typeof CapabilityLink>;
 
 export const RunLimits = z.strictObject({
-  maxDelegationDepth: z.literal(2),
+  maxDelegationDepth: z.int().min(1),
   maxModelConcurrency: z.int().min(1),
-  maxSpawns: z.int().min(1).max(32),
+  maxSpawns: z.int().min(1),
   maxModelCalls: z.int().min(1),
   maxOutputTokens: z.int().min(1),
   maxOutputTokensPerCall: z.int().min(1),

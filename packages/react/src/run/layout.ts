@@ -72,7 +72,7 @@ export function autoLayout(definition: CorralDefinition): Record<string, NodeLay
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
   const loopOf = (id: string) => {
     const node = nodes.get(id);
-    return node && 'loopId' in node ? (node.loopId ?? null) : null;
+    return node?.parentId ?? null;
   };
   const out: Record<string, NodeLayout> = {};
 

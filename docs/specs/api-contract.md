@@ -239,6 +239,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | IDEMPOTENCY_CONFLICT | 409 | 같은 commandId에 다른 payload |
 | TARGET_NOT_FOUND | 404 | 대상 Run·실행·작업이 없음 (구현 중 추가) |
 | COMMAND_NOT_SUPPORTED | 501 | 형식은 올바르지만 현재 runtime 단계에서 아직 처리하지 않는 명령. 효과 없음 (구현 중 추가) |
+| RUNTIME_UNSUPPORTED | 422 | 유효한 정의지만 현재 런타임이 실행하지 않는 구성을 씀([실행 지원 범위](features/team-graph.md#실행-지원-범위)). Run을 만들지 않음 |
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
 | REVISION_CONFLICT | 409 | Corral 저장의 기준 definition revision이 현재와 다름(다른 탭에서 저장). 저장하지 않음 (구현 중 추가) |
 | RUN_ALREADY_ACTIVE | 409 | workspace에 이미 활성 Run이 있음. 새 Run과 effect 없음 (구현 중 추가) |

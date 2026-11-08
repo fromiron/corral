@@ -91,7 +91,7 @@ function loopFixture(rounds: number) {
     },
   );
   definition.nodes = definition.nodes.map((node) =>
-    node.id === 'writer' || node.id === 'gate' ? { ...node, loopId: 'loop' } : node,
+    node.id === 'writer' || node.id === 'gate' ? { ...node, parentId: 'loop' } : node,
   );
   let projection: RunProjection = emptyProjection(RUN);
   for (let no = 1; no <= rounds; no++) {

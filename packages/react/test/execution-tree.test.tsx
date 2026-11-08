@@ -218,7 +218,7 @@ function loopSession(rounds = 100) {
   const definition = linearCorral(['lead', 'writer', 'reviewer', 'outside']);
   definition.nodes = definition.nodes.map((node) =>
     node.type === 'agent' && ['writer', 'reviewer'].includes(node.id)
-      ? { ...node, loopId: 'review_loop' }
+      ? { ...node, parentId: 'review_loop' }
       : node,
   );
   definition.nodes.push({ id: 'review_loop', type: 'loop', label: 'Revision', maxIterations: 10 });

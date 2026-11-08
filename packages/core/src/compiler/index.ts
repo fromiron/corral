@@ -4,41 +4,65 @@ import {
   type ControlEdge,
   CorralDefinition,
   type CorralNode,
-  type DecisionNode,
-  type SourcePort,
+  type DecisionNodeMode,
+  type DecisionRule,
+  type JoinNode,
+  type LoopBudget,
+  type LoopNode,
+  type RouterRoute,
   type TargetPort,
+  type WorkTool,
 } from '@corral/contracts';
+import { SPEC_HARD_CAPS } from '../config.ts';
 import { recipeAttempts, reviewCriteriaHash } from '../review-recipe.ts';
+import { vertexOf } from './cycles.ts';
 import {
-  DECISION_PORTS,
+  boxBoundaryViolation,
   DECISION_RULE,
+  decisionPortsOf,
   inputPortsOf,
-  loopBoundaryViolation,
+  isBox,
+  isWithin,
   outputPortsOf,
-  REQUIRED_BRANCHES,
+  requiredBranchesOf,
 } from './ports.ts';
 
-export { wouldCreateCycle } from './cycles.ts';
+export { vertexOf, wouldCreateCycle } from './cycles.ts';
 export * from './ports.ts';
 
-// Static validation and IR lowering. The editor shows these
+// Static validation and IR lowering (docs/specs/features/team-graph.md). The editor shows these
 // diagnostics, and the runtime compiles again before running: the editor is not a trust boundary.
 
 export type DiagnosticCode =
   | 'SCHEMA_INVALID'
   | 'DUPLICATE_ID'
   | 'UNKNOWN_REFERENCE'
-  | 'TOO_MANY_LOOPS'
+  | 'BOX_PARENT'
+  | 'CONTAINMENT_CYCLE'
+  | 'TEAM_REFERENCE_MEMBERS'
   | 'INVALID_PORT'
-  | 'DUPLICATE_PORT_EDGE'
   | 'CALLABLE_IN_CONTROL_FLOW'
+  | 'BOX_BOUNDARY'
   | 'ENTRY_INVALID'
   | 'DEAD_END'
   | 'DECISION_RULE'
   | 'DECISION_BRANCH_MISSING'
-  | 'LOOP_STRUCTURE'
-  | 'LOOP_BOUNDARY'
+  | 'ROUTER_ROUTES'
+  | 'LOOP_NO_BODY'
+  | 'LOOP_NO_EXIT'
+  | 'LOOP_NO_REPEAT'
+  | 'REPEAT_NEEDS_DECISION'
+  | 'LOOP_DEAD_END'
+  | 'TEAM_NO_MEMBERS'
+  | 'TEAM_NO_BODY'
+  | 'TEAM_NO_EXIT'
+  | 'TEAM_REF_NOT_FOUND'
+  | 'TEAM_REF_CYCLE'
+  | 'TEAM_REF_INVALID'
   | 'CYCLE_OUTSIDE_LOOP'
+  | 'PARALLEL_MERGE_NEEDS_JOIN'
+  | 'JOIN_SINGLE_INPUT'
+  | 'PARALLEL_WRITERS'
   | 'UNREACHABLE'
   | 'NO_OUTPUT'
   | 'CAPABILITY_TARGET'
@@ -47,7 +71,8 @@ export type DiagnosticCode =
   | 'BINDING_SOURCE'
   | 'REVIEW_CONTRACT'
   | 'REVIEW_WITHOUT_CRITERIA'
-  | 'UNKNOWN_MODEL_PROFILE';
+  | 'UNKNOWN_MODEL_PROFILE'
+  | 'RUNTIME_UNSUPPORTED';
 
 export interface Diagnostic {
   code: DiagnosticCode;
@@ -64,31 +89,70 @@ export interface PlanTarget {
   port: TargetPort;
 }
 
+interface StepBase {
+  nodeId: string;
+  /** The box that holds this step. */
+  parentId: string | null;
+  /** The innermost Loop that holds this step. */
+  loopId: string | null;
+}
+
+/** Each port leads to a list of targets: more than one is a parallel fan-out. */
 export type PlanStep =
-  | {
+  | (StepBase & {
       kind: 'agent';
-      nodeId: string;
       roleId: string;
-      loopId: string | null;
-      next: PlanTarget | null;
-    }
-  | {
+      next: PlanTarget[];
+      error: PlanTarget[];
+      retry: number;
+    })
+  | (StepBase & {
       kind: 'decision';
-      nodeId: string;
-      mode: DecisionNode['mode'];
-      rule: DecisionNode['rule'];
-      loopId: string | null;
-      branches: Partial<Record<SourcePort, PlanTarget | null>>;
-    }
-  | { kind: 'loop'; nodeId: string; maxIterations: number; body: PlanTarget; next: PlanTarget }
-  | { kind: 'output'; nodeId: string; requireApproval: boolean };
+      mode: DecisionNodeMode;
+      rule: DecisionRule | null;
+      routes: RouterRoute[];
+      branches: Record<string, PlanTarget[]>;
+    })
+  | (StepBase & {
+      kind: 'loop';
+      maxIterations: number;
+      body: PlanTarget[];
+      next: PlanTarget[];
+      exhausted: PlanTarget[];
+    })
+  | (StepBase & {
+      kind: 'team';
+      source: 'inline' | 'reference';
+      body: PlanTarget[];
+      next: PlanTarget[];
+    })
+  | (StepBase & { kind: 'join'; policy: JoinNode['policy']; next: PlanTarget[] })
+  | (StepBase & { kind: 'output'; requireApproval: boolean });
 
 export interface LoopPlan {
   nodeId: string;
+  parentId: string | null;
   maxIterations: number;
-  bodyEntryNodeId: string;
+  budget: LoopBudget | null;
+  stallDetection: boolean;
+  body: PlanTarget[];
+  /** Direct members in execution order. */
   members: string[];
-  next: PlanTarget;
+  next: PlanTarget[];
+  exhausted: PlanTarget[];
+}
+
+export interface BoxPlan {
+  nodeId: string;
+  kind: 'loop' | 'team';
+  parentId: string | null;
+  members: string[];
+}
+
+export interface ReferencePlan {
+  corralId: string;
+  definitionRevision: number;
+  plan: CompiledPlan;
 }
 
 export interface CompiledPlan {
@@ -97,6 +161,10 @@ export interface CompiledPlan {
   order: string[];
   steps: Record<string, PlanStep>;
   loops: Record<string, LoopPlan>;
+  /** The box tree: every Loop and Team with its parent and direct members. */
+  boxes: Record<string, BoxPlan>;
+  /** The compiled plan of each referenced Team, by Team node id. */
+  references: Record<string, ReferencePlan>;
   /** Who may call whom (capability links). Calls happen only when an agent asks at runtime. */
   callables: Record<
     string,
@@ -112,6 +180,8 @@ export interface CompiledPlan {
     callableAgents: number;
     decisions: number;
     loops: number;
+    teams: number;
+    joins: number;
     outputs: number;
     maxStaticDepth: number;
   };
@@ -121,30 +191,50 @@ export type CompileResult =
   | { ok: true; definition: CorralDefinition; plan: CompiledPlan; diagnostics: Diagnostic[] }
   | { ok: false; diagnostics: Diagnostic[] };
 
+/** What this installation's runtime enforces; the spec's hard caps when not given. */
+export interface RuntimeCaps {
+  maxLoopIterations: number;
+  maxSpawns: number;
+}
+
 export interface CompileOptions {
   /** Profiles the runtime can resolve; omitted in the editor before profiles are known. */
   knownModelProfiles?: readonly string[];
+  /**
+   * The definition source for `reference` Teams: a saved team at a fixed revision, as stored.
+   * Without it no reference resolves.
+   */
+  resolveTeam?: (corralId: string, definitionRevision: number) => unknown;
+  runtimeCaps?: RuntimeCaps;
 }
 
 export function compileDefinition(input: unknown, options: CompileOptions = {}): CompileResult {
+  return compile(input, options, []);
+}
+
+function compile(input: unknown, options: CompileOptions, teams: readonly string[]): CompileResult {
   const parsed = CorralDefinition.safeParse(input);
   if (!parsed.success) return fail(schemaDiagnostics(input, parsed.error.issues));
   const definition = parsed.data;
 
   const context = new Context(definition);
-  checkIdentity(context, options);
+  checkIdentity(context);
   if (context.hasErrors()) return fail(context.diagnostics);
+  checkContainment(context);
+  if (context.hasErrors()) return fail(context.diagnostics);
+  checkReferences(context, options, [...teams, definition.sourceTeam?.corralId ?? definition.id]);
   checkStructure(context);
   // Problems that make graph analysis meaningless stop here; the rest are reported together.
   if (context.diagnostics.some((d) => BLOCKING.has(d.code))) return fail(context.diagnostics);
   const graph = analyzeGraph(context);
-  if (context.hasErrors() || !graph) return fail(context.diagnostics);
+  if (!graph) return fail(context.diagnostics);
   checkCapabilities(context, graph);
   checkBindings(context, graph);
   checkReviewerCriteria(context);
   checkReviewRecipes(context);
   checkModelProfiles(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
+  checkRuntimeSupport(context, options.runtimeCaps ?? SPEC_HARD_CAPS);
 
   return {
     ok: true,
@@ -157,8 +247,7 @@ export function compileDefinition(input: unknown, options: CompileOptions = {}):
 const BLOCKING = new Set<DiagnosticCode>([
   'INVALID_PORT',
   'CALLABLE_IN_CONTROL_FLOW',
-  'DUPLICATE_PORT_EDGE',
-  'LOOP_BOUNDARY',
+  'BOX_BOUNDARY',
   'ENTRY_INVALID',
 ]);
 
@@ -168,9 +257,7 @@ function checkReviewRecipes(c: Context) {
     const recipe = loop.reviewRecipe,
       candidate = c.nodes.get(recipe.candidateNodeId);
     const preparation = recipe.preparationNodeId ? c.nodes.get(recipe.preparationNodeId) : null;
-    const members = c.definition.nodes.filter(
-      (node) => 'loopId' in node && node.loopId === loop.id,
-    );
+    const members = c.definition.nodes.filter((node) => node.parentId === loop.id);
     const reviewer = members.find(
       (node) => node.type === 'agent' && node.roleId === recipe.evaluatorRoleId,
     );
@@ -192,13 +279,13 @@ function checkReviewRecipes(c: Context) {
       (recipe.preparationNodeId &&
         (preparation?.type !== 'agent' ||
           preparation.invocation !== 'scheduled' ||
-          preparation.loopId !== loop.id ||
+          preparation.parentId !== loop.id ||
           preparation.id === candidate?.id ||
           preparation.id === reviewer?.id ||
           !edge(loop.id, 'body', preparation.id) ||
           !edge(preparation.id, 'out', recipe.candidateNodeId))) ||
       candidate?.type !== 'agent' ||
-      candidate.loopId !== loop.id ||
+      candidate.parentId !== loop.id ||
       candidate.invocation !== 'scheduled' ||
       reviewer?.type !== 'agent' ||
       reviewer.id === candidate.id ||
@@ -234,45 +321,67 @@ function checkReviewerCriteria(c: Context) {
   for (const node of c.definition.nodes) {
     if (node.type !== 'agent' || contracts.get(node.roleId) !== 'review') continue;
     if (node.inputBindings.some((b) => b.kind === 'run_input' && b.name === 'criteria')) continue;
-    c.diagnostics.push({
-      code: 'REVIEW_WITHOUT_CRITERIA',
-      severity: 'warning',
-      message: 'this reviewer does not receive the criteria; add the run input "criteria"',
-      nodeId: node.id,
-    });
+    c.warn(
+      'REVIEW_WITHOUT_CRITERIA',
+      'this reviewer does not receive the criteria; add the run input "criteria"',
+      { nodeId: node.id },
+    );
   }
 }
 
 // ── context ───────────────────────────────────────────────────────────────────
 
+type At = Omit<Diagnostic, 'code' | 'message' | 'severity'>;
+
 class Context {
   readonly diagnostics: Diagnostic[] = [];
   readonly nodes = new Map<string, CorralNode>();
-  readonly loop: CorralNode | undefined;
   readonly definition: CorralDefinition;
+  readonly references = new Map<string, ReferencePlan>();
+  readonly outgoing = new Map<string, ControlEdge[]>();
+  readonly incoming = new Map<string, ControlEdge[]>();
 
   constructor(definition: CorralDefinition) {
     this.definition = definition;
     for (const node of definition.nodes)
       if (!this.nodes.has(node.id)) this.nodes.set(node.id, node);
-    this.loop = definition.nodes.find((node) => node.type === 'loop');
+    for (const edge of definition.controlEdges) {
+      this.outgoing.set(edge.source, [...(this.outgoing.get(edge.source) ?? []), edge]);
+      this.incoming.set(edge.target, [...(this.incoming.get(edge.target) ?? []), edge]);
+    }
   }
 
-  error(
-    code: DiagnosticCode,
-    message: string,
-    at: Omit<Diagnostic, 'code' | 'message' | 'severity'> = {},
-  ) {
+  error(code: DiagnosticCode, message: string, at: At = {}) {
     this.diagnostics.push({ code, severity: 'error', message, ...at });
+  }
+
+  warn(code: DiagnosticCode, message: string, at: At = {}) {
+    this.diagnostics.push({ code, severity: 'warning', message, ...at });
   }
 
   hasErrors(): boolean {
     return this.diagnostics.some((d) => d.severity === 'error');
   }
 
-  loopIdOf(nodeId: string): string | null {
-    const node = this.nodes.get(nodeId);
-    return node && 'loopId' in node && node.loopId ? node.loopId : null;
+  /** Loops around a node, innermost first. */
+  loopsAround(nodeId: string): string[] {
+    const loops: string[] = [];
+    const seen = new Set<string>();
+    for (let at = this.nodes.get(nodeId)?.parentId; at && !seen.has(at); ) {
+      seen.add(at);
+      const box = this.nodes.get(at);
+      if (box?.type === 'loop') loops.push(at);
+      at = box?.parentId;
+    }
+    return loops;
+  }
+
+  nearestLoop(nodeId: string): string | null {
+    return this.loopsAround(nodeId)[0] ?? null;
+  }
+
+  membersOf(boxId: string): CorralNode[] {
+    return this.definition.nodes.filter((node) => node.parentId === boxId);
   }
 
   isCallable(nodeId: string): boolean {
@@ -343,9 +452,9 @@ function schemaDiagnostics(
   });
 }
 
-// ── identity and references ─────────────────────────────────────────────────
+// ── identity, containment and references ────────────────────────────────────
 
-function checkIdentity(c: Context, options: CompileOptions) {
+function checkIdentity(c: Context) {
   const { definition } = c;
   const seen = new Set<string>();
   for (const node of definition.nodes) {
@@ -387,18 +496,16 @@ function checkIdentity(c: Context, options: CompileOptions) {
     if (node.type === 'agent' && !roles.has(node.roleId)) {
       c.error('UNKNOWN_REFERENCE', `role ${node.roleId} does not exist`, { nodeId: node.id });
     }
-    if ('loopId' in node && node.loopId && c.nodes.get(node.loopId)?.type !== 'loop') {
-      c.error('UNKNOWN_REFERENCE', `${node.loopId} is not a Loop`, { nodeId: node.id });
+    if (node.parentId && !c.nodes.has(node.parentId)) {
+      c.error('UNKNOWN_REFERENCE', `box ${node.parentId} does not exist`, { nodeId: node.id });
     }
-    if (node.type !== 'loop') {
+    if ('inputBindings' in node) {
       for (const binding of node.inputBindings) {
         if (binding.sourceNodeId && !c.nodes.has(binding.sourceNodeId)) {
           c.error(
             'UNKNOWN_REFERENCE',
             `input "${binding.name}" reads from missing node ${binding.sourceNodeId}`,
-            {
-              nodeId: node.id,
-            },
+            { nodeId: node.id },
           );
         }
       }
@@ -416,124 +523,199 @@ function checkIdentity(c: Context, options: CompileOptions) {
         c.error('UNKNOWN_REFERENCE', `node ${end} does not exist`, { linkId: link.id });
     }
   }
-  const loops = definition.nodes.filter((node) => node.type === 'loop');
-  for (const extra of loops.slice(1)) {
-    c.error('TOO_MANY_LOOPS', 'this version supports one Loop per Corral', { nodeId: extra.id });
+}
+
+function checkContainment(c: Context) {
+  for (const node of c.definition.nodes) {
+    if (!node.parentId) continue;
+    const parent = c.nodes.get(node.parentId) as CorralNode;
+    if (parent.type === 'team' && parent.source.kind === 'reference') {
+      c.error('TEAM_REFERENCE_MEMBERS', 'a referenced Team brings its own members', {
+        nodeId: node.id,
+      });
+    } else if (!isBox(parent)) {
+      c.error('BOX_PARENT', `${parent.id} is not a Loop or a Team`, { nodeId: node.id });
+    } else if (c.isCallable(node.id)) {
+      c.error('BOX_PARENT', 'callable agents run only when called and stay outside boxes', {
+        nodeId: node.id,
+      });
+    }
+    const seen = new Set<string>();
+    for (let at: string | undefined = node.parentId; at && !seen.has(at); ) {
+      if (at === node.id) {
+        c.error('CONTAINMENT_CYCLE', 'this box ends up inside itself', { nodeId: node.id });
+        break;
+      }
+      seen.add(at);
+      at = c.nodes.get(at)?.parentId;
+    }
   }
 }
 
-// ── ports, decisions, loop structure and boundary ────────────────────────────
+/** Resolves and compiles every referenced Team; `teams` are the Corrals already being compiled. */
+function checkReferences(c: Context, options: CompileOptions, teams: readonly string[]) {
+  for (const node of c.definition.nodes) {
+    if (node.type !== 'team' || node.source.kind !== 'reference') continue;
+    const { corralId, definitionRevision } = node.source;
+    const at = { nodeId: node.id };
+    if (teams.includes(corralId)) {
+      c.error('TEAM_REF_CYCLE', `${corralId} is already being expanded; references go round`, at);
+      continue;
+    }
+    const resolved = options.resolveTeam?.(corralId, definitionRevision);
+    if (resolved === undefined || resolved === null) {
+      c.error(
+        'TEAM_REF_NOT_FOUND',
+        `team ${corralId} revision ${definitionRevision} is not found`,
+        at,
+      );
+      continue;
+    }
+    const inner = compile(resolved, options, [...teams, corralId]);
+    if (inner.ok) {
+      c.references.set(node.id, { corralId, definitionRevision, plan: inner.plan });
+    } else if (inner.diagnostics.some((d) => d.code === 'TEAM_REF_CYCLE')) {
+      c.error('TEAM_REF_CYCLE', `team ${corralId} leads back to a team being expanded`, at);
+    } else {
+      const first = inner.diagnostics.find((d) => d.severity === 'error');
+      c.error(
+        'TEAM_REF_INVALID',
+        `team ${corralId} revision ${definitionRevision} does not compile: ${first?.message ?? 'invalid'}`,
+        at,
+      );
+    }
+  }
+}
+
+// ── ports, decisions, boxes and boundaries ───────────────────────────────────
+
+const boxName = (node: CorralNode) => (node.type === 'loop' ? 'Loop' : 'Team');
 
 function checkStructure(c: Context) {
   const { definition } = c;
-  const usedPorts = new Set<string>();
-  const outgoing = new Map<string, ControlEdge[]>();
-  const incoming = new Map<string, ControlEdge[]>();
 
   for (const edge of definition.controlEdges) {
     const source = c.nodes.get(edge.source) as CorralNode;
     const target = c.nodes.get(edge.target) as CorralNode;
-    outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge]);
-    incoming.set(edge.target, [...(incoming.get(edge.target) ?? []), edge]);
-
+    const at = { edgeId: edge.id };
     if (c.isCallable(edge.source) || c.isCallable(edge.target)) {
       c.error(
         'CALLABLE_IN_CONTROL_FLOW',
         'callable agents run only when another agent calls them',
-        {
-          edgeId: edge.id,
-        },
+        at,
       );
       continue;
     }
     if (!outputPortsOf(source).includes(edge.sourcePort)) {
-      c.error('INVALID_PORT', `${source.type} has no "${edge.sourcePort}" output`, {
-        edgeId: edge.id,
-      });
+      c.error('INVALID_PORT', `${source.type} has no "${edge.sourcePort}" output`, at);
     }
     if (!inputPortsOf(target).includes(edge.targetPort)) {
-      c.error('INVALID_PORT', `${target.type} has no "${edge.targetPort}" input`, {
-        edgeId: edge.id,
-      });
+      c.error('INVALID_PORT', `${target.type} has no "${edge.targetPort}" input`, at);
     }
-    const port = `${edge.source}:${edge.sourcePort}`;
-    if (usedPorts.has(port)) {
-      c.error(
-        'DUPLICATE_PORT_EDGE',
-        `"${edge.sourcePort}" of ${edge.source} already has a next step`,
-        {
-          edgeId: edge.id,
-        },
-      );
+    const why = boxBoundaryViolation(c.nodes, edge);
+    if (why) c.error('BOX_BOUNDARY', why, at);
+    if (edge.targetPort === 'repeat' && source.type !== 'decision') {
+      c.error('REPEAT_NEEDS_DECISION', 'only a decision sends the work round again', at);
     }
-    usedPorts.add(port);
-    checkBoundary(c, edge, source, target);
   }
 
   for (const node of definition.nodes) {
-    const out = (outgoing.get(node.id) ?? []).map((e) => e.sourcePort);
-    if (node.type === 'decision') {
-      if (DECISION_RULE[node.mode] !== node.rule) {
-        c.error(
-          'DECISION_RULE',
-          `${node.mode} decisions use the ${DECISION_RULE[node.mode]} rule`,
-          { nodeId: node.id },
-        );
+    const out = (c.outgoing.get(node.id) ?? []).map((e) => e.sourcePort);
+    const into = c.incoming.get(node.id) ?? [];
+    const at = { nodeId: node.id };
+    const deadEnd = (message: string) =>
+      c.nearestLoop(node.id)
+        ? c.error(
+            'LOOP_DEAD_END',
+            `${message}; inside a Loop every path ends at exit, repeat or an Output`,
+            at,
+          )
+        : c.error('DEAD_END', message, at);
+    switch (node.type) {
+      case 'agent':
+        if (node.invocation === 'scheduled' && !out.includes('out'))
+          deadEnd('this agent has no next step');
+        break;
+      case 'decision': {
+        if (node.mode === 'review' || node.mode === 'approval' || node.mode === 'rule') {
+          if (DECISION_RULE[node.mode] !== node.rule)
+            c.error(
+              'DECISION_RULE',
+              `${node.mode} decisions use the ${DECISION_RULE[node.mode]} rule`,
+              at,
+            );
+        }
+        if (node.mode === 'router') {
+          const ids = node.routes.map((r) => r.id);
+          if (ids.length < 2)
+            c.error('ROUTER_ROUTES', 'a router chooses between at least two routes', at);
+          if (new Set(ids).size !== ids.length)
+            c.error('ROUTER_ROUTES', 'route ids must be unique', at);
+        }
+        const missing = requiredBranchesOf(node).filter((p) => !out.includes(p));
+        if (missing.length > 0)
+          c.warn(
+            'DECISION_BRANCH_MISSING',
+            `connect the ${missing.join(', ')} branch; until then the run waits for you there`,
+            at,
+          );
+        break;
       }
-      const missing = REQUIRED_BRANCHES[node.mode].filter((p) => !out.includes(p));
-      if (missing.length > 0) {
-        c.error('DECISION_BRANCH_MISSING', `connect the ${missing.join(', ')} branch`, {
-          nodeId: node.id,
-        });
+      case 'join':
+        if (into.length < 2)
+          c.warn('JOIN_SINGLE_INPUT', 'a Join waits for two or more branches', at);
+        if (!out.includes('out')) deadEnd('this Join has no next step');
+        break;
+      case 'loop': {
+        if (c.membersOf(node.id).length === 0 || !out.includes('body'))
+          c.error('LOOP_NO_BODY', 'connect "body" to the first step inside the Loop', at);
+        if (!into.some((e) => e.targetPort === 'exit'))
+          c.error('LOOP_NO_EXIT', 'connect a branch inside the Loop to "exit"', at);
+        if (!into.some((e) => e.targetPort === 'repeat'))
+          c.error('LOOP_NO_REPEAT', 'connect a decision inside the Loop to "repeat"', at);
+        if (into.some((e) => e.targetPort === 'exit') && !out.includes('next'))
+          deadEnd('connect "next" to the step after the Loop');
+        break;
       }
-    }
-    if (node.type === 'agent' && node.invocation === 'scheduled' && out.length === 0) {
-      c.error('DEAD_END', 'this agent has no next step', { nodeId: node.id });
-    }
-    if (node.type === 'agent' && node.invocation === 'callable' && node.loopId) {
-      c.error('LOOP_STRUCTURE', 'callable agents cannot be Loop members', { nodeId: node.id });
-    }
-    if ((node.type === 'output' || node.type === 'loop') && 'loopId' in node && node.loopId) {
-      c.error('LOOP_STRUCTURE', `${node.type} nodes cannot be inside a Loop`, { nodeId: node.id });
+      case 'team':
+        if (node.source.kind === 'reference') {
+          if (!out.includes('next')) deadEnd('connect "next" to the step after the Team');
+          break;
+        }
+        if (c.membersOf(node.id).length === 0)
+          c.error('TEAM_NO_MEMBERS', 'put at least one step inside the Team', at);
+        if (!out.includes('body'))
+          c.error('TEAM_NO_BODY', 'connect "body" to the first step inside the Team', at);
+        if (out.includes('next') && !into.some((e) => e.targetPort === 'exit'))
+          c.error('TEAM_NO_EXIT', 'connect a step inside the Team to "exit"', at);
+        if (into.some((e) => e.targetPort === 'exit') && !out.includes('next'))
+          deadEnd('connect "next" to the step after the Team');
+        break;
+      case 'output':
+        break;
     }
   }
 
   const entry = c.nodes.get(definition.entryNodeId);
-  if (entry?.type !== 'agent' || entry.invocation !== 'scheduled' || entry.loopId) {
-    c.error('ENTRY_INVALID', 'the entry must be a scheduled agent outside any Loop', {
-      nodeId: definition.entryNodeId,
-    });
-  }
-
-  const loop = c.loop;
-  if (loop?.type === 'loop') {
-    const out = outgoing.get(loop.id) ?? [];
-    const into = incoming.get(loop.id) ?? [];
-    const members = definition.nodes.filter((n) => 'loopId' in n && n.loopId === loop.id);
-    const problems: string[] = [];
-    if (members.length === 0) problems.push('put at least one node inside the Loop');
-    if (!out.some((e) => e.sourcePort === 'body'))
-      problems.push('connect "body" to the first node inside');
-    if (!out.some((e) => e.sourcePort === 'next'))
-      problems.push('connect "next" to the step after the Loop');
-    if (!into.some((e) => e.targetPort === 'enter')) problems.push('connect a step into "enter"');
-    if (!into.some((e) => e.targetPort === 'repeat'))
-      problems.push('connect a branch inside the Loop to "repeat"');
-    if (!into.some((e) => e.targetPort === 'exit'))
-      problems.push('connect a branch inside the Loop to "exit"');
-    for (const problem of problems) c.error('LOOP_STRUCTURE', problem, { nodeId: loop.id });
+  const startable =
+    (entry?.type === 'agent' && entry.invocation === 'scheduled') ||
+    entry?.type === 'loop' ||
+    entry?.type === 'team';
+  if (!startable || entry?.parentId) {
+    c.error(
+      'ENTRY_INVALID',
+      'the flow starts at a scheduled agent, a Loop or a Team outside any box',
+      {
+        nodeId: definition.entryNodeId,
+      },
+    );
   }
 }
 
-function checkBoundary(c: Context, edge: ControlEdge, source: CorralNode, target: CorralNode) {
-  const why = loopBoundaryViolation(source, edge.sourcePort, target, edge.targetPort);
-  if (why) c.error('LOOP_BOUNDARY', why, { edgeId: edge.id });
-}
-
-// ── graph: cycles, reachability, order ──────────────────────────────────────
+// ── graph: cycles, reachability, order, parallel branches ───────────────────
 
 interface Graph {
-  /** Scheduled nodes in execution order. */
+  /** Scheduled nodes in execution order; a box sits where it is entered. */
   order: string[];
   /** ancestors.get(x) = scheduled nodes that always run before x in one pass. */
   ancestors: Map<string, Set<string>>;
@@ -542,27 +724,49 @@ interface Graph {
   maxStaticDepth: number;
 }
 
-// A Loop is split in two virtual vertices: L#in (enter, repeat → body) and L#out (exit → next).
-// Edges into "repeat" are the only back edges a Corral may have.
+const nodeOfVertex = (vertex: string) => vertex.replace(/#(in|out)$/, '');
+
+/**
+ * Which branch of which fan-out a path is on: fan-out port → branch indexes. Two paths can be
+ * alive at once when, for some fan-out, they sit on different branches.
+ */
+type Branches = Map<string, Set<number>>;
+
+function mergeBranches(into: Branches, from: Branches) {
+  for (const [port, indexes] of from) {
+    const set = into.get(port) ?? new Set<number>();
+    for (const index of indexes) set.add(index);
+    into.set(port, set);
+  }
+}
+
+function concurrent(a: Branches, b: Branches): boolean {
+  for (const [port, indexes] of a) {
+    const other = b.get(port);
+    if (other && ![...indexes].some((i) => other.has(i))) return true;
+  }
+  return false;
+}
+
+const WRITE_TOOLS = new Set<WorkTool>(['write_file', 'delete_file', 'move_file']);
+
+// A box is split in two virtual vertices: B#in (enter → body) and B#out (exit → next, exhausted)
+// joined by B#in → B#out. Edges into "repeat" are the only back edges a Corral may have.
 function analyzeGraph(c: Context): Graph | null {
   const { definition } = c;
-  const vertexOfTarget = (edge: ControlEdge) => {
-    const target = c.nodes.get(edge.target) as CorralNode;
-    if (target.type !== 'loop') return edge.target;
-    return edge.targetPort === 'exit' ? `${target.id}#out` : `${target.id}#in`;
-  };
-  const vertexOfSource = (edge: ControlEdge) => {
-    const source = c.nodes.get(edge.source) as CorralNode;
-    if (source.type !== 'loop') return edge.source;
-    return edge.sourcePort === 'next' ? `${source.id}#out` : `${source.id}#in`;
-  };
-
-  const adjacency = new Map<string, { to: string; edge: ControlEdge }[]>();
+  const adjacency = new Map<string, { to: string; edge: ControlEdge | null }[]>();
+  const link = (from: string, to: string, edge: ControlEdge | null) =>
+    adjacency.set(from, [...(adjacency.get(from) ?? []), { to, edge }]);
   for (const edge of definition.controlEdges) {
     if (edge.targetPort === 'repeat') continue;
-    const from = vertexOfSource(edge);
-    adjacency.set(from, [...(adjacency.get(from) ?? []), { to: vertexOfTarget(edge), edge }]);
+    link(
+      vertexOf(c.nodes, edge.source, edge.sourcePort, 'source'),
+      vertexOf(c.nodes, edge.target, edge.targetPort, 'target'),
+      edge,
+    );
   }
+  for (const node of definition.nodes)
+    if (isBox(node)) link(`${node.id}#in`, `${node.id}#out`, null);
 
   // Depth-first search from the entry: an edge to a vertex on the stack closes a cycle.
   const state = new Map<string, 'open' | 'done'>();
@@ -570,24 +774,24 @@ function analyzeGraph(c: Context): Graph | null {
     state.set(vertex, 'open');
     for (const { to, edge } of adjacency.get(vertex) ?? []) {
       if (state.get(to) === 'open') {
-        c.error('CYCLE_OUTSIDE_LOOP', 'this connection closes a cycle; repeat work with a Loop', {
-          edgeId: edge.id,
-        });
+        if (edge)
+          c.error('CYCLE_OUTSIDE_LOOP', 'this connection closes a cycle; repeat work with a Loop', {
+            edgeId: edge.id,
+          });
       } else if (!state.has(to)) {
         visit(to);
       }
     }
     state.set(vertex, 'done');
   };
-  visit(definition.entryNodeId);
+  visit(vertexOf(c.nodes, definition.entryNodeId, 'enter', 'target'));
   if (c.diagnostics.some((d) => d.code === 'CYCLE_OUTSIDE_LOOP')) return null;
 
   const reached = new Set<string>();
-  for (const vertex of state.keys()) reached.add(vertex.replace(/#(in|out)$/, ''));
+  for (const vertex of state.keys()) reached.add(nodeOfVertex(vertex));
 
   for (const node of definition.nodes) {
-    const scheduled = !(node.type === 'agent' && node.invocation === 'callable');
-    if (scheduled && !reached.has(node.id)) {
+    if (!c.isCallable(node.id) && !reached.has(node.id)) {
       c.error('UNREACHABLE', 'the flow from the entry never reaches this node', {
         nodeId: node.id,
       });
@@ -601,7 +805,7 @@ function analyzeGraph(c: Context): Graph | null {
   const vertices = [...state.keys()];
   const position = new Map(definition.nodes.map((n, i) => [n.id, i]));
   const rank = (v: string) =>
-    (position.get(v.replace(/#(in|out)$/, '')) ?? 0) * 2 + (v.endsWith('#out') ? 1 : 0);
+    (position.get(nodeOfVertex(v)) ?? 0) * 2 + (v.endsWith('#out') ? 1 : 0);
   const indegree = new Map(vertices.map((v) => [v, 0]));
   for (const v of vertices)
     for (const { to } of adjacency.get(v) ?? []) indegree.set(to, (indegree.get(to) ?? 0) + 1);
@@ -615,16 +819,18 @@ function analyzeGraph(c: Context): Graph | null {
     for (const { to } of adjacency.get(v) ?? []) {
       const set = ancestors.get(to) as Set<string>;
       for (const a of ancestors.get(v) ?? []) set.add(a);
-      set.add(v.replace(/#(in|out)$/, ''));
+      set.add(nodeOfVertex(v));
       indegree.set(to, (indegree.get(to) ?? 0) - 1);
       if (indegree.get(to) === 0) ready.push(to);
     }
   }
-  const order = ordered.filter((v) => !v.endsWith('#out')).map((v) => v.replace(/#in$/, ''));
+  const order = ordered.filter((v) => !v.endsWith('#out')).map(nodeOfVertex);
   const nodeAncestors = new Map<string, Set<string>>();
   for (const [v, set] of ancestors) {
-    if (!v.endsWith('#out')) nodeAncestors.set(v.replace(/#in$/, ''), set);
+    if (!v.endsWith('#out')) nodeAncestors.set(nodeOfVertex(v), set);
   }
+
+  checkParallel(c, ordered, adjacency);
 
   // Capability reachability: minimum delegation depth and the longest static chain.
   const links = definition.capabilityLinks;
@@ -665,6 +871,85 @@ function analyzeGraph(c: Context): Graph | null {
   );
 
   return { order, ancestors: nodeAncestors, reached, callableDepth, maxStaticDepth };
+}
+
+/**
+ * Parallel branches: every connection carries the fan-out branches it is on. Connections into one
+ * place that can be alive at once must meet at a Join; file writers on such branches are warned.
+ */
+function checkParallel(
+  c: Context,
+  ordered: string[],
+  adjacency: Map<string, { to: string; edge: ControlEdge | null }[]>,
+) {
+  const fanOut = new Map<string, number>();
+  for (const edge of c.definition.controlEdges) {
+    const port = `${edge.source}\u0000${edge.sourcePort}`;
+    fanOut.set(port, (fanOut.get(port) ?? 0) + 1);
+  }
+  const context = new Map<string, Branches>();
+  const carried = new Map<string, Branches>();
+  for (const v of ordered) {
+    const here = context.get(v) ?? new Map<string, Set<number>>();
+    const seenPerPort = new Map<string, number>();
+    for (const { to, edge } of adjacency.get(v) ?? []) {
+      const branches: Branches = new Map([...here].map(([k, s]) => [k, new Set(s)]));
+      if (edge) {
+        const port = `${edge.source}\u0000${edge.sourcePort}`;
+        const index = seenPerPort.get(port) ?? 0;
+        seenPerPort.set(port, index + 1);
+        if ((fanOut.get(port) ?? 0) > 1) branches.set(port, new Set([index]));
+        carried.set(edge.id, branches);
+      }
+      const target = context.get(to) ?? new Map<string, Set<number>>();
+      mergeBranches(target, branches);
+      context.set(to, target);
+    }
+  }
+
+  const into = new Map<string, ControlEdge[]>();
+  for (const edge of c.definition.controlEdges) {
+    if (edge.targetPort === 'repeat' || !carried.has(edge.id)) continue;
+    const vertex = vertexOf(c.nodes, edge.target, edge.targetPort, 'target');
+    into.set(vertex, [...(into.get(vertex) ?? []), edge]);
+  }
+  for (const [vertex, edges] of into) {
+    if (c.nodes.get(vertex)?.type === 'join') continue;
+    edges.forEach((edge, i) => {
+      const mine = carried.get(edge.id) as Branches;
+      if (
+        edges.slice(0, i).some((earlier) => concurrent(mine, carried.get(earlier.id) as Branches))
+      )
+        c.error(
+          'PARALLEL_MERGE_NEEDS_JOIN',
+          'parallel branches meet here; bring them together with a Join',
+          { nodeId: edge.target, edgeId: edge.id },
+        );
+    });
+  }
+
+  const writers = c.definition.nodes.filter(
+    (n): n is AgentNode =>
+      n.type === 'agent' &&
+      n.invocation === 'scheduled' &&
+      context.has(n.id) &&
+      (c.roleOf(n.id)?.allowedWorkTools.some((tool) => WRITE_TOOLS.has(tool)) ?? false),
+  );
+  const warned = new Set<string>();
+  for (const [i, a] of writers.entries()) {
+    for (const b of writers.slice(i + 1)) {
+      if (!concurrent(context.get(a.id) as Branches, context.get(b.id) as Branches)) continue;
+      for (const node of [a, b]) {
+        if (warned.has(node.id)) continue;
+        warned.add(node.id);
+        c.warn(
+          'PARALLEL_WRITERS',
+          'parallel branches change files in the same session working copy',
+          { nodeId: node.id },
+        );
+      }
+    }
+  }
 }
 
 // ── capabilities, bindings, profiles ─────────────────────────────────────────
@@ -741,7 +1026,7 @@ function checkBindings(c: Context, graph: Graph) {
     ),
   );
   for (const node of c.definition.nodes) {
-    if (node.type === 'loop') continue;
+    if (!('inputBindings' in node)) continue;
     const bad = (why: string) => c.error('BINDING_SOURCE', why, { nodeId: node.id });
     const callable = c.isCallable(node.id);
     const before = graph.ancestors.get(node.id) ?? new Set<string>();
@@ -761,8 +1046,10 @@ function checkBindings(c: Context, graph: Graph) {
           }
           break;
         case 'previous_iteration_output': {
-          const loopId = c.loopIdOf(node.id);
-          if (!loopId || !source || c.loopIdOf(source.id) !== loopId) {
+          const loops = c.loopsAround(node.id);
+          const shared =
+            source && loops.some((loop) => isWithin(c.nodes, source.parentId ?? null, loop));
+          if (!shared) {
             bad(`${label} must read a node in the same Loop`);
           } else if (!binding.optional) {
             bad(`${label} must be optional: the first iteration has no previous output`);
@@ -816,68 +1103,163 @@ function checkModelProfiles(c: Context, options: CompileOptions) {
   }
 }
 
+// ── what this runtime executes ──────────────────────────────────────────────
+
+const roundsOf = (loop: LoopNode) =>
+  loop.reviewRecipe
+    ? Math.min(loop.maxIterations, recipeAttempts(loop.reviewRecipe))
+    : loop.maxIterations;
+
+/** A warning for every construct the definition may hold but this runtime does not run yet. */
+function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
+  const { definition } = c;
+  const unsupported = (message: string, at: At = {}) => c.warn('RUNTIME_UNSUPPORTED', message, at);
+  const loops = definition.nodes.filter((n) => n.type === 'loop');
+  const edgesFrom = (id: string, port: string) =>
+    (c.outgoing.get(id) ?? []).filter((e) => e.sourcePort === port);
+
+  for (const node of definition.nodes) {
+    const at = { nodeId: node.id };
+    if (isBox(node) && node.parentId)
+      unsupported(`a ${boxName(node)} inside another box does not run yet`, at);
+    switch (node.type) {
+      case 'agent':
+        if ((node.retry?.maxAttempts ?? 0) > 0) unsupported('retries do not run yet', at);
+        if (edgesFrom(node.id, 'error').length > 0)
+          unsupported('the "error" path does not run yet', at);
+        break;
+      case 'decision':
+        if (node.mode === 'check' || node.mode === 'router')
+          unsupported(`${node.mode} decisions do not run yet`, at);
+        break;
+      case 'loop':
+        if (loops.length > 1) unsupported('this runtime runs one Loop per team', at);
+        if (node.budget) unsupported('Loop budgets do not run yet', at);
+        if (node.stallDetection) unsupported('stall detection does not run yet', at);
+        if (edgesFrom(node.id, 'exhausted').length > 0)
+          unsupported('the "exhausted" path does not run yet', at);
+        if (roundsOf(node) > caps.maxLoopIterations)
+          unsupported(`this runtime runs at most ${caps.maxLoopIterations} rounds`, at);
+        break;
+      case 'team':
+        unsupported('Teams do not run yet', at);
+        break;
+      case 'join':
+        unsupported('Joins do not run yet', at);
+        break;
+      case 'output':
+        break;
+    }
+  }
+  const ports = new Map<string, ControlEdge[]>();
+  for (const edge of definition.controlEdges) {
+    const port = `${edge.source}\u0000${edge.sourcePort}`;
+    ports.set(port, [...(ports.get(port) ?? []), edge]);
+  }
+  for (const edges of ports.values()) {
+    const [first] = edges;
+    if (first && edges.length > 1)
+      unsupported(`parallel branches from "${first.sourcePort}" do not run yet`, {
+        nodeId: first.source,
+      });
+  }
+  const entry = c.nodes.get(definition.entryNodeId);
+  if (isBox(entry))
+    unsupported(`starting at a ${boxName(entry)} does not run yet`, { nodeId: entry.id });
+  if (definition.limits.maxDelegationDepth > 2)
+    unsupported('this runtime delegates at most two levels deep');
+  if (definition.limits.maxSpawns > caps.maxSpawns)
+    unsupported(`this runtime starts at most ${caps.maxSpawns} dynamic tasks per run`);
+}
+
 // ── lowering ─────────────────────────────────────────────────────────────────
 
 function lower(c: Context, graph: Graph): CompiledPlan {
   const { definition } = c;
-  const targetOf = (source: string, port: SourcePort): PlanTarget | null => {
-    const edge = definition.controlEdges.find((e) => e.source === source && e.sourcePort === port);
-    return edge ? { nodeId: edge.target, port: edge.targetPort } : null;
-  };
+  const targetsOf = (source: string, port: string): PlanTarget[] =>
+    (c.outgoing.get(source) ?? [])
+      .filter((e) => e.sourcePort === port)
+      .map((e) => ({ nodeId: e.target, port: e.targetPort }));
+  const membersInOrder = (boxId: string) =>
+    graph.order.filter((member) => c.nodes.get(member)?.parentId === boxId);
 
   const steps: Record<string, PlanStep> = {};
+  const loops: Record<string, LoopPlan> = {};
+  const boxes: Record<string, BoxPlan> = {};
   for (const id of graph.order) {
     const node = c.nodes.get(id) as CorralNode;
+    const base: StepBase = {
+      nodeId: id,
+      parentId: node.parentId ?? null,
+      loopId: c.nearestLoop(id),
+    };
     switch (node.type) {
       case 'agent':
         steps[id] = {
+          ...base,
           kind: 'agent',
-          nodeId: id,
           roleId: node.roleId,
-          loopId: node.loopId ?? null,
-          next: targetOf(id, 'out'),
+          next: targetsOf(id, 'out'),
+          error: targetsOf(id, 'error'),
+          retry: node.retry?.maxAttempts ?? 0,
         };
         break;
       case 'decision':
         steps[id] = {
+          ...base,
           kind: 'decision',
-          nodeId: id,
           mode: node.mode,
-          rule: node.rule,
-          loopId: node.loopId ?? null,
+          rule: 'rule' in node ? node.rule : null,
+          routes: node.mode === 'router' ? node.routes : [],
           branches: Object.fromEntries(
-            DECISION_PORTS[node.mode].map((port) => [port, targetOf(id, port)]),
+            decisionPortsOf(node).map((port) => [port, targetsOf(id, port)]),
           ),
         };
         break;
       case 'loop':
         steps[id] = {
+          ...base,
           kind: 'loop',
+          maxIterations: roundsOf(node),
+          body: targetsOf(id, 'body'),
+          next: targetsOf(id, 'next'),
+          exhausted: targetsOf(id, 'exhausted'),
+        };
+        loops[id] = {
           nodeId: id,
-          maxIterations: node.reviewRecipe
-            ? Math.min(node.maxIterations, recipeAttempts(node.reviewRecipe))
-            : node.maxIterations,
-          body: targetOf(id, 'body') as PlanTarget,
-          next: targetOf(id, 'next') as PlanTarget,
+          parentId: base.parentId,
+          maxIterations: roundsOf(node),
+          budget: node.budget ?? null,
+          stallDetection: node.stallDetection ?? false,
+          body: targetsOf(id, 'body'),
+          members: membersInOrder(id),
+          next: targetsOf(id, 'next'),
+          exhausted: targetsOf(id, 'exhausted'),
         };
         break;
+      case 'team':
+        steps[id] = {
+          ...base,
+          kind: 'team',
+          source: node.source.kind,
+          body: targetsOf(id, 'body'),
+          next: targetsOf(id, 'next'),
+        };
+        break;
+      case 'join':
+        steps[id] = { ...base, kind: 'join', policy: node.policy, next: targetsOf(id, 'out') };
+        break;
       case 'output':
-        steps[id] = { kind: 'output', nodeId: id, requireApproval: node.requireApproval };
+        steps[id] = { ...base, kind: 'output', requireApproval: node.requireApproval };
         break;
     }
-  }
-
-  const loops: Record<string, LoopPlan> = {};
-  for (const id of graph.order) {
-    const step = steps[id];
-    if (step?.kind !== 'loop') continue;
-    loops[id] = {
-      nodeId: id,
-      maxIterations: step.maxIterations,
-      bodyEntryNodeId: step.body.nodeId,
-      members: graph.order.filter((member) => c.loopIdOf(member) === id),
-      next: step.next,
-    };
+    if (isBox(node))
+      boxes[id] = {
+        nodeId: id,
+        kind: node.type,
+        parentId: base.parentId,
+        members: membersInOrder(id),
+      };
   }
 
   const callables: CompiledPlan['callables'] = {};
@@ -894,18 +1276,24 @@ function lower(c: Context, graph: Graph): CompiledPlan {
   }
 
   const agents = definition.nodes.filter((n): n is AgentNode => n.type === 'agent');
+  const count = (type: CorralNode['type']) =>
+    definition.nodes.filter((n) => n.type === type).length;
   return {
     entryNodeId: definition.entryNodeId,
     order: graph.order,
     steps,
     loops,
+    boxes,
+    references: Object.fromEntries(c.references),
     callables,
     summary: {
       scheduledAgents: agents.filter((a) => a.invocation === 'scheduled').length,
       callableAgents: agents.filter((a) => a.invocation === 'callable').length,
-      decisions: definition.nodes.filter((n) => n.type === 'decision').length,
+      decisions: count('decision'),
       loops: Object.keys(loops).length,
-      outputs: definition.nodes.filter((n) => n.type === 'output').length,
+      teams: count('team'),
+      joins: count('join'),
+      outputs: count('output'),
       maxStaticDepth: graph.maxStaticDepth,
     },
   };

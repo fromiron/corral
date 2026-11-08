@@ -5,7 +5,7 @@ import { sessionStore } from './fixtures.tsx';
 export function loopFlowFixture(count = 100, loadArtifact: () => Promise<void> = async () => {}) {
   const definition = linearCorral(['writer']);
   definition.nodes = definition.nodes.map((node) =>
-    node.id === 'writer' ? { ...node, loopId: 'review_loop' } : node,
+    node.id === 'writer' ? { ...node, parentId: 'review_loop' } : node,
   );
   definition.nodes.push(
     { id: 'review_loop', type: 'loop', label: 'Review', maxIterations: 3 },
@@ -13,7 +13,7 @@ export function loopFlowFixture(count = 100, loadArtifact: () => Promise<void> =
       id: 'gate',
       type: 'decision',
       label: 'Review gate',
-      loopId: 'review_loop',
+      parentId: 'review_loop',
       mode: 'rule',
       rule: 'required_tasks_submitted',
       inputBindings: [{ kind: 'run_input', name: 'brief' }],

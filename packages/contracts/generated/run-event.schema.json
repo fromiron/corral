@@ -3241,8 +3241,9 @@
               "type": "object",
               "properties": {
                 "maxDelegationDepth": {
-                  "type": "number",
-                  "const": 2
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
                 },
                 "maxModelConcurrency": {
                   "type": "integer",
@@ -3252,7 +3253,7 @@
                 "maxSpawns": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 32
+                  "maximum": 9007199254740991
                 },
                 "maxModelCalls": {
                   "type": "integer",
@@ -9231,6 +9232,7 @@
                 "STALE_CONTROL_REVISION",
                 "IDEMPOTENCY_CONFLICT",
                 "COMMAND_NOT_SUPPORTED",
+                "RUNTIME_UNSUPPORTED",
                 "TARGET_NOT_FOUND",
                 "TARGET_TERMINAL",
                 "RUN_ALREADY_ACTIVE",

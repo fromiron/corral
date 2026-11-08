@@ -153,7 +153,7 @@ export const Dark: Story = {
 
 const loopDefinition = linearCorral(['writer', 'reviewer']);
 loopDefinition.nodes = loopDefinition.nodes.map((node) =>
-  node.type === 'agent' ? { ...node, loopId: 'revision' } : node,
+  node.type === 'agent' ? { ...node, parentId: 'revision' } : node,
 );
 loopDefinition.nodes.push({ id: 'revision', type: 'loop', label: 'Revision', maxIterations: 5 });
 const rounds = [1, 2, 3];

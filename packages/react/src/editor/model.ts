@@ -14,16 +14,15 @@ import {
   type LoopNode,
   type NodeLayout,
   type OutputContract,
-  type SourcePort,
   type TargetPort,
 } from '@corral/contracts';
 import {
+  boxBoundaryViolation,
   compileDefinition,
   DECISION_PORTS,
   DECISION_RULE,
   type Diagnostic,
   inputPortsOf,
-  loopBoundaryViolation,
   outputPortsOf,
   type PlanIssue,
   planRun,
@@ -35,7 +34,8 @@ import { autoLayout } from '../run/layout.ts';
 // function here, so the canvas only translates pointer and keyboard input into these calls.
 // Connection rules come from the compiler's port table; the editor never invents its own.
 
-export type EditorNodeType = CorralNode['type'];
+/** Node kinds this editor creates. */
+export type EditorNodeType = 'agent' | 'decision' | 'loop' | 'output';
 
 export interface Point {
   x: number;
@@ -51,7 +51,7 @@ export interface EditorDraft {
 
 export interface ConnectionRequest {
   source: string;
-  sourcePort: SourcePort;
+  sourcePort: string;
   target: string;
   targetPort: TargetPort;
 }
@@ -81,7 +81,7 @@ export interface NodeChange {
   modelProfile?: string;
   reasoning?: AgentRole['reasoning'] | null;
   harness?: AgentRole['harness'] | null;
-  mode?: DecisionNode['mode'];
+  mode?: Extract<DecisionNode, { rule: unknown }>['mode'];
   maxIterations?: number;
   reviewRecipe?: LoopNode['reviewRecipe'] | null;
   requireApproval?: boolean;
@@ -272,7 +272,7 @@ export function moveNode(draft: EditorDraft, nodeId: string, position: Point): E
     const dy = position.y - current.y;
     for (const member of draft.definition.nodes) {
       const at = layout[member.id];
-      if ('loopId' in member && member.loopId === nodeId && at) {
+      if (member.parentId === nodeId && at) {
         layout[member.id] = { ...at, x: at.x + dx, y: at.y + dy };
       }
     }
@@ -322,8 +322,8 @@ export function setLoopMembership(
   const nodes = draft.definition.nodes.map((node) => {
     if (node.id !== nodeId || (node.type !== 'agent' && node.type !== 'decision')) return node;
     if (node.type === 'agent' && node.invocation === 'callable') return node;
-    const { loopId: _old, ...rest } = node;
-    return (loopId ? { ...rest, loopId } : rest) as CorralNode;
+    const { parentId: _old, ...rest } = node;
+    return (loopId ? { ...rest, parentId: loopId } : rest) as CorralNode;
   });
   return withDefinition(draft, { ...draft.definition, nodes });
 }
@@ -337,7 +337,7 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   };
   let next: CorralNode = { ...node };
   if (change.label !== undefined) next = { ...next, label: change.label };
-  if (change.inputBindings && next.type !== 'loop')
+  if (change.inputBindings && 'inputBindings' in next)
     next = { ...next, inputBindings: change.inputBindings };
 
   if (next.type === 'agent') {
@@ -425,7 +425,7 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
       if (change.invocation === 'callable') {
         // Callable agents run only when called: they leave the control flow and any Loop.
         controlEdges = controlEdges.filter((e) => e.source !== nodeId && e.target !== nodeId);
-        const { loopId: _loop, ...rest } = next;
+        const { parentId: _loop, ...rest } = next;
         next = { ...rest, invocation: 'callable' };
       } else {
         capabilityLinks = capabilityLinks.filter((l) => l.targetNodeId !== nodeId);
@@ -485,11 +485,11 @@ export function removeNode(draft: EditorDraft, nodeId: string): EditorDraft {
     .filter((n) => n.id !== nodeId)
     .map((n): CorralNode => {
       let next = n;
-      if (removed.type === 'loop' && 'loopId' in next && next.loopId === nodeId) {
-        const { loopId: _loop, ...rest } = next;
+      if (removed.type === 'loop' && next.parentId === nodeId) {
+        const { parentId: _loop, ...rest } = next;
         next = rest as CorralNode;
       }
-      if (next.type !== 'loop') {
+      if ('inputBindings' in next) {
         const inputBindings = next.inputBindings.filter((b) => b.sourceNodeId !== nodeId);
         if (inputBindings.length !== next.inputBindings.length) next = { ...next, inputBindings };
       }
@@ -549,7 +549,7 @@ export function checkConnection(
   if (edges.some((e) => e.source === source.id && e.sourcePort === request.sourcePort)) {
     return refuse('duplicateOutgoing');
   }
-  if (loopBoundaryViolation(source, request.sourcePort, target, request.targetPort))
+  if (boxBoundaryViolation(new Map(draft.definition.nodes.map((n) => [n.id, n])), request))
     return refuse('loopBoundary');
   if (wouldCreateCycle(draft.definition.nodes, edges, request)) return refuse('cycle');
   return { ok: true };
@@ -621,7 +621,7 @@ export function connectCapability(
  */
 function withSuggestedBinding(definition: CorralDefinition, consumerId: string): CorralDefinition {
   const consumer = definition.nodes.find((n) => n.id === consumerId);
-  if (!consumer || consumer.type === 'loop') return definition;
+  if (!consumer || !('inputBindings' in consumer)) return definition;
   const roleOf = (id: string) => {
     const node = definition.nodes.find((n) => n.id === id);
     return node?.type === 'agent' ? definition.roles.find((r) => r.id === node.roleId) : undefined;
@@ -643,7 +643,7 @@ function withSuggestedBinding(definition: CorralDefinition, consumerId: string):
   return {
     ...definition,
     nodes: definition.nodes.map((n) =>
-      n.id === consumerId && n.type !== 'loop'
+      n.id === consumerId && 'inputBindings' in n
         ? { ...n, inputBindings: [...n.inputBindings, binding] }
         : n,
     ),
@@ -657,10 +657,10 @@ function nearestUpstream(
 ): string | null {
   // Walk control edges backwards. Through a Loop: from "next" go back to what exits the body,
   // from "body" go back to what enters the Loop.
-  const queue: { id: string; viaPort: SourcePort | null }[] = [{ id: startId, viaPort: null }];
+  const queue: { id: string; viaPort: string | null }[] = [{ id: startId, viaPort: null }];
   const seen = new Set<string>();
   while (queue.length > 0) {
-    const { id, viaPort } = queue.shift() as { id: string; viaPort: SourcePort | null };
+    const { id, viaPort } = queue.shift() as { id: string; viaPort: string | null };
     const key = `${id}:${viaPort}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -812,7 +812,7 @@ function withDefinition(draft: EditorDraft, definition: CorralDefinition): Edito
 function entryOf(definition: CorralDefinition): string {
   const targets = new Set(definition.controlEdges.map((e) => e.target));
   const candidates = definition.nodes.filter(
-    (n) => n.type === 'agent' && n.invocation === 'scheduled' && !n.loopId && !targets.has(n.id),
+    (n) => n.type === 'agent' && n.invocation === 'scheduled' && !n.parentId && !targets.has(n.id),
   );
   if (candidates.some((n) => n.id === definition.entryNodeId)) return definition.entryNodeId;
   return candidates[0]?.id ?? definition.entryNodeId;

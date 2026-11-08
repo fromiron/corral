@@ -71,7 +71,7 @@ export async function executeStep(
 ): Promise<StepResult> {
   const iterationOf = (loopId: string | null): IterationRef | null =>
     loopId ? { loopId, no: rounds[loopId] ?? 1 } : null;
-  const goTo = (next: PlanTarget | null): StepResult =>
+  const goTo = (next: PlanTarget | undefined): StepResult =>
     next ? { next } : { end: { kind: 'failed', nodeId: step.nodeId, reason: 'no next step' } };
 
   switch (step.kind) {
@@ -80,12 +80,11 @@ export async function executeStep(
       if (!outcome.ok) {
         return { end: { kind: 'failed', nodeId: step.nodeId, reason: outcome.reason } };
       }
-      return goTo(step.next);
+      return goTo(step.next[0]);
     }
     case 'decision': {
       const branch = await callbacks.decide(step.nodeId, iterationOf(step.loopId));
-      const next: PlanTarget | null | undefined =
-        step.branches[branch as keyof typeof step.branches];
+      const next = step.branches[branch]?.[0];
       if (next) return { next };
       if (step.loopId && branch === 'inconclusive') {
         await callbacks.loopLeft(step.loopId, rounds[step.loopId] ?? 1, 'inconclusive');
@@ -104,7 +103,7 @@ export async function executeStep(
       if (port === 'enter') {
         rounds[loopId] = 1;
         await callbacks.loopEntered(loopId, 1);
-        return { next: step.body };
+        return goTo(step.body[0]);
       }
       if (port === 'repeat') {
         if (
@@ -117,11 +116,15 @@ export async function executeStep(
         await callbacks.loopLeft(loopId, done, 'revise');
         rounds[loopId] = done + 1;
         await callbacks.loopEntered(loopId, done + 1);
-        return { next: step.body };
+        return goTo(step.body[0]);
       }
       await callbacks.loopLeft(loopId, done, 'pass');
-      return { next: step.next };
+      return goTo(step.next[0]);
     }
+    case 'team':
+    case 'join':
+      // The compiler marks these RUNTIME_UNSUPPORTED and run start refuses them.
+      throw new Error(`${step.kind} steps do not run in this runtime`);
     case 'output':
       await callbacks.finalize(step.nodeId);
       return { end: { kind: 'finished', outputNodeId: step.nodeId } };
@@ -132,13 +135,15 @@ export async function executeStep(
 export function targetsOf(step: PlanStep): PlanTarget[] {
   switch (step.kind) {
     case 'agent':
-      return step.next ? [step.next] : [];
+      return [...step.next, ...step.error];
     case 'decision':
-      return Object.values(step.branches).filter(
-        (t): t is PlanTarget => t !== null && t !== undefined,
-      );
+      return Object.values(step.branches).flat();
     case 'loop':
-      return [step.body, step.next];
+      return [...step.body, ...step.next, ...step.exhausted];
+    case 'team':
+      return [...step.body, ...step.next];
+    case 'join':
+      return step.next;
     case 'output':
       return [];
   }

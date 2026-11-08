@@ -200,7 +200,7 @@ export function draftFromPlan(
       id: 'write',
       type: 'agent',
       label: label('writer'),
-      loopId: 'review_loop',
+      parentId: 'review_loop',
       roleId: 'writer',
       invocation: 'scheduled',
       inputBindings: [
@@ -220,7 +220,7 @@ export function draftFromPlan(
       id: 'review',
       type: 'agent',
       label: label('reviewer'),
-      loopId: 'review_loop',
+      parentId: 'review_loop',
       roleId: 'reviewer',
       invocation: 'scheduled',
       // The criteria text, so the review is against what the person asked for (#20).
@@ -234,7 +234,7 @@ export function draftFromPlan(
       id: 'review_decision',
       type: 'decision',
       label: labels.decision,
-      loopId: 'review_loop',
+      parentId: 'review_loop',
       mode: 'review',
       rule: 'review_verdict',
       inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'review' }],

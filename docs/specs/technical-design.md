@@ -98,7 +98,7 @@ ID는 주입 가능한 UUID 생성기로 만들고 순서는 ID가 아니라 run
 
 `JSON parse → version/schema validation → team reference resolution → references/ports validation → containment·box-boundary validation → cycle·parallel-merge validation → capability reachability → input binding validation → runtime support check → IR lowering → plan summary`.
 
-참조 팀은 주입한 정의 출처에서 읽어 `팀 노드 id/원본 노드 id`로 펼친다. compiler는 저장소를 직접 열지 않는다. 사용자가 넣은 코드/함수를 eval하지 않는다. `review`·`approval`·`rule` Decision의 rule은 `review_verdict`, `required_tasks_submitted`, `human_approval`의 enum으로만 선택한다. `check`는 등록 검사, `router`는 이름 붙인 route 중 모델의 선택으로 분기한다. 수식 언어는 없다.
+참조 팀은 주입한 정의 출처(`CompileOptions.resolveTeam`)에서 읽어 따로 컴파일하고, 그 계획을 팀 노드 아래에 둔다. compiler는 저장소를 직접 열지 않는다. 사용자가 넣은 코드/함수를 eval하지 않는다. `review`·`approval`·`rule` Decision의 rule은 `review_verdict`, `required_tasks_submitted`, `human_approval`의 enum으로만 선택한다. `check`는 등록 검사, `router`는 이름 붙인 route 중 모델의 선택으로 분기한다. 수식 언어는 없다.
 
 상자 소속은 `parentId`로 묶고, 경계·순환·루프 완결성·병렬 합류 규칙은 [팀 그래프 모델의 구조 규칙](features/team-graph.md#구조-규칙)을 따른다. `repeat`가 자동 회차 상한을 넘어가면 새 본문을 호출하기 전에 Approval을 생성한다.
 

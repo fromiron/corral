@@ -104,7 +104,7 @@
       "id": "write",
       "type": "agent",
       "label": "작성",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "roleId": "writer",
       "invocation": "scheduled",
       "inputBindings": [
@@ -132,7 +132,7 @@
       "id": "review",
       "type": "agent",
       "label": "검토",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "roleId": "reviewer",
       "invocation": "scheduled",
       "inputBindings": [
@@ -148,7 +148,7 @@
       "id": "review_decision",
       "type": "decision",
       "label": "검토 판정",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "mode": "review",
       "rule": "review_verdict",
       "inputBindings": [
