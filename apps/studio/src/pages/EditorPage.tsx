@@ -4,7 +4,7 @@ import {
   ApprovalPanel,
   ArtifactViewer,
   createRunSession,
-  exportDocuments,
+  exportDefinition,
   ReinsPanel,
   RunControls,
   type RunSessionStore,
@@ -303,7 +303,7 @@ function Editor({
   }, [save, inSession]);
 
   const exportFile = () =>
-    download(`${record.corralId}.corral.json`, exportDocuments(editor.getState().draft).definition);
+    download(`${record.corralId}.corral.json`, exportDefinition(editor.getState().draft));
 
   return (
     <StudioStoresProvider editor={editor} session={session}>

@@ -109,10 +109,7 @@ test('an imported team with a Loop validates and runs through its review and app
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
-    .setInputFiles([
-      join(EXAMPLES, 'research-team.corral.json'),
-      join(EXAMPLES, 'research-team.layout.json'),
-    ]);
+    .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
   await expect(page).toHaveURL(/\/edit$/);
   await expect(page.locator('.react-flow__node')).toHaveCount(9);
   await expect(page.locator('.corral-call-link')).toHaveCount(3);
@@ -198,7 +195,6 @@ test('a reviewer without the criteria is flagged, and one click gives it them (#
         'fixtures',
         'research-team.before-criteria-input.corral.json',
       ),
-      join(EXAMPLES, 'research-team.layout.json'),
     ]);
   await expect(page).toHaveURL(/\/edit$/);
   const warnings = page.getByTestId('warnings');

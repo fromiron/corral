@@ -104,7 +104,6 @@ async function liveRun(context: Awaited<ReturnType<typeof start>>) {
   const repo = new RestCorralRepository({ baseUrl: context.server.url, fetch: context.call });
   const saved = await repo.save({
     definition: linearCorral(['writer']),
-    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     expectedDefinitionRevision: null,
   });
   if (!saved.ok) throw new Error(saved.message);
@@ -280,7 +279,6 @@ describe('model sign-in and profiles', () => {
     for (const role of definition.roles) role.modelProfile = 'model-b';
     const saved = await repo.save({
       definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
     });
     if (!saved.ok) throw new Error(saved.message);

@@ -1206,7 +1206,7 @@ export class RestCorralRepository implements CorralRepository {
   }
 
   save(request: SaveRequest): Promise<SaveResult> {
-    const body = { definition: request.definition, layout: request.layout };
+    const body = { definition: request.definition };
     if (request.expectedDefinitionRevision === null)
       return this.write('/corrals', 'POST', {
         ...body,

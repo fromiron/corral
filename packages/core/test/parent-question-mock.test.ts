@@ -16,7 +16,7 @@ import {
 it('the product simulated agent answers imported children and resumes their wait', async () => {
   const parent = linearCorral(['parent']);
   const imported = importMarkdownAgent({
-    draft: { definition: parent, layout: {} },
+    draft: { definition: parent },
     candidate: parseMarkdownAgent(
       '---\nname: helper\ndescription: Inspect supplied input\ntools: []\n---\nReport evidence.',
     ),

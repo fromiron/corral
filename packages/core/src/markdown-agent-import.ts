@@ -3,13 +3,11 @@ import {
   type CorralDefinition,
   CorralDefinitionDraft,
   type EffectiveHarnessSnapshot,
-  type NodeLayout,
   WorkTool,
 } from '@corral/contracts';
 
 export interface AgentImportDraft {
   definition: CorralDefinition;
-  layout: Record<string, NodeLayout>;
 }
 export interface AgentImportProfile {
   profileId: string;
@@ -347,13 +345,5 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
       },
     ],
   });
-  const position = draft.layout[parentNodeId];
-  return {
-    ...draft,
-    definition,
-    layout: {
-      ...draft.layout,
-      [nodeId]: { x: (position?.x ?? 0) + 280, y: (position?.y ?? 0) + 160 },
-    },
-  };
+  return { ...draft, definition };
 }

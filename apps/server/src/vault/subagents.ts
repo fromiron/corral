@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import {
-  CanvasLayout,
   CorralDefinitionDraft,
   type EffectiveHarnessSnapshot,
   type HarnessBindingRef,
@@ -20,19 +19,16 @@ import type { VaultDomainAdapter, VaultDomainSnapshot } from './types.ts';
 
 // A team is an explicit local binding. Only callable roles are consumed from an incoming
 // snapshot; the complete settings snapshot exists so the vault's authenticated journal can
-// restore the original parent permissions, revisioned definition and layout.
+// restore the original parent permissions and revisioned definition.
 const TeamSnapshot = z
   .strictObject({
     version: z.literal(1),
     corralId: z.string(),
     projectId: z.string(),
     definition: CorralDefinitionDraft,
-    layout: CanvasLayout,
   })
   .refine(
-    (snapshot) =>
-      snapshot.definition.id === snapshot.corralId &&
-      snapshot.layout.corralId === snapshot.corralId,
+    (snapshot) => snapshot.definition.id === snapshot.corralId,
     'Team snapshot identity mismatch.',
   );
 const PreparedImport = z.strictObject({
@@ -46,23 +42,17 @@ const settings = (record: CorralRecord) => ({
   corralId: record.corralId,
   projectId: record.projectId,
   definition: record.definition,
-  layout: record.layout,
 });
 const revision = (record: CorralRecord) =>
   hash({
     corralId: record.corralId,
     projectId: record.projectId,
     definitionRevision: record.definitionRevision,
-    layoutRevision: record.layoutRevision,
     definitionHash: record.definitionHash,
   });
 
 export interface SubagentOperationRepository extends CorralRepository {
-  saveOperation(
-    request: SaveRequest,
-    operationId: string,
-    expectedLayoutRevision: number,
-  ): Promise<SaveResult>;
+  saveOperation(request: SaveRequest, operationId: string): Promise<SaveResult>;
   operationReceipt(operationId: string): Promise<SaveResult | null>;
 }
 
@@ -125,7 +115,7 @@ export function createSubagentsVaultAdapter(options: {
       parentRole?.harness && options.resolveHarness
         ? await options.resolveHarness(parentRole.harness, record.projectId)
         : undefined;
-    let draft = { definition: record.definition, layout: record.layout.nodes };
+    let draft = { definition: record.definition };
     for (const node of nodes) {
       if (node.type !== 'agent') continue;
       const role = source.definition.roles.find((role) => role.id === node.roleId);
@@ -160,21 +150,16 @@ export function createSubagentsVaultAdapter(options: {
   };
   const save = async (
     record: CorralRecord,
-    draft: { definition: CorralRecord['definition']; layout: CorralRecord['layout'] },
+    definition: CorralRecord['definition'],
     operationId: string,
   ) => {
-    // Profile resolution above is asynchronous. Recheck layout as well as definition before
-    // entering the existing synchronous local repository save, which guards definition again.
+    // Profile resolution above is asynchronous. Recheck the revision before entering the
+    // synchronous local repository save, which guards the definition again.
     if (revision(await get()) !== revision(record))
       throw new Error('Subagent team revision conflict; review again.');
     const result = await repository.saveOperation(
-      {
-        definition: draft.definition,
-        layout: { nodes: draft.layout.nodes, viewport: draft.layout.viewport },
-        expectedDefinitionRevision: record.definitionRevision,
-      },
+      { definition, expectedDefinitionRevision: record.definitionRevision },
       operationKey(operationId),
-      record.layoutRevision,
     );
     if (!result.ok) throw new Error(result.message);
     return { revision: revision(result.record) };
@@ -209,14 +194,7 @@ export function createSubagentsVaultAdapter(options: {
       if (revision(record) !== expectedRevision)
         throw new Error('Subagent team revision conflict; review again.');
       const draft = await build(record, prepared, operationId);
-      return save(
-        record,
-        {
-          definition: draft.definition,
-          layout: { ...record.layout, nodes: draft.layout },
-        },
-        operationId,
-      );
+      return save(record, draft.definition, operationId);
     },
     async restore(snapshot, expectedRevision, operationId) {
       const original = TeamSnapshot.parse(snapshot.value);
@@ -227,11 +205,7 @@ export function createSubagentsVaultAdapter(options: {
         throw new Error('Cannot restore a snapshot into a different team.');
       if (revision(record) !== expectedRevision)
         throw new Error('Subagent restore revision conflict; manual recovery is required.');
-      return save(
-        record,
-        { definition: original.definition, layout: original.layout },
-        operationId,
-      );
+      return save(record, original.definition, operationId);
     },
   };
 }

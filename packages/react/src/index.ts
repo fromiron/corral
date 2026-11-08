@@ -42,7 +42,6 @@ export { StudioStoresProvider, useStudioStores } from './context.tsx';
 export * from './editor/model.ts';
 export {
   createEditorStore,
-  type EditorNotice,
   type EditorState,
   type EditorStore,
 } from './editor/store.ts';
@@ -79,7 +78,6 @@ export {
   type RunHistory,
   reconstructRunHistory,
 } from './run/history.ts';
-export { type RunCanvasLayout, runCanvasLayout } from './run/layout.ts';
 export { createRunRecovery, type RecoveryStorage, type RunRecovery } from './run/recovery.ts';
 export {
   type ResultGroup,

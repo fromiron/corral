@@ -47,7 +47,6 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 | **Corral Studio** | `apps/studio` | 설계·실행·협업·개입을 제공하는 웹 앱 |
 | **Corral** | `CorralDefinition` | 하나의 팀, 그래프, 권한, 상한을 묶는 저장 가능한 정의 |
 | Workspace | `Workspace` | Corral 정의·자료·실행 이력을 보관하는 로컬 디렉터리 |
-| Canvas | `CanvasLayout` | 노드 좌표·크기·선택·뷰포트. 실행 의미와 분리 |
 | Agent | `AgentNode` / `AgentRole` | 노드는 배치, Role은 책임·프롬프트·허용 도구의 정의 |
 | Loop | `LoopNode` / `LoopIteration` | 반복 범위와 특정 회차. Corral의 별명이 아님 |
 | Decision | `DecisionNode` | 규칙·검토 결과·사람 승인 분기 |

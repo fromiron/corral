@@ -179,7 +179,6 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
     };
     const saved = await call('/corrals', {
       definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     const session = (
       await call('/sessions', {

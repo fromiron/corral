@@ -39,11 +39,10 @@ export function editorWorkingCopy(
   if (
     previous &&
     (dirty(previous) ||
-      (previous.getState().saved.record.definitionRevision >= record.definitionRevision &&
-        previous.getState().saved.record.layoutRevision >= record.layoutRevision))
+      previous.getState().saved.record.definitionRevision >= record.definitionRevision)
   )
     return previous;
-  const draft = draftFromDefinition(record.definition, record.layout);
+  const draft = draftFromDefinition(record.definition);
   const copy = createStore<EditorWorkingState>(() => ({
     editor: createEditorStore(draft),
     saved: { record, draft },
@@ -114,7 +113,7 @@ export async function saveEditorCopy(
   repository: CorralRepository,
   text: {
     noChanges: string;
-    saved: (changed: { definition: boolean; layout: boolean }) => string;
+    saved: (changed: { definition: boolean }) => string;
   },
 ): Promise<{ record: CorralRecord; wrote: boolean } | null> {
   const { saved, saving, editor } = copy.getState();
@@ -128,7 +127,6 @@ export async function saveEditorCopy(
   try {
     const result = await repository.save({
       definition: current.definition,
-      layout: { nodes: current.layout, viewport: current.viewport },
       expectedDefinitionRevision: saved.record.definitionRevision,
     });
     if (!result.ok) {

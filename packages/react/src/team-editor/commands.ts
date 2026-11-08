@@ -176,15 +176,15 @@ function createStep(
   switch (kind) {
     case 'agent':
     case 'output':
-      return placed(addNode(draft, kind, { x: 0, y: 0 }));
+      return placed(addNode(draft, kind));
     case 'loop':
-      return placed(addNode(draft, 'loop', { x: 0, y: 0 }), (node) =>
+      return placed(addNode(draft, 'loop'), (node) =>
         node.type === 'loop' ? { ...node, maxIterations: 3 } : node,
       );
     case 'review':
     case 'approval':
     case 'rule':
-      return placed(addNode(draft, 'decision', { x: 0, y: 0 }), (node) =>
+      return placed(addNode(draft, 'decision'), (node) =>
         node.type === 'decision'
           ? {
               id: node.id,

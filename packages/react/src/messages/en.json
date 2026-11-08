@@ -94,28 +94,7 @@
     "retryConnection": "Try again",
     "retry": "Try again"
   },
-  "Palette": {
-    "heading": "Nodes",
-    "hint": "Drag a node onto the canvas, or use Add.",
-    "add": "Add {kind}",
-    "agent": "Agent",
-    "agentDescription": "Does one task with a role and prompt",
-    "decision": "Decision",
-    "decisionDescription": "Branches on a review verdict, an approval or a rule",
-    "loop": "Loop",
-    "loopDescription": "Repeats the steps inside it up to a limit",
-    "output": "Output",
-    "outputDescription": "Receives the final submitted version"
-  },
   "Canvas": {
-    "label": "Corral canvas",
-    "empty": "Drop an Agent and an Output here, then connect them.",
-    "loopEnterPreview": "Drop to add {node} to {loop}: it will repeat with the Loop.",
-    "loopLeavePreview": "Drop to take {node} out of {loop}: it will stop repeating.",
-    "loopEntered": "{node} now repeats in {loop}. Undo with Ctrl+Z.",
-    "loopLeft": "{node} no longer repeats in {loop}. Undo with Ctrl+Z.",
-    "connected": "Connected {source} to {target}.",
-    "callableAgent": "Callable agent",
     "ports": {
       "in": "in",
       "out": "out",
@@ -140,20 +119,6 @@
     "linkLabel": {
       "delegate": "delegates",
       "question": "asks"
-    },
-    "loopMembers": "{count, plural, =0 {empty} one {# step inside} other {# steps inside}} · up to {max} rounds",
-    "rejected": {
-      "unknownNode": "That node no longer exists.",
-      "selfConnection": "A node cannot connect to itself.",
-      "callableInControlFlow": "Callable agents are not part of the flow. Use a delegate or ask link instead.",
-      "invalidSourcePort": "That node has no such output.",
-      "invalidTargetPort": "That node has no such input.",
-      "duplicateOutgoing": "This output already leads somewhere. Delete that connection first.",
-      "loopBoundary": "Connections cross a Loop only through its ports: enter, body, repeat, exit and next.",
-      "cycle": "This connection would create a cycle. Repeat work with a Loop.",
-      "sourceNotAgent": "Only agents can call other agents.",
-      "targetNotCallable": "Calls go to callable agents. Set the target agent to Callable first.",
-      "duplicateLink": "That call link already exists."
     },
     "nodeStatus": {
       "idle": "Not run",
@@ -276,11 +241,6 @@
     "parentQuestions": "The called agent may ask this one"
   },
   "Validation": {
-    "heading": "Before running",
-    "ok": "Ready to run.",
-    "show": "Show",
-    "runtimeHeading": "Not runnable here yet",
-    "runtimeNote": "This structure is valid, but this runtime refuses to run it:",
     "codes": {
       "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
       "BOX_BOUNDARY": "This connection crosses a box boundary outside its ports.",
@@ -322,7 +282,6 @@
       "UNKNOWN_REFERENCE": "Something refers to an item that does not exist.",
       "UNREACHABLE": "The flow never reaches this node."
     },
-    "warningsHeading": "Worth a look",
     "giveCriteria": "Add a criteria input"
   },
   "Run": {
@@ -508,12 +467,12 @@
     "new": "New team",
     "newName": "Untitled team",
     "import": "Import JSON",
-    "importHint": "Choose a .corral.json file, optionally with its layout file.",
+    "importHint": "Choose a .corral.json file.",
     "importFailed": "Import failed:",
     "empty": "No teams yet.",
     "storedLocally": "Teams are saved in this browser only, and executions last until you reload.",
     "notPersistent": "This browser does not allow saving. Teams last until you close this tab.",
-    "revisions": "Team version {definition} · Layout version {layout} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
+    "revisions": "Version {definition} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
     "updated": "Saved {time}",
     "open": "Open",
     "duplicate": "Duplicate",

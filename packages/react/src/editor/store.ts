@@ -1,42 +1,24 @@
 import type { CapabilityLink } from '@corral/contracts';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
-  addNode,
-  arrangeDraft,
-  type CapabilityRejection,
-  type ConnectionRejection,
-  type ConnectionRequest,
-  checkConnection,
-  connect,
   connectCapability,
-  duplicateNode,
   type EditorDraft,
-  type EditorNodeType,
   emptyDraft,
-  moveNode,
   type NodeChange,
-  type Point,
   removeEdge,
   removeLink,
   removeNode,
-  resizeNode,
   setBrief,
-  setLoopMembership,
   setName,
-  setViewport,
   updateNode,
 } from './model.ts';
-
-export type EditorNotice =
-  | { kind: 'rejected'; reason: ConnectionRejection | CapabilityRejection }
-  | { kind: 'connected'; source: string; target: string };
 
 const HISTORY_LIMIT = 100;
 
 export interface EditorState {
   draft: EditorDraft;
+  /** A step another view asks the editor to select, such as one just imported. */
   selectedNodeId: string | null;
-  notice: EditorNotice | null;
   past: EditorDraft[];
   future: EditorDraft[];
   canUndo: boolean;
@@ -50,23 +32,13 @@ export interface EditorState {
   /** A reviewed import is one reversible edit, unlike loading a saved document. */
   applyDraft(draft: EditorDraft): void;
 
-  addNode(type: EditorNodeType, position: Point): string;
-  duplicateNode(nodeId: string): string;
-  moveNode(nodeId: string, position: Point): void;
-  /** Tidy up: arrange every node by the flow, as one undo step. */
-  arrange(): void;
-  resizeNode(nodeId: string, box: { x?: number; y?: number; width: number; height: number }): void;
-  setViewport(viewport: EditorDraft['viewport']): void;
-  setLoopMembership(nodeId: string, loopId: string | null): void;
   updateNode(nodeId: string, change: NodeChange): void;
   setBrief(brief: string): void;
   setName(name: string): void;
   removeNode(nodeId: string): void;
   removeEdge(edgeId: string): void;
   removeLink(linkId: string): void;
-  connect(request: ConnectionRequest): boolean;
   connectCapability(source: string, target: string, kind: CapabilityLink['kind']): boolean;
-  explainRejectedConnection(request: ConnectionRequest): void;
   select(nodeId: string | null): void;
 }
 
@@ -97,7 +69,6 @@ export function createEditorStore(initial: EditorDraft = emptyDraft()): EditorSt
     return {
       draft: initial,
       selectedNodeId: null,
-      notice: null,
       ...history([], []),
 
       beginBatch() {
@@ -123,28 +94,10 @@ export function createEditorStore(initial: EditorDraft = emptyDraft()): EditorSt
       },
       replaceDraft(draft) {
         batchStart = null;
-        set({ draft, selectedNodeId: null, notice: null, ...history([], []) });
+        set({ draft, selectedNodeId: null, ...history([], []) });
       },
       applyDraft: (draft) => apply(draft),
 
-      addNode(type, position) {
-        const added = addNode(get().draft, type, position);
-        apply(added.draft);
-        set({ selectedNodeId: added.nodeId });
-        return added.nodeId;
-      },
-      duplicateNode(nodeId) {
-        const copy = duplicateNode(get().draft, nodeId);
-        apply(copy.draft);
-        set({ selectedNodeId: copy.nodeId });
-        return copy.nodeId;
-      },
-      moveNode: (nodeId, position) => apply(moveNode(get().draft, nodeId, position)),
-      arrange: () => apply(arrangeDraft(get().draft)),
-      resizeNode: (nodeId, box) => apply(resizeNode(get().draft, nodeId, box)),
-      // Panning and zooming are not edits: they never enter the undo history.
-      setViewport: (viewport) => set({ draft: setViewport(get().draft, viewport) }),
-      setLoopMembership: (nodeId, loopId) => apply(setLoopMembership(get().draft, nodeId, loopId)),
       updateNode: (nodeId, change) => apply(updateNode(get().draft, nodeId, change)),
       setBrief: (brief) => apply(setBrief(get().draft, brief)),
       setName: (name) => apply(setName(get().draft, name)),
@@ -154,29 +107,10 @@ export function createEditorStore(initial: EditorDraft = emptyDraft()): EditorSt
       },
       removeEdge: (edgeId) => apply(removeEdge(get().draft, edgeId)),
       removeLink: (linkId) => apply(removeLink(get().draft, linkId)),
-      connect(request) {
-        const result = connect(get().draft, request);
-        if (!result.ok) {
-          set({ notice: { kind: 'rejected', reason: result.reason } });
-          return false;
-        }
-        apply(result.draft);
-        set({ notice: { kind: 'connected', source: request.source, target: request.target } });
-        return true;
-      },
       connectCapability(source, target, kind) {
         const result = connectCapability(get().draft, source, target, kind);
-        if (!result.ok) {
-          set({ notice: { kind: 'rejected', reason: result.reason } });
-          return false;
-        }
-        apply(result.draft);
-        set({ notice: { kind: 'connected', source, target } });
-        return true;
-      },
-      explainRejectedConnection(request) {
-        const check = checkConnection(get().draft, request);
-        if (!check.ok) set({ notice: { kind: 'rejected', reason: check.reason } });
+        if (result.ok) apply(result.draft);
+        return result.ok;
       },
       select(nodeId) {
         if (get().selectedNodeId !== nodeId) set({ selectedNodeId: nodeId });

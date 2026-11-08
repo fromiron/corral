@@ -12,7 +12,6 @@ it('unlimited migration creates one revision and preserves the original definiti
     const definition = linearCorral(['writer']);
     const saved = await repository.save({
       definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
     });
     if (!saved.ok) throw new Error('fixture save failed');

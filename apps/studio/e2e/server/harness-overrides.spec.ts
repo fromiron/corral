@@ -41,7 +41,6 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
       );
     const saved = await call('/corrals', {
       definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     return saved.record.corralId;
   }, definition);

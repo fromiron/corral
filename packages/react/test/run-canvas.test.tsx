@@ -7,7 +7,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { RunCanvas } from '../src/components/RunCanvas.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import * as agentGraph from '../src/run/agent-graph.ts';
-import { runCanvasLayout } from '../src/run/layout.ts';
 import { useSteerTarget } from '../src/run/steer-target.ts';
 import { projectionWith, researchTeamDraft, sessionStore } from '../src/stories/fixtures.tsx';
 
@@ -69,48 +68,6 @@ const modelPatch = (
   controlRevision: revision,
   executionIds: [],
   iterationIds: [],
-});
-
-describe('run canvas layout', () => {
-  it('uses the saved layout when it places every node of the run', () => {
-    const { definition, layout } = team();
-    const result = runCanvasLayout(definition, layout);
-    expect(result.source).toBe('saved');
-    expect(result.nodes).toEqual(layout);
-  });
-
-  it('arranges every node itself when the saved layout misses one', () => {
-    const { definition, layout } = team();
-    const { output: _missing, ...partial } = layout;
-    for (const saved of [partial, null]) {
-      const result = runCanvasLayout(definition, saved);
-      expect(result.source).toBe('auto');
-      for (const node of definition.nodes) expect(result.nodes[node.id]).toBeDefined();
-      const spots = definition.nodes.map(
-        (n) => `${result.nodes[n.id]?.x},${result.nodes[n.id]?.y}`,
-      );
-      expect(new Set(spots).size).toBe(spots.length);
-      // Loop members sit inside their Loop's area.
-      const loop = result.nodes.review_loop;
-      for (const node of definition.nodes) {
-        if (node.parentId !== 'review_loop') continue;
-        const box = result.nodes[node.id];
-        expect(box && loop?.width && loop.height).toBeTruthy();
-        if (!box || !loop?.width || !loop.height) continue;
-        expect(box.x).toBeGreaterThan(loop.x);
-        expect(box.y).toBeGreaterThan(loop.y);
-        expect(box.x).toBeLessThan(loop.x + loop.width);
-        expect(box.y).toBeLessThan(loop.y + loop.height);
-      }
-    }
-  });
-
-  it('ignores saved positions of nodes the run does not have', () => {
-    const { definition, layout } = team();
-    const result = runCanvasLayout(definition, { ...layout, gone: { x: 1, y: 1 } });
-    expect(result.source).toBe('saved');
-    expect(result.nodes.gone).toBeUndefined();
-  });
 });
 
 function renderCanvas(

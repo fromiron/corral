@@ -147,7 +147,18 @@ export function InspectorSheet({
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
   const name = (nodeId: string) => nodes.get(nodeId)?.label ?? nodeId;
   const issueText = (d: Diagnostic) =>
-    codeText.has(d.code) ? codeText(d.code, { message: d.message }) : d.message;
+    codeText.has(d.code)
+      ? codeText(d.code, { message: d.message, node: d.nodeId ? name(d.nodeId) : '' })
+      : d.message;
+  const fixText = useTranslations('Validation');
+  // A reviewer without the criteria: give it the run input that carries them.
+  const giveCriteria = (nodeId: string) => {
+    const node = nodes.get(nodeId);
+    if (!node || !('inputBindings' in node)) return;
+    editor.getState().updateNode(nodeId, {
+      inputBindings: [...node.inputBindings, { kind: 'run_input', name: 'criteria' }],
+    });
+  };
   const heading = (text: string) => (
     <h3
       className={cn(size.type.caption, 'text-foreground')}
@@ -163,9 +174,21 @@ export function InspectorSheet({
       <section className="grid gap-1.5" aria-label={t('issues')}>
         {list.map((d, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: diagnostics have no id of their own.
-          <p key={i} className={cn(size.type.caption, 'flex gap-1.5')}>
-            <IssueRow diagnostic={d} text={issueText(d)} />
-          </p>
+          <div key={i} className="grid gap-1">
+            <p className={cn(size.type.caption, 'flex gap-1.5')}>
+              <IssueRow diagnostic={d} text={issueText(d)} />
+            </p>
+            {d.code === 'REVIEW_WITHOUT_CRITERIA' && d.nodeId ? (
+              <Button
+                variant="secondary"
+                size="compact"
+                className="justify-self-start"
+                onClick={() => giveCriteria(d.nodeId as string)}
+              >
+                {fixText('giveCriteria')}
+              </Button>
+            ) : null}
+          </div>
         ))}
       </section>
     );

@@ -1,6 +1,12 @@
 import { isBox } from '@corral/core';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useMemo, useState } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -124,6 +130,13 @@ export function TeamEditor({
     setSelection(next);
     if (next.nodes.length || next.edge) setView(null);
   }, []);
+  // Another view, such as an agent import, can ask for a step to be selected.
+  const requested = useStore(editor, (s) => s.selectedNodeId);
+  useEffect(() => {
+    if (!requested) return;
+    select({ nodes: [requested], edge: null });
+    editor.getState().select(null);
+  }, [requested, editor, select]);
   const toggle = useCallback((id: string) => {
     setCollapsed((current) => {
       const next = new Set(current);

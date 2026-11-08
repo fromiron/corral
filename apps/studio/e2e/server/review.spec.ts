@@ -12,10 +12,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
-    .setInputFiles([
-      join(EXAMPLES, 'research-team.corral.json'),
-      join(EXAMPLES, 'research-team.layout.json'),
-    ]);
+    .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
   await expect(page).toHaveURL(/\/edit$/);
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();

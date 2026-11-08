@@ -7,7 +7,6 @@ import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
 import {
   type AgentAdapter,
   AutoModelChoice,
-  CanvasLayout,
   CaptureCheckpoint,
   type Clock,
   CommandError,
@@ -298,13 +297,8 @@ const STATUS: Record<ErrorCode, number> = {
 
 const HEARTBEAT_MS = 15_000;
 
-const LayoutInput = z.strictObject({
-  nodes: CanvasLayout.shape.nodes,
-  viewport: CanvasLayout.shape.viewport,
-});
 const CreateCorral = z.strictObject({
   definition: CorralDefinitionDraft,
-  layout: LayoutInput,
   projectId: Identifier.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
@@ -388,7 +382,7 @@ const UpdateProject = z.strictObject({
   archived: z.boolean().optional(),
   expectedRevision: z.int().min(1),
 });
-const UpdateCorral = z.strictObject({ definition: CorralDefinitionDraft, layout: LayoutInput });
+const UpdateCorral = z.strictObject({ definition: CorralDefinitionDraft });
 
 /** `If-Match: 3` or `If-Match: "3"`: the definition revision the edit started from. */
 function ifMatchRevision(header: string | undefined): number | null {

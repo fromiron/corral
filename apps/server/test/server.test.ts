@@ -92,7 +92,6 @@ async function saved(server: CorralServer, definition: CorralDefinition, call: t
   const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
   const result = await repo.save({
     definition,
-    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     expectedDefinitionRevision: null,
   });
   if (!result.ok) throw new Error(result.message);
@@ -254,7 +253,6 @@ describe('local security boundary', () => {
         headers: { 'content-type': 'application/json', origin },
         body: JSON.stringify({
           definition: linearCorral(['w']),
-          layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
         }),
       });
     const evil = await create('https://evil.example');
@@ -434,29 +432,24 @@ describe('local security boundary', () => {
 });
 
 describe('REST: Corrals and runs', () => {
-  it('saves Corrals with separate revisions and refuses a stale save', async () => {
+  it('saves Corrals by definition revision and refuses a stale save', async () => {
     const server = await start();
     const { call } = await browser(server);
     const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
     const record = await saved(server, linearCorral(['writer']), call);
-    expect(record).toMatchObject({ definitionRevision: 1, layoutRevision: 1 });
-    const moved = await repo.save({
+    expect(record).toMatchObject({ definitionRevision: 1 });
+    const unchanged = await repo.save({
       definition: record.definition,
-      layout: { nodes: { writer: { x: 10, y: 10 } }, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: 1,
     });
-    expect(moved.ok && [moved.record.definitionRevision, moved.record.layoutRevision]).toEqual([
-      1, 2,
-    ]);
+    expect(unchanged.ok && unchanged.record.definitionRevision).toBe(1);
     const renamed = { ...record.definition, name: 'Renamed' };
     await repo.save({
       definition: renamed,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: 1,
     });
     const stale = await repo.save({
       definition: record.definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: 1,
     });
     expect(stale).toMatchObject({ ok: false, error: 'revision_conflict' });
@@ -474,7 +467,6 @@ describe('REST: Corrals and runs', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         definition: renamed,
-        layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       }),
     });
     expect(noPrecondition.status).toBe(400);
@@ -1324,7 +1316,6 @@ describe('REST: projects', () => {
     const projectId = created.project.projectId;
     const corral = await repo.save({
       definition: linearCorral(['writer']),
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
       projectId,
     });
@@ -1395,7 +1386,6 @@ describe('REST: work sessions', () => {
     const projectId = project.project.projectId;
     const corral = await repo.save({
       definition: linearCorral(['writer']),
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
       projectId,
     });
@@ -1565,7 +1555,6 @@ describe('work folders and file changes', () => {
     ];
     const corral = await rest.save({
       definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
     });
     if (!corral.ok) throw new Error(corral.message);

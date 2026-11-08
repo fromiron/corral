@@ -11,10 +11,7 @@ test('one run shows two delegated helpers and a question answered by a new respo
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
-    .setInputFiles([
-      join(EXAMPLES, 'research-brief.corral.json'),
-      join(EXAMPLES, 'research-brief.layout.json'),
-    ]);
+    .setInputFiles([join(EXAMPLES, 'research-brief.corral.json')]);
   await expect(page).toHaveURL(/\/edit$/);
   await expect(page.locator('.corral-call-link')).toHaveCount(2);
   await page.getByRole('tab', { name: 'Test run', exact: true }).click();

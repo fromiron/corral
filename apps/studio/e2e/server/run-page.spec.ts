@@ -1,22 +1,17 @@
 import definition from '../../../../examples/research-brief.corral.json' with { type: 'json' };
-import layout from '../../../../examples/research-brief.layout.json' with { type: 'json' };
 import approvalDefinition from '../../../../examples/research-team.corral.json' with {
   type: 'json',
 };
-import approvalLayout from '../../../../examples/research-team.layout.json' with { type: 'json' };
 import { openResult, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function startRun(
   page: import('@playwright/test').Page,
   corral: { open(path?: string): Promise<void> },
-  fixture: { definition: unknown; layout: { nodes: unknown; viewport: unknown } } = {
-    definition,
-    layout,
-  },
+  fixture: { definition: unknown } = { definition },
 ) {
   await corral.open('/');
-  return page.evaluate(async ({ definition, layout }) => {
+  return page.evaluate(async ({ definition }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const call = async (path: string, body: unknown) => {
       const response = await fetch(`/api/v1${path}`, {
@@ -27,10 +22,7 @@ async function startRun(
       if (!response.ok) throw new Error(`setup ${path}: ${response.status}`);
       return response.json();
     };
-    const saved = await call('/corrals', {
-      definition,
-      layout: { nodes: layout.nodes, viewport: layout.viewport },
-    });
+    const saved = await call('/corrals', { definition });
     const session = (
       await call('/sessions', {
         projectId: 'default',
@@ -156,10 +148,7 @@ test('live event counts keep event filters, selection and scroll in the primary 
   corral,
 }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
-  const { runId } = await startRun(page, corral, {
-    definition: approvalDefinition,
-    layout: approvalLayout,
-  });
+  const { runId } = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/runs/${runId}`);
   await page.getByRole('button', { name: /^Needs your input/ }).click();
   const approval = page.getByRole('button', { name: 'Continue with this version', exact: true });
@@ -485,10 +474,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   page,
   corral,
 }) => {
-  const started = await startRun(page, corral, {
-    definition: approvalDefinition,
-    layout: approvalLayout,
-  });
+  const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
   const action = page.getByTestId('dock-open-active-run');
   await expect(action).toContainText('response needed');

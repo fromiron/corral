@@ -110,7 +110,6 @@ async function decisionProviders(dataHome: string, helper?: string) {
     headers,
     body: JSON.stringify({
       definition: linearCorral(['writer']),
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     }),
   });
   const { corralId } = ((await saved.json()) as { record: { corralId: string } }).record;

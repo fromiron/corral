@@ -1,9 +1,8 @@
-import { CanvasLayout, CorralDefinition, type Receipt } from '@corral/contracts';
+import { CorralDefinition, type Receipt } from '@corral/contracts';
 import { emptyProjection, type RunProjection } from '@corral/core';
 import type { ReactNode } from 'react';
 import { createStore } from 'zustand/vanilla';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
-import researchLayout from '../../../../examples/research-team.layout.json' with { type: 'json' };
 import { StudioStoresProvider } from '../context.tsx';
 import {
   addNode,
@@ -18,8 +17,8 @@ import type { RunSessionState, RunSessionStore } from '../run/session.ts';
 // Story-only builders. Stories render real components against fixed store states.
 
 export function agentToOutputDraft(): EditorDraft {
-  const agent = addNode(emptyDraft(), 'agent', { x: 40, y: 80 });
-  const output = addNode(agent.draft, 'output', { x: 320, y: 80 });
+  const agent = addNode(emptyDraft(), 'agent');
+  const output = addNode(agent.draft, 'output');
   const connected = connect(output.draft, {
     source: agent.nodeId,
     sourcePort: 'out',
@@ -31,10 +30,7 @@ export function agentToOutputDraft(): EditorDraft {
 
 /** Research → review Loop → approval → Output, with a callable helper, from the examples. */
 export function researchTeamDraft(): EditorDraft {
-  return draftFromDefinition(
-    CorralDefinition.parse(researchTeam),
-    CanvasLayout.parse(researchLayout),
-  );
+  return draftFromDefinition(CorralDefinition.parse(researchTeam));
 }
 
 export function sessionStore(state: Partial<RunSessionState> = {}): RunSessionStore {

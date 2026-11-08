@@ -59,39 +59,32 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       options.newProjectId ?? (() => `project_${globalThis.crypto.randomUUID().slice(0, 8)}`);
     this.sql = {
       list: db.prepare(
-        `SELECT c.id, c.name, c.definition_revision, c.layout_revision, c.updated_at,
+        `SELECT c.id, c.name, c.definition_revision, c.updated_at,
            c.project_id, d.definition_json
          FROM corrals c JOIN definition_versions d
            ON d.corral_id = c.id AND d.revision = c.definition_revision
          ORDER BY c.updated_at DESC, c.name`,
       ),
       corral: db.prepare(
-        `SELECT c.id, c.name, c.definition_revision, c.layout_revision, c.updated_at,
-           c.project_id, d.definition_json, d.definition_hash, l.layout_json
+        `SELECT c.id, c.name, c.definition_revision, c.updated_at,
+           c.project_id, d.definition_json, d.definition_hash
          FROM corrals c
          JOIN definition_versions d ON d.corral_id = c.id AND d.revision = c.definition_revision
-         JOIN layouts l ON l.corral_id = c.id AND l.layout_revision = c.layout_revision
          WHERE c.id = ?`,
       ),
       definition: db.prepare(
         'SELECT definition_json FROM definition_versions WHERE corral_id = ? AND revision = ?',
       ),
       upsertCorral: db.prepare(
-        `INSERT INTO corrals (id, name, definition_revision, layout_revision, updated_at,
-           project_id)
-         VALUES (@id, @name, @definitionRevision, @layoutRevision, @updatedAt, @projectId)
+        `INSERT INTO corrals (id, name, definition_revision, updated_at, project_id)
+         VALUES (@id, @name, @definitionRevision, @updatedAt, @projectId)
          ON CONFLICT (id) DO UPDATE SET name = excluded.name,
-           definition_revision = excluded.definition_revision,
-           layout_revision = excluded.layout_revision, updated_at = excluded.updated_at,
+           definition_revision = excluded.definition_revision, updated_at = excluded.updated_at,
            project_id = excluded.project_id`,
       ),
       insertDefinition: db.prepare(
         `INSERT INTO definition_versions (corral_id, revision, definition_hash, definition_json,
            created_at) VALUES (?, ?, ?, ?, ?)`,
-      ),
-      insertLayout: db.prepare(
-        `INSERT INTO layouts (corral_id, layout_revision, definition_revision, layout_json)
-         VALUES (?, ?, ?, ?)`,
       ),
       remove: db.prepare('DELETE FROM corrals WHERE id = ?'),
       operationReceipt: db.prepare(
@@ -145,7 +138,6 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       id: string;
       name: string;
       definition_revision: number;
-      layout_revision: number;
       updated_at: string;
       project_id: string | null;
       definition_json: string;
@@ -155,7 +147,6 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       projectId: row.project_id ?? DEFAULT_PROJECT_ID,
       name: row.name,
       definitionRevision: row.definition_revision,
-      layoutRevision: row.layout_revision,
       nodeCount: readJson<{ nodes?: unknown[] }>(row.definition_json, row.id).nodes?.length ?? 0,
       updatedAt: row.updated_at,
     }));
@@ -163,6 +154,10 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
 
   async get(corralId: string): Promise<CorralRecord | null> {
     return this.read(corralId);
+  }
+
+  async getRevision(corralId: string, definitionRevision: number) {
+    return this.getDefinition(corralId, definitionRevision);
   }
 
   async save(request: SaveRequest): Promise<SaveResult> {
@@ -177,11 +172,9 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       const result = await this.saveOperation(
         {
           definition: { ...current.definition, executionPolicy: { version: 2 } },
-          layout: current.layout,
           expectedDefinitionRevision: current.definitionRevision,
         },
         `cr052_unlimited_${current.corralId}_${current.definitionRevision}`,
-        current.layoutRevision,
       );
       if (!result.ok)
         throw new Error('execution policy migration could not preserve the current revision');
@@ -192,16 +185,10 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
    * Apply a reviewed import to an existing Corral. Its durable receipt closes the crash
    * window between committing this revision and updating the caller's import journal.
    */
-  async saveOperation(
-    request: SaveRequest,
-    operationId: string,
-    expectedLayoutRevision: number,
-  ): Promise<SaveResult> {
+  async saveOperation(request: SaveRequest, operationId: string): Promise<SaveResult> {
     if (!operationId.trim() || operationId.length > 1024)
       throw new Error('A Corral operation requires an operation ID of 1 to 1024 characters.');
-    const fingerprint = createHash('sha256')
-      .update(canonicalJson({ request, expectedLayoutRevision }))
-      .digest('hex');
+    const fingerprint = createHash('sha256').update(canonicalJson({ request })).digest('hex');
     return this.db
       .transaction((): SaveResult => {
         const receipt = this.readOperation(operationId);
@@ -217,24 +204,14 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
         }
         const current = this.read(request.definition.id);
         let result: SaveResult;
-        if (
-          request.expectedDefinitionRevision === null ||
-          !Number.isInteger(expectedLayoutRevision) ||
-          expectedLayoutRevision < 1
-        ) {
+        if (request.expectedDefinitionRevision === null) {
           result = {
             ok: false,
             error: 'revision_conflict',
-            message: 'A Corral import requires the reviewed definition and layout revisions.',
-          };
-        } else if (current && current.layoutRevision !== expectedLayoutRevision) {
-          result = {
-            ok: false,
-            error: 'revision_conflict',
-            message: `This Corral layout was saved elsewhere (revision ${current.layoutRevision}). Reload before importing.`,
+            message: 'A Corral import requires the reviewed definition revision.',
           };
         } else {
-          result = this.persist(planSave(current, request, this.context()), current);
+          result = this.persist(planSave(current, request, this.context()));
         }
         this.sql.insertOperation.run(operationId, fingerprint, JSON.stringify(result));
         return result;
@@ -261,12 +238,12 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     }
     const current =
       request.expectedDefinitionRevision === null ? null : this.read(request.definition.id);
-    return this.persist(planSave(current, request, this.context()), current);
+    return this.persist(planSave(current, request, this.context()));
   }
 
   async duplicate(corralId: string, name: string): Promise<SaveResult> {
     return this.db.transaction(() =>
-      this.persist(planDuplicate(this.read(corralId), corralId, name, this.context()), null),
+      this.persist(planDuplicate(this.read(corralId), corralId, name, this.context())),
     )();
   }
 
@@ -423,12 +400,10 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
           id: string;
           name: string;
           definition_revision: number;
-          layout_revision: number;
           updated_at: string;
           project_id: string | null;
           definition_json: string;
           definition_hash: string;
-          layout_json: string;
         }
       | undefined;
     if (!row) return null;
@@ -440,42 +415,29 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
         definition: CorralDefinitionDraft.safeParse(readJson(row.definition_json, row.id)).data,
         definitionRevision: row.definition_revision,
         definitionHash: row.definition_hash,
-        layout: readJson(row.layout_json, row.id),
-        layoutRevision: row.layout_revision,
         updatedAt: row.updated_at,
       },
       row.id,
     );
   }
 
-  private persist(result: SaveResult, current: CorralRecord | null): SaveResult {
-    if (!result.ok || (!result.changed.definition && !result.changed.layout)) return result;
+  private persist(result: SaveResult): SaveResult {
+    if (!result.ok || !result.changed.definition) return result;
     const { record } = result;
     this.sql.upsertCorral.run({
       id: record.corralId,
       name: record.name,
       definitionRevision: record.definitionRevision,
-      layoutRevision: record.layoutRevision,
       updatedAt: record.updatedAt,
       projectId: record.projectId,
     });
-    if (!current || result.changed.definition) {
-      this.sql.insertDefinition.run(
-        record.corralId,
-        record.definitionRevision,
-        record.definitionHash,
-        JSON.stringify(record.definition),
-        record.updatedAt,
-      );
-    }
-    if (!current || result.changed.layout) {
-      this.sql.insertLayout.run(
-        record.corralId,
-        record.layoutRevision,
-        record.definitionRevision,
-        JSON.stringify(record.layout),
-      );
-    }
+    this.sql.insertDefinition.run(
+      record.corralId,
+      record.definitionRevision,
+      record.definitionHash,
+      JSON.stringify(record.definition),
+      record.updatedAt,
+    );
     return result;
   }
 }

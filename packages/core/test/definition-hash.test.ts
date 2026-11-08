@@ -1,7 +1,6 @@
 import { CorralDefinition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
-import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
 import minimal from '../../contracts/test/fixtures/minimal.corral.json' with { type: 'json' };
 import { definitionHash } from '../src/index.ts';
 import researchTeamBefore from './fixtures/research-team.before-criteria-input.corral.json' with {
@@ -35,13 +34,10 @@ describe('definitionHash', () => {
     );
   });
 
-  it('ignores key order and layout moves, but changes with the prompt', () => {
+  it('ignores key order, but changes with the prompt', () => {
     const definition = parse(researchTeam);
     const reordered = parse(reverseKeys(definition));
-    const layout = clone(researchLayout);
     const before = definitionHash(definition);
-    layout.nodes.research.x += 240;
-    layout.viewport.zoom = 1.25;
 
     expect(definitionHash(reordered)).toBe(before);
     expect(definitionHash(definition)).toBe(before);

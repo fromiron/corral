@@ -30,7 +30,7 @@ async function session(page: Page, corral: Harness, definition = linearCorral(['
 // These assertions concern a saved graph's review loop, not the composer team's chat runtime.
 async function graphSession(page: Page, corral: Harness, template: DemoTemplate) {
   await corral.open('/');
-  const started = await page.evaluate(async ({ definition, layout }) => {
+  const started = await page.evaluate(async ({ definition }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const call = async (path: string, body: unknown) => {
       const response = await fetch(`/api/v1${path}`, {
@@ -41,7 +41,7 @@ async function graphSession(page: Page, corral: Harness, template: DemoTemplate)
       if (!response.ok) throw new Error(`Fixture ${path}: ${response.status}`);
       return response.json();
     };
-    const { record } = await call('/corrals', { definition, layout });
+    const { record } = await call('/corrals', { definition });
     const { session } = await call('/sessions', {
       projectId: 'default',
       title: 'Review the release plan',

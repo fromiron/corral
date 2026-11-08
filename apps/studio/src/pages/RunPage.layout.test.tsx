@@ -1042,13 +1042,8 @@ it('an inline run uses its snapshot definition without fetching an unsaved Corra
   });
 });
 
-it('a saved Corral uses the run snapshot without fetching the saved authoring layout', async () => {
-  const nodes = Object.fromEntries(
-    linearCorral(['worker']).nodes.map((node, i) => [node.id, { x: 10 + i, y: 20 + i }]),
-  );
-  const { repository, container } = await mount('auto_saved', {
-    layout: { nodes },
-  } as CorralRecord);
+it('a saved Corral uses the run snapshot without fetching the saved team', async () => {
+  const { repository, container } = await mount('auto_saved', {} as CorralRecord);
   await openGraph(container);
   expect(repository.get).not.toHaveBeenCalled();
   expect(

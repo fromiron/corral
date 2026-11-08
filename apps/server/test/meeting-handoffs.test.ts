@@ -342,7 +342,6 @@ it('pins a chosen Corral revision across later edits and draft launch', async ()
   const saved = await f.repository.save({
     definition: CorralDefinition.parse(researchTeam),
     expectedDefinitionRevision: null,
-    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
   });
   if (!saved.ok) throw new Error('fixture');
   const draft = await f.service.send(f.source.sessionId, {
@@ -353,7 +352,6 @@ it('pins a chosen Corral revision across later edits and draft launch', async ()
   await f.repository.save({
     definition: { ...saved.record.definition, name: 'Edited team' },
     expectedDefinitionRevision: 1,
-    layout: saved.record.layout,
   });
   await f.service.startDraft(f.source.sessionId, f.request.commandId, {
     commandId: 'launch_1',

@@ -5,7 +5,7 @@ import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
 
-// Canonical definition of a Corral. Layout lives in CanvasLayout.
+// Canonical definition of a Corral. Where nodes are drawn is derived from it, never stored.
 
 export const InputBindingKind = z.enum([
   'run_input',

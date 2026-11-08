@@ -31,7 +31,6 @@ async function setup() {
   const draft = emptyDraft();
   const saved = await repository.save({
     definition: draft.definition,
-    layout: { nodes: draft.layout, viewport: draft.viewport },
     expectedDefinitionRevision: null,
   });
   if (!saved.ok) throw new Error(saved.message);

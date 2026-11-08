@@ -36,17 +36,8 @@ export async function createFromTemplate(
   const suffix = globalThis.crypto.randomUUID().slice(0, 8);
   const draft =
     id === 'blank'
-      ? (() => {
-          const empty = emptyDraft('untitled', blankName);
-          return {
-            definition: empty.definition,
-            layout: { nodes: empty.layout, viewport: empty.viewport },
-          };
-        })()
-      : (() => {
-          const template = templateForWorkspace(id, `${id.replace('-', '_')}_${suffix}`);
-          return { definition: template.definition, layout: template.layout };
-        })();
+      ? { definition: emptyDraft('untitled', blankName).definition }
+      : { definition: templateForWorkspace(id, `${id.replace('-', '_')}_${suffix}`).definition };
   const name = copyName?.trim() || draft.definition.name;
   const uniqueName = templateCopyName(
     name,
@@ -120,7 +111,6 @@ export async function createDemoExamples(
         };
         await repository.save({
           definition,
-          layout: { nodes: record.layout.nodes, viewport: record.layout.viewport },
           expectedDefinitionRevision: record.definitionRevision,
         });
       }

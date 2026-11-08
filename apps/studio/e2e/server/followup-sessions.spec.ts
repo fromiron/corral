@@ -112,7 +112,6 @@ for (const locale of ['en', 'ko'] as const) {
       const definition = linearCorral(['writer']);
       const team = await api(page, '/corrals', {
         definition,
-        layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
         projectId: 'default',
       });
       const staleNow = Date.now() - 120_000;
@@ -202,7 +201,6 @@ for (const locale of ['en', 'ko'] as const) {
         await corral.open('/');
         const team = await api(page, '/corrals', {
           definition: linearCorral(['first', 'second']),
-          layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
           projectId: 'default',
         });
         const session = await api(page, '/sessions', {

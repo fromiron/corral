@@ -27,7 +27,6 @@ test.describe('runtime continuation', () => {
         };
         const saved = await call('/corrals', {
           definition,
-          layout: { viewport: { x: 0, y: 0, zoom: 1 }, nodes: {} },
         });
         const session = (
           await call('/sessions', {
