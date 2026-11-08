@@ -870,7 +870,13 @@ export function TeamGraphCanvas({
             );
           })}
           {cards
-            .filter((item) => item.kind === 'tile')
+            .filter((item) => {
+              // A reference team is always a tile: its inside is edited in its own editor.
+              const node = nodes.get(item.id);
+              return (
+                item.kind === 'tile' && !(node?.type === 'team' && node.source.kind === 'reference')
+              );
+            })
             .map((item) => (
               <Button
                 key={`expand-${item.id}`}

@@ -18,6 +18,7 @@ import {
 } from '@corral/contracts';
 import {
   boxBoundaryViolation,
+  type CompileOptions,
   compileDefinition,
   DECISION_PORTS,
   DECISION_RULE,
@@ -789,8 +790,11 @@ export function importDocuments(definitionText: string, layoutText?: string): Im
   return { ok: true, draft: draftFromDefinition(definition.data, layout) };
 }
 
-export function compileDraft(draft: EditorDraft): DraftCompilation {
-  const compiled = compileDefinition(draft.definition);
+export function compileDraft(
+  draft: EditorDraft,
+  options: Pick<CompileOptions, 'resolveTeam'> = {},
+): DraftCompilation {
+  const compiled = compileDefinition(draft.definition, options);
   if (!compiled.ok)
     return { diagnostics: compiled.diagnostics, runnable: false, runtimeLimits: [] };
   const plan = planRun(compiled.definition);

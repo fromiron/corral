@@ -271,7 +271,9 @@
     "editingMode": "File editing",
     "editingModePi": "Pi (default)",
     "editingModeHashline": "Hashline",
-    "editingModeHint": "Choose the edit syntax for future runs; existing runs keep their selection."
+    "editingModeHint": "Choose the edit syntax for future runs; existing runs keep their selection.",
+    "inputVersion": "Artifact version",
+    "parentQuestions": "The called agent may ask this one"
   },
   "Validation": {
     "heading": "Before running",
@@ -4934,7 +4936,9 @@
       "repeatNeedsDecision": "Only a decision can send the work round again.",
       "noNextStep": "Nothing can follow this step.",
       "mixedBoxes": "Only steps in the same box can be wrapped together.",
-      "notABox": "Only a Loop or a Team defined here can hold steps."
+      "notABox": "Only a Loop or a Team defined here can hold steps.",
+      "noPredecessor": "Only a step that something leads to can be split.",
+      "oneAgentOnly": "Split one agent in the flow at a time."
     },
     "structure": "Structure",
     "outline": "Team structure",
@@ -5003,7 +5007,8 @@
       "add": "Add",
       "structure": "Structure",
       "view": "View",
-      "edit": "Edit"
+      "edit": "Edit",
+      "patterns": "Patterns"
     },
     "addKind": "Add {kind}",
     "addAfter": "after {name}",
@@ -5019,6 +5024,29 @@
     "unsaved": "Unsaved changes",
     "teams": "Teams",
     "classicEditor": "Classic editor",
-    "composer": "Composer"
+    "composer": "Composer",
+    "patterns": {
+      "reviewLoop": "Wrap in a review loop",
+      "checkLoop": "Wrap in a check loop",
+      "parallel": "Split in parallel"
+    },
+    "patternDescriptions": {
+      "reviewLoop": "A reviewer passes the work or sends it round again",
+      "checkLoop": "A check passes the work or sends it round again",
+      "parallel": "Runs a copy beside it and joins the two"
+    },
+    "withNewAgent": "With a new agent",
+    "problemsList": "Problems",
+    "noProblems": "Nothing to fix.",
+    "openTeam": "Open this team",
+    "useRevision": "Use v{revision}",
+    "savedTeams": "Saved teams",
+    "addReference": "Add {name}",
+    "referenceDescription": "Runs that team as saved, v{revision}",
+    "duplicate": "Duplicate",
+    "testRun": "Test run",
+    "hideRun": "Close test run",
+    "exportJson": "Export JSON",
+    "importJson": "Import JSON"
   }
 }

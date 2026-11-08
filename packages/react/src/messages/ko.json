@@ -271,7 +271,9 @@
     "editingMode": "파일 편집",
     "editingModePi": "Pi (기본)",
     "editingModeHashline": "Hashline",
-    "editingModeHint": "다음 실행에서 사용할 편집 방식을 선택합니다. 진행 중인 실행에는 적용되지 않습니다."
+    "editingModeHint": "다음 실행에서 사용할 편집 방식을 선택합니다. 진행 중인 실행에는 적용되지 않습니다.",
+    "inputVersion": "산출물 버전",
+    "parentQuestions": "호출된 에이전트가 이 에이전트에게 물을 수 있음"
   },
   "Validation": {
     "heading": "실행 전 확인",
@@ -4934,7 +4936,9 @@
       "repeatNeedsDecision": "판단 단계만 작업을 다시 돌릴 수 있습니다.",
       "noNextStep": "이 단계 뒤에는 이어질 수 없습니다.",
       "mixedBoxes": "같은 상자 안의 단계끼리만 함께 묶을 수 있습니다.",
-      "notABox": "이 팀 안에서 정의한 Loop나 팀만 단계를 담을 수 있습니다."
+      "notABox": "이 팀 안에서 정의한 Loop나 팀만 단계를 담을 수 있습니다.",
+      "noPredecessor": "앞 단계가 있는 단계만 나눌 수 있습니다.",
+      "oneAgentOnly": "흐름 안의 에이전트 하나씩만 나눌 수 있습니다."
     },
     "structure": "구조",
     "outline": "팀 구조",
@@ -5003,7 +5007,8 @@
       "add": "추가",
       "structure": "구조",
       "view": "보기",
-      "edit": "편집"
+      "edit": "편집",
+      "patterns": "패턴"
     },
     "addKind": "{kind} 추가",
     "addAfter": "{name} 다음에",
@@ -5019,6 +5024,29 @@
     "unsaved": "저장하지 않은 변경",
     "teams": "팀",
     "classicEditor": "기존 편집기",
-    "composer": "구성 편집기"
+    "composer": "구성 편집기",
+    "patterns": {
+      "reviewLoop": "검토 루프로 감싸기",
+      "checkLoop": "검사 루프로 감싸기",
+      "parallel": "병렬로 나누기"
+    },
+    "patternDescriptions": {
+      "reviewLoop": "검토자가 통과시키거나 다시 돌린다",
+      "checkLoop": "검사가 통과시키거나 다시 돌린다",
+      "parallel": "사본을 나란히 돌리고 합류한다"
+    },
+    "withNewAgent": "새 에이전트로",
+    "problemsList": "문제",
+    "noProblems": "고칠 것이 없습니다.",
+    "openTeam": "이 팀 열기",
+    "useRevision": "v{revision} 쓰기",
+    "savedTeams": "저장된 팀",
+    "addReference": "{name} 추가",
+    "referenceDescription": "저장된 v{revision} 그대로 실행",
+    "duplicate": "복제",
+    "testRun": "시험 실행",
+    "hideRun": "시험 실행 닫기",
+    "exportJson": "JSON 내보내기",
+    "importJson": "JSON 가져오기"
   }
 }

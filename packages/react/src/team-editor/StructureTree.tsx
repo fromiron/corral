@@ -36,8 +36,10 @@ export interface StructureTreeProps {
   onMove: (nodeId: string, parentId: string | null) => void;
   onAdd: () => void;
   onTeamSettings: () => void;
+  onProblems: () => void;
   onCommands: () => void;
-  teamSettingsOpen: boolean;
+  /** Which team-wide view the sheet shows, if any. */
+  view: 'team' | 'problems' | null;
 }
 
 export function StructureTree({
@@ -52,8 +54,9 @@ export function StructureTree({
   onMove,
   onAdd,
   onTeamSettings,
+  onProblems,
   onCommands,
-  teamSettingsOpen,
+  view,
 }: StructureTreeProps) {
   const t = useTranslations('TeamEditor');
   const size = useSize();
@@ -89,7 +92,8 @@ export function StructureTree({
   const row = (node: CorralNode, depth: number) => {
     const kind = kindOf(node);
     const Icon = KIND_ICON[kind];
-    const box = isBox(node);
+    // A reference team's inside lives in its own editor, so here it neither opens nor takes steps.
+    const box = isBox(node) && !(node.type === 'team' && node.source.kind === 'reference');
     const open = box && !collapsed.has(node.id);
     const severity = worst.get(node.id);
     const dropping = over === node.id;
@@ -193,9 +197,16 @@ export function StructureTree({
         >
           {definition.name}
         </span>
-        <KitBadge size="compact" color={errors ? 'red' : diagnostics.length ? 'amber' : 'gray'}>
-          {t('problems', { count: diagnostics.length })}
-        </KitBadge>
+        <button
+          type="button"
+          aria-pressed={view === 'problems'}
+          className={cn(focusRing, 'rounded-full')}
+          onClick={onProblems}
+        >
+          <KitBadge size="compact" color={errors ? 'red' : diagnostics.length ? 'amber' : 'gray'}>
+            {t('problems', { count: diagnostics.length })}
+          </KitBadge>
+        </button>
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {children(null).map((node) => row(node, 0))}
@@ -205,7 +216,7 @@ export function StructureTree({
           variant="ghost"
           size="compact"
           className="justify-start"
-          aria-pressed={teamSettingsOpen}
+          aria-pressed={view === 'team'}
           onClick={onTeamSettings}
         >
           <Gauge /> {t('teamSettings')}

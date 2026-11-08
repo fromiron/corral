@@ -140,3 +140,17 @@ describe('team editor layout', () => {
     expect(drawn?.path).toContain(`${box.y + box.h - 18}`);
   });
 });
+
+describe('team editor layout: reference teams', () => {
+  it('draws a reference team as a tile: its steps live in the other team', () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(1), 'team', { kind: 'after', nodeId: 'agent_1' }, {
+        reference: { corralId: 'other_team', definitionRevision: 2, name: 'Other team' },
+      }),
+    );
+    const l = layout(draft);
+    expect(l.items.get(nodeId)?.kind).toBe('tile');
+    expect(l.ports.some((p) => p.nodeId === nodeId && p.port === 'enter')).toBe(true);
+    expect(l.ports.some((p) => p.nodeId === nodeId && p.port === 'body')).toBe(false);
+  });
+});

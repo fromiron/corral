@@ -3,7 +3,6 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import type { ProfileOption } from '../components/NodeInspector.tsx';
 import {
   Button,
   CommandMenu,
@@ -16,11 +15,26 @@ import {
 import { spring } from '../design-kit/lib/springs.ts';
 import { compileDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
-import { Boxes, Maximize2, Minimize2, Redo2, Repeat2, Trash2, Undo2, Users } from '../ui/icons.ts';
 import {
+  Boxes,
+  GitMerge,
+  Maximize2,
+  Minimize2,
+  Redo2,
+  Repeat2,
+  ShieldCheck,
+  Split,
+  Trash2,
+  Undo2,
+  UserCheck,
+  Users,
+} from '../ui/icons.ts';
+import {
+  applyPattern,
   checkPorts,
   connectPorts,
   type EditResult,
+  type Pattern,
   type Placement,
   type PortRequest,
   placeStep,
@@ -28,11 +42,13 @@ import {
   removeItems,
   type StepKind,
   setParent,
+  type TeamReference,
   wrapIn,
 } from './commands.ts';
-import { InspectorSheet } from './InspectorSheet.tsx';
+import { InspectorSheet, PATTERNS, type SheetView } from './InspectorSheet.tsx';
 import { ADDABLE, KIND_ICON } from './kinds.ts';
 import { layoutTeam } from './layout.ts';
+import type { LoopSettings, ProfileOption, RoleSettings } from './NodeSettings.tsx';
 import { StructureTree } from './StructureTree.tsx';
 import { STEP_DRAG_TYPE, TeamGraphCanvas, type TeamSelection } from './TeamGraphCanvas.tsx';
 
@@ -43,11 +59,34 @@ import { STEP_DRAG_TYPE, TeamGraphCanvas, type TeamSelection } from './TeamGraph
 export interface TeamEditorProps {
   editor: EditorStore;
   profiles?: ProfileOption[] | null;
+  /** Extra role settings the host adds to an agent's sheet, such as its Skills. */
+  roleSettings?: RoleSettings | undefined;
+  /** Extra loop settings the host adds to a Loop's sheet. */
+  loopSettings?: LoopSettings | undefined;
+  /** The other saved teams of the project, each at its latest saved revision. */
+  teams?: readonly TeamReference[];
+  /** The saved definition a reference Team points at, once the host has loaded it. */
+  resolveTeam?: ((corralId: string, definitionRevision: number) => unknown) | undefined;
+  onOpenTeam?: ((corralId: string) => void) | undefined;
 }
 
 const NONE: TeamSelection = { nodes: [], edge: null };
+const NO_TEAMS: readonly TeamReference[] = [];
+const PATTERN_ICON: Record<Pattern, typeof Split> = {
+  reviewLoop: UserCheck,
+  checkLoop: ShieldCheck,
+  parallel: Split,
+};
 
-export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
+export function TeamEditor({
+  editor,
+  profiles = null,
+  roleSettings,
+  loopSettings,
+  teams = NO_TEAMS,
+  resolveTeam,
+  onOpenTeam,
+}: TeamEditorProps) {
   const t = useTranslations('TeamEditor');
   const reduced = useReducedMotion() ?? false;
   const draft = useStore(editor, (s) => s.draft);
@@ -55,7 +94,10 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
   const canRedo = useStore(editor, (s) => s.canRedo);
   const { definition } = draft;
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
-  const diagnostics = useMemo(() => compileDraft(draft).diagnostics, [draft]);
+  const diagnostics = useMemo(
+    () => compileDraft(draft, resolveTeam ? { resolveTeam } : {}).diagnostics,
+    [draft, resolveTeam],
+  );
 
   const [rawSelection, setSelection] = useState<TeamSelection>(NONE);
   // Undo can take a selected step away; the selection only names what still exists.
@@ -70,7 +112,8 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
     };
   }, [rawSelection, nodes, definition]);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [teamOpen, setTeamOpen] = useState(false);
+  // The sheet shows the selection unless the team's settings or the problem list is asked for.
+  const [view, setView] = useState<Exclude<SheetView, 'selection'> | null>(null);
   const [dragging, setDragging] = useState<StepKind | null>(null);
   const [menu, setMenu] = useState<{ open: boolean; at: Placement | null }>({
     open: false,
@@ -79,7 +122,7 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
 
   const select = useCallback((next: TeamSelection) => {
     setSelection(next);
-    if (next.nodes.length || next.edge) setTeamOpen(false);
+    if (next.nodes.length || next.edge) setView(null);
   }, []);
   const toggle = useCallback((id: string) => {
     setCollapsed((current) => {
@@ -162,6 +205,38 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
       onSelect: () => apply(result),
     });
   }
+  for (const pattern of PATTERNS) {
+    const result = applyPattern(draft, pattern, selection.nodes, at);
+    commands.push({
+      value: `pattern:${pattern}`,
+      label: t(`patterns.${pattern}`),
+      description: result.ok
+        ? selection.nodes.length
+          ? t(`patternDescriptions.${pattern}`)
+          : t('withNewAgent')
+        : t(`rejected.${result.reason}`),
+      icon: PATTERN_ICON[pattern],
+      group: t('groups.patterns'),
+      disabled: !result.ok,
+      keywords: [pattern],
+      onSelect: () => apply(result),
+    });
+  }
+  for (const team of teams) {
+    const result = placeStep(draft, 'team', at, { reference: team });
+    commands.push({
+      value: `reference:${team.corralId}`,
+      label: t('addReference', { name: team.name }),
+      description: result.ok
+        ? t('referenceDescription', { revision: team.definitionRevision })
+        : t(`rejected.${result.reason}`),
+      icon: GitMerge,
+      group: t('savedTeams'),
+      disabled: !result.ok,
+      keywords: [team.name],
+      onSelect: () => apply(result),
+    });
+  }
   if (selection.nodes.length) {
     for (const kind of ['loop', 'team'] as const) {
       const result = wrapIn(draft, selection.nodes, kind);
@@ -184,6 +259,22 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
         group: t('groups.structure'),
         onSelect: () => apply(setParent(draft, selection.nodes[0] as string, null)),
       });
+    if (selection.nodes.length === 1) {
+      const nodeId = selection.nodes[0] as string;
+      for (const box of definition.nodes) {
+        if (!isBox(box) || box.id === nodes.get(nodeId)?.parentId) continue;
+        const result = setParent(draft, nodeId, box.id);
+        if (!result.ok) continue;
+        commands.push({
+          value: `move:${box.id}`,
+          label: t('moveInto', { box: box.label }),
+          icon: Boxes,
+          group: t('groups.structure'),
+          keywords: [box.label],
+          onSelect: () => apply(result),
+        });
+      }
+    }
   }
   if (selection.nodes.length || selection.edge)
     commands.push({
@@ -256,7 +347,7 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
     }
   };
 
-  const sheetOpen = teamOpen || selection.nodes.length > 0 || selection.edge !== null;
+  const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
     <div className="grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]" onKeyDown={onKeyDown}>
@@ -272,11 +363,15 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
         onMove={(nodeId, parentId) => apply(setParent(draft, nodeId, parentId))}
         onAdd={() => openMenu(null)}
         onTeamSettings={() => {
-          setTeamOpen((open) => !open);
+          setView((current) => (current === 'team' ? null : 'team'));
+          setSelection(NONE);
+        }}
+        onProblems={() => {
+          setView((current) => (current === 'problems' ? null : 'problems'));
           setSelection(NONE);
         }}
         onCommands={() => openMenu(null)}
-        teamSettingsOpen={teamOpen}
+        view={view}
       />
       <div className="relative min-h-0">
         <TeamGraphCanvas
@@ -341,11 +436,15 @@ export function TeamEditor({ editor, profiles = null }: TeamEditorProps) {
                 editor={editor}
                 diagnostics={diagnostics}
                 selection={selection}
-                team={teamOpen}
+                view={view ?? 'selection'}
                 profiles={profiles}
+                roleSettings={roleSettings}
+                loopSettings={loopSettings}
+                teams={teams}
+                onOpenTeam={onOpenTeam}
                 onSelect={select}
                 onClose={() => {
-                  setTeamOpen(false);
+                  setView(null);
                   setSelection(NONE);
                 }}
               />

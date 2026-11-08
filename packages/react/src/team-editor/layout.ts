@@ -119,7 +119,9 @@ export function layoutTeam(
   const measureItem = (id: string): Measured => {
     const node = nodes.get(id) as CorralNode;
     const depth = depthOf(id);
-    if (isBox(node) && !collapsed.has(id)) {
+    // A reference team's steps live in the other team, so it is always a tile.
+    const reference = node.type === 'team' && node.source.kind === 'reference';
+    if (isBox(node) && !collapsed.has(id) && !reference) {
       const inner = measureContainer(id);
       const empty = inner.w === 0;
       const w = (empty ? GEOMETRY.emptyBox.w : inner.w) + GEOMETRY.padX * 2;

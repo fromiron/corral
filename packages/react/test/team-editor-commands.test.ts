@@ -2,6 +2,7 @@ import { compileDefinition } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import { type EditorDraft, emptyDraft } from '../src/editor/model.ts';
 import {
+  applyPattern,
   connectPorts,
   type EditResult,
   patchNode,
@@ -255,5 +256,117 @@ describe('team editor commands: boxes', () => {
     expect(refused(setParent(nested, 'agent_1', 'agent_3'))).toBe('notABox');
     const moved = ok(setParent(nested, 'agent_2', null));
     expect(node(moved.draft, 'agent_2')?.parentId).toBeUndefined();
+  });
+});
+
+describe('team editor commands: patterns on the selection', () => {
+  it('wraps the selection in a review loop: the verdict passes out or sends the work round again', () => {
+    const { draft, nodeId: loop } = ok(applyPattern(chain(2), 'reviewLoop', ['agent_1']));
+    const loopNode = node(draft, loop);
+    expect(loopNode?.type).toBe('loop');
+    expect(loopNode?.type === 'loop' ? loopNode.maxIterations : 0).toBe(3);
+    const inside = draft.definition.nodes.filter((n) => n.parentId === loop);
+    const reviewer = inside.find((n) => n.type === 'agent' && n.id !== 'agent_1');
+    const verdict = inside.find((n) => n.type === 'decision');
+    expect(reviewer).toBeDefined();
+    expect(verdict?.type === 'decision' ? verdict.mode : null).toBe('review');
+    expect(wiring(draft)).toEqual(
+      [
+        `${loop}.body>agent_1.in`,
+        `agent_1.out>${reviewer?.id}.in`,
+        `${reviewer?.id}.out>${verdict?.id}.in`,
+        `${verdict?.id}.pass>${loop}.exit`,
+        `${verdict?.id}.revise>${loop}.repeat`,
+        `${loop}.next>agent_2.in`,
+      ].sort(),
+    );
+    const role = draft.definition.roles.find(
+      (r) => reviewer?.type === 'agent' && r.id === reviewer.roleId,
+    );
+    expect(role?.outputContract).toBe('review');
+    // The work sees the last review when it goes round again.
+    const work = node(draft, 'agent_1');
+    expect(
+      work?.type === 'agent' &&
+        work.inputBindings.some(
+          (b) => b.kind === 'previous_iteration_output' && b.sourceNodeId === reviewer?.id,
+        ),
+    ).toBe(true);
+    expect(draft.definition.nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(
+      false,
+    );
+    const codes = compileDefinition(draft.definition).diagnostics.map((d) => d.code);
+    expect(codes).not.toContain('BOX_BOUNDARY');
+    expect(codes).not.toContain('LOOP_NO_REPEAT');
+    expect(codes).not.toContain('LOOP_NO_EXIT');
+  });
+
+  it('wraps the selection in a check loop: a failed check goes round again', () => {
+    const { draft, nodeId: loop } = ok(applyPattern(chain(2), 'checkLoop', ['agent_2']));
+    const check = draft.definition.nodes.find((n) => n.parentId === loop && n.type === 'decision');
+    expect(check?.type === 'decision' ? check.mode : null).toBe('check');
+    expect(wiring(draft)).toEqual(
+      [
+        `agent_1.out>${loop}.enter`,
+        `${loop}.body>agent_2.in`,
+        `agent_2.out>${check?.id}.in`,
+        `${check?.id}.pass>${loop}.exit`,
+        `${check?.id}.fail>${loop}.repeat`,
+      ].sort(),
+    );
+  });
+
+  it('adds a new agent for the pattern when nothing is selected', () => {
+    const { draft, nodeId: loop } = ok(
+      applyPattern(chain(1), 'reviewLoop', [], { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const members = draft.definition.nodes.filter((n) => n.parentId === loop);
+    expect(members.filter((n) => n.type === 'agent')).toHaveLength(2);
+    expect(wiring(draft)).toContain(`agent_1.out>${loop}.enter`);
+  });
+
+  it('splits an agent in parallel: both start from the same step and a Join merges them', () => {
+    const { draft, nodeId: join } = ok(applyPattern(chain(3), 'parallel', ['agent_2']));
+    const copy = draft.definition.nodes.find(
+      (n) => n.type === 'agent' && !['agent_1', 'agent_2', 'agent_3'].includes(n.id),
+    );
+    expect(node(draft, join)?.type).toBe('join');
+    expect(wiring(draft)).toEqual(
+      [
+        'agent_1.out>agent_2.in',
+        `agent_1.out>${copy?.id}.in`,
+        `agent_2.out>${join}.in`,
+        `${copy?.id}.out>${join}.in`,
+        `${join}.out>agent_3.in`,
+      ].sort(),
+    );
+    const codes = compileDefinition(draft.definition).diagnostics.map((d) => d.code);
+    expect(codes).not.toContain('PARALLEL_MERGE_NEEDS_JOIN');
+  });
+
+  it('refuses to split a step nothing leads to, or more than one step', () => {
+    expect(refused(applyPattern(chain(2), 'parallel', ['agent_1']))).toBe('noPredecessor');
+    expect(refused(applyPattern(chain(3), 'parallel', ['agent_2', 'agent_3']))).toBe(
+      'oneAgentOnly',
+    );
+  });
+});
+
+describe('team editor commands: reference teams', () => {
+  it('adds another saved team as a reference at its saved revision', () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(1), 'team', { kind: 'after', nodeId: 'agent_1' }, {
+        reference: { corralId: 'other_team', definitionRevision: 4, name: 'Other team' },
+      }),
+    );
+    const team = node(draft, nodeId);
+    expect(team?.type === 'team' ? team.source : null).toEqual({
+      kind: 'reference',
+      corralId: 'other_team',
+      definitionRevision: 4,
+    });
+    expect(team?.label).toBe('Other team');
+    expect(wiring(draft)).toEqual([`agent_1.out>${nodeId}.enter`]);
+    expect(refused(placeStep(draft, 'agent', { kind: 'into', boxId: nodeId }))).toBe('notABox');
   });
 });

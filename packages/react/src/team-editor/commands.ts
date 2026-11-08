@@ -11,6 +11,7 @@ import {
 } from '@corral/core';
 import {
   addNode,
+  duplicateNode,
   type EditorDraft,
   nextId,
   removeNode,
@@ -53,11 +54,20 @@ export type EditRejection =
   | 'repeatNeedsDecision'
   | 'noNextStep'
   | 'mixedBoxes'
-  | 'notABox';
+  | 'notABox'
+  | 'noPredecessor'
+  | 'oneAgentOnly';
 
 export type EditResult =
   | { ok: true; draft: EditorDraft; nodeId?: string }
   | { ok: false; reason: EditRejection };
+
+/** Another saved team, added as a Team box that runs that team's saved revision. */
+export interface TeamReference {
+  corralId: string;
+  definitionRevision: number;
+  name: string;
+}
 
 export interface PortRequest {
   source: string;
@@ -136,6 +146,7 @@ function createStep(
   draft: EditorDraft,
   kind: StepKind,
   parentId: string | null,
+  reference?: TeamReference,
 ): { draft: EditorDraft; nodeId: string } {
   const placed = (
     created: { draft: EditorDraft; nodeId: string },
@@ -208,12 +219,20 @@ function createStep(
         inputBindings: [],
       }));
     case 'team':
-      return fresh('team', (id, index) => ({
-        id,
-        type: 'team',
-        label: numbered('Team', index),
-        source: { kind: 'inline' },
-      }));
+      return fresh('team', (id, index) =>
+        reference
+          ? {
+              id,
+              type: 'team',
+              label: reference.name,
+              source: {
+                kind: 'reference',
+                corralId: reference.corralId,
+                definitionRevision: reference.definitionRevision,
+              },
+            }
+          : { id, type: 'team', label: numbered('Team', index), source: { kind: 'inline' } },
+      );
     case 'join':
       return fresh('join', (id, index) => ({
         id,
@@ -255,12 +274,17 @@ function withEdges(
 }
 
 /** Adds a step: on a connection it goes in between, after a node it takes over its next steps. */
-export function placeStep(draft: EditorDraft, kind: StepKind, at: Placement): EditResult {
+export function placeStep(
+  draft: EditorDraft,
+  kind: StepKind,
+  at: Placement,
+  options: { reference?: TeamReference } = {},
+): EditResult {
   const { definition } = draft;
   const nodes = nodesOf(definition);
   switch (at.kind) {
     case 'empty': {
-      const created = createStep(draft, kind, null);
+      const created = createStep(draft, kind, null, options.reference);
       return { ok: true, ...created };
     }
     case 'edge': {
@@ -269,7 +293,7 @@ export function placeStep(draft: EditorDraft, kind: StepKind, at: Placement): Ed
       const decision = ['review', 'approval', 'rule', 'check', 'router'].includes(kind);
       if (edge.targetPort === 'repeat' && !decision)
         return { ok: false, reason: 'repeatNeedsDecision' };
-      const created = createStep(draft, kind, sourceSide(nodes, edge));
+      const created = createStep(draft, kind, sourceSide(nodes, edge), options.reference);
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const into = primaryIn(step) as TargetPort;
       const out = primaryOut(step);
@@ -302,7 +326,7 @@ export function placeStep(draft: EditorDraft, kind: StepKind, at: Placement): Ed
       const port = primaryOut(before);
       if (!port || (before.type === 'agent' && before.invocation === 'callable'))
         return { ok: false, reason: 'noNextStep' };
-      const created = createStep(draft, kind, before.parentId ?? null);
+      const created = createStep(draft, kind, before.parentId ?? null, options.reference);
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const into = primaryIn(step) as TargetPort;
       const out = primaryOut(step);
@@ -345,8 +369,8 @@ export function placeStep(draft: EditorDraft, kind: StepKind, at: Placement): Ed
           nodes.get(e.source)?.parentId === box.id,
       );
       if (body.length > 0 && lastStep)
-        return placeStep(draft, kind, { kind: 'edge', edgeId: lastStep.id });
-      const created = createStep(draft, kind, box.id);
+        return placeStep(draft, kind, { kind: 'edge', edgeId: lastStep.id }, options);
+      const created = createStep(draft, kind, box.id, options.reference);
       if (body.length > 0) return { ok: true, ...created };
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const out = primaryOut(step);
@@ -561,6 +585,180 @@ function unwrap(draft: EditorDraft, boxId: string): EditorDraft {
     ],
     [],
   );
+}
+
+// ── patterns ─────────────────────────────────────────────────────────────────
+
+/** Patterns applied to the selection. None of them adds a step that waits for a person. */
+export type Pattern = 'reviewLoop' | 'checkLoop' | 'parallel';
+
+const REVIEWER_PROMPT =
+  'Review the work against the brief and the criteria. Pass it when it meets them; otherwise say exactly what to revise.';
+
+/**
+ * Applies a pattern to the selected steps. With nothing selected, a new agent is added at `at`
+ * first and the pattern applies to it.
+ */
+export function applyPattern(
+  draft: EditorDraft,
+  pattern: Pattern,
+  ids: readonly string[],
+  at: Placement = { kind: 'empty' },
+): EditResult {
+  let next = draft;
+  let targets = [...ids];
+  if (targets.length === 0) {
+    const created = placeStep(draft, 'agent', at);
+    if (!created.ok) return created;
+    next = created.draft;
+    targets = [created.nodeId as string];
+  }
+  return pattern === 'parallel' ? splitParallel(next, targets) : loopAround(next, targets, pattern);
+}
+
+/** Wraps the steps in a Loop that ends in a verdict: pass leaves, revise or fail goes round. */
+function loopAround(
+  draft: EditorDraft,
+  ids: string[],
+  pattern: 'reviewLoop' | 'checkLoop',
+): EditResult {
+  const wrapped = wrapIn(draft, ids, 'loop');
+  if (!wrapped.ok) return wrapped;
+  const loop = wrapped.nodeId as string;
+  let next = wrapped.draft;
+  const nodes = nodesOf(next.definition);
+  const edges = next.definition.controlEdges;
+  // The last steps: what left through the exit, else the selected steps nothing follows.
+  const exits = edges.filter(
+    (e) => e.target === loop && e.targetPort === 'exit' && nodes.get(e.source)?.parentId === loop,
+  );
+  let lasts = exits.map((e) => ({ source: e.source, sourcePort: e.sourcePort }));
+  if (!lasts.length)
+    lasts = ids.flatMap((id) => {
+      const step = nodes.get(id);
+      const port = step ? primaryOut(step) : null;
+      const followed = edges.some((e) => e.source === id && e.sourcePort === port);
+      return port && !followed ? [{ source: id, sourcePort: port }] : [];
+    });
+  if (!lasts.length) return { ok: false, reason: 'noNextStep' };
+
+  let reviewer: string | null = null;
+  if (pattern === 'reviewLoop') {
+    const created = createStep(next, 'agent', loop);
+    reviewer = created.nodeId;
+    const roleId = (nodesOf(created.draft.definition).get(reviewer) as { roleId?: string }).roleId;
+    next = withDefinition(created.draft, {
+      ...created.draft.definition,
+      nodes: created.draft.definition.nodes.map((n) =>
+        n.id === reviewer ? { ...n, label: 'Reviewer' } : n,
+      ),
+      roles: created.draft.definition.roles.map((role) =>
+        role.id === roleId
+          ? {
+              ...role,
+              name: 'Reviewer',
+              prompt: REVIEWER_PROMPT,
+              outputContract: 'review',
+              allowedCollaborationTools: ['read_artifact', 'submit_result'],
+            }
+          : role,
+      ),
+    });
+  }
+  const verdictStep = createStep(next, pattern === 'reviewLoop' ? 'review' : 'check', loop);
+  next = verdictStep.draft;
+  const verdict = verdictStep.nodeId;
+  const first = reviewer ?? verdict;
+  const gone = new Set(exits.map((e) => e.id));
+  next = withEdges(
+    next,
+    (e) => gone.has(e.id),
+    [
+      ...lasts.map((l) => ({ ...l, target: first, targetPort: 'in' as const })),
+      ...(reviewer
+        ? [{ source: reviewer, sourcePort: 'out', target: verdict, targetPort: 'in' as const }]
+        : []),
+      { source: verdict, sourcePort: 'pass', target: loop, targetPort: 'exit' as const },
+      {
+        source: verdict,
+        sourcePort: pattern === 'reviewLoop' ? 'revise' : 'fail',
+        target: loop,
+        targetPort: 'repeat' as const,
+      },
+    ],
+    [first, verdict],
+  );
+  if (reviewer) {
+    // The work sees the last review when it goes round again.
+    const firstSteps = new Set(
+      next.definition.controlEdges
+        .filter((e) => e.source === loop && e.sourcePort === 'body')
+        .map((e) => e.target),
+    );
+    next = withDefinition(next, {
+      ...next.definition,
+      nodes: next.definition.nodes.map((n) =>
+        firstSteps.has(n.id) &&
+        n.type === 'agent' &&
+        n.invocation === 'scheduled' &&
+        !n.inputBindings.some((b) => b.name === 'review')
+          ? {
+              ...n,
+              inputBindings: [
+                ...n.inputBindings,
+                {
+                  kind: 'previous_iteration_output',
+                  name: 'review',
+                  sourceNodeId: reviewer as string,
+                  optional: true,
+                },
+              ],
+            }
+          : n,
+      ),
+    });
+  }
+  return { ok: true, draft: next, nodeId: loop };
+}
+
+/** Runs a copy of the agent beside it from the same step, and joins the two before what followed. */
+function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
+  const nodes = nodesOf(draft.definition);
+  const step = ids.length === 1 ? nodes.get(ids[0] as string) : undefined;
+  if (step?.type !== 'agent' || step.invocation !== 'scheduled')
+    return { ok: false, reason: 'oneAgentOnly' };
+  const edges = draft.definition.controlEdges;
+  const incoming = edges.filter((e) => e.target === step.id && e.targetPort === 'in');
+  if (!incoming.length) return { ok: false, reason: 'noPredecessor' };
+  const outgoing = edges.filter((e) => e.source === step.id && e.sourcePort === 'out');
+  const copy = duplicateNode(draft, step.id);
+  const join = createStep(copy.draft, 'join', step.parentId ?? null);
+  const gone = new Set(outgoing.map((e) => e.id));
+  return {
+    ok: true,
+    nodeId: join.nodeId,
+    draft: withEdges(
+      join.draft,
+      (e) => gone.has(e.id),
+      [
+        ...incoming.map((e) => ({
+          source: e.source,
+          sourcePort: e.sourcePort,
+          target: copy.nodeId,
+          targetPort: 'in' as const,
+        })),
+        { source: step.id, sourcePort: 'out', target: join.nodeId, targetPort: 'in' as const },
+        { source: copy.nodeId, sourcePort: 'out', target: join.nodeId, targetPort: 'in' as const },
+        ...outgoing.map((e) => ({
+          source: join.nodeId,
+          sourcePort: 'out',
+          target: e.target,
+          targetPort: e.targetPort,
+        })),
+      ],
+      [],
+    ),
+  };
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────

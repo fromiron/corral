@@ -3,37 +3,58 @@ import { type Diagnostic, outputPortsOf } from '@corral/core';
 import { type ReactNode, useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import type { ProfileOption } from '../components/NodeInspector.tsx';
 import { Button, Checkbox, Input, Select, Textarea, useSize } from '../design-kit/index.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { cn } from '../design-kit/lib/utils.ts';
+import type { EditorDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
-import { CircleAlert, Plus, Trash2, TriangleAlert, X } from '../ui/icons.ts';
+import { CircleAlert, ExternalLink, Plus, Trash2, TriangleAlert, X } from '../ui/icons.ts';
 import {
+  applyPattern,
   checkPorts,
   connectPorts,
+  type EditResult,
+  type Pattern,
   patchNode,
   patchTeam,
   primaryIn,
   removeItems,
+  type TeamReference,
   wrapIn,
 } from './commands.ts';
-import { KIND_ICON, kindOf, roleOf } from './kinds.ts';
+import { KIND_ICON, kindOf } from './kinds.ts';
+import {
+  type LoopSettings,
+  NodeSettings,
+  type ProfileOption,
+  type RoleSettings,
+} from './NodeSettings.tsx';
 import type { TeamSelection } from './TeamGraphCanvas.tsx';
 
 // The floating settings sheet: what the selection is, its settings, where it leads and what is
-// wrong with it. Every field writes through the editor store, so undo covers it.
+// wrong with it; or the team's own settings; or every problem in the team. Every field writes
+// through the editor store, so undo covers it.
+
+export type SheetView = 'selection' | 'team' | 'problems';
 
 export interface InspectorSheetProps {
   editor: EditorStore;
   diagnostics: readonly Diagnostic[];
   selection: TeamSelection;
-  /** Shows the team's own settings instead of the selection's. */
-  team: boolean;
+  view: SheetView;
   profiles: ProfileOption[] | null;
+  roleSettings?: RoleSettings | undefined;
+  loopSettings?: LoopSettings | undefined;
+  /** Other saved teams at their latest revision, for reference teams. */
+  teams: readonly TeamReference[];
+  onOpenTeam?: ((corralId: string) => void) | undefined;
   onSelect: (selection: TeamSelection) => void;
   onClose: () => void;
 }
+
+export const PATTERNS: readonly Pattern[] = ['reviewLoop', 'checkLoop', 'parallel'];
+
+type FocusBatch = { onFocus: () => void; onBlur: () => void };
 
 function Field({
   label,
@@ -76,12 +97,38 @@ const lines = (text: string) =>
     .map((line) => line.trim())
     .filter(Boolean);
 
+const number = (value: string) => {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+function IssueRow({ diagnostic, text }: { diagnostic: Diagnostic; text: string }) {
+  const Icon = diagnostic.severity === 'error' ? CircleAlert : TriangleAlert;
+  return (
+    <>
+      <Icon
+        size={14}
+        aria-hidden
+        className={cn(
+          'mt-0.5 shrink-0',
+          diagnostic.severity === 'error' ? 'text-destructive' : 'text-warning',
+        )}
+      />
+      <span className="text-foreground">{text}</span>
+    </>
+  );
+}
+
 export function InspectorSheet({
   editor,
   diagnostics,
   selection,
-  team,
+  view,
   profiles,
+  roleSettings,
+  loopSettings,
+  teams,
+  onOpenTeam,
   onSelect,
   onClose,
 }: InspectorSheetProps) {
@@ -90,11 +137,10 @@ export function InspectorSheet({
   const portName = useTranslations('Canvas.ports');
   const codeText = useTranslations('Validation.codes');
   const size = useSize();
-  const id = useId();
   const draft = useStore(editor, (s) => s.draft);
   const { definition } = draft;
   const apply = editor.getState().applyDraft;
-  const batch = {
+  const batch: FocusBatch = {
     onFocus: () => editor.getState().beginBatch(),
     onBlur: () => editor.getState().endBatch(),
   };
@@ -102,42 +148,120 @@ export function InspectorSheet({
   const name = (nodeId: string) => nodes.get(nodeId)?.label ?? nodeId;
   const issueText = (d: Diagnostic) =>
     codeText.has(d.code) ? codeText(d.code, { message: d.message }) : d.message;
-
+  const heading = (text: string) => (
+    <h3
+      className={cn(size.type.caption, 'text-foreground')}
+      style={{ fontVariationSettings: fontWeights.semibold }}
+    >
+      {text}
+    </h3>
+  );
   const issues = (ids: string[]) => {
     const list = diagnostics.filter((d) => ids.includes(d.nodeId ?? d.edgeId ?? d.linkId ?? ''));
     if (!list.length) return null;
     return (
       <section className="grid gap-1.5" aria-label={t('issues')}>
-        {list.map((d, i) => {
-          const Icon = d.severity === 'error' ? CircleAlert : TriangleAlert;
-          return (
-            <p
-              // biome-ignore lint/suspicious/noArrayIndexKey: diagnostics have no id of their own.
-              key={i}
-              className={cn(
-                size.type.caption,
-                'flex gap-1.5',
-                d.severity === 'error' ? 'text-destructive' : 'text-warning',
-              )}
-            >
-              <Icon size={14} aria-hidden className="mt-px shrink-0" />
-              <span className="text-foreground">{issueText(d)}</span>
-            </p>
-          );
-        })}
+        {list.map((d, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: diagnostics have no id of their own.
+          <p key={i} className={cn(size.type.caption, 'flex gap-1.5')}>
+            <IssueRow diagnostic={d} text={issueText(d)} />
+          </p>
+        ))}
       </section>
     );
   };
-
-  const number = (value: string) => {
-    const n = Number.parseInt(value, 10);
-    return Number.isFinite(n) ? n : undefined;
+  /** Applies an edit and selects what it made. */
+  const run = (result: EditResult) => {
+    if (!result.ok) return;
+    apply(result.draft);
+    onSelect(result.nodeId ? { nodes: [result.nodeId], edge: null } : { nodes: [], edge: null });
+  };
+  const structureActions = (ids: string[]) => {
+    const boxes =
+      ids.length === 1 && ['loop', 'team'].includes(nodes.get(ids[0] as string)?.type ?? '');
+    const actions = boxes
+      ? []
+      : [
+          ...(['loop', 'team'] as const).map((kind) => ({
+            key: kind,
+            label: t(kind === 'loop' ? 'wrapLoop' : 'wrapTeam'),
+            result: wrapIn(draft, ids, kind),
+          })),
+          ...PATTERNS.map((pattern) => ({
+            key: pattern,
+            label: t(`patterns.${pattern}`),
+            result: applyPattern(draft, pattern, ids),
+          })),
+        ];
+    return (
+      <div className="flex flex-wrap gap-2">
+        {actions
+          .filter((action) => action.result.ok)
+          .map((action) => (
+            <Button
+              key={action.key}
+              variant="secondary"
+              size="compact"
+              onClick={() => run(action.result)}
+            >
+              {action.label}
+            </Button>
+          ))}
+        <Button
+          variant="secondary"
+          size="compact"
+          onClick={() => {
+            apply(removeItems(draft, ids));
+            onSelect({ nodes: [], edge: null });
+          }}
+        >
+          <Trash2 /> {ids.length > 1 ? t('deleteCount', { count: ids.length }) : t('delete')}
+        </Button>
+      </div>
+    );
   };
 
   let title = '';
   let body: ReactNode = null;
+  const single =
+    view === 'selection' && selection.nodes.length === 1
+      ? nodes.get(selection.nodes[0] as string)
+      : undefined;
 
-  if (team) {
+  if (view === 'problems') {
+    title = t('problemsList');
+    body = diagnostics.length ? (
+      <ul className="grid gap-1">
+        {diagnostics.map((d, i) => {
+          const edge = d.edgeId ?? d.linkId;
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: diagnostics have no id of their own.
+            <li key={i}>
+              <button
+                type="button"
+                disabled={!d.nodeId && !edge}
+                className={cn(
+                  size.type.caption,
+                  'flex w-full gap-1.5 rounded-md px-1.5 py-1 text-left enabled:hover:bg-hover',
+                )}
+                onClick={() => {
+                  if (d.nodeId) onSelect({ nodes: [d.nodeId], edge: null });
+                  else if (edge) onSelect({ nodes: [], edge });
+                }}
+              >
+                <IssueRow diagnostic={d} text={issueText(d)} />
+                {d.nodeId ? (
+                  <span className="ml-auto shrink-0 text-muted-foreground">{name(d.nodeId)}</span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    ) : (
+      <p className={cn(size.type.body, 'text-muted-foreground')}>{t('noProblems')}</p>
+    );
+  } else if (view === 'team') {
     title = t('teamSettings');
     const limits = definition.limits;
     const limitField = (key: keyof typeof limits, label: string, scale = 1) => (
@@ -178,12 +302,7 @@ export function InspectorSheet({
           />
         </Field>
         <section className="grid gap-3">
-          <h3
-            className={cn(size.type.caption, 'text-foreground')}
-            style={{ fontVariationSettings: fontWeights.semibold }}
-          >
-            {f('limits')}
-          </h3>
+          {heading(f('limits'))}
           <div className="grid grid-cols-2 gap-3">
             {limitField('maxModelCalls', f('maxModelCalls'))}
             {limitField('maxOutputTokens', f('maxOutputTokens'))}
@@ -234,8 +353,6 @@ export function InspectorSheet({
     );
   } else if (selection.nodes.length > 1) {
     title = t('selectedCount', { count: selection.nodes.length });
-    const wrap = (kind: 'loop' | 'team') => wrapIn(draft, selection.nodes, kind);
-    const loop = wrap('loop');
     body = (
       <>
         <ul className={cn(size.type.body, 'grid gap-1')}>
@@ -243,111 +360,35 @@ export function InspectorSheet({
             <li key={nodeId}>{name(nodeId)}</li>
           ))}
         </ul>
-        {loop.ok ? null : (
-          <p className={cn(size.type.caption, 'text-muted-foreground')}>
-            {t(`rejected.${loop.reason}`)}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          {(['loop', 'team'] as const).map((kind) => {
-            const result = kind === 'loop' ? loop : wrap('team');
-            return (
-              <Button
-                key={kind}
-                variant="secondary"
-                size="compact"
-                disabled={!result.ok}
-                onClick={() => {
-                  if (!result.ok) return;
-                  apply(result.draft);
-                  onSelect({ nodes: [result.nodeId as string], edge: null });
-                }}
-              >
-                {t(kind === 'loop' ? 'wrapLoop' : 'wrapTeam')}
-              </Button>
-            );
-          })}
-          <Button
-            variant="secondary"
-            size="compact"
-            onClick={() => {
-              apply(removeItems(draft, selection.nodes));
-              onSelect({ nodes: [], edge: null });
-            }}
-          >
-            <Trash2 /> {t('deleteCount', { count: selection.nodes.length })}
-          </Button>
-        </div>
+        {structureActions(selection.nodes)}
       </>
     );
-  } else if (selection.nodes.length === 1) {
-    const node = nodes.get(selection.nodes[0] as string);
-    if (node) {
-      title = t(`kinds.${kindOf(node)}`);
-      body = (
-        <>
-          <NodeFields
-            node={node}
-            label={(key) => f(key)}
-            profiles={profiles}
-            batch={batch}
-            idPrefix={id}
-            editor={editor}
-          />
-          {issues([node.id])}
-          <Connections editor={editor} node={node} onSelect={onSelect} />
-          <div className="flex flex-wrap gap-2">
-            {node.type !== 'loop' && node.type !== 'team' ? null : (
-              <Button
-                variant="secondary"
-                size="compact"
-                onClick={() => {
-                  apply(removeItems(draft, [node.id]));
-                  onSelect({ nodes: [], edge: null });
-                }}
-              >
-                <Trash2 /> {t('delete')}
-              </Button>
-            )}
-            {node.type === 'loop' || node.type === 'team' ? null : (
-              <>
-                {(['loop', 'team'] as const).map((kind) => {
-                  const result = wrapIn(draft, [node.id], kind);
-                  return result.ok ? (
-                    <Button
-                      key={kind}
-                      variant="secondary"
-                      size="compact"
-                      onClick={() => {
-                        apply(result.draft);
-                        onSelect({ nodes: [result.nodeId as string], edge: null });
-                      }}
-                    >
-                      {t(kind === 'loop' ? 'wrapLoop' : 'wrapTeam')}
-                    </Button>
-                  ) : null;
-                })}
-                <Button
-                  variant="secondary"
-                  size="compact"
-                  onClick={() => {
-                    apply(removeItems(draft, [node.id]));
-                    onSelect({ nodes: [], edge: null });
-                  }}
-                >
-                  <Trash2 /> {t('delete')}
-                </Button>
-              </>
-            )}
-          </div>
-        </>
-      );
-    }
+  } else if (single) {
+    title = t(`kinds.${kindOf(single)}`);
+    body = (
+      <>
+        <NodeSettings
+          editor={editor}
+          node={single}
+          profiles={profiles}
+          roleSettings={roleSettings}
+          loopSettings={loopSettings}
+        />
+        <MoreFields
+          editor={editor}
+          node={single}
+          teams={teams}
+          onOpenTeam={onOpenTeam}
+          batch={batch}
+        />
+        {issues([single.id])}
+        <Connections editor={editor} node={single} onSelect={onSelect} />
+        {structureActions([single.id])}
+      </>
+    );
   }
 
-  const selectedNode =
-    !team && selection.nodes.length === 1 ? nodes.get(selection.nodes[0] as string) : undefined;
-  const Icon = selectedNode ? KIND_ICON[kindOf(selectedNode)] : null;
+  const Icon = single ? KIND_ICON[kindOf(single)] : null;
   return (
     <aside
       aria-label={t('inspector')}
@@ -370,40 +411,28 @@ export function InspectorSheet({
   );
 }
 
-function NodeFields({
-  node,
-  label,
-  profiles,
-  batch,
-  idPrefix,
+/** The settings the team graph model adds: retries, notes, budgets, checks, routes and teams. */
+function MoreFields({
   editor,
+  node,
+  teams,
+  onOpenTeam,
+  batch,
 }: {
-  node: CorralNode;
-  label: (key: string) => string;
-  profiles: ProfileOption[] | null;
-  batch: { onFocus: () => void; onBlur: () => void };
-  idPrefix: string;
   editor: EditorStore;
+  node: CorralNode;
+  teams: readonly TeamReference[];
+  onOpenTeam?: ((corralId: string) => void) | undefined;
+  batch: FocusBatch;
 }) {
   const t = useTranslations('TeamEditor');
+  const f = useTranslations('TeamEditor.fields');
+  const id = useId();
   const draft = useStore(editor, (s) => s.draft);
-  const { updateNode, applyDraft: apply } = editor.getState();
+  const apply = editor.getState().applyDraft;
   const patch = (change: Record<string, unknown>) => apply(patchNode(draft, node.id, change));
-  const number = (value: string) => {
-    const n = Number.parseInt(value, 10);
-    return Number.isFinite(n) ? n : undefined;
-  };
-  const name = (
-    <Field label={label('label')}>
-      <Input
-        value={node.label}
-        onChange={(e) => updateNode(node.id, { label: e.target.value })}
-        {...batch}
-      />
-    </Field>
-  );
   const note = (
-    <Field label={label('note')}>
+    <Field label={f('note')}>
       <Textarea
         size="sm"
         value={node.note ?? ''}
@@ -413,60 +442,11 @@ function NodeFields({
     </Field>
   );
   switch (node.type) {
-    case 'agent': {
-      const role = roleOf(draft.definition, node);
+    case 'agent':
       return (
         <>
-          {name}
-          {role ? (
-            profiles?.length ? (
-              <Field select label={label('model')}>
-                <Select
-                  label={label('model')}
-                  id={`${idPrefix}-model`}
-                  value={role.modelProfile}
-                  onValueChange={(modelProfile) => updateNode(node.id, { modelProfile })}
-                  options={[
-                    ...(profiles.some((p) => p.profileId === role.modelProfile)
-                      ? []
-                      : [{ value: role.modelProfile, label: role.modelProfile }]),
-                    ...profiles.map((p) => ({ value: p.profileId, label: p.label })),
-                  ]}
-                />
-              </Field>
-            ) : (
-              <Field label={label('model')}>
-                <Input
-                  value={role.modelProfile}
-                  onChange={(e) => updateNode(node.id, { modelProfile: e.target.value })}
-                  {...batch}
-                />
-              </Field>
-            )
-          ) : null}
-          <Field select label={label('invocation')}>
-            <Select
-              label={label('invocation')}
-              id={`${idPrefix}-invocation`}
-              value={node.invocation}
-              onValueChange={(invocation) => updateNode(node.id, { invocation })}
-              options={[
-                { value: 'scheduled', label: label('scheduled') },
-                { value: 'callable', label: label('callable') },
-              ]}
-            />
-          </Field>
-          {role ? (
-            <Field label={label('prompt')}>
-              <Textarea
-                value={role.prompt}
-                onChange={(e) => updateNode(node.id, { prompt: e.target.value })}
-                {...batch}
-              />
-            </Field>
-          ) : null}
           {node.invocation === 'scheduled' ? (
-            <Field label={label('retry')}>
+            <Field label={f('retry')}>
               <Input
                 type="number"
                 min={0}
@@ -482,27 +462,11 @@ function NodeFields({
           {note}
         </>
       );
-    }
     case 'decision':
       return (
         <>
-          {name}
-          {node.mode === 'review' || node.mode === 'approval' || node.mode === 'rule' ? (
-            <Field select label={t('kinds.rule')}>
-              <Select
-                label={t('kinds.rule')}
-                id={`${idPrefix}-mode`}
-                value={node.mode}
-                onValueChange={(mode) => updateNode(node.id, { mode })}
-                options={(['review', 'approval', 'rule'] as const).map((mode) => ({
-                  value: mode,
-                  label: t(`kinds.${mode}`),
-                }))}
-              />
-            </Field>
-          ) : null}
           {node.mode === 'check' ? (
-            <Field label={label('checks')} hint={label('checksHint')}>
+            <Field label={f('checks')} hint={f('checksHint')}>
               <Textarea
                 size="sm"
                 value={node.checkIds.join('\n')}
@@ -516,11 +480,11 @@ function NodeFields({
           ) : null}
           {node.mode === 'router' ? (
             <fieldset className="grid gap-2">
-              <legend className="mb-1 text-caption text-muted-foreground">{label('routes')}</legend>
+              <legend className="mb-1 text-caption text-muted-foreground">{f('routes')}</legend>
               {node.routes.map((route, index) => (
                 <span key={route.id} className="flex items-center gap-1.5">
                   <Input
-                    aria-label={label('routeLabel')}
+                    aria-label={f('routeLabel')}
                     value={route.label}
                     onChange={(e) =>
                       patch({
@@ -534,11 +498,12 @@ function NodeFields({
                   <Button
                     variant="ghost"
                     size="icon-compact"
-                    aria-label={label('removeRoute').replace('{route}', route.label)}
+                    aria-label={f('removeRoute', { route: route.label })}
                     disabled={node.routes.length <= 1}
                     onClick={() => {
-                      const routes = node.routes.filter((r) => r.id !== route.id);
-                      const next = patchNode(draft, node.id, { routes });
+                      const next = patchNode(draft, node.id, {
+                        routes: node.routes.filter((r) => r.id !== route.id),
+                      });
                       apply(
                         removeItems(
                           next,
@@ -565,7 +530,7 @@ function NodeFields({
                   patch({ routes: [...node.routes, { id: `route_${n}`, label: `Route ${n}` }] });
                 }}
               >
-                <Plus /> {label('addRoute')}
+                <Plus /> {f('addRoute')}
               </Button>
             </fieldset>
           ) : null}
@@ -575,36 +540,22 @@ function NodeFields({
     case 'loop':
       return (
         <>
-          {name}
-          <Field label={label('maxIterations')}>
-            <Input
-              type="number"
-              min={1}
-              value={String(node.maxIterations)}
-              onChange={(e) => {
-                const value = number(e.target.value);
-                if (value && value >= 1) updateNode(node.id, { maxIterations: value });
-              }}
-              {...batch}
-            />
-          </Field>
           <fieldset className="grid grid-cols-3 gap-2">
-            <legend className="mb-1 text-caption text-muted-foreground">{label('budget')}</legend>
+            <legend className="mb-1 text-caption text-muted-foreground">{f('budget')}</legend>
             {(
               [
-                ['maxModelCalls', 1],
-                ['maxOutputTokens', 1],
-                ['maxWallSeconds', 1000],
+                ['maxModelCalls', 'maxModelCalls', 1],
+                ['maxOutputTokens', 'maxOutputTokens', 1],
+                ['maxWallSeconds', 'maxWallMs', 1000],
               ] as const
-            ).map(([key, scale]) => {
-              const field = key === 'maxWallSeconds' ? 'maxWallMs' : key;
+            ).map(([key, field, scale]) => {
               const value = node.budget?.[field];
               return (
-                <Field key={key} label={label(key)}>
+                <Field key={key} label={f(key)}>
                   <Input
                     type="number"
                     min={1}
-                    placeholder={label('unset')}
+                    placeholder={f('unset')}
                     value={value === undefined ? '' : String(Math.round(value / scale))}
                     onChange={(e) => {
                       const n = number(e.target.value);
@@ -620,40 +571,68 @@ function NodeFields({
             })}
           </fieldset>
           <Checkbox
-            label={label('stallDetection')}
+            label={f('stallDetection')}
             checked={node.stallDetection ?? false}
             onToggle={() => patch({ stallDetection: node.stallDetection ? undefined : true })}
           />
           {note}
         </>
       );
-    case 'team':
+    case 'team': {
+      const source = node.source;
+      const latest =
+        source.kind === 'reference'
+          ? teams.find((team) => team.corralId === source.corralId)
+          : undefined;
       return (
         <>
-          {name}
-          <Field label={label('source')}>
+          <Field label={f('source')}>
             <span className="text-body text-foreground">
-              {node.source.kind === 'inline'
+              {source.kind === 'inline'
                 ? t('inline')
-                : t('reference', { revision: node.source.definitionRevision })}
+                : t('reference', { revision: source.definitionRevision })}
             </span>
           </Field>
+          {source.kind === 'reference' ? (
+            <div className="flex flex-wrap gap-2">
+              {onOpenTeam ? (
+                <Button
+                  variant="secondary"
+                  size="compact"
+                  onClick={() => onOpenTeam(source.corralId)}
+                >
+                  <ExternalLink /> {t('openTeam')}
+                </Button>
+              ) : null}
+              {latest && latest.definitionRevision > source.definitionRevision ? (
+                <Button
+                  variant="secondary"
+                  size="compact"
+                  onClick={() =>
+                    patch({ source: { ...source, definitionRevision: latest.definitionRevision } })
+                  }
+                >
+                  {t('useRevision', { revision: latest.definitionRevision })}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {note}
         </>
       );
+    }
     case 'join':
       return (
         <>
-          {name}
-          <Field select label={label('policy')}>
+          <Field select label={f('policy')}>
             <Select
-              label={label('policy')}
-              id={`${idPrefix}-policy`}
+              label={f('policy')}
+              id={`${id}-policy`}
               value={node.policy}
               onValueChange={(policy) => patch({ policy })}
               options={[
-                { value: 'all', label: label('policyAll') },
-                { value: 'any', label: label('policyAny') },
+                { value: 'all', label: f('policyAll') },
+                { value: 'any', label: f('policyAny') },
               ]}
             />
           </Field>
@@ -661,17 +640,7 @@ function NodeFields({
         </>
       );
     case 'output':
-      return (
-        <>
-          {name}
-          <Checkbox
-            label={label('requireApproval')}
-            checked={node.requireApproval}
-            onToggle={() => updateNode(node.id, { requireApproval: !node.requireApproval })}
-          />
-          {note}
-        </>
-      );
+      return note;
   }
 }
 
@@ -700,19 +669,23 @@ function Connections({
     node.type === 'decision' && node.mode === 'router'
       ? (node.routes.find((r) => r.id === port)?.label ?? port)
       : portName(port);
-  const targetsFor = (port: string) =>
-    definition.nodes.flatMap((target) => {
-      const ports: TargetPort[] =
+  const targetsFor = (current: EditorDraft, port: string) =>
+    current.definition.nodes.flatMap((target) => {
+      const candidates: TargetPort[] =
         target.type === 'loop'
           ? ['enter', 'exit', 'repeat']
           : target.type === 'team'
             ? ['enter', 'exit']
             : [primaryIn(target)].filter((p): p is TargetPort => p !== null);
-      return ports
+      return candidates
         .filter(
           (targetPort) =>
-            checkPorts(draft, { source: node.id, sourcePort: port, target: target.id, targetPort })
-              .ok,
+            checkPorts(current, {
+              source: node.id,
+              sourcePort: port,
+              target: target.id,
+              targetPort,
+            }).ok,
         )
         .map((targetPort) => ({
           value: `${target.id}\u0000${targetPort}`,
@@ -730,7 +703,7 @@ function Connections({
       </h3>
       {ports.map((port) => {
         const edges = outgoing.filter((e) => e.sourcePort === port);
-        const options = targetsFor(port);
+        const options = targetsFor(draft, port);
         return (
           <div key={port} className="grid gap-1">
             {edges.map((edge) => (
