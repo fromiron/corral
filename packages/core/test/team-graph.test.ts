@@ -429,9 +429,10 @@ describe('team graph: decisions and failure paths', () => {
     doc.limits = { ...DEFAULT_LIMITS, maxDelegationDepth: 3 };
     expect(CorralDefinition.safeParse(doc).success).toBe(true);
     expect(errorsOf(doc)).toEqual([]);
+    // Retries and the error port run; only the deeper delegation limit does not yet.
     const unsupported = warningsOf(doc).filter((d) => d.code === 'RUNTIME_UNSUPPORTED');
-    expect(unsupported).toContainEqual(expect.objectContaining({ nodeId: 'P' }));
-    expect(unsupported.length).toBeGreaterThanOrEqual(2);
+    expect(unsupported).toHaveLength(1);
+    expect(unsupported[0]?.nodeId).toBeUndefined();
   });
 });
 

@@ -7357,7 +7357,8 @@
               "enum": [
                 "final_output",
                 "loop_cap",
-                "user_action"
+                "user_action",
+                "route"
               ]
             },
             "loopStop": {
@@ -7367,6 +7368,29 @@
                 "budget_exhausted",
                 "stalled"
               ]
+            },
+            "routes": {
+              "minItems": 1,
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "label"
+                ],
+                "additionalProperties": false
+              }
             },
             "subjectVersionIds": {
               "type": "array",
@@ -7568,6 +7592,10 @@
                 "timeout",
                 "execution_ended"
               ]
+            },
+            "routeId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
             }
           },
           "required": [
@@ -11075,7 +11103,8 @@
               "enum": [
                 "review",
                 "approval",
-                "rule"
+                "rule",
+                "router"
               ]
             },
             "iterationId": {
@@ -11136,7 +11165,9 @@
                 "review_checks_failed",
                 "criteria_changed",
                 "inconclusive_review_approval",
-                "external_policy"
+                "external_policy",
+                "model_route",
+                "human_route"
               ]
             },
             "evidenceRefs": {

@@ -122,6 +122,8 @@ export const ResolveApprovalCommand = z.strictObject({
     approvalId: Identifier,
     decision: z.enum(['approve', 'reject']),
     subjectVersionId: Identifier,
+    /** Required when approving a `route` approval, and only then. */
+    routeId: Identifier.optional(),
   }),
 });
 export type ResolveApprovalCommand = z.infer<typeof ResolveApprovalCommand>;

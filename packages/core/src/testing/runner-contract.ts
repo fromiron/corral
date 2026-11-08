@@ -33,7 +33,8 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         const answer = decisions[nodeId]?.shift();
         if (!answer) throw new Error(`no scripted decision left for ${nodeId}`);
         log.push(`decide ${tag(nodeId, iteration)} → ${answer}`);
-        return answer;
+        // `<stop>` stands for a person who stops the run at the decision instead of choosing.
+        return answer === '<stop>' ? null : answer;
       },
       async finalize(outputNodeId) {
         log.push(`finalize ${outputNodeId}`);
@@ -140,6 +141,28 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       );
       expect(log).toEqual(['activate research']);
       expect(result).toEqual({ kind: 'failed', nodeId: 'research', reason: 'agent failed' });
+    });
+
+    it('takes the error port of a failed step', async () => {
+      const definition = linearCorral(['research', 'writer', 'fallback']);
+      definition.controlEdges.push({
+        id: 'e_error',
+        source: 'research',
+        sourcePort: 'error',
+        target: 'fallback',
+        targetPort: 'in',
+      });
+      const { log, callbacks } = recorder({}, 'research');
+      const result = await makeRunner().run(planOf(definition), callbacks);
+      expect(log).toEqual(['activate research', 'activate fallback', 'finalize output']);
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+    });
+
+    it('ends as rejected when the person stops the run at a decision', async () => {
+      const { log, callbacks } = recorder({ review_decision: ['<stop>'] });
+      const result = await makeRunner().run(planOf(researchTeam), callbacks);
+      expect(log.at(-1)).toBe('decide review_decision#1 → <stop>');
+      expect(result).toEqual({ kind: 'rejected', nodeId: 'review_decision' });
     });
 
     it('hands an inconclusive review to the user', async () => {

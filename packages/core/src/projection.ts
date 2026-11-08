@@ -181,9 +181,12 @@ export interface QuestionView {
 
 export interface ApprovalView {
   approvalId: string;
-  kind: 'final_output' | 'loop_cap' | 'user_action';
+  kind: EventPayload<'approval.requested'>['kind'];
   /** Why a Loop asks for another round. */
   loopStop?: EventPayload<'approval.requested'>['loopStop'];
+  routes?: EventPayload<'approval.requested'>['routes'];
+  /** The route the person picked, once a `route` approval is approved. */
+  routeId?: string;
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
@@ -662,6 +665,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         status: 'pending',
         ...(event.payload.tool ? { tool: event.payload.tool } : {}),
         ...(event.payload.loopStop ? { loopStop: event.payload.loopStop } : {}),
+        ...(event.payload.routes ? { routes: event.payload.routes } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
@@ -671,7 +675,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       const status = event.payload.decision === 'approve' ? 'approved' : 'rejected';
       return {
         ...p,
-        approvals: { ...p.approvals, [approval.approvalId]: { ...approval, status } },
+        approvals: {
+          ...p.approvals,
+          [approval.approvalId]: {
+            ...approval,
+            status,
+            ...(event.payload.routeId ? { routeId: event.payload.routeId } : {}),
+          },
+        },
       };
     }
     case 'review.recorded': {

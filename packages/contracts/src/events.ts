@@ -359,9 +359,15 @@ export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum(['final_output', 'loop_cap', 'user_action']),
+    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route']),
     /** Why a Loop asks for another round: its round cap, its budget, or a stall. */
     loopStop: z.enum(['cap_reached', 'budget_exhausted', 'stalled']).optional(),
+    /** The connected routes a person may pick for a router that could not choose. */
+    routes: z
+      .array(z.strictObject({ id: Identifier, label: z.string().min(1) }))
+      .min(1)
+      .max(20)
+      .optional(),
     subjectVersionIds: Ids,
     criteriaVersionId: Identifier.nullable(),
     tool: z
@@ -397,6 +403,8 @@ export const ApprovalResolved = event(
     actor: Identifier,
     subjectVersionIds: Ids,
     reason: z.enum(['cancelled', 'timeout', 'execution_ended']).optional(),
+    /** The route a person picked when approving a `route` approval. */
+    routeId: Identifier.optional(),
   }),
 );
 /** A workflow routing fact, separate from observe-only reasoning-effort judgments. */
@@ -405,7 +413,7 @@ export const WorkflowBranchSelected = event(
   z
     .strictObject({
       nodeId: Identifier,
-      mode: z.enum(['review', 'approval', 'rule']),
+      mode: z.enum(['review', 'approval', 'rule', 'router']),
       iterationId: Identifier.nullable(),
       configRevision: z.int().min(0),
       selectedPort: z.string().min(1).max(128),
@@ -420,6 +428,8 @@ export const WorkflowBranchSelected = event(
         'criteria_changed',
         'inconclusive_review_approval',
         'external_policy',
+        'model_route',
+        'human_route',
       ]),
       evidenceRefs: z
         .array(

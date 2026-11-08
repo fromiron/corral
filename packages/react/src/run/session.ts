@@ -71,7 +71,12 @@ export interface RunSessionState {
   loadArtifact(artifactVersionId: string, options?: { reload?: boolean }): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
   /** Approves or rejects a pending approval, for the exact subject the person was shown. */
-  resolveApproval(approvalId: string, decision: 'approve' | 'reject'): Promise<Receipt>;
+  /** `routeId` names the route a person picks when approving a `route` approval. */
+  resolveApproval(
+    approvalId: string,
+    decision: 'approve' | 'reject',
+    routeId?: string,
+  ): Promise<Receipt>;
   refreshReceipt(commandId: string): Promise<void>;
   dispose(): void;
 }
@@ -639,13 +644,18 @@ export function createRunSession(
         });
       },
 
-      async resolveApproval(approvalId, decision) {
+      async resolveApproval(approvalId, decision, routeId) {
         const approval = get().projection?.approvals[approvalId];
         if (!approval) throw new Error('no such approval');
         return get().sendCommand({
           type: 'resolve_approval',
           expectedControlRevision: get().projection?.controlRevision ?? 0,
-          payload: { approvalId, decision, subjectVersionId: approval.subjectVersionIds[0] ?? '' },
+          payload: {
+            approvalId,
+            decision,
+            subjectVersionId: approval.subjectVersionIds[0] ?? '',
+            ...(routeId ? { routeId } : {}),
+          },
         });
       },
 

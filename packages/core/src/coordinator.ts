@@ -579,6 +579,50 @@ interface PendingExtensionUi {
 }
 
 /** What starts an execution: its node, place in the call tree and reason to exist. */
+/** Error text handed to a model: a retry's last error, or what an error path is told. */
+const clip = (text: string) => text.slice(0, 2000);
+
+type RouterNode = Extract<CorralDefinition['nodes'][number], { mode: 'router' }>;
+
+/**
+ * The model a router's chooser uses: its own profile, else that of the Agent whose output it
+ * reads first, else the definition's first role's.
+ */
+export function routerModelProfile(definition: CorralDefinition, router: RouterNode): string {
+  if (router.modelProfile) return router.modelProfile;
+  const source = router.inputBindings.find((b) => b.kind === 'task_output')?.sourceNodeId;
+  const agent = definition.nodes.find((n) => n.id === source);
+  const role =
+    agent?.type === 'agent' ? definition.roles.find((r) => r.id === agent.roleId) : undefined;
+  return (role ?? definition.roles[0])?.modelProfile ?? '';
+}
+
+/** Every model profile a run pins at start: its roles' and its routers' choosers'. */
+export function runModelProfiles(definition: CorralDefinition): string[] {
+  return [
+    ...new Set([
+      ...definition.roles.map((r) => r.modelProfile),
+      ...definition.nodes.flatMap((n) =>
+        n.type === 'decision' && n.mode === 'router' ? [routerModelProfile(definition, n)] : [],
+      ),
+    ]),
+  ];
+}
+
+/** The built-in role a router's chooser runs with: no tools, its last reply is the answer. */
+const chooserRole = (modelProfile: string): import('@corral/contracts').AgentRole => ({
+  id: 'router_chooser',
+  name: 'Router',
+  prompt:
+    'You choose which way the work goes next. Read the inputs and the routes, then reply with ' +
+    'exactly one route id from the routes list and nothing else.',
+  modelProfile,
+  allowedWorkTools: [],
+  allowedCollaborationTools: [],
+  outputContract: 'text',
+  answer: 'final_reply',
+});
+
 interface ExecutionSpec {
   item?: AgentStartInput['item'];
   previousExecutionId?: string;
@@ -591,6 +635,10 @@ interface ExecutionSpec {
   assignment: Assignment;
   /** Inputs given by the caller (task brief, question), before the node's own bindings. */
   given: ResolvedInput[];
+  /** A step that is not an Agent (a router's chooser) runs with this role instead. */
+  role?: import('@corral/contracts').AgentRole;
+  /** The exact inputs of this attempt (a retry reuses its predecessor's); bindings are skipped. */
+  inputs?: ResolvedInput[];
 }
 
 interface PreparedExecution {
@@ -1680,7 +1728,7 @@ export class Coordinator {
     // Every profile resolves now, so the run never meets an unusable model halfway.
     const models: Record<string, ModelProfileSnapshot> = {};
     const unusable: { code: CommandError['code']; message: string }[] = [];
-    for (const profile of new Set(planned.definition.roles.map((r) => r.modelProfile))) {
+    for (const profile of runModelProfiles(planned.definition)) {
       const frozen = (recovery?.source ?? branch?.source)?.snapshot.models[profile];
       const resolution: ModelResolution = preparedModels
         ? preparedModels[profile]
@@ -4186,30 +4234,34 @@ export class Coordinator {
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
-        // The compiler marks these RUNTIME_UNSUPPORTED and run start refuses them.
-        if (step.mode === 'check' || step.mode === 'router')
-          throw new Error(`${step.mode} decisions do not run in this runtime`);
+        // The compiler marks check RUNTIME_UNSUPPORTED and run start refuses it.
+        if (step.mode === 'check') throw new Error('check decisions do not run in this runtime');
         const iterationId = this.openRoundOf(run, nodeId);
         const decisionRevision = run.projection.controlRevision;
-        const decision: WorkflowDecision = this.decisions
-          ? {
-              branch: await this.decisions.decide({
-                runId: run.runId,
-                nodeId,
-                mode: step.mode,
-                iteration,
-                projection: run.projection,
-              }),
-              reasonCode: 'external_policy',
-              evidenceRefs: [],
-              configRevision: decisionRevision,
-            }
-          : await this.decide(run, nodeId, step.mode);
+        // A router always asks its own chooser; the external policy decides the other modes.
+        const decision: WorkflowDecision | null =
+          step.mode === 'router'
+            ? await this.route(run, nodeId, iterationId)
+            : this.decisions
+              ? {
+                  branch: await this.decisions.decide({
+                    runId: run.runId,
+                    nodeId,
+                    mode: step.mode,
+                    iteration,
+                    projection: run.projection,
+                  }),
+                  reasonCode: 'external_policy',
+                  evidenceRefs: [],
+                  configRevision: decisionRevision,
+                }
+              : await this.decide(run, nodeId, step.mode);
         // The choice may have waited on a person or external policy. Never append a late
         // routing fact to a cancelled Run or a different iteration.
         await this.boundary(run);
         if (iterationId !== this.openRoundOf(run, nodeId))
           throw new Error('decision scope changed');
+        if (decision === null) return null;
         const next = step.branches[decision.branch]?.[0] ?? null;
         const executionIds = new Set<string>();
         const author = (id: string) => {
@@ -4574,32 +4626,173 @@ export class Coordinator {
     return outcome;
   }
 
-  private async runAgent(
+  /**
+   * A router's choice: the route its chooser execution submits, or the route a person picks
+   * when the answer is not a route. Null when the person stops the run instead.
+   */
+  private async route(
     run: LiveRun,
     nodeId: string,
     iterationId: string | null,
-  ): Promise<StepOutcome> {
-    await this.boundary(run);
-    const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
-    const recipe = loopId ? run.recipes.get(loopId) : undefined;
+  ): Promise<WorkflowDecision | null> {
+    const { definition } = run.snapshot;
+    const node = definition.nodes.find((n) => n.id === nodeId);
+    const step = run.plan.steps[nodeId];
+    if (node?.type !== 'decision' || node.mode !== 'router' || step?.kind !== 'decision')
+      throw new Error(`${nodeId} is not a router`);
+    const choice = (
+      branch: string,
+      reasonCode: WorkflowDecision['reasonCode'],
+      evidenceRefs: WorkflowDecision['evidenceRefs'],
+    ): WorkflowDecision => ({
+      branch,
+      reasonCode,
+      evidenceRefs,
+      configRevision: run.projection.controlRevision,
+    });
     const prepared = this.prepareExecution(run, {
       nodeId,
       iterationId,
       parentExecutionId: null,
       depth: 0,
       assignment: { kind: 'scheduled' },
-      given: [],
+      role: chooserRole(routerModelProfile(definition, node)),
+      given: [
+        {
+          name: 'routes',
+          kind: 'run_input',
+          artifactVersionId: null,
+          text: node.routes
+            .map((r) => `- ${r.id}: ${r.label}${r.description ? ` — ${r.description}` : ''}`)
+            .join('\n'),
+        },
+      ],
     });
     this.commit(run, prepared.drafts);
-    return this.launch(run, prepared);
+    const outcome = await this.launch(run, prepared);
+    await this.boundary(run);
+    const task = run.projection.tasks[prepared.input.taskId];
+    const [answerId] =
+      outcome.ok && task?.status === 'completed' ? task.submittedArtifactVersionIds : [];
+    const evidence = answerId ? [{ kind: 'artifact' as const, id: answerId }] : [];
+    const answer = answerId ? this.store.getArtifactText(run.runId, answerId)?.trim() : undefined;
+    if (answer && node.routes.some((r) => r.id === answer))
+      return choice(answer, 'model_route', evidence);
+
+    const connected = node.routes.filter((r) => (step.branches[r.id] ?? []).length > 0);
+    if (connected.length === 0) throw new Error(`${nodeId} has no connected route to pick`);
+    const subjects = [
+      ...new Set([
+        ...prepared.input.inputs.flatMap((i) => (i.artifactVersionId ? [i.artifactVersionId] : [])),
+        ...(answerId ? [answerId] : []),
+      ]),
+    ];
+    const requested = this.requestApproval(
+      run,
+      'route',
+      subjects.length > 0 ? subjects : [run.criteriaVersionId],
+      undefined,
+      undefined,
+      connected.map((r) => ({ id: r.id, label: r.label })),
+    );
+    if ((await requested.decision) === 'reject') return null;
+    const picked = run.projection.approvals[requested.approvalId]?.routeId;
+    if (!picked) throw new Error(`route approval ${requested.approvalId} names no route`);
+    return choice(picked, 'human_route', [
+      { kind: 'approval', id: requested.approvalId },
+      ...evidence,
+    ]);
+  }
+
+  private async runAgent(
+    run: LiveRun,
+    nodeId: string,
+    iterationId: string | null,
+  ): Promise<StepOutcome> {
+    await this.boundary(run);
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    const retries = node?.type === 'agent' ? (node.retry?.maxAttempts ?? 0) : 0;
+    let prepared = this.prepareExecution(run, {
+      nodeId,
+      iterationId,
+      parentExecutionId: null,
+      depth: 0,
+      assignment: { kind: 'scheduled' },
+      given: this.stepErrorFor(run, nodeId, iterationId),
+    });
+    for (;;) {
+      this.commit(run, prepared.drafts);
+      const outcome = await this.launch(run, prepared);
+      const { input } = prepared;
+      const ended = run.projection.executions[input.executionId];
+      // Only a failure is retried: never a cancellation, an unconfirmed stop or a run that ended.
+      if (outcome.ok || input.attemptNo > retries || ended?.status !== 'failed') return outcome;
+      if (run.projection.status !== 'running' && !this.pausedOrWaiting(run)) return outcome;
+      await this.boundary(run);
+      if (run.projection.status !== 'running') return outcome;
+      prepared = this.prepareExecution(run, {
+        nodeId,
+        iterationId,
+        parentExecutionId: null,
+        depth: 0,
+        assignment: { kind: 'scheduled' },
+        given: [],
+        taskId: input.taskId,
+        previousExecutionId: input.executionId,
+        attemptNo: input.attemptNo + 1,
+        inputs: [
+          ...input.inputs.filter((i) => i.name !== 'previous_attempt_error'),
+          {
+            name: 'previous_attempt_error',
+            kind: 'run_input',
+            artifactVersionId: null,
+            text: clip(ended.error ?? outcome.reason),
+          },
+        ],
+      });
+    }
+  }
+
+  /**
+   * What an Agent reached through an `error` port is told: which step failed, after how many
+   * attempts, and its last error. Only for steps whose error port leads straight here.
+   */
+  private stepErrorFor(run: LiveRun, nodeId: string, iterationId: string | null): ResolvedInput[] {
+    const told: ResolvedInput[] = [];
+    for (const step of Object.values(run.plan.steps)) {
+      if (step.kind !== 'agent' || !step.error.some((target) => target.nodeId === nodeId)) continue;
+      const latest = [...(run.projection.nodeExecutions[step.nodeId] ?? [])]
+        .reverse()
+        .map((id) => run.projection.executions[id])
+        .find(
+          (e) => e && (iterationId === null || this.sameRound(run, e.iterationId, iterationId)),
+        );
+      if (latest?.status !== 'failed') continue;
+      const label =
+        run.snapshot.definition.nodes.find((n) => n.id === step.nodeId)?.label ?? step.nodeId;
+      told.push({
+        name: 'step_error',
+        kind: 'run_input',
+        artifactVersionId: null,
+        text: clip(
+          `${label} failed after ${latest.attemptNo} attempt${latest.attemptNo === 1 ? '' : 's'}: ${latest.error ?? 'no error was reported'}`,
+        ),
+      });
+    }
+    return told;
+  }
+
+  private pausedOrWaiting(run: LiveRun) {
+    return ['pausing', 'paused', 'awaiting_user'].includes(run.projection.status);
   }
 
   /** The Task, Execution and start effect of one step, child or responder; not committed. */
   private prepareExecution(run: LiveRun, spec: ExecutionSpec): PreparedExecution {
     const definition = run.snapshot.definition;
     const node = definition.nodes.find((n) => n.id === spec.nodeId);
-    const baseRole = node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId);
-    if (node?.type !== 'agent' || !baseRole) {
+    const baseRole =
+      spec.role ?? (node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId));
+    if (!node || !('inputBindings' in node) || node.type === 'output' || !baseRole) {
       throw new Error(`plan references missing agent ${spec.nodeId}`);
     }
     const patch = run.nodePatches.get(spec.nodeId);
@@ -4693,7 +4886,7 @@ export class Coordinator {
         ],
         ...(callables.replyToChildren ? { replyToChildren: true } : {}),
       },
-      inputs: [
+      inputs: spec.inputs ?? [
         ...(run.snapshot.definition.input.images ?? []).map((image) => ({
           name: image.name,
           kind: 'explicit_version' as const,
@@ -5685,10 +5878,11 @@ export class Coordinator {
   /** Asks the person; the run waits in `awaiting_user` until resolve_approval. */
   private requestApproval(
     run: LiveRun,
-    kind: 'final_output' | 'loop_cap' | 'user_action',
+    kind: EventPayload<'approval.requested'>['kind'],
     subjectVersionIds: string[],
     request?: { tool: NonNullable<EventPayload<'approval.requested'>['tool']>; body: string },
     loopStop?: LoopStop,
+    routes?: EventPayload<'approval.requested'>['routes'],
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
     const decision = new Promise<'approve' | 'reject'>((resolve) => {
@@ -5708,6 +5902,7 @@ export class Coordinator {
               : (run.pendingCriteriaVersionId ?? run.criteriaVersionId),
             ...(request ? { tool: request.tool } : {}),
             ...(loopStop ? { loopStop } : {}),
+            ...(routes ? { routes } : {}),
           },
         },
         ...(request && ['paused', 'pausing'].includes(run.projection.status)
@@ -5964,7 +6159,7 @@ export class Coordinator {
   /** The person's answer to a pending approval: once, for the exact subject. */
   private resolveApproval(command: ResolveApprovalCommand, payloadHash: string): Receipt {
     const { runId } = command;
-    const { approvalId, decision, subjectVersionId } = command.payload;
+    const { approvalId, decision, subjectVersionId, routeId } = command.payload;
     const run = this.live.get(runId);
     const projection = this.projectionOf(runId);
     const approval = projection?.approvals[approvalId];
@@ -6028,6 +6223,17 @@ export class Coordinator {
         message: `approval ${approvalId} is for ${approval.subjectVersionIds[0]}, not ${subjectVersionId}`,
       });
     }
+    // A route approval is approved by naming one of its routes; nothing else names a route.
+    const picksRoute = approval.kind === 'route' && decision === 'approve';
+    if (
+      picksRoute ? !approval.routes?.some((route) => route.id === routeId) : routeId !== undefined
+    )
+      return refuse({
+        code: 'SCHEMA_INVALID',
+        message: picksRoute
+          ? `approve ${approvalId} by naming one of its routes`
+          : `approval ${approvalId} takes no route`,
+      });
     this.commit(
       run,
       [
@@ -6040,6 +6246,7 @@ export class Coordinator {
             decision,
             actor: USER.id,
             subjectVersionIds: approval.subjectVersionIds,
+            ...(picksRoute && routeId ? { routeId } : {}),
           },
         },
         ...(['paused', 'pausing'].includes(run.projection.status)

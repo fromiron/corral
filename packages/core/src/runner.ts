@@ -22,8 +22,11 @@ export type RoundOutcome = 'pass' | 'revise' | 'inconclusive' | LoopStop;
 export interface RunnerCallbacks {
   /** Runs one scheduled agent step to a settled result. */
   activate(nodeId: string, iteration: IterationRef | null): Promise<StepOutcome>;
-  /** Returns the branch port a Decision takes (`pass`, `revise`, `inconclusive`, `approve`, …). */
-  decide(nodeId: string, iteration: IterationRef | null): Promise<string>;
+  /**
+   * Returns the branch port a Decision takes (`pass`, `revise`, a route id, …), or null when the
+   * person stopped the run there instead of choosing.
+   */
+  decide(nodeId: string, iteration: IterationRef | null): Promise<string | null>;
   finalize(outputNodeId: string): Promise<void>;
   loopEntered(loopId: string, no: number): Promise<void>;
   /**
@@ -109,21 +112,27 @@ export async function executeStep(
 
   switch (step.kind) {
     case 'agent': {
+      // The Coordinator has already spent the step's retries; a connected error port takes over.
       const outcome = await callbacks.activate(step.nodeId, iterationOf(step.loopId));
       if (!outcome.ok) {
+        const [error] = step.error;
+        if (error) return { next: error };
         return { end: { kind: 'failed', nodeId: step.nodeId, reason: outcome.reason } };
       }
       return goTo(step.next[0]);
     }
     case 'decision': {
       const branch = await callbacks.decide(step.nodeId, iterationOf(step.loopId));
+      if (branch === null) return { end: { kind: 'rejected', nodeId: step.nodeId } };
       const next = step.branches[branch]?.[0];
       if (next) return { next };
       if (step.loopId && branch === 'inconclusive') {
         await callbacks.loopLeft(step.loopId, rounds[step.loopId] ?? 1, 'inconclusive');
       }
+      // A route that happens to be named `reject` is a route, not a stop.
+      const terminal = step.mode === 'router' ? undefined : TERMINAL_BRANCHES[branch];
       return {
-        end: TERMINAL_BRANCHES[branch]?.(step.nodeId) ?? {
+        end: terminal?.(step.nodeId) ?? {
           kind: 'needs_user',
           nodeId: step.nodeId,
           branch,

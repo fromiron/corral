@@ -771,14 +771,16 @@
       "loop_cap": "검토를 한 번 더 할까요?",
       "user_action": "사용자 결정",
       "loop_budget_exhausted": "Loop 예산을 다 씀",
-      "loop_stalled": "Loop 결과가 그대로임"
+      "loop_stalled": "Loop 결과가 그대로임",
+      "route": "갈 길 고르기"
     },
     "explain": {
       "final_output": "승인하면 바로 이 버전이 출력이 됩니다. 더 새 버전은 따로 승인해야 합니다.",
       "loop_cap": "Loop가 반복 한도에 닿았습니다. 승인하면 한 번 더 돌고, 반려하면 실행을 멈춥니다.",
       "user_action": "실행이 사용자를 기다립니다. 승인하면 이 버전들로 계속하고, 반려하면 멈춥니다.",
       "loop_budget_exhausted": "이 Loop가 예산을 다 쓴 채 한 번 더 돌려고 합니다. 승인하면 한 번 더 돌고, 반려하면 실행을 멈춥니다.",
-      "loop_stalled": "이번 회차가 지난 회차와 같은 결과를 냈습니다. 승인하면 그래도 한 번 더 돌고, 반려하면 실행을 멈춥니다."
+      "loop_stalled": "이번 회차가 지난 회차와 같은 결과를 냈습니다. 승인하면 그래도 한 번 더 돌고, 반려하면 실행을 멈춥니다.",
+      "route": "라우터가 다음 길을 고르지 못했습니다. 길을 하나 골라 계속하거나 실행을 멈추세요."
     },
     "subject": "대상",
     "criteria": "기준",
@@ -791,21 +793,24 @@
       "final_output": "승인하면 이 버전이 실행의 최종 결과가 돼요. 반려하면 최종 결과 없이 끝나요.",
       "loop_cap": "승인하면 검토를 한 번 더 하고, 반려하면 실행을 멈춰요.",
       "loop_budget_exhausted": "승인하면 예산을 넘겨 한 번 더 돌고, 반려하면 실행을 멈춰요.",
-      "loop_stalled": "승인하면 한 번 더 돌고, 반려하면 실행을 멈춰요."
+      "loop_stalled": "승인하면 한 번 더 돌고, 반려하면 실행을 멈춰요.",
+      "route": "이 길로 실행을 이어 갑니다."
     },
     "approveAs": {
       "user_action": "이 버전으로 계속",
       "final_output": "최종 결과로 확정",
       "loop_cap": "한 번 더 검토",
       "loop_budget_exhausted": "한 번 더 돌기",
-      "loop_stalled": "한 번 더 해 보기"
+      "loop_stalled": "한 번 더 해 보기",
+      "route": "이 길로 계속"
     },
     "rejectAs": {
       "user_action": "반려하고 멈춤",
       "final_output": "확정하지 않음",
       "loop_cap": "여기서 멈춤",
       "loop_budget_exhausted": "여기서 멈춤",
-      "loop_stalled": "여기서 멈춤"
+      "loop_stalled": "여기서 멈춤",
+      "route": "여기서 멈춤"
     },
     "checkHeading": "검사 실행 승인",
     "checkScope": "{execution} · 시도 {attempt} · 설정 r{revision} · 실행 해시 {fingerprint} · 파일 상태 {tree}",
@@ -1102,7 +1107,7 @@
     "reviewStale": "검토 하나가 오래된 것이 됨",
     "roundStarted": "{loop}: {no}회차 시작",
     "roundFinished": "{loop}: 회차 끝({outcome})",
-    "approvalRequested": "{kind, select, user_action {사용자 결정} final_output {최종 출력 승인} loop_cap {추가 회차 결정} other {사용자 결정}}을 기다리는 중",
+    "approvalRequested": "{kind, select, user_action {사용자 결정} final_output {최종 출력 승인} route {갈 길 결정} loop_cap {추가 회차 결정} other {사용자 결정}}을 기다리는 중",
     "approvalResolved": "{decision, select, approve {승인함} reject {반려함} other {결정함}}",
     "directiveAccepted": "{node}에 대한 지시 접수",
     "directiveAttached": "지시가 요청에 첨부됨",
@@ -1137,7 +1142,7 @@
     "run_requested": "실행 시작을 요청함",
     "validation_passed": "Corral 확인을 통과함",
     "output_finalized": "최종 출력이 만들어짐",
-    "approval_requested": "{detail, select, final_output {최종 출력 승인을 기다리는 중} loop_cap {추가 회차 결정을 기다리는 중} other {사용자 결정을 기다리는 중}}",
+    "approval_requested": "{detail, select, final_output {최종 출력 승인을 기다리는 중} route {갈 길 선택을 기다리는 중} loop_cap {추가 회차 결정을 기다리는 중} other {사용자 결정을 기다리는 중}}",
     "pause_requested": "일시정지를 요청함",
     "safe_boundary_reached": "안전한 지점에서 일시정지함",
     "resumed": "실행을 재개함",
@@ -4803,7 +4808,9 @@
       "review_checks_failed": "검증 결과 수정 필요",
       "criteria_changed": "검토 기준 변경",
       "inconclusive_review_approval": "판단 보류 후 승인",
-      "external_policy": "외부 분기 정책"
+      "external_policy": "외부 분기 정책",
+      "model_route": "라우터가 고른 길",
+      "human_route": "사용자가 고른 길"
     },
     "attached": "첨부: {name}",
     "round": "반복 {round}회차",

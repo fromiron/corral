@@ -27,8 +27,8 @@
 | 편집기: 명세, 패턴·참조 팀·전체 설정, 클래식 편집기 교체 | 완료 | d18391bc, b439e1a7, 88bea109 |
 | 편집기: 저장 배치 삭제, `getRevision` | 완료 | 26529d19 |
 | 실행 통계 레이어 | 완료 | e38660ec(명세), 4490f0bb |
-| 3. 루프 실행 | 완료 | 22d72e0e, 915817de(명세), 구현은 `feat: run several, nested and budgeted loops` |
-| 4. 재시도, 실패 경로, router | 진행 중 | 3cf75135(3단계 보완) |
+| 3. 루프 실행 | 완료 | 22d72e0e, 915817de(명세), a5d550f7 |
+| 4. 재시도, 실패 경로, router | 완료 | f4eaaabb(명세), 구현은 `feat: retry agents, take error paths and run routers`, 3cf75135(3단계 보완) |
 | 4b. check Decision | 시작 전 | |
 | 5. 병렬 | 시작 전 | |
 | 6. 하위 팀 | 시작 전 | |
@@ -48,8 +48,8 @@
 
 ## 다음 스텝
 
-1. 4단계: 명세는 [재시도와 실패 경로](../specs/features/team-graph.md#재시도와-실패-경로)·[router 실행](../specs/features/team-graph.md#router-실행). 실패 테스트부터 쓴다. 끝나면 실행 통계의 재시도·router 갈래 수치가 실제로 채워진다.
-2. 4b단계(check Decision), 그다음 5단계(병렬과 Join).
+1. 4b단계(check Decision): 명세부터. Decision이 주인인 검사(`VerificationOwner`에 새 종류)와 Run 시작에서 고정하는 프로젝트 검사 설정, 진짜 pass·fail이 아닌 결과에서 사람을 기다리는 방법을 정한다.
+2. 5단계(병렬과 Join).
 
 ## 남은 정리와 열린 질문
 
@@ -60,6 +60,7 @@
 - Storybook `Timeline` > Ten Thousand Events가 실패한다. 선택한 이벤트 패널에 `#3885`를 기대하지만, 12faa4d1부터 패널이 기록 내용을 보인다. `AgentSteering` > Short Composer는 간헐적으로 대비 검사에 실패한다.
 - 훅(도구 사용 전 동작, 추가 메시지)은 이 계획 밖이다.
 - Loop 예산·정체로 멈춘 승인 카드 문구는 단위 테스트로만 확인했다. 실제 화면에서는 마무리 단계 E2E에서 본다.
+- `route` 승인 카드는 단위 테스트와 Storybook `Run/ApprovalPanel` > Route Choice로 확인했다. 실제 서버의 router 실행은 마무리 단계 E2E에서 본다.
 
 ## 확인 방법
 

@@ -771,14 +771,16 @@
       "loop_cap": "Another review round?",
       "user_action": "Your decision",
       "loop_budget_exhausted": "Loop budget used up",
-      "loop_stalled": "Loop stopped changing"
+      "loop_stalled": "Loop stopped changing",
+      "route": "Choose a route"
     },
     "explain": {
       "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
       "loop_cap": "The Loop reached its round limit. Approve to run one more round, or reject to stop the run.",
       "user_action": "The run waits for you. Approve to continue with these versions, or reject to stop.",
       "loop_budget_exhausted": "This Loop used its budget and asked for another round. Approve to run one more round, or reject to stop the run.",
-      "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run."
+      "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run.",
+      "route": "The router could not choose where the work goes next. Pick a route to continue, or stop the run."
     },
     "subject": "About",
     "criteria": "Criteria",
@@ -791,21 +793,24 @@
       "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
       "loop_cap": "Approving runs the review once more; rejecting stops the run.",
       "loop_budget_exhausted": "Approving runs one more round over the budget; rejecting stops the run.",
-      "loop_stalled": "Approving runs one more round; rejecting stops the run."
+      "loop_stalled": "Approving runs one more round; rejecting stops the run.",
+      "route": "Continues the run along this route."
     },
     "approveAs": {
       "user_action": "Continue with this version",
       "final_output": "Confirm as final result",
       "loop_cap": "Review once more",
       "loop_budget_exhausted": "Run one more round",
-      "loop_stalled": "Try once more"
+      "loop_stalled": "Try once more",
+      "route": "Continue along this route"
     },
     "rejectAs": {
       "user_action": "Reject and stop",
       "final_output": "Do not confirm",
       "loop_cap": "Stop here",
       "loop_budget_exhausted": "Stop here",
-      "loop_stalled": "Stop here"
+      "loop_stalled": "Stop here",
+      "route": "Stop here"
     },
     "checkHeading": "Approve check launch",
     "checkScope": "{execution} · attempt {attempt} · config r{revision} · {fingerprint} · tree {tree}",
@@ -1102,7 +1107,7 @@
     "reviewStale": "A review became stale",
     "roundStarted": "{loop}: round {no} started",
     "roundFinished": "{loop}: round finished ({outcome})",
-    "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} loop_cap {decision on another round} other {decision}}",
+    "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} route {decision on which way to go} loop_cap {decision on another round} other {decision}}",
     "approvalResolved": "You {decision, select, approve {approved} reject {rejected} other {decided}}",
     "directiveAccepted": "Your instruction for {node} was accepted",
     "directiveAttached": "Your instruction was attached to a request",
@@ -1137,7 +1142,7 @@
     "run_requested": "The run was requested",
     "validation_passed": "The Corral passed validation",
     "output_finalized": "The final output was produced",
-    "approval_requested": "{detail, select, final_output {Waiting for your approval of the final output} loop_cap {Waiting for your decision on another round} other {Waiting for your decision}}",
+    "approval_requested": "{detail, select, final_output {Waiting for your approval of the final output} route {Waiting for you to pick a route} loop_cap {Waiting for your decision on another round} other {Waiting for your decision}}",
     "pause_requested": "You asked to pause",
     "safe_boundary_reached": "Paused at a safe point",
     "resumed": "You resumed the run",
@@ -4803,7 +4808,9 @@
       "review_checks_failed": "Review checks require revision",
       "criteria_changed": "Review criteria changed",
       "inconclusive_review_approval": "Approval after an inconclusive review",
-      "external_policy": "External routing policy"
+      "external_policy": "External routing policy",
+      "model_route": "Route chosen by the router",
+      "human_route": "Route picked by you"
     },
     "attached": "Attached: {name}",
     "round": "Round {round}",

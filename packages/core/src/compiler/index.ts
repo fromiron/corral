@@ -1087,6 +1087,12 @@ function checkBindings(c: Context, graph: Graph) {
 function checkModelProfiles(c: Context, options: CompileOptions) {
   if (!options.knownModelProfiles) return;
   const known = new Set(options.knownModelProfiles);
+  for (const node of c.definition.nodes)
+    if (node.type === 'decision' && node.mode === 'router' && node.modelProfile)
+      if (!known.has(node.modelProfile))
+        c.error('UNKNOWN_MODEL_PROFILE', `model profile ${node.modelProfile} is not configured`, {
+          nodeId: node.id,
+        });
   for (const role of c.definition.roles) {
     if (known.has(role.modelProfile)) continue;
     const user = c.definition.nodes.find((n) => n.type === 'agent' && n.roleId === role.id);
@@ -1111,20 +1117,12 @@ const roundsOf = (loop: LoopNode) =>
 function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
   const { definition } = c;
   const unsupported = (message: string, at: At = {}) => c.warn('RUNTIME_UNSUPPORTED', message, at);
-  const edgesFrom = (id: string, port: string) =>
-    (c.outgoing.get(id) ?? []).filter((e) => e.sourcePort === port);
 
   for (const node of definition.nodes) {
     const at = { nodeId: node.id };
     switch (node.type) {
-      case 'agent':
-        if ((node.retry?.maxAttempts ?? 0) > 0) unsupported('retries do not run yet', at);
-        if (edgesFrom(node.id, 'error').length > 0)
-          unsupported('the "error" path does not run yet', at);
-        break;
       case 'decision':
-        if (node.mode === 'check' || node.mode === 'router')
-          unsupported(`${node.mode} decisions do not run yet`, at);
+        if (node.mode === 'check') unsupported('check decisions do not run yet', at);
         break;
       case 'team':
         unsupported('Teams do not run yet', at);
@@ -1132,6 +1130,7 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
       case 'join':
         unsupported('Joins do not run yet', at);
         break;
+      case 'agent':
       case 'loop':
       case 'output':
         break;
