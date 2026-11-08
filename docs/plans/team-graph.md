@@ -33,7 +33,7 @@
 | 5. 병렬 | 완료 | 05918b82(명세), 9439bc19(명세: 기다림은 그 단계만), 7f3df913 |
 | 6. 하위 팀 | 완료 | 6a(`inline` Team): 18119a11(명세), 0a5f757c. 6b(참조 팀 펼치기): df6b40a5(명세), 구현은 `feat: expand reference Teams at run start`. 3997cf67(pi 1.5.0, GPT-6.1 Terra) |
 | 6c. 예산 폐지 | 완료 | fbafed99, 2cd2fa64(명세), 구현은 `feat: remove usage budgets` |
-| 7. 위임 깊이 | 시작 전 | |
+| 7. 위임 깊이 | 진행 중 | 615dcd6b(명세), 깊이는 `feat: delegate deeper than two levels` |
 | 8. 포크와 중단점 | 시작 전 (명세 없음) | |
 | 마무리: 확장 E2E, 명세 정리 | 시작 전 | |
 
@@ -49,7 +49,7 @@
 
 ## 다음 스텝
 
-1. 7단계(위임 깊이): 2보다 큰 `maxDelegationDepth`, 설치 정책 상한을 넘는 `maxSpawns`. 명세부터 쓴다.
+1. 7단계(위임 깊이): 2보다 큰 `maxDelegationDepth`는 실행한다. 남은 것은 설치 정책 상한(기본 32)을 넘는 `maxSpawns`를 어떻게 할지다. 제품 계약 §9는 32를 하드 상한으로 두므로 사용자 결정이 필요하다.
 2. 8단계(포크와 중단점).
 
 ## 남은 정리와 열린 질문

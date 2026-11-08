@@ -1193,25 +1193,12 @@ const roundsOf = (loop: LoopNode) =>
 
 /** A warning for every construct the definition may hold but this runtime does not run yet. */
 function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
-  const { definition } = c;
-  const unsupported = (message: string, at: At = {}) => c.warn('RUNTIME_UNSUPPORTED', message, at);
-
-  for (const node of definition.nodes) {
-    const at = { nodeId: node.id };
-    switch (node.type) {
-      case 'team':
-      case 'agent':
-      case 'decision':
-      case 'join':
-      case 'loop':
-      case 'output':
-        break;
-    }
-  }
-  if (definition.limits.maxDelegationDepth > 2)
-    unsupported('this runtime delegates at most two levels deep');
-  if (definition.limits.maxSpawns > caps.maxSpawns)
-    unsupported(`this runtime starts at most ${caps.maxSpawns} dynamic tasks per run`);
+  if (c.definition.limits.maxSpawns > caps.maxSpawns)
+    c.warn(
+      'RUNTIME_UNSUPPORTED',
+      `this runtime starts at most ${caps.maxSpawns} dynamic tasks per run`,
+      {},
+    );
 }
 
 // ── lowering ─────────────────────────────────────────────────────────────────

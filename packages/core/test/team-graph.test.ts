@@ -447,10 +447,8 @@ describe('team graph: decisions and failure paths', () => {
     doc.limits = { ...DEFAULT_LIMITS, maxDelegationDepth: 3 };
     expect(CorralDefinition.safeParse(doc).success).toBe(true);
     expect(errorsOf(doc)).toEqual([]);
-    // Retries and the error port run; only the deeper delegation limit does not yet.
-    const unsupported = warningsOf(doc).filter((d) => d.code === 'RUNTIME_UNSUPPORTED');
-    expect(unsupported).toHaveLength(1);
-    expect(unsupported[0]?.nodeId).toBeUndefined();
+    // Retries, the error port and a deeper delegation limit all run.
+    expect(codes(warningsOf(doc))).not.toContain('RUNTIME_UNSUPPORTED');
   });
 });
 
@@ -596,7 +594,7 @@ describe('team graph: what runs today', () => {
   });
 
   it('refuses to plan a run for a definition the runtime does not execute', () => {
-    const plan = planRun({ ...inlineTeam(), limits: { ...DEFAULT_LIMITS, maxDelegationDepth: 3 } });
+    const plan = planRun({ ...inlineTeam(), limits: { ...DEFAULT_LIMITS, maxSpawns: 33 } });
     expect(plan.ok).toBe(false);
     if (plan.ok) return;
     expect(plan.issues).toContainEqual(expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED' }));
@@ -611,10 +609,10 @@ describe('team graph: what runs today', () => {
     const transport = new InProcessTransport(coordinator);
     const { runId, receipt } = await transport.startRun({
       schemaVersion: '0.1',
-      commandId: 'cmd_depth',
+      commandId: 'cmd_spawns',
       definition: {
         ...inlineTeam(),
-        limits: { ...DEFAULT_LIMITS, maxDelegationDepth: 3 },
+        limits: { ...DEFAULT_LIMITS, maxSpawns: 33 },
       } as CorralDefinition,
       mode: 'mock',
     });

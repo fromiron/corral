@@ -149,7 +149,7 @@ export const ExecutionCreated = event(
     nodeId: Identifier,
     taskId: Identifier,
     attemptNo: z.int().min(1),
-    depth: z.int().min(0).max(2),
+    depth: z.int().min(0),
     iterationId: Identifier.nullable(),
     modelProfile: Identifier,
     configRevision: z.int().min(0).optional(),
