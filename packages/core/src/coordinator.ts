@@ -1939,6 +1939,12 @@ export class Coordinator {
           message: 'check decisions need a work session whose project registers their checks',
         });
       }
+      // Checks run in the session's working copy, which the person makes; a run never makes it.
+      if (!request.sessionId || !this.files?.worktreeScope?.(request.sessionId))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: "check decisions need the session's working copy",
+        });
     }
     if (
       recovery &&

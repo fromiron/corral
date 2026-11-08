@@ -154,6 +154,7 @@ function runtime(
     } as unknown as NonNullable<CoordinatorDeps['harnesses']>,
     files: {
       available: () => true,
+      worktreeScope: () => '/worktrees/session',
       execute: async () => ({}),
       planCheck: async (input) => ({
         commandId: input.commandId,
@@ -305,13 +306,16 @@ describe('check decision', () => {
     });
   });
 
-  it('refuses to start without a session, an unregistered check or a check runner', () => {
+  it('refuses to start without a session, its working copy, an unregistered check or a check runner', () => {
     const refused = (s: ReturnType<typeof runtime>) => {
       const result = s.start();
       expect(result.runId).toBeNull();
       return result.receipt.error?.code;
     };
     expect(refused(runtime({}, { sessionId: null }))).toBe('CAPABILITY_DENIED');
+    expect(refused(runtime({}, { files: { worktreeScope: () => null } }))).toBe(
+      'CAPABILITY_DENIED',
+    );
     expect(
       refused(
         runtime(

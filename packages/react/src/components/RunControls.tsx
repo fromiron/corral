@@ -52,10 +52,14 @@ export function RunControls({
   const setMode = onModeChange ?? setLocalMode;
   const unavailable = mode === 'live' && !liveAvailable;
   const compiled = useMemo(() => compileDraft(draft), [draft]);
+  // A test run has no session, and check steps run only in a session's working copy.
+  const needsSession =
+    compiled.definition?.nodes.some((n) => n.type === 'decision' && n.mode === 'check') ?? false;
   const running = projection !== null && !TERMINAL_RUN_STATUSES.has(projection.status);
 
   const start = async () => {
-    if (!compiled.definition || !compiled.runnable || unavailable || startDisabled) return;
+    if (!compiled.definition || !compiled.runnable || needsSession || unavailable || startDisabled)
+      return;
     setStarting(true);
     try {
       const saved = beforeStart ? await beforeStart() : undefined;
@@ -89,7 +93,14 @@ export function RunControls({
         <Button
           type="button"
           onClick={start}
-          disabled={!compiled.runnable || running || starting || unavailable || startDisabled}
+          disabled={
+            !compiled.runnable ||
+            needsSession ||
+            running ||
+            starting ||
+            unavailable ||
+            startDisabled
+          }
           variant="primary"
           size="compact"
         >
@@ -135,6 +146,8 @@ export function RunControls({
         <p className="text-xs text-muted-foreground">
           {compiled.definition ? t('notRunnableHere') : t('notRunnable')}
         </p>
+      ) : needsSession ? (
+        <p className="text-xs text-muted-foreground">{t('checksNeedSession')}</p>
       ) : null}
     </div>
   );

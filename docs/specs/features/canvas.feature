@@ -7,6 +7,10 @@ Feature: 팀 편집기 — 사용자가 정의를 만든다
     When 두 번째 에이전트를 지우고 첫 에이전트와 출력 사이에 새 에이전트를 끼운다
     Then 실행 순서도 바뀌어야 한다
 
+  Scenario: check Decision이 있는 팀은 시험 실행으로 시작하지 않는다
+    Given check Decision이 있는 팀의 시험 실행 패널이 열려 있다
+    Then 실행이 비활성이고 세션의 작업 사본에서만 돈다는 이유가 보인다
+
   Scenario: 놓는 자리가 구조를 정한다
     Given 에이전트 A에서 B로 이어진 팀이 있다
     When 검토를 A와 B 사이의 연결 위에 놓는다

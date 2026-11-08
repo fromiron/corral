@@ -131,7 +131,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 ### check 실행
 
-- **시작 조건.** check Decision이 있는 Run은 작업 세션에서 시작해야 한다. Run 시작은 그 세션 프로젝트의 등록 검사 설정을 고정하고(`RunSnapshot.checks`: 프로젝트, 설정 revision·hash, 모든 check Decision의 `checkIds`), 그 Run이 신뢰된 작업 사본을 쓰게 한다. 세션이 없거나, 검사가 등록돼 있지 않거나, 검사 실행기나 작업 사본을 쓸 수 없으면 `CAPABILITY_DENIED`로 거절하고 Run을 만들지 않는다.
+- **시작 조건.** check Decision이 있는 Run은 작업 세션에서 시작해야 한다. Run 시작은 그 세션 프로젝트의 등록 검사 설정을 고정하고(`RunSnapshot.checks`: 프로젝트, 설정 revision·hash, 모든 check Decision의 `checkIds`), 그 Run이 신뢰된 작업 사본을 쓰게 한다. 세션이 없거나, 세션에 작업 사본이 없거나, 검사가 등록돼 있지 않거나, 검사 실행기를 쓸 수 없으면 `CAPABILITY_DENIED`로 거절하고 Run을 만들지 않는다. 작업 사본은 사람이 세션에서 만든다. Run 시작이 대신 만들지 않는다.
 - **검사 실행.** check에 닿으면 check 노드의 새 Task로 내장 검사 실행 하나를 시작한다. 모델을 부르지 않고, 노드의 `checkIds`를 순서대로 고정한 설정의 `run_check`로 작업 사본에서 실행한 뒤 결과 요약을 제출한다. 신뢰하지 않은 fingerprint는 지금처럼 검사 실행 승인을 받는다([하네스 계약](../harness-contract.md) H5). Loop 안이면 그 회차의 실행이다.
 - **판정.**
   - 바뀌지 않은 tree에서 끝까지 돌아 `fail`이 나온 검사가 하나라도 있으면 `fail`로 간다.
@@ -332,7 +332,7 @@ Scenario: 판정이 없으면 다시 돌릴지 묻는다
   Then 그 Run은 취소된다
 
 Scenario: 검사를 실행할 수 없으면 시작하지 않는다
-  Given 세션 없이 시작하거나 세션 프로젝트에 등록되지 않은 검사를 고른 check Decision
+  Given 세션 없이 시작하거나, 작업 사본이 없는 세션에서 시작하거나, 세션 프로젝트에 등록되지 않은 검사를 고른 check Decision
   When 실행을 시작한다
   Then CAPABILITY_DENIED로 거절되고 Run이 만들어지지 않는다
 
