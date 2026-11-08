@@ -166,7 +166,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
   - 원본 Output이 `requireApproval`이면 그 자리에 Output과 같은 입력을 읽는 approval Decision(`<Team id>.<Output id>`)을 둔다. 승인하면 `exit`로 가고, 거절하면 Run이 취소된다.
   - 구성원이 읽는 `run_input` brief는 Team의 `inputBindings`로 바뀐다. Team에 입력이 없으면 Run의 brief를 읽는다. criteria는 Run의 것을 읽는다. 원본의 리뷰 레시피가 Run과 다른 criteria hash를 고정했으면 실행 시작에서 거절한다.
   - 다른 단계가 Team을 `task_output`으로 읽으면 원본 Output이 모은 입력을 받는다. 원본 Output이 여럿이면 그 입력을 모두 optional로 받는다.
-  - 원본의 `limits`, `executionPolicy`, `input`, `planOwnerRoleId`는 쓰지 않고 Run의 것을 따른다.
+  - 원본의 `limits`, `input`, `planOwnerRoleId`는 쓰지 않고 Run의 것을 따른다.
 
 ### 실행 지원 범위
 

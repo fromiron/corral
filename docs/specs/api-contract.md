@@ -333,7 +333,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 
 브라우저 timeout은 서버 명령 실패와 같지 않다. 같은 commandId로 receipt를 조회/재전송한다. 새 ID로 취소/승인을 재시도하면 이중 의미가 생길 수 있으므로 client SDK가 처리한다.
 
-workspace의 활성 Run은 하나지만 탭은 여러 개일 수 있다. 탭별 controlRevision 갱신과 conflict UI가 필요하다. SSE가 끊겼다고 Run을 자동 취소하지 않는다. Run-level wall deadline과 승인 대기 상태를 유지한다.
+workspace의 활성 Run은 하나지만 탭은 여러 개일 수 있다. 탭별 controlRevision 갱신과 conflict UI가 필요하다. SSE가 끊겼다고 Run을 자동 취소하지 않는다. 승인 대기 상태를 유지한다.
 
 SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 제한한다. 초과하면 이미 쓴 prefix를 flush하고 연결을 종료하여 재접속 cursor가 앞으로 진행한다. 단일 committed domain event가 1 MiB보다 크면 구독을 먼저 해제하고 기존 prefix를 flush한 뒤, 그 이벤트 하나를 64 KiB 이하의 UTF-8 바이트 조각으로 순차 전송한다. 각 쓰기의 완료를 기다리며, 완전한 frame을 보낸 뒤 연결을 닫는다. 10초 동안 flush되지 않는 소켓은 강제 종료한다. 다음 연결은 완전히 받은 이벤트의 cursor부터 재개한다. 기존에 저장한 큰 이벤트도 생략·축약하지 않는다.
 

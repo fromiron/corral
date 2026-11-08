@@ -283,7 +283,7 @@ resident worker는 총 활성/대기 instance 12개로 제한한다. 동적 spaw
 
 ### 8.4 진행 없음
 
-새 메시지 자체는 진전이 아니다. 완료한 child task, 새 제출 산출물, 승인 해결, 검토 기준의 충족 변화를 관측한다. 동일 내용 hash의 연속 산출물은 경고다. 자동 판단이 잘못될 수 있으므로 no_progress는 강제 성공/실패보다 `awaiting_user`로 보내고, wall deadline과 호출 hard cap은 별도로 유지한다.
+새 메시지 자체는 진전이 아니다. 완료한 child task, 새 제출 산출물, 승인 해결, 검토 기준의 충족 변화를 관측한다. 동일 내용 hash의 연속 산출물은 경고다. 자동 판단이 잘못될 수 있으므로 no_progress는 강제 성공/실패보다 `awaiting_user`로 보낸다.
 
 ## 9. Context·산출물·검토
 
