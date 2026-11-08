@@ -286,7 +286,7 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 |---|---:|---|
 | 캔버스 정의 규모 | 고정 개수 상한 없음 | 정의·초안·가져오기·컴파일에서 노드·역할·control edge·capability link와 역할별 설정 맵의 개수만으로 거절하지 않는다. 파일·요청 크기, 각 항목의 내용·권한, Loop 구조·반복 상한과 실행 자원 제한은 유지한다. |
 | Loop 수·중첩 | 정의는 제한 없음 | 실행은 [팀 그래프 모델의 실행 지원 범위](features/team-graph.md#실행-지원-범위)를 따름 |
-| Loop 자동 회차 | 2 | 사용자 패치로 10까지 |
+| Loop 회차 상한 | Loop의 `maxIterations` | `loop_limit` 패치로 바꿈. 설치 상한 없음. 다 쓰면 `exhausted` 경로나 사용자 확인([루프 실행](features/team-graph.md#루프-실행)) |
 | 동적 위임 깊이 | 2 | 최초 scheduled agent=0 |
 | 동시 모델 요청 | 6 | 양의 정수로 설정. host·Run 자원 admission, 대기는 슬롯 사용 안 함 |
 | resident execution | 12 | 대기 worker 포함, 모델 동시성과 별도 |

@@ -97,21 +97,32 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 진단은 `{ code, severity, message, nodeId?, edgeId?, linkId? }`이고 `severity`는 `error` 또는 `warning`이다. `code`는 `packages/core/src/compiler`의 고정 enum이며 UI 문구는 메시지 카탈로그에서 code로 찾는다. 위 규칙마다 code가 하나씩 있다. 편집기는 진단을 해당 노드·연결 위에 표시한다.
 
+### 루프 실행
+
+- **진입.** Loop의 `enter`로 들어오거나 Loop가 시작 노드이면 1회차를 연다. 들어올 때마다 회차 번호, 예산, 정체 비교를 새로 시작한다.
+- **회차 기록.** 회차는 그때 열려 있는 바깥 Loop의 회차를 부모로 기록한다(`loop.iteration_started.parentIterationId`). 이전 회차 출력(`previous_iteration_output`)은 같은 진입의 바로 앞 회차에서만 오며, 1회차에는 없다.
+- **다시 돌기.** Decision이 `repeat`로 보내면 차례로 확인한다.
+  1. 끝난 회차 수가 회차 상한에 닿았다: `cap_reached`. 상한은 `maxIterations`이고, `loop_limit` 패치가 있으면 그 값이다. 리뷰 레시피가 있으면 레시피의 시도 수를 넘지 않는다. 설치 상한은 없다.
+  2. 예산을 다 썼다: `budget_exhausted`.
+  3. 정체했다: `stalled`.
+
+  어느 것에도 걸리지 않으면 이 회차를 `revise`로 끝내고 다음 회차를 연다.
+- **예산.** 이번 진입 뒤 이 Loop의 회차와 그 안쪽 Loop 회차에서 실행된 단계, 그리고 그 단계가 호출한 에이전트가 쓴 모델 호출 수와 보고된 출력 토큰, 진입 뒤 흐른 시간을 센다. 다시 돌기를 요청할 때만 확인하며 진행 중인 작업을 끊지 않는다. Run 전체 예산은 따로 적용된다.
+- **정체.** `stallDetection`이 켜져 있을 때, 이번 회차와 그 안쪽 Loop 회차에서 제출한 산출물의 내용 hash 집합이 같은 진입의 바로 앞 회차와 같으면 정체다. 제출한 산출물이 없는 회차는 정체로 보지 않는다.
+- **소진.** 걸리면 회차는 그 이유를 결과로 끝난다. `exhausted`에 연결이 있으면 Loop를 떠나 그리로 간다. 연결이 없으면 이유와 함께 한 회차 더 돌지 사용자에게 묻는다(`loop_cap` 승인, `loopStop`). 승인하면 다음 회차를 열고 다음 다시 돌기에서 같은 확인을 한다. 거절하면 Run을 취소한다.
+- **나가기.** Loop의 `exit`로 들어오면 회차를 `pass`로 끝내고 `next`로 간다. 여러 겹 바깥 상자의 `exit`나 `repeat`로 바로 가면, 그 사이 안쪽 Loop의 열린 회차는 모두 `pass`로 끝난다.
+
 ### 실행 지원 범위
 
 정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
 
-- Loop가 둘 이상인 정의.
-- 상자 안의 상자.
 - Team 노드와 Join 노드.
 - `check`·`router` Decision.
 - 한 포트에 연결이 둘 이상인 병렬 분기.
-- Loop의 `budget`, `stallDetection: true`, `exhausted` 연결, 설치 정책 상한을 넘는 `maxIterations`.
 - Agent의 `retry.maxAttempts` 1 이상과 `error` 연결.
-- 시작 노드가 Loop나 Team인 정의.
 - 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
 
-compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 지금처럼 실행한다. Loop 하나와 리뷰 레시피를 쓰는 기존 팀이 여기에 포함된다.
+compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀이 여기에 포함된다.
 
 ### 계획 IR
 
@@ -130,12 +141,58 @@ Loop는 회차 한 번을 실행하는 함수와 상한 검사로 바뀌며, 화
 ## 수용 시나리오
 
 ```gherkin
-Scenario: 루프가 둘인 정의는 컴파일되지만 아직 실행하지 않는다
-  Given 최상위에 Loop 두 개를 순서대로 둔 정의
+Scenario: 아직 실행하지 않는 구성은 실행 전에 거절한다
+  Given Join을 둔 정의
   When 정의를 컴파일한다
-  Then 오류는 없고 두 Loop에 RUNTIME_UNSUPPORTED 경고가 있다
+  Then 오류는 없고 Join에 RUNTIME_UNSUPPORTED 경고가 있다
   When 이 정의로 실행을 시작한다
   Then RUNTIME_UNSUPPORTED로 거절되고 Run이 만들어지지 않는다
+
+Scenario: 루프 두 개를 차례로 돈다
+  Given 최상위에 Loop A와 Loop B를 차례로 두고 각 Loop 안의 검토가 첫 회차에 revise, 둘째 회차에 pass를 고른다
+  When 실행한다
+  Then A가 2회차를 마친 뒤 B가 1회차부터 2회차까지 돌고 Run이 끝난다
+
+Scenario: 안쪽 루프는 바깥 회차마다 1회차부터 다시 돈다
+  Given Loop A 안에 Loop B가 있고 A의 검토가 첫 회차에 revise, 둘째 회차에 pass를 고른다
+  When 실행한다
+  Then B의 회차는 A의 회차마다 1부터 시작하고 부모 회차로 그 A 회차를 기록한다
+  And 같은 단계가 A의 서로 다른 회차에서 각각 새 Task로 실행된다
+  And B의 1회차는 앞 진입의 산출물을 이전 회차 출력으로 받지 않는다
+
+Scenario: 바깥 루프의 출구로 바로 나가면 안쪽 회차도 끝난다
+  Given Loop B 안의 검토가 pass를 바깥 Loop A의 exit에 잇는다
+  When 검토가 pass를 고른다
+  Then B와 A의 열린 회차가 모두 pass로 끝나고 A의 next로 간다
+
+Scenario: 회차 상한에서 exhausted로 나간다
+  Given maxIterations 2인 Loop의 검토가 늘 revise를 고르고 exhausted가 Agent F로 이어진다
+  When 실행한다
+  Then 2회차가 cap_reached로 끝나고 사용자에게 묻지 않고 F가 실행된다
+
+Scenario: exhausted가 없으면 이유와 함께 묻는다
+  Given 예산이 모델 호출 1회인 Loop의 검토가 revise를 고르고 exhausted에 연결이 없다
+  When 첫 회차가 다시 돌기를 요청한다
+  Then budget_exhausted를 이유로 한 loop_cap 승인을 요청한다
+  When 사용자가 승인한다
+  Then 2회차가 열린다
+  When 사용자가 다음 질문을 거절한다
+  Then Run이 취소된다
+
+Scenario: 같은 산출물을 다시 내면 정체로 본다
+  Given 정체 감지를 켠 Loop의 작성 단계가 두 회차 연속 같은 내용을 제출하고 exhausted가 Agent F로 이어진다
+  When 둘째 회차가 다시 돌기를 요청한다
+  Then 둘째 회차가 stalled로 끝나고 F가 실행된다
+
+Scenario: 설치 상한보다 많은 회차를 정할 수 있다
+  Given maxIterations 25인 Loop
+  When 정의를 컴파일하고 실행을 시작한다
+  Then RUNTIME_UNSUPPORTED 진단이 없고 Run이 시작된다
+
+Scenario: 루프로 시작하는 팀
+  Given 시작 노드가 Loop인 정의
+  When 실행한다
+  Then Loop의 1회차부터 실행된다
 
 Scenario: 루프 안의 루프와 팀을 감싼 루프를 정의한다
   Given Loop A 안에 Loop B와 inline Team C가 있고 C 안에 Agent와 review Decision이 있다
