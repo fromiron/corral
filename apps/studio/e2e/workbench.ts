@@ -138,7 +138,8 @@ export async function renameTeam(page: Page, name: string) {
 export async function openTestRun(page: Page) {
   const open = page.getByRole('button', { name: 'Test run', exact: true });
   const close = page.getByRole('button', { name: 'Close test run', exact: true });
-  await expect(open.or(close)).toBeVisible();
+  // The first page of a cold dev server can take a while.
+  await expect(open.or(close)).toBeVisible({ timeout: 20_000 });
   if (await open.isVisible()) await open.click();
   const panel = page.getByRole('complementary', { name: 'Test run' });
   await expect(panel).toBeVisible();

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 // Projects in the in-browser runtime. Corrals
 // live in this browser's storage; demo runs last until reload and follow their Corral here.
@@ -33,8 +34,7 @@ async function singleAgentRun(page: Page) {
     .click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page', exact: true }).click();
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(

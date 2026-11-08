@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 // The Run page on the in-browser demo team. Demo runs live in the page's worker,
 // so these tests reach the Run page through the app's own link instead of reloading.
@@ -16,8 +17,7 @@ const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
 
 async function finishedTeamRun(page: Page) {
   await page.goto('/demo?delay=150');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await approve(page, 'Your decision');
   await approve(page, 'Final output');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');

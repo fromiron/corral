@@ -1,4 +1,5 @@
 import { linearCorral } from '@corral/testkit';
+import { openTestRun, startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -46,7 +47,7 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
   }, definition);
   corral.fake?.answerWith('Run override applied.');
   await page.goto(`${corral.server.url}/corrals/${corralId}/edit`);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
   await page.getByText('Work styles for this run', { exact: true }).click();
   const select = page.getByRole('combobox', { name: 'Run work style for writer', exact: true });
   await select.click();
@@ -85,8 +86,7 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
     'aria-expanded',
     'false',
   );
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
   await page.getByText('Prepare an execution', { exact: true }).click();
   await expect(select).toContainText('Keep role settings');

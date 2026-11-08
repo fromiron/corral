@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 // The Run page on a phone-width screen: one primary area at a time, nothing off-screen.
 
@@ -9,8 +10,7 @@ const graph = (page: import('@playwright/test').Page) =>
 
 async function finishedRun(page: import('@playwright/test').Page) {
   await page.goto('/demo?template=starter&delay=100');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\//);

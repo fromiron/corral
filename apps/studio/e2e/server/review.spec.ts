@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { openResult } from '../workbench.ts';
+import { openResult, startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
@@ -14,8 +14,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
     .locator('input[type=file]')
     .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
 
