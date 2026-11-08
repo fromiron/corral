@@ -410,6 +410,16 @@ export const ApprovalResolved = event(
   }),
 );
 /** A workflow routing fact, separate from observe-only reasoning-effort judgments. */
+/** A Join let one path continue; `any` names the steps of the branches it stopped. */
+export const WorkflowJoined = event(
+  'workflow.joined',
+  z.strictObject({
+    nodeId: Identifier,
+    policy: z.enum(['all', 'any']),
+    iterationId: Identifier.nullable(),
+    cancelledNodeIds: z.array(Identifier).max(1000),
+  }),
+);
 export const WorkflowBranchSelected = event(
   'workflow.branch_selected',
   z
@@ -905,6 +915,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ObservationLate,
   OutputFinalized,
   WorkflowBranchSelected,
+  WorkflowJoined,
   DecisionRequested,
   DecisionObserved,
   DecisionFailed,

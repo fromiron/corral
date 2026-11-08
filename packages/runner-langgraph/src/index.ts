@@ -3,11 +3,13 @@ import {
   entryTarget,
   executeStep,
   type GraphRunner,
+  hasParallel,
   type PlanTarget,
   type RunnerCallbacks,
   type RunnerResult,
   type StopSignal,
   targetsOf,
+  walkPlan,
 } from '@corral/core';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph/web';
 
@@ -34,6 +36,9 @@ export class LangGraphRunner implements GraphRunner {
     callbacks: RunnerCallbacks,
     signal?: StopSignal,
   ): Promise<RunnerResult> {
+    // Parallel branches move on their own and meet only at Joins; LangGraph's supersteps would
+    // hold every branch to the slowest one at each step, so such plans use the shared walker.
+    if (hasParallel(plan)) return walkPlan(plan, callbacks, signal);
     // Graph node names are generated, so no step id can collide with LangGraph's own names.
     const names = new Map(Object.keys(plan.steps).map((id, i) => [id, `step_${i}`]));
     const nameOf = (nodeId: string) => {
@@ -54,7 +59,7 @@ export class LangGraphRunner implements GraphRunner {
         if (signal?.aborted) return { target: null, rounds, result: { kind: 'stopped' } };
         return 'end' in outcome
           ? { target: null, rounds, result: outcome.end }
-          : { target: outcome.next, rounds, result: null };
+          : { target: outcome.next[0] ?? null, rounds, result: null };
       });
     }
     graph = graph.addEdge(START, nameOf(plan.entryNodeId));

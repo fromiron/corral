@@ -633,6 +633,8 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     }
     case 'task.completed':
       return updateTask(p, event.payload.taskId, { status: 'completed' });
+    case 'workflow.joined':
+      return p;
     case 'workflow.branch_selected':
       return {
         ...p,

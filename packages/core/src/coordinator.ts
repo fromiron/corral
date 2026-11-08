@@ -487,6 +487,12 @@ interface LiveRun {
    * (content hashes), for budgets and stall detection.
    */
   loopEntries: Map<string, { enteredMs: number; previousWork: string[] | null }>;
+  /** Steps of branches an `any` Join stopped (`node@round`): they start and decide nothing. */
+  stoppedSteps: Set<string>;
+  /** Approvals a step is waiting on, by node, so stopping its branch can withdraw them. */
+  stepApprovals: Map<string, Set<string>>;
+  /** A pending run-level limit intervention; concurrent workers wait on this one. */
+  limitApproval: Promise<'approve' | 'reject'> | null;
   /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
@@ -590,6 +596,12 @@ interface PendingExtensionUi {
 
 /** What starts an execution: its node, place in the call tree and reason to exist. */
 const CHECK_RUNNER = new BuiltInCheckRunner();
+
+/**
+ * A run still doing work. Waiting for a person stops only the step that waits; other branches
+ * and executions go on (docs/specs/features/team-graph.md, "병렬 실행").
+ */
+const WORKING: ReadonlySet<RunProjection['status']> = new Set(['running', 'awaiting_user']);
 
 /** Error text handed to a model: a retry's last error, or what an error path is told. */
 const clip = (text: string) => text.slice(0, 2000);
@@ -2098,6 +2110,9 @@ export class Coordinator {
         this.judgments?.settings.reasoning_effort.maxCalls ?? definition.limits.maxModelCalls,
       ),
       loopEntries: new Map(),
+      stoppedSteps: new Set(),
+      stepApprovals: new Map(),
+      limitApproval: null,
       limits: definition.executionPolicy?.budget
         ? {
             ...definition.limits,
@@ -3234,11 +3249,7 @@ export class Coordinator {
   private async boundary(run: LiveRun, executionId?: string): Promise<void> {
     if (executionId) run.boundaries.add(executionId);
     try {
-      while (
-        run.projection.status === 'pausing' ||
-        run.projection.status === 'paused' ||
-        run.projection.status === 'awaiting_user'
-      ) {
+      while (run.projection.status === 'pausing' || run.projection.status === 'paused') {
         this.maybePaused(run);
         if (run.stop.aborted || (executionId && run.cancelRequested.has(executionId)))
           throw new Error('scope cancelled');
@@ -4241,7 +4252,7 @@ export class Coordinator {
   }
 
   private conclude(run: LiveRun, result: RunnerResult) {
-    if (run.projection.status !== 'running') return;
+    if (!WORKING.has(run.projection.status)) return;
     switch (result.kind) {
       case 'finished':
         // finalizeOutput already ended the run; reaching here still running is a runner bug.
@@ -4300,7 +4311,9 @@ export class Coordinator {
         await this.boundary(run);
         if (iterationId !== this.openRoundOf(run, nodeId))
           throw new Error('decision scope changed');
-        if (decision === null) return null;
+        // A branch stopped while it decided records no route.
+        if (decision === null || run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`))
+          return null;
         const next = step.branches[decision.branch]?.[0] ?? null;
         const executionIds = new Set<string>();
         const author = (id: string) => {
@@ -4402,6 +4415,39 @@ export class Coordinator {
             })),
           );
         run.rounds.set(loopId, { no, iterationId });
+      },
+      joined: async (joinId, _iteration, stopped, loops) => {
+        const join = run.plan.steps[joinId];
+        if (join?.kind !== 'join') throw new Error(`${joinId} is not a Join`);
+        for (const step of stopped) {
+          const round = this.openRoundOf(run, step.nodeId);
+          run.stoppedSteps.add(`${step.nodeId}@${round ?? '-'}`);
+          this.withdrawApprovals(run, step.nodeId);
+          for (const id of run.projection.nodeExecutions[step.nodeId] ?? []) {
+            const execution = run.projection.executions[id];
+            if (execution && !TERMINAL_EXECUTION_STATUSES.has(execution.status))
+              this.requestCancel(run, id, 'another branch reached the Join first');
+          }
+        }
+        const drafts: EventDraft[] = [];
+        for (const { loopId, no } of loops) {
+          this.withdrawApprovals(run, loopId);
+          const round = run.rounds.get(loopId);
+          if (round?.no !== no) continue;
+          drafts.push(this.roundFinished(run, loopId, round.iterationId, 'cancelled'));
+          run.rounds.delete(loopId);
+          run.loopEntries.delete(loopId);
+        }
+        drafts.push({
+          type: 'workflow.joined',
+          payload: {
+            nodeId: joinId,
+            policy: join.policy,
+            iterationId: this.openRoundOf(run, joinId),
+            cancelledNodeIds: stopped.map((step) => step.nodeId),
+          },
+        });
+        this.commit(run, drafts);
       },
       loopLeft: async (loopId, no, outcome) => {
         const round = run.rounds.get(loopId);
@@ -4551,7 +4597,7 @@ export class Coordinator {
       const problem = await this.recipeEvidenceProblem(run, loopId, state, candidate);
       if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status))
         throw new Error('recipe cancelled');
-      if (run.projection.status === 'running') return problem;
+      if (WORKING.has(run.projection.status)) return problem;
     }
   }
 
@@ -4658,6 +4704,7 @@ export class Coordinator {
       );
     }
     const key = `${nodeId}@${round?.iterationId ?? '-'}`;
+    if (run.stoppedSteps.has(key)) return Promise.resolve({ ok: false, reason: 'branch stopped' });
     const existing = run.activations.get(key);
     if (existing) return existing;
     const outcome = this.runAgent(run, nodeId, round?.iterationId ?? null);
@@ -4718,6 +4765,8 @@ export class Coordinator {
     if (answer && node.routes.some((r) => r.id === answer))
       return choice(answer, 'model_route', evidence);
 
+    // A branch stopped while its chooser ran asks nothing.
+    if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
     const connected = node.routes.filter((r) => (step.branches[r.id] ?? []).length > 0);
     if (connected.length === 0) throw new Error(`${nodeId} has no connected route to pick`);
     const subjects = [
@@ -4733,6 +4782,7 @@ export class Coordinator {
       undefined,
       undefined,
       connected.map((r) => ({ id: r.id, label: r.label })),
+      nodeId,
     );
     if ((await requested.decision) === 'reject') return null;
     const picked = run.projection.approvals[requested.approvalId]?.routeId;
@@ -4799,10 +4849,16 @@ export class Coordinator {
           ],
           configRevision: run.projection.controlRevision,
         };
+      // A branch stopped while its checks ran asks nothing.
+      if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
       const requested = this.requestApproval(
         run,
         'check',
         summary ? [summary] : [run.criteriaVersionId],
+        undefined,
+        undefined,
+        undefined,
+        nodeId,
       );
       if ((await requested.decision) === 'reject') return null;
       await this.boundary(run);
@@ -4889,9 +4945,9 @@ export class Coordinator {
       const ended = run.projection.executions[input.executionId];
       // Only a failure is retried: never a cancellation, an unconfirmed stop or a run that ended.
       if (outcome.ok || input.attemptNo > retries || ended?.status !== 'failed') return outcome;
-      if (run.projection.status !== 'running' && !this.pausedOrWaiting(run)) return outcome;
+      if (!WORKING.has(run.projection.status) && !this.pausedOrWaiting(run)) return outcome;
       await this.boundary(run);
-      if (run.projection.status !== 'running') return outcome;
+      if (!WORKING.has(run.projection.status)) return outcome;
       prepared = this.prepareExecution(run, {
         nodeId,
         iterationId,
@@ -5841,10 +5897,15 @@ export class Coordinator {
     );
     if (mode === 'approval') {
       const review = this.latestReview(run);
-      const requested = this.requestApproval(run, 'user_action', [
-        ...bound,
-        ...(review ? [review] : []),
-      ]);
+      const requested = this.requestApproval(
+        run,
+        'user_action',
+        [...bound, ...(review ? [review] : [])],
+        undefined,
+        undefined,
+        undefined,
+        nodeId,
+      );
       return choice(await requested.decision, 'human_approval', [
         { kind: 'approval', id: requested.approvalId },
       ]);
@@ -5905,10 +5966,15 @@ export class Coordinator {
       );
     }
     if (run.pendingCriteriaVersionId) {
-      const requested = this.requestApproval(run, 'user_action', [
-        recorded.targetVersionId,
-        reviewVersionId,
-      ]);
+      const requested = this.requestApproval(
+        run,
+        'user_action',
+        [recorded.targetVersionId, reviewVersionId],
+        undefined,
+        undefined,
+        undefined,
+        nodeId,
+      );
       return choice(
         (await requested.decision) === 'approve' ? 'revise' : 'reject',
         'criteria_changed',
@@ -5925,10 +5991,15 @@ export class Coordinator {
         { kind: 'artifact', id: recorded.targetVersionId },
       ]);
     // Not a usable verdict: the person decides whether the draft goes on.
-    const requested = this.requestApproval(run, 'user_action', [
-      recorded.targetVersionId,
-      reviewVersionId,
-    ]);
+    const requested = this.requestApproval(
+      run,
+      'user_action',
+      [recorded.targetVersionId, reviewVersionId],
+      undefined,
+      undefined,
+      undefined,
+      nodeId,
+    );
     const approved = (await requested.decision) === 'approve';
     return choice(
       approved ? (run.pendingCriteriaVersionId ? 'revise' : 'pass') : 'reject',
@@ -6047,8 +6118,15 @@ export class Coordinator {
     request?: { tool: NonNullable<EventPayload<'approval.requested'>['tool']>; body: string },
     loopStop?: LoopStop,
     routes?: EventPayload<'approval.requested'>['routes'],
+    /** The step that waits on it, so stopping that step's branch can withdraw it. */
+    step?: string,
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
+    if (step) {
+      const owned = run.stepApprovals.get(step) ?? new Set<string>();
+      owned.add(approvalId);
+      run.stepApprovals.set(step, owned);
+    }
     const decision = new Promise<'approve' | 'reject'>((resolve) => {
       run.approvals.set(approvalId, resolve);
     });
@@ -6078,6 +6156,37 @@ export class Coordinator {
         : undefined,
     );
     return { approvalId, decision };
+  }
+
+  /** A stopped branch's step waits on nothing: its open approvals end as cancelled. */
+  private withdrawApprovals(run: LiveRun, step: string) {
+    for (const approvalId of run.stepApprovals.get(step) ?? []) {
+      const resume = run.approvals.get(approvalId);
+      if (!resume || run.projection.approvals[approvalId]?.status !== 'pending') continue;
+      run.approvals.delete(approvalId);
+      const waiting =
+        run.approvals.size > 0 ||
+        run.userInputs.size > 0 ||
+        run.extensionUi.size > 0 ||
+        Object.values(run.projection.tasks).some((t) => t.status === 'blocked');
+      this.commit(run, [
+        {
+          type: 'approval.resolved',
+          payload: {
+            approvalId,
+            decision: 'reject',
+            actor: RUNTIME.id,
+            subjectVersionIds: run.projection.approvals[approvalId]?.subjectVersionIds ?? [],
+            reason: 'cancelled',
+          },
+        },
+        ...(run.projection.status === 'awaiting_user' && !waiting
+          ? [runState('awaiting_user', 'running', 'approval_resolved')]
+          : []),
+      ]);
+      resume('reject');
+    }
+    run.stepApprovals.delete(step);
   }
 
   private async requestToolApproval(
@@ -6243,7 +6352,15 @@ export class Coordinator {
     const latest = members.flatMap((m) =>
       this.submittedOutputOf(run, m, round ? (at) => this.sameRound(run, at, round) : undefined),
     );
-    const requested = this.requestApproval(run, 'loop_cap', latest, undefined, reason);
+    const requested = this.requestApproval(
+      run,
+      'loop_cap',
+      latest,
+      undefined,
+      reason,
+      undefined,
+      loopId,
+    );
     if ((await requested.decision) === 'approve') {
       await this.boundary(run);
       return 'continue';
@@ -6948,7 +7065,7 @@ export class Coordinator {
       !run.stop.aborted &&
       !run.cancelRequested.has(executionId) &&
       !run.closingExecutions.has(executionId) &&
-      run.projection.status === 'running' &&
+      WORKING.has(run.projection.status) &&
       run.projection.tasks[input.taskId]?.activeExecutionId === executionId &&
       (run.projection.workPlans?.[key]?.revision ?? 0) === update.expectedRevision &&
       update.expectedRevision < 1000 &&
@@ -7258,7 +7375,7 @@ export class Coordinator {
       const status = run.projection.executions[executionId]?.status;
       if (
         status !== 'active' ||
-        run.projection.status !== 'running' ||
+        !WORKING.has(run.projection.status) ||
         run.cancelRequested.has(executionId) ||
         run.closingExecutions.has(executionId) ||
         run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
@@ -7344,7 +7461,7 @@ export class Coordinator {
       }
       do {
         await this.boundary(run, executionId);
-      } while (run.projection.status !== 'running');
+      } while (!WORKING.has(run.projection.status));
       requireActive();
       const toolCallId = this.ids.next('tool_call');
       const permission = permissionDecision(proposal);
@@ -7514,7 +7631,7 @@ export class Coordinator {
         };
       do {
         await this.boundary(run, executionId);
-      } while (run.projection.status !== 'running');
+      } while (!WORKING.has(run.projection.status));
       requireActive();
       const call = authorized.get(toolCallId);
       if (call && descriptors.get(call.proposal.name)?.source.startsWith('extension:'))
@@ -7569,7 +7686,7 @@ export class Coordinator {
           };
         do {
           await this.boundary(run, executionId);
-        } while (run.projection.status !== 'running');
+        } while (!WORKING.has(run.projection.status));
         requireActive();
         if (
           parentRefusal(call.proposal) ||
@@ -7934,7 +8051,7 @@ export class Coordinator {
                     throw new Error('tool permission was not granted');
                   do {
                     await this.boundary(run, executionId);
-                  } while (run.projection.status !== 'running');
+                  } while (!WORKING.has(run.projection.status));
                   requireActive();
                   if (
                     parentRefusal(call.proposal) ||
@@ -8289,7 +8406,7 @@ export class Coordinator {
           }
           do {
             await this.boundary(run, executionId);
-          } while (run.projection.status !== 'running');
+          } while (!WORKING.has(run.projection.status));
           requireActive();
           const view: ModelGateView = {
             projection: run.projection,
@@ -8301,28 +8418,38 @@ export class Coordinator {
           const request = runGates(this.gates['model.request'], view);
           if (request.kind === 'refuse') this.refuseModelRequest(run, request);
           if (request.kind === 'require_approval') {
-            this.commit(run, [
-              {
-                type: 'limit.reached',
-                payload: {
-                  limitKind: request.limit.kind,
-                  used: request.limit.used,
-                  reserved: request.limit.reserved ?? 0,
-                  max: request.limit.max,
+            // A limit belongs to the run, not to one branch: every worker that reaches it
+            // waits on the same intervention.
+            if (!run.limitApproval) {
+              this.commit(run, [
+                {
+                  type: 'limit.reached',
+                  payload: {
+                    limitKind: request.limit.kind,
+                    used: request.limit.used,
+                    reserved: request.limit.reserved ?? 0,
+                    max: request.limit.max,
+                  },
                 },
-              },
-            ]);
-            const requested = this.requestApproval(run, 'user_action', [run.criteriaVersionId]);
+              ]);
+              const shared = this.requestApproval(run, 'user_action', [
+                run.criteriaVersionId,
+              ]).decision;
+              run.limitApproval = shared;
+              void shared.then(() => {
+                if (run.limitApproval === shared) run.limitApproval = null;
+              });
+            }
+            const decision = run.limitApproval;
             run.boundaries.add(executionId);
             try {
-              if ((await requested.decision) !== 'approve')
-                throw new Error(`${request.limit.kind} stopped`);
+              if ((await decision) !== 'approve') throw new Error(`${request.limit.kind} stopped`);
             } finally {
               run.boundaries.delete(executionId);
             }
             do {
               await this.boundary(run, executionId);
-            } while (run.projection.status !== 'running');
+            } while (!WORKING.has(run.projection.status));
             requireActive();
           }
           if (
@@ -8411,10 +8538,10 @@ export class Coordinator {
             } finally {
               run.boundaries.delete(executionId);
             }
-            const paused = run.projection.status !== 'running';
+            const paused = !WORKING.has(run.projection.status);
             do {
               await this.boundary(run, executionId);
-            } while (run.projection.status !== 'running');
+            } while (!WORKING.has(run.projection.status));
             requireActive();
             if (paused || fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
           }
@@ -8425,7 +8552,7 @@ export class Coordinator {
           try {
             do {
               await this.boundary(run, executionId);
-            } while (run.projection.status !== 'running');
+            } while (!WORKING.has(run.projection.status));
             requireActive();
             if (auto && fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
             if (
@@ -10083,7 +10210,7 @@ export class Coordinator {
         cancelTimer = this.timers.after(plan.timeoutMs + 120000, timeout);
         if (plan.mode === 'service') {
           await this.stoppingServices.get(run);
-          if (cancellation.aborted || run.projection.status !== 'running')
+          if (cancellation.aborted || !WORKING.has(run.projection.status))
             throw new ToolRefusal('TARGET_TERMINAL', 'service launch cancelled');
           this.serviceRuns.add(run);
         }

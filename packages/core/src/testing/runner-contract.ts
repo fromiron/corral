@@ -53,8 +53,60 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         log.push(`cap ${loopId}#${rounds} ${answer}`);
         return answer;
       },
+      async joined(joinId, iteration, stopped) {
+        log.push(
+          `join ${tag(joinId, iteration)}${stopped.length ? ` stops ${stopped.map((s) => tag(s.nodeId, s.iteration)).join(',')}` : ''}`,
+        );
+      },
     };
     return { log, callbacks };
+  }
+
+  /** p fans out to a and b, which meet at Join j (policy given), then m → output. */
+  function forked(policy: 'all' | 'any') {
+    const definition = linearCorral(['p', 'a', 'b', 'm']);
+    for (const node of definition.nodes)
+      if (node.type === 'agent' && (node.id === 'a' || node.id === 'b'))
+        node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
+    definition.nodes.push({ id: 'j', type: 'join', label: 'j', policy });
+    const edge = (id: string, source: string, target: string) => ({
+      id,
+      source,
+      sourcePort: 'out',
+      target,
+      targetPort: 'in' as const,
+    });
+    definition.controlEdges = [
+      edge('pa', 'p', 'a'),
+      edge('pb', 'p', 'b'),
+      edge('aj', 'a', 'j'),
+      edge('bj', 'b', 'j'),
+      edge('jm', 'j', 'm'),
+      edge('mo', 'm', 'output'),
+    ];
+    return planOf(definition);
+  }
+
+  /** Holds each named step until released; the recorder answers once it is. */
+  function held(callbacks: RunnerCallbacks, log: string[], names: string[]) {
+    const releases = new Map<string, (ok: boolean) => void>();
+    const started = new Set<string>();
+    const activate = callbacks.activate;
+    callbacks.activate = async (nodeId, iteration) => {
+      if (!names.includes(nodeId)) return activate(nodeId, iteration);
+      log.push(`start ${nodeId}`);
+      started.add(nodeId);
+      const ok = await new Promise<boolean>((resolve) => releases.set(nodeId, resolve));
+      log.push(`done ${nodeId}`);
+      return ok ? { ok: true } : { ok: false, reason: `${nodeId} failed` };
+    };
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 1000 && !check(); i++) await Promise.resolve();
+    };
+    return {
+      started: (nodeId: string) => until(() => started.has(nodeId)),
+      release: (nodeId: string, ok = true) => releases.get(nodeId)?.(ok),
+    };
   }
 
   describe(`GraphRunner contract: ${name}`, () => {
@@ -174,6 +226,49 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         nodeId: 'review_decision',
         branch: 'inconclusive',
       });
+    });
+
+    it('runs parallel branches at once and continues after an all Join once both arrive', async () => {
+      const { log, callbacks } = recorder();
+      const hold = held(callbacks, log, ['a', 'b']);
+      const result = makeRunner().run(forked('all'), callbacks);
+      await hold.started('a');
+      await hold.started('b');
+      expect(log).toEqual(['activate p', 'start a', 'start b']);
+      hold.release('b');
+      await hold.started('nothing');
+      expect(log).not.toContain('join j');
+      hold.release('a');
+      expect(await result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+      expect(log.slice(3)).toEqual(['done b', 'done a', 'join j', 'activate m', 'finalize output']);
+    });
+
+    it('continues after an any Join with the first branch and stops the other', async () => {
+      const { log, callbacks } = recorder();
+      const hold = held(callbacks, log, ['a', 'b']);
+      const joined = callbacks.joined;
+      // The Coordinator cancels the stopped step; here that settles b as failed.
+      callbacks.joined = async (joinId, iteration, stopped, loops) => {
+        await joined(joinId, iteration, stopped, loops);
+        for (const step of stopped) hold.release(step.nodeId, false);
+      };
+      const result = makeRunner().run(forked('any'), callbacks);
+      await hold.started('b');
+      hold.release('a');
+      expect(await result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+      expect(log).toContain('join j stops b');
+      expect(log.filter((line) => line === 'activate m')).toHaveLength(1);
+      expect(log).not.toContain('activate j');
+    });
+
+    it('ends the run when one branch fails, without waiting for the other', async () => {
+      const { log, callbacks } = recorder();
+      const hold = held(callbacks, log, ['a', 'b']);
+      const result = makeRunner().run(forked('all'), callbacks);
+      await hold.started('b');
+      hold.release('a', false);
+      expect(await result).toEqual({ kind: 'failed', nodeId: 'a', reason: 'a failed' });
+      expect(log).not.toContain('join j');
     });
 
     it('stops without further steps once aborted', async () => {

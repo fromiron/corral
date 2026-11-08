@@ -50,6 +50,7 @@ function scripted(decisions: string[], failing: Set<string>) {
       log.push(`leave ${loopId}#${no} ${outcome}`);
     },
     loopCheck: async () => null,
+    joined: async () => {},
     loopCapReached: async (loopId, rounds) => {
       // Continue past the cap once in a while, driven by the same script.
       const answer =

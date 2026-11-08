@@ -30,7 +30,7 @@
 | 3. 루프 실행 | 완료 | 22d72e0e, 915817de(명세), a5d550f7 |
 | 4. 재시도, 실패 경로, router | 완료 | f4eaaabb(명세), 6ca57f69, 3cf75135(3단계 보완) |
 | 4b. check Decision | 완료 | 45261960(명세), 839a953c |
-| 5. 병렬 | 진행 중 | |
+| 5. 병렬 | 완료 | 05918b82(명세), 9439bc19(명세: 기다림은 그 단계만), 구현은 `feat: run parallel branches and Joins` |
 | 6. 하위 팀 | 시작 전 | |
 | 7. 위임 깊이 | 시작 전 | |
 | 8. 포크와 중단점 | 시작 전 (명세 없음) | |
@@ -48,11 +48,13 @@
 
 ## 다음 스텝
 
-1. 5단계: 명세는 [병렬 실행](../specs/features/team-graph.md#병렬-실행). 두 runner가 core의 분기 walker 하나를 쓴다. LangGraph 그래프는 갈라짐이 없는 계획만 돈다.
-2. 6단계(하위 팀).
+1. 6단계(하위 팀): 명세부터. 안에 둔 팀과 저장된 팀 참조를 실행하고, Team으로 시작하는 팀을 받는다.
+2. 7단계(위임 깊이).
 
 ## 남은 정리와 열린 질문
 
+- 병렬 분기와 Join은 단위·runner 공통 테스트로만 확인했다. 브라우저 E2E는 마무리 단계에서 한다.
+- 기다림이 그 단계만 멈추면서, Run 상태는 승인이 하나라도 열려 있으면 `awaiting_user`인데 다른 분기는 계속 돈다. `technical-design.md`의 Run 상태 절은 모든 진행이 막혔을 때만 `awaiting_user`라고 한다. 어느 쪽이 맞는지 정해야 한다.
 - 확장 E2E 13개가 옛 선택자를 쓴다(마무리 단계에서): `accessibility`, `editor-responsive`, `palette`, `performance/performance`, `studio`, `team-config`, `server/harness-recipe`, `server/markdown-agent-import`, `server/models`, `server/projects`, `server/reasoning-scope`, `server/server`, `server/team-config`.
 - `/demo`에서 저장하면 수정이 사라진다. 데모 loader가 템플릿 id로 팀을 찾는데, 새 팀은 항상 새 id를 받아서 저장할 때마다 데모 팀을 다시 만든다. main에도 있던 문제다.
 - `technical-design.md` 13.3절은 실행 화면 흐름 보기가 편집기 배치를 함께 쓴다고 하지만 `RunFlowView`는 쓰지 않는다. 어느 쪽이 맞는지 정해야 한다.

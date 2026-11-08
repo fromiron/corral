@@ -61,6 +61,8 @@ export type DiagnosticCode =
   | 'TEAM_REF_INVALID'
   | 'CYCLE_OUTSIDE_LOOP'
   | 'PARALLEL_MERGE_NEEDS_JOIN'
+  | 'PARALLEL_UNJOINED'
+  | 'JOIN_PARTIAL'
   | 'JOIN_SINGLE_INPUT'
   | 'PARALLEL_WRITERS'
   | 'UNREACHABLE'
@@ -126,7 +128,16 @@ export type PlanStep =
       body: PlanTarget[];
       next: PlanTarget[];
     })
-  | (StepBase & { kind: 'join'; policy: JoinNode['policy']; next: PlanTarget[] })
+  | (StepBase & {
+      kind: 'join';
+      policy: JoinNode['policy'];
+      next: PlanTarget[];
+      /**
+       * The fan-out whose branches this Join gathers: the source port (`node\u0000port`) and its
+       * number of branches. Null when every connection in comes from one branch: it passes on.
+       */
+      gathers: { port: string; width: number } | null;
+    })
   | (StepBase & { kind: 'output'; requireApproval: boolean });
 
 export interface LoopPlan {
@@ -339,6 +350,8 @@ class Context {
   readonly references = new Map<string, ReferencePlan>();
   readonly outgoing = new Map<string, ControlEdge[]>();
   readonly incoming = new Map<string, ControlEdge[]>();
+  /** What each Join gathers, found by the parallel check. */
+  readonly gathers = new Map<string, { port: string; width: number }>();
 
   constructor(definition: CorralDefinition) {
     this.definition = definition;
@@ -925,6 +938,63 @@ function checkParallel(
     });
   }
 
+  // Branches end only by rejoining: never at an Output, nor through the exit or repeat of the
+  // box the fan-out sits in.
+  const open = (branches: Branches) =>
+    [...branches].filter(([port, indexes]) => indexes.size < (fanOut.get(port) ?? 0));
+  const inBox = (port: string, boxId: string) => {
+    const [source = '', sourcePort] = port.split('\u0000');
+    if (source === boxId) return sourcePort === 'body';
+    for (let id = c.nodes.get(source)?.parentId; id; id = c.nodes.get(id)?.parentId)
+      if (id === boxId) return true;
+    return false;
+  };
+  for (const edge of c.definition.controlEdges) {
+    const branches =
+      carried.get(edge.id) ??
+      context.get(vertexOf(c.nodes, edge.source, edge.sourcePort, 'source'));
+    if (!branches) continue;
+    const unjoined = open(branches);
+    const leaves =
+      c.nodes.get(edge.target)?.type === 'output'
+        ? unjoined.length > 0
+        : (edge.targetPort === 'exit' || edge.targetPort === 'repeat') &&
+          unjoined.some(([port]) => inBox(port, edge.target));
+    if (leaves)
+      c.error(
+        'PARALLEL_UNJOINED',
+        'this parallel branch ends before the branches meet again at a Join',
+        { nodeId: edge.target, edgeId: edge.id },
+      );
+  }
+
+  // A Join gathers the branches of one fan-out port: all of them, and nothing else open.
+  for (const node of c.definition.nodes) {
+    if (node.type !== 'join') continue;
+    const edges = (into.get(node.id) ?? []).map((edge) => carried.get(edge.id) as Branches);
+    if (edges.length === 0) continue;
+    const ports = new Set(edges.flatMap((branches) => [...branches.keys()]));
+    const differing = [...ports].filter((port) => {
+      const sets = edges.map((branches) => [...(branches.get(port) ?? [])].sort().join(','));
+      return new Set(sets).size > 1;
+    });
+    if (differing.length === 0) continue;
+    const [port = ''] = differing;
+    const width = fanOut.get(port) ?? 0;
+    const covered = new Set(edges.flatMap((branches) => [...(branches.get(port) ?? [])]));
+    if (
+      differing.length > 1 ||
+      covered.size !== width ||
+      edges.some((branches) => branches.get(port)?.size !== 1)
+    ) {
+      c.error('JOIN_PARTIAL', 'a Join gathers every branch of one fan-out', {
+        nodeId: node.id,
+      });
+      continue;
+    }
+    c.gathers.set(node.id, { port, width });
+  }
+
   const writers = c.definition.nodes.filter(
     (n): n is AgentNode =>
       n.type === 'agent' &&
@@ -1124,27 +1194,13 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
       case 'team':
         unsupported('Teams do not run yet', at);
         break;
-      case 'join':
-        unsupported('Joins do not run yet', at);
-        break;
       case 'agent':
       case 'decision':
+      case 'join':
       case 'loop':
       case 'output':
         break;
     }
-  }
-  const ports = new Map<string, ControlEdge[]>();
-  for (const edge of definition.controlEdges) {
-    const port = `${edge.source}\u0000${edge.sourcePort}`;
-    ports.set(port, [...(ports.get(port) ?? []), edge]);
-  }
-  for (const edges of ports.values()) {
-    const [first] = edges;
-    if (first && edges.length > 1)
-      unsupported(`parallel branches from "${first.sourcePort}" do not run yet`, {
-        nodeId: first.source,
-      });
   }
   if (definition.limits.maxDelegationDepth > 2)
     unsupported('this runtime delegates at most two levels deep');
@@ -1227,7 +1283,13 @@ function lower(c: Context, graph: Graph): CompiledPlan {
         };
         break;
       case 'join':
-        steps[id] = { ...base, kind: 'join', policy: node.policy, next: targetsOf(id, 'out') };
+        steps[id] = {
+          ...base,
+          kind: 'join',
+          policy: node.policy,
+          next: targetsOf(id, 'out'),
+          gathers: c.gathers.get(id) ?? null,
+        };
         break;
       case 'output':
         steps[id] = { ...base, kind: 'output', requireApproval: node.requireApproval };

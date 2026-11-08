@@ -444,17 +444,15 @@ describe('loop execution', () => {
     const definition = team(
       [
         research,
-        plain('a'),
-        plain('b'),
-        { id: 'join', type: 'join', label: 'join', policy: 'all' } as CorralNode,
+        { id: 'team', type: 'team', label: 'team', source: { kind: 'inline' } } as CorralNode,
+        { ...plain('a'), parentId: 'team' },
         output('a'),
       ],
       [
-        edge('research', 'out', 'a'),
-        edge('research', 'out', 'b'),
-        edge('a', 'out', 'join'),
-        edge('b', 'out', 'join'),
-        edge('join', 'out', 'output'),
+        edge('research', 'out', 'team', 'enter'),
+        edge('team', 'body', 'a'),
+        edge('a', 'out', 'team', 'exit'),
+        edge('team', 'next', 'output'),
       ],
     );
     const planned = planRun(definition);

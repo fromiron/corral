@@ -187,6 +187,25 @@ function fanOut(merge: Doc = agent('M', { inputBindings: from('A') })): Doc {
   );
 }
 
+/** P → T (inline Team: body → R → exit) → output. A Team does not run yet. */
+function inlineTeam(): Doc {
+  return definition(
+    [
+      agent('P'),
+      { id: 'T', type: 'team', label: 'T', source: { kind: 'inline' } },
+      agent('R', { parentId: 'T', inputBindings: from('P') }),
+      output('R'),
+    ],
+    [
+      edge('e1', 'P', 'out', 'T', 'enter'),
+      edge('e2', 'T', 'body', 'R', 'in'),
+      edge('e3', 'R', 'out', 'T', 'exit'),
+      edge('e4', 'T', 'next', 'output', 'in'),
+    ],
+    'P',
+  );
+}
+
 const join = (policy: 'all' | 'any' = 'all'): Doc => ({
   id: 'M',
   type: 'join',
@@ -334,10 +353,10 @@ describe('team graph: parallel branches', () => {
     expect(merge?.edgeId).toMatch(/^e[AB]M$/);
   });
 
-  it('accepts the same branches meeting at a join, and marks them not runnable yet', () => {
+  it('accepts the same branches meeting at a join, and runs them', () => {
     const doc = fanOut(join());
     expect(errorsOf(doc)).toEqual([]);
-    expect(codes(warningsOf(doc))).toContain('RUNTIME_UNSUPPORTED');
+    expect(codes(warningsOf(doc))).not.toContain('RUNTIME_UNSUPPORTED');
   });
 
   it('lets the exclusive branches of a decision meet without a join', () => {
@@ -512,11 +531,11 @@ describe('team graph: what runs today', () => {
   });
 
   it('refuses to plan a run for a definition the runtime does not execute', () => {
-    const plan = planRun(fanOut(join()));
+    const plan = planRun(inlineTeam());
     expect(plan.ok).toBe(false);
     if (plan.ok) return;
     expect(plan.issues).toContainEqual(
-      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'M' }),
+      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'T' }),
     );
   });
 
@@ -529,8 +548,8 @@ describe('team graph: what runs today', () => {
     const transport = new InProcessTransport(coordinator);
     const { runId, receipt } = await transport.startRun({
       schemaVersion: '0.1',
-      commandId: 'cmd_join',
-      definition: fanOut(join()) as CorralDefinition,
+      commandId: 'cmd_team',
+      definition: inlineTeam() as CorralDefinition,
       mode: 'mock',
     });
     expect(runId).toBeNull();
