@@ -27,7 +27,7 @@
 | Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0) |
 | Decision | `mode`, `inputBindings`(1개 이상). `review`·`approval`·`rule`은 모드별 `rule` 하나. `check`는 `checkIds`(등록 검사 1개 이상). `router`는 `routes: { id, label, description? }[]`(2개 이상, id 고유)와 선택적 `modelProfile` |
 | Loop | `maxIterations`(1 이상), `budget?: { maxModelCalls?, maxOutputTokens?, maxWallMs? }`, `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
-| Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }` |
+| Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }`, `inputBindings?`(reference Team만) |
 | Join | `policy: 'all' \| 'any'` |
 | Output | `inputBindings`(1개 이상), `requireApproval` |
 
@@ -73,12 +73,13 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
    - `exit`로 들어오는 연결이 하나 이상 있다.
    - `repeat`로 들어오는 연결이 하나 이상 있고, 모두 Decision 포트에서 나온다.
    - 몸체에서 시작한 모든 경로는 이 Loop나 조상 상자의 `exit`·`repeat`, Output, 또는 `error` 경로에서 끝난다.
-5. **팀 완결성.** `inline` Team은 구성원이 하나 이상이고 `body`가 연결돼 있다. `next`가 연결돼 있으면 `exit`로 들어오는 연결이 하나 이상 있다.
+5. **팀 완결성.** `inline` Team은 구성원이 하나 이상이고 `body`가 연결돼 있다. `next`가 연결돼 있으면 `exit`로 들어오는 연결이 하나 이상 있다. `inline` Team에는 `inputBindings`를 두지 않는다. 구성원이 앞 단계를 이름으로 읽는다.
 6. **참조 팀.**
    - 참조한 Corral과 revision은 compiler에 주입한 정의 출처에서 찾을 수 있고, 그 자체로 컴파일되어야 한다.
    - 참조는 직접이든 간접이든 순환하지 않는다. 같은 Corral의 다른 revision을 참조해도 순환으로 본다.
    - 참조 팀은 원본의 시작 노드가 `enter`가 되고, 원본의 Output이 `exit`가 된다. 원본 Output의 `requireApproval`은 `exit` 전 승인으로 유지한다.
    - 참조 팀은 구성원을 갖지 않으므로 `body`를 연결하지 않고, `next`를 연결한다.
+   - `task_output` 입력은 scheduled Agent나 참조 팀을 읽는다. `inline` Team은 읽을 수 없다.
 7. **병렬과 합류.**
    - 한 포트의 연결이 둘 이상이면 동시에 실행되는 분기다.
    - Join이 아닌 노드나 상자 포트로 들어오는 연결 가운데, 동시에 살아 있을 수 있는 분기에서 온 것이 둘 이상이면 오류다.
@@ -155,14 +156,21 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 - **끝나기.** 한 분기가 Run을 끝내면(실패 경로 없는 실패, `needs_user`, 거절, 회차 상한에서 멈춤) 다른 분기도 함께 멈춘다.
 - **작업 사본.** 분기들은 같은 세션 작업 사본을 쓰며 파일 작업은 하나씩 차례로 적용된다. 분기마다 사본을 나누지 않는다.
 
+### 팀 실행
+
+- **inline Team.** `enter`로 들어오면 `body`에 연결된 구성원부터 실행한다. Team은 회차를 열지 않으며, 바깥 Loop 회차 안에 있으면 그 회차에 속한다.
+  - 구성원은 Team 밖 단계와 같은 Run에서 같은 규칙(재시도와 실패 경로, 병렬과 Join, 사람을 기다리기)으로 실행한다.
+  - 구성원이 `exit`에 닿으면 Team 안에서 열린 Loop 회차를 `pass`로 닫고 `next`로 이어진다.
+  - 구성원이 조상 상자의 `exit`·`repeat`로 바로 나가면 Team도 함께 나간다.
+
 ### 실행 지원 범위
 
 정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
 
-- Team 노드.
+- 참조 팀(`reference` Team).
 - 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
 
-compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check, 병렬 분기와 Join이 여기에 포함된다.
+compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check, 병렬 분기와 Join, `inline` Team과 Team으로 시작하는 팀이 여기에 포함된다.
 
 ### 계획 IR
 
@@ -182,7 +190,7 @@ Loop는 회차 한 번을 실행하는 함수와 상한 검사로 바뀌며, 화
 
 ```gherkin
 Scenario: 아직 실행하지 않는 구성은 실행 전에 거절한다
-  Given inline Team을 둔 정의
+  Given 참조 팀을 둔 정의
   When 정의를 컴파일한다
   Then 오류는 없고 Team에 RUNTIME_UNSUPPORTED 경고가 있다
   When 이 정의로 실행을 시작한다
@@ -233,6 +241,25 @@ Scenario: 루프로 시작하는 팀
   Given 시작 노드가 Loop인 정의
   When 실행한다
   Then Loop의 1회차부터 실행된다
+
+Scenario: inline Team을 지나간다
+  Given P → inline Team T(body → A → exit) → Q 순서의 정의
+  When 실행한다
+  Then P, A, Q가 차례로 실행되고 Run이 끝난다
+  Given 시작 노드가 inline Team인 정의
+  Then Team의 첫 구성원부터 실행된다
+
+Scenario: 루프 안의 팀과 팀 안의 루프
+  Given Loop A 안에 inline Team C가 있고, C 안의 review Decision이 revise를 A의 repeat에, pass를 A의 exit에 잇는다
+  When 검토가 첫 회차에 revise, 둘째 회차에 pass를 고른다
+  Then C의 구성원이 A의 회차마다 새 Task로 실행되고 A의 next로 간다
+  Given inline Team T 안의 Loop L 안에서 Decision이 T의 exit로 바로 나간다
+  Then L의 열린 회차가 pass로 끝나고 T의 next로 간다
+
+Scenario: inline Team은 입력을 받거나 읽히지 않는다
+  Given inputBindings를 둔 inline Team이나, inline Team을 task_output으로 읽는 Agent
+  When 정의를 컴파일한다
+  Then 그 노드에 오류가 있다
 
 Scenario: 실패한 Agent를 다시 시도한다
   Given retry.maxAttempts 2인 Agent W의 첫 시도가 실패한다

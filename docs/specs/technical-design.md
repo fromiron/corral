@@ -166,7 +166,7 @@ gate는 읽기 전용 view를 받는 동기 순수 함수다. 첫 거절에서 �
 
 `created → validating → running`. 일반 제어 상태는 `running / pausing / paused / awaiting_user / cancelling`. 종료 상태는 `succeeded / failed / cancelled / interrupted`.
 
-Run 상태를 자식들의 단순 OR로 만들지 않는다. 일부 자식이 메시지를 기다리고 다른 자식이 실행 중이면 Run은 running이다. 모든 진행이 승인에 막혔을 때 awaiting_user다. pausing/cancelling은 명시적 사용자 명령의 상태이며 자동 추론하지 않는다.
+Run 상태를 자식들의 단순 OR로 만들지 않는다. 일부 자식이 메시지를 기다리고 다른 자식이 실행 중이면 Run은 running이다. 사람의 답을 기다리는 승인이 하나라도 열려 있으면 awaiting_user다. 이때도 그 승인을 기다리는 단계만 멈추고 다른 분기와 실행은 계속 진행한다([팀 그래프 모델](features/team-graph.md#병렬-실행)). pausing/cancelling은 명시적 사용자 명령의 상태이며 자동 추론하지 않는다.
 
 ```mermaid
 stateDiagram-v2
