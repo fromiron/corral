@@ -979,6 +979,30 @@ export class HarnessService {
     return () => this.evaluationDefinitions.delete(key);
   }
 
+  /**
+   * The session project's latest check configuration with exactly `checkIds` selected, for a
+   * run's check Decisions (docs/specs/features/team-graph.md, "check 실행").
+   */
+  projectChecks(
+    sessionId: string,
+    checkIds: string[],
+  ): NonNullable<EffectiveHarnessSnapshot['projectTools']> {
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id = ?')
+      .get(sessionId) as { project_id: string } | undefined;
+    if (!session) throw new Error('the work session does not exist');
+    const config = this.projectTools.latest(session.project_id);
+    if (!config || checkIds.some((id) => !config.checks.some((check) => check.id === id)))
+      throw new Error('selected project tool is not registered');
+    return {
+      projectId: session.project_id,
+      revision: config.revision,
+      hash: config.hash,
+      checkIds: [...new Set(checkIds)],
+      lspServerIds: [],
+    };
+  }
+
   resolve(
     binding: HarnessBindingRef,
     definition: CorralDefinition,

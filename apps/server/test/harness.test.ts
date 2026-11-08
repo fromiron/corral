@@ -525,6 +525,27 @@ describe('resource discovery, trust and resolution (H3)', () => {
     service.setDefault('project', 'default', 1, null);
     expect(() => service.preview(binding, 'default')).toThrow(/registered/);
   });
+  it('pins the session project checks a check Decision names, and only registered ones', () => {
+    const { service, db } = setup();
+    const tools = new SqliteProjectToolStore(db, new FakeClock());
+    const check = (id: string) => ({ id, name: id, argv: ['node', 'check.mjs'], timeoutMs: 1000 });
+    const config = tools.save('default', 0, {
+      checks: [check('one'), check('two')],
+      lspServers: [],
+    });
+    db.exec(
+      "INSERT INTO work_sessions(id,project_id,corral_id,title,objective,pinned,revision,created_at,updated_at,entries_json) VALUES('s1','default',NULL,'t','',0,1,'x','x','[]')",
+    );
+    expect(service.projectChecks('s1', ['two'])).toEqual({
+      projectId: 'default',
+      revision: 1,
+      hash: config.hash,
+      checkIds: ['two'],
+      lspServerIds: [],
+    });
+    expect(() => service.projectChecks('s1', ['three'])).toThrow(/registered/);
+    expect(() => service.projectChecks('missing', ['one'])).toThrow(/session/);
+  });
   it('explicit Pi home import copies only skill and extension folders, leaving credentials and settings untouched', async () => {
     const s = setup();
     const secret = '{"access":"do-not-copy"}';

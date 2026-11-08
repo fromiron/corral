@@ -28,8 +28,8 @@
 | 편집기: 저장 배치 삭제, `getRevision` | 완료 | 26529d19 |
 | 실행 통계 레이어 | 완료 | e38660ec(명세), 4490f0bb |
 | 3. 루프 실행 | 완료 | 22d72e0e, 915817de(명세), a5d550f7 |
-| 4. 재시도, 실패 경로, router | 완료 | f4eaaabb(명세), 구현은 `feat: retry agents, take error paths and run routers`, 3cf75135(3단계 보완) |
-| 4b. check Decision | 진행 중 | |
+| 4. 재시도, 실패 경로, router | 완료 | f4eaaabb(명세), 6ca57f69, 3cf75135(3단계 보완) |
+| 4b. check Decision | 완료 | 45261960(명세), 구현은 `feat: run check decisions` |
 | 5. 병렬 | 시작 전 | |
 | 6. 하위 팀 | 시작 전 | |
 | 7. 위임 깊이 | 시작 전 | |
@@ -48,8 +48,8 @@
 
 ## 다음 스텝
 
-1. 4b단계: 명세는 [check 실행](../specs/features/team-graph.md#check-실행). 검사는 check 노드의 내장 검사 실행이 기존 `run_check` 경로로 돌리므로 검사 주인은 그대로 실행(execution)이다.
-2. 5단계(병렬과 Join).
+1. 5단계(병렬과 Join): 명세부터. 한 포트의 여러 연결을 동시에 실행하고, Join `all`·`any`(나머지 분기 취소)를 실행한다. 같은 작업 사본에 쓰는 분기와 분기 안 Loop가 정할 거리다.
+2. 6단계(하위 팀).
 
 ## 남은 정리와 열린 질문
 
@@ -61,6 +61,7 @@
 - 훅(도구 사용 전 동작, 추가 메시지)은 이 계획 밖이다.
 - Loop 예산·정체로 멈춘 승인 카드 문구는 단위 테스트로만 확인했다. 실제 화면에서는 마무리 단계 E2E에서 본다.
 - `route` 승인 카드는 단위 테스트와 Storybook `Run/ApprovalPanel` > Route Choice로 확인했다. 실제 서버의 router 실행은 마무리 단계 E2E에서 본다.
+- check Decision은 가짜 검사 실행기로만 확인했다. 실제 작업 사본에서 등록 검사를 돌리는 경로는 마무리 단계 E2E에서 본다. `check` 승인 카드는 Storybook > No Check Verdict로 확인했다.
 
 ## 확인 방법
 

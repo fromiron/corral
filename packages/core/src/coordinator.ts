@@ -126,6 +126,7 @@ import {
   UNLIMITED_OUTPUT_TOKENS_PER_CALL,
 } from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
+import { BuiltInCheckRunner, CHECK_ROLE_ID, CHECKS_INPUT, checkRole } from './check-runner.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
 import {
@@ -399,6 +400,15 @@ export interface HarnessResolver {
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
   ): EffectiveHarnessSnapshot | null;
   readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
+  /**
+   * The session project's registered check configuration with exactly these checks selected,
+   * for a run's check Decisions. Throws when the session has no project or a check is not
+   * registered there.
+   */
+  projectChecks?(
+    sessionId: string,
+    checkIds: string[],
+  ): NonNullable<EffectiveHarnessSnapshot['projectTools']>;
   checkMcpTool?(input: AgentStartInput, name: string, args: Record<string, unknown>): Promise<void>;
   mcpAuthorization?(
     input: AgentStartInput,
@@ -579,6 +589,8 @@ interface PendingExtensionUi {
 }
 
 /** What starts an execution: its node, place in the call tree and reason to exist. */
+const CHECK_RUNNER = new BuiltInCheckRunner();
+
 /** Error text handed to a model: a retry's last error, or what an error path is told. */
 const clip = (text: string) => text.slice(0, 2000);
 
@@ -1903,6 +1915,29 @@ export class Coordinator {
           message: 'recipe criteria files require the file broker',
         });
     }
+    // A check Decision runs the session project's registered checks, pinned now.
+    const checkIds = [
+      ...new Set(
+        planned.definition.nodes.flatMap((n) =>
+          n.type === 'decision' && n.mode === 'check' ? n.checkIds : [],
+        ),
+      ),
+    ];
+    let checks: RunSnapshot['checks'];
+    if (checkIds.length) {
+      try {
+        if (!request.sessionId || !this.files?.planCheck || !this.files.runCheck)
+          throw new Error('no check runner');
+        checks = this.harnesses?.projectChecks?.(request.sessionId, checkIds);
+        if (!checks || !checkIds.every((id) => checks?.checkIds.includes(id)))
+          throw new Error('checks not selected');
+      } catch {
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'check decisions need a work session whose project registers their checks',
+        });
+      }
+    }
     if (
       recovery &&
       (hashOf(models[recovery.state.role.modelProfile]) !== recovery.manifest.modelHash ||
@@ -1923,6 +1958,7 @@ export class Coordinator {
     const runId = this.ids.next('run');
     const definition = planned.definition;
     const writesFiles =
+      checks !== undefined ||
       definition.roles.some((role) =>
         role.allowedWorkTools.some((tool) =>
           [
@@ -1999,6 +2035,7 @@ export class Coordinator {
       ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
       models,
       ...(Object.keys(harnesses).length ? { harnesses } : {}),
+      ...(checks ? { checks } : {}),
       ...(Object.keys(imageProfiles).length ? { imageProfiles } : {}),
       ...('autoRoute' in request && request.autoRoute ? { autoRoute: request.autoRoute } : {}),
       ...('meeting' in request && request.meeting ? { meeting: request.meeting } : {}),
@@ -2105,6 +2142,7 @@ export class Coordinator {
           ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
           criteriaVersionId: snapshot.criteriaVersionId,
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
+          ...(snapshot.checks ? { checks: snapshot.checks } : {}),
           ...(snapshot.imageProfiles ? { imageProfiles: snapshot.imageProfiles } : {}),
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
@@ -4234,28 +4272,29 @@ export class Coordinator {
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
-        // The compiler marks check RUNTIME_UNSUPPORTED and run start refuses it.
-        if (step.mode === 'check') throw new Error('check decisions do not run in this runtime');
         const iterationId = this.openRoundOf(run, nodeId);
         const decisionRevision = run.projection.controlRevision;
-        // A router always asks its own chooser; the external policy decides the other modes.
+        // A router asks its own chooser and a check runs its checks; an external policy decides
+        // the other modes.
         const decision: WorkflowDecision | null =
           step.mode === 'router'
             ? await this.route(run, nodeId, iterationId)
-            : this.decisions
-              ? {
-                  branch: await this.decisions.decide({
-                    runId: run.runId,
-                    nodeId,
-                    mode: step.mode,
-                    iteration,
-                    projection: run.projection,
-                  }),
-                  reasonCode: 'external_policy',
-                  evidenceRefs: [],
-                  configRevision: decisionRevision,
-                }
-              : await this.decide(run, nodeId, step.mode);
+            : step.mode === 'check'
+              ? await this.check(run, nodeId, iterationId)
+              : this.decisions
+                ? {
+                    branch: await this.decisions.decide({
+                      runId: run.runId,
+                      nodeId,
+                      mode: step.mode,
+                      iteration,
+                      projection: run.projection,
+                    }),
+                    reasonCode: 'external_policy',
+                    evidenceRefs: [],
+                    configRevision: decisionRevision,
+                  }
+                : await this.decide(run, nodeId, step.mode);
         // The choice may have waited on a person or external policy. Never append a late
         // routing fact to a cancelled Run or a different iteration.
         await this.boundary(run);
@@ -4704,6 +4743,129 @@ export class Coordinator {
     ]);
   }
 
+  /**
+   * A check Decision: its own execution runs the node's checks, and the recorded reports decide.
+   * Without a verdict the person may run the checks again as the next attempt, or stop (null).
+   */
+  private async check(
+    run: LiveRun,
+    nodeId: string,
+    iterationId: string | null,
+  ): Promise<WorkflowDecision | null> {
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    if (node?.type !== 'decision' || node.mode !== 'check')
+      throw new Error(`${nodeId} is no check`);
+    const profile = run.snapshot.definition.roles[0]?.modelProfile ?? '';
+    let previous: AgentStartInput | undefined;
+    for (;;) {
+      const prepared = this.prepareExecution(run, {
+        nodeId,
+        iterationId,
+        parentExecutionId: null,
+        depth: 0,
+        assignment: { kind: 'scheduled' },
+        role: checkRole(profile),
+        given: [
+          {
+            name: CHECKS_INPUT,
+            kind: 'run_input',
+            artifactVersionId: null,
+            text: JSON.stringify(node.checkIds),
+          },
+        ],
+        ...(previous
+          ? {
+              taskId: previous.taskId,
+              previousExecutionId: previous.executionId,
+              attemptNo: previous.attemptNo + 1,
+              inputs: previous.inputs,
+            }
+          : {}),
+      });
+      this.commit(run, prepared.drafts);
+      await this.launch(run, prepared);
+      await this.boundary(run);
+      const { input } = prepared;
+      const task = run.projection.tasks[input.taskId];
+      const [summary] = task?.status === 'completed' ? task.submittedArtifactVersionIds : [];
+      const { verdict, reports } = this.checkVerdict(run, input, node.checkIds);
+      if (verdict)
+        return {
+          branch: verdict,
+          reasonCode: 'check_verdict',
+          evidenceRefs: [
+            ...reports.map((id) => ({ kind: 'check' as const, id })),
+            ...(summary ? [{ kind: 'artifact' as const, id: summary }] : []),
+          ],
+          configRevision: run.projection.controlRevision,
+        };
+      const requested = this.requestApproval(
+        run,
+        'check',
+        summary ? [summary] : [run.criteriaVersionId],
+      );
+      if ((await requested.decision) === 'reject') return null;
+      await this.boundary(run);
+      previous = input;
+    }
+  }
+
+  /**
+   * A check Decision's own execution. Known by its node, never by a role id a definition could
+   * also use: only check executions run on a check node.
+   */
+  private isCheckExecution(run: LiveRun, input: Pick<AgentStartInput, 'nodeId' | 'role'>) {
+    const step = run.plan.steps[input.nodeId];
+    return step?.kind === 'decision' && step.mode === 'check' && input.role.id === CHECK_ROLE_ID;
+  }
+
+  /**
+   * The verdict of one check execution from its recorded run_check results: a real failure
+   * takes fail, all real passes on one unchanged tree take pass, anything else has none.
+   */
+  private checkVerdict(
+    run: LiveRun,
+    input: AgentStartInput,
+    checkIds: string[],
+  ): { verdict: 'pass' | 'fail' | null; reports: string[] } {
+    const pinned = run.snapshot.checks;
+    const reports = new Map<string, VerificationReport & { stale: boolean }>();
+    for (const call of Object.values(run.projection.toolCalls)) {
+      if (call.executionId !== input.executionId || call.name !== 'run_check') continue;
+      if (call.phase !== 'finished' || !call.resultRef) continue;
+      const text = this.store.getArtifactText(run.runId, call.resultRef);
+      if (text === null) continue;
+      const { stale, ...raw } = JSON.parse(text) as Record<string, unknown>;
+      const parsed = VerificationReport.safeParse(raw);
+      if (!parsed.success) continue;
+      const report = parsed.data;
+      if (
+        report.configRevision !== pinned?.revision ||
+        report.owner.kind !== 'execution' ||
+        report.owner.runId !== run.runId ||
+        report.owner.executionId !== input.executionId ||
+        report.owner.attemptNo !== input.attemptNo
+      )
+        continue;
+      reports.set(report.commandId, { ...report, stale: stale !== false });
+    }
+    const results = checkIds.map((id) => reports.get(id));
+    const real = (r: (typeof results)[number]) =>
+      r !== undefined &&
+      r.state === 'completed' &&
+      !r.stale &&
+      r.cleanupConfirmed &&
+      r.targetUnchanged === true &&
+      ['pass', 'fail'].includes(r.verdict);
+    const ids = results.flatMap((r) => (r ? [r.verificationId] : []));
+    if (results.some((r) => real(r) && r?.verdict === 'fail'))
+      return { verdict: 'fail', reports: ids };
+    const trees = new Set(results.map((r) => r?.tree));
+    if (results.every((r) => real(r) && r?.verdict === 'pass') && trees.size === 1)
+      return { verdict: 'pass', reports: ids };
+    return { verdict: null, reports: ids };
+  }
+
   private async runAgent(
     run: LiveRun,
     nodeId: string,
@@ -5039,7 +5201,9 @@ export class Coordinator {
         this.hostResidents++;
         resident = true;
         const host = this.hostFor(run, input);
-        const handle = await this.agents.start(input, host);
+        // A check Decision's execution runs its checks in-process; every other step is an agent.
+        const adapter = this.isCheckExecution(run, input) ? CHECK_RUNNER : this.agents;
+        const handle = await adapter.start(input, host);
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
         settlement = await handle.waitForSettlement();
@@ -8709,6 +8873,9 @@ export class Coordinator {
       callables: run.plan.callables[input.nodeId] ?? { delegate: [], question: [] },
       externalTools: Boolean(this.tools),
       fileTools: this.files?.available(run.runId) ?? false,
+      ...(this.isCheckExecution(run, input) && run.snapshot.checks
+        ? { checkSelection: run.snapshot.checks }
+        : {}),
       harnessRead: Boolean(this.harnesses?.readSkill),
       responderOf: (questionId) => {
         const question = run.questions.get(questionId);
@@ -9924,7 +10091,9 @@ export class Coordinator {
         result = CommandReport.parse(await files.runCommand(command, plan, approved, cancellation));
       } else if (proposal.name === 'run_check' || proposal.name === 'lsp_query') {
         const files = this.files,
-          selection = input.harness?.projectTools;
+          selection =
+            input.harness?.projectTools ??
+            (this.isCheckExecution(run, input) ? run.snapshot.checks : undefined);
         if (!files || !selection)
           throw new ToolRefusal('CAPABILITY_DENIED', 'project tools unavailable');
         const owner = {

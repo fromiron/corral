@@ -118,3 +118,24 @@ export const RouteChoice: Story = {
     await expect(routed).toHaveBeenCalledWith('approval_route', 'approve', 'ship');
   },
 };
+
+const checkVerdictApproval: Approval = {
+  approvalId: 'approval_checks',
+  kind: 'check',
+  subjectVersionIds: ['report_v2'],
+  criteriaVersionId: null,
+  status: 'pending',
+};
+const rerun = fn();
+
+/** A check step whose checks gave no verdict: run them again or stop. */
+export const NoCheckVerdict: Story = {
+  args: { session: store([checkVerdictApproval], rerun) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('Checks gave no verdict')).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Stop here' })).toBeEnabled();
+    fireEvent.click(canvas.getByRole('button', { name: 'Run checks again' }));
+    await expect(rerun).toHaveBeenCalledWith('approval_checks', 'approve');
+  },
+};

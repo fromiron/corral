@@ -93,6 +93,10 @@ export interface ToolGateView extends ModelGateView {
   externalTools: boolean;
   /** Whether this run's session has a managed worktree for file tools. */
   fileTools: boolean;
+  /** A check Decision's own execution: the run's pinned project checks, in place of a harness. */
+  checkSelection?: NonNullable<
+    import('@corral/contracts').EffectiveHarnessSnapshot['projectTools']
+  >;
   /** The execution answering an open question, if the question is open. */
   responderOf(questionId: string): string | undefined;
   /** Exact current parent, only when the pinned delegate link opted in. */
@@ -458,11 +462,11 @@ const roleAllowlist: Gate<ToolGateView> = {
       return allow;
     }
     if (proposal.name === 'run_check') {
-      if (!input.harness?.projectTools || !view.fileTools)
-        return denied('no selected project checks');
+      const selection = input.harness?.projectTools ?? view.checkSelection;
+      if (!selection || !view.fileTools) return denied('no selected project checks');
       if (Object.keys(args).length !== 1 || typeof args.commandId !== 'string')
         return refuse('SCHEMA_INVALID', 'run_check accepts only a registered commandId');
-      return input.harness.projectTools.checkIds.includes(args.commandId)
+      return selection.checkIds.includes(args.commandId)
         ? allow
         : denied('check is not selected by this role');
     }

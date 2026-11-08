@@ -40,6 +40,8 @@ export interface RunSnapshot {
   models: Record<string, ModelProfileSnapshot>;
   /** Role IDs to pinned harnesses; absent for legacy runs. */
   harnesses?: Record<string, EffectiveHarnessSnapshot>;
+  /** The session project's checks the run's check Decisions run; absent when it has none. */
+  checks?: NonNullable<EffectiveHarnessSnapshot['projectTools']>;
   reasoningApply?: ReasoningApplySettings;
   /** The auto choice the definition came from; absent for chosen teams. */
   autoRoute?: AutoRoute;

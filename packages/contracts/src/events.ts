@@ -122,6 +122,8 @@ export const RunStarted = event(
     /** The session turns this run carries as conversation. */
     conversation: ContinuedConversation.optional(),
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
+    /** The session project's checks a check Decision runs, pinned at start. */
+    checks: EffectiveHarnessSnapshot.shape.projectTools.unwrap().optional(),
     /** The auto choice the definition came from. */
     autoRoute: AutoRoute.optional(),
     /** the meeting answer this Run is; such Runs have no Corral usage limits. */
@@ -359,7 +361,7 @@ export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route']),
+    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check']),
     /** Why a Loop asks for another round: its round cap, its budget, or a stall. */
     loopStop: z.enum(['cap_reached', 'budget_exhausted', 'stalled']).optional(),
     /** The connected routes a person may pick for a router that could not choose. */
@@ -413,7 +415,7 @@ export const WorkflowBranchSelected = event(
   z
     .strictObject({
       nodeId: Identifier,
-      mode: z.enum(['review', 'approval', 'rule', 'router']),
+      mode: z.enum(['review', 'approval', 'rule', 'router', 'check']),
       iterationId: Identifier.nullable(),
       configRevision: z.int().min(0),
       selectedPort: z.string().min(1).max(128),
@@ -430,6 +432,7 @@ export const WorkflowBranchSelected = event(
         'external_policy',
         'model_route',
         'human_route',
+        'check_verdict',
       ]),
       evidenceRefs: z
         .array(

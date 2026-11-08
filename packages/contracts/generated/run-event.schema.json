@@ -3925,6 +3925,56 @@
                 "additionalProperties": false
               }
             },
+            "checks": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "hash": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "checkIds": {
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                },
+                "lspServerIds": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                },
+                "mcpServerIds": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                }
+              },
+              "required": [
+                "projectId",
+                "revision",
+                "hash",
+                "checkIds",
+                "lspServerIds"
+              ],
+              "additionalProperties": false
+            },
             "autoRoute": {
               "type": "object",
               "properties": {
@@ -7358,7 +7408,8 @@
                 "final_output",
                 "loop_cap",
                 "user_action",
-                "route"
+                "route",
+                "check"
               ]
             },
             "loopStop": {
@@ -11104,7 +11155,8 @@
                 "review",
                 "approval",
                 "rule",
-                "router"
+                "router",
+                "check"
               ]
             },
             "iterationId": {
@@ -11167,7 +11219,8 @@
                 "inconclusive_review_approval",
                 "external_policy",
                 "model_route",
-                "human_route"
+                "human_route",
+                "check_verdict"
               ]
             },
             "evidenceRefs": {

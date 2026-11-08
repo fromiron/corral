@@ -1121,9 +1121,6 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
   for (const node of definition.nodes) {
     const at = { nodeId: node.id };
     switch (node.type) {
-      case 'decision':
-        if (node.mode === 'check') unsupported('check decisions do not run yet', at);
-        break;
       case 'team':
         unsupported('Teams do not run yet', at);
         break;
@@ -1131,6 +1128,7 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
         unsupported('Joins do not run yet', at);
         break;
       case 'agent':
+      case 'decision':
       case 'loop':
       case 'output':
         break;
