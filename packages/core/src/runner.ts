@@ -194,8 +194,8 @@ export async function executeStep(
       if (step.gathers) throw new Error(`${step.nodeId} gathers branches; the walker joins them`);
       return goTo(step.next, 'out');
     case 'team': {
-      // The compiler marks referenced Teams RUNTIME_UNSUPPORTED and run start refuses them.
-      if (step.source === 'reference') throw new Error('referenced Teams do not run yet');
+      // A run keeps its reference Teams expanded into inline ones (planRun).
+      if (step.source === 'reference') throw new Error(`${step.nodeId} was not expanded`);
       if (port === 'enter') return goTo(step.body, 'body');
       // A member reached exit, perhaps from inside a Loop in the Team: close those rounds.
       await closeInner(step.nodeId);

@@ -1202,8 +1202,6 @@ function checkRuntimeSupport(c: Context, caps: RuntimeCaps) {
     const at = { nodeId: node.id };
     switch (node.type) {
       case 'team':
-        if (node.source.kind === 'reference') unsupported('referenced Teams do not run yet', at);
-        break;
       case 'agent':
       case 'decision':
       case 'join':

@@ -1004,8 +1004,10 @@ async function createCorralServer(
   app.post('/api/v1/corrals/validate', async (request, reply) => {
     const body = parse(z.strictObject({ definition: z.unknown() }), request, reply);
     if (!body) return reply;
-    const compiled = compileDefinition(body.definition, {});
-    const runnable = compiled.ok ? planRun(compiled.definition) : null;
+    const resolveTeam = (corralId: string, revision: number) =>
+      corrals.getDefinition(corralId, revision) ?? undefined;
+    const compiled = compileDefinition(body.definition, { resolveTeam });
+    const runnable = compiled.ok ? planRun(compiled.definition, { resolveTeam }) : null;
     return {
       diagnostics: compiled.diagnostics,
       runnable: runnable?.ok ?? false,

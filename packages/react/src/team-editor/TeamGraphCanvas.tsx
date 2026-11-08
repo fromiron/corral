@@ -451,7 +451,10 @@ export function TeamGraphCanvas({
         maxY: layout.bounds.y + layout.bounds.h,
       }
     : null;
-  const ordered = [...items.values()].sort((a, b) => a.depth - b.depth);
+  // The tweened items trail the definition by a render: drop those whose node is gone (undo).
+  const ordered = [...items.values()]
+    .filter((item) => nodes.has(item.id))
+    .sort((a, b) => a.depth - b.depth);
   const boxes = ordered.filter((i) => i.kind === 'box');
   const cards = ordered.filter((i) => i.kind !== 'box');
   const problemMark = (id: string) => {

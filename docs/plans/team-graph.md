@@ -31,7 +31,7 @@
 | 4. 재시도, 실패 경로, router | 완료 | f4eaaabb(명세), 6ca57f69, 3cf75135(3단계 보완) |
 | 4b. check Decision | 완료 | 45261960(명세), 839a953c |
 | 5. 병렬 | 완료 | 05918b82(명세), 9439bc19(명세: 기다림은 그 단계만), 7f3df913 |
-| 6. 하위 팀 | 진행 중 | 6a(`inline` Team): 18119a11(명세), 0a5f757c |
+| 6. 하위 팀 | 완료 | 6a(`inline` Team): 18119a11(명세), 0a5f757c. 6b(참조 팀 펼치기): df6b40a5(명세), 구현은 `feat: expand reference Teams at run start`. 3997cf67(pi 1.5.0, GPT-6.1 Terra) |
 | 6c. 예산 폐지 | 시작 전 | |
 | 7. 위임 깊이 | 시작 전 | |
 | 8. 포크와 중단점 | 시작 전 (명세 없음) | |
@@ -49,9 +49,8 @@
 
 ## 다음 스텝
 
-1. 6b단계: 참조 팀을 Run 시작 때 펼친다. 명세는 [팀 실행](../specs/features/team-graph.md#팀-실행). 편집기에 참조 팀 입력과 참조 팀을 읽는 입력 출처를 더한다.
-2. 6c단계(예산 폐지): 사용량 예산을 기능부터 UI까지 지운다. `executionPolicy.budget`(모델 호출, 출력 토큰, 요청별 출력 상한, 모델 timeout, wall deadline), Loop `budget`과 `budget_exhausted`, 옛 `RunLimits` 상한 필드, 예산 장부와 `LIMIT_REACHED`, `BudgetInspector`와 예산 설정·패치. 남기는 것: 사용량·비용 기록과 표시, 모델의 context·출력 한도, 동시성·spawn·깊이·질문 한도, 무진전 경고, Loop 회차 상한. 명세부터 고친다(제품 계약 §9 등).
-3. 7단계(위임 깊이).
+1. 6c단계(예산 폐지): 사용량 예산을 기능부터 UI까지 지운다. `executionPolicy.budget`(모델 호출, 출력 토큰, 요청별 출력 상한, 모델 timeout, wall deadline), Loop `budget`과 `budget_exhausted`, 옛 `RunLimits` 상한 필드, 예산 장부와 `LIMIT_REACHED`, `BudgetInspector`와 예산 설정·패치. 남기는 것: 사용량·비용 기록과 표시, 모델의 context·출력 한도, 동시성·spawn·깊이·질문 한도, 무진전 경고, Loop 회차 상한. 명세부터 고친다(제품 계약 §9 등).
+2. 7단계(위임 깊이).
 
 ## 남은 정리와 열린 질문
 

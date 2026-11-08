@@ -254,7 +254,12 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   };
   let next: CorralNode = { ...node };
   if (change.label !== undefined) next = { ...next, label: change.label };
-  if (change.inputBindings && 'inputBindings' in next)
+  if (change.inputBindings && next.type === 'team') {
+    // Only a referenced Team takes inputs; an empty list leaves none.
+    const { inputBindings: _was, ...team } = next;
+    if (team.source.kind === 'reference')
+      next = change.inputBindings.length ? { ...team, inputBindings: change.inputBindings } : team;
+  } else if (change.inputBindings && 'inputBindings' in next)
     next = { ...next, inputBindings: change.inputBindings };
 
   if (next.type === 'agent') {
@@ -652,7 +657,7 @@ export function compileDraft(
   const compiled = compileDefinition(draft.definition, options);
   if (!compiled.ok)
     return { diagnostics: compiled.diagnostics, runnable: false, runtimeLimits: [] };
-  const plan = planRun(compiled.definition);
+  const plan = planRun(compiled.definition, options);
   return {
     definition: compiled.definition,
     diagnostics: compiled.diagnostics,

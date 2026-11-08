@@ -70,6 +70,39 @@ describe('team editor', () => {
     expect(sources).not.toContain('Agent 2');
   });
 
+  it('keeps drawing when an undo removes a box that is still animating in', async () => {
+    const editor = renderEditor(chain(1));
+    const team = ok(placeStep(chain(1), 'team', { kind: 'after', nodeId: 'agent_1' }));
+    await act(async () => editor.getState().applyDraft(team.draft));
+    await act(async () => editor.getState().undo());
+    expect(canvasNode('agent_1')).toBeTruthy();
+    expect(canvasNode(team.nodeId)).toBeNull();
+  });
+
+  it('offers a referenced Team as an input source and takes inputs on it', async () => {
+    const draft = chain(2);
+    draft.definition.nodes.push({
+      id: 'saved_team',
+      type: 'team',
+      label: 'Saved team',
+      source: { kind: 'reference', corralId: 'y', definitionRevision: 1 },
+    });
+    const editor = renderEditor(draft);
+    await act(async () => fireEvent.click(canvasNode('agent_2')));
+    await act(async () => fireEvent.click(screen.getByRole('combobox', { name: 'From' })));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toContain('Saved team');
+    await act(async () =>
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' }),
+    );
+    await act(async () => fireEvent.click(canvasNode('saved_team')));
+    expect(screen.getByRole('group', { name: 'Inputs' })).toBeTruthy();
+    await choose('From', 'Agent 2');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Add' })));
+    expect(
+      editor.getState().draft.definition.nodes.find((n) => n.id === 'saved_team'),
+    ).toMatchObject({ inputBindings: [{ kind: 'task_output', sourceNodeId: 'agent_2' }] });
+  });
+
   it('adds a specific-version input only with the version it names', async () => {
     const editor = renderEditor(chain(1));
     await act(async () => fireEvent.click(canvasNode('agent_1')));

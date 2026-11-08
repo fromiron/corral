@@ -206,24 +206,6 @@ function inlineTeam(): Doc {
   );
 }
 
-/** P → T (reference to a saved team) → output, with no team source: it does not run yet. */
-function referenced(): Doc {
-  return definition(
-    [
-      agent('P'),
-      {
-        id: 'T',
-        type: 'team',
-        label: 'T',
-        source: { kind: 'reference', corralId: 'y', definitionRevision: 1 },
-      },
-      output('P'),
-    ],
-    [edge('e1', 'P', 'out', 'T', 'enter'), edge('e2', 'T', 'next', 'output', 'in')],
-    'P',
-  );
-}
-
 const join = (policy: 'all' | 'any' = 'all'): Doc => ({
   id: 'M',
   type: 'join',
@@ -615,18 +597,10 @@ describe('team graph: what runs today', () => {
   });
 
   it('refuses to plan a run for a definition the runtime does not execute', () => {
-    const saved = definition(
-      [agent('solo'), output('solo')],
-      [edge('e1', 'solo', 'out', 'output', 'in')],
-      'solo',
-      'y',
-    );
-    const plan = planRun(referenced(), { resolveTeam: () => saved });
+    const plan = planRun({ ...inlineTeam(), limits: { ...DEFAULT_LIMITS, maxDelegationDepth: 3 } });
     expect(plan.ok).toBe(false);
     if (plan.ok) return;
-    expect(plan.issues).toContainEqual(
-      expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED', nodeId: 'T' }),
-    );
+    expect(plan.issues).toContainEqual(expect.objectContaining({ code: 'RUNTIME_UNSUPPORTED' }));
   });
 
   it('rejects starting such a run with the same code, without creating a run', async () => {
@@ -647,46 +621,6 @@ describe('team graph: what runs today', () => {
     });
     expect(runId).toBeNull();
     expect(receipt.status).toBe('rejected');
-    expect(receipt.error?.code).toBe('RUNTIME_UNSUPPORTED');
-  });
-
-  it('resolves a reference team from saved teams at run start and refuses it as not runnable yet', async () => {
-    const inner = definition(
-      [agent('solo'), output('solo')],
-      [edge('e1', 'solo', 'out', 'output', 'in')],
-      'solo',
-      'y',
-    );
-    const outer = definition(
-      [
-        agent('plan'),
-        {
-          id: 'T',
-          type: 'team',
-          label: 'T',
-          source: { kind: 'reference', corralId: 'y', definitionRevision: 1 },
-        },
-        output('plan'),
-      ],
-      [edge('e1', 'plan', 'out', 'T', 'enter'), edge('e2', 'T', 'next', 'output', 'in')],
-      'plan',
-    );
-    const coordinator = new Coordinator({
-      clock: new FakeClock(),
-      ids: new SequentialIdFactory(),
-      agents: new ScriptedAgentAdapter({ turns: 1 }),
-      corrals: {
-        getDefinition: (corralId, revision) =>
-          corralId === 'y' && revision === 1 ? (inner as CorralDefinition) : null,
-      },
-    });
-    const { runId, receipt } = await new InProcessTransport(coordinator).startRun({
-      schemaVersion: '0.1',
-      commandId: 'cmd_reference',
-      definition: outer as CorralDefinition,
-      mode: 'mock',
-    });
-    expect(runId).toBeNull();
     expect(receipt.error?.code).toBe('RUNTIME_UNSUPPORTED');
   });
 });

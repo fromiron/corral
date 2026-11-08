@@ -339,8 +339,12 @@ export function NodeSettings({
         </>
       ) : null}
 
-      {node.type !== 'team' && 'inputBindings' in node ? (
-        <InputsEditor editor={editor} node={node} draft={draft} />
+      {(node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (
+        <InputsEditor
+          editor={editor}
+          node={node as Extract<CorralNode, { inputBindings?: unknown }>}
+          draft={draft}
+        />
       ) : null}
       {node.type === 'agent' && node.invocation === 'scheduled' ? (
         <Calls editor={editor} nodeId={node.id} draft={draft} />
@@ -355,18 +359,23 @@ function InputsEditor({
   draft,
 }: {
   editor: EditorStore;
-  node: Extract<CorralNode, { inputBindings: unknown }>;
+  node: Extract<CorralNode, { inputBindings?: unknown }>;
   draft: EditorDraft;
 }) {
   const t = useTranslations('Inspector');
+  const bindings = node.inputBindings ?? [];
   const id = useId();
   const [kind, setKind] = useState<InputBindingKind>('task_output');
   const [source, setSource] = useState('');
   const [name, setName] = useState('');
   const [version, setVersion] = useState('');
-  // Only agents in the flow produce outputs to read; callable agents answer their caller.
-  const agents = draft.definition.nodes.filter(
-    (n) => n.type === 'agent' && n.invocation === 'scheduled' && n.id !== node.id,
+  // Agents in the flow produce outputs to read; callable agents answer their caller. A
+  // referenced Team gives what its Output collects.
+  const sources = draft.definition.nodes.filter(
+    (n) =>
+      n.id !== node.id &&
+      ((n.type === 'agent' && n.invocation === 'scheduled') ||
+        (kind === 'task_output' && n.type === 'team' && n.source.kind === 'reference')),
   );
   const needsSource = kind === 'task_output' || kind === 'previous_iteration_output';
   const ready = needsSource
@@ -386,7 +395,7 @@ function InputsEditor({
     if (needsSource) binding.sourceNodeId = source;
     if (kind === 'explicit_version') binding.artifactVersionId = version.trim();
     if (kind === 'previous_iteration_output') binding.optional = true;
-    setBindings([...node.inputBindings, binding]);
+    setBindings([...bindings, binding]);
     setName('');
     setVersion('');
   };
@@ -394,11 +403,9 @@ function InputsEditor({
   return (
     <fieldset className="flex flex-col gap-1 text-caption">
       <legend>{t('inputs')}</legend>
-      {node.inputBindings.length === 0 ? (
-        <p className="text-muted-foreground">{t('noInputs')}</p>
-      ) : null}
+      {bindings.length === 0 ? <p className="text-muted-foreground">{t('noInputs')}</p> : null}
       <ul className="flex flex-col gap-1">
-        {node.inputBindings.map((binding, index) => (
+        {bindings.map((binding, index) => (
           <li
             key={`${binding.kind}:${binding.name}:${binding.sourceNodeId ?? ''}`}
             className="flex items-center justify-between gap-2"
@@ -411,7 +418,7 @@ function InputsEditor({
               variant="tertiary"
               type="button"
               aria-label={t('removeInput', { name: binding.name })}
-              onClick={() => setBindings(node.inputBindings.filter((_, i) => i !== index))}
+              onClick={() => setBindings(bindings.filter((_, i) => i !== index))}
             >
               ✕
             </Button>
@@ -441,7 +448,7 @@ function InputsEditor({
           onValueChange={setSource}
           options={[
             { value: '', label: t('inputSource') },
-            ...agents.map((a) => ({ value: a.id, label: a.label })),
+            ...sources.map((a) => ({ value: a.id, label: a.label })),
           ]}
         />
         <KitInputGroup className="w-full">
