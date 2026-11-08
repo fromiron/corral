@@ -83,7 +83,8 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
    - 한 포트의 연결이 둘 이상이면 동시에 실행되는 분기다.
    - Join이 아닌 노드나 상자 포트로 들어오는 연결 가운데, 동시에 살아 있을 수 있는 분기에서 온 것이 둘 이상이면 오류다.
    - Join으로 들어오는 연결이 하나뿐이면 경고다.
-   - `any` Join은 첫 분기가 도착하면 나머지 분기를 취소한다.
+   - 분기는 다시 모인 뒤에만 끝날 수 있다. 아직 Join으로 모이지 않은 분기에서 Output으로 가거나, 그 분기를 낳은 출력 포트가 든 상자의 `exit`·`repeat`로 가는 연결은 오류다.
+   - Join 하나는 출력 포트 하나의 분기를 모은다. 들어오는 연결은 그 포트의 서로 다른 분기에서 오고 모든 분기가 들어와야 하며, 그 밖의 바깥 분기 처지는 서로 같아야 한다. 어기면 오류다. 들어오는 연결이 모두 같은 분기에서 오면 Join은 들어온 길을 그대로 잇는다.
 8. **같은 작업 사본에 쓰는 병렬 분기.** 파일을 쓰는 도구를 가진 Agent가 동시에 살아 있을 수 있는 분기에 둘 이상 있으면 경고한다. 분기들은 같은 세션 작업 사본을 쓰며 파일 효과는 분기마다 격리되지 않는다.
 9. **연결되지 않은 출구.**
    - Decision과 router의 출구, Loop의 `exhausted`, Agent의 `error`가 연결되지 않아도 정의는 유효하다.
@@ -140,15 +141,27 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 - **판정이 없을 때.** `check` 승인으로 사람을 기다린다. 승인하면 같은 Task의 다음 시도로 검사를 다시 실행하고 같은 규칙으로 판정한다. 거절하면 Run이 취소된다. 확인 대상은 검사 실행의 제출이고, 없으면 Run 기준 버전이다.
 - **기록.** `workflow.branch_selected`(`mode: check`, `reasonCode: check_verdict`)에 검사 보고서와 요약을 근거로 단다.
 
+### 병렬 실행
+
+- **갈라지기.** 한 출력 포트에 연결이 둘 이상이면 그 대상들을 동시에 시작한다. 분기마다 따로 진행하며, Join 말고는 서로를 기다리지 않는다. Loop 안에서 갈라지면 같은 회차에 속하고, 회차마다 새로 갈라진다.
+- **`all` Join.** 그 포트의 모든 분기가 도착하면 `out`으로 한 길이 이어진다.
+- **`any` Join.** 첫 분기가 도착하면 `out`으로 이어지고, 같은 포트의 나머지 분기를 멈춘다.
+  - 실행 중인 실행(execution)은 취소된다. 사람에게 다시 시작을 묻지 않는다.
+  - 그 분기의 단계가 기다리던 승인은 거둬진다(`approval.resolved`, `reason: cancelled`).
+  - 그 분기 안에서 열린 Loop 회차는 `cancelled`로 끝난다.
+  - 멈춘 분기의 기록과 산출물은 남는다. 늦게 도착한 분기는 무시한다.
+- **기록.** Join이 이어질 때 `workflow.joined`(Join, 회차, 정책, 멈춘 분기의 단계)를 남긴다.
+- **끝나기.** 한 분기가 Run을 끝내면(실패 경로 없는 실패, `needs_user`, 거절, 회차 상한에서 멈춤) 다른 분기도 함께 멈춘다.
+- **작업 사본.** 분기들은 같은 세션 작업 사본을 쓰며 파일 작업은 하나씩 차례로 적용된다. 분기마다 사본을 나누지 않는다.
+
 ### 실행 지원 범위
 
 정의·저장·가져오기·컴파일은 위 모델 전체를 받는다. 현재 런타임은 다음 구성을 실행하지 않는다.
 
-- Team 노드와 Join 노드.
-- 한 포트에 연결이 둘 이상인 병렬 분기.
+- Team 노드.
 - 2보다 큰 `maxDelegationDepth`와 설치 정책 상한을 넘는 `maxSpawns`.
 
-compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check가 여기에 포함된다.
+compiler는 이런 구성마다 `RUNTIME_UNSUPPORTED` 경고를 만든다. 실행 시작은 같은 code로 거절하며 Run을 만들지 않는다. 이 밖의 정의는 실행한다. 여러 Loop, Loop 안의 Loop, Loop로 시작하는 팀, Agent 재시도와 `error` 연결, router, check, 병렬 분기와 Join이 여기에 포함된다.
 
 ### 계획 IR
 
@@ -168,9 +181,9 @@ Loop는 회차 한 번을 실행하는 함수와 상한 검사로 바뀌며, 화
 
 ```gherkin
 Scenario: 아직 실행하지 않는 구성은 실행 전에 거절한다
-  Given Join을 둔 정의
+  Given inline Team을 둔 정의
   When 정의를 컴파일한다
-  Then 오류는 없고 Join에 RUNTIME_UNSUPPORTED 경고가 있다
+  Then 오류는 없고 Team에 RUNTIME_UNSUPPORTED 경고가 있다
   When 이 정의로 실행을 시작한다
   Then RUNTIME_UNSUPPORTED로 거절되고 Run이 만들어지지 않는다
 
@@ -314,6 +327,39 @@ Scenario: 결정의 두 분기는 합류 없이 모일 수 있다
   Given review Decision의 pass와 revise가 모두 Agent C로 이어진다
   When 정의를 컴파일한다
   Then 병렬 합류 오류는 없다
+
+Scenario: 두 분기를 동시에 돌리고 all Join에서 모은다
+  Given Agent P의 out이 Agent A와 B로 이어지고 둘이 all Join J로 모인다
+  When 실행한다
+  Then A와 B가 동시에 실행되고, 둘 다 끝난 뒤에 J 다음 단계가 한 번 실행된다
+
+Scenario: any Join은 첫 분기로 이어지고 나머지를 멈춘다
+  Given A와 B가 any Join J로 모이고 B는 오래 걸린다
+  When A가 먼저 끝난다
+  Then J 다음 단계가 실행되고 B의 실행은 취소되며 workflow.joined에 B가 멈춘 분기로 남는다
+  Given B가 사람의 승인을 기다리고 있었다
+  Then 그 승인은 cancelled로 거둬진다
+
+Scenario: 한 분기가 실패하면 Run이 끝난다
+  Given 두 분기 중 A가 실패 경로 없이 실패한다
+  Then Run은 execution_failed로 끝나고 B도 멈춘다
+
+Scenario: 모이기 전에 끝나는 분기는 오류다
+  Given 분기 A가 Output으로, 분기 B가 Join으로 간다
+  When 정의를 컴파일한다
+  Then A의 연결에 오류가 있다
+  Given Loop 안에서 갈라진 분기 A가 그 Loop의 exit로 간다
+  Then 그 연결에 오류가 있다
+
+Scenario: Join은 한 포트의 모든 분기를 모은다
+  Given 세 갈래로 갈라진 분기 중 둘만 Join J로 들어간다
+  When 정의를 컴파일한다
+  Then J에 오류가 있다
+
+Scenario: 분기 안의 루프
+  Given 분기 A 안에 Loop L이 있고 L의 next가 Join으로 간다
+  When 실행한다
+  Then L의 회차가 A 안에서 돌고 끝난 뒤 A가 Join에 도착한다
 
 Scenario: 같은 작업 사본에 쓰는 병렬 분기는 경고한다
   Given 파일 쓰기 도구를 가진 Agent 둘이 서로 다른 병렬 분기에 있다
