@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir, hostname } from 'node:os';
+import { availableParallelism, homedir, hostname } from 'node:os';
 import { join } from 'node:path';
 import { recoverSdkWorkers } from '@corral/adapter-pi';
 import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
@@ -86,7 +86,7 @@ import {
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
-import type { D1Engine, LocalIntelligence } from '@corral/local-intelligence';
+import { type D1Engine, d1Threads, type LocalIntelligence } from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
   openDatabase,
@@ -1185,6 +1185,7 @@ async function createCorralServer(
     error: null,
     device: { requested: 'cpu', active: null },
     threads: null,
+    defaultThreads: d1Threads(availableParallelism()),
   } as const;
   const effortRoutingView = () => ({
     settings: currentEffortRouting(workspace.root),

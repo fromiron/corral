@@ -16,6 +16,7 @@ export const ROUTING_TIMEOUT_MIN_MS = 100;
 export const ROUTING_TIMEOUT_MAX_MS = 10_000;
 export const LOCAL_ROUTING_TIMEOUT_MS = 5_000;
 export const API_ROUTING_TIMEOUT_MS = 3_000;
+export const LOCAL_ROUTING_MAX_THREADS = 256;
 
 const CallerTimeoutMs = z.int().min(ROUTING_TIMEOUT_MIN_MS).max(ROUTING_TIMEOUT_MAX_MS);
 
@@ -28,7 +29,10 @@ export type RoutingFallback = z.infer<typeof RoutingFallback>;
 export const RoutingEngine = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('local'),
-    device: z.strictObject({ kind: z.literal('cpu'), threads: z.int().min(1).max(256) }),
+    device: z.strictObject({
+      kind: z.literal('cpu'),
+      threads: z.int().min(1).max(LOCAL_ROUTING_MAX_THREADS),
+    }),
     callerTimeoutMs: CallerTimeoutMs,
   }),
   z.strictObject({

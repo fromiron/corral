@@ -23,6 +23,7 @@ import type {
   DevelopmentState,
   DocumentCommand,
   DocumentOperation,
+  EffortRoutingSettings,
   FileCheckpoint,
   FileDocument,
   FileEditApply,
@@ -1427,6 +1428,39 @@ export interface DecisionApiView {
   keyConfigured: boolean;
 }
 
+/** The Local engine as GET /effort-routing reports it: the server's computer, never the browser's. */
+export interface LocalRoutingView {
+  model: string | null;
+  host: string;
+  supported: boolean;
+  /** Why the engine cannot be used here, when it cannot. */
+  reason: string | null;
+  install: 'absent' | 'downloading' | 'verifying' | 'installed' | 'install-error';
+  runtime: 'stopped' | 'starting' | 'ready' | 'packing' | 'inferring' | 'draining' | 'error';
+  downloadBytes: number | null;
+  progress: { received: number; total: number } | null;
+  error: string | null;
+  device: { requested: 'cpu'; active: 'cpu' | null };
+  /** The running instance's threads. */
+  threads: number | null;
+  /** What a new Local setting starts with, from the server's processor. */
+  defaultThreads: number;
+}
+
+/** GET /effort-routing: the saved setting, its revision, and what each engine can do now. */
+export interface EffortRoutingView {
+  settings: EffortRoutingSettings;
+  revision: string;
+  local: LocalRoutingView;
+  apis: {
+    id: DecisionApiView['id'];
+    keyConfigured: boolean;
+    /** The notice a person agrees to before anything is sent; saved as `consentRevision`. */
+    noticeRevision: string;
+    verified: boolean;
+  }[];
+}
+
 export interface ModelProfileView {
   profileId: string;
   provider: string;
@@ -1536,6 +1570,26 @@ export class ModelsApi {
     return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
       method: 'DELETE',
     });
+  }
+  effortRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing');
+  }
+  /** Saves the setting against the revision it was read with; saving never downloads. */
+  saveEffortRouting(settings: EffortRoutingSettings, revision: string): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing', {
+      method: 'PUT',
+      body: JSON.stringify({ settings, revision }),
+    });
+  }
+  installLocalRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/install', { method: 'POST' });
+  }
+  cancelLocalRoutingInstall(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/install', { method: 'DELETE' });
+  }
+  /** Prepares the saved, installed Local engine again. */
+  startLocalRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/start', { method: 'POST' });
   }
   profiles(): Promise<ModelProfileView[]> {
     return this.http.json('/model-profiles');

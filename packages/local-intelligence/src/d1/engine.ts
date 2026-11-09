@@ -2,7 +2,7 @@
 // runtime and the routing port on top. One judgment at a time per host and no queue: Busy is
 // known before any tokenizer call. A judgment's slot is held until its native response is read
 // to the end or its child has exited, whatever the caller did meanwhile.
-import { hostname } from 'node:os';
+import { availableParallelism, hostname } from 'node:os';
 import type {
   DecisionCancellation,
   RouterRequest,
@@ -14,6 +14,7 @@ import type {
   RoutingLease,
   SettledBasis,
 } from '@corral/contracts';
+import { d1Threads } from '../platform.ts';
 import { D1HttpError, systemOne, tokenize } from './client.ts';
 import {
   type D1InstallProgress,
@@ -50,6 +51,8 @@ export interface D1Status {
   error: string | null;
   device: { requested: 'cpu'; active: 'cpu' | null };
   threads: number | null;
+  /** The CPU threads a new Local setting starts with, from the server's processor. */
+  defaultThreads: number;
 }
 
 export interface D1EngineOptions {
@@ -63,6 +66,8 @@ export interface D1EngineOptions {
   probe?: VersionProbe;
   freeBytes?(dir: string): Promise<number | null>;
   host?: string;
+  /** Logical processors on the host; the default thread count follows from them. */
+  cores?: number;
   monotonicMs?(): number;
   /** Called once an install has finished. */
   onInstalled?(): void;
@@ -194,6 +199,7 @@ export class D1Engine {
       error: installing ? null : (this.installFailure ?? runtime?.error ?? null),
       device: { requested: 'cpu', active: active ? 'cpu' : null },
       threads: active?.threads ?? null,
+      defaultThreads: d1Threads(this.options.cores ?? availableParallelism()),
     };
   }
 

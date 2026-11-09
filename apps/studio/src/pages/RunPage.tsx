@@ -21,6 +21,7 @@ import {
   primaryWorkPlan,
   QuestionsPanel,
   ReinsPanel,
+  RoutingTally,
   RunActions,
   RunCanvas,
   type RunFlowCheck,
@@ -796,6 +797,7 @@ function RunWorkspace({
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
                     <UsageInspector session={session} prices={prices} />
+                    {projection ? <RoutingTally projection={projection} /> : null}
                   </TabPanel>
                 </Tabs>
               ) : null}

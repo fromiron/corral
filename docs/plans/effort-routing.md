@@ -37,8 +37,8 @@
 | 1 | v4·외부 판정·관측 모드 제거 | 완료 | `736e579d` |
 | 2 | 공통 계약·snapshot·resolver(fake backend) | 완료 | `78fd89d0` |
 | 3 | 판정 API backend | 완료 | `1c8d78eb` |
-| 4 | d1 로컬 런타임 | 완료 | |
-| 5 | 설정 UI·실행 기록 | 대기 | |
+| 4 | d1 로컬 런타임 | 완료 | `81f20096` |
+| 5 | 설정 UI·실행 기록 | 완료 | |
 | 6 | 실제 앱 인수·배포 자료 | 대기 | |
 
 각 단계는 끝날 때 앱이 동작하는 상태를 유지하고, 이 표를 그 단계의 커밋에서 갱신한다.
@@ -111,12 +111,20 @@
 
 ## 다음 단계
 
-5단계: 설정 UI·실행 기록. 시작할 때 4단계 커밋 hash를 진행표에 채운다.
+6단계: 실제 앱 인수·배포 자료. 시작할 때 5단계 커밋 hash를 진행표에 채운다.
 
-1. `@corral/client`에 `/effort-routing` 라우트 다섯 개의 client.
-2. 모델 설정의 추론 판정 섹션(위 5단계 항목)과 `LocalAiPanel` 축소.
-3. 실행 기록 한 줄과 상세(`packages/react`), `RunPage` 연결.
-4. UI 단위 테스트, 실제 화면 확인, 마일스톤 E2E 1개.
+1. 근거 문서 14.4 시나리오를 `pnpm corral dev`에서 끝까지: 신규 Off → Local 설치·준비 → 요청 → 도구 → 다음 응답의 판정 기록 → 취소·재개 → Off 복귀 → 재시작. 실제 데이터 폴더에 Local을 설치(1.1 GB)하는 것과 메인 모델 실호출(`gpt-6.1-terra`/`gpt-6-luna`만)은 승인을 받는다.
+2. 실패 UX(근거 문서 14.5)와 회의 분석·수동 추론·정산·취소 회귀.
+3. 지원표(Linux x64 CPU = product-preview), 설치·되돌리기 안내(`docs/guides/`), NOTICE 확인. 끝나면 이 플랜을 삭제한다.
+
+5단계에서 정한 구현 사항:
+
+- 설정 섹션은 `apps/studio/src/pages/EffortRoutingSettings.tsx`다. 편집 중인 값은 저장 전까지 form에만 있고, 저장은 PUT 하나다. revision 충돌 때 다시 읽은 추론 판정 설정이 그대로면(같은 페이지의 다른 설정만 바뀐 경우) 새 revision으로 한 번 더 저장하고, 바뀌었으면 저장된 값을 보이고 덮어쓰지 않는다. 판정 API 키가 바뀌면 섹션을 다시 읽는다.
+- GET의 `local.defaultThreads`는 서버 CPU에서 정한다(원격 브라우저의 CPU가 아니다).
+- 실행 기록 한 줄은 `packages/react`의 `ReasoningSummary`가 route가 있는 요청에서 그린다. 누르면 상세(선택지 분포, fallback, 늦은 답, 장치, 시간, 엔진 점유, 입력 크기, 요청 확인, 엔진 identity)를 popover로 연다. 실행의 Usage 탭에 `RoutingTally`(판정한 요청, 적용한 추천, 이유별 fallback)가 있다.
+- projection은 `reasoning.settled`를 같은 route의 모델 호출에 `reasoningSettled`로 붙인다.
+- 화면 문구의 provider default는 기존 ModelPicker와 같은 "공급자 기본값"이다(근거 문서 예시는 "모델 기본값").
+- 브라우저 검증은 확장 E2E `apps/studio/e2e/server/effort-routing.spec.ts`(Manual + Local 저장이 서버 재시작 뒤에도 남고 다운로드는 없다)다. 기본 게이트에는 넣지 않았다. E2E harness는 첫 시작에만 가짜 모델 설정을 쓰고 재시작에서는 저장된 작업공간 설정을 그대로 둔다.
 
 4단계 실물 확인(Linux x64, 이 개발 환경): 고정 URL에서 내려받은 두 artifact가 크기·sha256과 같고, 설치기가 22개 파일을 검증해 설치했다. `--version`은 build 12189·commit `80d2c0c2c`, `--help`에 `--no-ui`·`--offline`·`--cache-ram`·`--no-op-offload`·`--device`·`--no-warmup`·`LLAMA_API_KEY`가 있다. opt-in live 테스트(`d1.live.test.ts`)에서 준비 확인(무인증 `/tokenize` 401, `/v1/models` 크기·파라미터)이 통과했고, smoke·한/일 Unicode·control token 세 state에서 native 입력 토큰이 계수와 같았으며(smoke 171), 호출자가 기다림을 멈춘 판정은 native 완료까지 Busy를 유지했다.
 
@@ -134,3 +142,4 @@
 
 - 메인 체크아웃의 미추적 v3 작업 파일(헬퍼 `effort.rs`, `packed-effort.test.ts`, `tools/local-intelligence/effort/` 아래 새 파일 등)은 1단계에서 지우는 v4 도구에 의존해 이 브랜치와 충돌한다.
 - Linux x64 외 배포 대상 OS는 정하지 않았다.
+- E2E 서버에는 회의 분석 엔진이 없어 모델 설정의 로컬 AI 패널이 `GET /local-ai`에서 403을 받고 브라우저 콘솔에 실패한 resource가 남는다(develop에도 있다). 확장 E2E `guidance.spec.ts`의 설정 진입 시나리오가 이것으로 실패하고, `effort-routing.spec.ts`는 이 한 종류만 빼고 콘솔 오류를 검사한다.

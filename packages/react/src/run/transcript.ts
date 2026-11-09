@@ -4,7 +4,7 @@ import {
   type RunEvent,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
-import { canReadArtifactBody, type RunProjection } from '@corral/core';
+import { canReadArtifactBody, type ReasoningSettledView, type RunProjection } from '@corral/core';
 import type { StreamText } from './session.ts';
 
 // One execution's conversation, in commit order (roadmap UX-A3). Built only from committed
@@ -24,6 +24,7 @@ export type TranscriptEntry =
       kind: 'request';
       reasoning?: ReasoningResolution;
       reasoningWire?: ReasoningWire;
+      reasoningSettled?: ReasoningSettledView;
       seq: number;
       modelCallId: string;
       no: number;
@@ -103,12 +104,14 @@ export function buildTranscript(
       case 'model.request_prepared': {
         if (event.payload.executionId !== executionId) break;
         const call = event.payload.modelCallId;
+        const settled = projection.modelCalls[call]?.reasoningSettled;
         entries.push({
           kind: 'request',
           ...(event.payload.reasoning ? { reasoning: event.payload.reasoning } : {}),
           ...(projection.modelCalls[call]?.reasoningWire
             ? { reasoningWire: projection.modelCalls[call]!.reasoningWire! }
             : {}),
+          ...(settled ? { reasoningSettled: settled } : {}),
           seq: event.runSeq,
           modelCallId: call,
           no: ++requests,

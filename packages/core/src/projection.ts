@@ -67,9 +67,16 @@ export interface DirectiveView {
   reason: string | null;
 }
 
+/** How a judgment's engine call ended physically, possibly after its request went out. */
+export type ReasoningSettledView = Omit<
+  EventPayload<'reasoning.settled'>,
+  'executionId' | 'routeId'
+>;
+
 export interface ModelCallView {
   reasoning?: ReasoningResolution;
   reasoningWire?: ReasoningWire;
+  reasoningSettled?: ReasoningSettledView;
   modelCallId: string;
   executionId: string;
   contextSnapshotId: string;
@@ -453,6 +460,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
             },
           }
         : p;
+    }
+    case 'reasoning.settled': {
+      // Always after the route's own request was prepared; it never changes what went out.
+      const { executionId, routeId, ...settled } = event.payload;
+      const calls = p.executions[executionId]?.modelCallIds ?? [];
+      return calls
+        .filter((id) => p.modelCalls[id]?.reasoning?.route?.routeId === routeId)
+        .reduce((next, id) => updateModelCall(next, id, { reasoningSettled: settled }), p);
     }
     case 'model.finished': {
       return updateModelCall(p, event.payload.modelCallId, {

@@ -31,7 +31,7 @@ export type ProcessRow =
       model: string | null;
       phase: ModelProcessPhase;
       state: string;
-      call: Pick<ModelCallView, 'reasoning' | 'reasoningWire'>;
+      call: Pick<ModelCallView, 'reasoning' | 'reasoningWire' | 'reasoningSettled'>;
     })
   | (ProcessState &
       ToolEntry & {
@@ -172,6 +172,7 @@ export function buildTurnProcess(
           call: {
             ...(entry.reasoning ? { reasoning: entry.reasoning } : {}),
             ...(entry.reasoningWire ? { reasoningWire: entry.reasoningWire } : {}),
+            ...(entry.reasoningSettled ? { reasoningSettled: entry.reasoningSettled } : {}),
           },
           sources: sources(call?.inputArtifactVersionIds ?? []),
         });

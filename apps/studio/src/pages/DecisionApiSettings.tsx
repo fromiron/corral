@@ -9,7 +9,7 @@ import { ApiKeyInput } from './ApiKeyInput.tsx';
  * Judge-only APIs and their keys, apart from model sign-ins. A key is sent once and never
  * loaded back; the server says only whether one is stored.
  */
-export function DecisionApiSettings() {
+export function DecisionApiSettings({ onChange }: { onChange?: () => void } = {}) {
   const t = useTranslations('DecisionApis');
   const { models } = useServices();
   const [apis, setApis] = useState<DecisionApiView[] | null>(null);
@@ -42,7 +42,14 @@ export function DecisionApiSettings() {
         </p>
       ) : null}
       {apis?.map((api) => (
-        <DecisionApiCard key={api.id} api={api} onList={setApis} />
+        <DecisionApiCard
+          key={api.id}
+          api={api}
+          onList={(next) => {
+            setApis(next);
+            onChange?.();
+          }}
+        />
       ))}
     </section>
   );

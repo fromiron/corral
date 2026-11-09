@@ -12,6 +12,7 @@ import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { DecisionApiSettings } from './DecisionApiSettings.tsx';
+import { EffortRoutingSettings } from './EffortRoutingSettings.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { LocalAiPanel } from './LocalAiPanel.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
@@ -30,10 +31,13 @@ export function ModelSettingsPage() {
   const tu = useTranslations('ModelUsage');
   const tl = useTranslations('LocalAi');
   const td = useTranslations('DecisionApis');
+  const te = useTranslations('EffortRouting');
   const { models, mode, live } = useServices();
   const { profiles, providers, catalog, config, refresh, error, loading } =
     useModelSettings(models);
   const [editing, setEditing] = useState(false);
+  // A key saved or removed below changes which decision APIs the judgment can use.
+  const [apiKeys, setApiKeys] = useState(0);
 
   return (
     <ModelSettingsRefresh value={refresh}>
@@ -61,6 +65,7 @@ export function ModelSettingsPage() {
                   { id: 'models-import', label: ti('heading') },
                   { id: 'models-images', label: tim('heading') },
                   { id: 'models-local-ai', label: tl('heading') },
+                  { id: 'models-effort-routing', label: te('heading') },
                   { id: 'models-decision-apis', label: td('heading') },
                   { id: 'models-usage', label: tu('heading') },
                 ]}
@@ -122,8 +127,11 @@ export function ModelSettingsPage() {
               <div id="models-local-ai" tabIndex={-1} className="outline-none">
                 <LocalAiPanel />
               </div>
+              <div id="models-effort-routing" tabIndex={-1} className="outline-none">
+                <EffortRoutingSettings reloadKey={apiKeys} />
+              </div>
               <div id="models-decision-apis" tabIndex={-1} className="outline-none">
-                <DecisionApiSettings />
+                <DecisionApiSettings onChange={() => setApiKeys((count) => count + 1)} />
               </div>
               <ModelUsagePanel />
             </>

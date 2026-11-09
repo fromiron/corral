@@ -18,6 +18,7 @@ import {
 } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import { Coordinator, InProcessTransport, SPEC_HARD_CAPS } from '../src/index.ts';
+import { applyEvent, emptyProjection } from '../src/projection.ts';
 
 // features/effort-routing.md: the per-request judgment through the Coordinator, with fake engines.
 
@@ -258,6 +259,17 @@ describe('effort routing through request preparation', () => {
       basis: 'native-response-complete',
       lateResult: true,
       lateSelected: 'high',
+    });
+    // The run record keeps the late answer beside the request that went out without it.
+    const projection = s.events.reduce(applyEvent, emptyProjection(s.runId));
+    expect(projection.modelCalls[first.modelCallId]).toMatchObject({
+      reasoning: { resolved: 'medium', source: 'fallback' },
+      reasoningSettled: {
+        basis: 'native-response-complete',
+        physicalOccupiedMs: expect.any(Number),
+        lateResult: true,
+        lateSelected: 'high',
+      },
     });
   });
 
