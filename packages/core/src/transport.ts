@@ -31,6 +31,8 @@ export interface RuntimeTransport {
   getArtifactText(runId: string, artifactVersionId: string): Promise<string | null>;
   /** A settled ordinary request/answer, separate from artifact body access. Optional for older transports. */
   getConversationTurn?(runId: string): Promise<StoredConversationTurn | null>;
+  /** A settled meeting answer kept past artifact body release. Optional for older transports. */
+  getMeetingAnswer?(runId: string): Promise<string | null>;
   /** Newest first (run history). */
   listRuns(): Promise<RunSummary[]>;
   /** The definition a run was started with (its snapshot), or null for an unknown run. */
@@ -71,6 +73,10 @@ export class InProcessTransport implements RuntimeTransport {
 
   async getConversationTurn(runId: string): Promise<StoredConversationTurn | null> {
     return this.coordinator.getConversationTurn(runId);
+  }
+
+  async getMeetingAnswer(runId: string): Promise<string | null> {
+    return this.coordinator.getMeetingAnswer(runId);
   }
 
   async listRuns(): Promise<RunSummary[]> {

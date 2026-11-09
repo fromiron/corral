@@ -511,6 +511,41 @@ describe('meeting messages', () => {
       expect(brief(input)).not.toContain(`${input.role.name} answers`);
     }
   });
+  // #205, docs/specs/api-contract.md "산출물 본문 수명": the meeting record keeps answers whose
+  // artifact body a later answer of the same participant released.
+  it('keeps an earlier answer readable after the same participant answers again', async () => {
+    let said = 0;
+    const f = await fixture({ reply: (input) => `${input.role.name} answer ${++said}` });
+    const answered = (round: number) =>
+      expect
+        .poll(async () =>
+          (await f.meetings.view(f.sessionId))?.rounds[round]?.answers.every(
+            (a) => a.status === 'answered',
+          ),
+        )
+        .toBe(true);
+    await f.send('first', 'FIRST');
+    await answered(0);
+    const before = (await f.meetings.view(f.sessionId))!.rounds[0]!.answers;
+    await f.send('second', 'SECOND');
+    await answered(1);
+    const view = (await f.meetings.view(f.sessionId))!;
+    const earlier = view.rounds[0]!.answers;
+    // The bodies really were released by the later answers.
+    for (const answer of earlier) {
+      const run = (await f.transport.getSnapshot(answer.runId!)).projection;
+      const id = run.output!.artifactVersionIds[0]!;
+      expect(await f.transport.getArtifactText(answer.runId!, id)).toBeNull();
+    }
+    expect(earlier.map((a) => a.text)).toEqual(before.map((a) => a.text));
+    expect(earlier.every((a) => a.status === 'answered' && /answer \d/.test(a.text ?? ''))).toBe(
+      true,
+    );
+    expect(view.rounds[1]!.answers.every((a) => /answer \d/.test(a.text ?? ''))).toBe(true);
+    // The meeting record is not a chat turn: the round prompt is never handed out as one.
+    expect(f.coordinator.getConversationTurn(earlier[0]!.runId!)).toBeNull();
+  });
+
   it('neutral participants carry dinner suggestions into ordinary follow-up questions', async () => {
     const f = await fixture({
       config: {

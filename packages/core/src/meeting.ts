@@ -489,11 +489,12 @@ export class MeetingService {
           this.deps.transport.getArtifactText(answer.runId!, id),
         ),
       );
-      return {
-        ...base,
-        status: 'answered',
-        text: texts.filter((text): text is string => text !== null).join('\n\n'),
-      };
+      const kept = texts.filter((text): text is string => text !== null);
+      // Released bodies leave the answer kept for the meeting record.
+      const text = kept.length
+        ? kept.join('\n\n')
+        : ((await this.deps.transport.getMeetingAnswer?.(answer.runId!)) ?? '');
+      return { ...base, status: 'answered', text };
     }
     return {
       ...base,

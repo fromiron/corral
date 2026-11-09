@@ -82,6 +82,8 @@ function request(message: DemoRequest): Promise<unknown> {
       return transport.getArtifactText(...message.args);
     case 'getConversationTurn':
       return transport.getConversationTurn(...message.args);
+    case 'getMeetingAnswer':
+      return transport.getMeetingAnswer(...message.args);
     case 'listRuns':
       return transport.listRuns(...message.args);
     case 'getRunDefinition':

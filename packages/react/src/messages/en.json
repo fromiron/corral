@@ -4468,6 +4468,7 @@
     "evidenceHint": "Only selected captures are shared. Links are not fetched.",
     "evidenceLoading": "Loading results…",
     "records": "Minutes, plan and handoff",
+    "answerNotKept": "This answer’s text was not kept.",
     "minutesReady": "The secretary has prepared the minutes and plan.",
     "viewMinutes": "Review minutes and plan",
     "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan.",
