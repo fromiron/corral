@@ -162,6 +162,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
   - 구성원이 조상 상자의 `exit`·`repeat`로 바로 나가면 Team도 함께 나간다.
 - **참조 팀.** Run을 시작할 때 고정한 revision의 정의를 그 Team 안에 펼쳐 Run 스냅샷에 고정한다. 펼친 뒤에는 `inline` Team처럼 실행하며, 새 Run이나 별도 실행 경계를 만들지 않는다.
   - 펼친 노드·역할·연결·capability link의 id는 `<Team id>.<원래 id>`다. 참조 팀 안의 참조 팀도 같은 방식으로 펼친다.
+  - 원본의 callable Agent는 원본에서처럼 어느 상자에도 속하지 않고, capability link로 부르는 구성원이 그대로 부른다.
   - 원본의 시작 노드가 Team의 `body`로 이어진다. 원본 Output으로 들어오던 연결은 Team의 `exit`로 간다.
   - 원본 Output이 `requireApproval`이면 그 자리에 Output과 같은 입력을 읽는 approval Decision(`<Team id>.<Output id>`)을 둔다. 승인하면 `exit`로 가고, 거절하면 Run이 취소된다.
   - 구성원이 읽는 `run_input` brief는 Team의 `inputBindings`로 바뀐다. Team에 입력이 없으면 Run의 brief를 읽는다. criteria는 Run의 것을 읽는다. 원본의 리뷰 레시피가 Run과 다른 criteria hash를 고정했으면 실행 시작에서 거절한다.
