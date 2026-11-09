@@ -12,8 +12,11 @@ import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { HarnessDefaultsPage } from './pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
+import { InboxPage, validateInboxSearch } from './pages/InboxPage.tsx';
+import { LibraryPage, validateLibrarySearch } from './pages/LibraryPage.tsx';
 import { McpSettingsPage } from './pages/McpSettingsPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
+import { PreviewPage, validatePreviewSearch } from './pages/PreviewPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
@@ -78,6 +81,56 @@ const schedulesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/schedules',
   component: ScheduledPage,
+});
+
+// Screens outside any project. Each keeps the root's settings dialog search (`?settings=`).
+
+/** Needs you: what waits on the person across projects. */
+export const inboxRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/inbox',
+  validateSearch: validateInboxSearch,
+  component: InboxPage,
+});
+
+/** The library: saved teams, templates and resources, filtered by `?project=`. */
+export const libraryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage />,
+});
+export const libraryTeamsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/teams',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="teams" />,
+});
+export const libraryTemplatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/templates',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="templates" />,
+});
+export const libraryResourcesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/resources',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="resources" />,
+});
+
+/** Feature previews: the list, or one sample flow; an unknown feature shows the list. */
+export const previewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/preview',
+  validateSearch: validatePreviewSearch,
+  component: () => <PreviewPage />,
+});
+export const previewFeatureRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/preview/$feature',
+  validateSearch: validatePreviewSearch,
+  component: () => <PreviewPage feature={previewFeatureRoute.useParams().feature} />,
 });
 
 /** One project's Corrals and runs: what `/` showed before projects. */
@@ -359,6 +412,13 @@ export function createStudioRouter(services: StudioServices) {
     routeTree: rootRoute.addChildren([
       indexRoute,
       schedulesRoute,
+      inboxRoute,
+      libraryRoute,
+      libraryTeamsRoute,
+      libraryTemplatesRoute,
+      libraryResourcesRoute,
+      previewRoute,
+      previewFeatureRoute,
       projectsRoute,
       workspaceRoute,
       sessionRoute,

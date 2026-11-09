@@ -61,3 +61,27 @@ describe('contextual settings navigation', () => {
     );
   });
 });
+
+describe('list screens outside a project', () => {
+  it('host the settings dialog and can be returned to, without matching lookalike paths', () => {
+    expect(workHref('/inbox?settings=models&settingsProject=a')).toBe('/inbox');
+    for (const view of ['', '/teams', '/templates', '/resources'])
+      expect(workHref(`/library${view}?project=a#list`)).toBe(`/library${view}?project=a#list`);
+    expect(workHref('/preview')).toBe('/preview');
+    expect(workHref('/preview/task-board?newSession=true')).toBe('/preview/task-board');
+    expect(validateSettingsSearch({ returnTo: '/library/resources' })).toEqual({
+      returnTo: '/library/resources',
+    });
+    for (const lookalike of [
+      '/inboxes',
+      '/inbox/a',
+      '/library/unknown',
+      '/library/teams/a',
+      '/libraries',
+      '/preview/a/b',
+      '/previews',
+      '//inbox',
+    ])
+      expect(workHref(lookalike)).toBeUndefined();
+  });
+});

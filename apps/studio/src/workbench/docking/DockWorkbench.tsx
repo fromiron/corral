@@ -12,11 +12,8 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
-  Select,
-  TabItem,
   TabPanel,
   Tabs,
-  TabsList,
   Tooltip,
 } from '@corral/react/design-kit';
 import { Ellipsis, Plus, X } from '@corral/react/icons';
@@ -47,7 +44,7 @@ import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { validateSessionSearch } from '../panels/routes.ts';
-import { TopbarViews, useTopbarHostsViews } from '../TopbarSlot.tsx';
+import { DockTopBar, type PrimaryView, primaryViewFor } from './DockTopBar.tsx';
 import {
   addDocumentPanel,
   addGraphPanel,
@@ -113,14 +110,6 @@ export interface DockWorkbenchProps {
   onPanesHiddenChange?: (hidden: boolean) => void;
 }
 type PanelParams = { descriptor: DockPanelDescriptor };
-type PrimaryView = 'chat' | 'files' | 'changes' | 'run';
-function primaryViewFor(view: DockContextView): PrimaryView {
-  if (view === 'chat') return 'chat';
-  if (view === 'run' || view === 'artifacts') return 'run';
-  if (view === 'changes' || view === 'git' || view === 'checks' || view === 'problems')
-    return 'changes';
-  return 'files';
-}
 const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
 const presets = ['conversation', 'implementation', 'review'] as const;
 type GroupName = (typeof groupNames)[number];
@@ -145,7 +134,6 @@ const RendererContext = createContext<{
   actions: PaneActions;
 } | null>(null);
 const theme = { name: 'corral', className: 'corral-dock-theme', gap: 4 };
-const groupLabel = { develop: 'groupDevelop', verify: 'groupVerify', run: 'groupRun' } as const;
 // At or below this host width one pane shows at a time.
 const NARROW = 600;
 const descriptorOf = (panel: IDockviewPanel) => (panel.params as PanelParams).descriptor;
@@ -388,7 +376,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const [dockApi, setDockApi] = useState<DockviewApi | null>(null);
     // Narrow hosts (a phone) show one pane at a time, the conversation first (#94).
     const [compact, setCompact] = useState(false);
-    const viewsInTopbar = useTopbarHostsViews();
 
     function documentLabel(descriptor: DockDocumentDescriptor) {
       return documentTabLabel(
@@ -973,19 +960,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     useEffect(() => {
       current.current.onPanesHiddenChange?.(sessionView === 'chat');
     }, [sessionView]);
-    const primaryTabs: PrimaryView[] = [
-      'chat',
-      ...(props.fileWorkAvailable || hasFileWork ? (['files', 'changes'] as const) : []),
-      'run',
-    ];
-    // Opening a pane lists every pane once, under what it is for (#70 IA-04).
-    const paneOptions = PANE_CATALOG.filter((entry) => primaryViewFor(entry.view) === 'files').map(
-      (entry) => ({
-        value: `context:${entry.view}`,
-        label: t(entry.view),
-        group: t(groupLabel[entry.group]),
-      }),
-    );
     return (
       <RendererContext.Provider
         value={{
@@ -1075,50 +1049,21 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             }}
             className="corral-dock-tabs"
           >
-            {/* The session's views share the top bar's one row; standalone hosts keep their own. */}
-            <TopbarViews>
-              <div className={viewsInTopbar ? 'flex items-center' : 'corral-dock-primary-tabs'}>
-                <TabsList aria-label={t('sessionViews')}>
-                  {primaryTabs.map((view) => (
-                    <TabItem
-                      key={view}
-                      value={view}
-                      label={t(view === 'run' ? 'history' : view)}
-                      onClick={() => {
-                        if (sessionView === view && (view === 'changes' || view === 'run'))
-                          openContext(view, true);
-                      }}
-                    />
-                  ))}
-                </TabsList>
-              </div>
-            </TopbarViews>
-            {compact && sessionView === 'files' ? (
-              <div className="corral-dock-toolbar" data-testid="dock-toolbar">
-                <Select
-                  label={t('panes')}
-                  placeholder={t('panes')}
-                  size="sm"
-                  value={active}
-                  onValueChange={(id) => {
-                    const panel = apiRef.current?.getPanel(id);
-                    if (panel) focus(panel, true);
-                    else if (id.startsWith('context:'))
-                      openContext(id.slice('context:'.length) as DockContextView, true);
-                  }}
-                  options={[
-                    ...paneOptions,
-                    ...panels
-                      .filter(
-                        (panel) =>
-                          panel.id.startsWith('document:') || panel.id.startsWith('graph:'),
-                      )
-                      .map((panel) => ({ value: panel.id, label: panel.title })),
-                  ]}
-                />
-              </div>
-            ) : null}
-            {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
+            <DockTopBar
+              sessionView={sessionView}
+              fileWork={Boolean(props.fileWorkAvailable) || hasFileWork}
+              compact={compact}
+              active={active}
+              panels={panels}
+              controls={props.controls}
+              openContext={openContext}
+              onSelectPane={(id) => {
+                const panel = apiRef.current?.getPanel(id);
+                if (panel) focus(panel, true);
+                else if (id.startsWith('context:'))
+                  openContext(id.slice('context:'.length) as DockContextView, true);
+              }}
+            />
             {message ? (
               <p role="status" className="px-3 py-1 text-xs text-muted-foreground">
                 {t(message)}

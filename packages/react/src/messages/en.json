@@ -91,6 +91,9 @@
     "retryConnection": "Try again",
     "retry": "Try again"
   },
+  "Shell": {
+    "title": "Navigation"
+  },
   "Canvas": {
     "ports": {
       "in": "in",
@@ -840,6 +843,9 @@
     "toolIdentity": "Tool identity and call fingerprint",
     "toolPolicyRevision": "Policy revision {revision}"
   },
+  "Inbox": {
+    "title": "Needs you"
+  },
   "Usage": {
     "heading": "Usage",
     "outputTokens": "Output tokens",
@@ -1146,6 +1152,9 @@
       "sessions": "Open a session"
     },
     "draftTeam": "Draft a team from a goal"
+  },
+  "QuickOpen": {
+    "title": "Quick open"
   },
   "Shortcuts": {
     "edit": "Change shortcut for {command}",
@@ -2908,6 +2917,9 @@
     },
     "internalSkillName": "Internal skill name"
   },
+  "Library": {
+    "title": "Library"
+  },
   "Navigation": {
     "app": "App",
     "agents": "Agent configuration",
@@ -3100,6 +3112,9 @@
       "checkpoint_corrupt": "Checkpoint integrity could not be verified.",
       "already_resumed": "This Run already has a continuation."
     }
+  },
+  "Diagnostics": {
+    "title": "Diagnostics"
   },
   "SessionSearch": {
     "title": "Search sessions and results",
@@ -3378,6 +3393,9 @@
     "openInteractive": "Open interactive preview",
     "opened": "Open previews",
     "runSource": "View run"
+  },
+  "FeaturePreview": {
+    "title": "Feature previews"
   },
   "Packages": {
     "title": "Packages",
@@ -3879,6 +3897,9 @@
     "reconcile": "Check outcome and release lock",
     "advancedRunning": "Applying the reviewed Git change…",
     "sequenceConflicted": "Integration paused at conflicts. Edit and save the working files, stage them, then continue."
+  },
+  "Checks": {
+    "title": "Checks"
   },
   "Materials": {
     "heading": "Instructions & memory",

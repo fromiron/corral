@@ -1,0 +1,273 @@
+import { ApiError } from '@corral/client';
+import type { TextAttachment } from '@corral/contracts';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import type { RunSummary, WorkSession } from '@corral/core';
+import { runResults } from '@corral/react';
+import { Button } from '@corral/react/design-kit';
+import { FileText } from '@corral/react/icons';
+import { Link } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
+import { useTranslations } from 'use-intl';
+import { useBinding } from '../../pages/FilesViews.tsx';
+import { Checks } from '../../pages/ReviewPage.tsx';
+import { RunDetail } from '../../pages/RunPage.tsx';
+import { useServices } from '../../services.tsx';
+import { RunMenu } from '../Breadcrumbs.tsx';
+import type { AttachmentCapture } from '../context/bridge.ts';
+import { panelRunId } from '../panelRun.ts';
+import type { SessionSearch } from '../panels/routes.ts';
+import { TopbarCrumb } from '../TopbarSlot.tsx';
+
+// Side panes of a session: the run detail, its results and its checks.
+
+/** Run detail in the side panel: the chosen run (newest by default) with its own views. */
+export function RunPanel({
+  runs,
+  listed,
+  entries,
+  search,
+  setSearch,
+}: {
+  runs: RunSummary[];
+  /** The run list has answered for the current selection. */
+  listed: boolean;
+  /** The session's turns: the request that started a run is its title. */
+  entries: WorkSession['entries'];
+  search: SessionSearch;
+  setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
+}) {
+  const tw = useTranslations('Workbench');
+  const runId = panelRunId(runs, search.run, listed);
+  if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
+  // A fallback run must not inherit the selection made inside the run that has gone.
+  const own = search.run === undefined || search.run === runId;
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      {search.panel === 'run' ? (
+        <TopbarCrumb>
+          <span aria-hidden="true" className="text-muted-foreground/50">
+            /
+          </span>
+          <RunMenu
+            runs={runs}
+            runId={runId}
+            onSelect={(value) =>
+              setSearch({
+                run: value,
+                atSeq: undefined,
+                execution: undefined,
+                artifact: undefined,
+                view: undefined,
+                result: undefined,
+              })
+            }
+          />
+        </TopbarCrumb>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        <RunDetail
+          key={runId}
+          sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
+          runId={runId}
+          runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
+          request={
+            entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
+          }
+          embedded
+          search={
+            own
+              ? {
+                  atSeq: search.atSeq,
+                  execution: search.execution,
+                  artifact: search.artifact,
+                  view: search.view ?? (search.result ? 'results' : 'run'),
+                  result: search.result,
+                }
+              : { view: 'run' }
+          }
+          setSearch={(patch, options) => setSearch({ run: runId, ...patch }, options)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Results use the same final/partial classification as the conversation. */
+export function ArtifactsPanel({
+  runs,
+  onOpen,
+}: {
+  runs: RunSummary[];
+  onOpen: (runId: string, artifactVersionId: string) => void;
+}) {
+  const tw = useTranslations('Workbench');
+  const tr = useTranslations('Results');
+  const td = useTranslations('Desktop');
+  const ta = useTranslations('Artifact');
+  const tk = useTranslations('Docking');
+  const { transport } = useServices();
+  type Item = {
+    runId: string;
+    id: string;
+    label: string;
+    author: string;
+    kind: 'final' | 'partial' | 'intermediate';
+  };
+  const [items, setItems] = useState<Item[]>([]);
+  const [count, setCount] = useState(10);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const ended = [...runs].reverse().filter((run) => TERMINAL_RUN_STATUSES.has(run.status));
+  const key = ended
+    .slice(0, count)
+    .map((run) => run.runId)
+    .join(',');
+  useEffect(() => {
+    void retry;
+    let live = true;
+    setLoading(true);
+    setFailed(false);
+    void (async () => {
+      const found: Item[] = [];
+      for (const runId of key ? key.split(',') : []) {
+        const snapshot = await transport.getSnapshot(runId).catch((failure: unknown) => {
+          // a run the server no longer opens (it used Ultra) has no results to list.
+          if (failure instanceof ApiError && failure.code === 'TARGET_NOT_FOUND') return null;
+          throw failure;
+        });
+        if (!live) return;
+        if (!snapshot) continue;
+        const definition = await transport.getRunDefinition(runId);
+        if (!live) return;
+        const results = runResults(snapshot.projection);
+        for (const artifact of [
+          ...results.final,
+          ...results.intermediate.map((group) => group.latest),
+        ]) {
+          found.push({
+            runId,
+            id: artifact.artifactVersionId,
+            label: `${artifact.name} v${artifact.version}`,
+            author: [
+              definition?.nodes.find(
+                (node) =>
+                  node.id === snapshot.projection.executions[artifact.authorExecutionId]?.nodeId,
+              )?.label,
+              artifact.authorExecutionNumber
+                ? tr('authorExecution', { number: artifact.authorExecutionNumber })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            kind: results.final.includes(artifact)
+              ? 'final'
+              : results.kind === 'partial'
+                ? 'partial'
+                : 'intermediate',
+          });
+        }
+      }
+      if (live) setItems(found);
+    })()
+      .catch(() => {
+        if (live) setFailed(true);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [transport, key, retry, tr]);
+  if (loading)
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        {ta('loading')}
+      </p>
+    );
+  if (failed)
+    return (
+      <div role="alert" className="space-y-2 text-xs text-danger">
+        <p>{td('resultUnavailable')}</p>
+        <Button variant="tertiary" size="compact" onClick={() => setRetry((value) => value + 1)}>
+          {td('retryResult')}
+        </Button>
+      </div>
+    );
+  return (
+    <div className="space-y-3">
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{tw('artifactsEmpty')}</p>
+      ) : (
+        <ul aria-label={tk('artifacts')} className="flex flex-col gap-0.5">
+          {items.map((item) => (
+            <li key={`${item.runId}:${item.id}`}>
+              <Button
+                variant="ghost"
+                className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
+                aria-label={`${tr(item.kind)} ${item.label} · ${tw('runNumber', { number: runs.findIndex((run) => run.runId === item.runId) + 1 })} · ${item.author}`}
+                onClick={() => onOpen(item.runId, item.id)}
+                title={item.runId}
+              >
+                <FileText className="text-muted-foreground" />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{item.label}</span>
+                  <span className="truncate text-2xs text-muted-foreground">
+                    {[
+                      tw('runNumber', {
+                        number: runs.findIndex((run) => run.runId === item.runId) + 1,
+                      }),
+                      item.author,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">{tr(item.kind)}</span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {ended.length > count ? (
+        <Button variant="ghost" size="compact" onClick={() => setCount((value) => value + 10)}>
+          {td('moreResults', { count: ended.length - count })}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Checks: the agreed commands and their results, as on the review screen. */
+export function ChecksPanel({
+  session,
+  onAttach,
+}: {
+  session: WorkSession;
+  onAttach: (attachment: TextAttachment, capture: AttachmentCapture) => void;
+}) {
+  const tw = useTranslations('Workbench');
+  const { workspaces } = useServices();
+  const { binding } = useBinding(session.projectId);
+  if (!workspaces) return <p className="text-xs text-muted-foreground">{tw('serverOnly')}</p>;
+  return (
+    <>
+      <Checks
+        sessionId={session.sessionId}
+        projectId={session.projectId}
+        binding={binding ?? null}
+        changed={0}
+        onAttach={onAttach}
+      />
+      <Button
+        variant="tertiary"
+        size="compact"
+        className="self-start"
+        render={<Link to="/sessions/$sessionId/review" params={{ sessionId: session.sessionId }} />}
+      >
+        {tw('expandReview')}
+      </Button>
+    </>
+  );
+}
