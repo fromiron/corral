@@ -201,6 +201,32 @@ describe('current artifact body access', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/unavailable/i);
   });
 
+  it('#192: shows a result the fork copied in, but nothing the original run kept', async () => {
+    const { session, loadArtifact } = fixture({
+      status: 'awaiting_user',
+      output: null,
+      forkedFrom: {
+        runId: 'run_original',
+        nodeId: 'B',
+        carried: [{ nodeId: 'A', artifactVersionIds: ['carried_a'] }],
+      },
+    });
+    session.setState({
+      artifactTexts: { carried_a: 'What A wrote', original_a: 'The original run keeps this' },
+    });
+    const { unmount } = wrap(
+      <ArtifactViewer session={session} versionId="carried_a" onClose={vi.fn()} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('What A wrote'),
+    );
+    expect(loadArtifact).toHaveBeenCalledWith('carried_a');
+    unmount();
+    wrap(<ArtifactViewer session={session} versionId="original_a" onClose={vi.fn()} />);
+    expect(screen.queryByText('The original run keeps this')).toBeNull();
+    expect(loadArtifact).not.toHaveBeenCalledWith('original_a');
+  });
+
   it('keeps the pending tool approval payload available without treating it as an artifact', async () => {
     const { session, loadArtifact } = fixture({
       status: 'awaiting_user',

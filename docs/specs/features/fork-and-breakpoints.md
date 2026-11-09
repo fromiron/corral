@@ -21,7 +21,7 @@
 - 새 Run은 그 단계를 시작 단계로 삼아 그 단계에서 갈 수 있는 단계만 실행한다. 정의의 시작 단계와 나머지 그래프는 바꾸지 않는다.
 - 다시 돌지 않는 단계의 결과: 새 Run에서 실행될 수 있는 노드(갈 수 있는 단계, Output, callable Agent)가 `task_output`으로 읽는 노드 중 포크 단계에서 갈 수 없는 노드마다, 원래 Run에서 그 노드가 마지막으로 완료 제출한 버전의 본문을 새 Run의 새 ID로 복사한다. 새 Run은 원래 Run의 버전을 읽지 않는다. 그런 노드의 `task_output`은 복사본을 읽는다. 원래 Run에 그 결과가 없거나 본문이 해제되었고 바인딩이 optional이 아니면 `TARGET_NOT_FOUND`로 거절하고 Run을 만들지 않는다. 복사한 본문 합계가 산출물 크기 상한을 넘으면 `LIMIT_REACHED`.
 - 요청과 기준은 원래 Run 정의의 `input`을 쓴다. 나머지(역할·노드·연결·한도)는 지금 정의를 쓴다.
-- `run.started`는 `forkedFrom: { runId, nodeId, carried: [{ nodeId, artifactVersionIds }] }`를 남긴다. 복사본 본문은 같은 저장 트랜잭션에 기록한다.
+- `run.started`는 `forkedFrom: { runId, nodeId, carried: [{ nodeId, artifactVersionIds }] }`를 남긴다. 복사본 본문은 같은 저장 트랜잭션에 기록한다. 자료 뷰어는 복사본을 새 Run의 참조로 알아보고 본문 수명 규칙 안에서 연다.
 - 같은 commandId와 본문의 재시도는 같은 결과를 돌려준다.
 
 포크에 필요한 앞 단계 결과의 보관은 [본문 수명 계약](../api-contract.md#산출물-본문-수명)이 정한다.
