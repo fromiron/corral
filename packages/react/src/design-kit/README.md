@@ -4,7 +4,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 61 imported component/helper files, including the extracted `WorkspaceTile` and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 74 imported component/helper files, including the extracted `WorkspaceTile` and page chrome and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.
@@ -15,6 +15,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 - `ui-provider.tsx`, exported as `DesignKitProvider`, supplies Motion's OS reduced-motion policy and the kit's shape, size and Lucide icon contexts. Corral wraps its app entry with this provider.
 - Sidebar integrations use the source shell, labeled groups, nested menu and resize rail. Corral retains routing, drawer and preference state, passing `persist={false}` and `shortcut={null}` to avoid a second owner of application state. The provider exposes controlled width updates and bounds; the rail forwards localized accessible labels and keyboard resizing.
 - Dialog's `left` position anchors the workbench navigation drawer without the centered popup's half-width/height translation; the caller owns its width and height.
+- [components/blocks](components/blocks) holds the source's finished compositions: QueuedStack (source `components/queued-stack.tsx`) and the page chrome (PathBar, Page, SectionLabel and EmptyState) extracted from the sample screens' `components/screens/chrome.tsx`.
 
 `tokens.css` remains a verbatim copy of `design_kit/styles/tokens.css`, SHA-256 `c227a3aad1d7e861ea6993e4f39d8acfcb10cde3a15bd710fda840fa68febcfd`. Only this CSS snapshot skips formatting. Corral semantic and contrast adjustments live in [theme.css](../theme.css).
 
@@ -51,6 +52,15 @@ All imports use package-relative paths instead of the original `@/` alias. TypeS
 - ToolCallCard/ToolCallGroup add waiting and stopped states using the source status glyphs, so an unfinished tool does not animate as running during an approval wait, pause or cancellation. Expanded code uses the foreground token for punctuation contrast; the source grouping, disclosure and code layout remain intact.
 - AgentHandoff presents one observed agent pair at a time with factual relationship labels and selectable executions. It does not infer an ordered pipeline from unrelated agents. DecisionTree supports read-only recorded selections, explicit unknown branches and evidence details; inspection cannot invoke a workflow decision or choose a default branch.
 Tooltip explicitly provides its popup role and trigger description linkage while retaining the supplied hover, focus, and motion behavior.
+- The panels below needed newer shared source: `agent-primitives` (the Collapse, Roll, RollNumber, DisclosureChevron, DrawnCheck and CircleCheck motion helpers and Meter `live`), `agent-format` (spoken durations, seconds and tokens) and `icon-context` (the agent icon slots) are refreshed to the current source with the adaptations above kept. `lib/utils` gains the source `assignRef` beside Corral's extra font-size groups.
+- SidebarWorkspaceHeader reuses `WorkspaceTile` from `workspace-tile.tsx` (re-exported, not copied) and takes localized `labels` for the menu, the switcher and, when given, the peeking trigger.
+- The page chrome keeps PathBar, Page, SectionLabel and EmptyState; the sample screens' Composer, model and approval sample data and screen action types are left out. PathBar takes a localized breadcrumb label.
+- AgentStatusPill draws its progress bar only when there are steps. `announce={false}` drops its own polite live region for a host that already announces the run. Localized `labels` cover the paused activity, the toggle name, the announcement, the panel and its run controls. Approve and Deny already render only with their callbacks.
+- QueuedStack drags to reorder only with `onQueueChange`; without it the cards show no grab cursor, keep touch scrolling and never lift. Edit and remove are unchanged. `renderActions(item)` adds host controls before them, inside a wrapper that keeps their presses from dragging, expanding or editing the card. Localized `labels` cover its tooltips, names and counts.
+- AgentCheckpoints no longer moves its head on a rewind: `onRewind` only asks the host, and the head comes from `head` or the last checkpoint, so the uncontrolled `defaultHead` is removed. Without `onRewind`, Rewind, its Enter key and the hover swap are absent. Localized `labels` cover row names, chips and counts.
+- AgentRoutines already omits New routine (create from a sentence), Run now/Stop, the pause switch and the schedule editor without their callbacks. It adds localized `labels`, including schedule wording (default `describeSchedule`, still exported in English), run days, frequencies, weekdays and announcements. Type assertions mark the proven active and newest runs, and narrow lint explanations cover static report keys, the row's pointer shortcut and the schedule re-seed.
+- ThinkingIndicator and InputCopy take localized `labels`. InputCopy reserves the width of its longest word and hides its decorative result glyphs. ThinkingIndicator's word index wraps when a host gives fewer words.
+- AgentTasks, DiffReview and AgentFindings, used by sample-data previews, take localized `labels`; their existing label props remain. Without `onFindingSelect` a finding is plain text instead of a button that does nothing, and the severity totals take `role="img"` so their spoken label applies. DiffReview's fold loop uses a block body. Lint explanations cover static keys, row pointer shortcuts, the pull request anchor and the source's state-only effects.
 
 ## Narrow API bridges
 
@@ -71,13 +81,13 @@ Source fingerprints identify copied files and adaptations. Type checks, browser 
 
 ## Source fingerprints
 
-Source hashes cover original complete files. The workspace-header hash identifies the file containing the extracted WorkspaceTile; the local hash covers its imported function and imports. ChatMessage's local hash reflects the omitted thumbnail branch. Local hashes record the source after the adaptations above; compatibility bridges and exports are Corral-owned and are not presented as verbatim upstream files.
+Source hashes cover original complete files. The workspace-header hash identifies the file containing the extracted WorkspaceTile; the local hash covers its imported function and imports. The same source file's SidebarWorkspaceHeader row covers the header and its re-export of that tile. The screens/chrome hash identifies the sample-screen file containing the extracted page chrome; the local hash covers PathBar, Page, SectionLabel, EmptyState and their imports. ChatMessage's local hash reflects the omitted thumbnail branch. Local hashes record the source after the adaptations above; compatibility bridges and exports are Corral-owned and are not presented as verbatim upstream files.
 
 | Original kit file | Local file | Source SHA-256 | Local SHA-256 |
 | --- | --- | --- | --- |
 | `components/agent/agent-lanes.tsx` | `components/agent/agent-lanes.tsx` | `1fbc52d64a08481961e4e622d2587946489f36d88e9f8e742a29976989bcfd11` | `abb3377167879f12c2c3fcea169410c00846d0a2bb62d5d91275b0e148c8b6c0` |
 | `components/agent/plan-vs-actual.tsx` | `components/agent/plan-vs-actual.tsx` | `f28381dbb228320d029e19d838d034982f92a69d9f92767d7f452efebfdc9be7` | `c7b897f7697cafd259ef7745fa2a0e92a69a31d79a24df59542a323bd09b437a` |
-| `components/agent/agent-primitives.tsx` | `components/agent/agent-primitives.tsx` | `2787dab4f79ef2d035158415827e39e42fac9da69851f56c2f91ba5b3dd90efd` | `34a36d31312e446db8806dd9130cfac77fcd7a34203582ab2939db6a652cc3bd` |
+| `components/agent/agent-primitives.tsx` | `components/agent/agent-primitives.tsx` | `2ac474190585bb5e2ca71fe510113d52ad0fea86c54f1790dbfe3764ebe480cd` | `2e87ec121cb9c9a2c274e550279d90bae59546da5685d26a79d8b6d0b6d9262b` |
 | `components/agent/agent-tree.tsx` | `components/agent/agent-tree.tsx` | `b8f3d09ff2f99e360a6c7f2f7bcc346b6ce7a880744050805e04dd4cd69af4af` | `43b2e7120b1acfc294496461c678a9a88029b7050b39f5cacaba2932e948f192` |
 | `components/sidebar-app/search-field.tsx` | `components/sidebar-app/search-field.tsx` | `c261fce992cfc8641ca28f5397c9ab63e3f28322d52c01c3bf2559fb6fff9f29` | `0ef8a8eeab34687e095c8630154696cd4b3481074a40058f60455be6ac7a22fa` |
 | `components/sidebar-app/workspace-header.tsx` | `components/sidebar-app/workspace-tile.tsx` | `e7c3c4577040cdc64e918c44501aa6580020ef793fc5f022c4f17c63bd48091b` | `043736f783133a69eb4aca94ea98ecbdc71bf59c6b7a8af1d9603b26c6a4bb9a` |
@@ -108,12 +118,12 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/tabs-subtle.tsx` | `components/ui/tabs-subtle.tsx` | `33b690831bb70016cffa08dcd413b1437904e7653e414490563955b0b13a1811` | `8021809eff7993c656c15f669e947d9644223afacf724afc46343e8295127052` |
 | `components/ui/thinking-steps.tsx` | `components/ui/thinking-steps.tsx` | `8ffe24780dcbfdfa2aa408fb93f50393ff90300f84ec4c4fdac2f53d6f2dfc8d` | `df1fc89a2883924decca6755c565f1546015bde20d45ec2c5b621c5a64369015` |
 | `components/ui/tooltip.tsx` | `components/ui/tooltip.tsx` | `ea1e26286b1230db898fef838ef14b8fd4572f84ef50e97bdd481000d57eb21e` | `7b21778ef451ce4c031d259319c78dcc8f6981f8ee6678b4f1d68e7e1573519e` |
-| `lib/agent-format.ts` | `lib/agent-format.ts` | `c3904e443ac33ba176c2814e71bafbe6d8aa110f0fb2b79cb1a2d7669a032533` | `10cc9fde0f24c3ff6fedfff65676cfea38c20e00d9af0738126242f5d221170b` |
+| `lib/agent-format.ts` | `lib/agent-format.ts` | `87c560a22ee5e18c201eecdc7c7b423f77b38e7d0fb36cd052551e7e9a6f7824` | `201321cc0ba88a97ca3b31284b172e738d5a3b3df8d412bcd5070724fe872bc2` |
 | `lib/agent-logos.tsx` | `lib/agent-logos.tsx` | `a2e567430ca9e37a9207293b513925d1bc8e6c842d9a552e93232d82c7935031` | `d8801c98e97c798686cabc0c0a34e3dcaba361e3071da15f71d4af6c44199a26` |
 | `lib/elevated.tsx` | `lib/elevated.tsx` | `04a8060e7c81f2db701f0e3aa1c092740677c7c966da4978ecbb6ecfad831aaa` | `8f50d46a91cd8140968b7a995878b88970cb24cc6f5f38b7edd31d88744d36cd` |
 | `lib/focus.ts` | `lib/focus.ts` | `0f371db5adeee47d4ce63db46ede9738c4658f6cf8d5218bf746decf238fbfa5` | `4f813aa1dd686a49d36c0758ba144211fc4e09ea849aa9595926f4fbf138b6fc` |
 | `lib/font-weight.ts` | `lib/font-weight.ts` | `b9ed69148ccb3fa30e559418ea9ee1c1e0037389ee177aaacd9d17db0b3d0c46` | `b9ed69148ccb3fa30e559418ea9ee1c1e0037389ee177aaacd9d17db0b3d0c46` |
-| `lib/icon-context.tsx` | `lib/icon-context.tsx` | `ffc750f1a404375681a6ed162df394cf6f0aefa92324f4d4c6300ee0488c6ec2` | `c7cbdee16e1bb2fae67278088874c1a15239fc72fa04cdf0180d2f8797e224ec` |
+| `lib/icon-context.tsx` | `lib/icon-context.tsx` | `d51404ffdfd175a0504bd55a948eb8508bb1526b1420a2aee50b37c9b4169d0c` | `9fb6f13e17e944c62d06822d3a741a6623ea1843eff9fe264f6367d2f0a6d7ac` |
 | `lib/omit.ts` | `lib/omit.ts` | `f79dd83821abfbaff48594c13028acb4831526a960293625908cc96e6d4e0195` | `58d407c87801f34b0fcd774ab6c54964a10012c5abb3b98173c4a1bff39a62e8` |
 | `lib/popup.ts` | `lib/popup.ts` | `a7f2d12608fe32444f5eadb5fa787c90f4ebb3946e5687f1cad1c1e7ad9a183c` | `17c51c15cfd8c1eb19f1c385ec6cd0ae50b3223f4fcce4c914e28fbb1c6dd70e` |
 | `lib/shape-context.tsx` | `lib/shape-context.tsx` | `ab5ff71f50965f56013640c067cf7a56d6ee6e117a091a38b49206d50ff1c632` | `e0be8b3d1c3b732524cbd4741c031da6b1644d419d947b8312c1674ca30af1fc` |
@@ -123,12 +133,25 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `lib/surface-context.tsx` | `lib/surface-context.tsx` | `1b907ce4803cfdabedeb03d55cf0d68e89f0af01c60d71dd307f39dda6ca4111` | `27fe608413775adca8f3b5fc02c1e90cc990826d969428916e79b69d7ae55798` |
 | `lib/type-scale.ts` | `lib/type-scale.ts` | `6859ef24794d647aca3b52f0b364e0e276dec4b0b626b1170e734450a14bc4e9` | `4077e2281dd2380f46d609c5bc3fccbd1e445448126186aa1a28091815c34818` |
 | `lib/ui-provider.tsx` | `lib/ui-provider.tsx` | `67cee54246ce25787342815fded88e9a4c43491ecb807d74be31a07314fbcdcb` | `974aacea8678e35842e0aa3484f9180c3876b7db7b6804d3cc5269c097a10f73` |
-| `lib/utils.ts` | `lib/utils.ts` | `a8c801f2b8c1043387a2819eb98ae953177abb986dc91d81f8f1a433a9aeea78` | `f22d09aef40e4b265bc0233edd387f05bbc33cd63f1d05aa5ac5e359570ea5f7` |
+| `lib/utils.ts` | `lib/utils.ts` | `9c3f7486a138ebe0304b8c5bc0faab86857e1d633a8d0ab494065ada700ba1b1` | `1e30f494b64fb00faee66562e437cf86ecf03590351ed204b611224131abecea` |
 | `hooks/use-fluid-hover.ts` | `hooks/use-fluid-hover.ts` | `733a91d9d2fe955b02d7d0f09ea5eaa0ce4d3df2898e84b00b0f69d4fc8f79c1` | `57d0f6f656b61ec69bbc6ddc5b5b3db1d7c1f72408c1d265a1baaa1d221547e3` |
 | `hooks/use-keyboard-nav-gate.ts` | `hooks/use-keyboard-nav-gate.ts` | `cb9eb2aee06f158d4504589e17e2a3970b6b9c13dbc3b576e264c9e80cce8416` | `04079436cf40727321f099f54a13f47721f71e74c79d01649f9472c10f984a6e` |
 | `hooks/use-merge-split.tsx` | `hooks/use-merge-split.tsx` | `8682fb689788cd01694d1470c18a3397589e12d1916c73d8d87365883cf23e7b` | `2acbdfb68ce8e91205f1a04fca42fbe617752f296643f69d65833b830796a9e8` |
 | `hooks/use-touch-primary.tsx` | `hooks/use-touch-primary.tsx` | `b8083bab321fa67a285d35a6ed5f0e5cb68eef706c7d33f0c992dad5e3945e4e` | `e523fdcf4062422735c93f727e9cd89417cf08313cf35a727702e1dd4e1339f1` |
 | `hooks/use-now.ts` | `hooks/use-now.ts` | `90d99f3382c55ba79277be776e3cb55a37d745e7daf699f663fb5fb4f40737c6` | `9eefdc52d4b7b3955726631276547b1bbb04157416b172a1d7552d248eaab199` |
+| `components/agent/agent-status-pill.tsx` | `components/agent/agent-status-pill.tsx` | `32dd041d46ad43d7c482e61f399082db519c3b02c6a7ef48bd475096aa18977b` | `38d78393c2e6caa3f28253a648b5398063e982ee783fb384c88e825bd12d3f1f` |
+| `components/agent/agent-checkpoints.tsx` | `components/agent/agent-checkpoints.tsx` | `87cd5ace9b53dcf4f6db8cdb6220880d144901317ba768558d030e7e71a88ccd` | `0fe0ad01242c7b8d43ad5883da2649bb125257e134089ff8acfa1853c2634131` |
+| `components/agent/agent-routines.tsx` | `components/agent/agent-routines.tsx` | `99cb13715444a7b149bf6b9653e82e801d8520cd259a3add72af014918e8eab5` | `fb741e1853d1e823aa6b5e38c879b4ffd451bb800b2f4435839e613bdb241550` |
+| `components/agent/agent-tasks.tsx` | `components/agent/agent-tasks.tsx` | `195aa5006ad2ae41fc76971b1889bd86f3d21b21ec1e7feac4f93e05dfc090f7` | `11b3f50f9ec27f2a54c506be865f3daa1a033d944cb46de1b5660a39a87fa8f6` |
+| `components/agent/diff-review.tsx` | `components/agent/diff-review.tsx` | `6af455a2fa4b6af53b66e2c5236107f4274e7ba085381c1eeadf76ac57d62474` | `5f2c567930f5062aad1ad8550917904c44a8b320b90cac3d954e247f76c83c5b` |
+| `components/agent/agent-findings.tsx` | `components/agent/agent-findings.tsx` | `28a88a110d45974a2a8439e0900e8923f228c79fdd2c496eed6dfab06e016ac1` | `80bb7142e356649508375403fbe23e6b6f173f1b42b69ae55b0e7800bfd60e2a` |
+| `components/queued-stack.tsx` | `components/blocks/queued-stack.tsx` | `e76b718c2c262c06cf08d2c5ccf6570c926e005f4f9a4a1e98c6dd107d6dbe29` | `c0219e8f89d624372548b1b0bc11a17480924aa0effc30960bcf05136c401afd` |
+| `components/screens/chrome.tsx` (page chrome extraction) | `components/blocks/page-chrome.tsx` | `8935dc87a817fd8197330ae899ca2d1218e39867b12ab81877c900a2fb020a0c` | `dac99b4add4aa1955d5cdd85167a37c04cab96625c58fe4876d1568fb2a76082` |
+| `components/sidebar-app/workspace-header.tsx` | `components/sidebar-app/workspace-header.tsx` | `e7c3c4577040cdc64e918c44501aa6580020ef793fc5f022c4f17c63bd48091b` | `3bdafa9994690087f7ad6d4eb0e8c17bac9c96b7e962a28ea28e0e34d19f432f` |
+| `components/ui/input-copy.tsx` | `components/ui/input-copy.tsx` | `8392eda98dd24b34469b6ab254fc028a79945c57895dbd0bc100416cd777eb8f` | `8f4561011ac98b0f20bb43177f56b42496d55940f6ed57b2656bb2c8261a25fb` |
+| `components/ui/thinking-indicator.tsx` | `components/ui/thinking-indicator.tsx` | `c07a1d11ac35e02d22c5a50ebb6f1382d563167a667cd921da22c552e1176701` | `0de773e811810978cffcfee95267c008fcc166350cefe0cdb50a98b80b2be75a` |
+| `lib/sidebar-menu-grid.ts` | `lib/sidebar-menu-grid.ts` | `06954f59a2708059e2e45fdf48e3b7739b5ba61b2bd2009a55a234f37f399d78` | `5f062aef12a8a71e329fb023047475a09dba65f9b57568937e3ad8681ab3eb1b` |
+| `hooks/use-controllable.ts` | `hooks/use-controllable.ts` | `f39cd165459feac94727a6cd2cb94f39fa3e23f68f3b01e306f0e5f5b2087137` | `f3fd45a4aa212b2aeb01b6b051663fc2c99d8afcceb97342a9b5c178800adb88` |
 
 | `components/agent/agent-handoff.tsx` | `components/agent/agent-handoff.tsx` | `f5d59982e3fe201273a3f3f8c688b12a6751211779a7c32475c1f47e5691d729` | `c59f8eecad08e43a268a2f6d5cf68a572ebd5a90ca7849f3420880fa2322dd68` |
 

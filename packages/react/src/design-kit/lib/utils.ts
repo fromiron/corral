@@ -1,4 +1,5 @@
 import { type ClassValue, clsx } from 'clsx';
+import type { Ref } from 'react';
 import { extendTailwindMerge } from 'tailwind-merge';
 
 // The type-scale role utilities are font sizes, but tailwind-merge treats an
@@ -30,4 +31,11 @@ const twMerge = extendTailwindMerge({
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+/** Points a ref (callback or object) at `value`; for merging a forwarded ref
+ *  with a local one. */
+export function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (typeof ref === 'function') ref(value);
+  else if (ref) (ref as { current: T | null }).current = value;
 }
