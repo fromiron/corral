@@ -455,6 +455,8 @@ export function RunFlowView({
   );
 }
 
+const LATEST: Readonly<Record<string, string>> = {};
+
 /** A recorded routing fact. Configuration options never become an inferred selection. */
 /** Recorded workflow decisions with their evidence, under the work flow; nothing without one. */
 export function RunFlowDecisions({
@@ -462,18 +464,21 @@ export function RunFlowDecisions({
   definition,
   onOpenArtifact,
   checks = [],
+  selectedIterations = LATEST,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
   onOpenArtifact: (id: string) => void;
   checks?: readonly RunFlowCheck[];
+  /** The inspected round per Loop, as the work flow beside it shows them. */
+  selectedIterations?: Readonly<Record<string, string>>;
 }) {
   const t = useTranslations('RunFlow');
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
   const decisions = useMemo(
-    () => buildRunFlow(projection, events, definition).decisions,
-    [projection, events, definition],
+    () => buildRunFlow(projection, events, definition, selectedIterations).decisions,
+    [projection, events, definition, selectedIterations],
   );
   if (!projection || !decisions.length) return null;
   return (

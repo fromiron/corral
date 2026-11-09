@@ -35,6 +35,7 @@ import {
   TaskBoard,
   Timeline,
   UsageInspector,
+  useRoundInspection,
   useRunDisplay,
   useRunWorkPlan,
   useSteerTarget,
@@ -262,6 +263,8 @@ function RunWorkspace({
   const { previewUrl, workspaces } = useServices();
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
+  // The work flow's tree and decisions show the same inspected Loop rounds.
+  const rounds = useRoundInspection(projection, execution ?? null);
   const failedTools = execution
     ? Object.values(projection?.toolCalls ?? {}).filter(
         (call) =>
@@ -559,6 +562,7 @@ function RunWorkspace({
                         session={session}
                         onSteer={chooseExecution}
                         selectedExecutionId={execution ?? null}
+                        rounds={rounds}
                         compact
                       />
                       <RunFlowDecisions
@@ -566,6 +570,7 @@ function RunWorkspace({
                         definition={definition}
                         checks={checks}
                         onOpenArtifact={openArtifact}
+                        selectedIterations={rounds.selected}
                       />
                     </div>
                   ),

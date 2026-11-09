@@ -30,7 +30,13 @@ export {
 } from './components/RunFlowView.tsx';
 export { isHtmlDocument, ResultReader, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
-export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
+export {
+  ExecutionTree,
+  type RoundInspection,
+  RunOutput,
+  RunView,
+  useRoundInspection,
+} from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
 export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
 export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
