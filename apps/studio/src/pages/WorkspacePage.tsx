@@ -330,7 +330,7 @@ function ProjectTabs({
       onValueChange={(value) => chooseTab(value as ProjectTab)}
       className="flex flex-col gap-4"
     >
-      <TabsList aria-label={t('sections')}>
+      <TabsList aria-label={t('tabsLabel')}>
         {TABS.map((value) => (
           <TabItem key={value} value={value} label={label(value)} />
         ))}
@@ -696,6 +696,8 @@ function useWorkingCopies(sessions: WorkSession[]) {
       if (worktree === undefined) return { state: 'unknown' };
       if (!worktree) return { state: 'none' };
       if (worktree.missing) return { state: 'copy', worktree, git: null };
+      // A tab that was left starts no Git inspection.
+      if (!live) return { state: 'unknown' };
       const status = await workspaces
         .gitStatus({ kind: 'session', id: sessionId })
         .catch(() => null);
@@ -711,8 +713,8 @@ function useWorkingCopies(sessions: WorkSession[]) {
       // A few at a time: a project can hold hundreds of sessions.
       await Promise.all(
         Array.from({ length: Math.min(4, queue.length) }, async () => {
-          for (let id = queue.shift(); id !== undefined; id = queue.shift())
-            found.set(id, await read(id));
+          const next = () => (live ? queue.shift() : undefined);
+          for (let id = next(); id !== undefined; id = next()) found.set(id, await read(id));
         }),
       );
       if (live) setCopies(found);
@@ -804,7 +806,7 @@ function EnvironmentPanel({
                     <Link
                       to="/sessions/$sessionId"
                       params={{ sessionId: session.sessionId }}
-                      className="rounded-sm text-foreground hover:underline outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                      className="rounded-sm text-foreground hover:underline"
                     >
                       {session.title}
                     </Link>
@@ -940,7 +942,7 @@ function SessionList({
                   to="/sessions/$sessionId"
                   params={{ sessionId: x.sessionId }}
                   search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
-                  className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-hover outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-hover"
                 >
                   <span className="min-w-0 truncate text-body text-foreground">{x.title}</span>
                   <span className="min-w-0 text-right text-caption text-muted-foreground">

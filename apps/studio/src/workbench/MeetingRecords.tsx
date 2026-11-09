@@ -1,10 +1,15 @@
-import { Button, cn, Dialog, DialogPopup, DialogTitle, Tooltip } from '@corral/react/design-kit';
+import {
+  Button,
+  cn,
+  Dialog,
+  DialogPopup,
+  DialogTitle,
+  fontWeights,
+  Tooltip,
+} from '@corral/react/design-kit';
 import { Maximize2, Minimize2, X } from '@corral/react/icons';
 import { type ReactNode, type RefObject, useId, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
-
-/** The kit's `fontWeights.semibold`, which the kit entry does not export. */
-const SEMIBOLD = "'wght' 550, 'opsz' 18";
 
 // Below the shell's sidebar boundary the records cover the conversation instead of sharing it.
 const NARROW = '(max-width: 1023px)';
@@ -22,8 +27,7 @@ export function useNarrowScreen() {
   return useSyncExternalStore(subscribe, narrowNow, () => false);
 }
 
-const headingClass =
-  'min-w-0 flex-1 truncate rounded-sm text-subtitle text-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
+const headingClass = 'min-w-0 flex-1 truncate rounded-sm text-subtitle text-foreground';
 
 /**
  * The minutes, decisions and handoff beside the conversation. Closing only hides the panel, so a
@@ -63,7 +67,7 @@ export function MeetingRecordsPanel({
           ref={headingRef}
           tabIndex={-1}
           className={headingClass}
-          style={{ fontVariationSettings: SEMIBOLD }}
+          style={{ fontVariationSettings: fontWeights.semibold }}
         >
           {t('records')}
         </h2>
@@ -116,7 +120,7 @@ export function MeetingRecordsDrawer({
             ref={headingRef}
             tabIndex={-1}
             className={headingClass}
-            style={{ fontVariationSettings: SEMIBOLD }}
+            style={{ fontVariationSettings: fontWeights.semibold }}
           >
             {t('records')}
           </DialogTitle>

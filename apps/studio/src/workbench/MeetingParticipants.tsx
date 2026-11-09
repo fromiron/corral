@@ -4,13 +4,11 @@ import {
   type AgentStatus,
   AgentStatusLabel,
   Button,
+  fontWeights,
   Tooltip,
 } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 import { useModelProfiles } from './useModels.ts';
-
-/** The kit's `fontWeights.semibold`, which the kit entry does not export. */
-const SEMIBOLD = "'wght' 550, 'opsz' 18";
 
 /** What a participant is doing now, read from the answers the meeting already shows. */
 export type ParticipantState = 'answering' | 'waiting' | 'failed' | 'idle';
@@ -88,7 +86,7 @@ export function MeetingParticipants({
                 onClick={() => onMention(person.name)}
               >
                 <AgentAvatar name={person.name} size={20} />
-                <span className="truncate" style={{ fontVariationSettings: SEMIBOLD }}>
+                <span className="truncate" style={{ fontVariationSettings: fontWeights.semibold }}>
                   {person.name}
                 </span>
                 {state === 'idle' ? (

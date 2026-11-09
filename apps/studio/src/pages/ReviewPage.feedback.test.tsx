@@ -5,12 +5,14 @@ import { linearCorral } from '@corral/testkit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
+import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import type { ProfileInfo } from '../workbench/useModels.ts';
 import { CommentsPanel, ReviewContent, ReviewPage } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({
   services: {},
   profiles: null as ProfileInfo[] | null,
+  catalog: null as typeof messages | null,
   session: null as WorkSession | null,
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
@@ -53,12 +55,25 @@ vi.mock('use-intl', async (original) => {
   const actual = await original<typeof import('use-intl')>();
   return {
     ...actual,
-    useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
+    // Key names by default; the English catalog where a test reads the shown text, failing on
+    // a key the catalog does not have.
+    useTranslations: (namespace: string) =>
+      fixture.catalog
+        ? actual.createTranslator({
+            locale: 'en',
+            messages: fixture.catalog,
+            namespace: namespace as never,
+            onError: (error) => {
+              throw error;
+            },
+          })
+        : (key: string) => `${namespace}.${key}`,
     useFormatter: () => actual.createFormatter({ locale: 'en', timeZone: 'UTC' }),
   };
 });
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
+  fixture.catalog = null;
   for (const cleanup of cleanups.splice(0)) await cleanup();
   window.localStorage.clear();
   vi.unstubAllGlobals();
@@ -241,7 +256,12 @@ async function mount(
   };
   const clickSend = async () => {
     const button = [...container.querySelectorAll('button')].find((node) =>
-      ['Review.sendReview', 'Review.retrySend'].includes(node.textContent ?? ''),
+      [
+        'Review.sendReview',
+        'Review.retrySend',
+        messages.Review.sendReview,
+        messages.Review.retrySend,
+      ].includes(node.textContent ?? ''),
     );
     expect(button).toBeDefined();
     expect(button?.disabled).toBe(false);
@@ -466,6 +486,8 @@ it.each([
 
 it('keeps review run state current so the next comment follows the reply just completed', async () => {
   vi.useFakeTimers();
+  // The shown text, so a key missing from the catalog fails here instead of showing its name.
+  fixture.catalog = messages;
   const view = await mount({ page: true });
   view.startAuto.mockImplementationOnce(async (request) => {
     view.setListedRuns([run('followup', 'running'), run('latest'), run('older')]);
@@ -479,15 +501,15 @@ it('keeps review run state current so the next comment follows the reply just co
   await view.clickSend();
   expect(view.listRuns).toHaveBeenCalledTimes(2);
   const recipient = view.container.querySelector<HTMLSelectElement>(
-    'select[aria-label="Review.sendTo"]',
+    `select[aria-label="${messages.Review.sendTo}"]`,
   );
   if (!recipient) throw new Error('Missing review recipient');
   expect([...recipient.options].some((option) => option.value === 'next')).toBe(false);
   view.setListedRuns([run('followup'), run('latest'), run('older')]);
   view.listRuns.mockRejectedValueOnce(new Error('offline'));
   await act(async () => vi.advanceTimersByTimeAsync(1500));
-  expect(view.container.textContent).toContain('Sessions.connectionLost');
-  expect(view.container.textContent).toContain('Docking.runLoading');
+  expect(view.container.textContent).toContain(messages.Sessions.connectionLost);
+  expect(view.container.textContent).toContain(messages.Widgets.runLoading);
   await act(async () => vi.advanceTimersByTimeAsync(1500));
   await view.clickSend();
   expect(view.startAuto.mock.calls[1]?.[0].conversation).toEqual({ throughRunId: 'followup' });

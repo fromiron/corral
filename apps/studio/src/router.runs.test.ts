@@ -17,7 +17,11 @@ const summary = (runId: string, sessionId: string | null): RunSummary => ({
   projectId: 'default',
 });
 
-async function open(entries: string[], listRuns: () => Promise<RunSummary[]>) {
+async function open(
+  entries: string[],
+  listRuns: () => Promise<RunSummary[]>,
+  options: { runLookupMs?: number } = {},
+) {
   const services = {
     transport: { listRuns: vi.fn(listRuns) },
     repository: {
@@ -31,7 +35,7 @@ async function open(entries: string[], listRuns: () => Promise<RunSummary[]>) {
       list: vi.fn(async () => []),
     },
   };
-  const router = createStudioRouter(services as never);
+  const router = createStudioRouter(services as never, options);
   const history = createMemoryHistory({
     initialEntries: entries,
     initialIndex: entries.length - 1,
@@ -90,6 +94,37 @@ it('stays on the run page when the run is not listed or the lookup fails', async
     throw new Error('offline');
   });
   expect(failed.router.state.location.pathname).toBe('/runs/run_a');
+});
+
+it('a slow lookup opens the run page after its wait, and its late answer moves nothing', async () => {
+  let answer: (runs: RunSummary[]) => void = () => {};
+  const { router } = await open(
+    ['/inbox', '/runs/run_a?view=results'],
+    () =>
+      new Promise<RunSummary[]>((resolve) => {
+        answer = resolve;
+      }),
+    { runLookupMs: 20 },
+  );
+  expect(router.state.location.pathname).toBe('/runs/run_a');
+  expect(router.state.status).toBe('idle');
+  expect(router.state.matches.at(-1)?.routeId).toBe('/runs/$runId');
+  answer([summary('run_a', 'session_a')]);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(router.state.location.pathname).toBe('/runs/run_a');
+  expect(router.state.location.search).toEqual({ view: 'results' });
+});
+
+it('a lookup answered within the wait still moves to the session', async () => {
+  const { router } = await open(
+    ['/runs/run_a'],
+    () =>
+      new Promise<RunSummary[]>((resolve) =>
+        setTimeout(() => resolve([summary('run_a', 'session_a')]), 5),
+      ),
+    { runLookupMs: 500 },
+  );
+  expect(router.state.location.pathname).toBe('/sessions/session_a');
 });
 
 it('looks the session up once when only the run page’s own address changes', async () => {

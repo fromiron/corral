@@ -13,6 +13,7 @@ import {
   BannerTitle,
   Button,
   cn,
+  fontWeights,
   InputMessage,
   Menu,
   MenuItem,
@@ -27,6 +28,7 @@ import { Link, useRouter } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
   type Ref,
+  type RefObject,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -70,9 +72,6 @@ import { useRemembered } from './Workbench.tsx';
 type RoundView = MeetingView['rounds'][number];
 type AnswerView = RoundView['answers'][number];
 
-/** The kit's `fontWeights.semibold`, which the kit entry does not export. */
-const SEMIBOLD = "'wght' 550, 'opsz' 18";
-
 const nameOf = (config: MeetingConfig, id: string, secretary: string) =>
   id === SECRETARY_ID
     ? secretary
@@ -112,6 +111,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
   const [panelKept, setPanelKept] = useState(false);
   if (!narrow && recordsOpen && !panelKept) setPanelKept(true);
   const recordsHeading = useRef<HTMLHeadingElement>(null);
+  const recordsToggle = useRef<HTMLButtonElement>(null);
   const focusRecords = useRef(false);
   const showRecords = (open: boolean) => {
     if (!open) setWidened(false);
@@ -204,6 +204,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
       <MeetingActions
         session={session}
         recordsOpen={recordsOpen}
+        recordsToggle={recordsToggle}
         onToggleRecords={() => showRecords(!recordsOpen)}
       />
       <div className="flex h-full min-h-0 min-w-0 flex-1">
@@ -299,7 +300,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
             {view.rounds.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-5 text-center">
                 <Users size={28} strokeWidth={1.25} className="text-muted-foreground" aria-hidden />
-                <h3 className="text-title" style={{ fontVariationSettings: SEMIBOLD }}>
+                <h3 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
                   {session.title}
                 </h3>
                 <p className="max-w-md text-body text-muted-foreground">{t('empty')}</p>
@@ -312,7 +313,11 @@ export function MeetingPage({ session }: { session: WorkSession }) {
             open={recordsOpen}
             widened={widened}
             onWiden={setWidened}
-            onClose={() => showRecords(false)}
+            onClose={() => {
+              showRecords(false);
+              // The panel hides its close button; the drawer's dialog returns focus by itself.
+              recordsToggle.current?.focus();
+            }}
             headingRef={recordsHeading}
           >
             {records}
@@ -341,10 +346,12 @@ export function MeetingPage({ session }: { session: WorkSession }) {
 function MeetingActions({
   session,
   recordsOpen,
+  recordsToggle,
   onToggleRecords,
 }: {
   session: WorkSession;
   recordsOpen: boolean;
+  recordsToggle: RefObject<HTMLButtonElement | null>;
   onToggleRecords(): void;
 }) {
   const { repository } = useServices();
@@ -424,6 +431,7 @@ function MeetingActions({
       ) : null}
       <Tooltip content={tm('records')}>
         <Button
+          ref={recordsToggle}
           variant="ghost"
           size="icon-compact"
           aria-label={tm('records')}
@@ -505,7 +513,7 @@ function AnswerCard({
   return (
     <article aria-label={name} className="mb-5 flex min-w-0 flex-col gap-1.5">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption">
-        <span className="text-body" style={{ fontVariationSettings: SEMIBOLD }}>
+        <span className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
           {name}
         </span>
         {answer.status !== 'answered' ? (
@@ -768,7 +776,7 @@ function MeetingComposer({
                 role="status"
                 className="flex flex-col gap-1 rounded-lg fill-control p-2 text-caption"
               >
-                <span style={{ fontVariationSettings: SEMIBOLD }}>{t('queued')}</span>
+                <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('queued')}</span>
                 <QueuedMessage
                   key={view.queued.commandId}
                   queued={view.queued}

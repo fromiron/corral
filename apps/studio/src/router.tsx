@@ -48,7 +48,7 @@ export { type SessionSearch, validateSessionSearch } from './workbench/panels/ro
 
 // Routes from product contract §4.1.
 
-const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
+const rootRoute = createRootRouteWithContext<{ services: StudioServices; runLookupMs: number }>()({
   component: RootLayout,
   validateSearch: validateSettingsOverlay,
   notFoundComponent: NotFoundView,
@@ -284,6 +284,26 @@ export const editorRoute = createRoute({
   component: EditorPage,
 });
 
+/** How long arriving at `/runs/:runId` waits for its session before opening the run page. */
+const RUN_LOOKUP_MS = 1500;
+
+/** The run's session, or null when it has none, is not listed, or the list fails or is late. */
+async function runSession(services: StudioServices, runId: string, waitMs: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  const lookup = services.transport.listRuns().then(
+    (runs) => runs.find((run) => run.runId === runId)?.sessionId ?? null,
+    () => null,
+  );
+  try {
+    return await Promise.race([lookup, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const runRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/runs/$runId',
@@ -292,12 +312,11 @@ export const runRoute = createRoute({
   // A session's run belongs to that session's run history: the address replaces itself there
   // with what it showed. Only arriving looks it up; the page's own search changes do not. A run
   // with no session, an unlisted run or a failed lookup keeps this page and never guesses one.
+  // The runtime has no per-run lookup that names the session, so the run list answers; a list
+  // slower than the wait opens this page, and its late answer moves nothing.
   beforeLoad: async ({ context, params, search, cause }) => {
     if (cause !== 'enter') return;
-    const sessionId = await context.services.transport.listRuns().then(
-      (runs) => runs.find((run) => run.runId === params.runId)?.sessionId ?? null,
-      () => null,
-    );
+    const sessionId = await runSession(context.services, params.runId, context.runLookupMs);
     if (sessionId)
       throw redirect({
         to: '/sessions/$sessionId',
@@ -448,7 +467,10 @@ function createPerformanceRoute() {
   });
 }
 
-export function createStudioRouter(services: StudioServices) {
+export function createStudioRouter(
+  services: StudioServices,
+  { runLookupMs = RUN_LOOKUP_MS }: { runLookupMs?: number } = {},
+) {
   return createRouter({
     routeTree: rootRoute.addChildren([
       indexRoute,
@@ -479,7 +501,7 @@ export function createStudioRouter(services: StudioServices) {
       compareRoute,
       ...(import.meta.env.MODE === 'performance' ? [createPerformanceRoute()] : []),
     ]),
-    context: { services },
+    context: { services, runLookupMs },
     defaultPreload: false,
   });
 }

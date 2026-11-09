@@ -1,4 +1,4 @@
-import { Button, Input } from '@corral/react/design-kit';
+import { Button, fontWeights, Input } from '@corral/react/design-kit';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type CloneOperation, projectRequest } from '../projects-api.ts';
@@ -30,7 +30,9 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
   }, [running, refresh]);
   return (
     <details className="rounded fill-group p-3 text-sm">
-      <summary className="cursor-pointer font-medium">{t('title')}</summary>
+      <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </summary>
       <div className="mt-3 flex flex-col gap-2">
         <p className="text-xs text-muted-foreground">{t('intro')}</p>
         <label className="flex flex-col gap-1 text-xs">

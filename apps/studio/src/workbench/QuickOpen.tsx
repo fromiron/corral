@@ -197,8 +197,20 @@ export function QuickOpen({
     );
   }, [open, workspaces, target, query]);
 
-  // Only what the server returned for the target on screen now.
-  const results = target && found?.key === target.key ? found.view.items : [];
+  // An open that finishes after the target changed, or after quick open is gone, opens nothing.
+  const targetKey = target?.key;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A completed read must not open into another target or a departed session.
+  useEffect(
+    () => () => {
+      opens.current++;
+      setOpening(false);
+    },
+    [targetKey],
+  );
+
+  // Only what the server returned for the target on screen now and the text typed now.
+  const results =
+    target && found?.key === target.key && found.query === query ? found.view.items : [];
   const items: CommandMenuItemData[] = results.map((item) => ({
     value: `${item.kind}:${item.path}`,
     label: item.path,

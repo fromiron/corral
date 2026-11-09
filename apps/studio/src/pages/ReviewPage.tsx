@@ -927,6 +927,7 @@ export function CommentsPanel({
   const ts = useTranslations('Sessions');
   const tc = useTranslations('Composer');
   const td = useTranslations('Docking');
+  const widgets = useTranslations('Widgets');
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces } = services;
@@ -1112,7 +1113,7 @@ export function CommentsPanel({
       ) : null}
       {!runsReady && !pending && drafts.length > 0 ? (
         <p role="status" className="text-xs text-muted-foreground">
-          {td('runLoading')}
+          {widgets('runLoading')}
         </p>
       ) : null}
       {(modelBlocked || reasoningBlocked) && drafts.length > 0 ? (

@@ -151,7 +151,7 @@ export function FileTree({
                 height: item.size,
                 paddingInlineStart: `${0.25 + (row.level - 1) * 0.875}rem`,
               }}
-              className={`flex items-center gap-1.5 rounded-md pr-2 text-left text-caption transition-colors duration-80 hover:bg-hover focus-visible:-outline-offset-2 ${row.path === active ? 'bg-secondary text-foreground' : 'text-foreground'}`}
+              className={`flex items-center gap-1.5 rounded-md pr-2 text-left text-caption text-foreground transition-colors duration-80 focus-visible:-outline-offset-2 ${row.path === active ? 'bg-[var(--tint)] hover:bg-[var(--tint-hover)]' : 'hover:bg-hover'}`}
             >
               <ChevronRight
                 size={14}

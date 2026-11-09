@@ -277,6 +277,99 @@ it('drops an answer for the previous target and opens only what the current targ
   });
 });
 
+it('while a newer query is pending, the earlier results are gone and Enter opens nothing', async () => {
+  const answers: ((value: Search) => void)[] = [];
+  fixture.search.mockImplementation(
+    () =>
+      new Promise<Search>((resolve) => {
+        answers.push(resolve);
+      }),
+  );
+  const { openDocument, showInFiles } = await mount();
+  await show();
+  await type('file');
+  await act(async () =>
+    answers.at(-1)?.({ items: [{ path: 'src/file.ts', kind: 'file' }], truncated: false }),
+  );
+  await settle();
+  expect(options()).toEqual(['src/file.ts']);
+  // The answer to "other" is slow: what "file" returned must not stay on screen or open.
+  await type('other');
+  expect(options()).toEqual([]);
+  expect(dialog()?.querySelector('[role="status"]')?.textContent).toBe(
+    messages.QuickOpen.searching,
+  );
+  await key('Enter');
+  await settle();
+  expect(openDocument).not.toHaveBeenCalled();
+  expect(showInFiles).not.toHaveBeenCalled();
+  expect((fixture.owner as { open: ReturnType<typeof vi.fn> }).open).not.toHaveBeenCalled();
+});
+
+it('a file read that finishes after the target changed opens nothing, and the next one opens', async () => {
+  let finish: (key: string) => void = () => {};
+  const store = fixture.owner as ReturnType<typeof owner>;
+  const opened = store.open.getMockImplementation();
+  store.open.mockImplementationOnce(
+    (session: string, path: string) =>
+      new Promise<string>((resolve) => {
+        finish = (value) => resolve(value);
+        void opened?.(session, path);
+      }),
+  );
+  const { openDocument, showInFiles } = await mount();
+  await show();
+  await type('file');
+  await key('Enter');
+  await settle();
+  expect(store.open).toHaveBeenCalledWith('session', 'src/file.ts');
+  // The copy goes away while its file is still being read.
+  fixture.copy = null;
+  await act(async () => {
+    window.dispatchEvent(new Event('corral:workspace-changed'));
+  });
+  await settle();
+  expect(dialog()?.textContent).toContain(messages.Desktop.sourceFolder);
+  await act(async () => finish(documentKey(target, 'src/file.ts')));
+  await settle();
+  expect(openDocument).not.toHaveBeenCalled();
+  // The open no longer holds the dialog: the new target's result can be chosen.
+  await key('Enter');
+  await settle();
+  expect(showInFiles).toHaveBeenCalledWith({
+    sessionId: 'session',
+    source: 'project',
+    path: 'src/file.ts',
+    kind: 'file',
+  });
+});
+
+it('a file read that finishes after quick open is gone opens nothing', async () => {
+  let finish: (key: string) => void = () => {};
+  const store = fixture.owner as ReturnType<typeof owner>;
+  store.open.mockImplementationOnce(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const { openDocument } = await mount();
+  await show();
+  await type('file');
+  await key('Enter');
+  await settle();
+  expect(store.open).toHaveBeenCalledTimes(1);
+  // The session view, and quick open with it, goes away before the read finishes.
+  await disposals.splice(0).at(0)?.();
+  const opened = documentKey(target, 'src/file.ts');
+  store.setState({
+    documents: { [opened]: { key: opened, target, path: 'src/file.ts', dirty: false } },
+  });
+  await act(async () => finish(opened));
+  await settle();
+  expect(openDocument).not.toHaveBeenCalled();
+});
+
 it('Enter without a result opens nothing; the typed text is never a path', async () => {
   fixture.search.mockImplementation(async () => ({ items: [], truncated: false }));
   const { openDocument, showInFiles } = await mount();

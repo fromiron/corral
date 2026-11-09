@@ -80,7 +80,46 @@ export function ScheduledPage() {
   const manualCommand = useRef<{ scheduleId: string; revision: number; id: string } | null>(null);
   // The listing holds the current revision; the snapshot covers the moment before it is read.
   const shown = selected ? (schedules.find((s) => s.id === selected.id) ?? selected) : null;
-  const refresh = async () => setSchedules((await schedulesApi.list()).schedules);
+  const selectedId = useRef<string | null>(null);
+  selectedId.current = selected?.id ?? null;
+  const reads = useRef(0);
+  /**
+   * The list, the runs, and histories: every schedule's when `every`, else only the one shown.
+   * An older read that finishes after a newer one has started is dropped.
+   */
+  const readSchedules = async (every: boolean, current: () => boolean = () => true) => {
+    const id = ++reads.current;
+    const chosen = selectedId.current;
+    const [listed, latestRuns] = await Promise.allSettled([
+      schedulesApi.list().then(async ({ schedules }) => ({
+        schedules,
+        histories: Object.fromEntries(
+          await Promise.all(
+            schedules
+              .filter((schedule) => every || schedule.id === chosen)
+              .map(
+                async (schedule) =>
+                  [schedule.id, (await schedulesApi.history(schedule.id)).occurrences] as const,
+              ),
+          ),
+        ),
+      })),
+      transport.listRuns(),
+    ]);
+    if (!current() || id !== reads.current) return;
+    if (listed.status === 'fulfilled') {
+      setSchedules(listed.value.schedules);
+      setHistories((known) =>
+        every ? listed.value.histories : { ...known, ...listed.value.histories },
+      );
+      setReadError(null);
+    } else setReadError(message(listed.reason));
+    // A failed run lookup never leaves an older status standing in for the current one.
+    setRuns(latestRuns.status === 'fulfilled' ? latestRuns.value : null);
+  };
+  const readRef = useRef(readSchedules);
+  readRef.current = readSchedules;
+  const refresh = () => readSchedules(true);
   useEffect(() => {
     if (mode !== 'server') return;
     let active = true;
@@ -114,32 +153,10 @@ export function ScheduledPage() {
   }, [repository, models, mode]);
   useEffect(() => {
     if (mode !== 'server') return;
-    const watcher = watchRefresh(async (current) => {
-      const [listed, latestRuns] = await Promise.allSettled([
-        schedulesApi.list().then(async ({ schedules }) => ({
-          schedules,
-          histories: Object.fromEntries(
-            await Promise.all(
-              schedules.map(
-                async (schedule) =>
-                  [schedule.id, (await schedulesApi.history(schedule.id)).occurrences] as const,
-              ),
-            ),
-          ),
-        })),
-        transport.listRuns(),
-      ]);
-      if (!current()) return;
-      if (listed.status === 'fulfilled') {
-        setSchedules(listed.value.schedules);
-        setHistories(listed.value.histories);
-        setReadError(null);
-      } else setReadError(message(listed.reason));
-      // A failed run lookup never leaves an older status standing in for the current one.
-      setRuns(latestRuns.status === 'fulfilled' ? latestRuns.value : null);
-    }, 3000);
+    // Opening, focus and reconnection read every history; the tick reads only the one shown.
+    const watcher = watchRefresh((current, every) => readRef.current(every, current), 3000);
     return watcher.dispose;
-  }, [mode, transport]);
+  }, [mode]);
   const perform = async (action: () => Promise<void>) => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -297,7 +314,7 @@ export function ScheduledPage() {
                     <TableRow
                       key={schedule.id}
                       index={index}
-                      className={current ? 'bg-secondary' : undefined}
+                      className={current ? 'bg-[var(--tint)]' : undefined}
                     >
                       <TableCell>
                         {/* The row's one control; it stretches over the row for the pointer. */}

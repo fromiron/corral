@@ -200,6 +200,42 @@ it('lists each schedule with its timing, state and last result', async () => {
   ]);
 });
 
+it('a refresh tick reads only the shown schedule’s history; opening, focus and actions read all', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    const ids = ['schedule_1', 'schedule_2', 'schedule_3', 'schedule_4', 'schedule_5'];
+    fixture.api.list.mockResolvedValue({
+      schedules: ids.map((id, index) => schedule({ id, title: `Schedule ${index + 1}` })),
+    });
+    fixture.api.update.mockImplementation(async (current: Schedule, draft: ScheduleDraft) =>
+      schedule({ ...current, ...draft, revision: current.revision + 1 }),
+    );
+    const read = () => fixture.api.history.mock.calls.map(([id]) => id).sort();
+    await page();
+    expect(read()).toEqual(ids);
+    await click(button('Schedule 3'));
+    fixture.api.history.mockClear();
+    fixture.api.list.mockClear();
+    fixture.services.transport.listRuns.mockClear();
+    await act(async () => vi.advanceTimersByTime(3000));
+    await settle();
+    expect(fixture.api.list).toHaveBeenCalledTimes(1);
+    expect(fixture.services.transport.listRuns).toHaveBeenCalledTimes(1);
+    expect(read()).toEqual(['schedule_3']);
+    fixture.api.history.mockClear();
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    await settle();
+    expect(read()).toEqual(ids);
+    fixture.api.history.mockClear();
+    await click(toggle('Enable scheduled runs'));
+    await settle();
+    expect(fixture.api.update).toHaveBeenCalledTimes(1);
+    expect(read()).toEqual(ids);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it('saves a new schedule disabled and says it will not run until enabled', async () => {
   fixture.api.create.mockImplementation(async (draft: ScheduleDraft) =>
     schedule({ ...draft, id: 'schedule_new', revision: 1 }),
@@ -268,7 +304,11 @@ it('Run now asks once for a double click and keeps its command ID for a retry', 
   fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
   let fail: (error: Error) => void = () => {};
   fixture.api.run.mockImplementationOnce(() => new Promise((_resolve, reject) => (fail = reject)));
-  fixture.api.run.mockResolvedValueOnce({ occurrences: [started({ manual: true })] });
+  // The server's history holds the firing from then on, as the reads after the action see it.
+  fixture.api.run.mockImplementationOnce(async () => {
+    fixture.api.history.mockResolvedValue({ occurrences: [started({ manual: true })] });
+    return { occurrences: [started({ manual: true })] };
+  });
   await page();
   await click(button(/Daily project review/));
   const runNow = button('Run now');

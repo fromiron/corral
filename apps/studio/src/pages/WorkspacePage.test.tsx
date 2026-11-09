@@ -201,6 +201,11 @@ it('has Sessions, Runs, Environment and Instructions & memory tabs, and no Teams
     'Instructions & memory',
   ]);
   expect(tabs(container).some((tab) => /^Teams/.test(tabName(tab)))).toBe(false);
+  // The tabs are named for what they switch, not after the project they belong to.
+  expect(container.querySelector('[role="tablist"]')?.getAttribute('aria-label')).toBe(
+    messages.Projects.tabsLabel,
+  );
+  expect(messages.Projects.tabsLabel).not.toBe(messages.Projects.label);
   expect(
     [...container.querySelectorAll('button')].some((button) => button.textContent === 'New team'),
   ).toBe(false);
@@ -249,4 +254,31 @@ it('shows the source folder and each working copy, saying where nothing is known
   // Path, branch and changes are not reported for this copy: none of them reads as "none".
   expect(row?.textContent?.match(/No information/g)?.length).toBe(3);
   expect(panel.textContent).not.toContain('Plan the release');
+});
+
+it('stops reading working copies once the Environment tab is left', async () => {
+  const ids = Array.from({ length: 8 }, (_, index) => `session_${index + 1}`);
+  fixture.data = { ...fixture.data, sessions: ids.map((id) => session(id, `Session ${id}`)) };
+  const reads: (() => void)[] = [];
+  const workspaces = fixture.services.workspaces as Record<string, ReturnType<typeof vi.fn>>;
+  workspaces.worktree = vi.fn(
+    (sessionId: string) =>
+      new Promise<WorktreeView>((resolve) => {
+        reads.push(() => resolve({ ...copy, sessionId }));
+      }),
+  );
+  workspaces.gitStatus = vi.fn(async () => ({ head: { branch: 'main' }, entries: [] }));
+  const { container } = await render();
+  const environment = tabs(container).find((tab) => tabName(tab) === 'Environment');
+  await act(async () => environment?.click());
+  await settle();
+  // A few at a time: the first batch is in flight.
+  expect(workspaces.worktree).toHaveBeenCalledTimes(4);
+  const sessionsTab = tabs(container).find((tab) => tabName(tab).startsWith('Sessions'));
+  await act(async () => sessionsTab?.click());
+  await settle();
+  for (const read of reads.splice(0)) await act(async () => read());
+  await settle();
+  expect(workspaces.worktree).toHaveBeenCalledTimes(4);
+  expect(workspaces.gitStatus).not.toHaveBeenCalled();
 });

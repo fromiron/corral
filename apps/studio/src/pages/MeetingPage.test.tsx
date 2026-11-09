@@ -948,6 +948,26 @@ it('the records panel opens and closes from the toolbar, keeping the draft, and 
   expect(f.container.querySelector('textarea')?.value).toBe('Unsent while reading');
 });
 
+it('closing the side records panel returns focus to the toolbar’s records toggle', async () => {
+  const f = await mount(view({ minutes: [minutesWithCandidate] }));
+  const toggle = must(f.button('records'), 'the records toggle');
+  await act(async () => toggle.click());
+  expect(records()?.hidden).toBe(false);
+  for (const widen of [false, true]) {
+    if (widen) {
+      await act(async () => toggle.click());
+      await act(async () => f.button('expandRecords')?.click());
+    }
+    const close = must(f.button('closeRecords'), 'the close button');
+    await act(async () => {
+      close.focus();
+      close.click();
+    });
+    expect(records()?.hidden).toBe(true);
+    expect(document.activeElement).toBe(toggle);
+  }
+});
+
 it('on a narrow screen the records open as a drawer over the conversation and return to its place', async () => {
   // A panel left open on a wide screen does not cover a phone's conversation by itself.
   localStorage.setItem('corral:meeting-records:v1:session_1', 'true');
