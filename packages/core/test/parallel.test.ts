@@ -394,4 +394,21 @@ describe('parallel structure', () => {
       expect.objectContaining({ code: 'JOIN_PARTIAL', nodeId: 'j' }),
     );
   });
+
+  it('#190: accepts a Join of branches one of which already joined its own fan-out', () => {
+    const inner: CorralNode = { id: 'k', type: 'join', label: 'k', policy: 'all' };
+    const definition = forked('all', {
+      nodes: [agent('b', 'p'), agent('b1', 'b'), agent('b2', 'b'), inner],
+      edges: [
+        edge('p', 'out', 'b'),
+        edge('b', 'out', 'b1'),
+        edge('b', 'out', 'b2'),
+        edge('b1', 'out', 'k'),
+        edge('b2', 'out', 'k'),
+        edge('k', 'out', 'j'),
+      ],
+    });
+    expect(errors(definition)).toEqual([]);
+    expect(planRun(definition).ok).toBe(true);
+  });
 });
