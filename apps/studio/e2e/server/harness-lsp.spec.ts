@@ -115,8 +115,10 @@ test('registers and selects a language server, approves an SDK query and trusts 
       return { sessionId, runId: started.runId };
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    await expect(page.getByText('node lsp.mjs', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Run this query once', exact: true }).click();
+    // A session's run opens in its run history, beside the conversation that also shows the request.
+    const needsYou = page.getByTestId('run-needs-you');
+    await expect(needsYou.getByText('node lsp.mjs', { exact: true })).toBeVisible();
+    await needsYou.getByRole('button', { name: 'Run this query once', exact: true }).click();
     await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
     await page.goto(`${corral.server.url}/settings?section=workspace&projectId=default`);
     await page

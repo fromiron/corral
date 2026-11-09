@@ -51,12 +51,14 @@ async function finishedRun(
   page: import('@playwright/test').Page,
   corral: { open(path?: string): Promise<void> },
 ) {
-  const { runId } = await startRun(page, corral);
+  const { runId, sessionId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
+  // A session's run opens in that session's run history.
+  await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}\\?.*run=${runId}`));
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
-  return new URL(page.url()).pathname;
+  return `/runs/${runId}`;
 }
 
 test('a run completed behind conversation fits its graph when opened and then preserves the chosen zoom', async ({
@@ -101,7 +103,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect(page.getByTestId('composer-status-pills')).toContainText('Run #2');
   await expect(graph).toBeHidden();
   await panelTab(page, 'Execution history');
-  await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
+  await expect(page.getByRole('banner').getByRole('button', { name: /#2 · / })).toBeVisible();
   await expect(graph).toBeVisible();
   await expect
     .poll(() =>
@@ -233,6 +235,9 @@ test('switching workspace views and reading a result preserves selection, scroll
   await expect(document.getByTestId('result-body')).toBeVisible();
   await expect(graph).toBeHidden();
   await document.getByRole('button', { name: 'Back to work', exact: true }).click();
+  // Back returns to the Results view the result was opened from; the graph kept its state.
+  await expect(monitor.locator('[data-run-workspace-view="results"]')).toBeVisible();
+  await views.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', transform ?? '');
   await expect.poll(() => side.evaluate((element) => element.scrollTop)).toBe(sideTop);

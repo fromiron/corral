@@ -131,6 +131,28 @@ it('lists the session runs newest first by number and status and selects one', a
   expect(onSelect).toHaveBeenCalledWith('second');
 });
 
+it('names each run by its session number and request summary', async () => {
+  const container = await render(
+    <RunMenu
+      runs={[
+        run('first', 'current', 'failed', '2026-11-01T00:00:00Z'),
+        run('second', 'current', 'succeeded', '2026-11-02T00:00:00Z'),
+      ]}
+      runId="second"
+      names={{ first: 'Draft the notes', second: 'Research brief' }}
+      onSelect={vi.fn()}
+    />,
+  );
+  const trigger = container.querySelector('button');
+  expect(trigger?.textContent).toContain('#2 · Research brief');
+  expect(trigger?.textContent).not.toContain('Run #');
+  const items = await open(trigger);
+  expect(items.map((item) => item.textContent)).toEqual([
+    expect.stringContaining('#2 · Research brief'),
+    expect.stringContaining('#1 · Draft the notes'),
+  ]);
+});
+
 it('puts this session’s rename, pin and archive above the session list and runs the page’s own actions', async () => {
   const rename = vi.fn();
   const pin = vi.fn();

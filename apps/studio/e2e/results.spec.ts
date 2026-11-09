@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { startTestRun } from './workbench.ts';
+import { showResults, startTestRun } from './workbench.ts';
 
 // The Results view on the in-browser demo
 // team. Demo runs live in the page's worker, so the Run page is reached through the app's link.
@@ -18,10 +18,9 @@ test('a cancelled run keeps what it made as a partial result', async ({ page }) 
 
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   // What it made before it stopped is offered as partial, and opens as the artifact it is.
-  const partial = page
-    .getByTestId('run-column')
-    .getByRole('region', { name: 'Results', exact: true })
-    .getByRole('button', { name: /Partial results$/ })
+  const partial = (await showResults(page))
+    .getByRole('region', { name: 'Partial results', exact: true })
+    .getByRole('button')
     .first();
   await partial.click();
   await expect(page.getByTestId('run-document').getByTestId('artifact-viewer')).toBeVisible();

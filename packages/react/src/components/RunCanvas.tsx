@@ -1,7 +1,16 @@
 import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import { motion, useReducedMotion } from 'motion/react';
-import { type ReactNode, useCallback, useId, useMemo, useRef, useState } from 'react';
+import {
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -23,6 +32,7 @@ import { cn } from '../design-kit/lib/utils.ts';
 import {
   buildRunAgentGraph,
   type RunAgentGraph,
+  type RunAgentGraphNode,
   type RunAgentGraphRelation,
 } from '../run/agent-graph.ts';
 import { type AgentGraphPosition, layoutRunAgents } from '../run/agent-graph-layout.ts';
@@ -33,6 +43,7 @@ import type { NodeRunStatus } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { ArrowRight, X } from '../ui/icons.ts';
 import { type Bounds, useGraphViewport, ZoomControls } from './GraphViewport.tsx';
+import { type AgentPresentation, RunAgentList } from './RunAgentList.tsx';
 
 /**
  * The kit legend's Call, Answer (data), Needs you and Failed colours for work in progress;
@@ -110,12 +121,18 @@ interface Edge {
 export function RunCanvas({
   session,
   definition,
+  display = 'map',
   selectedNodeId,
   onSelectNode,
   renderNodePreview,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
+  /**
+   * The relationship map, or the same agents as a list. The map stays mounted while the list
+   * is shown, so its position and zoom survive the switch.
+   */
+  display?: 'map' | 'list';
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null, trigger?: HTMLElement | null) => void;
   renderNodePreview?: (
@@ -175,6 +192,16 @@ export function RunCanvas({
     onTap: () => previewHandle.close(),
   });
 
+  // A quick view belongs to the display it opened from; switching displays closes it.
+  const shownDisplay = useRef(display);
+  useEffect(() => {
+    if (shownDisplay.current === display) return;
+    shownDisplay.current = display;
+    // Focus stays on the control that switched; the closed view's trigger may be gone.
+    setRestorePreviewFocus(false);
+    previewHandle.close();
+  }, [display, previewHandle]);
+
   const adjacent = useMemo(() => {
     const set = new Set([selectedNodeId]);
     for (const relation of graph.relations)
@@ -225,27 +252,51 @@ export function RunCanvas({
     });
   }, [graph, positions, nameOf, t]);
 
+  // One reading of each agent for both displays: the map's node and the list's row.
+  const present = useCallback(
+    (node: RunAgentGraphNode): AgentPresentation & { logo?: AgentMark } => {
+      const recordedModels = models[node.id] ?? [];
+      const model =
+        recordedModels.length > 1
+          ? t(recordedModels.every((model) => model.identified) ? 'models' : 'profiles', {
+              count: recordedModels.length,
+            })
+          : recordedModels[0]?.name;
+      const provider = recordedModels.length === 1 ? recordedModels[0]?.provider : null;
+      const logo = providerMark(provider);
+      const summary = node.summary;
+      const unsettled = ended && !['done', 'failed', 'cancelled', 'idle'].includes(summary.status);
+      return {
+        ...(model ? { model } : {}),
+        ...(logo ? { logo } : {}),
+        status: unsettled ? 'stopped' : kitStatus(summary.status),
+        statusLabel: !node.executionIds.length
+          ? t('requested')
+          : unsettled
+            ? t('unsettled')
+            : statusText(summary.status),
+      };
+    },
+    [models, ended, t, statusText],
+  );
+  const triggerFor = useCallback(
+    (nodeId: string, button: ReactElement) => (
+      <PopoverTrigger
+        id={`${previewId}-${nodeId}`}
+        handle={previewHandle}
+        payload={nodeId}
+        render={button}
+      />
+    ),
+    [previewId, previewHandle],
+  );
+
   const nodeLayer = useMemo(
     () =>
       graph.nodes.map((node, index) => {
         const position = positions.get(node.id) ?? { x: 0, y: 0 };
-        const recordedModels = models[node.id] ?? [];
-        const model =
-          recordedModels.length > 1
-            ? t(recordedModels.every((model) => model.identified) ? 'models' : 'profiles', {
-                count: recordedModels.length,
-              })
-            : recordedModels[0]?.name;
-        const provider = recordedModels.length === 1 ? recordedModels[0]?.provider : null;
-        const logo = providerMark(provider);
+        const { model, logo, status, statusLabel: label } = present(node);
         const summary = node.summary;
-        const unsettled =
-          ended && !['done', 'failed', 'cancelled', 'idle'].includes(summary.status);
-        const label = !node.executionIds.length
-          ? t('requested')
-          : unsettled
-            ? t('unsettled')
-            : statusText(summary.status);
         const details = [
           ...(node.executionIds.length > 1
             ? [statusText('executions', { count: node.executionIds.length })]
@@ -259,7 +310,6 @@ export function RunCanvas({
             ? [statusText('previousFailures', { count: summary.previousFailures })]
             : []),
         ].join(' · ');
-        const triggerId = `${previewId}-${node.id}`;
         return (
           <div
             key={node.id}
@@ -282,7 +332,7 @@ export function RunCanvas({
                 name={node.label}
                 {...(model ? { model } : {})}
                 {...(logo ? { logo } : {})}
-                status={unsettled ? 'stopped' : kitStatus(summary.status)}
+                status={status}
                 statusLabel={label}
                 detail={details}
                 label={[node.label, model, label, details].filter(Boolean).join(' · ')}
@@ -294,18 +344,7 @@ export function RunCanvas({
                 selected={selectedNodeId === node.id}
                 dimmed={!!selectedNodeId && !adjacent.has(node.id)}
                 onClick={(event) => onSelectNode(node.id, event.currentTarget)}
-                renderTrigger={
-                  hasPreview
-                    ? (button) => (
-                        <PopoverTrigger
-                          id={triggerId}
-                          handle={previewHandle}
-                          payload={node.id}
-                          render={button}
-                        />
-                      )
-                    : undefined
-                }
+                renderTrigger={hasPreview ? (button) => triggerFor(node.id, button) : undefined}
               />
             </motion.div>
           </div>
@@ -314,16 +353,13 @@ export function RunCanvas({
     [
       graph.nodes,
       positions,
-      models,
-      ended,
+      present,
       edges,
       selectedNodeId,
       adjacent,
       onSelectNode,
-      t,
       statusText,
-      previewId,
-      previewHandle,
+      triggerFor,
       hasPreview,
       reduce,
     ],
@@ -390,7 +426,25 @@ export function RunCanvas({
     // The source AgentGraph names its stage as a group; a fieldset would imply form controls.
     // biome-ignore lint/a11y/useSemanticElements: a labelled group of agent buttons, not a form.
     <div className="flex h-full w-full flex-col p-3" role="group" aria-label={t('label')}>
-      <AgentCard className="flex min-h-0 flex-1 flex-col">
+      {display === 'list' ? (
+        <AgentCard className="min-h-0 flex-1 overflow-auto p-2">
+          {readingInitialHistory || !hasNodes ? (
+            <p className="grid h-full place-items-center text-caption text-muted-foreground">
+              {t(readingInitialHistory ? 'loading' : 'empty')}
+            </p>
+          ) : (
+            <RunAgentList
+              session={session}
+              nodes={graph.nodes}
+              present={present}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={onSelectNode}
+              {...(hasPreview ? { trigger: triggerFor } : {})}
+            />
+          )}
+        </AgentCard>
+      ) : null}
+      <AgentCard className="flex min-h-0 flex-1 flex-col" hidden={display === 'list'}>
         <div
           ref={pane}
           data-graph-pane

@@ -696,7 +696,9 @@
     "pauseBefore": "Pause before this step",
     "forkHere": "Run again from here",
     "steps": "Steps",
-    "forkFailed": "Could not start: {message}"
+    "forkFailed": "Could not start: {message}",
+    "runName": "#{number} · {name}",
+    "sessionLookupFailed": "Could not check which session this run belongs to, so it opens on its own page."
   },
   "Timeline": {
     "heading": "Timeline",
@@ -968,7 +970,13 @@
     "costSimulated": "Simulated: no cost",
     "costNone": "No model calls yet",
     "unknownRole": "Agent",
-    "diagnostics": "Diagnostics"
+    "diagnostics": "Diagnostics",
+    "byAgent": "Usage by agent",
+    "agent": "Agent",
+    "reportedOutput": "Reported output",
+    "requestCount": "Requests",
+    "noInformation": "No information",
+    "outsideAgents": "Outside agent executions"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -5241,7 +5249,27 @@
     "dockHeight": "Views height",
     "planCount": "{count, plural, one {# work plan} other {# work plans}}",
     "callBreakdown": "Timed calls of the selected execution",
-    "modelCall": "Model request {no}"
+    "modelCall": "Model request {no}",
+    "graphDisplay": {
+      "label": "Graph display",
+      "map": "Map",
+      "list": "List"
+    },
+    "agentList": {
+      "label": "Agents",
+      "agent": "Agent",
+      "model": "Model",
+      "status": "Status",
+      "current": "Current",
+      "elapsed": "Elapsed"
+    },
+    "resultVersions": {
+      "name": "Result",
+      "source": "Made by",
+      "version": "Version",
+      "versionNumber": "v{version}",
+      "notKept": "Text no longer kept"
+    }
   },
   "Failure": {
     "cancelled": "This step was cancelled.",

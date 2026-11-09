@@ -11,10 +11,17 @@ import {
   KitCardContent,
   KitCardHeader,
   KitCardTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '../design-kit/index.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
+import { usageByAgent } from '../run/usage-by-agent.ts';
 
 // Runs have no usage budget (product contract §9): this shows what was used, never a limit.
 
@@ -65,6 +72,10 @@ export function UsageInspector({
   const roleOf = (executionId: string) =>
     definition.nodes.find((node) => node.id === projection.executions[executionId]?.nodeId)
       ?.label ?? t('unknownRole');
+  const labelOf = (nodeId: string) =>
+    definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+  // Each agent's share, counted as the totals above are, so the rows add up to them.
+  const agents = usageByAgent(projection);
   const calls = Object.values(projection.modelCalls);
   const others = Object.values(projection.usage);
   const imageNo = new Map(
@@ -119,6 +130,38 @@ export function UsageInspector({
           <p data-testid="cost-estimate" className="text-muted-foreground">
             {costText()}
           </p>
+        ) : null}
+        {agents.length ? (
+          <Table size="compact" aria-label={t('byAgent')}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('agent')}</TableHead>
+                <TableHead className="text-right">{t('reportedOutput')}</TableHead>
+                <TableHead className="text-right">{t('requestCount')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agents.map((row, index) => (
+                <TableRow
+                  key={row.nodeId ?? ''}
+                  index={index}
+                  data-usage-agent={row.nodeId ?? undefined}
+                >
+                  <TableCell className="text-foreground">
+                    {row.nodeId === null ? t('outsideAgents') : labelOf(row.nodeId)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.reported
+                      ? t('tokens', { count: row.totals.outputTokens })
+                      : row.totals.inFlight > 0
+                        ? t('running')
+                        : t('noInformation')}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{row.totals.requests}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         ) : null}
         {calls.length + others.length > 0 ? (
           <KitAccordion type="multiple" className="w-full">

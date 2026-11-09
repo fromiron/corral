@@ -318,32 +318,28 @@ function Editor({
 
   return (
     <StudioStoresProvider editor={editor} session={session}>
-      <div
-        ref={shell}
-        className={`grid h-full min-h-0 ${fromSession ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}
-      >
-        {fromSession ? (
-          <div
-            data-testid="from-session"
-            className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/50 px-4 py-1.5 text-caption"
-          >
-            <Link
-              to="/sessions/$sessionId"
-              params={{ sessionId: fromSession }}
-              className="font-medium hover:underline"
+      <div ref={shell} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+        {/* One header row: the way back to the session leads it instead of a row of its own. */}
+        <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border py-1.5 pr-3 pl-4">
+          {fromSession ? (
+            <Button
+              data-testid="from-session"
+              variant="ghost"
+              size="compact"
+              render={<Link to="/sessions/$sessionId" params={{ sessionId: fromSession }} />}
             >
               ← {t('backToSession')}
-            </Link>
-            <span className="text-muted-foreground">{t('appliesNextRun')}</span>
-          </div>
-        ) : null}
-        <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border py-1.5 pr-3 pl-4">
+            </Button>
+          ) : null}
           <h1 className="min-w-0 truncate text-body font-semibold text-foreground">
             {draft.definition.name}
           </h1>
           <span className="text-caption text-muted-foreground" data-testid="revisions">
             {t('revisions', { definition: saved.record.definitionRevision })}
           </span>
+          {fromSession ? (
+            <span className="text-caption text-muted-foreground">{t('appliesNextRun')}</span>
+          ) : null}
           <span aria-live="polite">
             <KitBadge size="compact" color={dirty ? 'amber' : 'gray'}>
               {saving ? c('saving') : dirty ? c('unsaved') : c('saved')}

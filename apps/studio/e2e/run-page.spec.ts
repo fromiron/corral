@@ -37,7 +37,12 @@ test('the first view of a completed run fits every observed agent above the resu
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await finishedTeamRun(page);
-  await expect(page.getByRole('region', { name: 'Results', exact: true })).toBeVisible();
+  // The results are a view of their own beside the graph, not a strip under it.
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Execution views' })
+      .getByRole('tab', { name: 'Results', exact: true }),
+  ).toBeVisible();
   const stage = graph(page).locator('[data-graph-pane]');
   await expect(stage.locator('[data-agent-id]')).toHaveCount(5);
   await expect

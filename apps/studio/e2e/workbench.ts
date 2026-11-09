@@ -94,27 +94,38 @@ export async function panelTab(page: Page, name: string) {
     .click();
 }
 
-/** Chooses a run of the open session from the run segment of the top bar's path (run history). */
+/**
+ * Chooses a run of the open session from the run segment of the top bar's path (run history),
+ * where each run is named `#N · request`.
+ */
 export async function chooseRun(page: Page, number: number) {
   await page
     .getByRole('banner')
-    .getByRole('button', { name: /Run #\d+/ })
+    .locator('button[aria-haspopup="menu"]')
+    .filter({ hasText: /#\d+/ })
     .click();
-  await page.getByRole('menuitemradio', { name: new RegExp(`Run #${number}\\b`) }).click();
+  await page.getByRole('menuitemradio', { name: new RegExp(`#${number}\\b`) }).click();
+}
+
+/** Shows the run workspace's Results view: every version the run made. */
+export async function showResults(page: Page) {
+  await page
+    .getByTestId('run-column')
+    .getByRole('tablist', { name: 'Execution views' })
+    .getByRole('tab', { name: 'Results', exact: true })
+    .click();
+  const view = page.getByTestId('run-column').locator('[data-run-workspace-view="results"]');
+  await expect(view).toBeVisible();
+  return view;
 }
 
 /**
- * Opens a result from the workspace's result list into the central document reader.
+ * Opens a final result from the workspace's Results view into the central document reader.
  */
 export async function openResult(page: Page, name?: RegExp) {
-  const section = page
-    .getByTestId('run-column')
-    .getByRole('region', { name: 'Results', exact: true })
-    .filter({ hasNot: page.getByTestId('run-results') });
-  await (name
-    ? section.getByRole('button', { name })
-    : section.getByRole('button').first()
-  ).click();
+  const view = await showResults(page);
+  const final = view.getByRole('region', { name: 'Final results', exact: true });
+  await (name ? final.getByRole('button', { name }) : final.getByRole('button').first()).click();
   await expect(page.getByTestId('run-document').getByTestId('run-results')).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
 }

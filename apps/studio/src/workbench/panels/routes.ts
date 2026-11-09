@@ -97,6 +97,18 @@ export function validateReviewSearch(search: Record<string, unknown>): ReviewSea
   };
 }
 
+/**
+ * A session run's own address opens its session's run history on the same run, keeping the
+ * view, the result or artifact being read and the inspected execution.
+ */
+export function runSessionSearch(runId: string, search: RunDetailSearch): SessionSearch {
+  return validateSessionSearch({
+    panel: 'run',
+    run: runId,
+    ...validateRunSearch({ ...search }),
+  });
+}
+
 /** Legacy review links select the same Changes view as in-session review. */
 export function reviewSessionSearch(search: ReviewSearch): SessionSearch {
   return search.scope === 'git'

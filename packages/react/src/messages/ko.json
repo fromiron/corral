@@ -696,7 +696,9 @@
     "pauseBefore": "이 단계 전에 멈춤",
     "forkHere": "여기서 다시 실행",
     "steps": "단계",
-    "forkFailed": "시작하지 못했습니다: {message}"
+    "forkFailed": "시작하지 못했습니다: {message}",
+    "runName": "#{number} · {name}",
+    "sessionLookupFailed": "이 실행이 속한 세션을 확인하지 못해 단독 화면으로 엽니다."
   },
   "Timeline": {
     "heading": "타임라인",
@@ -968,7 +970,13 @@
     "costSimulated": "시뮬레이션: 비용 없음",
     "costNone": "아직 모델 호출 없음",
     "unknownRole": "에이전트",
-    "diagnostics": "진단 정보"
+    "diagnostics": "진단 정보",
+    "byAgent": "에이전트별 사용량",
+    "agent": "에이전트",
+    "reportedOutput": "보고된 출력",
+    "requestCount": "요청",
+    "noInformation": "정보 없음",
+    "outsideAgents": "에이전트 실행 외"
   },
   "SettingsPatch": {
     "heading": "설정 변경",
@@ -5241,7 +5249,27 @@
     "dockHeight": "보기 높이",
     "planCount": "작업 계획 {count}개",
     "callBreakdown": "선택한 실행의 호출 시간",
-    "modelCall": "모델 요청 {no}"
+    "modelCall": "모델 요청 {no}",
+    "graphDisplay": {
+      "label": "그래프 표시",
+      "map": "관계도",
+      "list": "목록"
+    },
+    "agentList": {
+      "label": "에이전트",
+      "agent": "에이전트",
+      "model": "모델",
+      "status": "상태",
+      "current": "현재 실행",
+      "elapsed": "경과"
+    },
+    "resultVersions": {
+      "name": "결과",
+      "source": "만든 실행",
+      "version": "버전",
+      "versionNumber": "v{version}",
+      "notKept": "본문 보관 안 함"
+    }
   },
   "Failure": {
     "cancelled": "이 단계는 취소되었습니다.",

@@ -6,7 +6,7 @@ import { runResults } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { FileText } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
 import { Checks } from '../../pages/ReviewPage.tsx';
@@ -16,6 +16,7 @@ import { RunMenu } from '../Breadcrumbs.tsx';
 import type { AttachmentCapture } from '../context/bridge.ts';
 import { panelRunId } from '../panelRun.ts';
 import type { SessionSearch } from '../panels/routes.ts';
+import { summary } from '../runIdentity.ts';
 import { TopbarCrumb } from '../TopbarSlot.tsx';
 
 // Side panes of a session: the run detail, its results and its checks.
@@ -38,6 +39,7 @@ export function RunPanel({
 }) {
   const tw = useTranslations('Workbench');
   const runId = panelRunId(runs, search.run, listed);
+  const names = useRunNames(runs, entries);
   if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
   // A fallback run must not inherit the selection made inside the run that has gone.
   const own = search.run === undefined || search.run === runId;
@@ -51,6 +53,7 @@ export function RunPanel({
           <RunMenu
             runs={runs}
             runId={runId}
+            names={names}
             onSelect={(value) =>
               setSearch({
                 run: value,
@@ -89,6 +92,50 @@ export function RunPanel({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * Each run's name in the run history: the summary of the request that started it, else the name
+ * of the team it ran as, read from its pinned definition (never the team's current revision).
+ */
+function useRunNames(runs: readonly RunSummary[], entries: WorkSession['entries']) {
+  const { transport } = useServices();
+  const requested = new Map(
+    entries.flatMap((entry) =>
+      entry.runId && entry.intent !== 'steer' ? [[entry.runId, summary(entry.text)] as const] : [],
+    ),
+  );
+  const missing = runs
+    .filter((run) => !requested.get(run.runId))
+    .map((run) => run.runId)
+    .join(',');
+  const [teams, setTeams] = useState<Record<string, string | null>>({});
+  // A pinned definition does not change: each run's is read once while the panel is open.
+  const asked = useRef(new Set<string>());
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
+  useEffect(() => {
+    mounted.current = true;
+    for (const runId of missing ? missing.split(',') : []) {
+      if (asked.current.has(runId)) continue;
+      asked.current.add(runId);
+      void transport.getRunDefinition(runId).then(
+        (definition) => {
+          if (mounted.current)
+            setTeams((known) => ({ ...known, [runId]: summary(definition?.name) }));
+        },
+        () => {},
+      );
+    }
+  }, [transport, missing]);
+  return Object.fromEntries(
+    runs.map((run) => [run.runId, requested.get(run.runId) ?? teams[run.runId] ?? null]),
   );
 }
 

@@ -72,12 +72,14 @@ vi.mock('@corral/react', async (original) => {
     RunCanvas: ({
       definition,
       session,
+      display,
       onSelectNode,
       selectedNodeId,
       renderNodePreview,
     }: {
       definition: CorralDefinition;
       session: RunSessionStore;
+      display?: 'map' | 'list';
       onSelectNode: (nodeId: string, trigger?: HTMLElement | null) => void;
       selectedNodeId: string | null;
       renderNodePreview?: (
@@ -91,6 +93,8 @@ vi.mock('@corral/react', async (original) => {
           <output data-testid="layout">
             {JSON.stringify({ definition, runId: session.getState().runId })}
           </output>
+          {/* The real canvas draws the list rows with the same trigger as the map's nodes. */}
+          <output data-testid="graph-display">{display ?? 'map'}</output>
           {['worker', 'reviewer'].map((id) => (
             <button
               key={id}
@@ -146,6 +150,7 @@ async function mount(
   holdNavigation = false,
   agentIds = ['worker'],
   runDefinition?: CorralDefinition,
+  runNumber?: number,
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -192,6 +197,7 @@ async function mount(
       <RunDetail
         runId={projection.runId}
         {...(request ? { request } : {})}
+        {...(runNumber ? { runNumber } : {})}
         search={selection}
         setSearch={(patch, options) => {
           navigations.push({ patch, options });
@@ -1161,6 +1167,7 @@ it('primary views retain the graph when switching and keep the active view on a 
     expect.stringContaining('Work flow'),
     expect.stringContaining('Timeline'),
     expect.stringContaining('Events 0'),
+    expect.stringContaining('Results'),
   ]);
   const graph = container.querySelector('[data-testid="layout"]');
   await tab('Work flow');
@@ -1643,4 +1650,260 @@ it('does not take over Run info or a narrow page for a new decision', async () =
   const narrow = await mount('inline_team', null, {});
   await waitFor(narrow.run, 1);
   expect(side(narrow.container)?.hidden).toBe(true);
+});
+
+const viewTab = (container: HTMLElement, name: string) =>
+  [...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]')].find(
+    (el) => el.textContent?.startsWith(name),
+  );
+
+const chooseDisplay = async (container: HTMLElement, name: string) => {
+  const toggle = container.querySelector<HTMLElement>('[role="group"][aria-label="Graph display"]');
+  expect(toggle).not.toBeNull();
+  const option = [...(toggle?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent === name,
+  );
+  expect(option).toBeDefined();
+  await act(async () => option?.click());
+  return option;
+};
+
+it('switches the graph between its map and list, keeping the choice across views and new events', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  const display = () => container.querySelector('[data-testid="graph-display"]')?.textContent;
+  expect(display()).toBe('map');
+  const list = await chooseDisplay(container, 'List');
+  expect(display()).toBe('list');
+  expect(list?.getAttribute('aria-pressed')).toBe('true');
+  await act(async () => viewTab(container, 'Work flow')?.click());
+  await act(async () => viewTab(container, 'Graph')?.click());
+  expect(display()).toBe('list');
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  expect(display()).toBe('list');
+  const map = await chooseDisplay(container, 'Map');
+  expect(display()).toBe('map');
+  expect(map?.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('choosing a list row is choosing its node and keeps the open right panel', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  await chooseDisplay(container, 'List');
+  const info = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Run info',
+  );
+  await act(async () => info?.click());
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.querySelector('[data-testid="run-facts"]')).not.toBeNull();
+  const before = navigations.length;
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('[data-testid="run-facts"]')).not.toBeNull();
+  expect(navigations).toHaveLength(before);
+  expect(container.querySelector('[data-testid="node-preview"]')?.textContent).toContain('worker');
+});
+
+async function withResults(run: RunSessionStore, status: 'succeeded' | 'running' = 'succeeded') {
+  await populateGraph(run, [
+    { ...graphExecution('exec_worker', 'worker'), iterationId: 'round_2', status: 'succeeded' },
+  ]);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  const version = (id: string, name: string, number: number): ArtifactVersionView => ({
+    artifactVersionId: id,
+    artifactId: name.toLowerCase(),
+    version: number,
+    parentVersionId: null,
+    name,
+    contract: 'draft',
+    contentHash: `hash_${id}`,
+    byteLength: 10,
+    authorExecutionId: 'exec_worker',
+    modelCallId: null,
+    contextSnapshotId: null,
+    submitted: true,
+    configRevision: 0,
+    criteriaVersionId: null,
+    inputArtifactVersionIds: [],
+  });
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        status,
+        iterations: {
+          round_2: {
+            iterationId: 'round_2',
+            loopNodeId: 'loop',
+            no: 2,
+            criteriaVersionId: 'criteria',
+            parentIterationId: null,
+            outcome: null,
+          },
+        },
+        artifacts: {
+          artv_draft_1: version('artv_draft_1', 'Draft', 1),
+          artv_draft_2: version('artv_draft_2', 'Draft', 2),
+          artv_report: version('artv_report', 'Report', 1),
+        },
+        output: { nodeId: 'output', artifactVersionIds: ['artv_report'] },
+      },
+    }),
+  );
+}
+
+it('lists every result version with its source execution and opens it in the centre, then Back returns to the list', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await withResults(run);
+  // No results-only strip: what the run made is read in its own view.
+  const column = container.querySelector<HTMLElement>('[data-testid="run-column"]');
+  expect(
+    [...(column?.querySelectorAll<HTMLElement>('[aria-label="Results"]') ?? [])].filter(
+      (element) =>
+        element.dataset.testid !== 'run-document' &&
+        !element.closest('[data-run-workspace-view="results"]'),
+    ),
+  ).toEqual([]);
+  await act(async () => viewTab(container, 'Results')?.click());
+  const view = container.querySelector<HTMLElement>('[data-run-workspace-view="results"]');
+  expect(view?.closest('[hidden]')).toBeNull();
+  const rows = [...(view?.querySelectorAll<HTMLElement>('[data-result-version]') ?? [])];
+  expect(rows.map((row) => row.dataset.resultVersion)).toEqual([
+    'artv_report',
+    'artv_draft_2',
+    'artv_draft_1',
+  ]);
+  for (const row of rows) {
+    expect(row.textContent).toContain('worker · Round 2 · Attempt 1');
+    expect(row.textContent).not.toMatch(/token|cost|\$/i);
+  }
+  expect(rows[0]?.textContent).toContain('Report');
+  expect(rows[0]?.textContent).toContain('v1');
+  expect(rows[1]?.textContent).toContain('v2');
+  const open = rows[0]?.querySelector<HTMLButtonElement>('button');
+  open?.focus();
+  await act(async () => {
+    open?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(navigations.at(-1)?.patch.result).toBe('artv_report');
+  const reader = container.querySelector<HTMLElement>('[data-testid="run-document"]');
+  expect(reader?.hidden).toBe(false);
+  expect(reader?.querySelector('[data-testid="results"]')).not.toBeNull();
+  await act(async () => {
+    [...(reader?.querySelectorAll('button') ?? [])]
+      .find((el) => el.textContent?.includes('Back to work'))
+      ?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(reader?.hidden).toBe(true);
+  expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
+  expect(view?.closest('[hidden]')).toBeNull();
+  expect(document.activeElement).toBe(open);
+});
+
+it('opens an intermediate version with the artifact reader and Back returns to the list', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigate } = await mount('inline_team', null, {});
+  // While the run goes on, the latest draft is still readable; the earlier one is not.
+  await withResults(run, 'running');
+  await act(async () => viewTab(container, 'Results')?.click());
+  expect(container.querySelector('[data-result-version="artv_draft_1"] button')).toBeNull();
+  expect(container.querySelector('[data-result-version="artv_draft_1"]')?.textContent).toContain(
+    'Text no longer kept',
+  );
+  const draft = container.querySelector<HTMLButtonElement>(
+    '[data-result-version="artv_draft_2"] button',
+  );
+  await act(async () => draft?.click());
+  expect(
+    container.querySelector('[data-testid="run-document"] [data-testid="artifact"]')?.textContent,
+  ).toBe('artv_draft_2');
+  // Browser Back drops the version from the address.
+  await navigate({ artifact: undefined });
+  expect(container.querySelector<HTMLElement>('[data-testid="run-document"]')?.hidden).toBe(true);
+  expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
+});
+
+it('names the run by its session number and request, or its team when nothing was requested', async () => {
+  const asked = await mount(
+    'inline_team',
+    null,
+    {},
+    'Summarise the release',
+    false,
+    ['worker'],
+    undefined,
+    3,
+  );
+  expect(asked.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
+    '#3 · Summarise the release',
+  );
+  const unnamed = await mount('inline_team', null, {}, undefined, false, ['worker'], undefined, 3);
+  expect(unnamed.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
+    '#3 · Linear worker',
+  );
+});
+
+it('reads run usage only in Run info › Usage, split by agent', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await populateGraph(run, [
+    { ...graphExecution('exec_worker', 'worker'), status: 'succeeded', modelCallIds: ['call_a'] },
+  ]);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        modelCalls: {
+          call_a: {
+            modelCallId: 'call_a',
+            executionId: 'exec_worker',
+            contextSnapshotId: 'ctx',
+            profile: 'model-a',
+            configRevision: 0,
+            directiveIds: [],
+            inputArtifactVersionIds: [],
+            finished: true,
+            usage: {
+              inputTokens: 10,
+              outputTokens: 321,
+              cachedInputTokens: null,
+              reasoningTokens: null,
+            },
+            rawUsage: null,
+            certainty: 'reported',
+          },
+        },
+      },
+    }),
+  );
+  const info = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Run info',
+  );
+  await act(async () => info?.click());
+  const usageTab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
+    el.textContent?.includes('Usage'),
+  );
+  expect(usageTab).toBeDefined();
+  await act(async () => usageTab?.click());
+  const table = container.querySelector('table[aria-label="Usage by agent"]');
+  expect(table?.closest('[hidden]')).toBeNull();
+  expect(table?.textContent).toContain('worker');
+  expect(table?.textContent).toContain('321');
+  // The usage panel is the only place on the run page with the run's usage.
+  const shown = [...container.querySelectorAll<HTMLElement>('*')].filter(
+    (element) =>
+      element.children.length === 0 &&
+      element.textContent?.includes('321') &&
+      !element.closest('[role="tabpanel"][data-value="usage"], [data-run-usage]'),
+  );
+  expect(shown).toEqual([]);
 });

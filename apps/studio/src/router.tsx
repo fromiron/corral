@@ -36,6 +36,7 @@ import {
 } from './workbench/navigation.ts';
 import {
   reviewSessionSearch,
+  runSessionSearch,
   validateEditorSearch,
   validateReviewSearch,
   validateRunSearch,
@@ -288,6 +289,26 @@ export const runRoute = createRoute({
   path: '/runs/$runId',
   // `view` and `result` keep the Results view and its chosen version in the address.
   validateSearch: validateRunSearch,
+  // A session's run belongs to that session's run history: the address replaces itself there
+  // with what it showed. Only arriving looks it up; the page's own search changes do not. A run
+  // with no session, an unlisted run or a failed lookup keeps this page and never guesses one.
+  beforeLoad: async ({ context, params, search, cause }) => {
+    if (cause !== 'enter') return;
+    const sessionId = await context.services.transport.listRuns().then(
+      (runs) => runs.find((run) => run.runId === params.runId)?.sessionId ?? null,
+      () => null,
+    );
+    if (sessionId)
+      throw redirect({
+        to: '/sessions/$sessionId',
+        params: { sessionId },
+        search: {
+          ...runSessionSearch(params.runId, search),
+          ...validateSettingsOverlay({ ...search }),
+        },
+        replace: true,
+      });
+  },
   component: RunPage,
 });
 

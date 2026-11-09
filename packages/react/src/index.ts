@@ -123,6 +123,7 @@ export {
   type TurnProcess,
   turnSummary,
 } from './run/turn-process.ts';
+export { type AgentUsage, usageByAgent } from './run/usage-by-agent.ts';
 export {
   useWorkPlanSnapshot,
   type WorkPlanRef,

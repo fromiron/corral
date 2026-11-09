@@ -1,11 +1,10 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { HarnessDetails, type RunSessionStore, UsageInspector } from '@corral/react';
+import { HarnessDetails, type RunSessionStore } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { useModelPrices } from '../prices.ts';
 import { useServices } from '../services.tsx';
 import { useSettingsNavigation } from './navigation.ts';
 import { ProfileContextDetails } from './ProfileContextDetails.tsx';
@@ -26,7 +25,6 @@ export function RunStatusCards({
   const branchText = useTranslations('MessageBranch');
   const { mode, workspaces } = useServices();
   const state = useStore(session);
-  const prices = useModelPrices();
   const [copy, setCopy] = useState<boolean | null>(null);
   useEffect(() => {
     let current = true;
@@ -145,7 +143,6 @@ export function RunStatusCards({
               supported={Boolean(role?.harness) && projection.mode === 'live'}
             />
           ) : null}
-          <UsageInspector session={session} prices={prices} />
           {['interrupted', 'failed', 'cancelled'].includes(projection.status) &&
           projection.mode === 'live' ? (
             <RuntimeRecovery

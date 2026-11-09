@@ -29,7 +29,6 @@ import {
   RunReason,
   RunResults,
   type RunSessionStore,
-  runResults,
   SettingsPatchPanel,
   StatusBadge,
   TaskBoard,
@@ -80,6 +79,7 @@ import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunPlanStrip } from '../workbench/RunActivity.tsx';
 import { breakpointSteps } from '../workbench/RunBreakpoints.tsx';
+import { RunResultVersions } from '../workbench/RunResultVersions.tsx';
 import { ExecutionContext, RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { RunViews } from '../workbench/RunViews.tsx';
@@ -141,6 +141,8 @@ export function RunDetail({
     runId: string;
     sessionId: string | null;
   } | null>(null);
+  // On its own page, a run whose session could not be looked up says so instead of guessing one.
+  const [lookupFailed, setLookupFailed] = useState<string | null>(null);
 
   // A direct link or a reload: follow the run from the runtime's record.
   useEffect(() => {
@@ -160,7 +162,9 @@ export function RunDetail({
           setRecordSession({ runId: run.runId, sessionId: run.sessionId });
         }
       },
-      () => {},
+      () => {
+        if (live) setLookupFailed(runId);
+      },
     );
     return () => {
       live = false;
@@ -202,40 +206,20 @@ export function RunDetail({
       search={search}
       setSearch={setSearch}
       embedded={embedded}
+      notice={
+        !embedded && lookupFailed === runId ? (
+          <p role="alert" className="shrink-0 border-b border-line px-4 py-2 text-caption">
+            {t('sessionLookupFailed')}
+          </p>
+        ) : null
+      }
     />
-  );
-}
-
-function ResultChoices({
-  results,
-  onOpen,
-}: {
-  results: NonNullable<ReturnType<typeof runResults>>;
-  onOpen: (artifactVersionId: string) => void;
-}) {
-  const t = useTranslations('Results');
-  const items =
-    results.kind === 'partial' ? results.intermediate.map((group) => group.latest) : results.final;
-  return (
-    <ul aria-label={t('label')} className="flex flex-col gap-1">
-      {items.map((item) => (
-        <li key={item.artifactVersionId}>
-          <Button
-            variant="ghost"
-            className="w-full justify-start"
-            onClick={() => onOpen(item.artifactVersionId)}
-          >
-            {t('itemName', { name: item.name, version: item.version })}
-            {results.kind === 'partial' ? ` · ${t('partial')}` : ''}
-          </Button>
-        </li>
-      ))}
-    </ul>
   );
 }
 
 function RunWorkspace({
   runId,
+  runNumber,
   session,
   sessionId,
   definition,
@@ -243,6 +227,7 @@ function RunWorkspace({
   setSearch,
   embedded,
   request,
+  notice,
 }: {
   runId: string;
   request: string | null;
@@ -253,6 +238,7 @@ function RunWorkspace({
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded: boolean;
+  notice?: ReactNode;
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
@@ -326,6 +312,8 @@ function RunWorkspace({
   const target = useSteerTarget(session, execution ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [listedNodeId, setListedNodeId] = useState<string | null>(null);
+  // The graph view's display, kept with the other view state across view switches.
+  const [graphDisplay, setGraphDisplay] = useState<'map' | 'list'>('map');
   const [panel, setPanel] = useState<'closed' | 'selection' | 'approval' | 'run'>(
     execution ? 'selection' : 'closed',
   );
@@ -404,6 +392,11 @@ function RunWorkspace({
     setSearch({ artifact: id, view: undefined, result: undefined });
     requestAnimationFrame(() => documentPane.current?.focus({ preventScroll: true }));
   };
+  const openResult = (id: string, origin = activeElement()) => {
+    documentTrigger.current = origin;
+    setSearch({ result: id, view: undefined, artifact: undefined });
+    requestAnimationFrame(() => documentPane.current?.focus({ preventScroll: true }));
+  };
   const closeDocument = () => {
     setSearch({ artifact: undefined, result: undefined, view: undefined });
     requestAnimationFrame(() => {
@@ -438,13 +431,14 @@ function RunWorkspace({
   };
   const highlightedNode = selectedNodeId ?? executionNodeId;
   const selectedTarget = execution ? target : null;
-  const results = projection ? runResults(projection) : null;
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
+      {notice}
       <RunHeader
         session={session}
         definition={definition}
         request={request}
+        runNumber={runNumber}
         waiting={pending}
         onRespond={() => {
           rememberTrigger();
@@ -491,60 +485,66 @@ function RunWorkspace({
                   id: 'graph',
                   label: m('graph'),
                   render: () => (
-                    <div className="h-full min-h-0">
-                      <RunCanvas
-                        session={session}
-                        definition={definition}
-                        selectedNodeId={highlightedNode}
-                        onSelectNode={(id) => setSelectedNodeId(id)}
-                        renderNodePreview={(nodeId, { close, trigger: origin }) =>
-                          projection ? (
-                            <>
-                              <NodeExecutions
-                                projection={projection}
-                                definition={definition}
-                                nodeId={nodeId}
-                                selectedExecutionId={execution ?? null}
-                                preview
-                                onChoose={(id) => {
-                                  close();
-                                  chooseExecution(id, origin);
-                                }}
-                                onOpenArtifact={(id) => {
-                                  close();
-                                  openArtifact(id, origin);
-                                }}
-                                onSteer={(id) => {
-                                  close();
-                                  openSteering(id, origin);
-                                }}
-                                onShowAll={() => {
-                                  close();
-                                  rememberTrigger(origin);
-                                  setListedNodeId(nodeId);
-                                  setSelectedNodeId(nodeId);
-                                  setPanel('selection');
-                                  setDetail('overview');
-                                  setSearch({
-                                    execution: undefined,
-                                    artifact: undefined,
-                                    result: undefined,
-                                    view: undefined,
-                                  });
-                                  requestAnimationFrame(() =>
-                                    detailPane.current?.focus({ preventScroll: true }),
-                                  );
-                                }}
-                              />
-                              <NodeRunActions
-                                session={session}
-                                definition={definition}
-                                nodeId={nodeId}
-                              />
-                            </>
-                          ) : null
-                        }
-                      />
+                    <div className="flex h-full min-h-0 flex-col">
+                      <div className="flex shrink-0 justify-end px-3 pt-2">
+                        <GraphDisplayToggle value={graphDisplay} onChange={setGraphDisplay} />
+                      </div>
+                      <div className="min-h-0 flex-1">
+                        <RunCanvas
+                          session={session}
+                          definition={definition}
+                          display={graphDisplay}
+                          selectedNodeId={highlightedNode}
+                          onSelectNode={(id) => setSelectedNodeId(id)}
+                          renderNodePreview={(nodeId, { close, trigger: origin }) =>
+                            projection ? (
+                              <>
+                                <NodeExecutions
+                                  projection={projection}
+                                  definition={definition}
+                                  nodeId={nodeId}
+                                  selectedExecutionId={execution ?? null}
+                                  preview
+                                  onChoose={(id) => {
+                                    close();
+                                    chooseExecution(id, origin);
+                                  }}
+                                  onOpenArtifact={(id) => {
+                                    close();
+                                    openArtifact(id, origin);
+                                  }}
+                                  onSteer={(id) => {
+                                    close();
+                                    openSteering(id, origin);
+                                  }}
+                                  onShowAll={() => {
+                                    close();
+                                    rememberTrigger(origin);
+                                    setListedNodeId(nodeId);
+                                    setSelectedNodeId(nodeId);
+                                    setPanel('selection');
+                                    setDetail('overview');
+                                    setSearch({
+                                      execution: undefined,
+                                      artifact: undefined,
+                                      result: undefined,
+                                      view: undefined,
+                                    });
+                                    requestAnimationFrame(() =>
+                                      detailPane.current?.focus({ preventScroll: true }),
+                                    );
+                                  }}
+                                />
+                                <NodeRunActions
+                                  session={session}
+                                  definition={definition}
+                                  nodeId={nodeId}
+                                />
+                              </>
+                            ) : null
+                          }
+                        />
+                      </div>
                     </div>
                   ),
                 },
@@ -606,6 +606,17 @@ function RunWorkspace({
                     />
                   ),
                 },
+                {
+                  id: 'results',
+                  label: m('results'),
+                  render: () => (
+                    <RunResultVersions
+                      session={session}
+                      onOpenResult={openResult}
+                      onOpenArtifact={openArtifact}
+                    />
+                  ),
+                },
               ]}
             />
           </Main>
@@ -662,27 +673,6 @@ function RunWorkspace({
               ))}
             </div>
           </section>
-          {!documentOpen &&
-          !steeringOpen &&
-          results &&
-          (results.kind === 'partial'
-            ? results.intermediate.length > 0
-            : results.final.length > 0) ? (
-            <section
-              aria-label={m('results')}
-              className="max-h-36 shrink-0 overflow-auto border-t border-line px-4 py-2"
-            >
-              <ResultChoices
-                results={results}
-                onOpen={(id) => {
-                  documentTrigger.current =
-                    document.activeElement instanceof HTMLElement ? document.activeElement : null;
-                  if (results.kind === 'partial') openArtifact(id);
-                  else setSearch({ view: undefined, result: id, artifact: undefined });
-                }}
-              />
-            </section>
-          ) : null}
         </div>
         <aside
           ref={detailPane}
@@ -808,7 +798,7 @@ function RunWorkspace({
                     </Accordion>
                     <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
                   </TabPanel>
-                  <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
+                  <TabPanel value="usage" keepMounted className="space-y-3 pt-3" data-run-usage>
                     <UsageInspector session={session} prices={prices} />
                     {projection ? <RoutingTally projection={projection} /> : null}
                   </TabPanel>
@@ -838,6 +828,33 @@ function RunWorkspace({
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** The graph view's two displays of one question: the relationship map and the agent list. */
+function GraphDisplayToggle({
+  value,
+  onChange,
+}: {
+  value: 'map' | 'list';
+  onChange: (value: 'map' | 'list') => void;
+}) {
+  const t = useTranslations('RunMonitor.graphDisplay');
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a labelled pair of toggle buttons, not a form.
+    <div role="group" aria-label={t('label')} className="flex shrink-0 items-center gap-1">
+      {(['map', 'list'] as const).map((option) => (
+        <Button
+          key={option}
+          variant={value === option ? 'secondary' : 'ghost'}
+          size="compact"
+          aria-pressed={value === option}
+          onClick={() => onChange(option)}
+        >
+          {t(option)}
+        </Button>
+      ))}
     </div>
   );
 }
@@ -884,6 +901,7 @@ function RunHeader({
   session,
   definition,
   request,
+  runNumber,
   trailing,
   waiting = 0,
   onRespond,
@@ -891,6 +909,8 @@ function RunHeader({
   session: RunSessionStore;
   definition: CorralDefinition;
   request: string | null;
+  /** The run's number in its session, as the status pill and the composer count. */
+  runNumber?: number | undefined;
   trailing?: ReactNode;
   /** Questions and approvals waiting for the person; the status becomes the way to them. */
   waiting?: number;
@@ -910,7 +930,9 @@ function RunHeader({
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="line-clamp-2 min-w-0 text-subtitle font-medium [overflow-wrap:anywhere]">
-            {request ?? definition.name}
+            {runNumber
+              ? t('runName', { number: runNumber, name: request ?? definition.name })
+              : (request ?? definition.name)}
           </h2>
           <span aria-live="polite" data-testid="run-status">
             {waiting > 0 && onRespond ? (

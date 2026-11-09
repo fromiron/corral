@@ -7,7 +7,8 @@ export interface RunIdentity {
   number: number | null;
 }
 
-const summary = (text: string | undefined) =>
+/** A request or name as one short line: its first line, at most 120 characters. */
+export const summary = (text: string | undefined) =>
   text?.trim().split(/\r?\n/, 1)[0]?.slice(0, 120) || null;
 const sessionFor = (run: RunSummary, sessions: readonly WorkSession[]) =>
   sessions.find((session) => session.sessionId === run.sessionId);

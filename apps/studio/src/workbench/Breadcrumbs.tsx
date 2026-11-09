@@ -102,36 +102,49 @@ export function SessionMenu({
   );
 }
 
-/** The run segment of the run history: the session's runs, newest first. */
+/**
+ * The run segment of the run history: the session's runs, newest first. Each is named by its
+ * number in the session and its request summary (`names`), as the run page names it.
+ */
 export function RunMenu({
   runs,
   runId,
+  names = {},
   onSelect,
 }: {
   runs: readonly RunSummary[];
   runId: string;
+  /** A run's request summary, or its team's name when nothing was requested. */
+  names?: Readonly<Record<string, string | null | undefined>>;
   onSelect: (runId: string) => void;
 }) {
   const tw = useTranslations('Workbench');
+  const tr = useTranslations('RunPage');
   const status = useTranslations('Status');
   const label = (run: RunSummary) => (status.has(run.status) ? status(run.status) : run.status);
   const number = (id: string) => runs.findIndex((run) => run.runId === id) + 1;
+  const runName = (id: string) => {
+    const name = names[id];
+    return name
+      ? tr('runName', { number: number(id), name })
+      : tw('runNumber', { number: number(id) });
+  };
   const chosen = runs.find((run) => run.runId === runId);
   return (
     <Menu>
       <MenuTrigger render={<Button variant="ghost" size="compact" className={crumb} />}>
         {chosen ? <StatusDot status={chosen.status} label={label(chosen)} /> : null}
-        <span className="truncate">{tw('runNumber', { number: number(runId) })}</span>
+        <span className="truncate">{runName(runId)}</span>
         <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
       </MenuTrigger>
-      <MenuPopup align="start" aria-label={tw('chooseRun')} className="min-w-48">
+      <MenuPopup align="start" aria-label={tw('chooseRun')} className="min-w-48 max-w-96">
         <MenuRadioGroup value={runId} onValueChange={(value) => onSelect(String(value))}>
           {[...runs].reverse().map((run) => (
             <MenuRadioItem key={run.runId} value={run.runId} closeOnClick>
-              <span className="flex items-center gap-2">
+              <span className="flex min-w-0 items-center gap-2">
                 <StatusDot status={run.status} />
-                <span className="flex-1">{tw('runNumber', { number: number(run.runId) })}</span>
-                <span className="text-caption text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate">{runName(run.runId)}</span>
+                <span className="shrink-0 text-caption text-muted-foreground">
                   <span className="sr-only"> · </span>
                   {label(run)}
                 </span>
