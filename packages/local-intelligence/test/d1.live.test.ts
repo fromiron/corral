@@ -76,6 +76,29 @@ describe.skipIf(process.env.CORRAL_D1_LIVE !== '1' || !root || !manifest)('d1 (l
           if (state === SMOKE) expect(units).toBe(171);
           expect(renderChoice(state, question).length).toBeGreaterThan(state.length);
         }
+
+        // A caller that stopped waiting does not end the inference: the slot stays Busy until
+        // the native answer completes, and only then admits the next judgment.
+        const admission = backend.admit();
+        if (!admission.ok) throw new Error(admission.reason);
+        const units = await admission.lease.countInput(SMOKE, question, never);
+        const gaveUp: DecisionCancellation = { aborted: true, onCancel: () => () => {} };
+        const flight = admission.lease.start({
+          routeId: 'route_live_late',
+          state: SMOKE,
+          question,
+          candidates,
+          remainingMs: 1,
+          inputUnits: units,
+          signal: gaveUp,
+        });
+        expect(engine.status().runtime).toBe('draining');
+        expect(backend.admit()).toEqual({ ok: false, reason: 'busy' });
+        expect(await flight.settled).toMatchObject({ basis: 'native-response-complete' });
+        expect(candidates).toContain((await flight.result).choice);
+        const next = backend.admit();
+        expect(next.ok).toBe(true);
+        if (next.ok) next.lease.release();
       } finally {
         await engine.close();
       }

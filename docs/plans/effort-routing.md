@@ -27,7 +27,7 @@
 | API 입력 | state ≤ 2,048 B, 요청 JSON ≤ 8,192 B(UTF-8) |
 | 대기 | caller deadline CPU 5초 / GPU 1초 / API 3초, 고급 100–10,000ms; watchdog 120초, 종료 grace 2초, startup 30초, idle unload 5분 |
 
-압축 해제 뒤 `llama-server`와 동봉 shared library의 hash는 4단계에서 공식 배포물로 기록한다.
+압축 안에서 쓰는 파일 22개(`llama-server`, soname 이름으로 설치하는 shared library, CPU backend 변형 14개, LICENSE)의 크기·sha256은 `LINUX_X64_CPU.runtime.files`가 소유한다.
 
 ## 진행표
 
@@ -37,7 +37,7 @@
 | 1 | v4·외부 판정·관측 모드 제거 | 완료 | `736e579d` |
 | 2 | 공통 계약·snapshot·resolver(fake backend) | 완료 | `78fd89d0` |
 | 3 | 판정 API backend | 완료 | `1c8d78eb` |
-| 4 | d1 로컬 런타임 | fake로 구현, 실물 고정 대기 | |
+| 4 | d1 로컬 런타임 | 완료 | |
 | 5 | 설정 UI·실행 기록 | 대기 | |
 | 6 | 실제 앱 인수·배포 자료 | 대기 | |
 
@@ -85,7 +85,7 @@
 - 개발용 경로 override는 두지 않았다. 실물 확인은 설치 경로 그대로 한다.
 - 서버의 d1 상태·설치·취소·준비 라우트. GPU는 구조만 두고 검증 전 사용 불가.
 - 가짜 `llama-server`로 C08–C13·설치 실패·P01·P06. 실제 모델은 opt-in live 테스트만.
-- 출처·라이선스를 `docs/dependency-lock.json`과 `THIRD-PARTY-NOTICES`에 기록.
+- 출처·라이선스는 `THIRD-PARTY-NOTICES/local-ai.md`에 기록한다. `docs/dependency-lock.json`은 npm 직접 의존성만 담는다.
 
 ### 5. 설정 UI·실행 기록
 
@@ -111,12 +111,14 @@
 
 ## 다음 단계
 
-4단계 마무리: 실물 고정과 확인. 다운로드 승인이 필요하다(llama.cpp 배포물 23 MB, d1 GGUF 1.1 GB).
+5단계: 설정 UI·실행 기록. 시작할 때 4단계 커밋 hash를 진행표에 채운다.
 
-1. 공식 `llama-b12189-bin-ubuntu-x64.tar.gz`의 hash가 고정값과 같은지 확인하고, 압축 안의 `llama-server`와 함께 쓰는 shared library의 경로·크기·sha256을 `LINUX_X64_CPU.runtime.files`에 기록한다. 그 전까지 manifest는 불완전으로 거절되어 Local은 이 환경에서 쓸 수 없음으로 보인다.
-2. 실제 바이너리로 확인: `--version`의 build·commit, `LLAMA_API_KEY` 인증(키 없는 `/tokenize`가 401), `--no-ui`·`--offline`·`--cache-ram 0` 인자, `/v1/models`의 decisions 출력과 크기·파라미터 수.
-3. opt-in live 테스트(실제 모델): P01 renderer와 native usage 일치(원본 smoke·한/일 Unicode·control token), 정상 추천 1회, 시간 초과와 물리 완료 분리.
-4. 4단계 커밋 hash를 진행표에 채우고 5단계로 간다.
+1. `@corral/client`에 `/effort-routing` 라우트 다섯 개의 client.
+2. 모델 설정의 추론 판정 섹션(위 5단계 항목)과 `LocalAiPanel` 축소.
+3. 실행 기록 한 줄과 상세(`packages/react`), `RunPage` 연결.
+4. UI 단위 테스트, 실제 화면 확인, 마일스톤 E2E 1개.
+
+4단계 실물 확인(Linux x64, 이 개발 환경): 고정 URL에서 내려받은 두 artifact가 크기·sha256과 같고, 설치기가 22개 파일을 검증해 설치했다. `--version`은 build 12189·commit `80d2c0c2c`, `--help`에 `--no-ui`·`--offline`·`--cache-ram`·`--no-op-offload`·`--device`·`--no-warmup`·`LLAMA_API_KEY`가 있다. opt-in live 테스트(`d1.live.test.ts`)에서 준비 확인(무인증 `/tokenize` 401, `/v1/models` 크기·파라미터)이 통과했고, smoke·한/일 Unicode·control token 세 state에서 native 입력 토큰이 계수와 같았으며(smoke 171), 호출자가 기다림을 멈춘 판정은 native 완료까지 Busy를 유지했다.
 
 앞 단계에서 정한 구현 사항(뒤 단계가 기대는 것):
 
@@ -131,5 +133,4 @@
 ## 열린 문제
 
 - 메인 체크아웃의 미추적 v3 작업 파일(헬퍼 `effort.rs`, `packed-effort.test.ts`, `tools/local-intelligence/effort/` 아래 새 파일 등)은 1단계에서 지우는 v4 도구에 의존해 이 브랜치와 충돌한다.
-- b12189의 인증·Web UI 끄기 옵션과 `/tokenize`·`/v1/systemone` 응답 형식은 B 증빙(로그의 `--no-ui` 안내, 응답 형식)에 맞춰 구현했고 실제 바이너리 확인은 위 4단계 마무리에서 한다. 인증을 지원하지 않으면 시작 단계에서 오류로 멈춘다.
 - Linux x64 외 배포 대상 OS는 정하지 않았다.
