@@ -19,6 +19,12 @@
 | 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
 | 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | — |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
+| 다시 쓰는 팀·템플릿·리소스 모음 | Library / 라이브러리 | `/library`, `features/library.md` | 자료실 |
+| 예약 실행 화면 | Automation / 자동화 | `/schedules`, `ScheduledPage` | 스케줄러 |
+| 샘플 데이터로 보이는 미구현 흐름 | Feature preview / 기능 미리보기 | `/preview`, `feature-preview` | 데모(시뮬레이션 실행과 구분) |
+| 프로젝트의 원본 폴더·작업 사본 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
+| 경로로 파일 찾아 열기 | Quick open / 빠른 열기 | `quickOpen` | 파일 검색(내용 검색과 구분) |
+| 세션 검사 명령의 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
 | 실행 일시정지·재개·취소 | Active run controls / 진행 중 실행 제어 | `DockRunControls` | — |
 | 모델의 사고량 | Reasoning effort / 추론 노력 | `reasoning` | — |
 | 자동 추론 요청의 수준을 판정 엔진이 고르는 설정 | Effort mode / 추론 판정 | `EffortRoutingSettings` | Automatic reasoning, 추론 노력 자동 선택 |
