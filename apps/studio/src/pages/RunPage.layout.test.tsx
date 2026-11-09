@@ -139,6 +139,7 @@ async function mount(
   request?: string,
   holdNavigation = false,
   agentIds = ['worker'],
+  runDefinition?: CorralDefinition,
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -150,7 +151,7 @@ async function mount(
     },
   );
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  const definition = linearCorral(agentIds, corralId);
+  const definition = runDefinition ?? linearCorral(agentIds, corralId);
   const projection = {
     ...emptyProjection('run_layout'),
     corralId,
@@ -1458,4 +1459,106 @@ it('sets a breakpoint on a step of a live run', async () => {
     payload: { nodeIds: ['worker'] },
   });
   expect(container.textContent).not.toContain('Run again from here');
+});
+
+/** worker → Revision (a top-level Loop: reviewer, then the Gate Decision repeats or exits) → output */
+function loopTeam(corralId: string): CorralDefinition {
+  const definition = linearCorral(['worker', 'reviewer'], corralId);
+  definition.nodes = definition.nodes.map((node) =>
+    node.id === 'reviewer' ? { ...node, label: 'Reviewer', parentId: 'revision' } : node,
+  );
+  definition.nodes.push(
+    { id: 'revision', type: 'loop', label: 'Revision', maxIterations: 2 },
+    {
+      id: 'gate',
+      type: 'decision',
+      label: 'Gate',
+      parentId: 'revision',
+      mode: 'rule',
+      rule: 'required_tasks_submitted',
+      inputBindings: [{ kind: 'run_input', name: 'brief' }],
+    },
+  );
+  const edge = (
+    id: string,
+    source: string,
+    sourcePort: string,
+    target: string,
+    targetPort: string,
+  ) => ({ id, source, sourcePort, target, targetPort }) as CorralDefinition['controlEdges'][number];
+  definition.controlEdges = [
+    edge('e1', 'worker', 'out', 'revision', 'enter'),
+    edge('e2', 'revision', 'body', 'reviewer', 'in'),
+    edge('e3', 'reviewer', 'out', 'gate', 'in'),
+    edge('e4', 'gate', 'yes', 'revision', 'exit'),
+    edge('e5', 'gate', 'no', 'revision', 'repeat'),
+    edge('e6', 'revision', 'next', 'output', 'in'),
+  ];
+  return definition;
+}
+
+/** Opens Run info and its Steps section; returns the section. */
+async function openSteps(container: HTMLElement) {
+  await act(async () =>
+    [...container.querySelectorAll('button')].find((el) => el.textContent === 'Run info')?.click(),
+  );
+  // The kit's trigger repeats its label for its motion.
+  const trigger = [...container.querySelectorAll('button')].find((el) =>
+    el.textContent?.startsWith('Steps'),
+  );
+  expect(trigger).toBeDefined();
+  await act(async () => trigger?.click());
+  return container.querySelector<HTMLElement>('[data-testid="run-step-options"]');
+}
+
+// #193: Run info lists every step a run option applies to, not only the agents seen in the graph.
+it('forks a finished run from a top-level Loop listed in Run info', async () => {
+  const definition = loopTeam('saved_team');
+  const record = { corralId: 'saved_team', definition, definitionRevision: 3 } as CorralRecord;
+  const { container } = await mount('saved_team', record, {}, undefined, false, [], definition);
+  const transport = (fixture.services as { transport: Record<string, unknown> }).transport;
+  const startRun = vi.fn(async () => ({ runId: 'run_fork', receipt: {} }));
+  transport.startRun = startRun;
+  transport.listRuns = async () => [{ runId: 'run_layout', sessionId: 'session_fork' }];
+  const steps = await openSteps(container);
+  const rows = [...(steps?.querySelectorAll('li') ?? [])].map((row) => row.textContent);
+  expect(rows).toEqual(['workerRun again from here', 'RevisionRun again from here']);
+  expect(steps?.textContent).not.toContain('Pause before');
+  const fork = [...(steps?.querySelectorAll('li') ?? [])]
+    .find((row) => row.textContent?.startsWith('Revision'))
+    ?.querySelector('button');
+  await act(async () => fork?.click());
+  expect(startRun).toHaveBeenCalledWith(
+    expect.objectContaining({
+      corralId: 'saved_team',
+      definitionRevision: 3,
+      forkFrom: { runId: 'run_layout', nodeId: 'revision' },
+    }),
+  );
+});
+
+it('pauses a live run before a Decision or a step that has not started yet', async () => {
+  const definition = loopTeam('inline_team');
+  const { container, run } = await mount('inline_team', null, {}, undefined, false, [], definition);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  const sendCommand = vi.fn(async () => ({}));
+  await act(async () =>
+    run.setState({
+      projection: { ...projection, status: 'running', endedAt: null, breakpoints: ['reviewer'] },
+      sendCommand,
+    } as never),
+  );
+  const steps = await openSteps(container);
+  const switches = [...(steps?.querySelectorAll<HTMLElement>('[role="switch"]') ?? [])];
+  const labelled = (name: string) =>
+    switches.find((el) => el.closest('li')?.textContent?.includes(name));
+  expect(switches).toHaveLength(3);
+  expect(labelled('Reviewer')?.getAttribute('aria-checked')).toBe('true');
+  expect(steps?.textContent).not.toContain('Run again from here');
+  await act(async () => labelled('Gate')?.click());
+  expect(sendCommand).toHaveBeenCalledWith({
+    type: 'set_breakpoints',
+    payload: { nodeIds: ['reviewer', 'gate'] },
+  });
 });
