@@ -24,8 +24,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   // What the run waits on opens from the run header.
   const waiting = page.getByTestId('run-needs-you');
   const needsYou = async () => {
-    if (!(await waiting.isVisible()))
-      await page.getByTestId('run-respond').click();
+    if (!(await waiting.isVisible())) await page.getByTestId('run-respond').click();
     return waiting;
   };
   const card = (await needsYou()).locator('[data-testid^="approval-"]');
