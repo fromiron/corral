@@ -3,18 +3,20 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DecisionCancellation, ModelAttempt } from '@corral/contracts';
+import type { DecisionCancellation, EffortLevel, ModelAttempt } from '@corral/contracts';
+import { effortQuestion } from '@corral/core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DecisionApis } from '../src/decision-apis.ts';
+import { DecisionApis, decisionApiConsent } from '../src/decision-apis.ts';
 import { FileCredentialStore } from '../src/models/credential-store.ts';
 
 const dirs: string[] = [];
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
-const input = 'request: Rename the variable `cnt` to `count` in utils.ts';
+const state = '## request\nRename the variable `cnt` to `count` in utils.ts';
 const owner = { runId: 'run_1', executionId: 'exec_1', effectId: 'effect_1', attemptNo: 1 };
 const never: DecisionCancellation = { aborted: false, onCancel: () => () => {} };
+const candidates: EffortLevel[] = ['low', 'medium', 'high', 'xhigh'];
 
 const liveKeys = {
   jev: process.env.CORRAL_JEV_KEY,
@@ -37,11 +39,29 @@ describe.skipIf(process.env.CORRAL_DECISION_API_LIVE !== '1')('decision APIs (li
           },
         });
         await apis.setKey(id, key ?? '');
-        const model = apis.list().find((api) => api.id === id)?.model ?? '';
-        const judge = apis.judges().find((j) => j.provider === id);
-        if (!judge) throw new Error(`no ${id} judge`);
-        const answer = await judge.judge(input, { model, owner }, never);
-        expect(['low', 'medium', 'high', 'xhigh']).toContain(answer.answer);
+        const admitted = apis
+          .backend({
+            kind: 'api',
+            id,
+            callerTimeoutMs: 10_000,
+            consentRevision: decisionApiConsent(id),
+          })
+          ?.admit();
+        if (!admitted?.ok) throw new Error(`no ${id} engine`);
+        const question = effortQuestion(candidates);
+        const inputUnits = await admitted.lease.countInput(state, question, never);
+        expect(inputUnits).toBeLessThanOrEqual(8192);
+        const answer = await admitted.lease.start({
+          routeId: 'route_1',
+          state,
+          question,
+          candidates,
+          remainingMs: 10_000,
+          inputUnits,
+          signal: never,
+          owner,
+        }).result;
+        expect(candidates).toContain(answer.choice);
         expect(attempts.get('judge_run_1_effect_1')).toMatchObject({
           status: 'completed',
           usage: { source: 'reported' },

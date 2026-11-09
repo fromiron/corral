@@ -49,6 +49,8 @@
 - 비용은 알 수 없음으로 둔다. 판정 API 호출은 Run의 모델 사용량에 더하지 않는다.
 - 상태: 답을 받으면 completed, 응답을 받았지만 쓸 수 없으면 failed, 중단하면 cancelled, 응답 전에 연결이 끊기면 unknown.
 
+호출마다 그 execution의 판정 효과(`decision`, 모델 호출 없음) 하나를 보낼 때 승인하고, 연결이 닫힐 때 한 번 정산한다. 답을 받으면 succeeded, 쓸 수 없는 답이나 HTTP 오류는 failed, Corral이 deadline·취소로 연결을 닫았으면 cancelled다. execution이 끝날 때 아직 열린 판정 효과는 cancelled로 닫는다. 열린 판정 효과가 있는 동안 일시정지는 그 호출이 끝나기를 기다린다.
+
 ### API
 
 주소와 응답 형식은 [API 계약](../api-contract.md)의 추론 판정 표가 정한다.

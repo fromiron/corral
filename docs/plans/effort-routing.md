@@ -35,8 +35,8 @@
 |---|---|---|---|
 | 0 | 명세와 이 플랜 | 완료 | `0c55103e` |
 | 1 | v4·외부 판정·관측 모드 제거 | 완료 | `736e579d` |
-| 2 | 공통 계약·snapshot·resolver(fake backend) | 완료 | |
-| 3 | 판정 API backend | 대기 | |
+| 2 | 공통 계약·snapshot·resolver(fake backend) | 완료 | `78fd89d0` |
+| 3 | 판정 API backend | 완료 | |
 | 4 | d1 로컬 런타임 | 대기 | |
 | 5 | 설정 UI·실행 기록 | 대기 | |
 | 6 | 실제 앱 인수·배포 자료 | 대기 | |
@@ -111,14 +111,17 @@
 
 ## 다음 단계
 
-3단계: 판정 API backend. 먼저 2단계 커밋 hash를 진행표에 채운다.
+4단계: d1 로컬 런타임. 먼저 3단계 커밋 hash를 진행표에 채운다.
 
-2단계에서 정한 구현 사항(3단계 이후가 기대는 것):
+앞 단계에서 정한 구현 사항(4단계 이후가 기대는 것):
 
 - 엔진 경계는 `RoutingBackend.admit()` → lease(`countState`·`countInput`·`start`·`release`) → flight(`result`, `settled`)다. lease는 flight가 settle되거나 시작 전에 `release()`될 때 끝난다. 정본은 `packages/contracts/src/ports.ts`.
-- 서버는 `createServer`의 `routingBackend(engine)`로 엔진을 받는다. 아직 넘기는 엔진이 없어 Manual은 `unavailable`로 fallback한다.
-- 설정은 요청 준비마다 `.corral/config.json`을 읽는다(`currentEffortRouting`). 읽지 못하면 Off다.
-- 시뮬레이션 실행(mock)은 판정하지 않는다.
+- 엔진 요청(`RouterRequest`)의 `signal`은 호출자가 기다림을 멈출 때(deadline·취소) 켜진다. 판정 API는 연결을 닫고, Local 추론은 물리 종료까지 간다. `owner`는 API 호출에만 Coordinator가 채운다.
+- 서버는 `apps/server/src/routing-engines.ts`에서 저장된 엔진 하나만 만든다. 지금은 판정 API만 있고 Local은 `null`(Manual은 `unavailable` fallback)이다. 4단계는 여기에 d1 backend를 넣는다. `createServer`의 `routingBackend`는 테스트용 대체다.
+- 판정 API 호출은 Coordinator(`recordedEngine`)가 execution의 `decision` 효과로 승인·정산한다. Local 추론은 효과를 남기지 않는다.
+- 동의 revision은 `decisionApiConsent(id)`(`<id>:notice-1`)다. 5단계의 설정 저장 라우트가 키와 이 값을 확인한다.
+- 판정 API 실호출은 아직 하지 않았다(설정 가능·미검증). opt-in `decision-apis.live.test.ts`가 새 엔진 경로를 쓴다.
+- 설정은 요청 준비마다 `.corral/config.json`을 읽는다(`currentEffortRouting`). 읽지 못하면 Off다. 시뮬레이션 실행(mock)은 판정하지 않는다.
 
 ## 열린 문제
 

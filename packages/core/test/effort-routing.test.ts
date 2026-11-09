@@ -415,11 +415,13 @@ describe('effort routing through request preparation', () => {
     expect(s.local.requests).toHaveLength(2);
   });
 
-  it('C17: a short API deadline falls back like Local', async () => {
+  it('C17: a short API deadline falls back like Local and closes the connection', async () => {
     const s = await setup({ settings: API, api: { answer: 'hold' } });
     const pending = s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
     await drain();
     expect(s.api.requests).toHaveLength(1);
+    const request = s.api.requests[0]!;
+    expect(request.signal.aborted).toBe(false);
     s.clock.advance(300);
     const permit = await pending;
     expect(permit.reasoning).toMatchObject({
@@ -427,6 +429,101 @@ describe('effort routing through request preparation', () => {
       source: 'fallback',
       route: { engine: 'api', fallback: { reason: 'timeout' }, frame: { kind: 'api-bounded' } },
     });
+    expect(request.signal.aborted).toBe(true);
+    // The call is one decision effect; closing it is not proof that the remote stopped.
+    const effectId = request.owner?.effectId;
+    expect(effectId).toBeTruthy();
+    expect(s.events.filter((e) => e.type === 'effect.settled')).toHaveLength(0);
+    s.api.flights[0]!.fail('transport-error');
+    s.api.flights[0]!.settle('remote-transport-closed');
+    await drain();
+    expect(
+      s.events.find((e) => e.type === 'effect.settled' && e.payload.effectId === effectId)?.payload,
+    ).toEqual({ effectId, outcome: 'cancelled' });
+    expect(s.events.find((e) => e.type === 'reasoning.settled')?.payload).toMatchObject({
+      basis: 'remote-transport-closed',
+      lateResult: false,
+    });
+  });
+
+  it('an API judgment is one decision effect of the execution, settled once', async () => {
+    const s = await setup({ settings: API });
+    const permit = await s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    expect(permit.reasoning?.source).toBe('router');
+    const request = s.api.requests[0]!;
+    expect(request.owner).toEqual({
+      runId: s.runId,
+      executionId: expect.any(String),
+      attemptNo: 1,
+      effectId: expect.any(String),
+    });
+    const types = s.events.map((e) => e.type);
+    const admitted = s.events.find(
+      (e) => e.type === 'effect.admitted' && e.payload.kind === 'decision',
+    );
+    expect(admitted?.payload).toEqual({
+      effectId: request.owner?.effectId,
+      kind: 'decision',
+      scope: request.owner?.executionId,
+      epoch: 1,
+      modelCallId: null,
+    });
+    expect(types.indexOf('effect.admitted')).toBeLessThan(types.indexOf('model.request_prepared'));
+    await drain();
+    expect(
+      s.events.filter(
+        (e) => e.type === 'effect.settled' && e.payload.effectId === request.owner?.effectId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        payload: { effectId: request.owner?.effectId, outcome: 'succeeded' },
+      }),
+    ]);
+  });
+
+  it('a Local judgment admits no decision effect', async () => {
+    const s = await setup();
+    await s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    await drain();
+    expect(s.local.requests[0]?.owner).toBeUndefined();
+    expect(
+      s.events.some((e) => e.type === 'effect.admitted' && e.payload.kind === 'decision'),
+    ).toBe(false);
+  });
+
+  it('a cancelled run closes the API connection and settles its effect as cancelled', async () => {
+    const s = await setup({ settings: API, api: { answer: 'hold' } });
+    const pending = s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    await drain();
+    const request = s.api.requests[0]!;
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
+    await expect(pending).rejects.toThrow();
+    expect(request.signal.aborted).toBe(true);
+    s.api.flights[0]!.fail('transport-error');
+    s.api.flights[0]!.settle('remote-transport-closed');
+    await drain();
+    expect(
+      s.events.find(
+        (e) => e.type === 'effect.settled' && e.payload.effectId === request.owner?.effectId,
+      )?.payload,
+    ).toEqual({ effectId: request.owner?.effectId, outcome: 'cancelled' });
+  });
+
+  it('an API answer Corral cannot use settles its effect as failed', async () => {
+    const s = await setup({ settings: API, api: { answer: 'hold' } });
+    const pending = s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    await drain();
+    const request = s.api.requests[0]!;
+    s.api.flights[0]!.fail('invalid-response');
+    s.api.flights[0]!.settle('remote-transport-closed');
+    const permit = await pending;
+    expect(permit.reasoning).toMatchObject({ route: { fallback: { reason: 'invalid-response' } } });
+    await drain();
+    expect(
+      s.events.find(
+        (e) => e.type === 'effect.settled' && e.payload.effectId === request.owner?.effectId,
+      )?.payload,
+    ).toEqual({ effectId: request.owner?.effectId, outcome: 'failed' });
   });
 
   it('C17: API under Shadow keeps the baseline and observes after dispatch', async () => {
@@ -518,6 +615,28 @@ describe('effort routing through request preparation', () => {
     s.local.flights[0]!.respond();
     s.local.flights[0]!.settle();
     await expect(pending).rejects.toThrow('REASONING_STALE');
+  });
+
+  it('a pause waits for an open API call, and the paused request is prepared again', async () => {
+    const s = await setup({ settings: API, api: { answer: 'hold' } });
+    const pending = s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    const outcome = pending.then(
+      () => 'sent',
+      (error: Error) => error.message,
+    );
+    await drain();
+    s.send('pause', { scope: 'run' }, 'pause');
+    await drain();
+    const status = () =>
+      [...s.events].reverse().find((e) => e.type === 'run.state_changed')?.payload.to;
+    expect(status()).toBe('pausing');
+    s.api.flights[0]!.respond();
+    s.api.flights[0]!.settle();
+    await drain();
+    expect(status()).toBe('paused');
+    s.send('resume', { scope: 'run' }, 'resume');
+    expect(await outcome).toBe('REASONING_STALE');
+    expect(s.events.some((e) => e.type === 'model.request_prepared')).toBe(false);
   });
 });
 

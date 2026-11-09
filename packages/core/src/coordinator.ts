@@ -69,6 +69,7 @@ import {
   ResumeRuntimeRequest,
   ReviewArtifact,
   type ReviewRecipeRevision,
+  type RoutingBackend,
   RunCommand,
   RunCommandArgs,
   RunEvent,
@@ -5270,13 +5271,19 @@ export class Coordinator {
       { type: 'effect.settled', executionId: input.executionId, payload: { effectId, outcome } },
     );
     for (const effect of Object.values(run.projection.effects)) {
-      // A model request still open when its agent stopped may or may not have been billed.
-      if (
-        (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) ||
-        effect.scope !== input.executionId
-      )
+      if (effect.scope !== input.executionId || effect.status !== 'admitted') continue;
+      // An open judgment call was closed when the execution ended: Corral's stop, with no
+      // claim about the remote.
+      if (effect.kind === 'decision') {
+        drafts.push({
+          type: 'effect.settled',
+          executionId: input.executionId,
+          payload: { effectId: effect.effectId, outcome: 'cancelled' },
+        });
         continue;
-      if (effect.status !== 'admitted') continue;
+      }
+      // A model request still open when its agent stopped may or may not have been billed.
+      if (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) continue;
       drafts.push({
         type: 'effect.settled',
         executionId: input.executionId,
@@ -8348,7 +8355,13 @@ export class Coordinator {
             compaction: record?.purpose === 'compaction',
             model: input.model,
             settings,
-            backend: (engine) => effortRouting?.backend(engine) ?? null,
+            backend: (engine) =>
+              this.recordedEngine(
+                run,
+                executionId,
+                input.attemptNo,
+                effortRouting?.backend(engine) ?? null,
+              ),
             snapshot: callSnapshot(preparation?.snapshot, {
               directives: (record?.directiveIds ?? queuedIds()).map((directiveId) => ({
                 directiveId,
@@ -9324,14 +9337,92 @@ export class Coordinator {
   }
 
   /** Engine facts that arrive after the request: recorded while the run is open, else dropped. */
-  private recordRouting(run: LiveRun, _executionId: string, draft: EventDraft) {
+  private recordRouting(run: LiveRun, _executionId: string, draft: EventDraft): boolean {
     if (
       this.live.get(run.runId) !== run ||
       TERMINAL_RUN_STATUSES.has(run.projection.status) ||
       this.storageError
     )
-      return;
+      return false;
     this.commit(run, [draft]);
+    return true;
+  }
+
+  /**
+   * An API judgment is one decision effect of the execution (features/decision-apis.md#기록):
+   * admitted when the call goes out, settled once at its physical end. Local inference is not.
+   */
+  private recordedEngine(
+    run: LiveRun,
+    executionId: string,
+    attemptNo: number,
+    backend: RoutingBackend | null,
+  ): RoutingBackend | null {
+    if (backend?.kind !== 'api') return backend;
+    return {
+      kind: backend.kind,
+      identity: () => backend.identity(),
+      admit: () => {
+        const admission = backend.admit();
+        if (!admission.ok) return admission;
+        const { lease } = admission;
+        return {
+          ok: true,
+          lease: {
+            identity: lease.identity,
+            frame: lease.frame,
+            device: lease.device,
+            countState: (text, signal) => lease.countState(text, signal),
+            countInput: (state, question, signal) => lease.countInput(state, question, signal),
+            release: () => lease.release(),
+            start: (request) => {
+              const effectId = this.ids.next('effect');
+              const admitted = this.recordRouting(run, executionId, {
+                type: 'effect.admitted',
+                executionId,
+                payload: {
+                  effectId,
+                  kind: 'decision',
+                  scope: executionId,
+                  epoch: attemptNo,
+                  modelCallId: null,
+                },
+              });
+              if (!admitted) {
+                lease.release();
+                const result = Promise.reject(
+                  Object.assign(new Error('the run ended'), { reason: 'unavailable' }),
+                );
+                const end = () => ({
+                  basis: 'remote-transport-closed' as const,
+                  finishedAtMs: this.clock.monotonicMs(),
+                });
+                return { result, settled: result.then(end, end) };
+              }
+              const flight = lease.start({
+                ...request,
+                owner: { runId: run.runId, executionId, attemptNo, effectId },
+              });
+              // Closing the connection is Corral's stop, not a known remote outcome.
+              const outcome = flight.result.then(
+                () => 'succeeded' as const,
+                () => (request.signal.aborted ? ('cancelled' as const) : ('failed' as const)),
+              );
+              void flight.settled.then(async () => {
+                const settled = await outcome;
+                if (run.projection.effects[effectId]?.status === 'admitted')
+                  this.recordRouting(run, executionId, {
+                    type: 'effect.settled',
+                    executionId,
+                    payload: { effectId, outcome: settled },
+                  });
+              });
+              return flight;
+            },
+          },
+        };
+      },
+    };
   }
 
   private parentQuestions(run: LiveRun, input: AgentStartInput): ParentQuestionMessage[] {

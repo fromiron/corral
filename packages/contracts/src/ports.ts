@@ -299,6 +299,20 @@ export interface RouterRequest {
   remainingMs: number;
   /** The counted engine input; Local refuses a response whose usage differs. */
   inputUnits: number;
+  /**
+   * Set when the host stops waiting (deadline, cancellation). An API closes its connection; that
+   * does not mean the remote stopped. Local inference runs to its physical end.
+   */
+  signal: DecisionCancellation;
+  /** The run effect an API call belongs to; its call record names it. Set by the host. */
+  owner?: RouterOwner;
+}
+
+export interface RouterOwner {
+  runId: string;
+  executionId: string;
+  attemptNo: number;
+  effectId: string;
 }
 
 /** An engine answer before validation. */

@@ -139,6 +139,7 @@ import { registerProjectRoutes } from './projects/routes.ts';
 import { materialsVaultAdapters } from './projects/vault.ts';
 import { drainRejectedBody } from './rejected-body.ts';
 import { onceResourceCleanup } from './resource-cleanup.ts';
+import { routingEngines } from './routing-engines.ts';
 import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
 import { InputError } from './safe-http.ts';
 import { registerScheduleRoutes } from './schedules/routes.ts';
@@ -188,7 +189,7 @@ export interface ServerOptions {
   localIntelligence?: LocalIntelligence;
   /** Decision APIs and their keys; live servers otherwise open them on their credentials. */
   decisionApis?: DecisionApis;
-  /** Effort routing engines; tests pass fakes. Without one, a chosen engine is unavailable. */
+  /** Effort routing engines in place of the server's own; tests pass fakes. */
   routingBackend?: (engine: RoutingEngine) => RoutingBackend | null;
   host?: string;
   /** 0 picks a free port. */
@@ -629,7 +630,7 @@ async function createCorralServer(
     sessionId: backendSessionId,
     effortRouting: {
       settings: () => currentEffortRouting(workspace.root),
-      backend: (engine) => options.routingBackend?.(engine) ?? null,
+      backend: options.routingBackend ?? routingEngines({ decisionApis }),
     },
   });
   registry?.configureRequests({

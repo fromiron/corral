@@ -211,6 +211,7 @@ export async function route(input: RouteInput): Promise<RouteOutcome> {
     candidates: input.candidates,
     remainingMs,
     inputUnits: frame.inputUnits,
+    signal,
   });
   let decided = false;
   let late: RouterResponse | null = null;
