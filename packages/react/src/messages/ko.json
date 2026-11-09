@@ -3405,10 +3405,11 @@
     "cause": {
       "noModel": "모델을 연결하기 전에는 실제 요청을 보낼 수 없습니다.",
       "fallback": {
-        "moduleUnavailable": "FFF 모듈을 불러오지 못해 내장 엔진을 씁니다.",
+        "loadFailed": "FFF 모듈을 불러오지 못해 내장 엔진을 씁니다.",
         "noBinary": "이 플랫폼용 FFF 바이너리가 없어 내장 엔진을 씁니다.",
-        "indexLimit": "폴더가 FFF 색인 상한을 넘어 내장 엔진을 씁니다.",
-        "callFailed": "FFF 검색이 실패해 내장 엔진을 씁니다."
+        "indexCap": "폴더가 FFF 색인 상한을 넘어 내장 엔진을 씁니다.",
+        "callFailed": "FFF 검색이 실패해 내장 엔진을 씁니다.",
+        "timeBudget": "FFF 검색이 시간 상한을 넘어 내장 엔진을 씁니다."
       }
     },
     "action": {

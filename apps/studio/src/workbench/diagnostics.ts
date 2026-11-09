@@ -1,17 +1,16 @@
-import type { LocalAiView, ModelProfileView, ProviderAuthView } from '@corral/client';
+import type {
+  LocalAiView,
+  ModelProfileView,
+  PathEngineStatus,
+  ProviderAuthView,
+} from '@corral/client';
 import { profileReady } from './modelReadiness.ts';
 
 // Settings › Diagnostics: what each part of Corral is doing, why, and where to fix it. The page and
 // the copied summary read the same rows; the summary prints only their codes and counts.
 
 /** Why path search runs on the built-in engine although FFF was wanted. */
-export type PathEngineFallback = 'moduleUnavailable' | 'noBinary' | 'indexLimit' | 'callFailed';
-export type PathEngineStatus =
-  | { engine: 'built-in'; fallback?: PathEngineFallback }
-  | { engine: 'fff' };
-
-/** The path engine this build searches with. FFF reports itself here once it is wired in. */
-export const CURRENT_PATH_ENGINE: PathEngineStatus = { engine: 'built-in' };
+export type PathEngineFallback = NonNullable<PathEngineStatus['reason']>;
 
 type EndpointTest = NonNullable<ProviderAuthView['connectionTest']>['kind'];
 
@@ -24,7 +23,8 @@ export interface DiagnosticsReport {
   folder:
     | { state: 'server-only' | 'no-project' | 'loading' | 'unbound' }
     | { state: 'bound'; path: string; trusted: boolean; missing: boolean; isGit: boolean };
-  pathEngine: PathEngineStatus;
+  /** The server's path search engine; the browser demo searches with the built-in one. */
+  pathEngine: { state: 'loading' | 'failed' } | { state: 'loaded'; status: PathEngineStatus };
   localAi: { state: 'server-only' | 'loading' | 'failed' } | { state: 'loaded'; view: LocalAiView };
 }
 
@@ -151,16 +151,17 @@ function folderRow(folder: DiagnosticsReport['folder']): DiagnosticRow {
   };
 }
 
-function pathEngineRow(engine: PathEngineStatus): DiagnosticRow {
-  if (engine.engine === 'fff') return { id: 'pathEngine', tone: 'ok', status: 'fff', causes: [] };
-  return engine.fallback
-    ? {
-        id: 'pathEngine',
-        tone: 'attention',
-        status: 'builtIn',
-        causes: [{ kind: 'pathFallback', reason: engine.fallback }],
-      }
-    : { id: 'pathEngine', tone: 'ok', status: 'builtIn', causes: [] };
+function pathEngineRow(pathEngine: DiagnosticsReport['pathEngine']): DiagnosticRow {
+  const id = 'pathEngine';
+  if (pathEngine.state !== 'loaded')
+    return pathEngine.state === 'failed'
+      ? { id, tone: 'error', status: 'failed', causes: [], action: 'retry' }
+      : { id, tone: 'neutral', status: 'loading', causes: [] };
+  const { engine, reason } = pathEngine.status;
+  if (engine === 'fff') return { id, tone: 'ok', status: 'fff', causes: [] };
+  return reason
+    ? { id, tone: 'attention', status: 'builtIn', causes: [{ kind: 'pathFallback', reason }] }
+    : { id, tone: 'ok', status: 'builtIn', causes: [] };
 }
 
 const LOCAL_AI_TONE: Record<LocalAiView['state'], DiagnosticTone> = {

@@ -600,6 +600,12 @@ export class VaultApi extends VaultClient {
   }
 }
 
+/** The engine the server's path search answers with, and why it is not FFF. Never a path. */
+export interface PathEngineStatus {
+  engine: 'fff' | 'builtIn';
+  reason?: 'loadFailed' | 'noBinary' | 'indexCap' | 'callFailed' | 'timeBudget';
+}
+
 export interface ServerHealth {
   ok: true;
   schemaVersion: string;
@@ -607,6 +613,7 @@ export interface ServerHealth {
   backendSessionId: string;
   /** Whether this server can run real models (signed in or not). */
   live: boolean;
+  pathEngine: PathEngineStatus;
 }
 
 /** The local server, if this page was served by one; null for the in-browser runtime. */

@@ -158,6 +158,7 @@ import { removeLegacyCandidateCopies } from './legacy-candidate-copies.ts';
 import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
+import type { FffPathEngine, PathEngineStatus } from './path-engine.ts';
 import { RunAccessStore } from './run-access.ts';
 import { readUserGitDiff, readUserGitStatus } from './user-git.ts';
 import { applyGitHunks, readGitHunks } from './user-git-hunks.ts';
@@ -518,6 +519,8 @@ export class WorkspaceService implements FileTools {
     Map<string, { hash: string; spans: [number, number][] }>
   >();
   private readonly hashlineReads = new Map<string, Map<string, HashlineEvidence>>();
+  /** FFF's path ranking; without it path search uses only the built-in engine. */
+  private readonly pathEngine: FffPathEngine | null;
   private readonly edit: (
     request: EditTextRequest,
     cancellation: ToolCancellation,
@@ -540,8 +543,10 @@ export class WorkspaceService implements FileTools {
     debug?: Pick<DebugOptions, 'transport' | 'bridge'>;
     debugPreview?: DebugOptions['preview'];
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
+    pathEngine?: FffPathEngine;
   }) {
     this.db = options.db;
+    this.pathEngine = options.pathEngine ?? null;
     this.hostId = options.hostId ?? 'local';
     this.allowSharedDevelopment = options.allowSharedDevelopment === true;
     this.runAccess = new RunAccessStore(this.db);
@@ -822,6 +827,7 @@ export class WorkspaceService implements FileTools {
       .get(row.id);
     if (active)
       throw new WorkspaceError('REVISION_CONFLICT', 'remove the sessions’ working copies first');
+    this.pathEngine?.close(`source:${row.id}`);
     this.db.prepare('DELETE FROM session_worktrees WHERE binding_id = ?').run(row.id);
     this.db.prepare('DELETE FROM workspace_bindings WHERE id = ?').run(row.id);
   }
@@ -1303,6 +1309,8 @@ export class WorkspaceService implements FileTools {
       .get(row.binding_id) as BindingRow | undefined;
     this.removingWorktrees.add(sessionId);
     try {
+      // Before the folder goes; a failed close never blocks the removal.
+      this.pathEngine?.close(`copy:${sessionId}:${row.copy_generation}`);
       await this.language.stopCopy(sessionId);
       await this.debugger.stopCopy(sessionId);
       await this.lease(row.worktree_path, async () => {
@@ -4101,16 +4109,44 @@ export class WorkspaceService implements FileTools {
     return result;
   }
 
+  /** The engine path search answers with now. A status never names a path. */
+  async pathEngineStatus(): Promise<PathEngineStatus> {
+    if (!this.pathEngine) return { engine: 'builtIn' };
+    await this.pathEngine.ready();
+    return this.pathEngine.status();
+  }
+
+  /** A path index's target: one copy generation, or one linked source folder. */
+  private pathIndexKey(scope: FileBrowseScope): string | null {
+    if (scope.kind === 'project') {
+      const binding = this.binding(scope.id);
+      return binding ? `source:${binding.id}` : null;
+    }
+    const copy = this.worktree(scope.id);
+    return copy ? `copy:${scope.id}:${copy.copy_generation}` : null;
+  }
+
   /**
-   * files and folders for an `@` reference, ranked by a fuzzy match of their path. Only
-   * names are read; Git's ignore rules apply, and nothing behind a symbolic link is returned.
+   * files and folders for an `@` reference or quick open, ranked by FFF when it is available and
+   * by a fuzzy match of their path otherwise. Only names are read. Either way only the built-in
+   * scope is offered: Git's tracked and unignored files (or a folder walk), never `.git`,
+   * `.corral` or anything behind a symbolic link.
    */
   async searchPaths(
     scope: FileBrowseScope,
     query: string,
     limit: number,
+    signal?: AbortSignal,
   ): Promise<{ items: { path: string; kind: 'file' | 'folder' }[]; truncated: boolean }> {
+    const key = this.pathIndexKey(scope);
     const { root, isGit } = await this.browseRoot(scope);
+    // A result for a replaced copy generation or folder, or for a cancelled query, is dropped.
+    const checkTarget = () => {
+      if (signal?.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'file search was cancelled');
+      if (this.pathIndexKey(scope) !== key)
+        throw new WorkspaceError('REVISION_CONFLICT', 'the search target changed');
+    };
+    await this.pathEngine?.ready();
     const walk = isGit ? null : await this.folderPaths(root, '');
     const listed =
       walk?.paths ??
@@ -4118,6 +4154,7 @@ export class WorkspaceService implements FileTools {
         .toString('utf8')
         .split('\0')
         .filter(Boolean);
+    checkTarget();
     const paths = [...new Set(listed)].slice(0, SEARCH_CAP).filter((path) => {
       try {
         safeRelative(path);
@@ -4131,21 +4168,17 @@ export class WorkspaceService implements FileTools {
       const parts = path.split('/');
       for (let i = 1; i < parts.length; i++) folders.add(parts.slice(0, i).join('/'));
     }
-    const candidates = [
-      ...[...folders]
-        .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
-        .map((path) => ({ path, kind: 'folder' as const })),
-      ...paths.map((path) => ({ path, kind: 'file' as const })),
-    ];
-    const ranked = rankFuzzy(
-      query,
-      candidates,
-      (item) => (item.kind === 'folder' ? `${item.path}/` : item.path),
-      limit * 3,
-    );
+    const truncated = listed.length > SEARCH_CAP || !!walk?.truncated;
+    const closing =
+      this.disposing || (scope.kind === 'session' && this.removingWorktrees.has(scope.id));
+    const ranked =
+      key && !closing ? this.pathEngine?.query({ key, root }, query, limit * 3, !truncated) : null;
     const items: { path: string; kind: 'file' | 'folder' }[] = [];
-    for (const item of ranked) {
-      if (items.length >= limit) break;
+    const seen = new Set<string>();
+    const offer = async (item: { path: string; kind: 'file' | 'folder' }) => {
+      const id = `${item.kind}:${item.path}`;
+      if (seen.has(id)) return;
+      seen.add(id);
       try {
         if (item.kind === 'file') {
           if ((await assertPlainPath(root, item.path)) === 'file') items.push(item);
@@ -4157,8 +4190,37 @@ export class WorkspaceService implements FileTools {
       } catch {
         // A symbolic link or a path that is gone: not offered.
       }
+    };
+    if (ranked?.length) {
+      const files = new Set(paths);
+      for (const hit of ranked) {
+        if (items.length >= limit || signal?.aborted) break;
+        // FFF indexes the folder itself; only paths the built-in scope lists are offered.
+        if (hit.kind === 'file' ? !files.has(hit.path) : !folders.has(hit.path)) continue;
+        await offer(hit);
+      }
     }
-    return { items, truncated: listed.length > SEARCH_CAP || !!walk?.truncated };
+    // FFF found fewer (its index may be scanning or behind): the built-in ranking fills the rest.
+    if (items.length < limit) {
+      const candidates = [
+        ...[...folders]
+          .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
+          .map((path) => ({ path, kind: 'folder' as const })),
+        ...paths.map((path) => ({ path, kind: 'file' as const })),
+      ];
+      const builtIn = rankFuzzy(
+        query,
+        candidates,
+        (item) => (item.kind === 'folder' ? `${item.path}/` : item.path),
+        limit * 3 + items.length,
+      );
+      for (const item of builtIn) {
+        if (items.length >= limit || signal?.aborted) break;
+        await offer(item);
+      }
+    }
+    checkTarget();
+    return { items, truncated };
   }
 
   async readFile(
@@ -5004,6 +5066,7 @@ export class WorkspaceService implements FileTools {
 
   async dispose() {
     this.disposing = true;
+    this.pathEngine?.dispose();
     for (const controller of this.advancedCancels.values()) controller.abort();
     const pendingGit = [...this.liveGit.values()];
     for (const operation of pendingGit) operation.cancel();

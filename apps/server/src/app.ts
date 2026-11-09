@@ -116,6 +116,7 @@ import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
 import { registerGitAdvancedRoutes } from './files/git-advanced-routes.ts';
+import { type FffModule, FffPathEngine } from './files/path-engine.ts';
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { McpCredentials } from './harness/mcp-credentials.ts';
@@ -228,6 +229,11 @@ export interface ServerOptions {
   worktreeRoot?: string;
   /** Opt-in only for a local launcher; remote and generic servers leave this off. */
   allowSharedDevelopment?: boolean;
+  /**
+   * FFF's native module for path search ranking: launchers pass `loadFff`, tests a fake. Without
+   * it path search uses only the built-in engine.
+   */
+  fff?: () => Promise<FffModule>;
 }
 
 export interface LiveModels {
@@ -491,6 +497,15 @@ async function createCorralServer(
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
+    ...(options.fff
+      ? {
+          pathEngine: new FffPathEngine({
+            load: options.fff,
+            clock,
+            dataDir: join(workspace.root, '.corral', 'path-search'),
+          }),
+        }
+      : {}),
     debugPreview: async (sessionId, leaseId, target, open) => {
       const current = () =>
         canonicalJson(files.developmentState(sessionId).target) === canonicalJson(target);
@@ -836,6 +851,7 @@ async function createCorralServer(
     version: packageJson.version,
     backendSessionId,
     live: registry !== null,
+    pathEngine: await files.pathEngineStatus(),
   }));
   // Stored with the workspace so a new loopback port does not reset an explicit choice.
   const modeChoices = z.record(z.string().min(1).max(512), z.enum(['mock', 'live']));
@@ -2238,14 +2254,23 @@ async function createCorralServer(
         })
         .safeParse(request.query);
       if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'q and limit are invalid');
+      const dropped = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableEnded) dropped.abort();
+      };
+      reply.raw.once('close', onClose);
+      if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
       try {
         return await files.searchPaths(
           { kind, id: request.params.id },
           query.data.q,
           query.data.limit,
+          dropped.signal,
         );
       } catch (error) {
         return workspaceFail(reply, error);
+      } finally {
+        reply.raw.off('close', onClose);
       }
     });
     app.get<{ Params: { id: string } }>(`${base}/file`, async (request, reply) => {

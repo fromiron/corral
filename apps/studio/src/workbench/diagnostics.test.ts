@@ -97,7 +97,7 @@ const leaky: DiagnosticsReport = {
     missing: false,
     isGit: true,
   },
-  pathEngine: { engine: 'built-in' },
+  pathEngine: { state: 'loaded', status: { engine: 'builtIn' } },
   localAi: {
     state: 'loaded',
     view: localAi({
@@ -162,7 +162,7 @@ describe('diagnostics summary', () => {
       runtime: { mode: 'browser', version: null, live: false },
       models: { state: 'server-only' },
       folder: { state: 'no-project' },
-      pathEngine: { engine: 'built-in' },
+      pathEngine: { state: 'loaded', status: { engine: 'builtIn' } },
       localAi: { state: 'server-only' },
     };
     const summary = diagnosticsSummary(report);
@@ -185,7 +185,7 @@ describe('diagnostic rows', () => {
         profiles: [profile({ method: null })],
       },
       folder: { state: 'unbound' },
-      pathEngine: { engine: 'built-in' },
+      pathEngine: { state: 'loaded', status: { engine: 'builtIn' } },
       localAi: { state: 'loaded', view: localAi({ state: 'missing' }) },
     });
     const row = (id: string) => rows.find((value) => value.id === id);
@@ -204,9 +204,42 @@ describe('diagnostic rows', () => {
         profiles: [profile({ method: 'oauth', subscriptionSupported: false })],
       },
       folder: { state: 'no-project' },
-      pathEngine: { engine: 'built-in' },
+      pathEngine: { state: 'loaded', status: { engine: 'builtIn' } },
       localAi: { state: 'loaded', view: localAi() },
     });
     expect(rows.find((value) => value.id === 'models')?.status).toBe('noModel');
+  });
+
+  it("shows the server's path engine and why it fell back", () => {
+    const report = (pathEngine: DiagnosticsReport['pathEngine']): DiagnosticsReport => ({
+      ...leaky,
+      pathEngine,
+    });
+    const row = (pathEngine: DiagnosticsReport['pathEngine']) =>
+      diagnosticRows(report(pathEngine)).find((value) => value.id === 'pathEngine');
+    expect(row({ state: 'loaded', status: { engine: 'fff' } })).toMatchObject({
+      status: 'fff',
+      tone: 'ok',
+      causes: [],
+    });
+    expect(row({ state: 'loaded', status: { engine: 'builtIn', reason: 'timeBudget' } })).toEqual({
+      id: 'pathEngine',
+      status: 'builtIn',
+      tone: 'attention',
+      causes: [{ kind: 'pathFallback', reason: 'timeBudget' }],
+    });
+    expect(row({ state: 'loading' })).toMatchObject({ status: 'loading', tone: 'neutral' });
+    expect(row({ state: 'failed' })).toMatchObject({
+      status: 'failed',
+      tone: 'error',
+      action: 'retry',
+    });
+    const summary = diagnosticsSummary(
+      report({ state: 'loaded', status: { engine: 'builtIn', reason: 'loadFailed' } }),
+    );
+    expect(summary).toContain('file path engine: built-in · fallback loadFailed');
+    expect(diagnosticsSummary(report({ state: 'loaded', status: { engine: 'fff' } }))).toContain(
+      'file path engine: FFF',
+    );
   });
 });

@@ -3405,10 +3405,11 @@
     "cause": {
       "noModel": "Live requests are blocked until a model is connected.",
       "fallback": {
-        "moduleUnavailable": "The FFF module could not be loaded, so the built-in engine is used.",
+        "loadFailed": "The FFF module could not be loaded, so the built-in engine is used.",
         "noBinary": "FFF has no binary for this platform, so the built-in engine is used.",
-        "indexLimit": "The folder exceeds the FFF index limit, so the built-in engine is used.",
-        "callFailed": "An FFF search failed, so the built-in engine is used."
+        "indexCap": "The folder exceeds the FFF index limit, so the built-in engine is used.",
+        "callFailed": "An FFF search failed, so the built-in engine is used.",
+        "timeBudget": "An FFF search took longer than its time limit, so the built-in engine is used."
       }
     },
     "action": {

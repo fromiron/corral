@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import {
-  CURRENT_PATH_ENGINE,
   type DiagnosticCause,
   type DiagnosticRow,
   type DiagnosticsReport,
@@ -44,7 +43,14 @@ export function DiagnosticsSettingsPage() {
   const tl = useTranslations('LocalAi');
   const tf = useTranslations('Files');
   const td = useTranslations('Desktop');
-  const { mode, live, models, workspaces, serverVersion } = useServices();
+  const {
+    mode,
+    live,
+    models,
+    workspaces,
+    serverVersion,
+    pathEngine: readPathEngine,
+  } = useServices();
   const navigation = useSettingsNavigation();
   const projectId = navigation.projectId;
   const serverModels = mode === 'server' ? models : null;
@@ -53,8 +59,24 @@ export function DiagnosticsSettingsPage() {
   const [localAi, setLocalAi] = useState<
     { state: 'loading' | 'failed' } | { state: 'loaded'; view: LocalAiView }
   >({ state: 'loading' });
+  const [pathEngine, setPathEngine] = useState<DiagnosticsReport['pathEngine']>(
+    readPathEngine ? { state: 'loading' } : { state: 'loaded', status: { engine: 'builtIn' } },
+  );
   const [check, setCheck] = useState(0);
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    void check;
+    if (!readPathEngine) return;
+    let active = true;
+    setPathEngine({ state: 'loading' });
+    readPathEngine().then(
+      (status) => active && setPathEngine({ state: 'loaded', status }),
+      () => active && setPathEngine({ state: 'failed' }),
+    );
+    return () => {
+      active = false;
+    };
+  }, [readPathEngine, check]);
   useEffect(() => {
     void check;
     if (!serverModels) return;
@@ -99,7 +121,7 @@ export function DiagnosticsSettingsPage() {
                 missing: binding.missing,
                 isGit: binding.isGit,
               },
-    pathEngine: CURRENT_PATH_ENGINE,
+    pathEngine,
     localAi: serverModels ? localAi : { state: 'server-only' },
   };
   const rows = diagnosticRows(report);

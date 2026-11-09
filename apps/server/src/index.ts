@@ -10,6 +10,7 @@ export {
   HASHLINE_COMMIT,
   hashlineFixtureDriver,
 } from './evaluation-edits.ts';
+export { loadFff } from './files/path-engine.ts';
 export { createLiveModels } from './live-models.ts';
 export { defaultLocalIntelligence } from './local-ai.ts';
 export * from './models/index.ts';

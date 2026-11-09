@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T06:32:40.029Z",
+  "generatedAt": "2026-11-09T23:23:44.040Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -176,6 +176,23 @@
       "repository": "git+https://github.com/fastify/fastify-static.git",
       "gitHead": "b38a463df891157215b81fbecdb80ed828299f86",
       "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
+      ]
+    },
+    {
+      "name": "@ff-labs/fff-node",
+      "version": "0.11.0",
+      "license": "MIT",
+      "integrity": "sha512-/7fX4kgy28pFZghxuXCAcIPQKb2+VqVirpFcDqMKgrFLTz56tVzHjOkFSdKGq7fa6wRb6eS5Dg9SaX1qyCcKxQ==",
+      "published": "2026-09-21T05:10:54.066Z",
+      "repository": "git+https://github.com/dmtrKovalenko/fff.git",
+      "gitHead": "95fd777c2529fc7b4d7572dabff64cc07268f2c5",
+      "engines": {
+        "node": ">=18.0.0"
+      },
       "peerDependencies": null,
       "scope": "runtime",
       "usedBy": [

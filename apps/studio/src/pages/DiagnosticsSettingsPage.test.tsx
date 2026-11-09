@@ -213,6 +213,44 @@ function heldBindings() {
     act(async () => pending.get(projectId)?.(binding));
 }
 
+it("shows the server's path engine and the reason it fell back to the built-in engine", async () => {
+  let status: { engine: 'fff' | 'builtIn'; reason?: 'loadFailed' } = {
+    engine: 'builtIn',
+    reason: 'loadFailed',
+  };
+  fixture.services = {
+    mode: 'server',
+    live: false,
+    models: null,
+    harnesses: null,
+    workspaces: null,
+    pathEngine: async () => status,
+  };
+  const container = await render();
+  const pathEngine = () => row(container, 'pathEngine')?.textContent ?? '';
+  expect(pathEngine()).toContain('Built-in');
+  expect(pathEngine()).toContain('The FFF module could not be loaded');
+  status = { engine: 'fff' };
+  const again = await render();
+  expect(row(again, 'pathEngine')?.textContent).toContain('FFF');
+  expect(row(again, 'pathEngine')?.textContent).not.toContain('could not be loaded');
+});
+
+it('says the path engine could not be checked when the server does not answer', async () => {
+  fixture.services = {
+    mode: 'server',
+    live: false,
+    models: null,
+    harnesses: null,
+    workspaces: null,
+    pathEngine: async () => {
+      throw new Error('SERVER_UNAVAILABLE');
+    },
+  };
+  const container = await render();
+  expect(row(container, 'pathEngine')?.textContent).toContain('Could not check');
+});
+
 it("shows the new settings project's folder when the previous project's answer arrives last", async () => {
   const answer = heldBindings();
   const { container, show } = await mount('a');
