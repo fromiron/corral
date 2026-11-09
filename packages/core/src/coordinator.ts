@@ -3871,7 +3871,17 @@ export class Coordinator {
   }
 
   private publish(run: LiveRun, projection: RunProjection) {
+    const before = run.projection;
     run.projection = projection;
+    // Waiters on an execution's end (a run's success after a Join stopped a branch) look again.
+    if (
+      Object.values(projection.executions).some(
+        (e) =>
+          TERMINAL_EXECUTION_STATUSES.has(e.status) &&
+          !TERMINAL_EXECUTION_STATUSES.has(before.executions[e.executionId]?.status ?? 'queued'),
+      )
+    )
+      this.wake(run);
     for (const subscriber of this.subscribers) {
       if (subscriber.runId === run.runId) {
         void Promise.resolve().then(() => this.pump(subscriber));
@@ -5620,6 +5630,27 @@ export class Coordinator {
         this.stopRecipe(run, loopId, problem, candidate.artifactVersionId);
         return;
       }
+    }
+    // A branch a Join stopped may still be ending. Success waits for it, so the working copy is
+    // given back as confirmed, and an end Corral could not confirm is not a success.
+    const ending = () =>
+      Object.values(run.projection.executions).filter(
+        (e) => run.cancelRequested.has(e.executionId) && !TERMINAL_EXECUTION_STATUSES.has(e.status),
+      );
+    while (ending().length) {
+      await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
+      if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+    }
+    const unconfirmed = this.store
+      .readEvents(run.runId, 0)
+      .find(
+        (event) =>
+          event.type === 'execution.settled' && event.payload.terminationMode === 'unconfirmed',
+      );
+    if (unconfirmed) {
+      const nodeId = run.projection.executions[unconfirmed.executionId ?? '']?.nodeId ?? 'unknown';
+      this.failRun(run, `termination_unconfirmed: ${nodeId}`);
+      return;
     }
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
