@@ -1068,7 +1068,7 @@ describe('Coordinator harness boundary (H2)', () => {
       s.done.open();
     }
   });
-  it('one approval cannot resume a run with another pending check, and its deadline closes it', async () => {
+  it('an approved check runs while another check still waits, and its deadline closes the other', async () => {
     const plan: CheckPlan = {
       commandId: 'types',
       name: 'Types',
@@ -1139,9 +1139,9 @@ describe('Coordinator harness boundary (H2)', () => {
         subjectVersionId: approval.payload.subjectVersionIds[0] ?? '',
       },
     });
+    // A wait blocks only the call that waits; the approved check goes ahead.
     expect(s.coordinator.getSnapshot(s.input().runId).projection.status).toBe('awaiting_user');
-    for (let i = 0; i < 20; i++) await Promise.resolve();
-    expect(runCheck).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(runCheck).toHaveBeenCalledTimes(1));
     s.clock.advance(300001);
     await Promise.all([one, two]);
     expect(runCheck).toHaveBeenCalledTimes(1);
@@ -1702,7 +1702,7 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(s.events().filter((e) => e.type === 'model.request_recorded')).toMatchObject([
       { payload: { modelCallId: permit.modelCallId, ...record } },
     ]);
-    expect(s.events().filter((e) => e.type === 'budget.reserved')).toHaveLength(1);
+    expect(s.events().filter((e) => e.type === 'model.request_prepared')).toHaveLength(1);
     const archived = openRunArchive(
       exportRunArchive(s.store, s.input().runId, { privateTranscript: true }),
     );

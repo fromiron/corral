@@ -18,8 +18,8 @@ import type {
   WaitingOn,
 } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { applyBudgetEvent, type BudgetState, emptyBudget } from './budget.ts';
 import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.ts';
+import { applyUsageRecord, type UsageRecordView } from './usage.ts';
 
 // Read model rebuilt only from committed events. The same reducer runs in the
 // coordinator and in every client, so a replayed log and a live view cannot drift.
@@ -147,7 +147,8 @@ export interface EffectView {
   scope: string;
   epoch: number;
   dispatched: boolean;
-  reservationId: string | null;
+  /** The model call a model_request effect admits. */
+  modelCallId: string | null;
   status: 'admitted' | 'settled';
   outcome: 'succeeded' | 'failed' | 'cancelled' | 'unknown' | null;
 }
@@ -155,9 +156,11 @@ export interface EffectView {
 export interface IterationView {
   iterationId: string;
   loopNodeId: string;
+  /** The round of the enclosing Loop this round runs in; null at the top. */
+  parentIterationId: string | null;
   no: number;
   criteriaVersionId: string;
-  outcome: 'pass' | 'revise' | 'inconclusive' | 'cap_reached' | 'cancelled' | null;
+  outcome: EventPayload<'loop.iteration_finished'>['outcome'] | null;
 }
 
 /** A question from one execution to a callable role, answered by a new responder task. */
@@ -179,7 +182,14 @@ export interface QuestionView {
 
 export interface ApprovalView {
   approvalId: string;
-  kind: 'final_output' | 'loop_cap' | 'user_action';
+  kind: EventPayload<'approval.requested'>['kind'];
+  /** Why a Loop asks for another round. */
+  loopStop?: EventPayload<'approval.requested'>['loopStop'];
+  routes?: EventPayload<'approval.requested'>['routes'];
+  /** The step a `breakpoint` approval holds before it starts. */
+  nodeId?: string;
+  /** The route the person picked, once a `route` approval is approved. */
+  routeId?: string;
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
@@ -217,6 +227,10 @@ export interface RunProjection {
   modelProfiles: Record<string, ModelProfileSnapshot>;
   /** The earlier version this run's brief starts from; null otherwise. */
   startedFrom: { runId: string; artifactVersionId: string } | null;
+  /** The finished run and step this run forked from, with the results it copied; null otherwise. */
+  forkedFrom: NonNullable<EventPayload<'run.started'>['forkedFrom']> | null;
+  /** Steps that wait before they start (scheduled Agents and Decisions). */
+  breakpoints: string[];
   runId: string;
   corralId: string | null;
   definitionHash: string | null;
@@ -249,9 +263,8 @@ export interface RunProjection {
   patches: Record<string, PatchView>;
   currentCriteriaVersionId: string | null;
   limits: RunLimits | null;
-  /** An unlimited run or a meeting, where `limits` are not applied. */
-  usageLimits?: 'none';
-  budget: BudgetState;
+  /** Usage spent outside the model calls (chooser calls, images), by usage id. */
+  usage: Record<string, UsageRecordView>;
   progress: ProgressState;
   /** The final approval behind the output, when the Output required one. */
   outputApprovalId: string | null;
@@ -309,7 +322,7 @@ export function emptyProjection(runId: string): RunProjection {
     patches: {},
     currentCriteriaVersionId: null,
     limits: null,
-    budget: emptyBudget(),
+    usage: {},
     progress: emptyProgress(),
     outputApprovalId: null,
     artifactReads: {},
@@ -318,6 +331,8 @@ export function emptyProjection(runId: string): RunProjection {
     output: null,
     decisionSettings: null,
     startedFrom: null,
+    forkedFrom: null,
+    breakpoints: [],
     modelProfiles: {},
     startedAt: null,
     endedAt: null,
@@ -352,12 +367,10 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         definitionHash: event.payload.definitionHash,
         mode: event.payload.mode,
         startedFrom: event.payload.startedFrom ?? null,
+        forkedFrom: event.payload.forkedFrom ?? null,
         startedAt: event.recordedAt,
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
-        ...(event.payload.usageLimits || event.payload.meeting
-          ? { usageLimits: 'none' as const }
-          : {}),
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
         decisionSettings: event.payload.decisions ?? null,
       };
@@ -626,6 +639,8 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     }
     case 'task.completed':
       return updateTask(p, event.payload.taskId, { status: 'completed' });
+    case 'workflow.joined':
+      return p;
     case 'workflow.branch_selected':
       return {
         ...p,
@@ -657,16 +672,28 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         criteriaVersionId,
         status: 'pending',
         ...(event.payload.tool ? { tool: event.payload.tool } : {}),
+        ...(event.payload.loopStop ? { loopStop: event.payload.loopStop } : {}),
+        ...(event.payload.routes ? { routes: event.payload.routes } : {}),
+        ...(event.payload.nodeId ? { nodeId: event.payload.nodeId } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
+    case 'breakpoints.changed':
+      return { ...p, breakpoints: event.payload.nodeIds };
     case 'approval.resolved': {
       const approval = p.approvals[event.payload.approvalId];
       if (!approval) return p;
       const status = event.payload.decision === 'approve' ? 'approved' : 'rejected';
       return {
         ...p,
-        approvals: { ...p.approvals, [approval.approvalId]: { ...approval, status } },
+        approvals: {
+          ...p.approvals,
+          [approval.approvalId]: {
+            ...approval,
+            status,
+            ...(event.payload.routeId ? { routeId: event.payload.routeId } : {}),
+          },
+        },
       };
     }
     case 'review.recorded': {
@@ -707,7 +734,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         scope,
         epoch,
         dispatched: false,
-        reservationId: event.payload.reservationId,
+        modelCallId: event.payload.modelCallId,
         status: 'admitted',
         outcome: null,
       };
@@ -730,6 +757,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       const iteration: IterationView = {
         iterationId,
         loopNodeId,
+        parentIterationId: event.payload.parentIterationId ?? null,
         no,
         criteriaVersionId,
         outcome: null,
@@ -825,13 +853,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
             }
           : {}),
         ...(patch.kind === 'run_limits' && p.limits
-          ? {
-              limits: { ...p.limits, ...patch.after },
-              ...(patch.after.maxModelCalls !== undefined ||
-              patch.after.maxOutputTokens !== undefined
-                ? { usageLimits: undefined }
-                : {}),
-            }
+          ? { limits: { ...p.limits, ...patch.after } }
           : {}),
       };
     }
@@ -864,10 +886,9 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           [event.payload.scope === 'team' ? 'team' : event.payload.executionId]: event.payload,
         },
       };
-    case 'budget.reserved':
-    case 'budget.settled':
-      return { ...p, budget: applyBudgetEvent(p.budget, event) };
-    // Committed facts that later phases project (review P5, Reins P6, budget P7). Until then
+    case 'usage.recorded':
+      return { ...p, usage: applyUsageRecord(p.usage, event.payload) };
+    // Committed facts that later phases project (review P5, Reins P6). Until then
     // they are kept in the log only.
     case 'harness.loaded':
     case 'harness.simulated':
@@ -945,6 +966,9 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         },
       };
     }
+    default:
+      // A stored log can hold event types this version no longer records (e.g. `budget.*`).
+      return p;
   }
 }
 

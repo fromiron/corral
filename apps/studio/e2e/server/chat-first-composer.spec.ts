@@ -103,7 +103,9 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   expect(snapshot?.autoRoute ?? null).toBeNull();
   expect(snapshot?.definition.roles.map((role) => role.name)).toEqual(['Assistant', 'Helper']);
   expect(
-    run ? corral.server.coordinator.getSnapshot(run.runId).projection.budget.modelCalls : 0,
+    run
+      ? Object.keys(corral.server.coordinator.getSnapshot(run.runId).projection.modelCalls).length
+      : 0,
   ).toBe(1);
   expect(await savedCorrals(page)).toEqual([]);
 

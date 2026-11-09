@@ -98,6 +98,86 @@ describe('approvals and reviews in Studio', () => {
     await until(session, (p) => Object.values(p.approvals).some((a) => a.kind === 'final_output'));
   });
 
+  it('lets the person pick a route when the router could not, and the run follows it', async () => {
+    const base = CorralDefinition.parse(researchTeam);
+    const agent = (id: string, source?: string) => ({
+      id,
+      type: 'agent' as const,
+      label: id,
+      roleId: 'writer',
+      invocation: 'scheduled' as const,
+      inputBindings: source
+        ? [{ kind: 'task_output' as const, name: 'draft', sourceNodeId: source }]
+        : [{ kind: 'run_input' as const, name: 'brief' }],
+      outputName: 'draft',
+    });
+    const definition = CorralDefinition.parse({
+      ...base,
+      entryNodeId: 'w',
+      capabilityLinks: [],
+      nodes: [
+        agent('w'),
+        {
+          id: 'router',
+          type: 'decision',
+          label: 'router',
+          mode: 'router',
+          routes: [
+            { id: 'fix', label: 'Fix it' },
+            { id: 'ship', label: 'Ship it' },
+          ],
+          inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'w' }],
+        },
+        agent('fix', 'w'),
+        agent('ship', 'w'),
+        {
+          id: 'output',
+          type: 'output',
+          label: 'output',
+          inputBindings: ['fix', 'ship'].map((id) => ({
+            kind: 'task_output' as const,
+            name: id,
+            sourceNodeId: id,
+            optional: true,
+          })),
+          requireApproval: false,
+        },
+      ],
+      controlEdges: [
+        { id: 'e1', source: 'w', sourcePort: 'out', target: 'router', targetPort: 'in' },
+        { id: 'e2', source: 'router', sourcePort: 'fix', target: 'fix', targetPort: 'in' },
+        { id: 'e3', source: 'router', sourcePort: 'ship', target: 'ship', targetPort: 'in' },
+        { id: 'e4', source: 'fix', sourcePort: 'out', target: 'output', targetPort: 'in' },
+        { id: 'e5', source: 'ship', sourcePort: 'out', target: 'output', targetPort: 'in' },
+      ],
+    });
+    const clock = new FakeClock();
+    const session = createRunSession(
+      new InProcessTransport(
+        new Coordinator({
+          clock,
+          ids: new SequentialIdFactory(),
+          timers: clock,
+          // The chooser answers with prose, not a route id.
+          agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false }),
+        }),
+      ),
+    );
+    await session.getState().start(definition);
+    const p = await until(session, (x) => x.status === 'awaiting_user');
+    const approval = Object.values(p.approvals).find((a) => a.status === 'pending');
+    expect(approval?.kind).toBe('route');
+    wrap(<ApprovalPanel session={session} onOpenArtifact={() => {}} />);
+    const card = screen.getByTestId(`approval-${approval?.approvalId}`);
+    expect(within(card).getByText('Choose a route')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Stop here' })).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'Ship it' }));
+    const done = await until(session, (x) => x.status === 'succeeded');
+    expect(done.approvals[approval?.approvalId ?? '']?.routeId).toBe('ship');
+    expect(done.nodeExecutions.ship).toHaveLength(1);
+    expect(done.nodeExecutions.fix).toBeUndefined();
+  });
+
   it('keeps recorded review evidence without opening older artifact bodies', async () => {
     const { session, projection } = await teamAwaitingApproval();
     const drafts = Object.values(projection.artifacts).filter((a) => a.name === 'draft');

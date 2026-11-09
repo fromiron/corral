@@ -1,4 +1,4 @@
-import type { RunProjection } from '@corral/core';
+import { type RunProjection, usageTotals } from '@corral/core';
 
 // Roadmap 16: two runs side by side on the figures `corral eval` reports. Unknown stays unknown:
 // an unfinished run has no elapsed time.
@@ -22,6 +22,7 @@ export interface CompareRow {
 }
 
 function figures(p: RunProjection): Record<CompareKey, string | number | null> {
+  const usage = usageTotals(p);
   const elapsed =
     p.startedAt && p.endedAt ? Math.max(0, Date.parse(p.endedAt) - Date.parse(p.startedAt)) : null;
   return {
@@ -35,8 +36,8 @@ function figures(p: RunProjection): Record<CompareKey, string | number | null> {
         .sort()
         .join(', ') || null,
     elapsed,
-    modelCalls: p.budget.modelCalls,
-    outputTokens: p.budget.spent,
+    modelCalls: usage.requests,
+    outputTokens: usage.outputTokens,
     executions: p.executionOrder.length,
     reviewRounds: Object.keys(p.iterations).length,
     approvals: Object.values(p.approvals).filter((a) => a.status !== 'pending').length,

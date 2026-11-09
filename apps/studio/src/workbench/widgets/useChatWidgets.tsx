@@ -526,7 +526,7 @@ function useChatWidgetState(
     tools,
     results: resultItems,
     environment: simulated ? 'simulated' : restricted ? 'restricted' : null,
-    usage: usageSummary(projection, projection?.limits ?? view?.definition?.limits ?? null),
+    usage: usageSummary(projection),
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
     failedExecutionId:

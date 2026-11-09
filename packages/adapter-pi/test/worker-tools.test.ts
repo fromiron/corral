@@ -200,7 +200,7 @@ it('identifies the configured model separately from the role, without credential
   expect(identity.text).not.toContain('private-endpoint.test');
 });
 
-it('model instructions do not present legacy defaults or numeric sentinels as active budgets', async () => {
+it('model instructions show resource limits and no usage budget', async () => {
   const { DEFAULT_LIMITS } = await import('@corral/contracts');
   const brief = {
     version: 1 as const,
@@ -212,29 +212,11 @@ it('model instructions do not present legacy defaults or numeric sentinels as ac
     verificationScope: 'targeted' as const,
     canModifyFiles: false,
     limits: DEFAULT_LIMITS,
-    usageLimits: 'none' as const,
     sourceRefs: [],
     resources: [],
   };
-  const unlimited = userPrompt({ ...start, taskBrief: brief });
-  expect(unlimited).not.toContain('maxModelCalls');
-  expect(unlimited).not.toContain('64000');
-  expect(unlimited).toContain('maxSpawns');
-  const limited = userPrompt({
-    ...start,
-    taskBrief: {
-      ...brief,
-      usageLimits: undefined,
-      limits: {
-        ...DEFAULT_LIMITS,
-        maxModelCalls: 20,
-        maxOutputTokens: Number.MAX_SAFE_INTEGER,
-        maxOutputTokensPerCall: Number.MAX_SAFE_INTEGER,
-        modelTimeoutMs: Number.MAX_SAFE_INTEGER,
-        runDeadlineMs: Number.MAX_SAFE_INTEGER,
-      },
-    },
-  });
-  expect(limited).toContain('"maxModelCalls":20');
-  expect(limited).not.toContain(String(Number.MAX_SAFE_INTEGER));
+  const prompt = userPrompt({ ...start, taskBrief: brief });
+  expect(prompt).toContain('maxSpawns');
+  for (const budget of ['maxModelCalls', 'maxOutputTokens', 'usageBudget', 'runDeadlineMs'])
+    expect(prompt).not.toContain(budget);
 });

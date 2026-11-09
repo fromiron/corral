@@ -81,7 +81,6 @@ test('selects a registered check, approves its SDK call and reads the owned veri
       await call(`/sessions/${sessionId}/worktree`, {});
       const saved = await call('/corrals', {
         definition,
-        layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       });
       const started = await call('/runs', {
         schemaVersion: '0.1',

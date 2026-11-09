@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { startTestRun, teamCanvas } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
@@ -11,14 +12,15 @@ test('one run shows two delegated helpers and a question answered by a new respo
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page
     .locator('input[type=file]')
-    .setInputFiles([
-      join(EXAMPLES, 'research-brief.corral.json'),
-      join(EXAMPLES, 'research-brief.layout.json'),
-    ]);
+    .setInputFiles([join(EXAMPLES, 'research-brief.corral.json')]);
   await expect(page).toHaveURL(/\/edit$/);
-  await expect(page.locator('.corral-call-link')).toHaveCount(2);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  // Call links are named on the canvas by what they let the caller do.
+  await expect(
+    teamCanvas(page)
+      .locator('[data-edge]')
+      .filter({ hasText: /^(delegates|asks)$/ }),
+  ).toHaveCount(2);
+  await startTestRun(page);
   await expect(page.getByTestId('run-output')).toContainText('answer:', { timeout: 15_000 });
 
   await page.getByRole('link', { name: 'Open execution page' }).click();

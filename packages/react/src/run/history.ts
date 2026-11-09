@@ -84,7 +84,6 @@ type CallStart = { executionId: string; startedAt: string };
 /** Time spans from a contiguous event prefix, never wall time or predicted completion. */
 export function executionIntervals(events: readonly RunEvent[]): ExecutionInterval[] {
   const rows = new Map<string, ExecutionInterval>();
-  const reservedModels = new Map<string, string>();
   const modelEffects = new Map<string, { callId: string; executionId: string }>();
   const modelStarts = new Map<string, CallStart>();
   const toolStarts = new Map<string, CallStart>();
@@ -163,15 +162,10 @@ export function executionIntervals(events: readonly RunEvent[]): ExecutionInterv
         row.finished = true;
         break;
       }
-      case 'budget.reserved':
-        if (event.payload.modelCallId)
-          reservedModels.set(event.payload.reservationId, event.payload.modelCallId);
-        break;
       case 'effect.admitted': {
         const p = event.payload;
-        const callId = p.reservationId ? reservedModels.get(p.reservationId) : undefined;
-        if (p.kind === 'model_request' && callId)
-          modelEffects.set(p.effectId, { callId, executionId: p.scope });
+        if (p.kind === 'model_request' && p.modelCallId)
+          modelEffects.set(p.effectId, { callId: p.modelCallId, executionId: p.scope });
         break;
       }
       case 'effect.dispatch_observed': {

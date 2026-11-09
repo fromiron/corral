@@ -47,7 +47,7 @@ describe('bounded loop flow', () => {
     const user = userEvent.setup();
     const { session, projection, onSelectExecution, loadArtifact } = renderFlow();
     await user.click(screen.getByRole('combobox', { name: 'Round for Review' }));
-    await user.click(screen.getByRole('option', { name: 'Round 2' }));
+    await user.click(await screen.findByRole('option', { name: 'Round 2' }));
     const artifacts = screen.getByRole('region', { name: 'Created artifacts' });
     expect(within(artifacts).getByText('Draft round 2')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open Draft round 2' })).toBeNull();
@@ -78,7 +78,8 @@ describe('bounded loop flow', () => {
     const { session, onSelectExecution } = renderFlow('writer_2');
     const choose = async (label: string) => {
       await user.click(screen.getByRole('combobox', { name: 'Round for Review' }));
-      await user.click(screen.getByRole('option', { name: label }));
+      // The list renders a moment after the click under load.
+      await user.click(await screen.findByRole('option', { name: label }));
       await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
     };
     await choose('Follow latest round');

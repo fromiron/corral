@@ -13,7 +13,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
   const definition = useStore(editor, (state) => state.draft.definition);
   const t = useTranslations('Recipe');
   const members = definition.nodes.flatMap((item) =>
-    item.type === 'agent' && item.loopId === node.id ? [item] : [],
+    item.type === 'agent' && item.parentId === node.id ? [item] : [],
   );
   const candidates = members.filter(
     (item) => definition.roles.find((role) => role.id === item.roleId)?.outputContract !== 'review',
@@ -33,9 +33,6 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
         criteriaFiles: [],
         maxAttempts: node.maxIterations,
         maxRepairs: Math.max(0, node.maxIterations - 1),
-        maxWallMs: Math.min(definition.limits.runDeadlineMs, 300000),
-        maxModelCalls: Math.min(definition.limits.maxModelCalls, 20),
-        maxOutputTokens: Math.min(definition.limits.maxOutputTokens, 20000),
       },
   );
   const [paths, setPaths] = useState(
@@ -144,29 +141,17 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
         [
           ['maxAttempts', 1, 10],
           ['maxRepairs', 0, 9],
-          ['maxWallMs', 1000, 3600000],
-          ['maxModelCalls', 1, 100],
-          ['maxOutputTokens', 1, 256000],
         ] as const
       ).map(([key, min, max]) => (
         <label key={key} className="flex flex-col gap-1 text-xs">
           {t(key)}
           <Input
             type="number"
-            min={key === 'maxWallMs' ? min / 1000 : min}
-            max={key === 'maxWallMs' ? max / 1000 : max}
-            value={
-              Number.isNaN(values[key])
-                ? ''
-                : key === 'maxWallMs'
-                  ? values[key] / 1000
-                  : values[key]
-            }
+            min={min}
+            max={max}
+            value={Number.isNaN(values[key]) ? '' : values[key]}
             onChange={(event) =>
-              setValues((value) => ({
-                ...value,
-                [key]: event.target.valueAsNumber * (key === 'maxWallMs' ? 1000 : 1),
-              }))
+              setValues((value) => ({ ...value, [key]: event.target.valueAsNumber }))
             }
           />
         </label>

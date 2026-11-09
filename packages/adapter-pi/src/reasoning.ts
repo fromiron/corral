@@ -149,7 +149,9 @@ export function verifyReasoningWire(
       model.compat?.supportsMidConvoEffort === true &&
       ((level !== 'off' && level !== null) || model.thinkingLevelMap?.off === null);
     if (managed) {
-      if (body.output_config?.effort !== 'high')
+      // The top-level effort is cached with the prompt and stays fixed at "low" (an organization
+      // cap may reject any higher level); the last system marker carries the effort of this reply.
+      if (body.output_config?.effort !== 'low')
         throw new Error('provider reasoning differs from the Coordinator permit');
       const last = body.messages?.at(-1);
       actual = last?.role === 'system' ? last.output_config?.effort : undefined;

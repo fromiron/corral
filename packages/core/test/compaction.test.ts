@@ -126,7 +126,7 @@ it('compaction is attempt-scoped, idempotent, and completed only with an owned s
       modelCallIds: [permit.modelCallId],
     });
     expect(coordinator.submit(command).status).toBe('applied');
-    expect(coordinator.getSnapshot(input.runId).projection.budget.modelCalls).toBe(1);
+    expect(Object.keys(coordinator.getSnapshot(input.runId).projection.modelCalls)).toHaveLength(1);
     expect(coordinator.getSnapshot(input.runId).projection.tasks[input.taskId]?.status).not.toBe(
       'completed',
     );

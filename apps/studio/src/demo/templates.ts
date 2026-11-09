@@ -12,10 +12,6 @@ export const DEMO_TEMPLATE_IDS: readonly DemoTemplateId[] = ['research-team', 's
 export interface DemoTemplate {
   id: DemoTemplateId;
   definition: CorralDefinition;
-  layout: {
-    nodes: Record<string, { x: number; y: number; width?: number; height?: number }>;
-    viewport: { x: number; y: number; zoom: number };
-  };
 }
 
 /** The template a `?template=` value names; anything else opens the default team. */
@@ -24,8 +20,8 @@ export function demoTemplate(id: string | undefined): DemoTemplate {
 }
 
 function starter(): DemoTemplate {
-  const agent = addNode(emptyDraft('public_demo', 'Demo Corral'), 'agent', { x: 80, y: 120 });
-  const output = addNode(agent.draft, 'output', { x: 360, y: 120 });
+  const agent = addNode(emptyDraft('public_demo', 'Demo Corral'), 'agent');
+  const output = addNode(agent.draft, 'output');
   const connected = connect(output.draft, {
     source: agent.nodeId,
     sourcePort: 'out',
@@ -33,8 +29,7 @@ function starter(): DemoTemplate {
     targetPort: 'in',
   });
   if (!connected.ok) throw new Error('Invalid demo fixture.');
-  const { definition, layout, viewport } = connected.draft;
-  return { id: 'starter', definition, layout: { nodes: layout, viewport } };
+  return { id: 'starter', definition: connected.draft.definition };
 }
 
 const rolePrompt = (duty: string) =>
@@ -128,7 +123,7 @@ function researchTeam(): DemoTemplate {
         id: 'write',
         type: 'agent',
         label: 'Writer',
-        loopId: 'review_loop',
+        parentId: 'review_loop',
         roleId: 'writer',
         invocation: 'scheduled',
         inputBindings: [
@@ -152,7 +147,7 @@ function researchTeam(): DemoTemplate {
         id: 'review',
         type: 'agent',
         label: 'Reviewer',
-        loopId: 'review_loop',
+        parentId: 'review_loop',
         roleId: 'reviewer',
         invocation: 'scheduled',
         // The criteria text, so the review is against what the person asked for (#20).
@@ -166,7 +161,7 @@ function researchTeam(): DemoTemplate {
         id: 'review_decision',
         type: 'decision',
         label: 'Review decision',
-        loopId: 'review_loop',
+        parentId: 'review_loop',
         mode: 'review',
         rule: 'review_verdict',
         inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'review' }],
@@ -228,26 +223,7 @@ function researchTeam(): DemoTemplate {
     ],
     limits: DEFAULT_LIMITS,
   };
-  // Two rows so the whole team fits the demo canvas at 1280px: the scheduled flow on top,
-  // callable helpers and the approval step below.
-  return {
-    id: 'research-team',
-    definition,
-    layout: {
-      nodes: {
-        research: { x: 20, y: 90 },
-        review_loop: { x: 230, y: 20, width: 650, height: 210 },
-        write: { x: 260, y: 90 },
-        review: { x: 470, y: 90 },
-        review_decision: { x: 680, y: 90 },
-        helper: { x: 20, y: 320 },
-        respond: { x: 260, y: 320 },
-        approval: { x: 520, y: 320 },
-        output: { x: 740, y: 320 },
-      },
-      viewport: { x: 16, y: 16, zoom: 0.75 },
-    },
-  };
+  return { id: 'research-team', definition };
 }
 
 /**

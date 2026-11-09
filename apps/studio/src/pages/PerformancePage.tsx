@@ -1,15 +1,14 @@
 import { HttpSseTransport } from '@corral/client';
 import type { TransportHandlers } from '@corral/core';
 import {
-  CorralCanvas,
   createEditorStore,
   createRunSession,
   draftFromDefinition,
   RunView,
   StudioStoresProvider,
+  TeamEditor,
   Timeline,
 } from '@corral/react';
-import { ReactFlowProvider } from '@xyflow/react';
 import { useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
@@ -124,11 +123,9 @@ export default function PerformancePage() {
       </output>
       <PaintObserver />
       <StudioStoresProvider editor={editor} session={session}>
-        <ReactFlowProvider>
-          <div data-testid="performance-canvas" className="h-96">
-            <CorralCanvas />
-          </div>
-        </ReactFlowProvider>
+        <div data-testid="performance-canvas" className="h-96">
+          <TeamEditor editor={editor} />
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <Timeline session={session} />
           <div className="h-96 overflow-auto">

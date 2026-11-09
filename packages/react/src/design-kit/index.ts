@@ -139,6 +139,19 @@ export {
   CheckboxItem as KitCheckboxItem,
 } from './components/ui/checkbox-group.tsx';
 export {
+  CommandMenu,
+  CommandMenuDialog,
+  type CommandMenuDialogProps,
+  CommandMenuEmpty,
+  CommandMenuFooter,
+  CommandMenuInput,
+  CommandMenuItem,
+  type CommandMenuItemData,
+  CommandMenuList,
+  type CommandMenuProps,
+  CommandMenuShortcut,
+} from './components/ui/command-menu.tsx';
+export {
   Dialog as KitDialog,
   DialogContent as KitDialogContent,
   DialogDescription as KitDialogDescription,

@@ -227,30 +227,19 @@ describe('observed execution time', () => {
       ),
       event(
         3,
-        'budget.reserved',
-        {
-          reservationId: 'call_one',
-          modelCallId: 'call_one',
-          amount: { outputTokens: 100, modelCalls: 1 },
-          scope: 'exec_first',
-        },
-        2,
-      ),
-      event(
-        4,
         'effect.admitted',
         {
           effectId: 'eff_one',
           kind: 'model_request',
           scope: 'exec_first',
           epoch: 1,
-          reservationId: 'call_one',
+          modelCallId: 'call_one',
         },
         3,
       ),
-      event(5, 'effect.dispatch_observed', { effectId: 'eff_one', providerRequestId: null }, 10),
+      event(4, 'effect.dispatch_observed', { effectId: 'eff_one', providerRequestId: null }, 10),
       event(
-        6,
+        5,
         'model.finished',
         {
           executionId: 'exec_first',
@@ -268,25 +257,25 @@ describe('observed execution time', () => {
         40,
       ),
       event(
-        7,
+        6,
         'tool.started',
         { executionId: 'exec_first', toolCallId: 'tool_one', effectId: 'eff_tool' },
         50,
       ),
       event(
-        8,
+        7,
         'tool.finished',
         { executionId: 'exec_first', toolCallId: 'tool_one', resultRef: null, error: null },
         70,
       ),
       event(
-        9,
+        8,
         'tool.finished',
         { executionId: 'exec_first', toolCallId: 'tool_missing', resultRef: null, error: null },
         80,
       ),
       event(
-        10,
+        9,
         'model.finished',
         {
           executionId: 'exec_first',
@@ -304,7 +293,7 @@ describe('observed execution time', () => {
         90,
       ),
     ];
-    expect(executionIntervals(records.slice(0, 5))[0]?.calls).toEqual([]);
+    expect(executionIntervals(records.slice(0, 4))[0]?.calls).toEqual([]);
     expect(executionIntervals(records)[0]?.calls).toEqual([
       { kind: 'model', callId: 'call_one', startedAt: at(10), endedAt: at(40), durationMs: 30 },
       { kind: 'tool', callId: 'tool_one', startedAt: at(50), endedAt: at(70), durationMs: 20 },

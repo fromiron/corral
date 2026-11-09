@@ -259,6 +259,7 @@ import type {
   ProjectResult,
   ProjectSummary,
   RunArchive,
+  RunStats,
   RunSummary,
   RuntimeSnapshot,
   RuntimeTransport,
@@ -835,6 +836,12 @@ export class HttpSseTransport implements RuntimeTransport {
     return ((await response.json()) as { definition: CorralDefinition }).definition;
   }
 
+  getRunStats(corralId: string, definitionRevision: number): Promise<RunStats> {
+    return this.http.json(
+      `/corrals/${encodeURIComponent(corralId)}/revisions/${definitionRevision}/stats`,
+    );
+  }
+
   exportRun(runId: string, options: { privateTranscript?: boolean } = {}): Promise<RunArchive> {
     return this.http.json(`/runs/${encodeURIComponent(runId)}/export`, {
       method: 'POST',
@@ -1196,8 +1203,17 @@ export class RestCorralRepository implements CorralRepository {
     return (await response.json()) as CorralRecord;
   }
 
+  async getRevision(corralId: string, definitionRevision: number) {
+    const response = await this.http.request(
+      `/corrals/${encodeURIComponent(corralId)}/revisions/${definitionRevision}`,
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as CorralDefinition;
+  }
+
   save(request: SaveRequest): Promise<SaveResult> {
-    const body = { definition: request.definition, layout: request.layout };
+    const body = { definition: request.definition };
     if (request.expectedDefinitionRevision === null)
       return this.write('/corrals', 'POST', {
         ...body,

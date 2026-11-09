@@ -78,7 +78,7 @@ function projection(): RunProjection {
     scope: 'exec_lead',
     epoch: 1,
     dispatched: true,
-    reservationId: 'call_1',
+    modelCallId: 'call_1',
     status: 'admitted',
     outcome: null,
   };

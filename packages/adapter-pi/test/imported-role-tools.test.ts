@@ -14,7 +14,7 @@ it('a Markdown Edit callable exposes real Hashline schemas when delegated throug
   for (const role of parent.roles)
     role.allowedWorkTools = ['write_artifact', 'read_file', 'write_file'];
   const imported = importMarkdownAgent({
-    draft: { definition: parent, layout: {} },
+    draft: { definition: parent },
     candidate: parseMarkdownAgent(
       '---\nname: fixer\ndescription: Make a scoped edit\ntools: [Read, Edit]\n---\nRead the current file before editing.',
     ),

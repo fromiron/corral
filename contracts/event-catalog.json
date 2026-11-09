@@ -115,6 +115,11 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "breakpoints.changed",
+    "requiredContent": "nodeIds",
+    "status": "payload_schema_to_implement"
+  },
+  {
     "type": "directive.accepted",
     "requiredContent": "directiveId,target,body,commandId",
     "status": "payload_schema_to_implement"
@@ -146,7 +151,7 @@
   },
   {
     "type": "effect.admitted",
-    "requiredContent": "effectId,scope,epoch,reservationId",
+    "requiredContent": "effectId,scope,epoch,modelCallId",
     "status": "payload_schema_to_implement"
   },
   {
@@ -200,18 +205,13 @@
     "status": "implemented"
   },
   {
-    "type": "budget.reserved",
-    "requiredContent": "reservationId,amount,scope",
-    "status": "payload_schema_to_implement"
-  },
-  {
-    "type": "budget.settled",
-    "requiredContent": "reservationId,actual,unknownOutstanding",
-    "status": "payload_schema_to_implement"
+    "type": "usage.recorded",
+    "requiredContent": "usageId,kind,profileId,inputTokens,outputTokens,costMicros",
+    "status": "implemented"
   },
   {
     "type": "limit.reached",
-    "requiredContent": "limitKind,used,reserved,max",
+    "requiredContent": "limitKind,used,max",
     "status": "payload_schema_to_implement"
   },
   {
@@ -238,6 +238,11 @@
     "type": "workflow.branch_selected",
     "requiredContent": "nodeId,mode,iterationId,configRevision,selectedPort,targetNodeId,targetPort,reasonCode,evidenceRefs,executionRefs",
     "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "workflow.joined",
+    "requiredContent": "nodeId,policy,iterationId,cancelledNodeIds",
+    "status": "implemented"
   },
   {
     "type": "decision.requested",

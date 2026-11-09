@@ -1,11 +1,15 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, type Page, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 test('the worker preserves receipts, replay ordering and cancellation boundaries', async ({
   page,
 }) => {
   await page.goto('/demo?template=starter&delay=150');
-  await expect(page.getByText('Ready to run.')).toBeVisible();
+  // A cold dev server can take a while to serve the first page.
+  await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
   const result = await page.evaluate(
     async (definition) => {
       const { createDemoTransport } = await import('../src/runtime.ts');
@@ -113,6 +117,19 @@ const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
 const step = (page: Page, id: string) =>
   page.getByRole('region', { name: 'Demo guide' }).locator(`[data-step="${id}"]`);
 
+/** The run's execution tree in the test-run panel. */
+const executions = (page: Page) => page.getByRole('tree', { name: 'Executions', exact: true });
+/** Execution cards of the step `name`; a card's button names the step, its id and status. */
+const cardsOf = (page: Page, name: string) =>
+  executions(page)
+    .locator('[data-execution-id]')
+    .filter({ has: page.getByRole('button', { name: new RegExp(`^${name} · `) }) });
+/** The executions of `child` that sit under an execution of `parent`. */
+const under = (page: Page, parent: string, child: string) =>
+  executions(page)
+    .getByRole('treeitem', { name: new RegExp(`^${parent}:`) })
+    .getByRole('treeitem', { name: new RegExp(`^${child}:`) });
+
 test('the default demo team delegates, asks, revises once and finishes after approval offline', async ({
   page,
   context,
@@ -123,23 +140,23 @@ test('the default demo team delegates, asks, revises once and finishes after app
       runtimeRequests.push(request.url());
   });
   await page.goto('/demo?delay=200');
-  await expect(page.getByLabel('Team name')).toHaveValue('Research team');
+  await expect(page.getByRole('heading', { name: 'Research team', level: 1 })).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
-  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
   await expect(step(page, 'start')).toHaveAttribute('data-state', 'current');
   await context.setOffline(true);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
 
   // Research hands two parts to helpers, which appear under it in the call tree.
-  const nested = page.locator('li[data-execution-id] li[data-execution-id]');
-  await expect(nested.filter({ hasText: 'Research Helper' })).toHaveCount(2);
+  await expect(under(page, 'Research', 'Research Helper')).toHaveCount(2);
   await expect(step(page, 'delegate')).toHaveAttribute('data-state', 'done');
   // The Writer's question gets its own responder execution under the Writer.
-  await expect(nested.filter({ hasText: 'Source Responder' }).first()).toBeVisible();
+  await expect(under(page, 'Writer', 'Source Responder').first()).toBeVisible();
   await expect(step(page, 'ask')).toHaveAttribute('data-state', 'done', { timeout: 10_000 });
   // The first review asks for a revision, so the Writer runs a second round.
-  const writers = page.locator('li[data-execution-id]').filter({ hasText: /^Writer ·/ });
+  const writers = cardsOf(page, 'Writer');
   await expect(writers.filter({ hasText: 'Round 2' })).toHaveCount(1, { timeout: 15_000 });
   await expect(step(page, 'revise')).toHaveAttribute('data-state', 'done');
 
@@ -155,8 +172,7 @@ test('the default demo team delegates, asks, revises once and finishes after app
 
 test('a rejected approval does not finish the run or the guide', async ({ page }) => {
   await page.goto('/demo?delay=150');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   const card = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(card).toBeVisible({ timeout: 20_000 });
   await card.getByRole('button', { name: 'Reject and stop' }).click();
@@ -177,13 +193,12 @@ test('the guide can pause at round 2 so a visitor has time to steer at normal sp
   await page.goto('/demo?delay=1200');
   const arm = step(page, 'steer').getByLabel('Pause the run when the round 2 Writer starts');
   await arm.check();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   // The guide pauses through the normal run command, and points Reins at the round 2 Writer.
   await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 20_000 });
   await expect(arm).toHaveCount(0);
   const reins = page.getByRole('region', { name: 'Reins', exact: true });
-  const writers = page.locator('li[data-execution-id]').filter({ hasText: /^Writer ·/ });
+  const writers = cardsOf(page, 'Writer');
   const round2 = await writers.filter({ hasText: 'Round 2' }).getAttribute('data-execution-id');
   await expect(reins).toContainText(`execution ${round2}`);
   await page.getByLabel('Instruction').fill('Lead with the cost difference.');

@@ -105,10 +105,8 @@ export function describeEvent(
       return of('modelFinished', { node: actor });
     case 'model.usage_reconciled':
       return of('usageReconciled');
-    case 'budget.reserved':
-      return of('budgetReserved');
-    case 'budget.settled':
-      return of('budgetSettled');
+    case 'usage.recorded':
+      return of('usageRecorded');
     case 'limit.reached':
       return of('limitReached', { kind: str(p.limitKind), used: num(p.used), max: num(p.max) });
     case 'cancel.requested':
@@ -163,7 +161,6 @@ const REASONS = new Set([
   'termination_unconfirmed',
   'execution_failed',
   'internal_error',
-  'loop_hard_cap_reached',
   'needs_user',
   'runner_finished_without_output',
   'loop_cap_declined',

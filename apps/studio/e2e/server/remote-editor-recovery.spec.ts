@@ -1,4 +1,5 @@
 import { linearCorral } from '@corral/testkit';
+import { startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('Editor Run retries its lost start after a full renderer reload without a second Run', async ({
@@ -42,8 +43,7 @@ test('Editor Run retries its lost start after a full renderer reload without a s
       await route.abort('failed');
     } else await route.continue();
   });
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect
     .poll(async () => {
       const response = await page.request.get(`${corral.server.url}/api/v1/runs`);
@@ -53,8 +53,7 @@ test('Editor Run retries its lost start after a full renderer reload without a s
     .toBe('succeeded');
   // A completed original Run can no longer mask a duplicate by blocking admission.
   await page.reload();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-output')).toBeVisible();
   const response = await page.request.get(`${corral.server.url}/api/v1/runs`);
   const runs = await response.json();

@@ -5,7 +5,7 @@ import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
 
-// Canonical definition of a Corral. Layout lives in CanvasLayout.
+// Canonical definition of a Corral. Where nodes are drawn is derived from it, never stored.
 
 export const InputBindingKind = z.enum([
   'run_input',
@@ -95,42 +95,116 @@ export type AgentRole = z.infer<typeof AgentRole>;
 
 const bindings = (min: number) => z.array(InputBinding).min(min).max(20);
 
-export const AgentNode = z.strictObject({
+/**
+ * Fields every node has. `parentId` names the Loop or inline Team that holds the node; `note` is
+ * for people only and never reaches a run (docs/specs/features/team-graph.md).
+ */
+const nodeBase = {
   id: Identifier,
-  type: z.literal('agent'),
   label: z.string().min(1),
-  loopId: Identifier.optional(),
+  parentId: Identifier.optional(),
+  note: z.string().max(4000).optional(),
+};
+
+export const AgentNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('agent'),
   roleId: Identifier,
   invocation: z.enum(['scheduled', 'callable']),
   inputBindings: bindings(0),
   outputName: z.string().min(1),
+  /** Further attempts after a failure; then the `error` port. */
+  retry: z.strictObject({ maxAttempts: z.int().min(0) }).optional(),
 });
 export type AgentNode = z.infer<typeof AgentNode>;
 
-export const DecisionNode = z.strictObject({
-  id: Identifier,
+export const DecisionRule = z.enum([
+  'review_verdict',
+  'required_tasks_submitted',
+  'human_approval',
+]);
+export type DecisionRule = z.infer<typeof DecisionRule>;
+
+export const RuleDecisionNode = z.strictObject({
+  ...nodeBase,
   type: z.literal('decision'),
-  label: z.string().min(1),
-  loopId: Identifier.optional(),
   mode: z.enum(['review', 'approval', 'rule']),
-  rule: z.enum(['review_verdict', 'required_tasks_submitted', 'human_approval']),
+  rule: DecisionRule,
   inputBindings: bindings(1),
 });
+
+/** Branches on registered checks only: no user code or expression is evaluated. */
+export const CheckDecisionNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('decision'),
+  mode: z.literal('check'),
+  checkIds: z.array(Identifier).min(1).max(20),
+  inputBindings: bindings(1),
+});
+
+export const RouterRoute = z.strictObject({
+  id: Identifier,
+  label: z.string().min(1),
+  description: z.string().max(2000).optional(),
+});
+export type RouterRoute = z.infer<typeof RouterRoute>;
+
+/** A model picks one of the named routes; each route id is one outgoing port. */
+export const RouterDecisionNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('decision'),
+  mode: z.literal('router'),
+  routes: z.array(RouterRoute).max(20),
+  modelProfile: Identifier.optional(),
+  inputBindings: bindings(1),
+});
+
+export const DecisionNode = z.discriminatedUnion('mode', [
+  RuleDecisionNode,
+  CheckDecisionNode,
+  RouterDecisionNode,
+]);
 export type DecisionNode = z.infer<typeof DecisionNode>;
+export type DecisionNodeMode = DecisionNode['mode'];
 
 export const LoopNode = z.strictObject({
-  id: Identifier,
+  ...nodeBase,
   type: z.literal('loop'),
-  label: z.string().min(1),
-  maxIterations: z.int().min(1).max(10),
+  maxIterations: z.int().min(1),
+  stallDetection: z.boolean().optional(),
   reviewRecipe: ReviewRecipeRevision.optional(),
 });
 export type LoopNode = z.infer<typeof LoopNode>;
 
+export const TeamSource = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('inline') }),
+  z.strictObject({
+    kind: z.literal('reference'),
+    corralId: Identifier,
+    definitionRevision: z.int().min(1),
+  }),
+]);
+export type TeamSource = z.infer<typeof TeamSource>;
+
+export const TeamNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('team'),
+  source: TeamSource,
+  /** A reference Team's inputs: its child run's brief. An inline Team takes none. */
+  inputBindings: bindings(0).optional(),
+});
+export type TeamNode = z.infer<typeof TeamNode>;
+
+export const JoinNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('join'),
+  policy: z.enum(['all', 'any']),
+});
+export type JoinNode = z.infer<typeof JoinNode>;
+
 export const OutputNode = z.strictObject({
-  id: Identifier,
+  ...nodeBase,
   type: z.literal('output'),
-  label: z.string().min(1),
   inputBindings: bindings(1),
   requireApproval: z.boolean(),
 });
@@ -140,17 +214,25 @@ export const CorralNode = z.discriminatedUnion('type', [
   AgentNode,
   DecisionNode,
   LoopNode,
+  TeamNode,
+  JoinNode,
   OutputNode,
 ]);
 export type CorralNode = z.infer<typeof CorralNode>;
 export type NodeType = CorralNode['type'];
+/** Nodes that hold other nodes. */
+export type BoxNode = LoopNode | TeamNode;
 
+/** Named ports of the port table; a router adds one port per route id. */
 export const SourcePort = z.enum([
   'out',
+  'error',
   'body',
   'next',
+  'exhausted',
   'pass',
   'revise',
+  'fail',
   'approve',
   'reject',
   'yes',
@@ -163,7 +245,8 @@ export type TargetPort = z.infer<typeof TargetPort>;
 export const ControlEdge = z.strictObject({
   id: Identifier,
   source: Identifier,
-  sourcePort: SourcePort,
+  /** A port of the port table, or a router route id. */
+  sourcePort: Identifier,
   target: Identifier,
   targetPort: TargetPort,
 });
@@ -180,16 +263,11 @@ export const CapabilityLink = z.strictObject({
 export type CapabilityLink = z.infer<typeof CapabilityLink>;
 
 export const RunLimits = z.strictObject({
-  maxDelegationDepth: z.literal(2),
+  maxDelegationDepth: z.int().min(1),
   maxModelConcurrency: z.int().min(1),
-  maxSpawns: z.int().min(1).max(32),
-  maxModelCalls: z.int().min(1),
-  maxOutputTokens: z.int().min(1),
-  maxOutputTokensPerCall: z.int().min(1),
+  maxSpawns: z.int().min(1),
   maxQuestions: z.int().min(0).max(6),
   questionTimeoutMs: z.int().min(1000).max(300000),
-  modelTimeoutMs: z.int().min(1000),
-  runDeadlineMs: z.int().min(1000),
 });
 export type RunLimits = z.infer<typeof RunLimits>;
 
@@ -198,13 +276,8 @@ export const DEFAULT_LIMITS: RunLimits = {
   maxDelegationDepth: 2,
   maxModelConcurrency: 6,
   maxSpawns: 12,
-  maxModelCalls: 40,
-  maxOutputTokens: 64000,
-  maxOutputTokensPerCall: 4096,
   maxQuestions: 6,
   questionTimeoutMs: 120000,
-  modelTimeoutMs: 180000,
-  runDeadlineMs: 3600000,
 };
 
 /** What a run works on: the brief and the completion criteria. */
@@ -228,8 +301,6 @@ export const TaskBrief = z.strictObject({
   verificationScope: z.enum(['targeted', 'release']),
   canModifyFiles: z.boolean(),
   limits: RunLimits,
-  /** An unlimited run: `limits` are not applied. */
-  usageLimits: z.literal('none').optional(),
   sourceRefs: z
     .array(z.strictObject({ name: z.string().min(1), artifactVersionId: Identifier.nullable() }))
     .max(1000),
@@ -237,55 +308,10 @@ export const TaskBrief = z.strictObject({
 });
 export type TaskBrief = z.infer<typeof TaskBrief>;
 
-/** Model-visible metadata excludes inactive legacy caps and internal unlimited sentinels. */
-export function taskBriefForModel(brief: TaskBrief | undefined) {
-  if (!brief) return undefined;
-  const {
-    maxModelCalls,
-    maxOutputTokens,
-    maxOutputTokensPerCall,
-    modelTimeoutMs,
-    runDeadlineMs,
-    ...resources
-  } = brief.limits;
-  const budget = {
-    maxModelCalls,
-    maxOutputTokens,
-    maxOutputTokensPerCall,
-    modelTimeoutMs,
-    runDeadlineMs,
-  };
-  return {
-    ...brief,
-    limits: resources,
-    usageBudget:
-      brief.usageLimits === 'none'
-        ? null
-        : Object.fromEntries(
-            Object.entries(budget).filter(([, value]) => value < Number.MAX_SAFE_INTEGER),
-          ),
-  };
-}
-
-export const ExecutionPolicy = z.strictObject({
-  version: z.literal(2),
-  budget: z
-    .strictObject({
-      maxModelCalls: z.int().positive().optional(),
-      maxOutputTokens: z.int().positive().optional(),
-      maxOutputTokensPerCall: z.int().positive().optional(),
-      runDeadlineMs: z.int().min(1000).optional(),
-      modelTimeoutMs: z.int().min(1000).optional(),
-    })
-    .optional(),
-});
-export type ExecutionPolicy = z.infer<typeof ExecutionPolicy>;
-
 export const CorralDefinition = z.strictObject({
   sourceTeam: z
     .strictObject({ corralId: Identifier, name: z.string().min(1), revision: z.int().min(1) })
     .optional(),
-  executionPolicy: ExecutionPolicy.optional(),
   planOwnerRoleId: Identifier.optional(),
   schemaVersion: SchemaVersion,
   id: Identifier,

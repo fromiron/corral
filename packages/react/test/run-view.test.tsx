@@ -67,6 +67,7 @@ function projection(): RunProjection {
         loopNodeId: 'loop',
         no: 1,
         criteriaVersionId: 'c',
+        parentIterationId: null,
         outcome: 'revise',
       },
       iter_2: {
@@ -74,6 +75,7 @@ function projection(): RunProjection {
         loopNodeId: 'loop',
         no: 2,
         criteriaVersionId: 'c',
+        parentIterationId: null,
         outcome: null,
       },
     },
@@ -84,7 +86,7 @@ function projection(): RunProjection {
 function definition() {
   const team = linearCorral(['research', 'writer']);
   team.nodes = team.nodes.map((node) =>
-    node.type === 'agent' && node.id === 'writer' ? { ...node, loopId: 'loop' } : node,
+    node.type === 'agent' && node.id === 'writer' ? { ...node, parentId: 'loop' } : node,
   );
   team.nodes.push({ id: 'loop', type: 'loop', label: 'Revision', maxIterations: 5 });
   return team;

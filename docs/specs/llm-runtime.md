@@ -1,6 +1,6 @@
 # Managed LLM runtime
 
-[Product §9](product-contract.md#9-사용량-예산과-자원-정책) owns usage/resource defaults.
+[Product §9](product-contract.md#9-사용량과-자원-정책) owns usage/resource defaults.
 
 ## Request ownership and transport
 
@@ -46,9 +46,9 @@ Checkpoint v2 reuses immutable message and artifact bodies through a versioned m
 
 Source closure follows owned finished tool records, not only toolResult messages still visible after compaction. The execution reuses successfully committed chunk/source references, while message snapshots and restored body hashes remain validated. Selecting one checkpoint does not hydrate every other checkpoint.
 
-Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage settles the original attempt and Run reservation without reviving tasks. History pages are bounded and do not load the whole ledger into Settings.
+Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings.
 
-Chooser Run reservations derive from the existing attempt ledger: one reservation per prepared physical request, its actual output allowance, and its reported usage or unknown remainder. No payload prepared means no model reservation. Late usage updates only the matching reservation; past snapshots and choice text are not rewritten. Callers without a managed ledger record only reported usage. The chooser prompt and visible-text gate share a 4,096-byte JSON bound; model output allowance and reasoning are separate from that byte bound.
+Chooser usage in the Run derives from the existing attempt ledger: one `usage.recorded` per prepared physical request, with its reported usage or null when unknown. No payload prepared means no usage record. Late usage fills only the matching record; past snapshots and choice text are not rewritten. Callers without a managed ledger record only reported usage. The chooser prompt and visible-text gate share a 4,096-byte JSON bound; model output allowance and reasoning are separate from that byte bound.
 
 Each physical chooser attempt has 30 seconds from provider SDK dispatch to completion. Admission and retry waits are excluded, including reacquiring a slot. User cancellation remains active while waiting and during transmission. The response timer ends with its attempt; retries use the same rule and the existing two-retry maximum.
 

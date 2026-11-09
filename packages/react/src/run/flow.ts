@@ -5,7 +5,7 @@ import { nodeRunSummary } from './selectors.ts';
 export type FlowEvidenceRef = EventPayload<'workflow.branch_selected'>['evidenceRefs'][number];
 export interface RunFlowNode {
   id: string;
-  kind: 'agent' | 'artifact' | 'decision' | 'output' | 'loop';
+  kind: 'agent' | 'artifact' | 'decision' | 'output' | 'loop' | 'team' | 'join';
   label: string;
   nodeId?: string;
   executionIds: string[];
@@ -104,7 +104,7 @@ export function runFlowExecutionLoopId(
   let execution = projection?.executions[executionId];
   while (execution && !visited.has(execution.executionId)) {
     const node = definition.nodes.find((node) => node.id === execution?.nodeId);
-    if (node && 'loopId' in node && node.loopId) return node.loopId;
+    if (node?.parentId) return node.parentId;
     visited.add(execution.executionId);
     execution = execution.parentExecutionId
       ? projection?.executions[execution.parentExecutionId]
@@ -264,7 +264,7 @@ export function buildRunFlow(
   const visibleBranches = [...branches.values()]
     .filter((branch) => {
       const node = definition.nodes.find((node) => node.id === branch.nodeId);
-      return includesIteration(branch.iterationId, node && 'loopId' in node ? node.loopId : null);
+      return includesIteration(branch.iterationId, node?.parentId ?? null);
     })
     .sort((a, b) => a.runSeq - b.runSeq);
   const artifactIds = new Set(

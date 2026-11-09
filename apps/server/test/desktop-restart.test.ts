@@ -59,7 +59,6 @@ it('update restart refuses active work, then closes only after its normal comple
     const repository = new RestCorralRepository({ baseUrl: server.url, fetch: call });
     const saved = await repository.save({
       definition: linearCorral(['writer']),
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
     });
     if (!saved.ok) throw new Error(saved.message);

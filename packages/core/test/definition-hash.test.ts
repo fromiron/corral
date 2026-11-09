@@ -1,7 +1,6 @@
 import { CorralDefinition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
-import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
 import minimal from '../../contracts/test/fixtures/minimal.corral.json' with { type: 'json' };
 import { definitionHash } from '../src/index.ts';
 import researchTeamBefore from './fixtures/research-team.before-criteria-input.corral.json' with {
@@ -24,24 +23,21 @@ function reverseKeys(value: unknown): unknown {
 describe('definitionHash', () => {
   it('matches an independent JCS + SHA-256 implementation (Python json, sorted keys)', () => {
     expect(definitionHash(parse(minimal))).toBe(
-      'c88cafe442e7c85ce8ea54b627f728efbd96d8672009ca3ab6f7b1f9ba0150c1',
+      '709e5d78a5a5fe8f1e6d5c41b1385bfd6b9f589d808425a432cfcc1367793bc9',
     );
     // The example before its reviewer took the criteria input (#20), frozen.
     expect(definitionHash(parse(researchTeamBefore))).toBe(
-      'f205cf04c3656c2baede01ab6cbc2158830fa73a2a4a3e68f5f8f4eb515492b1',
+      'e791e6ee7d2f933ea17a78bbbec3ae96185da731b9c5b1fa5f7cb11b6e468d88',
     );
     expect(definitionHash(parse(researchTeam))).toBe(
-      '814abf228161a7189f51285354711d37342533caa465368f7df569932acfac4a',
+      '5f825805d5d5e8e3c754d5b7fc66d829a0195739c12cdee61e70de9f3032a8d0',
     );
   });
 
-  it('ignores key order and layout moves, but changes with the prompt', () => {
+  it('ignores key order, but changes with the prompt', () => {
     const definition = parse(researchTeam);
     const reordered = parse(reverseKeys(definition));
-    const layout = clone(researchLayout);
     const before = definitionHash(definition);
-    layout.nodes.research.x += 240;
-    layout.viewport.zoom = 1.25;
 
     expect(definitionHash(reordered)).toBe(before);
     expect(definitionHash(definition)).toBe(before);

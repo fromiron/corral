@@ -79,7 +79,6 @@ describe('admission gates', () => {
     const calls: string[] = [];
     const stages: AdmissionStage[] = [
       'model.request',
-      'model.admit',
       'tool.pre_boundary',
       'tool.authorize',
       'tool.execute',
@@ -97,7 +96,7 @@ describe('admission gates', () => {
     const { final } = await runLinear({ gates });
     expect(final.status).toBe('succeeded');
     // Two model requests, then write_artifact and submit_result.
-    const request = ['model.request#a', 'model.request#b', 'model.admit#a', 'model.admit#b'];
+    const request = ['model.request#a', 'model.request#b'];
     const tool = [
       'tool.pre_boundary#a',
       'tool.pre_boundary#b',
@@ -116,7 +115,6 @@ describe('admission gates', () => {
     ]);
     expect(Object.fromEntries(named)).toEqual({
       'model.request': ['no_progress@1'],
-      'model.admit': ['budget@1'],
       'tool.pre_boundary': ['question_open@1'],
       'tool.authorize': ['role_allowlist@1', 'limits@1'],
       'tool.execute': ['role_allowlist@1', 'limits@1'],
@@ -153,8 +151,7 @@ describe('admission gates', () => {
         throw new Error('bug in policy');
       },
     };
-    const { events, final } = await runLinear({ gates: withExtra('model.admit', broken) });
-    expect(events.some((e) => e.type === 'budget.reserved')).toBe(false);
+    const { events, final } = await runLinear({ gates: withExtra('model.request', broken) });
     expect(events.some((e) => e.type === 'model.request_prepared')).toBe(false);
     expect(final.status).toBe('failed');
     const [execution] = Object.values(final.executions);
@@ -187,7 +184,7 @@ describe('admission gates', () => {
         return { kind: 'allow' };
       },
     };
-    const { events, final } = await runLinear({ gates: withExtra('model.admit', meddling) });
+    const { events, final } = await runLinear({ gates: withExtra('model.request', meddling) });
     expect(final.status).toBe('failed');
     expect(Object.values(final.executions)[0]?.error).toContain('POLICY_ERROR');
     // The run only reached its end through committed events, never through the gate.

@@ -9,7 +9,7 @@ sequenceDiagram
     C->>DB: Commit directive.accepted
     C-->>UI: Receipt: queued
     A->>C: Prepare next model request
-    C->>DB: Snapshot + budget reservation + effect.admitted
+    C->>DB: Snapshot + effect.admitted
     C-->>A: Request permit + directive IDs
     A->>C: Dispatch observation
     C->>DB: Commit directive.dispatched

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 // Projects in the in-browser runtime. Corrals
 // live in this browser's storage; demo runs last until reload and follow their Corral here.
@@ -33,8 +34,7 @@ async function singleAgentRun(page: Page) {
     .click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page', exact: true }).click();
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(
@@ -46,9 +46,11 @@ async function singleAgentRun(page: Page) {
 
 test('a project keeps its Corrals and runs apart, and / returns to it', async ({ page }) => {
   await page.goto('/?delay=50');
-  await expect(page).toHaveURL(/\/projects\/default(\?.*)?$/);
+  // A cold dev server can take a while to serve the first page.
+  await expect(page).toHaveURL(/\/projects\/default(\?.*)?$/, { timeout: 20_000 });
   await expect(page.getByRole('heading', { level: 2, name: 'My project' })).toBeVisible();
-  await expect(switcher(page)).toHaveCount(0);
+  // The location's project item is the menu that changes projects, even with one project.
+  await expect(switcher(page)).toContainText('My project');
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(
     'My project',
   );

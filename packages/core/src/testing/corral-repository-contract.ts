@@ -1,15 +1,12 @@
-import { type CanvasLayout, CorralDefinition } from '@corral/contracts';
+import { CorralDefinition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
-import researchLayout from '../../../../examples/research-team.layout.json' with { type: 'json' };
 import { createTextAttachment } from '../attachments.ts';
 import { definitionHash } from '../definition-hash.ts';
 import { type CorralRepository, DEFAULT_PROJECT_ID } from '../repository/index.ts';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const team = () => CorralDefinition.parse(researchTeam);
-const layoutNodes = () => clone((researchLayout as unknown as CanvasLayout).nodes);
-const viewport = { x: 0, y: 0, zoom: 1 };
 
 /**
  * Behaviour every CorralRepository must share: the browser store and the
@@ -20,69 +17,78 @@ export function describeCorralRepositoryContract(
   makeRepository: () => CorralRepository,
 ) {
   describe(`CorralRepository contract: ${name}`, () => {
-    it('saving a layout move bumps only the layout revision', async () => {
+    it('saving an unchanged definition keeps its revision; a change makes a new one', async () => {
       const repo = makeRepository();
       const created = await repo.save({
         definition: team(),
-        layout: { nodes: layoutNodes(), viewport },
         expectedDefinitionRevision: null,
       });
       if (!created.ok) throw new Error(created.message);
-      expect(created.record).toMatchObject({ definitionRevision: 1, layoutRevision: 1 });
+      expect(created.record).toMatchObject({ definitionRevision: 1 });
       expect(created.record.corralId).toMatch(/^corral_/);
       expect(created.record.definition.id).toBe('corral_0001');
       expect(created.record.definitionHash).toBe(definitionHash(created.record.definition));
 
-      const moved = layoutNodes();
-      (moved.research as { x: number }).x += 200;
       const saved = created.record.definition;
-      const afterMove = await repo.save({
-        definition: saved,
-        layout: { nodes: moved, viewport },
-        expectedDefinitionRevision: 1,
-      });
-      if (!afterMove.ok) throw new Error(afterMove.message);
-      expect(afterMove.record).toMatchObject({ definitionRevision: 1, layoutRevision: 2 });
-      expect(afterMove.changed).toEqual({ definition: false, layout: true });
+      const again = await repo.save({ definition: clone(saved), expectedDefinitionRevision: 1 });
+      if (!again.ok) throw new Error(again.message);
+      expect(again.record).toMatchObject({ definitionRevision: 1 });
+      expect(again.changed).toEqual({ definition: false });
 
       const edited = clone(saved);
       (edited.roles[0] as { prompt: string }).prompt += ' Use primary sources only.';
       const afterEdit = await repo.save({
         definition: edited,
-        layout: { nodes: moved, viewport },
         expectedDefinitionRevision: 1,
       });
       if (!afterEdit.ok) throw new Error(afterEdit.message);
-      expect(afterEdit.record).toMatchObject({ definitionRevision: 2, layoutRevision: 2 });
+      expect(afterEdit.record).toMatchObject({ definitionRevision: 2 });
+      expect(afterEdit.changed).toEqual({ definition: true });
     });
 
     it('refuses a save based on an older definition revision (two tabs)', async () => {
       const repo = makeRepository();
       const created = await repo.save({
         definition: team(),
-        layout: { nodes: layoutNodes(), viewport },
         expectedDefinitionRevision: null,
       });
       if (!created.ok) throw new Error('create failed');
       const edited = { ...created.record.definition, name: 'Edited in tab A' };
       await repo.save({
         definition: edited,
-        layout: { nodes: layoutNodes(), viewport },
         expectedDefinitionRevision: 1,
       });
       const stale = await repo.save({
         definition: created.record.definition,
-        layout: { nodes: layoutNodes(), viewport },
         expectedDefinitionRevision: 1,
       });
       expect(stale).toMatchObject({ ok: false, error: 'revision_conflict' });
+    });
+
+    it('reads each saved definition revision, and nothing for one never saved', async () => {
+      const repo = makeRepository();
+      const created = await repo.save({
+        definition: team(),
+        expectedDefinitionRevision: null,
+      });
+      if (!created.ok) throw new Error(created.message);
+      const { corralId } = created.record;
+      const edited = { ...created.record.definition, name: 'Second revision' };
+      const second = await repo.save({
+        definition: edited,
+        expectedDefinitionRevision: 1,
+      });
+      if (!second.ok) throw new Error(second.message);
+      expect((await repo.getRevision(corralId, 1))?.name).toBe(team().name);
+      expect((await repo.getRevision(corralId, 2))?.name).toBe('Second revision');
+      expect(await repo.getRevision(corralId, 3)).toBeNull();
+      expect(await repo.getRevision('corral_missing', 1)).toBeNull();
     });
 
     it('lists, reads, duplicates under a new id, and removes', async () => {
       const repo = makeRepository();
       const created = await repo.save({
         definition: team(),
-        layout: { nodes: layoutNodes(), viewport },
         expectedDefinitionRevision: null,
       });
       if (!created.ok) throw new Error('create failed');
@@ -90,12 +96,7 @@ export function describeCorralRepositoryContract(
       if (!copy.ok) throw new Error(copy.message);
       expect(copy.record.corralId).not.toBe(created.record.corralId);
       expect(copy.record.definition.id).toBe(copy.record.corralId);
-      expect(copy.record.layout.corralId).toBe(copy.record.corralId);
-      expect(copy.record).toMatchObject({
-        name: 'Research copy',
-        definitionRevision: 1,
-        layoutRevision: 1,
-      });
+      expect(copy.record).toMatchObject({ name: 'Research copy', definitionRevision: 1 });
 
       expect((await repo.list()).map((c) => c.name).sort()).toEqual(
         ['Research copy', team().name].sort(),
@@ -117,7 +118,6 @@ export function describeCorralRepositoryContract(
       };
       const result = await repo.save({
         definition: empty,
-        layout: { nodes: {}, viewport },
         expectedDefinitionRevision: null,
       });
       expect(result.ok).toBe(true);
@@ -126,7 +126,6 @@ export function describeCorralRepositoryContract(
       const create = (repo: CorralRepository, projectId?: string) =>
         repo.save({
           definition: team(),
-          layout: { nodes: layoutNodes(), viewport },
           expectedDefinitionRevision: null,
           ...(projectId ? { projectId } : {}),
         });
@@ -173,7 +172,6 @@ export function describeCorralRepositoryContract(
         // A later save keeps the project.
         const saved = await repo.save({
           definition: { ...created.record.definition, name: 'Renamed' },
-          layout: { nodes: layoutNodes(), viewport },
           expectedDefinitionRevision: 1,
         });
         expect(saved.ok && saved.record.projectId).toBe(project.project.projectId);

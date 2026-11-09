@@ -656,6 +656,18 @@ DELETE FROM session_search_v1 WHERE substr(id,1,6)='event:';
 DELETE FROM session_search_state_v1 WHERE substr(id,1,4)='run:';
 `,
   },
+  {
+    name: '0039_drop_layouts',
+    sql: `
+-- The team editor lays teams out from their structure; saved node positions are gone.
+DROP TABLE IF EXISTS layouts;
+`,
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(corrals)').all() as { name: string }[];
+      if (columns.some((column) => column.name === 'layout_revision'))
+        db.exec('ALTER TABLE corrals DROP COLUMN layout_revision');
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

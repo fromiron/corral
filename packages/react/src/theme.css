@@ -2,8 +2,8 @@
 @import "./design-kit/tokens.css";
 
 :root,
-.light:not(.react-flow),
-.dark:not(.react-flow) {
+.light,
+.dark {
   /* Small secondary/status text and focus need stronger contrast on light surfaces. */
   --destructive: light-dark(#b91c1c, #fca5a5);
   --destructive-contrast: light-dark(#ffffff, #171717);

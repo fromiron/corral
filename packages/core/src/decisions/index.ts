@@ -32,7 +32,7 @@ export interface JudgmentConfig {
       policy?: 'medium' | 'judged';
       /** Provider ids, at most two (two = side-by-side comparison, plan v0.1 §11). */
       providers: readonly string[];
-      /** Judgment calls per run; default the run's model request limit, at most 100. */
+      /** Judgment calls per run; default and at most 100. */
       maxCalls?: number;
       /** External providers are refused unless the workspace opted in. */
       allowExternal?: boolean;
@@ -48,7 +48,7 @@ const EXCERPT_CHARS = 1_500;
 /** The settings a run starts with: fixed for the whole run (`run.started.decisions`). */
 export function resolveDecisionSettings(
   config: JudgmentConfig,
-  run: { mode: 'mock' | 'live'; maxModelCalls: number },
+  run: { mode: 'mock' | 'live' },
 ): RunDecisionSettings {
   const wanted = config.settings.reasoning_effort;
   const providers = wanted.providers.slice(0, 2).map((id): DecisionProviderSnapshot => {
@@ -79,7 +79,7 @@ export function resolveDecisionSettings(
     reasoning_effort: {
       mode: wanted.mode,
       providers,
-      maxCalls: Math.min(DECISION_HARD_CAP, wanted.maxCalls ?? run.maxModelCalls),
+      maxCalls: Math.min(DECISION_HARD_CAP, wanted.maxCalls ?? DECISION_HARD_CAP),
     },
   };
 }
@@ -202,7 +202,6 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
                 payload: {
                   limitKind: 'decision_calls',
                   used,
-                  reserved: 0,
                   max: settings.maxCalls,
                 },
               },
@@ -269,7 +268,7 @@ function judge(provider: DecisionProvider, question: EffortQuestion, context: Ob
           kind: 'decision',
           scope: subject.executionId,
           epoch: subject.attemptNo,
-          reservationId: null,
+          modelCallId: null,
         },
       },
     ]);
@@ -370,7 +369,7 @@ function judge(provider: DecisionProvider, question: EffortQuestion, context: Ob
 /** Timing facts of a judgment, from the run as committed right now. */
 export function requestTiming(projection: RunProjection, modelCallId: string) {
   const dispatched = Object.values(projection.effects).some(
-    (effect) => effect.reservationId === modelCallId && effect.dispatched,
+    (effect) => effect.modelCallId === modelCallId && effect.dispatched,
   );
   return {
     readyBeforeDispatch: !dispatched,

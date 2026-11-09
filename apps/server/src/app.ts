@@ -7,7 +7,6 @@ import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
 import {
   type AgentAdapter,
   AutoModelChoice,
-  CanvasLayout,
   CaptureCheckpoint,
   type Clock,
   CommandError,
@@ -297,13 +296,8 @@ const STATUS: Record<ErrorCode, number> = {
 
 const HEARTBEAT_MS = 15_000;
 
-const LayoutInput = z.strictObject({
-  nodes: CanvasLayout.shape.nodes,
-  viewport: CanvasLayout.shape.viewport,
-});
 const CreateCorral = z.strictObject({
   definition: CorralDefinitionDraft,
-  layout: LayoutInput,
   projectId: Identifier.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
@@ -387,7 +381,7 @@ const UpdateProject = z.strictObject({
   archived: z.boolean().optional(),
   expectedRevision: z.int().min(1),
 });
-const UpdateCorral = z.strictObject({ definition: CorralDefinitionDraft, layout: LayoutInput });
+const UpdateCorral = z.strictObject({ definition: CorralDefinitionDraft });
 
 /** `If-Match: 3` or `If-Match: "3"`: the definition revision the edit started from. */
 function ifMatchRevision(header: string | undefined): number | null {
@@ -450,7 +444,6 @@ async function createCorralServer(
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
-  await corrals.migrateExecutionPolicies();
   let registry: ModelRegistry | null = null;
   if (options.live) {
     assertOutsideWorkspace(options.live.configDir, workspace.root);
@@ -469,7 +462,6 @@ async function createCorralServer(
           : {}),
         endpoints,
         configRevision: workspace.configRevision,
-        maxOutputTokensPerCall: workspace.policy.maxOutputTokensPerCall,
       },
     );
     await registry.refreshStatus();
@@ -634,15 +626,8 @@ async function createCorralServer(
         return image.success ? image.data : null;
       },
       resolve: (id) => imageProfiles.resolve(id)?.profile ?? null,
-      generate: (owner, args, profile, cancellation, reservedCostUsd, referenceImages) =>
-        imageGeneration.generate(
-          owner,
-          args,
-          cancellation,
-          reservedCostUsd,
-          profile,
-          referenceImages,
-        ),
+      generate: (owner, args, profile, cancellation, referenceImages) =>
+        imageGeneration.generate(owner, args, cancellation, profile, referenceImages),
     },
     runtimeRecovery: {
       confirm: async () => {
@@ -674,7 +659,7 @@ async function createCorralServer(
   });
   registry?.configureRequests({
     store: modelAttempts,
-    onUsage: (intent) => coordinator.settleAutoRouteUsage(intent),
+    onUsage: (intent) => coordinator.recordAutoRouteUsage(intent),
     acquire: (signal) => coordinator.acquireAuxiliaryModelSlot(signal),
     adopt: (intent) => coordinator.adoptModelSlot(intent),
     now: () => new Date(clock.nowIso()),
@@ -913,6 +898,27 @@ async function createCorralServer(
     const record = await corrals.get(request.params.corralId);
     return record ?? fail(reply, 'TARGET_NOT_FOUND', 'no such Corral');
   });
+  app.get<{ Params: { corralId: string; revision: string } }>(
+    '/api/v1/corrals/:corralId/revisions/:revision',
+    async (request, reply) => {
+      const revision = Number(request.params.revision);
+      const definition = Number.isSafeInteger(revision)
+        ? await corrals.getRevision(request.params.corralId, revision)
+        : null;
+      return definition ?? fail(reply, 'TARGET_NOT_FOUND', 'no such Corral revision');
+    },
+  );
+  app.get<{ Params: { corralId: string; revision: string } }>(
+    '/api/v1/corrals/:corralId/revisions/:revision/stats',
+    async (request, reply) => {
+      const revision = Number(request.params.revision);
+      const definition = Number.isSafeInteger(revision)
+        ? await corrals.getRevision(request.params.corralId, revision)
+        : null;
+      if (!definition) return fail(reply, 'TARGET_NOT_FOUND', 'no such Corral revision');
+      return coordinator.runStats(request.params.corralId, revision);
+    },
+  );
   app.put<{ Params: { corralId: string } }>('/api/v1/corrals/:corralId', async (request, reply) => {
     const expectedDefinitionRevision = ifMatchRevision(request.headers['if-match']);
     if (expectedDefinitionRevision === null) {
@@ -988,8 +994,10 @@ async function createCorralServer(
   app.post('/api/v1/corrals/validate', async (request, reply) => {
     const body = parse(z.strictObject({ definition: z.unknown() }), request, reply);
     if (!body) return reply;
-    const compiled = compileDefinition(body.definition, {});
-    const runnable = compiled.ok ? planRun(compiled.definition) : null;
+    const resolveTeam = (corralId: string, revision: number) =>
+      corrals.getDefinition(corralId, revision) ?? undefined;
+    const compiled = compileDefinition(body.definition, { resolveTeam });
+    const runnable = compiled.ok ? planRun(compiled.definition, { resolveTeam }) : null;
     return {
       diagnostics: compiled.diagnostics,
       runnable: runnable?.ok ?? false,
@@ -3313,6 +3321,9 @@ async function createCorralServer(
       const known =
         projection &&
         (projection.artifacts[versionId] ||
+          projection.forkedFrom?.carried.some((copy) =>
+            copy.artifactVersionIds.includes(versionId),
+          ) ||
           coordinator
             .getRunSnapshot(runId)
             ?.definition.input.images?.some((image) => image.imageId === versionId) ||

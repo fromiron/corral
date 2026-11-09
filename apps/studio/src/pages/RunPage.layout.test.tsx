@@ -364,6 +364,7 @@ it('opens an exact execution detail only after the quick view action and returns
             loopNodeId: 'loop',
             no: 2,
             criteriaVersionId: 'criteria',
+            parentIterationId: null,
             outcome: null,
           },
         },
@@ -1042,13 +1043,8 @@ it('an inline run uses its snapshot definition without fetching an unsaved Corra
   });
 });
 
-it('a saved Corral uses the run snapshot without fetching the saved authoring layout', async () => {
-  const nodes = Object.fromEntries(
-    linearCorral(['worker']).nodes.map((node, i) => [node.id, { x: 10 + i, y: 20 + i }]),
-  );
-  const { repository, container } = await mount('auto_saved', {
-    layout: { nodes },
-  } as CorralRecord);
+it('a saved Corral uses the run snapshot without fetching the saved team', async () => {
+  const { repository, container } = await mount('auto_saved', {} as CorralRecord);
   await openGraph(container);
   expect(repository.get).not.toHaveBeenCalled();
   expect(
@@ -1340,7 +1336,7 @@ it('does not list a cancelled tool as a failed step or choose it as the failure 
       scope: 'worker',
       epoch: 1,
       dispatched: true,
-      reservationId: null,
+      modelCallId: null,
       status: 'settled',
       outcome: id === 'stopped' ? 'cancelled' : 'failed',
     };
@@ -1376,4 +1372,90 @@ it('does not list a cancelled tool as a failed step or choose it as the failure 
     ),
   );
   expect(destination).toBe('worker');
+});
+
+// docs/specs/features/fork-and-breakpoints.md: a step's run options in its quick view.
+it('starts a new run from a step of a finished run of a saved team', async () => {
+  const record = {
+    corralId: 'saved_team',
+    definition: linearCorral(['worker', 'reviewer'], 'saved_team'),
+    definitionRevision: 3,
+  } as CorralRecord;
+  const { container } = await mount('saved_team', record, {}, undefined, false, [
+    'worker',
+    'reviewer',
+  ]);
+  const transport = (fixture.services as { transport: Record<string, unknown> }).transport;
+  const startRun = vi.fn(async () => ({ runId: 'run_fork', receipt: {} }));
+  transport.startRun = startRun;
+  transport.listRuns = async () => [{ runId: 'run_layout', sessionId: 'session_fork' }];
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-reviewer"]')?.click(),
+  );
+  const fork = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent === 'Run again from here',
+  );
+  expect(fork).toBeDefined();
+  expect(container.textContent).not.toContain('Pause before this step');
+  await act(async () => fork?.click());
+  expect(startRun).toHaveBeenCalledWith(
+    expect.objectContaining({
+      corralId: 'saved_team',
+      definitionRevision: 3,
+      sessionId: 'session_fork',
+      forkFrom: { runId: 'run_layout', nodeId: 'reviewer' },
+    }),
+  );
+});
+
+it('offers no fork once a later run released the step results', async () => {
+  const { container, run } = await mount('saved_team', {} as CorralRecord);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        executions: {
+          exec_worker: { ...graphExecution('exec_worker', 'worker'), status: 'succeeded' },
+        },
+        executionOrder: ['exec_worker'],
+        nodeExecutions: { worker: ['exec_worker'] },
+        tasks: {
+          task_exec_worker: {
+            status: 'completed',
+            submittedArtifactVersionIds: ['artv_worker'],
+          } as never,
+        },
+        artifacts: {
+          artv_worker: { artifactVersionId: 'artv_worker', bodyAvailable: false } as never,
+        },
+      },
+    }),
+  );
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  expect(container.querySelector('[data-testid="node-preview"]')).not.toBeNull();
+  expect(container.textContent).not.toContain('Run again from here');
+});
+
+it('sets a breakpoint on a step of a live run', async () => {
+  const { container, run } = await mount('inline_team', null, {});
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  const sendCommand = vi.fn(async () => ({}));
+  await act(async () => run.setState({ sendCommand } as never));
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const toggle = [...container.querySelectorAll<HTMLElement>('[role="switch"]')].find((el) =>
+    el.closest('div')?.textContent?.includes('Pause before this step'),
+  );
+  expect(toggle).toBeDefined();
+  await act(async () => toggle?.click());
+  expect(sendCommand).toHaveBeenCalledWith({
+    type: 'set_breakpoints',
+    payload: { nodeIds: ['worker'] },
+  });
+  expect(container.textContent).not.toContain('Run again from here');
 });

@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 // The Results view on the in-browser demo
 // team. Demo runs live in the page's worker, so the Run page is reached through the app's link.
 
 test('a cancelled run keeps what it made as a partial result', async ({ page }) => {
   await page.goto('/demo?delay=150');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   // The decision waits for a person after the drafts and reviews are written.
   await expect(
     page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' }),

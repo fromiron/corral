@@ -3,25 +3,21 @@ import type { CorralRecord } from '@corral/core';
 import {
   ApprovalPanel,
   ArtifactViewer,
-  CorralCanvas,
   createRunSession,
-  EditorToolbar,
-  exportDocuments,
-  NodeInspector,
-  NodePalette,
+  exportDefinition,
   ReinsPanel,
   RunControls,
   type RunSessionStore,
   RunView,
   type SavedRevision,
   StudioStoresProvider,
+  TeamEditor,
   useSteerTarget,
   useStudioStores,
-  ValidationPanel,
 } from '@corral/react';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, KitBadge, Select } from '@corral/react/design-kit';
+import { Activity, Play, Redo2, Undo2 } from '@corral/react/icons';
 import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
-import { ReactFlowProvider } from '@xyflow/react';
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -37,17 +33,21 @@ import {
   type EditorWorkingCopy,
   editorWorkingCopy,
   ownsSaveShortcut,
+  saveEditorCopy,
 } from '../workbench/editorDraft.ts';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
 import { settingsInteractionBlocked, settingsOnlyTransition } from '../workbench/navigation.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
+import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
-import { TabRow } from '../workbench/TabRow.tsx';
+import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useRunMode } from '../workbench/useRunMode.ts';
+import { useRunStats } from '../workbench/useRunStats.ts';
+import { useSavedTeams } from '../workbench/useSavedTeams.ts';
 
 export function EditorPage() {
   const record = editorRoute.useLoaderData();
@@ -199,7 +199,7 @@ function Editor({
   workingCopy,
 }: {
   record: CorralRecord;
-  /** Extra controls for the toolbar (the demo's template picker). */
+  /** Extra controls for the header (the demo's template picker). */
   toolbar?: ReactNode;
   /** A guide shown above the run controls (the demo team's guide). */
   guide?: GuideSlot | undefined;
@@ -212,8 +212,9 @@ function Editor({
   workingCopy: EditorWorkingCopy;
 }) {
   const t = useTranslations('Editor');
-  const n = useTranslations('Navigation');
+  const c = useTranslations('TeamEditor');
   const router = useRouter();
+  const navigate = useNavigate();
   const services = useServices();
   const { editor, saved, saving, message } = useStore(workingCopy);
   const { repository, mode, live } = services;
@@ -228,24 +229,24 @@ function Editor({
   }, [services, record.projectId, record.corralId]);
   const profiles = useModelProfiles();
   const draft = useStore(editor, (s) => s.draft);
-  const selectedNodeId = useStore(editor, (state) => state.selectedNodeId);
-  const [inspector, setInspector] = useState<'design' | 'run'>(
-    startFrom || guide ? 'run' : 'design',
-  );
-  const [inspectorOpen, setInspectorOpen] = useState(true);
-  const inspectorId = useId();
-  const showDesign = useCallback(() => {
-    setInspector('design');
-    setInspectorOpen(true);
-  }, []);
-  useEffect(() => {
-    if (selectedNodeId) showDesign();
-  }, [selectedNodeId, showDesign]);
+  const canUndo = useStore(editor, (s) => s.canUndo);
+  const canRedo = useStore(editor, (s) => s.canRedo);
+  const teams = useSavedTeams(record, draft.definition);
+  const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
+  const [statsOn, setStatsOn] = useState(false);
+  const revision = saved.record.definitionRevision;
+  const runStats = useRunStats(services.transport, statsOn, record.corralId, revision);
+  const runId = useId();
   // Undo back to the saved draft returns the same object, so identity is the dirty check.
   const dirty = saving || draft !== saved.draft;
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const shell = useRef<HTMLDivElement>(null);
+  // The test run sits beside the editor while the editor keeps 640px next to its narrowest panel.
+  const body = useRef<HTMLDivElement>(null);
+  const roomBeside = useContainerAtLeast(body, 640 + 320);
+  const runBeside = runOpen && !inSession && roomBeside;
+  const runInPlace = runOpen && !inSession && !roomBeside;
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
@@ -264,46 +265,16 @@ function Editor({
 
   /** Saves the draft; resolves to the saved record, or null when saving failed. */
   const save = useCallback(async (): Promise<CorralRecord | null> => {
-    const { saved, saving } = workingCopy.getState();
-    if (saving) return null;
-    const current = editor.getState().draft;
-    if (current === saved.draft) {
-      workingCopy.setState({ message: { text: t('noChanges'), error: false } });
-      return saved.record;
-    }
-    workingCopy.setState({ saving: true });
-    try {
-      const result = await repository.save({
-        definition: current.definition,
-        layout: { nodes: current.layout, viewport: current.viewport },
-        expectedDefinitionRevision: saved.record.definitionRevision,
-      });
-      if (!result.ok) {
-        workingCopy.setState({ message: { text: result.message, error: true } });
-        return null;
-      }
-      workingCopy.setState({
-        saved: { record: result.record, draft: current },
-        message: {
-          text: t('savedResult', {
-            definition: String(result.changed.definition),
-            layout: String(result.changed.layout),
-          }),
-          error: false,
-        },
-      });
+    const result = await saveEditorCopy(workingCopy, repository, {
+      noChanges: t('noChanges'),
+      saved: (changed) => t('savedResult', { definition: String(changed.definition) }),
+    });
+    if (result?.wrote) {
       projectsChanged();
       await router.invalidate();
-      return result.record;
-    } catch (error) {
-      workingCopy.setState({
-        message: { text: error instanceof Error ? error.message : String(error), error: true },
-      });
-      return null;
-    } finally {
-      workingCopy.setState({ saving: false });
     }
-  }, [editor, repository, router, t, workingCopy]);
+    return result?.record ?? null;
+  }, [repository, router, t, workingCopy]);
 
   // The local server runs saved revisions only, so a run saves first.
   const beforeStart =
@@ -316,7 +287,7 @@ function Editor({
         }
       : undefined;
 
-  // The canvas is not focusable, so the last place pressed stands in when nothing has focus.
+  // The last place pressed stands in for focus when nothing has it.
   const pressed = useRef<Element | null>(null);
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -342,174 +313,174 @@ function Editor({
     };
   }, [save, inSession]);
 
-  const exportFiles = () => {
-    const files = exportDocuments(editor.getState().draft, saved.record.layoutRevision);
-    download(`${record.corralId}.corral.json`, files.definition);
-    download(`${record.corralId}.layout.json`, files.layout);
-  };
+  const exportFile = () =>
+    download(`${record.corralId}.corral.json`, exportDefinition(editor.getState().draft));
 
   return (
     <StudioStoresProvider editor={editor} session={session}>
-      <ReactFlowProvider>
-        <div ref={shell} className="editor-shell h-full">
+      <div
+        ref={shell}
+        className={`grid h-full min-h-0 ${fromSession ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}
+      >
+        {fromSession ? (
           <div
-            className={`editor-frame grid h-full ${fromSession ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}
+            data-testid="from-session"
+            className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/50 px-4 py-1.5 text-caption"
           >
-            {fromSession ? (
-              <div
-                data-testid="from-session"
-                className="flex flex-wrap items-center gap-2 border-b border-line bg-subtle/60 px-3 py-1.5 text-xs"
-              >
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: fromSession }}
-                  className="font-medium hover:underline"
-                >
-                  ← {t('backToSession')}
-                </Link>
-                <span className="text-muted-foreground">{t('appliesNextRun')}</span>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
-              <label className="flex items-center gap-2 text-sm">
-                <span className="sr-only">{t('name')}</span>
-                <Input
-                  value={draft.definition.name}
-                  onChange={(e) => editor.getState().setName(e.target.value)}
-                  onFocus={() => editor.getState().beginBatch()}
-                  onBlur={() => editor.getState().endBatch()}
-                  aria-label={t('name')}
-                  className="font-medium"
-                />
-              </label>
-              <span className="text-xs text-muted-foreground" data-testid="revisions">
-                {t('revisions', {
-                  definition: saved.record.definitionRevision,
-                  layout: saved.record.layoutRevision,
-                })}
-              </span>
-              <span
-                className={`text-xs ${dirty ? 'text-warning' : 'text-muted-foreground'}`}
-                aria-live="polite"
-              >
-                {dirty ? `● ${t('unsaved')}` : t('saved')}
-              </span>
-              <EditorToolbar />
-              {toolbar}
-              <Button
-                variant="tertiary"
-                size="compact"
-                aria-controls={inspectorId}
-                aria-expanded={inspectorOpen}
-                onClick={() => setInspectorOpen((open) => !open)}
-              >
-                {t(inspectorOpen ? 'hideTools' : 'showTools')}
-              </Button>
-              <div className="ml-auto flex items-center gap-2">
-                <MarkdownAgentImport
-                  editor={editor}
-                  profiles={profiles}
+            <Link
+              to="/sessions/$sessionId"
+              params={{ sessionId: fromSession }}
+              className="font-medium hover:underline"
+            >
+              ← {t('backToSession')}
+            </Link>
+            <span className="text-muted-foreground">{t('appliesNextRun')}</span>
+          </div>
+        ) : null}
+        <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border py-1.5 pr-3 pl-4">
+          <h1 className="min-w-0 truncate text-body font-semibold text-foreground">
+            {draft.definition.name}
+          </h1>
+          <span className="text-caption text-muted-foreground" data-testid="revisions">
+            {t('revisions', { definition: saved.record.definitionRevision })}
+          </span>
+          <span aria-live="polite">
+            <KitBadge size="compact" color={dirty ? 'amber' : 'gray'}>
+              {saving ? c('saving') : dirty ? c('unsaved') : c('saved')}
+            </KitBadge>
+          </span>
+          {message ? (
+            <p
+              role={message.error ? 'alert' : 'status'}
+              className={`min-w-0 truncate text-caption ${message.error ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              {message.text}
+            </p>
+          ) : null}
+          <span className="grow" />
+          {runStats.status === 'off' ? null : (
+            <span
+              role="status"
+              className={`text-caption ${runStats.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              {runStats.status === 'loading'
+                ? c('stats.loading')
+                : runStats.status === 'failed'
+                  ? c('stats.failed')
+                  : runStats.stats.runs.length
+                    ? c('stats.summary', { revision, count: runStats.stats.runs.length })
+                    : c('stats.empty', { revision })}
+            </span>
+          )}
+          <Button
+            variant="tertiary"
+            size="compact"
+            aria-pressed={statsOn}
+            onClick={() => setStatsOn((on) => !on)}
+          >
+            <Activity /> {c('stats.toggle')}
+          </Button>
+          {toolbar}
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            aria-label={c('undo')}
+            disabled={!canUndo}
+            onClick={() => editor.getState().undo()}
+          >
+            <Undo2 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            aria-label={c('redo')}
+            disabled={!canRedo}
+            onClick={() => editor.getState().redo()}
+          >
+            <Redo2 />
+          </Button>
+          <MarkdownAgentImport editor={editor} profiles={profiles} projectId={record.projectId} />
+          <Button type="button" onClick={exportFile} variant="tertiary" size="compact">
+            {t('export')}
+          </Button>
+          {inSession ? null : (
+            <Button
+              variant="tertiary"
+              size="compact"
+              aria-controls={runId}
+              aria-expanded={runOpen}
+              onClick={() => setRunOpen((open) => !open)}
+            >
+              <Play /> {c(runOpen ? 'hideRun' : 'testRun')}
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            size="compact"
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || !dirty}
+          >
+            {saving ? t('saving') : t('save')}
+          </Button>
+        </header>
+        <div
+          ref={body}
+          className={`grid min-h-0 ${runBeside ? 'grid-cols-[minmax(640px,1fr)_minmax(320px,400px)]' : 'grid-cols-1'}`}
+        >
+          {/* Too narrow for both, the test run takes the editor's place; the editor keeps its state. */}
+          <div className="grid min-h-0 grid-rows-[minmax(0,1fr)]" hidden={runInPlace}>
+            <TeamEditor
+              editor={editor}
+              profiles={profiles}
+              teams={teams.references}
+              resolveTeam={teams.resolve}
+              onOpenTeam={(corralId) =>
+                void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
+              }
+              runStats={
+                runStats.status === 'ready'
+                  ? { stats: runStats.stats, definition: saved.record.definition }
+                  : null
+              }
+              onOpenRun={(runId) => void navigate({ to: '/runs/$runId', params: { runId } })}
+              loopSettings={(node) => (
+                <LoopRecipeSettings
+                  key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
+                  node={node}
                   projectId={record.projectId}
                 />
-                <Button type="button" onClick={exportFiles} variant="tertiary" size="compact">
-                  {t('export')}
-                </Button>
-                <Button
-                  variant="primary"
-                  size="compact"
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={saving || !dirty}
-                >
-                  {saving ? t('saving') : t('save')}
-                </Button>
-              </div>
-              {message ? (
-                <p
-                  role={message.error ? 'alert' : 'status'}
-                  className={`w-full text-xs ${message.error ? 'text-danger' : 'text-muted-foreground'}`}
-                >
-                  {message.text}
-                </p>
-              ) : null}
-            </div>
-            <main className="editor-layout grid min-h-0" data-tools-open={inspectorOpen}>
-              <aside className="editor-palette flex min-h-0 flex-col gap-6 overflow-auto border-r border-line p-3">
-                <NodePalette />
-                <ValidationPanel />
-              </aside>
-              <div className="editor-canvas relative min-h-0 min-w-0">
-                <CorralCanvas onNodeSelect={showDesign} />
-                <CanvasNotice />
-              </div>
-              <aside
-                id={inspectorId}
-                hidden={!inspectorOpen}
-                className="editor-inspector flex min-h-0 min-w-0 flex-col overflow-auto border-l border-line"
-              >
-                {!inSession ? (
-                  <div className="sticky top-0 z-10 border-b border-line bg-surface p-2">
-                    <TabRow
-                      id="team-tools"
-                      label={n('teamTools')}
-                      values={['design', 'run']}
-                      current={inspector}
-                      text={(value) => n(value === 'design' ? 'design' : 'testRun')}
-                      onChoose={setInspector}
-                    />
-                  </div>
-                ) : null}
-                <section
-                  id="team-tools-design-panel"
-                  role={inSession ? 'region' : 'tabpanel'}
-                  aria-label={inSession ? n('design') : undefined}
-                  aria-labelledby={inSession ? undefined : 'team-tools-design-tab'}
-                  hidden={!inSession && inspector !== 'design'}
-                  className="p-3"
-                >
-                  <NodeInspector
-                    profiles={profiles}
-                    loopSettings={(node) => (
-                      <LoopRecipeSettings
-                        key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
-                        node={node}
-                        projectId={record.projectId}
-                      />
-                    )}
-                    roleSettings={(role, nodeId) => (
-                      <HarnessRoleSettings
-                        key={nodeId}
-                        role={role}
-                        nodeId={nodeId}
-                        projectId={record.projectId}
-                      />
-                    )}
-                  />
-                </section>
-                {inSession ? null : (
-                  <div
-                    id="team-tools-run-panel"
-                    role="tabpanel"
-                    aria-labelledby="team-tools-run-tab"
-                    hidden={inspector !== 'run'}
-                    className="p-3"
-                  >
-                    <RunSide
-                      startDisabled={saving}
-                      projectId={record.projectId}
-                      onStarted={() => setInspector('run')}
-                      beforeStart={beforeStart}
-                      liveAvailable={live}
-                      guide={guide}
-                      initialStartFrom={startFrom}
-                    />
-                  </div>
-                )}
-              </aside>
-            </main>
+              )}
+              roleSettings={(role, nodeId) => (
+                <HarnessRoleSettings
+                  key={nodeId}
+                  role={role}
+                  nodeId={nodeId}
+                  projectId={record.projectId}
+                />
+              )}
+            />
           </div>
+          {inSession ? null : (
+            <aside
+              id={runId}
+              aria-label={c('testRun')}
+              hidden={!runOpen}
+              className={`min-h-0 overflow-auto p-3 ${runBeside ? 'border-l border-border' : ''}`}
+            >
+              <RunSide
+                startDisabled={saving}
+                projectId={record.projectId}
+                onStarted={() => setRunOpen(true)}
+                beforeStart={beforeStart}
+                liveAvailable={live}
+                guide={guide}
+                initialStartFrom={startFrom}
+              />
+            </aside>
+          )}
         </div>
-      </ReactFlowProvider>
+      </div>
     </StudioStoresProvider>
   );
 }
@@ -538,6 +509,7 @@ function RunSide({
   const runMode = useRunMode(projectId, 'corral', definition.id);
   const profiles = useModelProfiles();
   const [roleOverrides, setRoleOverrides] = useState<RoleRunOverrides>({});
+  const [breakpoints, setBreakpoints] = useState<string[]>([]);
   const roles = definition.roles.map((role) => ({
     roleId: role.id,
     name: role.name,
@@ -583,6 +555,7 @@ function RunSide({
           value={harnessOverrides}
           onChange={(value) => setSelection({ key, value })}
         />
+        <RunBreakpoints nodes={definition.nodes} value={breakpoints} onChange={setBreakpoints} />
       </details>
       {runMode.error ? <p role="alert">{t('modeSaveFailed')}</p> : null}
       <RunControls
@@ -591,12 +564,14 @@ function RunSide({
         onModeChange={runMode.select}
         harnessOverrides={harnessOverrides}
         roleOverrides={roleOverrides}
+        breakpoints={breakpoints.filter((id) => definition.nodes.some((node) => node.id === id))}
         onStarted={() => {
           setSetupOpen(false);
           onStarted();
           setChosen(null);
           setSelection(null);
           setRoleOverrides({});
+          setBreakpoints([]);
           setViewing(null);
           setStartFrom(null);
         }}
@@ -633,29 +608,5 @@ function RunSide({
       ) : null}
       <ReinsPanel session={session} target={target} />
     </section>
-  );
-}
-
-function CanvasNotice() {
-  const t = useTranslations('Canvas');
-  const { editor } = useStudioStores();
-  const notice = useStore(editor, (s) => s.notice);
-  const nodes = useStore(editor, (s) => s.draft.definition.nodes);
-  const labelOf = (id: string) => nodes.find((n) => n.id === id)?.label ?? id;
-  const text =
-    notice?.kind === 'rejected'
-      ? t(`rejected.${notice.reason}`)
-      : notice?.kind === 'connected'
-        ? t('connected', { source: labelOf(notice.source), target: labelOf(notice.target) })
-        : '';
-  return (
-    <p
-      role="status"
-      aria-live="polite"
-      data-testid="canvas-notice"
-      className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-raised px-3 py-1 text-xs shadow empty:hidden"
-    >
-      {text}
-    </p>
   );
 }

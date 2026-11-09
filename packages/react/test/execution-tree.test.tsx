@@ -218,7 +218,7 @@ function loopSession(rounds = 100) {
   const definition = linearCorral(['lead', 'writer', 'reviewer', 'outside']);
   definition.nodes = definition.nodes.map((node) =>
     node.type === 'agent' && ['writer', 'reviewer'].includes(node.id)
-      ? { ...node, loopId: 'review_loop' }
+      ? { ...node, parentId: 'review_loop' }
       : node,
   );
   definition.nodes.push({ id: 'review_loop', type: 'loop', label: 'Revision', maxIterations: 10 });
@@ -236,6 +236,7 @@ function loopSession(rounds = 100) {
       loopNodeId: 'review_loop',
       no,
       criteriaVersionId: 'criteria',
+      parentIterationId: null,
       outcome: no === rounds ? null : 'revise',
     };
     const writerId = `exec_write_${no}`;
@@ -357,6 +358,7 @@ describe('bounded loop execution tree', () => {
               loopNodeId: 'second_loop',
               no: 1,
               criteriaVersionId: 'criteria',
+              parentIterationId: null,
               outcome: 'revise',
             },
             second_2: {
@@ -364,6 +366,7 @@ describe('bounded loop execution tree', () => {
               loopNodeId: 'second_loop',
               no: 2,
               criteriaVersionId: 'criteria',
+              parentIterationId: null,
               outcome: null,
             },
           },

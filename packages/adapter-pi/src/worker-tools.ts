@@ -6,11 +6,11 @@ import {
   PreviewAppArgs,
   PreviewFileArgs,
   RunCommandArgs,
-  taskBriefForModel,
   UserInputRequest,
   WorkPlanUpdate,
 } from '@corral/contracts';
-import { type AssistantMessage, Type } from '@earendil-works/pi-ai';
+import type { AssistantMessage } from '@earendil-works/pi-ai';
+import { Type } from 'typebox';
 import { z } from 'zod';
 import type { StartFrame, WorkerTool } from './protocol.ts';
 
@@ -334,7 +334,7 @@ export function userPrompt(start: PromptStart): string {
     criteriaVersionId: start.criteriaVersionId,
     targetArtifactVersionId:
       start.role.outputContract === 'review' ? target?.artifactVersionId : undefined,
-    taskBrief: taskBriefForModel(start.taskBrief),
+    taskBrief: start.taskBrief,
   });
   return (
     (start.resumeContext && !start.meeting

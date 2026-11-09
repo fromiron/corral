@@ -3,12 +3,18 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
-import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
+import {
+  canReadArtifactBody,
+  compileDefinition,
+  forkSteps,
+  pendingInteractions,
+  type RunProjection,
+  stepResultIds,
+} from '@corral/core';
 import {
   AgentStatusText,
   ApprovalPanel,
   ArtifactViewer,
-  BudgetInspector,
   EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
@@ -28,6 +34,7 @@ import {
   StatusBadge,
   TaskBoard,
   Timeline,
+  UsageInspector,
   useRunDisplay,
   useRunWorkPlan,
   useSteerTarget,
@@ -41,6 +48,7 @@ import {
   Button,
   formatClock,
   MetaDot,
+  Switch,
   TabItem,
   TabPanel,
   Tabs,
@@ -54,7 +62,6 @@ import {
   Fragment,
   type ReactElement,
   type ReactNode,
-  type RefObject,
   useEffect,
   useId,
   useMemo,
@@ -71,11 +78,13 @@ import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunPlanStrip } from '../workbench/RunActivity.tsx';
+import { breakpointSteps } from '../workbench/RunBreakpoints.tsx';
 import { ExecutionContext, RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { RunViews } from '../workbench/RunViews.tsx';
 import { runFlowChecks } from '../workbench/runFlowChecks.ts';
 import { toolMarks } from '../workbench/toolMarks.ts';
+import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
@@ -480,42 +489,49 @@ function RunWorkspace({
                         onSelectNode={(id) => setSelectedNodeId(id)}
                         renderNodePreview={(nodeId, { close, trigger: origin }) =>
                           projection ? (
-                            <NodeExecutions
-                              projection={projection}
-                              definition={definition}
-                              nodeId={nodeId}
-                              selectedExecutionId={execution ?? null}
-                              preview
-                              onChoose={(id) => {
-                                close();
-                                chooseExecution(id, origin);
-                              }}
-                              onOpenArtifact={(id) => {
-                                close();
-                                openArtifact(id, origin);
-                              }}
-                              onSteer={(id) => {
-                                close();
-                                openSteering(id, origin);
-                              }}
-                              onShowAll={() => {
-                                close();
-                                rememberTrigger(origin);
-                                setListedNodeId(nodeId);
-                                setSelectedNodeId(nodeId);
-                                setPanel('selection');
-                                setDetail('overview');
-                                setSearch({
-                                  execution: undefined,
-                                  artifact: undefined,
-                                  result: undefined,
-                                  view: undefined,
-                                });
-                                requestAnimationFrame(() =>
-                                  detailPane.current?.focus({ preventScroll: true }),
-                                );
-                              }}
-                            />
+                            <>
+                              <NodeExecutions
+                                projection={projection}
+                                definition={definition}
+                                nodeId={nodeId}
+                                selectedExecutionId={execution ?? null}
+                                preview
+                                onChoose={(id) => {
+                                  close();
+                                  chooseExecution(id, origin);
+                                }}
+                                onOpenArtifact={(id) => {
+                                  close();
+                                  openArtifact(id, origin);
+                                }}
+                                onSteer={(id) => {
+                                  close();
+                                  openSteering(id, origin);
+                                }}
+                                onShowAll={() => {
+                                  close();
+                                  rememberTrigger(origin);
+                                  setListedNodeId(nodeId);
+                                  setSelectedNodeId(nodeId);
+                                  setPanel('selection');
+                                  setDetail('overview');
+                                  setSearch({
+                                    execution: undefined,
+                                    artifact: undefined,
+                                    result: undefined,
+                                    view: undefined,
+                                  });
+                                  requestAnimationFrame(() =>
+                                    detailPane.current?.focus({ preventScroll: true }),
+                                  );
+                                }}
+                              />
+                              <NodeRunActions
+                                session={session}
+                                definition={definition}
+                                nodeId={nodeId}
+                              />
+                            </>
                           ) : null
                         }
                       />
@@ -780,7 +796,7 @@ function RunWorkspace({
                     <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
-                    <BudgetInspector session={session} prices={prices} />
+                    <UsageInspector session={session} prices={prices} />
                     <EffortJudgments session={session} />
                   </TabPanel>
                 </Tabs>
@@ -823,21 +839,6 @@ function RunInstructions({
 }) {
   const target = useSteerTarget(session, executionId);
   return <ReinsPanel session={session} target={target} compact />;
-}
-
-/** Whether the element's own width is at least `min` px (the Run container, not the window). */
-function useContainerAtLeast(ref: RefObject<HTMLElement | null>, min: number) {
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setWide(el.clientWidth >= min);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref, min]);
-  return wide;
 }
 
 /**
@@ -977,6 +978,21 @@ function RunFacts({
           {t('startedFromLink', {
             name: projection.startedFrom.artifactVersionId,
             runId: projection.startedFrom.runId,
+          })}
+        </Link>
+      </span>
+    ) : null,
+    projection.forkedFrom ? (
+      <span key="forked">
+        {t('forkedFrom')}:{' '}
+        <Link
+          to="/runs/$runId"
+          params={{ runId: projection.forkedFrom.runId }}
+          className="underline"
+        >
+          {t('forkedFromLink', {
+            step: labelOf(projection.forkedFrom.nodeId),
+            runId: projection.forkedFrom.runId,
           })}
         </Link>
       </span>
@@ -1145,6 +1161,110 @@ function ExecutionIdentity({
     t('attempt', { no: execution.attemptNo }),
   ];
   return <span title={executionId}>{parts.join(' · ')}</span>;
+}
+
+/**
+ * One step's run options: its breakpoint while the run goes on, and once the run has ended a new
+ * run from this step with the team as it is saved now.
+ */
+function NodeRunActions({
+  session,
+  definition,
+  nodeId,
+}: {
+  session: RunSessionStore;
+  definition: CorralDefinition;
+  nodeId: string;
+}) {
+  const t = useTranslations('RunPage');
+  const { repository, transport, mode } = useServices();
+  const navigate = useNavigate();
+  const projection = useStore(session, (s) => s.projection);
+  const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
+  const plan = useMemo(() => {
+    const compiled = compileDefinition(definition);
+    return compiled.ok ? compiled.plan : null;
+  }, [definition]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!projection) return null;
+  const ended = TERMINAL_RUN_STATUSES.has(projection.status);
+  const breakable =
+    !ended &&
+    projection.status !== 'cancelling' &&
+    breakpointSteps(definition.nodes).some((node) => node.id === nodeId);
+  const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
+  // Until a later run of the session succeeds, the run keeps the step results a fork copies.
+  const forkable =
+    ended &&
+    savedTeam === true &&
+    !!corralId &&
+    !!plan &&
+    !('error' in forkSteps(definition, plan, nodeId)) &&
+    stepResultIds(projection).every((id) => projection.artifacts[id]?.bodyAvailable !== false);
+  if (!breakable && !forkable) return null;
+  const breakpoints = projection.breakpoints;
+  const fork = async () => {
+    if (!corralId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const [record, runs] = await Promise.all([repository.get(corralId), transport.listRuns()]);
+      if (!record) throw new Error(t('unsavedTeam'));
+      const sessionId = runs.find((run) => run.runId === projection.runId)?.sessionId;
+      const base = {
+        schemaVersion: '0.1' as const,
+        commandId: `cmd_${globalThis.crypto.randomUUID()}`,
+        mode: projection.mode ?? 'mock',
+        ...(sessionId ? { sessionId } : {}),
+        forkFrom: { runId: projection.runId, nodeId },
+      };
+      const { runId, receipt } = await transport.startRun(
+        mode === 'browser'
+          ? { ...base, definition: record.definition }
+          : { ...base, corralId, definitionRevision: record.definitionRevision },
+      );
+      if (!runId) throw new Error(receipt.error?.message ?? receipt.status);
+      void navigate({ to: '/runs/$runId', params: { runId } });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1 border-t border-line pt-2 text-caption">
+      {breakable ? (
+        <Switch
+          size="compact"
+          label={t('pauseBefore')}
+          checked={breakpoints.includes(nodeId)}
+          onToggle={() =>
+            void session.getState().sendCommand({
+              type: 'set_breakpoints',
+              payload: {
+                nodeIds: breakpoints.includes(nodeId)
+                  ? breakpoints.filter((id) => id !== nodeId)
+                  : [...breakpoints, nodeId],
+              },
+            })
+          }
+        />
+      ) : null}
+      {forkable ? (
+        <Button
+          variant="secondary"
+          size="compact"
+          className="justify-start"
+          disabled={busy}
+          onClick={() => void fork()}
+        >
+          {t('forkHere')}
+        </Button>
+      ) : null}
+      {error ? <p role="alert">{t('forkFailed', { message: error })}</p> : null}
+    </div>
+  );
 }
 
 /** Exact executions of one observed agent, either a quick list or its complete inspector. */

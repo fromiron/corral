@@ -346,8 +346,8 @@ export function MarkdownAgentImport({
             ) : null}
             <p className="text-xs text-muted-foreground">
               {text(
-                'Returning a result requires write_artifact and submit_result from the parent. Existing delegation depth, spawn and budget limits remain in force.',
-                '결과 반환에는 부모에게 허용된 write_artifact와 submit_result가 필요합니다. 기존 위임 깊이·호출 횟수·예산 한도를 따릅니다.',
+                'Returning a result requires write_artifact and submit_result from the parent. Existing delegation depth and spawn limits remain in force.',
+                '결과 반환에는 부모에게 허용된 write_artifact와 submit_result가 필요합니다. 기존 위임 깊이·하위 실행 한도를 따릅니다.',
               )}
             </p>
             <p className="text-xs text-muted-foreground">

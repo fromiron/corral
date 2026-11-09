@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { fauxAssistantMessage, fauxToolCall, Type } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type SpikeOptions, spikeSession } from './sdk-session.ts';
 

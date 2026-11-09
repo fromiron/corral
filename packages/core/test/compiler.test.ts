@@ -58,17 +58,29 @@ describe('compileDefinition: valid definition', () => {
     ]);
     expect(plan.loops.review_loop).toEqual({
       nodeId: 'review_loop',
+      parentId: null,
       maxIterations: 2,
-      bodyEntryNodeId: 'write',
+      stallDetection: false,
+      body: [{ nodeId: 'write', port: 'in' }],
       members: ['write', 'review', 'review_decision'],
-      next: { nodeId: 'approval', port: 'in' },
+      next: [{ nodeId: 'approval', port: 'in' }],
+      exhausted: [],
+    });
+    expect(plan.boxes).toEqual({
+      review_loop: {
+        nodeId: 'review_loop',
+        kind: 'loop',
+        parentId: null,
+        members: ['write', 'review', 'review_decision'],
+      },
     });
     expect(plan.steps.review_decision).toMatchObject({
       kind: 'decision',
       mode: 'review',
+      loopId: 'review_loop',
       branches: {
-        pass: { nodeId: 'review_loop', port: 'exit' },
-        revise: { nodeId: 'review_loop', port: 'repeat' },
+        pass: [{ nodeId: 'review_loop', port: 'exit' }],
+        revise: [{ nodeId: 'review_loop', port: 'repeat' }],
       },
     });
     expect(plan.callables).toEqual({
@@ -81,6 +93,8 @@ describe('compileDefinition: valid definition', () => {
       callableAgents: 2,
       decisions: 2,
       loops: 1,
+      teams: 0,
+      joins: 0,
       outputs: 1,
       maxStaticDepth: 2,
     });
@@ -101,7 +115,7 @@ describe('compileDefinition: rejected definitions name the location', () => {
       [
         'edge into a loop member from outside the loop',
         (d) => (d.controlEdges[0] = { ...d.controlEdges[0], target: 'write', targetPort: 'in' }),
-        { code: 'LOOP_BOUNDARY', edgeId: 'e1' },
+        { code: 'BOX_BOUNDARY', edgeId: 'e1' },
       ],
       [
         'unknown role',
@@ -119,7 +133,7 @@ describe('compileDefinition: rejected definitions name the location', () => {
         { code: 'INVALID_PORT', edgeId: 'e1' },
       ],
       [
-        'two next steps from one port',
+        'parallel branches meeting without a join',
         (d) =>
           d.controlEdges.push({
             id: 'e9',
@@ -128,7 +142,7 @@ describe('compileDefinition: rejected definitions name the location', () => {
             target: 'output',
             targetPort: 'in',
           }),
-        { code: 'DUPLICATE_PORT_EDGE', edgeId: 'e9' },
+        { code: 'PARALLEL_MERGE_NEEDS_JOIN', nodeId: 'output', edgeId: 'e9' },
       ],
       [
         'callable agent in the control flow',
@@ -160,7 +174,7 @@ describe('compileDefinition: rejected definitions name the location', () => {
       [
         'review decision without a revise branch',
         (d) => (d.controlEdges = d.controlEdges.filter((e: any) => e.sourcePort !== 'revise')),
-        { code: 'DECISION_BRANCH_MISSING', nodeId: 'review_decision' },
+        { code: 'DECISION_BRANCH_MISSING', nodeId: 'review_decision', severity: 'warning' },
       ],
       [
         'input from a step that runs later',
@@ -186,9 +200,28 @@ describe('compileDefinition: rejected definitions name the location', () => {
         { code: 'BINDING_SOURCE', nodeId: 'approval' },
       ],
       [
-        'second loop',
-        (d) => d.nodes.push({ id: 'loop_two', type: 'loop', label: 'Two', maxIterations: 2 }),
-        { code: 'TOO_MANY_LOOPS', nodeId: 'loop_two' },
+        'loop with nothing in its body',
+        (d) => {
+          d.nodes.push({ id: 'loop_two', type: 'loop', label: 'Two', maxIterations: 2 });
+          d.controlEdges = d.controlEdges.filter((e: any) => e.id !== 'e8');
+          d.controlEdges.push(
+            {
+              id: 'e8',
+              source: 'approval',
+              sourcePort: 'approve',
+              target: 'loop_two',
+              targetPort: 'enter',
+            },
+            {
+              id: 'e9',
+              source: 'loop_two',
+              sourcePort: 'next',
+              target: 'output',
+              targetPort: 'in',
+            },
+          );
+        },
+        { code: 'LOOP_NO_BODY', nodeId: 'loop_two' },
       ],
       [
         'loop without a repeat edge',
@@ -205,7 +238,7 @@ describe('compileDefinition: rejected definitions name the location', () => {
             targetPort: 'exit',
           });
         },
-        { code: 'LOOP_STRUCTURE', nodeId: 'review_loop' },
+        { code: 'LOOP_NO_REPEAT', nodeId: 'review_loop' },
       ],
       [
         'delegation deeper than the limit',
@@ -297,7 +330,7 @@ describe('compileDefinition: unfinished drafts', () => {
     const doc = team();
     doc.nodes = [doc.nodes.find((n: any) => n.id === 'review_decision')];
     doc.nodes[0].inputBindings = [];
-    delete doc.nodes[0].loopId;
+    delete doc.nodes[0].parentId;
     doc.controlEdges = [];
     doc.entryNodeId = '';
     const diagnostics = diagnosticsOf(doc);

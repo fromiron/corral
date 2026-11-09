@@ -234,9 +234,7 @@ describe('starting an auto run', () => {
     expect(result.autoRoute?.inputHash).toMatch(/^[0-9a-f]{64}$/);
     const started = await startedEvent(s, result.runId ?? '');
     expect(started?.type === 'run.started' && started.payload.autoRoute).toEqual(result.autoRoute);
-    expect(started?.type === 'run.started' && started.payload.limits.maxModelCalls).toBe(
-      DEFAULT_LIMITS.maxModelCalls,
-    );
+    expect(started?.type === 'run.started' && started.payload.limits).toEqual(DEFAULT_LIMITS);
     expect(s.coordinator.getRunSnapshot(result.runId ?? '')?.definition.roles).toHaveLength(3);
 
     // Without a start model, the local rule chooses and no model is called.

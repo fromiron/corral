@@ -1,4 +1,5 @@
 import { linearCorral } from '@corral/testkit';
+import { startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ replyDelayMs: 1000 });
@@ -27,8 +28,7 @@ test('a lost command response recovers its receipt without submitting another di
     }
     await route.continue();
   });
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   const input = page.getByLabel('Instruction', { exact: true });
   await input.fill('Recover this instruction exactly once.');
   await input.press('Enter');

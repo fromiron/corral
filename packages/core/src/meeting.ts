@@ -22,6 +22,7 @@ import { recordMeetingMinutes, SECRETARY_MINUTES_INSTRUCTIONS } from './meeting-
 import { formatMeetingEvidence } from './meeting-evidence.ts';
 import type { CorralRepository, SessionResult, WorkSession } from './repository/index.ts';
 import { type RuntimeTransport, waitForProjection } from './transport.ts';
+import { usageTotals } from './usage.ts';
 
 // Chat messages ask for read-only replies through the Coordinator. Persisted
 // batch IDs remain stable for cancellation, replay and references from existing minutes.
@@ -474,11 +475,11 @@ export class MeetingService {
         text: null,
       };
     }
-    const { budget } = projection;
+    const usage = usageTotals(projection);
     base.usage = {
-      modelCalls: budget.modelCalls,
-      outputTokens: budget.spent,
-      unknown: budget.unknownOutstanding > 0,
+      modelCalls: usage.requests,
+      outputTokens: usage.outputTokens,
+      unknown: usage.unknown + usage.inFlight > 0,
     };
     if (!TERMINAL_RUN_STATUSES.has(projection.status))
       return { ...base, status: 'running', text: null };

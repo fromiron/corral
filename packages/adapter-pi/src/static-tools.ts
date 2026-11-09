@@ -5,7 +5,7 @@ import {
   LspQuery,
   ToolDescriptor,
 } from '@corral/contracts';
-import { Type } from '@earendil-works/pi-ai';
+import { Type } from 'typebox';
 import { z } from 'zod';
 import catalog from './pi-tool-schemas.json' with { type: 'json' };
 import { WorkerTool } from './protocol.ts';

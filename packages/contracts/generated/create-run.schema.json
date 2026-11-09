@@ -964,6 +964,32 @@
         },
         "additionalProperties": false
       }
+    },
+    "forkFrom": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        }
+      },
+      "required": [
+        "runId",
+        "nodeId"
+      ],
+      "additionalProperties": false
+    },
+    "breakpoints": {
+      "maxItems": 200,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+      }
     }
   },
   "required": [

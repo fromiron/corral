@@ -571,9 +571,6 @@ describe('meeting messages', () => {
     }
     const first = (await f.meetings.view(f.sessionId))!.rounds[0]!;
     expect(first.answers.map((item) => item.status)).toEqual(['answered', 'answered', 'answered']);
-    expect((await f.transport.getSnapshot(first.answers[0]!.runId!)).projection.usageLimits).toBe(
-      'none',
-    );
   });
 
   it('shuffles each message once and keeps the saved order on replay and reopen', async () => {

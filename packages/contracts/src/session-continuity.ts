@@ -97,7 +97,6 @@ export const ContinuedConversation = z.strictObject({
 });
 export type ContinuedConversation = z.infer<typeof ContinuedConversation>;
 export interface MessageBranchPreview {
-  usageLimits?: 'none';
   hash: string;
   sourceRunId: string;
   artifactVersionId: string | null;

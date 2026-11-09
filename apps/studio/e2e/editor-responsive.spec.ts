@@ -1,16 +1,19 @@
 import { expect, test } from '@playwright/test';
+import { editorSettings, teamCanvas, teamNode } from './workbench.ts';
 
-test('a narrow editor opens on the whole team and its tools can be collapsed without losing edits', async ({
+test('a narrow editor opens on the whole team, and a rename in its settings saves', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 768, height: 900 });
   await page.goto('/demo?delay=150');
-  const canvas = page.getByRole('application', { name: 'Corral canvas' });
-  await expect(canvas.locator('.react-flow__node')).toHaveCount(9, { timeout: 20_000 });
+  // The demo opens its guided test run; the editor alone is the narrow layout under test.
+  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  const canvas = page.locator('[data-team-canvas]');
+  await expect(canvas.locator('[data-node]')).toHaveCount(9, { timeout: 20_000 });
   await expect
     .poll(async () => {
       const bounds = await canvas.boundingBox();
-      const nodes = await canvas.locator('.react-flow__node').all();
+      const nodes = await canvas.locator('[data-node]').all();
       if (!bounds) return false;
       for (const node of nodes) {
         const box = await node.boundingBox();
@@ -28,44 +31,27 @@ test('a narrow editor opens on the whole team and its tools can be collapsed wit
     .toBe(true);
   const save = page.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByRole('textbox', { name: 'Team name', exact: true }).fill('Narrow team');
+  await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  const settings = page.getByRole('complementary', { name: 'Settings' });
+  await settings.getByRole('textbox', { name: 'Name', exact: true }).fill('Narrow team');
   await expect(save).toBeEnabled();
-  const previous = await canvas.boundingBox();
-  const framing = await canvas.locator('.react-flow__viewport').getAttribute('style');
-  await page.getByRole('button', { name: 'Hide team tools' }).focus();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('.editor-inspector')).toBeHidden();
-  await expect
-    .poll(async () => (await canvas.boundingBox())?.width ?? 0)
-    .toBeGreaterThan(previous?.width ?? 0);
-  await expect(page.getByRole('button', { name: 'Show team tools' })).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect(canvas.locator('.react-flow__viewport')).toHaveAttribute('style', framing ?? '');
-  await expect(page.getByRole('textbox', { name: 'Team name', exact: true })).toHaveValue(
-    'Narrow team',
-  );
+  await settings.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(settings).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Narrow team', level: 1 })).toBeVisible();
   await save.click();
   await expect(save).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath('editor-768.png') });
 });
 
-test('compact palette and active test-run controls remain within the inspector at 768px', async ({
-  page,
-}) => {
+test('test-run approvals stay inside the run panel at 768px', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 900 });
   await page.goto('/demo?delay=150');
-  for (const kind of ['Agent', 'Decision', 'Loop', 'Output'])
-    await expect(page.getByRole('button', { name: `Add ${kind}`, exact: true })).toBeInViewport();
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  await panel.getByRole('button', { name: 'Run', exact: true }).click();
   const approval = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(approval).toBeVisible({ timeout: 20_000 });
   await expect
-    .poll(async () =>
-      page
-        .locator('.editor-inspector')
-        .evaluate((panel) => panel.scrollWidth <= panel.clientWidth + 1),
-    )
+    .poll(async () => panel.evaluate((aside) => aside.scrollWidth <= aside.clientWidth + 1))
     .toBe(true);
   const continueButton = approval.getByRole('button', { name: 'Continue with this version' });
   await continueButton.scrollIntoViewIfNeeded();
@@ -77,23 +63,76 @@ test('compact palette and active test-run controls remain within the inspector a
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
 });
 
-test('port names mask crossing links in both themes', async ({ page }, testInfo) => {
+test("at 768px the test run takes the editor's place and gives it back as it was", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 768, height: 900 });
   await page.goto('/demo?delay=150');
-  const canvas = page.getByRole('application', { name: 'Corral canvas' });
-  const delegate = canvas
-    .locator('.react-flow__node[data-id="research"] > span')
-    .filter({ hasText: /^delegate$/ });
-  await expect(delegate).toBeVisible();
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  const canvas = teamCanvas(page);
+  const palette = page.getByRole('toolbar', { name: 'Steps' });
+  const settings = editorSettings(page);
+  const name = settings.getByRole('textbox', { name: 'Name', exact: true }).first();
+  // The demo opens its guided test run, which has the editor's whole width here.
+  await expect(panel).toBeVisible({ timeout: 20_000 });
+  await expect(canvas).toBeHidden();
+  await expect(palette).toBeHidden();
+  expect((await panel.boundingBox())?.width).toBeGreaterThan(700);
+  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  await teamNode(page, 'write').click();
+  await expect(name).toHaveValue('Writer');
+  await page.getByRole('button', { name: 'Test run', exact: true }).click();
+  await expect(panel).toBeVisible();
+  await expect(canvas).toBeHidden();
+  await expect(palette).toBeHidden();
+  await expect(settings).toBeHidden();
+  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  await expect(panel).toBeHidden();
+  await expect(name).toHaveValue('Writer');
+  await expect(teamNode(page, 'write')).toBeInViewport();
+});
+
+test('a wide editor keeps the test run beside the canvas', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/demo?delay=150');
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  const canvas = teamCanvas(page);
+  await expect(panel).toBeVisible({ timeout: 20_000 });
+  await expect(canvas).toBeVisible();
+  const [left, right] = [await canvas.boundingBox(), await panel.boundingBox()];
+  expect(left && right && left.x + left.width <= right.x + 1).toBe(true);
+  expect(left?.width).toBeGreaterThanOrEqual(640 - 272);
+});
+
+test('call links are dashed and named in both themes', async ({ page }, testInfo) => {
+  await page.goto('/demo?delay=150');
+  const canvas = page.locator('[data-team-canvas]');
+  const delegates = canvas.locator('[data-edge]').filter({ hasText: /^delegates$/ });
+  // A cold dev server under parallel workers can take a while to serve the first page.
+  await expect(delegates).toHaveCount(2, { timeout: 20_000 });
+  await expect(canvas.locator('[data-edge]').filter({ hasText: /^asks$/ })).toHaveCount(1);
+  const link = delegates.first();
+  await expect(link.locator('path[stroke-dasharray]')).toHaveCount(1);
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+    // The name is drawn in a visible colour that differs from the canvas behind it.
     await expect
       .poll(() =>
-        delegate.evaluate((label) => {
-          const background = getComputedStyle(label).backgroundColor;
-          return background !== 'transparent' && background !== 'rgba(0, 0, 0, 0)';
+        link.evaluate((group) => {
+          const label = group.querySelector('text');
+          const pane = group.closest('[data-team-canvas]');
+          if (!label || !pane) return false;
+          const fill = getComputedStyle(label).fill;
+          let surface: Element | null = pane;
+          let background = 'rgba(0, 0, 0, 0)';
+          while (surface && background === 'rgba(0, 0, 0, 0)') {
+            background = getComputedStyle(surface).backgroundColor;
+            surface = surface.parentElement;
+          }
+          return fill !== 'none' && fill !== background;
         }),
       )
       .toBe(true);
-    await canvas.screenshot({ path: testInfo.outputPath(`port-label-${colorScheme}.png`) });
+    await canvas.screenshot({ path: testInfo.outputPath(`call-links-${colorScheme}.png`) });
   }
 });

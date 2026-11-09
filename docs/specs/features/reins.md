@@ -61,7 +61,7 @@ patch의 `applied`(정책 commit, `patch.committed`)와 미래 실행이 실제�
 2. 이미 admit된 요청은 Abort가 닿을 때까지 살아 있을 수 있다.
 3. 모든 소유 후손과 도구와 대기가 정리된 뒤 `cancel.confirmed`를 기록하고 `cancelled`를 확정한다.
 4. timeout 후 강제 종료했다면 `forced=true`를 기록한다. 종료를 확인하지 못하면 `termination_unconfirmed` 실패로 표시한다.
-5. 종료 뒤 늦게 온 결과와 usage는 `observation.late`와 정산 기록으로만 남기고 상태를 되살리지 않는다.
+5. 종료 뒤 늦게 온 결과와 usage는 `observation.late`와 원래 요청의 사용량 기록으로만 남기고 상태를 되살리지 않는다.
 
 ## 5. 수용 시나리오와 테스트
 

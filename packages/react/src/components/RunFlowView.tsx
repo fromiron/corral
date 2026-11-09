@@ -534,7 +534,9 @@ export function DecisionDetail({
       ? t(`reason.${decision.reasonCode}`)
       : decision.reasonCode;
   const rule =
-    node?.type === 'decision' ? t(`question.${node.rule}`) : (node?.label ?? decision.nodeId);
+    node?.type === 'decision' && 'rule' in node
+      ? t(`question.${node.rule}`)
+      : (node?.label ?? decision.nodeId);
   return (
     <AgentCard className="grid gap-4 p-4" data-testid="decision-detail">
       <DecisionTree

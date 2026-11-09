@@ -13,7 +13,6 @@ export {
 export * from './artifact-retention.ts';
 export * from './attachments.ts';
 export * from './auto-team.ts';
-export * from './budget.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';
 export * from './config.ts';
@@ -42,6 +41,7 @@ export {
 } from './decisions/index.ts';
 export { definitionHash } from './definition-hash.ts';
 export * from './evaluation.ts';
+export * from './fork.ts';
 export * from './fuzzy.ts';
 export * from './history.ts';
 export * from './interactions.ts';
@@ -75,9 +75,11 @@ export { fixedReasoning, reasoningPolicyOf } from './reasoning.ts';
 export * from './repository/index.ts';
 export { reviewCriteriaHash } from './review-recipe.ts';
 export * from './run-plan.ts';
+export * from './run-stats.ts';
 export * from './runner.ts';
 export * from './session-runs.ts';
 export * from './store/run-store.ts';
 export * from './team-draft.ts';
 export { toolDescriptorHash, toolPermissionPlan, validToolPermissionPlan } from './tool-policy.ts';
 export * from './transport.ts';
+export * from './usage.ts';

@@ -1,5 +1,6 @@
 // Fixtures adapted from PI-Desktop 1a812ed fixed-tool-declarations.test.ts and session-affinity.test.ts (LGPL-3.0-only).
-import { type Model, normalizeContext, Type } from '@earendil-works/pi-ai';
+import { type Model, normalizeContext } from '@earendil-works/pi-ai';
+import { Type } from 'typebox';
 import { expect, it } from 'vitest';
 import {
   toolDeclarationPolicy,

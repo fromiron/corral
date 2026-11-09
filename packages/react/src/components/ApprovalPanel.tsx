@@ -8,7 +8,7 @@ import {
   RunCommandArgs,
   ToolPermissionPlan,
 } from '@corral/contracts';
-import { validToolPermissionPlan } from '@corral/core';
+import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -27,6 +27,12 @@ import type { RunSessionStore } from '../run/session.ts';
 import { InteractionPanel } from './InteractionPanel.tsx';
 import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
+
+/** A Loop that stopped for a stall is asked about in its own words. */
+const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
+  approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
+    ? `loop_${approval.loopStop}`
+    : approval.kind;
 
 /**
  * Decisions waiting for the person: each names the exact versions and the
@@ -58,6 +64,7 @@ export function ApprovalPanel({
   const headingId = useId();
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
+  const nodes = useStore(session, (s) => s.definition?.nodes);
   const approvals = useMemo(
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
     [all],
@@ -127,10 +134,17 @@ export function ApprovalPanel({
     );
   const label = (id: string) =>
     artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
-  const decide = async (approvalId: string, decision: 'approve' | 'reject') => {
+  /** What waits; a breakpoint names the step it holds. */
+  const kindText = (approval: ApprovalView) =>
+    t(`kind.${copyKey(approval)}`, {
+      step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
+    });
+  const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
     setBusy(true);
     try {
-      const receipt = await session.getState().resolveApproval(approvalId, decision);
+      const receipt = routeId
+        ? await session.getState().resolveApproval(approvalId, decision, routeId)
+        : await session.getState().resolveApproval(approvalId, decision);
       setRefused(receipt.error ? receipt : null);
     } catch {
       // The session preserves the unconfirmed receipt; approval stays pending.
@@ -141,61 +155,86 @@ export function ApprovalPanel({
 
   // Buttons are the only way to decide: the card has no Enter/Escape shortcut. As in the kit's
   // permission card, the decline sits left of the primary action.
-  const decisionButtons = (approval: (typeof approvals)[number]) => (
-    <>
-      <Button
-        variant="tertiary"
-        size="compact"
-        disabled={busy}
-        onClick={() => void decide(approval.approvalId, 'reject')}
-      >
-        {approval.tool
-          ? t(
-              approval.tool.purpose === 'tool'
-                ? 'rejectTool'
-                : approval.tool.purpose === 'lsp'
-                  ? 'rejectLsp'
-                  : 'rejectCheck',
-            )
-          : t(`rejectAs.${approval.kind}`)}
-      </Button>
-      <Button
-        size="compact"
-        disabled={
-          busy ||
-          !!(
-            approval.tool &&
-            !(approval.tool.purpose === 'tool'
-              ? toolPlans[approval.tool.bodyRef]
-              : checkPlans[approval.tool.bodyRef])
-          )
-        }
-        title={
-          approval.tool
+  const decisionButtons = (approval: (typeof approvals)[number]) =>
+    approval.kind === 'route' ? (
+      // A router that could not choose: each connected route is its own answer.
+      <>
+        <Button
+          variant="tertiary"
+          size="compact"
+          disabled={busy}
+          onClick={() => void decide(approval.approvalId, 'reject')}
+        >
+          {t('rejectAs.route')}
+        </Button>
+        {(approval.routes ?? []).map((route) => (
+          <Button
+            key={route.id}
+            variant="secondary"
+            size="compact"
+            disabled={busy}
+            title={t('then.route')}
+            onClick={() => void decide(approval.approvalId, 'approve', route.id)}
+          >
+            {route.label}
+          </Button>
+        ))}
+      </>
+    ) : (
+      <>
+        <Button
+          variant="tertiary"
+          size="compact"
+          disabled={busy}
+          onClick={() => void decide(approval.approvalId, 'reject')}
+        >
+          {approval.tool
             ? t(
                 approval.tool.purpose === 'tool'
-                  ? 'toolOnce'
+                  ? 'rejectTool'
                   : approval.tool.purpose === 'lsp'
-                    ? 'lspOnce'
-                    : 'checkOnce',
+                    ? 'rejectLsp'
+                    : 'rejectCheck',
               )
-            : t(`then.${approval.kind}`)
-        }
-        onClick={() => void decide(approval.approvalId, 'approve')}
-      >
-        {approval.tool
-          ? t(
-              approval.tool.purpose === 'tool'
-                ? 'approveTool'
-                : approval.tool.purpose === 'lsp'
-                  ? 'approveLsp'
-                  : 'approveCheck',
+            : t(`rejectAs.${copyKey(approval)}`)}
+        </Button>
+        <Button
+          size="compact"
+          disabled={
+            busy ||
+            !!(
+              approval.tool &&
+              !(approval.tool.purpose === 'tool'
+                ? toolPlans[approval.tool.bodyRef]
+                : checkPlans[approval.tool.bodyRef])
             )
-          : t(`approveAs.${approval.kind}`)}
-      </Button>
-      {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
-    </>
-  );
+          }
+          title={
+            approval.tool
+              ? t(
+                  approval.tool.purpose === 'tool'
+                    ? 'toolOnce'
+                    : approval.tool.purpose === 'lsp'
+                      ? 'lspOnce'
+                      : 'checkOnce',
+                )
+              : t(`then.${copyKey(approval)}`)
+          }
+          onClick={() => void decide(approval.approvalId, 'approve')}
+        >
+          {approval.tool
+            ? t(
+                approval.tool.purpose === 'tool'
+                  ? 'approveTool'
+                  : approval.tool.purpose === 'lsp'
+                    ? 'approveLsp'
+                    : 'approveCheck',
+              )
+            : t(`approveAs.${copyKey(approval)}`)}
+        </Button>
+        {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
+      </>
+    );
 
   return (
     <>
@@ -218,7 +257,7 @@ export function ApprovalPanel({
           >
             <AgentStatusIcon status="done" size={12} />
             {t('done', {
-              step: t(`kind.${approval.kind}`),
+              step: kindText(approval),
               subject: label(approval.subjectVersionIds[0] ?? ''),
             })}
           </p>
@@ -253,7 +292,7 @@ export function ApprovalPanel({
                             ? 'lspHeading'
                             : 'checkHeading',
                       )
-                    : t(`kind.${approval.kind}`)}
+                    : kindText(approval)}
                 </p>
                 {approval.tool && !compact ? (
                   <span className="truncate text-muted-foreground">
@@ -315,7 +354,7 @@ export function ApprovalPanel({
                 </div>
               ) : null}
               {compact || approval.tool ? null : (
-                <p className="text-muted-foreground">{t(`explain.${approval.kind}`)}</p>
+                <p className="text-muted-foreground">{t(`explain.${copyKey(approval)}`)}</p>
               )}
               {approval.tool ? null : (
                 <div className="flex flex-wrap items-center gap-1">

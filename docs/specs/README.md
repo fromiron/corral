@@ -9,7 +9,7 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | 작업 | 문서 |
 |---|---|
 | 제품 범위·기본 흐름·비협상 항목 | [product.md](product.md), [constitution.md](constitution.md) |
-| 제품·그래프·Reins·예산·보안 상세 | [product-contract.md](product-contract.md) |
+| 제품·Reins·사용량·보안 상세 | [product-contract.md](product-contract.md) |
 | 상태 소유·실행·취소·파일 효과 | [architecture.md](architecture.md), [execution-and-safety.md](execution-and-safety.md), [technical-design.md](technical-design.md) |
 | 프로젝트·세션·컴포저·편집기·Git·터미널 | [workbench.md](workbench.md) |
 | 채팅 위젯·현황 카드·Todo | [chat-widgets-contract.md](chat-widgets-contract.md) |
@@ -19,7 +19,8 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | 관리형 LLM 요청·컨텍스트·캐시·정산 | [llm-runtime.md](llm-runtime.md) |
 | HTTP·이벤트·스키마 | [api.md](api.md), [api-contract.md](api-contract.md) |
 | 화면·코드 용어 | [glossary.md](glossary.md) |
-| 기능별 수용 기준 | [features/](features/): [canvas](features/canvas.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [로컬 AI](features/local-intelligence.md), [판정 API](features/decision-apis.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
+| 팀 그래프의 노드·포트·상자·병렬·컴파일 규칙 | [features/team-graph.md](features/team-graph.md) |
+| 기능별 수용 기준 | [features/](features/): [팀 편집기](features/canvas.md), [팀 그래프](features/team-graph.md), [포크와 중단점](features/fork-and-breakpoints.md), [실행 통계](features/run-stats.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [로컬 AI](features/local-intelligence.md), [판정 API](features/decision-apis.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
 | 디자인 토큰·공용 컴포넌트 | [DESIGN.md](../../DESIGN.md) |
 | 모델 연결·출시·평가 사용법 | [guides/](../guides/) |
 

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 // The Run page on the in-browser demo team. Demo runs live in the page's worker,
 // so these tests reach the Run page through the app's own link instead of reloading.
@@ -16,8 +17,7 @@ const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
 
 async function finishedTeamRun(page: Page) {
   await page.goto('/demo?delay=150');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await approve(page, 'Your decision');
   await approve(page, 'Final output');
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
@@ -102,16 +102,9 @@ test('the Run page shows the graph with execution counts, and a node leads to it
     .locator(`li[data-execution-id="${executionId}"]`)
     .getByRole('button', { name: 'Details', exact: true })
     .click();
-  const openReins = side.getByRole('button', { name: 'Reins', exact: true });
-  await openReins.click();
-  const reins = monitor.getByTestId('run-instructions');
-  await expect(reins).toBeVisible();
-  await expect(reins).toContainText('Writer');
-  await expect(reins).toContainText('This execution has finished.');
-  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
-  await expect(side).toBeHidden();
-  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await expect(openReins).toBeFocused();
+  // A finished execution takes no new instructions; what it was sent is in its conversation.
+  await expect(side.getByRole('heading', { name: 'Writer', exact: true })).toBeVisible();
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
   await monitor.getByRole('tab', { name: 'Work flow', exact: true }).click();
   // The work flow card of the chosen execution is marked as the current one.
   const activity = page.getByTestId('run-work-flow');

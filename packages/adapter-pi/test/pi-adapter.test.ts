@@ -60,9 +60,7 @@ async function liveRun(
 describe('Pi adapter under the Coordinator', () => {
   it('runs a live step: the model writes and submits through Corral tools', async () => {
     const { transport, credentialCalls } = liveRuntime(writeThenSubmit('Final answer.'));
-    const { runId, events } = await liveRun(transport, (d) => {
-      d.limits = { ...d.limits, maxModelCalls: 2 };
-    });
+    const { runId, events } = await liveRun(transport);
     const final = await waitForProjection(transport, runId, settled);
     expect(final.status).toBe('succeeded');
     expect(Object.values(final.executions).map((e) => e.status)).toEqual(['succeeded']);
@@ -758,5 +756,5 @@ it('Core recovers a provider overflow once through managed compaction', async ()
   expect(
     events.filter((e) => e.type === 'model.request_recorded').map((e) => e.payload.purpose),
   ).toEqual(['turn', 'compaction', 'retry', 'turn']);
-  expect(final.budget.modelCalls).toBe(4);
+  expect(Object.keys(final.modelCalls)).toHaveLength(4);
 });

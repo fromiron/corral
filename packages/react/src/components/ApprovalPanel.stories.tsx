@@ -94,3 +94,48 @@ export const ButtonsOnly: Story = {
 export const Compact: Story = {
   args: { compact: true },
 };
+
+const routeApproval: Approval = {
+  approvalId: 'approval_route',
+  kind: 'route',
+  subjectVersionIds: ['report_v2'],
+  criteriaVersionId: null,
+  status: 'pending',
+  routes: [
+    { id: 'fix', label: 'Fix it' },
+    { id: 'ship', label: 'Ship it' },
+  ],
+};
+const routed = fn();
+
+/** A router that could not choose: each connected route is its own button. */
+export const RouteChoice: Story = {
+  args: { session: store([routeApproval], routed) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('Choose a route')).toBeVisible();
+    fireEvent.click(canvas.getByRole('button', { name: 'Ship it' }));
+    await expect(routed).toHaveBeenCalledWith('approval_route', 'approve', 'ship');
+  },
+};
+
+const checkVerdictApproval: Approval = {
+  approvalId: 'approval_checks',
+  kind: 'check',
+  subjectVersionIds: ['report_v2'],
+  criteriaVersionId: null,
+  status: 'pending',
+};
+const rerun = fn();
+
+/** A check step whose checks gave no verdict: run them again or stop. */
+export const NoCheckVerdict: Story = {
+  args: { session: store([checkVerdictApproval], rerun) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('Checks gave no verdict')).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Stop here' })).toBeEnabled();
+    fireEvent.click(canvas.getByRole('button', { name: 'Run checks again' }));
+    await expect(rerun).toHaveBeenCalledWith('approval_checks', 'approve');
+  },
+};

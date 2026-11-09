@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 // The Run page on a phone-width screen: one primary area at a time, nothing off-screen.
 
@@ -9,8 +10,7 @@ const graph = (page: import('@playwright/test').Page) =>
 
 async function finishedRun(page: import('@playwright/test').Page) {
   await page.goto('/demo?template=starter&delay=100');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
@@ -41,18 +41,8 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   await expect(side).toBeVisible();
   await expect(activity).toBeHidden();
   await expect(graph(page)).toBeHidden();
-  const openReins = side.getByRole('button', { name: 'Reins', exact: true });
-  await openReins.click();
-  const reins = monitor.getByTestId('run-instructions');
-  await expect(reins).toBeVisible();
-  await expect(reins).toContainText('This execution has finished.');
-  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
-  await expect(side).toBeHidden();
-  await expect(flow).toBeHidden();
-
-  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await expect(side).toBeVisible();
-  await expect(openReins).toBeFocused();
+  // A finished execution takes no new instructions.
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
   await side.getByRole('button', { name: 'Close details', exact: true }).click();
   await expect(side).toBeHidden();
   await expect(selected).toBeFocused();

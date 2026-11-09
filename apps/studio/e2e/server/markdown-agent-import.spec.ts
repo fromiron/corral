@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { openTestRun, teamCanvas } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, compatibleEndpoint: true });
@@ -18,12 +19,9 @@ test('reviewed Markdown agent import survives save/reload and is one undoable ed
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Can change files/ }).check();
+  // The agent is still selected, so the output is placed after it and connected.
   await page.getByRole('button', { name: 'Add Output', exact: true }).click();
-  await page
-    .locator('.react-flow__node[data-id="agent_1"] .react-flow__handle[data-handleid="out"]')
-    .dragTo(
-      page.locator('.react-flow__node[data-id="output_1"] .react-flow__handle[data-handleid="in"]'),
-    );
+  await expect(teamCanvas(page).locator('[data-edge]')).toHaveCount(1);
   await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import a callable agent' });
   await dialog.getByLabel('Markdown source', { exact: true }).fill(`---
@@ -44,14 +42,20 @@ Read the supplied code and report the evidence.`);
   await page.screenshot({ path: testInfo.outputPath('markdown-import-preview.png') });
   await add.click();
   await expect(dialog).not.toBeVisible();
-  await expect(page.locator('.react-flow__node').filter({ hasText: 'explorer' })).toHaveCount(1);
+  await expect(teamCanvas(page).locator('[data-node]').filter({ hasText: 'explorer' })).toHaveCount(
+    1,
+  );
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(page.locator('.react-flow__node').filter({ hasText: 'explorer' })).toHaveCount(0);
+  await expect(teamCanvas(page).locator('[data-node]').filter({ hasText: 'explorer' })).toHaveCount(
+    0,
+  );
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.locator('.react-flow__node').filter({ hasText: 'explorer' })).toHaveCount(1);
+  await expect(teamCanvas(page).locator('[data-node]').filter({ hasText: 'explorer' })).toHaveCount(
+    1,
+  );
   const path = new URL(page.url()).pathname
     .replace('/edit', '')
     .replace('/corrals/', '/api/v1/corrals/');
@@ -78,7 +82,7 @@ Read the supplied code and report the evidence.`);
   ).toBeFocused();
   // Existing generic simulated agent follows the imported graph through Coordinator tools.
   // This verifies delegation/result orchestration, not a real model's decision quality.
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
   await choose(page, 'Agents', 'Simulated (no model or extension calls)');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20000 });
@@ -203,7 +207,7 @@ Read the current file before applying a bounded edit.`);
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await page.reload();
   const path = new URL(page.url()).pathname
     .replace('/edit', '')
@@ -273,7 +277,7 @@ Use only the command requested by the parent.`);
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await page.reload();
   const path = new URL(page.url()).pathname
     .replace('/edit', '')

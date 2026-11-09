@@ -6,6 +6,7 @@ import {
   Coordinator,
   InProcessTransport,
   parseWorkspaceConfig,
+  usageTotals,
   waitForProjection,
 } from '@corral/core';
 import {
@@ -63,14 +64,6 @@ it.skipIf(process.env.CORRAL_HIVE_LIVE !== '1')(
     };
     definition.roles[0]!.modelProfile = profile.id;
     definition.roles[0]!.reasoning = { mode: 'fixed', level: 'high' };
-    definition.limits = {
-      ...definition.limits,
-      maxModelCalls: 3,
-      maxOutputTokensPerCall: 4096,
-      maxOutputTokens: 12288,
-      runDeadlineMs: 150000,
-      modelTimeoutMs: 120000,
-    };
     const candidate = candidateHash();
     const started = coordinator.startRun({
       schemaVersion: '0.1',
@@ -111,9 +104,7 @@ it.skipIf(process.env.CORRAL_HIVE_LIVE !== '1')(
           usage: call.usage,
           certainty: call.certainty,
         })),
-        modelCalls: final.budget.modelCalls,
-        outputTokens: final.budget.spent,
-        unknownOutstanding: final.budget.unknownOutstanding,
+        usage: usageTotals(final),
         identityMatches: output.includes(profile.model) && output.includes(profile.provider),
         markerMatches: output.includes(marker),
       };
@@ -125,7 +116,6 @@ it.skipIf(process.env.CORRAL_HIVE_LIVE !== '1')(
       console.log(JSON.stringify(report));
       expect(final.status).toBe('succeeded');
       expect(calls.length).toBeGreaterThan(0);
-      expect(final.budget.modelCalls).toBeLessThanOrEqual(3);
       expect(
         calls.every(
           (call) => call.reasoningWire?.value === 'high' && call.certainty === 'reported',

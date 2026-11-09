@@ -185,7 +185,7 @@
             "id": "write_1",
             "type": "agent",
             "label": "Writer \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "roleId": "writer_1",
             "invocation": "scheduled",
             "inputBindings": [
@@ -210,7 +210,7 @@
             "id": "review_1",
             "type": "agent",
             "label": "Reviewer \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "roleId": "reviewer_1",
             "invocation": "scheduled",
             "inputBindings": [
@@ -224,7 +224,7 @@
             "id": "review_decision_1",
             "type": "decision",
             "label": "Review decision \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "mode": "review",
             "rule": "review_verdict",
             "inputBindings": [
@@ -235,7 +235,7 @@
             "id": "synthesize_1",
             "type": "agent",
             "label": "Synthesize \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "roleId": "synthesizer_1",
             "invocation": "scheduled",
             "inputBindings": [
@@ -271,7 +271,7 @@
             "id": "write_2",
             "type": "agent",
             "label": "Writer \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "roleId": "writer_2",
             "invocation": "scheduled",
             "inputBindings": [
@@ -296,7 +296,7 @@
             "id": "review_2",
             "type": "agent",
             "label": "Reviewer \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "roleId": "reviewer_2",
             "invocation": "scheduled",
             "inputBindings": [
@@ -310,7 +310,7 @@
             "id": "review_decision_2",
             "type": "decision",
             "label": "Review decision \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "mode": "review",
             "rule": "review_verdict",
             "inputBindings": [
@@ -321,7 +321,7 @@
             "id": "synthesize_2",
             "type": "agent",
             "label": "Synthesize \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "roleId": "synthesizer_2",
             "invocation": "scheduled",
             "inputBindings": [
@@ -8555,7 +8555,7 @@
             "id": "write_1",
             "type": "agent",
             "label": "Writer \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "roleId": "writer_1",
             "invocation": "scheduled",
             "inputBindings": [
@@ -8580,7 +8580,7 @@
             "id": "review_1",
             "type": "agent",
             "label": "Reviewer \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "roleId": "reviewer_1",
             "invocation": "scheduled",
             "inputBindings": [
@@ -8594,7 +8594,7 @@
             "id": "review_decision_1",
             "type": "decision",
             "label": "Review decision \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "mode": "review",
             "rule": "review_verdict",
             "inputBindings": [
@@ -8605,7 +8605,7 @@
             "id": "synthesize_1",
             "type": "agent",
             "label": "Synthesize \u00b7 1",
-            "loopId": "review_loop_1",
+            "parentId": "review_loop_1",
             "roleId": "synthesizer_1",
             "invocation": "scheduled",
             "inputBindings": [
@@ -8641,7 +8641,7 @@
             "id": "write_2",
             "type": "agent",
             "label": "Writer \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "roleId": "writer_2",
             "invocation": "scheduled",
             "inputBindings": [
@@ -8666,7 +8666,7 @@
             "id": "review_2",
             "type": "agent",
             "label": "Reviewer \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "roleId": "reviewer_2",
             "invocation": "scheduled",
             "inputBindings": [
@@ -8680,7 +8680,7 @@
             "id": "review_decision_2",
             "type": "decision",
             "label": "Review decision \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "mode": "review",
             "rule": "review_verdict",
             "inputBindings": [
@@ -8691,7 +8691,7 @@
             "id": "synthesize_2",
             "type": "agent",
             "label": "Synthesize \u00b7 2",
-            "loopId": "review_loop_2",
+            "parentId": "review_loop_2",
             "roleId": "synthesizer_2",
             "invocation": "scheduled",
             "inputBindings": [

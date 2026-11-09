@@ -14,8 +14,8 @@ import {
 import { render, screen } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it } from 'vitest';
-import { BudgetInspector } from '../src/components/BudgetInspector.tsx';
 import { EventText, RunReason } from '../src/components/RunText.tsx';
+import { UsageInspector } from '../src/components/UsageInspector.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { decisionRunStatus } from '../src/run/selectors.ts';
 import { projectionWith, researchTeamDraft, sessionStore } from '../src/stories/fixtures.tsx';
@@ -115,28 +115,7 @@ describe('run status reasons (UX-A4)', () => {
   });
 });
 
-describe('budget meter (UX-A4)', () => {
-  it('shows output tokens and model calls as meters, with the full table folded away', () => {
-    const { definition } = researchTeamDraft();
-    const session = sessionStore({
-      runId: 'r',
-      definition,
-      projection: projectionWith({
-        limits: definition.limits,
-        budget: { ...projectionWith({}).budget, spent: 16_000, modelCalls: 10 },
-      }),
-    });
-    intl(<BudgetInspector session={session} />);
-    const tokens = screen.getByRole('meter', { name: 'Output tokens' }) as HTMLMeterElement;
-    expect(tokens.value).toBe(16000);
-    expect(tokens.max).toBe(definition.limits.maxOutputTokens);
-    expect((screen.getByRole('meter', { name: 'Model calls' }) as HTMLMeterElement).value).toBe(10);
-    expect(screen.getByRole('button', { name: 'All budget figures' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-  });
-
+describe('usage cost (UX-A4)', () => {
   it('shows the estimated cost at list prices, or says a subscription covers it', () => {
     const { definition } = researchTeamDraft();
     const call = (profile: string) => ({
@@ -165,7 +144,7 @@ describe('budget meter (UX-A4)', () => {
         }),
       });
       const view = intl(
-        <BudgetInspector
+        <UsageInspector
           session={session}
           prices={() => ({ input: 2, output: 8, cacheRead: 0, cacheWrite: 0 })}
         />,
@@ -191,6 +170,7 @@ describe('decision and output node status (UX-A4)', () => {
     loopNodeId: 'review_loop',
     no,
     criteriaVersionId: 'c',
+    parentIterationId: null,
     outcome,
   });
 

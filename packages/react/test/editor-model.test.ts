@@ -1,12 +1,10 @@
-import { type CanvasLayout, CorralDefinition } from '@corral/contracts';
-import { compileDefinition, definitionHash, planRun, reviewCriteriaHash } from '@corral/core';
+import { CorralDefinition, type CorralNode } from '@corral/contracts';
+import { compileDefinition, definitionHash, reviewCriteriaHash } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
-import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
 import { manyNodeDefinition } from '../../contracts/test/fixtures/many-nodes.ts';
 import {
   addNode,
-  arrangeDraft,
   checkConnection,
   compileDraft,
   connect,
@@ -16,23 +14,28 @@ import {
   duplicateNode,
   type EditorDraft,
   emptyDraft,
-  exportDocuments,
-  importDocuments,
-  moveNode,
+  exportDefinition,
+  importDefinition,
   removeNode,
-  setLoopMembership,
   updateNode,
+  withDefinition,
 } from '../src/editor/model.ts';
 
 const team = () => CorralDefinition.parse(researchTeam);
-const layout = () => researchLayout as unknown as CanvasLayout;
 
 function ok<T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> {
   if (!result.ok) throw new Error(JSON.stringify(result));
   return result as Extract<T, { ok: true }>;
 }
-function add(draft: EditorDraft, type: Parameters<typeof addNode>[1], x = 0, y = 0) {
-  return addNode(draft, type, { x, y });
+const add = addNode;
+/** Puts a step into a Loop or takes it out. */
+function inLoop(draft: EditorDraft, nodeId: string, loopId: string | null): EditorDraft {
+  const nodes = draft.definition.nodes.map((node) => {
+    if (node.id !== nodeId) return node;
+    const { parentId: _old, ...rest } = node;
+    return (loopId ? { ...rest, parentId: loopId } : rest) as CorralNode;
+  });
+  return withDefinition(draft, { ...draft.definition, nodes });
 }
 const control = (
   draft: EditorDraft,
@@ -43,16 +46,13 @@ const control = (
 ) => ok(connect(draft, { source, sourcePort, target, targetPort } as never)).draft;
 
 describe('editor model: drawing a definition', () => {
-  it('imports, exports and compiles more than 64 unique-role nodes without losing layout or limits', () => {
+  it('imports, exports and compiles more than 64 unique-role nodes without losing limits', () => {
     const definition = manyNodeDefinition();
-    const imported = ok(importDocuments(JSON.stringify(definition))).draft;
-    const moved = moveNode(imported, 'node_64', { x: 700, y: 350 });
-    const documents = exportDocuments(moved);
-    const restored = ok(importDocuments(documents.definition, documents.layout)).draft;
+    const imported = ok(importDefinition(JSON.stringify(definition))).draft;
+    const restored = ok(importDefinition(exportDefinition(imported))).draft;
     expect(restored.definition.nodes).toHaveLength(66);
     expect(restored.definition.roles).toHaveLength(65);
     expect(restored.definition.limits).toEqual(definition.limits);
-    expect(restored.layout.node_64).toEqual({ x: 700, y: 350 });
     expect(compileDraft(restored).runnable).toBe(true);
   });
 
@@ -60,20 +60,18 @@ describe('editor model: drawing a definition', () => {
     let draft = emptyDraft();
     let previous: string | null = null;
     for (let index = 0; index < 65; index++) {
-      const added = add(draft, 'agent', index * 20, 0);
+      const added = add(draft, 'agent');
       draft = previous ? control(added.draft, previous, 'out', added.nodeId, 'in') : added.draft;
       previous = added.nodeId;
     }
-    const output = add(draft, 'output', 1400, 0);
+    const output = add(draft, 'output');
     if (!previous) throw new Error('Missing editor agent.');
     draft = control(output.draft, previous, 'out', output.nodeId, 'in');
     expect(draft.definition.nodes).toHaveLength(66);
     expect(draft.definition.roles).toHaveLength(65);
     expect(compileDraft(draft).runnable).toBe(true);
-    const documents = exportDocuments(draft);
-    const restored = ok(importDocuments(documents.definition, documents.layout)).draft;
+    const restored = ok(importDefinition(exportDefinition(draft))).draft;
     expect(restored.definition).toEqual(draft.definition);
-    expect(restored.layout).toEqual(draft.layout);
   });
 
   it('gives each dropped node a fresh, valid identifier', () => {
@@ -91,7 +89,7 @@ describe('editor model: drawing a definition', () => {
   it('an empty canvas with Agent → Output compiles and is runnable', () => {
     let draft = emptyDraft();
     const a = add(draft, 'agent');
-    const o = add(a.draft, 'output', 300);
+    const o = add(a.draft, 'output');
     draft = control(o.draft, a.nodeId, 'out', o.nodeId, 'in');
     const result = compileDraft(draft);
     expect(result.diagnostics).toEqual([]);
@@ -114,8 +112,7 @@ describe('editor model: drawing a definition', () => {
     const approval = step('decision');
     const output = step('output');
     const helper = step('agent');
-    for (const member of [writer, reviewer, decision])
-      draft = setLoopMembership(draft, member, loop);
+    for (const member of [writer, reviewer, decision]) draft = inLoop(draft, member, loop);
     draft = updateNode(draft, reviewer, { outputContract: 'review' });
     draft = updateNode(draft, approval, { mode: 'approval' });
     draft = updateNode(draft, helper, { invocation: 'callable' });
@@ -173,7 +170,7 @@ describe('editor model: connection rules come from the compiler port table', () 
       draft = added.draft;
       ids[name] = added.nodeId;
     }
-    draft = setLoopMembership(draft, ids.inner as string, ids.loop as string);
+    draft = inLoop(draft, ids.inner as string, ids.loop as string);
     draft = updateNode(draft, ids.callable as string, { invocation: 'callable' });
     draft = control(draft, ids.a as string, 'out', ids.b as string, 'in');
     return { draft, ids: ids as Record<string, string> };
@@ -226,31 +223,18 @@ describe('editor model: connection rules come from the compiler port table', () 
   });
 });
 
-describe('editor model: layout versus definition', () => {
-  it('moving nodes or the Loop area changes the layout, not the definition', () => {
-    const draft = draftFromDefinition(team(), layout());
-    const before = definitionHash(draftToDefinition(draft));
-    const movedNode = moveNode(draft, 'research', { x: 999, y: 10 });
-    const movedLoop = moveNode(draft, 'review_loop', { x: 420, y: 180 });
-    expect(definitionHash(draftToDefinition(movedNode))).toBe(before);
-    expect(definitionHash(draftToDefinition(movedLoop))).toBe(before);
-    // Members travel with the Loop area.
-    expect(movedLoop.layout.write).toEqual({ x: 370 + 100, y: 160 + 100 });
-
-    const moved = setLoopMembership(draft, 'review', null);
-    expect(definitionHash(draftToDefinition(moved))).not.toBe(before);
-  });
-
-  it('round-trips a definition and its layout without changing them', () => {
-    const draft = draftFromDefinition(team(), layout());
+describe('editor model: editing a saved team', () => {
+  it('round-trips a definition without changing it', () => {
+    const draft = draftFromDefinition(team());
     expect(draftToDefinition(draft)).toEqual(team());
-    const exported = exportDocuments(draft, 3);
-    expect(JSON.parse(exported.definition)).toEqual(team());
-    expect(JSON.parse(exported.layout)).toEqual({ ...layout(), layoutRevision: 3 });
+    expect(JSON.parse(exportDefinition(draft))).toEqual(team());
+    expect(definitionHash(draftToDefinition(inLoop(draft, 'review', null)))).not.toBe(
+      definitionHash(team()),
+    );
   });
 
   it('a duplicated node gets new IDs that collide with nothing', () => {
-    const draft = draftFromDefinition(team(), layout());
+    const draft = draftFromDefinition(team());
     const copy = duplicateNode(draft, 'write');
     const definition = draftToDefinition(copy.draft);
     const ids = definition.nodes.map((n) => n.id);
@@ -264,7 +248,7 @@ describe('editor model: layout versus definition', () => {
   });
 
   it('removing a node removes its connections, inputs that read it, and its unused role', () => {
-    const draft = draftFromDefinition(team(), layout());
+    const draft = draftFromDefinition(team());
     const definition = draftToDefinition(removeNode(draft, 'review'));
     expect(definition.nodes.some((n) => n.id === 'review')).toBe(false);
     expect(
@@ -276,80 +260,30 @@ describe('editor model: layout versus definition', () => {
   });
 
   it('changing a decision mode updates its rule and drops branches that no longer exist', () => {
-    const draft = draftFromDefinition(team(), layout());
+    const draft = draftFromDefinition(team());
     const changed = draftToDefinition(updateNode(draft, 'review_decision', { mode: 'approval' }));
     const decision = changed.nodes.find((n) => n.id === 'review_decision');
-    expect(decision?.type === 'decision' && decision.rule).toBe('human_approval');
+    expect(decision?.type === 'decision' && 'rule' in decision && decision.rule).toBe(
+      'human_approval',
+    );
     expect(changed.controlEdges.some((e) => e.source === 'review_decision')).toBe(false);
   });
 });
 
 describe('editor model: import and export', () => {
   it('refuses files it does not understand', () => {
-    expect(importDocuments('not json').ok).toBe(false);
+    expect(importDefinition('not json').ok).toBe(false);
     const unknownField = { ...team(), owner: 'someone' };
-    expect(importDocuments(JSON.stringify(unknownField)).ok).toBe(false);
+    expect(importDefinition(JSON.stringify(unknownField)).ok).toBe(false);
     const newer = { ...team(), schemaVersion: '0.2' };
-    expect(importDocuments(JSON.stringify(newer)).ok).toBe(false);
-    expect(importDocuments('x'.repeat(1024 * 1024 + 1)).ok).toBe(false);
-  });
-
-  it('imports a definition with or without a layout', () => {
-    const withLayout = ok(importDocuments(JSON.stringify(team()), JSON.stringify(layout())));
-    expect(withLayout.draft.layout.research).toEqual({ x: 40, y: 160 });
-    const without = ok(importDocuments(JSON.stringify(team())));
-    expect(Object.keys(without.draft.layout).sort()).toEqual(
-      team()
-        .nodes.map((n) => n.id)
-        .sort(),
-    );
-    expect(planRun(draftToDefinition(without.draft)).ok).toBe(true);
-  });
-});
-
-describe('arranging the canvas', () => {
-  it('places every node without overlaps, Loop members inside their Loop, in flow order', () => {
-    const scrambled = draftFromDefinition(team(), {
-      ...layout(),
-      nodes: Object.fromEntries(team().nodes.map((n) => [n.id, { x: 5, y: 5 }])),
-    });
-    const arranged = arrangeDraft(scrambled);
-    const box = (id: string) => {
-      const at = arranged.layout[id];
-      if (!at) throw new Error(id);
-      return { x: at.x, y: at.y, w: at.width ?? 190, h: at.height ?? 80 };
-    };
-    const loop = box('review_loop');
-    for (const id of ['write', 'review', 'review_decision']) {
-      const b = box(id);
-      expect(b.x).toBeGreaterThanOrEqual(loop.x);
-      expect(b.x + b.w).toBeLessThanOrEqual(loop.x + loop.w);
-      expect(b.y).toBeGreaterThanOrEqual(loop.y);
-    }
-    // Top-level nodes and the Loop box do not overlap one another.
-    const top = team()
-      .nodes.filter((n) => !('loopId' in n && n.loopId))
-      .map((n) => box(n.id));
-    for (const [i, a] of top.entries()) {
-      for (const b of top.slice(i + 1)) {
-        const apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
-        expect(apart).toBe(true);
-      }
-    }
-    expect(box('research').x).toBeLessThan(loop.x);
-    // Layout only: the definition is the same Corral.
-    expect(definitionHash(arranged.definition)).toBe(definitionHash(scrambled.definition));
-  });
-
-  it('an empty canvas stays as it is', () => {
-    const empty = emptyDraft();
-    expect(arrangeDraft(empty)).toBe(empty);
+    expect(importDefinition(JSON.stringify(newer)).ok).toBe(false);
+    expect(importDefinition('x'.repeat(1024 * 1024 + 1)).ok).toBe(false);
   });
 });
 
 describe('file tools switch', () => {
   it('stores a pinned review recipe in the definition without changing an earlier draft', () => {
-    const draft = draftFromDefinition(team(), layout());
+    const draft = draftFromDefinition(team());
     const recipe = {
       recipeId: 'quality',
       revision: 1,
@@ -360,9 +294,6 @@ describe('file tools switch', () => {
       criteriaFiles: [],
       maxAttempts: 2,
       maxRepairs: 1,
-      maxWallMs: 10000,
-      maxModelCalls: 20,
-      maxOutputTokens: 10000,
     };
     const on = updateNode(draft, 'review_loop', { reviewRecipe: recipe });
     expect(on.definition.nodes.find((node) => node.id === 'review_loop')).toHaveProperty(
@@ -379,7 +310,7 @@ describe('file tools switch', () => {
     );
   });
   it('pins and removes a role harness without retaining a null field', () => {
-    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const added = addNode(emptyDraft(), 'agent');
     const binding = { profileId: 'writer', revision: 2 };
     const on = updateNode(added.draft, added.nodeId, { harness: binding });
     expect(on.definition.roles[0]?.harness).toEqual(binding);
@@ -389,7 +320,7 @@ describe('file tools switch', () => {
     expect(off.definition.roles).toEqual(added.draft.definition.roles);
   });
   it('gives a role every file tool, and takes them all away again', () => {
-    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const added = addNode(emptyDraft(), 'agent');
     const roleOf = (draft: EditorDraft) => draft.definition.roles[0]?.allowedWorkTools;
     const on = updateNode(added.draft, added.nodeId, { fileTools: true });
     expect(roleOf(on)).toEqual([
@@ -404,7 +335,7 @@ describe('file tools switch', () => {
     expect(roleOf(off)).toEqual(['write_artifact']);
   });
   it('keeps shell permission independent of file permission and pins explicit editing choices', () => {
-    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const added = addNode(emptyDraft(), 'agent');
     const on = updateNode(added.draft, added.nodeId, {
       fileTools: true,
       runCommand: true,
@@ -423,7 +354,7 @@ describe('file tools switch', () => {
     expect(shellOff.definition.roles[0]?.editingMode).toBe('pi');
   });
   it('persists image permission and profile independently of file and shell access', () => {
-    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const added = addNode(emptyDraft(), 'agent');
     const enabled = updateNode(added.draft, added.nodeId, {
       generateImage: true,
       imageProfile: 'image_profile',
@@ -441,7 +372,7 @@ describe('file tools switch', () => {
     expect(added.draft.definition.roles[0]).not.toHaveProperty('imageProfile');
   });
   it('keeps file, service and interaction preview permissions independent', () => {
-    const added = addNode(emptyDraft(), 'agent', { x: 0, y: 0 });
+    const added = addNode(emptyDraft(), 'agent');
     const enabled = updateNode(added.draft, added.nodeId, {
       previewFile: true,
       previewApp: true,

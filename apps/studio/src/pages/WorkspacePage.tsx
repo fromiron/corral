@@ -6,7 +6,7 @@ import {
   type RunSummary,
   type WorkSession,
 } from '@corral/core';
-import { arrangeDraft, draftLayout, emptyDraft, importDocuments } from '@corral/react';
+import { emptyDraft, importDefinition } from '@corral/react';
 import {
   Accordion,
   AccordionContent,
@@ -60,16 +60,6 @@ import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 /** Fired by a template card to choose that team in the new-session box. */
 const START_WITH_TEMPLATE = 'corral:start-with-template';
 
-/** A layout file is recognised by its shape; everything else is treated as a definition. */
-function isLayoutFile(text: string): boolean {
-  try {
-    const value = JSON.parse(text) as Record<string, unknown>;
-    return typeof value.layoutRevision === 'number' && typeof value.corralId === 'string';
-  } catch {
-    return false;
-  }
-}
-
 export function WorkspacePage() {
   const t = useTranslations('Workspace');
   const ago = useSessionAge();
@@ -111,7 +101,6 @@ export function WorkspacePage() {
     const draft = emptyDraft('untitled', t('newName'));
     const result = await repository.save({
       definition: draft.definition,
-      layout: { nodes: draft.layout, viewport: draft.viewport },
       expectedDefinitionRevision: null,
       projectId,
     });
@@ -120,19 +109,13 @@ export function WorkspacePage() {
   };
 
   const onImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const texts = await Promise.all([...(event.target.files ?? [])].map((file) => file.text()));
+    const file = event.target.files?.[0];
     event.target.value = '';
-    const layout = texts.find(isLayoutFile);
-    const definition = texts.find((text) => !isLayoutFile(text));
-    if (!definition) return setErrors(['Choose a definition file (.corral.json).']);
-    const imported = importDocuments(definition, layout);
+    if (!file) return setErrors(['Choose a definition file (.corral.json).']);
+    const imported = importDefinition(await file.text());
     if (!imported.ok) return setErrors(imported.errors);
-    // Without a layout file, arrange the nodes by the flow.
-    const draft = layout ? imported.draft : arrangeDraft(imported.draft);
-    const layoutDoc = draftLayout(draft, 1);
     const result = await repository.save({
-      definition: draft.definition,
-      layout: { nodes: layoutDoc.nodes, viewport: layoutDoc.viewport },
+      definition: imported.draft.definition,
       expectedDefinitionRevision: null,
       projectId,
     });
@@ -178,7 +161,6 @@ export function WorkspacePage() {
             ref={importInput}
             type="file"
             accept=".json,application/json"
-            multiple
             onChange={onImport}
             aria-label={t('import')}
             aria-description={t('importHint')}
@@ -221,7 +203,6 @@ export function WorkspacePage() {
                 <span className="text-xs text-muted-foreground">
                   {t('revisions', {
                     definition: corral.definitionRevision,
-                    layout: corral.layoutRevision,
                     nodes: corral.nodeCount,
                   })}{' '}
                   ·{' '}

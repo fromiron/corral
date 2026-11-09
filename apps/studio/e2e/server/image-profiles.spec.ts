@@ -17,11 +17,10 @@ test('image profile CRUD and role configuration persist through the normal setti
   if (!profile) throw new Error('No provider profile available');
   await options.first().click();
   await section.getByLabel('Image model ID').fill('image-test');
-  await section.getByLabel('Maximum cost per call (USD)').fill('0.25');
   await section.getByRole('button', { name: 'Save image profile' }).click();
   await expect(section.getByRole('status')).toHaveText('Image profile saved.');
   await section.getByRole('button', { name: 'Edit', exact: true }).click();
-  await section.getByLabel('Maximum calls per run').fill('2');
+  await section.getByLabel('Timeout (seconds)').fill('90');
   await section.getByRole('button', { name: 'Save image profile' }).click();
   await expect(section.getByRole('status')).toHaveText('Image profile saved.');
   await page.reload();
@@ -32,8 +31,7 @@ test('image profile CRUD and role configuration persist through the normal setti
     expect.objectContaining({
       profileId: 'illustration',
       modelId: 'image-test',
-      maxCallsPerRun: 2,
-      maxCostUsdPerCall: 0.25,
+      timeoutMs: 90000,
     }),
   );
   expect(JSON.stringify(stored)).not.toMatch(/apiKey|accessToken|refreshToken/);

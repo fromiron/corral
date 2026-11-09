@@ -6,7 +6,7 @@
 
 산출물 기록의 목적은 생성자·소비자·결정 근거·결과의 관계와 시점을 보여주는 것이다. 버전 메타데이터와 관계 이벤트는 유지하지만 과거 본문 복원·재사용을 위한 아카이브는 제공하지 않는다.
 
-실행 중에는 실행·승인·취소 정리에 필요한 본문을 유지한다. Run이 종료되고 모든 실행과 effect가 정리된 뒤 최종 결과만 유지하며 중간 산출물과 내부 실행 본문을 해제한다. 같은 세션에서 더 최근에 시작한 Run이 성공적인 최종 결과를 확정하면 앞선 Run의 최종 본문도 해제한다. 실패한 새 Run은 앞선 최종 결과를 대체하지 않는다. 세션이 없는 Run은 자신의 최종 결과를 유지한다. 바이너리 산출물에도 같은 규칙을 적용한다. 회의는 참여자별 최신 최종 답변과 다음 발언에 필요한 최신 실행 컨텍스트 하나 및 그 의존 본문만 유지한다. 참여자의 새 답변이 확정되면 앞선 컨텍스트는 해제하며, 이 운영 컨텍스트를 산출물 조회·export로 제공하지 않는다.
+실행 중에는 실행·승인·취소 정리에 필요한 본문을 유지한다. Run이 종료되고 모든 실행과 effect가 정리된 뒤 최종 결과와 단계 결과만 유지하며 나머지 중간 산출물과 내부 실행 본문을 해제한다. 단계 결과는 노드마다 마지막으로 완료 제출한 버전과 [포크](features/fork-and-breakpoints.md#포크)가 복사해 온 버전이다. 같은 세션에서 더 최근에 시작한 Run이 성공적인 최종 결과를 확정하면 앞선 Run의 최종 본문과 단계 결과도 해제한다. 실패한 새 Run은 앞선 최종 결과를 대체하지 않는다. 세션이 없는 Run은 자신의 최종 결과를 유지한다. 바이너리 산출물에도 같은 규칙을 적용한다. 회의는 참여자별 최신 최종 답변과 다음 발언에 필요한 최신 실행 컨텍스트 하나 및 그 의존 본문만 유지한다. 참여자의 새 답변이 확정되면 앞선 컨텍스트는 해제하며, 이 운영 컨텍스트를 산출물 조회·export로 제공하지 않는다.
 
 본문 해제는 불변 본문 수정의 예외가 아니라 명시적인 수명 종료이며, 해제된 ID는 다시 저장할 수 없다. `artifact.content_released` 이벤트는 해제된 산출물 ID와 사유를 기록하며 메타데이터·hash·생성/전달 관계를 삭제하지 않는다. 본문 조회·복사·export는 해제된 본문을 반환하지 않고, 클라이언트는 이전에 캐시한 본문도 표시하지 않는다. 본문에서 파생된 전문 검색 행도 같은 트랜잭션에서 폐기하며, 다음 검색은 현재 조회 가능한 결과와 일반 대화만 다시 색인한다. 이전 버전의 검색 복사본은 스키마 갱신 시 비우고 원본 일반 대화 항목은 유지한다. 현재 실행의 유효한 입력·승인 대상과 현재 최종 결과는 계속 조회할 수 있다.
 
@@ -20,12 +20,13 @@
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문·레이아웃은 필요 시 조회 |
-| POST /corrals | 정의+레이아웃, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
-| GET /corrals/:id | — | definition/layout/revisions |
+| GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문은 필요 시 조회 |
+| POST /corrals | 정의, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
+| GET /corrals/:id | — | 현재 definition/revision |
+| GET /corrals/:id/revisions/:revision | — | 그 revision의 저장된 definition. 없는 팀·revision은 `TARGET_NOT_FOUND` |
 | PUT /corrals/:id | If-Match definition revision,definition | conflict 검사 후 저장; 실행 중 Run 원본에는 영향 없음 |
 | POST /corrals/validate | 현재 draft definition | diagnostics + executable IR summary; side effect 없음 |
-| POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,sessionId?,conversation?,references? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED`. `conversation {throughRunId}`는 같은 세션의 끝난 Run까지의 요청·답을 Coordinator 기록에서 복사해 대화 차례로 보내고 `run.started.conversation`에 출처·hash를 남김. 세션 없음·없는 Run·다른 세션·끝나지 않은 Run은 `TARGET_NOT_FOUND`, 산출물 크기 한도를 넘는 오래된 차례는 빠지고 그 수를 기록. `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED` |
+| POST /runs | commandId,corralId,definitionRevision,input,mode,startFrom?,sessionId?,conversation?,references?,forkFrom?,breakpoints? | runId+receipt; validation 완료 전 모델 호출 없음. `startFrom {runId, artifactVersionId}`는 그 버전 본문을 브리프 뒤에 붙이고 `run.started.startedFrom`에 남김. 없는 Run·다른 Run의 버전은 `TARGET_NOT_FOUND`, 산출물 크기 한도 초과는 `LIMIT_REACHED`. `conversation {throughRunId}`는 같은 세션의 끝난 Run까지의 요청·답을 Coordinator 기록에서 복사해 대화 차례로 보내고 `run.started.conversation`에 출처·hash를 남김. 세션 없음·없는 Run·다른 세션·끝나지 않은 Run은 `TARGET_NOT_FOUND`, 산출물 크기 한도를 넘는 오래된 차례는 빠지고 그 수를 기록. `references`(최대 20)는 file·folder·run·role을 포인터로 나열하고(권한 없음) result는 그 버전 본문을 복사. 없는 대상 `TARGET_NOT_FOUND`, 결과 합계 초과 `LIMIT_REACHED`. `forkFrom {runId, nodeId}`와 `breakpoints`는 [포크와 중단점](features/fork-and-breakpoints.md#계약)을 따른다 |
 | GET /runs/:id/snapshot | — | read model + snapshotSeq |
 | GET /runs/:id/conversation-turn | — | 종료된 일반 Run의 원래 요청·대표 답변 한 차례. `runId`, `request`, `answer`, `status`, `artifactVersionId`와 선택적 `answerOmitted`. 기존 인증·Host/Origin 경계를 유지하고 private/no-store로 응답한다. 없는 Run·미확정 차례·회의 Run은 `TARGET_NOT_FOUND`. 임의 산출물 ID를 선택하거나 해제된 본문을 복구하는 API가 아니다 |
 | GET /model-attempts | `ownerId?`, `runId?`, `sessionId?`, `before?`, `limit?` (1–100; 기본 50) | `{items,nextCursor}`. 물리 시도·nullable usage·subscription/unknown 가격 상태. private/no-store. 본문·자격 증명 제외 |
@@ -81,7 +82,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/:id/meeting/handoffs/:commandId/cancel | — | 취소 의도를 저장하고 시작/Run 취소를 확인. 확인 실패는 uncertain으로 남겨 같은 인계에서 재확인 |
 | POST /sessions/:id/meeting/handoffs/:commandId/rediscuss | `{commandId,mode}` | 종료된 결과·출처 ID를 고정해 새 대화 메시지로 보낸다. 자동 토론 없음 |
 | POST /runs/explain | `{commandId, sessionId, question, modelProfile, mode, startFrom?}` | 결과 질문 Run(에이전트 하나). 세션의 프로젝트에 기록. 도구 없는 최종 답 역할로 답한다. Studio 입력창은 더 이상 쓰지 않으며 기존 클라이언트용으로 유지 |
-| POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, conversation?, references?, team?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 비용은 실행 예산에 포함. `team: 'none' \| 'auto' \| {corralId}`를 주면 선택 요청 없이 대화 리드 한 명으로 시작하고 `autoRoute`는 null. none은 명시 요청 때만 부르는 helper, auto는 자동 팀 역할, corralId는 그 Corral의 역할을 리드의 위임 대상으로 준다. 없는 Corral은 `TARGET_NOT_FOUND` |
+| POST /runs/auto | `{schemaVersion, commandId, sessionId, brief, choice, mode, startFrom?, conversation?, references?, team?}` | 모델이 기본 템플릿을 고른 뒤 `{runId,receipt,autoRoute}`. 같은 ID·같은 내용은 재사용하고 다른 내용은 409. 선택 호출은 실행 사용량에 포함. `team: 'none' \| 'auto' \| {corralId}`를 주면 선택 요청 없이 대화 리드 한 명으로 시작하고 `autoRoute`는 null. none은 명시 요청 때만 부르는 helper, auto는 자동 팀 역할, corralId는 그 Corral의 역할을 리드의 위임 대상으로 준다. 없는 Corral은 `TARGET_NOT_FOUND` |
 | POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 시작 전 취소는 세션 범위의 영구 명령으로 저장하고 선택을 중단한다. 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |
 | GET·PUT·PATCH·DELETE /projects/:id/workspace | PUT `{path}`, PATCH `{trusted?, verifyCommands?}` | 작업 폴더 연결·신뢰·검증 명령. Corral 데이터 안 폴더는 `CAPABILITY_DENIED` |
 | GET·POST·DELETE /sessions/:id/worktree | — | 세션 작업 복사본(신뢰한 Git 저장소의 HEAD에서). 응답은 기존 필드에 `bindingId`·`copyGeneration`을 포함하며 같은 session 사본 재생성 시 generation 증가. active/uncertain reader·writer가 있는 사본 제거는 거절 |
@@ -266,7 +267,8 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 
 | type | 반드시 기록할 내용 |
 |---|---|
-| `run.started` | 정의/입력/모델 snapshot과 최초 limits |
+| `run.started` | 정의/입력/모델 snapshot과 최초 limits. 포크한 Run은 `forkedFrom` |
+| `breakpoints.changed` | nodeIds. Run의 중단점 목록 전체([중단점](features/fork-and-breakpoints.md#중단점)) |
 | `run.state_changed` | from,to,reasonCode |
 | `run.interrupted` | previousStatus,backendSessionId |
 | `execution.created` | parentExecutionId,nodeId,taskId,attemptNo,depth,iterationId |
@@ -286,7 +288,8 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `review.stale` | reviewVersion,newCriteriaVersion,cause |
 | `loop.iteration_started` | iterationId,no,pinnedCarryInputs,criteriaVersion |
 | `loop.iteration_finished` | outcome,submittedVersions |
-| `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion |
+| `workflow.joined` | nodeId,policy,iterationId,cancelledNodeIds. Join이 길을 이었다. `any`가 멈춘 분기의 단계를 남긴다([병렬 실행](features/team-graph.md#병렬-실행)) |
+| `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion. `breakpoint`는 nodeId |
 | `approval.resolved` | decision,actor,subjectVersions. 등록 검사 승인 종료는 선택 reason(cancelled/timeout/execution_ended)과 runtime actor로 기록한다 |
 | `directive.accepted` | directiveId,target,body,commandId |
 | `directive.attached` | contextSnapshotId,modelCallId |
@@ -294,7 +297,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `directive.undelivered` | reason |
 | `patch.committed` | patchId,scope,before,after,controlRevision |
 | `patch.activated` | patchId,executionId|iterationId |
-| `effect.admitted` | effectId,scope,epoch,reservationId |
+| `effect.admitted` | effectId,scope,epoch,modelCallId(모델 요청 효과만) |
 | `effect.dispatch_observed` | effectId,providerRequestId |
 | `effect.settled` | effectId,outcome |
 | `tool.requested` | toolCallId,name,validatedArgs |
@@ -305,9 +308,8 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: requested,resolved,source,judged,ladder,policyVersion,judgeVersion,fallback,escalated). 자동 추론 규칙과 fallback 이유는 [로컬 AI](features/local-intelligence.md)가 정한다. 이전 정책으로 저장된 실행 기록은 읽기만 한다 |
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
-| `budget.reserved` | reservationId,amount,scope |
-| `budget.settled` | reservationId,actual,unknownOutstanding |
-| `limit.reached` | limitKind,used,reserved,max |
+| `usage.recorded` | usageId,kind(`auto_route`·`image`),profileId,inputTokens,outputTokens,costMicros. Run의 모델 호출 밖에서 쓴 사용량(팀 선택 호출, 이미지 생성)을 호출마다 기록한다. 모르는 값은 null이며 0으로 두지 않는다. 나중에 확인된 값은 같은 usageId로 null이던 값만 채운다. 시작하지 않은 이미지 호출은 기록하지 않는다 |
+| `limit.reached` | limitKind,used,max |
 | `cancel.requested` | scope,fenceSeq,reason |
 | `cancel.confirmed` | scope,settlementRefs |
 | `observation.late` | originalEvent,whyIgnored |
@@ -320,17 +322,18 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 
 구현에서 정한 검토·승인 규칙:
 
-- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop 상한에서 한 라운드 더), `final_output`(Output의 `requireApproval`) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
+- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop가 멈출 때 한 라운드 더, 이유는 `loopStop`), `route`(router가 고르지 못한 route, 고를 수 있는 route는 `routes`), `check`(check Decision의 검사에 판정이 없음, 승인하면 다시 실행), `final_output`(Output의 `requireApproval`), `breakpoint`(중단점이 걸린 단계가 시작 전 멈춤, [중단점](features/fork-and-breakpoints.md#중단점)) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
+- `route` 승인을 승인할 때 `resolve_approval.routeId`는 그 승인의 `routes` 중 하나여야 하고, 다른 승인과 거절에는 `routeId`를 보내지 않는다. 어기면 `SCHEMA_INVALID`다. 고른 route는 `approval.resolved.routeId`에 남는다. 의미는 [팀 그래프 모델](features/team-graph.md#router-실행)을 따른다.
 - `resolve_approval`의 `subjectVersionId`는 `subjectVersions[0]`이어야 한다. 검사 순서: 없는 승인 `TARGET_NOT_FOUND` → 이미 해결 `APPROVAL_STALE` → `expectedControlRevision` 불일치 `STALE_CONTROL_REVISION` → 다른 버전 `APPROVAL_STALE`. 같은 commandId 재전송은 처음 receipt를 돌려준다.
 - 검토 본문이 `review.schema.json`이 아니거나, 대상이 검토자가 받은 입력이 아니거나, 기준이 Run의 `criteriaVersionId`가 아니면 `review.recorded.verdict`는 `inconclusive`이고 `user_action` 승인으로 넘어간다. 통과로 처리하지 않는다.
-- 설치 정책의 Loop hard cap에 닿으면 승인 없이 `limit.reached`(`loop_iterations`)와 함께 Run이 실패한다. 거절한 `loop_cap`·`final_output`은 Run을 취소로 끝낸다.
+- 거절한 `loop_cap`·`route`·`check`·`final_output`·`breakpoint`는 Run을 취소로 끝낸다.
 - 같은 Agent가 다음 Loop 라운드에 쓴 버전은 같은 artifactId의 다음 version이다. 투영의 `parentVersionId`가 이전 버전을 가리킨다.
 
 ## 5. timeout·재연결·다중 탭
 
 브라우저 timeout은 서버 명령 실패와 같지 않다. 같은 commandId로 receipt를 조회/재전송한다. 새 ID로 취소/승인을 재시도하면 이중 의미가 생길 수 있으므로 client SDK가 처리한다.
 
-workspace의 활성 Run은 하나지만 탭은 여러 개일 수 있다. 탭별 controlRevision 갱신과 conflict UI가 필요하다. SSE가 끊겼다고 Run을 자동 취소하지 않는다. Run-level wall deadline과 승인 대기 상태를 유지한다.
+workspace의 활성 Run은 하나지만 탭은 여러 개일 수 있다. 탭별 controlRevision 갱신과 conflict UI가 필요하다. SSE가 끊겼다고 Run을 자동 취소하지 않는다. 승인 대기 상태를 유지한다.
 
 SSE의 일반 미전송 데이터는 다음 UTF-8 frame을 포함해 1 MiB로 제한한다. 초과하면 이미 쓴 prefix를 flush하고 연결을 종료하여 재접속 cursor가 앞으로 진행한다. 단일 committed domain event가 1 MiB보다 크면 구독을 먼저 해제하고 기존 prefix를 flush한 뒤, 그 이벤트 하나를 64 KiB 이하의 UTF-8 바이트 조각으로 순차 전송한다. 각 쓰기의 완료를 기다리며, 완전한 frame을 보낸 뒤 연결을 닫는다. 10초 동안 flush되지 않는 소켓은 강제 종료한다. 다음 연결은 완전히 받은 이벤트의 cursor부터 재개한다. 기존에 저장한 큰 이벤트도 생략·축약하지 않는다.
 

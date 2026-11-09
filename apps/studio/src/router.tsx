@@ -191,7 +191,6 @@ export const demoRoute = createRoute({
     if (existing) return { record: existing, template: template.id };
     const result = await context.services.repository.save({
       definition: template.definition,
-      layout: template.layout,
       expectedDefinitionRevision: null,
     });
     if (!result.ok) throw new Error(result.message);

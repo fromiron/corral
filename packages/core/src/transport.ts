@@ -10,6 +10,7 @@ import type {
 import type { Coordinator, StartRunResult } from './coordinator.ts';
 import type { RuntimeSnapshot } from './partial-output.ts';
 import { applyEvent, type RunProjection } from './projection.ts';
+import type { RunStats } from './run-stats.ts';
 import type { RunSummary, StoredConversationTurn } from './store/run-store.ts';
 
 // The only way Studio talks to a runtime. HttpSseTransport and the
@@ -34,6 +35,8 @@ export interface RuntimeTransport {
   listRuns(): Promise<RunSummary[]>;
   /** The definition a run was started with (its snapshot), or null for an unknown run. */
   getRunDefinition(runId: string): Promise<CorralDefinition | null>;
+  /** Recent finished live runs of one saved revision, step by step (run stats). */
+  getRunStats(corralId: string, definitionRevision: number): Promise<RunStats>;
   /** Every committed event after `afterSeq`, once and in order, then live events. */
   subscribe(runId: string, afterSeq: number, handlers: TransportHandlers): () => void;
 }
@@ -76,6 +79,10 @@ export class InProcessTransport implements RuntimeTransport {
 
   async getRunDefinition(runId: string): Promise<CorralDefinition | null> {
     return this.coordinator.getRunSnapshot(runId)?.definition ?? null;
+  }
+
+  async getRunStats(corralId: string, definitionRevision: number): Promise<RunStats> {
+    return this.coordinator.runStats(corralId, definitionRevision);
   }
 
   subscribe(runId: string, afterSeq: number, handlers: TransportHandlers): () => void {

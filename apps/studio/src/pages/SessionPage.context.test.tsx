@@ -112,7 +112,6 @@ const team: CorralSummary = {
   projectId: 'project',
   name: 'Team',
   definitionRevision: 1,
-  layoutRevision: 1,
   nodeCount: 3,
   updatedAt: '2026-10-21T00:00:00Z',
 };

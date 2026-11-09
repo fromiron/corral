@@ -15,7 +15,12 @@ function setup() {
     status: 'running' as const,
     controlRevision: 3,
   };
-  projection.budget.spent = 42;
+  projection.modelCalls.call_done = {
+    modelCallId: 'call_done',
+    executionId: 'exec_writer',
+    finished: true,
+    usage: { outputTokens: 42 },
+  } as never;
   session.setState({
     runId: projection.runId,
     definition: linearCorral(['writer']),
@@ -34,25 +39,23 @@ describe('future settings preview', () => {
   it('shows spent usage and current → proposed before submitting the reviewed revision', () => {
     const { sendCommand } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
-    fireEvent.change(screen.getByLabelText('Proposed value'), { target: { value: '80000' } });
+    fireEvent.change(screen.getByLabelText('Proposed value'), { target: { value: '20' } });
     fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
-    expect(screen.getByTestId('patch-preview')).toHaveTextContent('64000');
-    expect(screen.getByTestId('patch-preview')).toHaveTextContent('80000');
-    expect(screen.getByTestId('patch-preview')).toHaveTextContent(
-      '42 confirmed tokens already spent',
-    );
+    expect(screen.getByTestId('patch-preview')).toHaveTextContent('12');
+    expect(screen.getByTestId('patch-preview')).toHaveTextContent('20');
+    expect(screen.getByTestId('patch-preview')).toHaveTextContent('42 output tokens already used');
     expect(sendCommand).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm settings change' }));
     expect(sendCommand).toHaveBeenCalledWith({
       type: 'patch',
       expectedControlRevision: 3,
-      payload: { kind: 'run_limits', changes: { maxOutputTokens: 80000 } },
+      payload: { kind: 'run_limits', changes: { maxSpawns: 20 } },
     });
   });
   it('requires a new preview when another control revision arrives', () => {
     const { session, sendCommand } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
-    fireEvent.change(screen.getByLabelText('Proposed value'), { target: { value: '80000' } });
+    fireEvent.change(screen.getByLabelText('Proposed value'), { target: { value: '20' } });
     fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
     act(() =>
       session.setState({

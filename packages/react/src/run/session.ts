@@ -64,6 +64,8 @@ export interface RunSessionState {
     startFrom?: StartFrom,
     harnessOverrides?: HarnessOverrides,
     roleOverrides?: RoleRunOverrides,
+    /** Steps this run pauses before; for this run only. */
+    breakpoints?: readonly string[],
   ): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
@@ -71,7 +73,12 @@ export interface RunSessionState {
   loadArtifact(artifactVersionId: string, options?: { reload?: boolean }): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
   /** Approves or rejects a pending approval, for the exact subject the person was shown. */
-  resolveApproval(approvalId: string, decision: 'approve' | 'reject'): Promise<Receipt>;
+  /** `routeId` names the route a person picks when approving a `route` approval. */
+  resolveApproval(
+    approvalId: string,
+    decision: 'approve' | 'reject',
+    routeId?: string,
+  ): Promise<Receipt>;
   refreshReceipt(commandId: string): Promise<void>;
   dispose(): void;
 }
@@ -503,7 +510,15 @@ export function createRunSession(
       commandError: null,
       unconfirmedCommands: {},
 
-      async start(definition, saved, mode = 'mock', startFrom, harnessOverrides, roleOverrides) {
+      async start(
+        definition,
+        saved,
+        mode = 'mock',
+        startFrom,
+        harnessOverrides,
+        roleOverrides,
+        breakpoints,
+      ) {
         reset();
         const version = generation;
         const commandId = newCommandId();
@@ -511,6 +526,7 @@ export function createRunSession(
           ...(startFrom ? { startFrom } : {}),
           ...(harnessOverrides && Object.keys(harnessOverrides).length ? { harnessOverrides } : {}),
           ...(roleOverrides && Object.keys(roleOverrides).length ? { roleOverrides } : {}),
+          ...(breakpoints?.length ? { breakpoints: [...breakpoints] } : {}),
         };
         try {
           const { runId, receipt } = await transport.startRun(
@@ -639,13 +655,18 @@ export function createRunSession(
         });
       },
 
-      async resolveApproval(approvalId, decision) {
+      async resolveApproval(approvalId, decision, routeId) {
         const approval = get().projection?.approvals[approvalId];
         if (!approval) throw new Error('no such approval');
         return get().sendCommand({
           type: 'resolve_approval',
           expectedControlRevision: get().projection?.controlRevision ?? 0,
-          payload: { approvalId, decision, subjectVersionId: approval.subjectVersionIds[0] ?? '' },
+          payload: {
+            approvalId,
+            decision,
+            subjectVersionId: approval.subjectVersionIds[0] ?? '',
+            ...(routeId ? { routeId } : {}),
+          },
         });
       },
 

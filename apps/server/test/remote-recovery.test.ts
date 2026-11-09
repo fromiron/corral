@@ -69,7 +69,6 @@ it('real HTTP receipt lookup and persisted SSE prefix recover lost responses wit
     const repository = new RestCorralRepository({ baseUrl: server.url, fetch: call });
     const saved = await repository.save({
       definition: linearCorral(['writer']),
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
     });
     if (!saved.ok) throw new Error(saved.message);
@@ -169,7 +168,6 @@ it('Editor start after remount recovers a completed lost start without creating 
     const saved = await repository.save({
       definition,
       expectedDefinitionRevision: null,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     if (!saved.ok) throw new Error(saved.message);
     const revision = { corralId: saved.record.corralId, definitionRevision: 1 };

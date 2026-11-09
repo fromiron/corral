@@ -5,11 +5,11 @@ import { act, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { ArtifactViewer } from '../src/components/ArtifactViewer.tsx';
-import { BudgetInspector } from '../src/components/BudgetInspector.tsx';
 import { ExecutionTranscript } from '../src/components/ExecutionTranscript.tsx';
 import { RunCanvas } from '../src/components/RunCanvas.tsx';
 import { RunResults } from '../src/components/RunResults.tsx';
 import { ExecutionTree, RunOutput } from '../src/components/RunView.tsx';
+import { UsageInspector } from '../src/components/UsageInspector.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { RunDisplayProvider, type RunDisplaySnapshot, useRunDisplay } from '../src/run/display.tsx';
 import { historicalStreams } from '../src/run/history.ts';
@@ -111,7 +111,6 @@ function fixture() {
   const events = [...records];
   const past = records.reduce(applyEvent, emptyProjection('run_display'));
   past.artifacts = { past_result: artifact('past_result') };
-  past.budget = { ...past.budget, spent: 42 };
   add('model.finished', finished('call_open'));
   add('execution.settled', {
     executionId: 'exec_past',
@@ -129,7 +128,7 @@ function fixture() {
   live.status = 'succeeded';
   live.artifacts = { ...past.artifacts, future_result: artifact('future_result') };
   live.output = { nodeId: 'out', artifactVersionIds: ['future_result'] };
-  live.budget = { ...live.budget, spent: 999 };
+  live.controlRevision = 999;
   const streams = {
     call_past: { text: 'PAST RESPONSE', next: 1, broken: false, completed: true },
     call_open: { text: 'FUTURE RESPONSE', next: 1, broken: false, completed: true },
@@ -169,7 +168,7 @@ it('a display prefix keeps its observed metadata without restoring retired or fu
         <RunResults session={session} selectedId={null} onSelect={() => {}} />
         <RunOutput session={session} />
         <ArtifactViewer session={session} versionId="future_result" onClose={() => {}} />
-        <BudgetInspector session={session} />
+        <UsageInspector session={session} />
       </RunDisplayProvider>
     </IntlProvider>,
   );
@@ -185,19 +184,20 @@ it('a display prefix keeps its observed metadata without restoring retired or fu
   expect(await screen.findByText('PAST RESPONSE')).toBeInTheDocument();
   expect(screen.queryByText('PAST RESULT')).not.toBeInTheDocument();
   expect(screen.getByText('No current final result is available.')).toBeInTheDocument();
-  expect(screen.getByText('Confirmed output tokens').nextSibling).toHaveTextContent('42');
+  expect(screen.getByText('Output tokens').nextSibling).toHaveTextContent('1');
+  expect(screen.getByText('Model requests').nextSibling).toHaveTextContent('2');
   for (const future of ['FUTURE RESPONSE', 'FUTURE RESULT', 'FUTURE OUTPUT', 'Future failure']) {
     expect(screen.queryByText(future)).not.toBeInTheDocument();
   }
-  expect(session.getState().projection?.budget.spent).toBe(999);
+  expect(session.getState().projection?.controlRevision).toBe(999);
   expect(session.getState().events).toHaveLength(9);
 });
 
 it('outside a display provider the same hook follows the original live session', () => {
   const { session, live } = fixture();
   function Current() {
-    const spent = useRunDisplay(session, (s) => s.projection?.budget.spent);
-    return <output>{spent}</output>;
+    const revision = useRunDisplay(session, (s) => s.projection?.controlRevision);
+    return <output>{revision}</output>;
   }
   render(<Current />);
   expect(screen.getByRole('status')).toHaveTextContent('999');
@@ -205,7 +205,7 @@ it('outside a display provider the same hook follows the original live session',
     session.setState({
       projection: {
         ...live,
-        budget: { ...live.budget, spent: 1000 },
+        controlRevision: 1000,
       },
     }),
   );
