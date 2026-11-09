@@ -112,7 +112,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     const sessionPath = new URL(page.url()).pathname;
 
     await panelTab(page, 'Files');
-    await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
     const content = page.getByRole('region', { name: 'File content', exact: true });
     await expect(content.getByText('hello', { exact: true })).toBeVisible();
     writeFileSync(join(original, 'README.md'), 'updated outside Corral\n');

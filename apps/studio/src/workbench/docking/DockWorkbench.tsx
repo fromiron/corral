@@ -74,7 +74,8 @@ export interface DockOpenDocument {
 }
 export interface DockWorkbenchHandle {
   openDocument(input: DockOpenDocument, selection?: TextRange): boolean;
-  openContext(view: DockContextView): void;
+  /** `reveal` brings the pane itself to the front even while a document is active. */
+  openContext(view: DockContextView, reveal?: boolean): void;
   /** Opens this project's saved team graph as a tab, or shows the one already open. */
   openGraph(corralId: string): boolean;
   /**
@@ -621,7 +622,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     }
     useImperativeHandle(ref, () => ({
       openDocument,
-      openContext: (view) => openContext(view),
+      openContext: (view, reveal = false) => openContext(view, reveal),
       openGraph,
       setPanesHidden,
     }));

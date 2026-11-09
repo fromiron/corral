@@ -171,7 +171,7 @@ for (const locale of ['en', 'ko'] as const) {
               : '작업 사본이 없어 읽기 전용입니다.',
           ),
         ).toBeVisible();
-        await files.getByRole('button', { name: /README\.md/ }).click();
+        await files.getByRole('treeitem', { name: 'README.md', exact: true }).click();
         await expect(
           files.getByText('Read-only original contents', { exact: false }),
         ).toBeVisible();

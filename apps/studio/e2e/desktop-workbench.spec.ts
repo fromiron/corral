@@ -121,7 +121,7 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
     .getByRole('tablist', { name: 'Session views' })
     .getByRole('tab', { name: 'Files', exact: true })
     .click();
-  await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
   await expect(
     page
       .getByRole('region', { name: 'File content', exact: true })
@@ -139,7 +139,9 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   // #87: an original-folder file has one read-only preview in Files, kept across panes; the
   // dock's document tabs are the only tab strip.
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Open src/version.ts', exact: true }).click();
+  // A nested file shows in the tree once its folder is expanded.
+  await page.getByRole('treeitem', { name: 'src', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'version.ts', exact: true }).click();
   await expect(page.getByRole('region', { name: 'src/version.ts', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toHaveCount(0);
   await panelTab(page, 'Conversation');

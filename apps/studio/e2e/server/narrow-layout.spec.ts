@@ -164,7 +164,7 @@ test('line navigation reveals the selection above the bottom dock', async ({
   const { sessionId } = await fixture(page, corral);
   await page.setViewportSize({ width: 1179, height: 757 });
   await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
-  await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
   const editorPanel = page.getByTestId('dock-document-panel');
   await expect(editorPanel.locator('.monaco-editor')).toBeVisible();
   await page.getByRole('banner').getByRole('button', { name: 'Terminal', exact: true }).click();
@@ -223,8 +223,8 @@ test('filename search keeps the entered filename readable at 636px', async ({
   await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
   const field = page.getByRole('textbox', { name: 'Filter files', exact: true });
   await field.fill('README.md');
-  await expect(page.getByRole('button', { name: 'Open README.md', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open other.txt', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('treeitem', { name: 'README.md', exact: true })).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: 'other.txt', exact: true })).toHaveCount(0);
   await expect.poll(() => field.evaluate((input) => input.scrollLeft)).toBe(0);
   await testInfo.attach('filename-field-size', {
     body: JSON.stringify(await field.boundingBox()),

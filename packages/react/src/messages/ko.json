@@ -1218,7 +1218,14 @@
     "newMeeting": "{name}에서 새 회의"
   },
   "QuickOpen": {
-    "title": "빠른 열기"
+    "title": "빠른 열기",
+    "description": "경로로 파일이나 폴더를 찾습니다.",
+    "placeholder": "경로로 파일 검색",
+    "results": "{count, plural, other {결과 #개}}",
+    "searching": "찾는 중…",
+    "empty": "일치하는 파일이 없습니다",
+    "noTarget": "파일을 찾으려면 작업 폴더를 연결하세요.",
+    "openFailed": "{path}을(를) 열지 못했습니다."
   },
   "Shortcuts": {
     "edit": "{command} 단축키 변경",
@@ -1851,7 +1858,12 @@
     "removalUncertain": "결과를 모르는 파일 쓰기 {count, plural, other {#개}}",
     "removalRuns": "끝나지 않은 실행 {count, plural, other {#개}}",
     "noCopyReadOnly": "작업 사본이 없어 읽기 전용입니다.",
-    "operationDetails": "쓰기 상세 정보"
+    "operationDetails": "쓰기 상세 정보",
+    "tree": "폴더 트리",
+    "folderTruncated": "처음 500개 파일",
+    "folderLoading": "읽는 중…",
+    "folderFailed": "읽지 못함",
+    "branch": "브랜치 {branch}"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -3590,7 +3602,20 @@
     "noService": "실행 중인 서비스가 없습니다.",
     "openInteractive": "대화형 미리보기 열기",
     "opened": "열린 미리보기",
-    "runSource": "실행 보기"
+    "runSource": "실행 보기",
+    "tab": "미리보기",
+    "address": "미리보기 주소",
+    "copy": "복사",
+    "copied": "복사됨",
+    "copyFailed": "복사 실패",
+    "copyFailedShort": "실패",
+    "copyAddress": "미리보기 주소 복사",
+    "viewport": "뷰포트 크기",
+    "viewportFull": "전체",
+    "viewportTablet": "태블릿",
+    "viewportMobile": "모바일",
+    "output": "최근 출력",
+    "noOutput": "출력이 없습니다"
   },
   "FeaturePreview": {
     "title": "기능 미리보기"

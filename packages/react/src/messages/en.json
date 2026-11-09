@@ -1218,7 +1218,14 @@
     "newMeeting": "New meeting in {name}"
   },
   "QuickOpen": {
-    "title": "Quick open"
+    "title": "Quick open",
+    "description": "Find a file or folder by its path.",
+    "placeholder": "Search files by path",
+    "results": "{count, plural, =0 {No results} one {# result} other {# results}}",
+    "searching": "Searching…",
+    "empty": "No matching files",
+    "noTarget": "Link a work folder to search its files.",
+    "openFailed": "Could not open {path}."
   },
   "Shortcuts": {
     "edit": "Change shortcut for {command}",
@@ -1851,7 +1858,12 @@
     "removalUncertain": "{count, plural, one {# file write with unknown outcome} other {# file writes with unknown outcome}}",
     "removalRuns": "{count, plural, one {# run not finished} other {# runs not finished}}",
     "noCopyReadOnly": "Read-only: this session has no working copy.",
-    "operationDetails": "Write details"
+    "operationDetails": "Write details",
+    "tree": "Folder tree",
+    "folderTruncated": "First 500 files",
+    "folderLoading": "Loading…",
+    "folderFailed": "Could not read",
+    "branch": "Branch {branch}"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -3590,7 +3602,20 @@
     "noService": "No service is running.",
     "openInteractive": "Open interactive preview",
     "opened": "Open previews",
-    "runSource": "View run"
+    "runSource": "View run",
+    "tab": "Preview",
+    "address": "Preview address",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Copy failed",
+    "copyFailedShort": "Failed",
+    "copyAddress": "Copy preview address",
+    "viewport": "Viewport size",
+    "viewportFull": "Full",
+    "viewportTablet": "Tablet",
+    "viewportMobile": "Mobile",
+    "output": "Recent output",
+    "noOutput": "No output available"
   },
   "FeaturePreview": {
     "title": "Feature previews"

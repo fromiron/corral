@@ -138,7 +138,7 @@ test('without a model: edit, task, preview, check, review, stage, commit and pus
 
   // Edit and save in a document tab.
   await panelTab(page, 'Files');
-  await page.getByRole('button', { name: 'Open app.js', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'app.js', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'app.js', exact: true })).toBeVisible();
   await replaceDocument(page, 'console.log("two");\n');
   await page.getByRole('button', { name: 'Save', exact: true }).first().click();

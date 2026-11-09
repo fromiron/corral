@@ -1,4 +1,4 @@
-import type { FileSideView } from '@corral/client';
+import type { FileListView, FileSideView } from '@corral/client';
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
 import {
   Banner,
@@ -8,15 +8,16 @@ import {
   Input,
   Select,
   Textarea,
+  Tooltip,
 } from '@corral/react/design-kit';
-import { FileText, RefreshCw, X } from '@corral/react/icons';
+import { RefreshCw, Search, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   lazy,
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -24,14 +25,19 @@ import {
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
+import { formatChord } from '../shortcuts.ts';
 import { ContentSearch } from './ContentSearch.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
+import { DocumentHeader } from './DocumentHeader.tsx';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { DocumentCloseDialog } from './documents/DocumentCloseDialog.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
+import { FileTree } from './FileTree.tsx';
+import { type FolderListing, needsListing, visibleRows } from './fileTree.ts';
 import { languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
+import { openQuickOpen, takeFileReveal, useFileReveal } from './QuickOpen.tsx';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
 const SourceCode = lazy(() =>
@@ -41,6 +47,34 @@ const noDocuments = { documents: {} as Record<string, DocumentBuffer> };
 const noSubscription = () => () => {};
 const emptyDocuments = () => noDocuments;
 const fileViewId = (sessionId: string, path: string) => JSON.stringify(['files', sessionId, path]);
+const noPaths: ReadonlySet<string> = new Set();
+const noListings: ReadonlyMap<string, FolderListing> = new Map();
+const parentsOf = (path: string) =>
+  path
+    .split('/')
+    .slice(0, -1)
+    .map((_, index, parts) => parts.slice(0, index + 1).join('/'));
+const toggled = (paths: ReadonlySet<string>, path: string, on: boolean) => {
+  const next = new Set(paths);
+  if (on) next.add(path);
+  else next.delete(path);
+  return next;
+};
+/** Folder listings read for one root listing of one scope; a refresh starts again. */
+interface FolderReads {
+  base: FileListView;
+  scopeKey: string;
+  listings: ReadonlyMap<string, FolderListing>;
+  loading: ReadonlySet<string>;
+  failed: ReadonlySet<string>;
+}
+const freshReads = (base: FileListView, scopeKey: string): FolderReads => ({
+  base,
+  scopeKey,
+  listings: noListings,
+  loading: noPaths,
+  failed: noPaths,
+});
 
 export interface FileReference {
   path: string;
@@ -77,6 +111,7 @@ export function FilePanel({
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
+  const tq = useTranslations('QuickOpen');
   const te = useTranslations('Documents');
   const td = useTranslations('Docking');
   const ts = useTranslations('ContentSearch');
@@ -141,15 +176,86 @@ export function FilePanel({
     void list;
     void refreshRecoveries().catch(() => setRecoveryReadError(true));
   }, [refreshRecoveries, list]);
-  const files = list.files.filter((f) => f.path.toLowerCase().includes(query.toLowerCase()));
-  const scroll = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const rows = useVirtualizer({
-    count: files.length,
-    getScrollElement: () => scroll.current,
-    estimateSize: () => 30,
-    overscan: 6,
-  });
+  // The tree: the root listing, plus each incomplete folder's own listing once it is expanded.
+  const scopeKey = scope ? `${scope.kind}:${scope.id}` : '';
+  const [reads, setReads] = useState<FolderReads>(() => freshReads(list, scopeKey));
+  const folders =
+    reads.base === list && reads.scopeKey === scopeKey ? reads : freshReads(list, scopeKey);
+  const [opened, setOpened] = useState({ scopeKey, paths: noPaths });
+  const expanded = opened.scopeKey === scopeKey ? opened.paths : noPaths;
+  const [filterClosed, setFilterClosed] = useState({ query: '', paths: noPaths });
+  const collapsed = filterClosed.query === query ? filterClosed.paths : noPaths;
+  const filtering = Boolean(query.trim());
+  const listings = useMemo(
+    () => new Map<string, FolderListing>([['', list], ...folders.listings]),
+    [list, folders.listings],
+  );
+  const treeRows = useMemo(
+    () =>
+      visibleRows(listings, {
+        expanded,
+        query,
+        collapsed,
+        loading: folders.loading,
+        failed: folders.failed,
+      }),
+    [listings, expanded, query, collapsed, folders.loading, folders.failed],
+  );
+  useEffect(() => {
+    if (!workspaces || !scope) return;
+    const wanted = [...expanded].filter(
+      (path) =>
+        needsListing(path, listings) && !folders.loading.has(path) && !folders.failed.has(path),
+    );
+    if (!wanted.length) return;
+    const base = list;
+    const key = scopeKey;
+    // A read answers only the listing and scope it was asked for.
+    const current = (state: FolderReads) => state.base === base && state.scopeKey === key;
+    setReads((state) => {
+      const start = current(state) ? state : freshReads(base, key);
+      return { ...start, loading: new Set([...start.loading, ...wanted]) };
+    });
+    for (const path of wanted)
+      void workspaces.listFiles(scope, path).then(
+        (view) =>
+          setReads((state) =>
+            current(state)
+              ? {
+                  ...state,
+                  listings: new Map(state.listings).set(path, view),
+                  loading: toggled(state.loading, path, false),
+                }
+              : state,
+          ),
+        () =>
+          setReads((state) =>
+            current(state)
+              ? {
+                  ...state,
+                  loading: toggled(state.loading, path, false),
+                  failed: toggled(state.failed, path, true),
+                }
+              : state,
+          ),
+      );
+  }, [workspaces, scope, scopeKey, list, expanded, listings, folders.loading, folders.failed]);
+  const toggleFolder = (path: string, open: boolean) => {
+    if (filtering)
+      setFilterClosed((state) => ({
+        query,
+        paths: toggled(state.query === query ? state.paths : noPaths, path, !open),
+      }));
+    else
+      setOpened((state) => ({
+        scopeKey,
+        paths: toggled(state.scopeKey === scopeKey ? state.paths : noPaths, path, open),
+      }));
+    // Opening a folder that could not be read reads it again.
+    if (open && folders.failed.has(path))
+      setReads((state) => ({ ...state, failed: toggled(state.failed, path, false) }));
+  };
   const removeTab = (path: string) => {
     if (active === path) setPreview(null);
     setTabMessage(null);
@@ -189,6 +295,39 @@ export function FilePanel({
     setTabMessage(null);
     setPreview(path);
   };
+  // Quick open shows a folder, or a source-folder file, here: in its tree, under its source.
+  const reveal = useFileReveal(sessionId, !readOnly);
+  const [revealed, setRevealed] = useState<{ path: string; seq: number } | null>(null);
+  const switching = useRef<{ seq: number; scope: typeof scope } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Runs once per request, when its source is the one listed.
+  useEffect(() => {
+    if (!reveal || loading) return;
+    if (scopeKind !== reveal.source) {
+      // The tree lists the request's source first; a source still missing once it was read
+      // again drops the request.
+      if (switching.current?.seq === reveal.seq) {
+        if (switching.current.scope !== scope) takeFileReveal(reveal.seq);
+      } else if (savedSource === reveal.source) takeFileReveal(reveal.seq);
+      else {
+        switching.current = { seq: reveal.seq, scope };
+        setSource(reveal.source);
+      }
+      return;
+    }
+    takeFileReveal(reveal.seq);
+    setQuery('');
+    setSearchMode('names');
+    setOpened((state) => ({
+      scopeKey,
+      paths: new Set([
+        ...(state.scopeKey === scopeKey ? state.paths : noPaths),
+        ...parentsOf(reveal.path),
+        ...(reveal.kind === 'folder' ? [reveal.path] : []),
+      ]),
+    }));
+    setRevealed({ path: reveal.path, seq: reveal.seq });
+    if (reveal.kind === 'file') void open(reveal.path);
+  }, [reveal, loading, scopeKind, scopeKey, savedSource]);
   const retained = Object.values(documents).filter(
     (entry) =>
       entry.target.sessionId === sessionId &&
@@ -491,7 +630,12 @@ export function FilePanel({
         }
       : null;
   return (
-    <div ref={panel} className="flex min-h-0 flex-col gap-2" data-testid="file-panel">
+    <div
+      ref={panel}
+      // Only the tree gives up height in a short pane; everything else keeps its own.
+      className="flex min-h-0 flex-1 flex-col gap-2 [&>:not([role=tree])]:shrink-0"
+      data-testid="file-panel"
+    >
       {fileSetup}
       {retainedDrafts}
       {recoveryCandidates}
@@ -516,6 +660,21 @@ export function FilePanel({
               ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
             ]}
           />
+        )}
+        {readOnly ? null : (
+          <Tooltip content={`${tq('title')} (${formatChord({ mod: true, key: 'p' })})`}>
+            <Button
+              size="icon-compact"
+              variant="ghost"
+              aria-label={tq('title')}
+              aria-keyshortcuts={
+                /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta+P' : 'Control+P'
+              }
+              onClick={openQuickOpen}
+            >
+              <Search />
+            </Button>
+          </Tooltip>
         )}
         <Button
           size="icon-compact"
@@ -594,39 +753,20 @@ export function FilePanel({
       )}
       {readOnly || searchMode === 'names' ? (
         <>
-          <div ref={scroll} className="h-44 overflow-auto">
-            <div style={{ height: rows.getTotalSize(), position: 'relative' }}>
-              {rows.getVirtualItems().map((row) => {
-                const file = files[row.index];
-                if (!file) return null;
-                return (
-                  <button
-                    key={file.path}
-                    type="button"
-                    aria-label={t('openFile', { path: file.path })}
-                    title={file.path}
-                    onClick={() => open(file.path)}
-                    style={{
-                      position: 'absolute',
-                      top: row.start,
-                      left: 0,
-                      width: '100%',
-                      height: row.size,
-                    }}
-                    className={`flex items-center gap-2 rounded px-2 text-left text-xs hover:bg-raised ${active === file.path ? 'bg-sidebar-selected' : ''}`}
-                  >
-                    <FileText size={14} className="shrink-0 text-muted-foreground" />
-                    <span className="truncate">{file.path}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {!loading && !files.length ? (
-              <p className="p-2 text-xs text-muted-foreground">{t('noFiles')}</p>
-            ) : null}
-          </div>
+          {treeRows.length ? (
+            <FileTree
+              label={tf('tree')}
+              rows={treeRows}
+              active={active}
+              onOpen={(path) => void open(path)}
+              onToggle={toggleFolder}
+              reveal={revealed}
+            />
+          ) : !loading ? (
+            <p className="p-2 text-caption text-muted-foreground">{t('noFiles')}</p>
+          ) : null}
           {list.truncated ? (
-            <p role="note" className="text-xs text-muted-foreground">
+            <p role="note" className="text-caption text-muted-foreground">
               {t('filesTruncated')}
             </p>
           ) : null}
@@ -643,10 +783,19 @@ export function FilePanel({
           aria-label={active}
           className="flex min-w-0 flex-col gap-2 border-t border-line pt-2"
         >
-          <div className="flex min-w-0 items-center gap-2 text-xs">
-            <p className="min-w-0 flex-1 truncate font-medium" title={active}>
-              {active}
-            </p>
+          <DocumentHeader
+            path={active}
+            target={
+              scopeKind === 'session' && searchTarget
+                ? { kind: 'copy', target: searchTarget }
+                : { kind: 'source' }
+            }
+            unsaved={Boolean(
+              inlineEditor &&
+                documentKey &&
+                (documents[documentKey]?.dirty || documents[documentKey]?.pendingSave),
+            )}
+          >
             {inlineEditor ? null : (
               <span className="text-2xs text-muted-foreground">{tf('readOnlyPreview')}</span>
             )}
@@ -658,7 +807,7 @@ export function FilePanel({
             >
               <X />
             </Button>
-          </div>
+          </DocumentHeader>
           {readError ? (
             <p role="alert" className="text-xs text-danger">
               {readError}

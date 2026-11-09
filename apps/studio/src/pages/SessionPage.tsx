@@ -35,6 +35,7 @@ import { editorCopyDirty, subscribeEditorCopies } from '../workbench/editorDraft
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { panelRunId } from '../workbench/panelRun.ts';
+import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
 import { SessionActions } from '../workbench/session/SessionActions.tsx';
 import { ArtifactsPanel, ChecksPanel, RunPanel } from '../workbench/session/SessionPanels.tsx';
@@ -330,7 +331,11 @@ function WorkSessionPage() {
       panelRunId(runs, search.run, listed),
     );
     return (
-      <div key={target ? panelKey(services, target) : view} className="flex flex-col gap-3 p-3">
+      <div
+        key={target ? panelKey(services, target) : view}
+        // The folder tree fills the pane's height.
+        className={`flex flex-col gap-3 p-3 ${view === 'files' ? 'h-full min-h-0' : ''}`}
+      >
         {panelViews[view]()}
       </div>
     );
@@ -350,6 +355,16 @@ function WorkSessionPage() {
         onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
       <ArchivedSessionNotice key={session.sessionId} session={session} />
+      <QuickOpen
+        key={`${session.projectId}:${session.sessionId}`}
+        projectId={session.projectId}
+        sessionId={session.sessionId}
+        openDocument={(document) => dock.current?.openDocument(document) ?? false}
+        showInFiles={(request) => {
+          requestFileReveal(request);
+          dock.current?.openContext('files', true);
+        }}
+      />
       <SourceNavigationContext.Provider
         value={{
           openDocument: (target, path, range) =>

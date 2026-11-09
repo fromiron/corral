@@ -46,7 +46,7 @@ test('file and line references remain independent and Escape clears only an empt
       .filter({ hasText: 'README.md' })
       .click();
     await page.getByRole('button', { name: 'Open file viewer', exact: true }).click();
-    await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
     await page.getByLabel('To line', { exact: true }).fill('3');
     await page.getByRole('button', { name: 'Reference lines', exact: true }).click();
     await page

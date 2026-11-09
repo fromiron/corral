@@ -6,6 +6,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
+import { DocumentHeader } from './DocumentHeader.tsx';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { debugStore } from './debug/store.ts';
 import type { RecoveryDraft } from './documents/recovery.ts';
@@ -108,21 +109,22 @@ export function DockDocumentPanel({
       className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto p-3"
       data-testid="dock-document-panel"
     >
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <p className="min-w-0 flex-1 break-all font-medium" title={path}>
-          {path}
-        </p>
+      <DocumentHeader
+        path={path}
+        target={{ kind: 'copy', target }}
+        unsaved={Boolean(entry && (entry.dirty || entry.pendingSave))}
+      >
         {!onReference ? (
           <Link
             to="/sessions/$sessionId"
             params={{ sessionId: target.sessionId }}
             title={target.sessionId}
-            className="text-primary underline"
+            className="text-caption text-primary underline"
           >
             {t('openConversation')}
           </Link>
         ) : null}
-      </div>
+      </DocumentHeader>
       {stale || state.error ? (
         <div className="space-y-2">
           <p role="alert" className="break-words text-xs text-danger">
