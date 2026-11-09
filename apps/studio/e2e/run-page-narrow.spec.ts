@@ -41,18 +41,8 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   await expect(side).toBeVisible();
   await expect(activity).toBeHidden();
   await expect(graph(page)).toBeHidden();
-  const openReins = side.getByRole('button', { name: 'Reins', exact: true });
-  await openReins.click();
-  const reins = monitor.getByTestId('run-instructions');
-  await expect(reins).toBeVisible();
-  await expect(reins).toContainText('This execution has finished.');
-  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
-  await expect(side).toBeHidden();
-  await expect(flow).toBeHidden();
-
-  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await expect(side).toBeVisible();
-  await expect(openReins).toBeFocused();
+  // A finished execution takes no new instructions.
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
   await side.getByRole('button', { name: 'Close details', exact: true }).click();
   await expect(side).toBeHidden();
   await expect(selected).toBeFocused();

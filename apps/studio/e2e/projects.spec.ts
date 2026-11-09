@@ -46,9 +46,11 @@ async function singleAgentRun(page: Page) {
 
 test('a project keeps its Corrals and runs apart, and / returns to it', async ({ page }) => {
   await page.goto('/?delay=50');
-  await expect(page).toHaveURL(/\/projects\/default(\?.*)?$/);
+  // A cold dev server can take a while to serve the first page.
+  await expect(page).toHaveURL(/\/projects\/default(\?.*)?$/, { timeout: 20_000 });
   await expect(page.getByRole('heading', { level: 2, name: 'My project' })).toBeVisible();
-  await expect(switcher(page)).toHaveCount(0);
+  // The location's project item is the menu that changes projects, even with one project.
+  await expect(switcher(page)).toContainText('My project');
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(
     'My project',
   );
