@@ -350,7 +350,7 @@
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
-    "heading": "Reins",
+    "heading": "Give instruction",
     "noTarget": "Start a run and choose an execution to steer.",
     "target": "Target",
     "delivery": "Delivery",

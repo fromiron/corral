@@ -350,7 +350,7 @@
   },
   "Reins": {
     "executionNumber": "에이전트 실행 {number}",
-    "heading": "Reins",
+    "heading": "지시하기",
     "noTarget": "실행을 시작하고 지시할 실행을 고르세요.",
     "target": "대상",
     "delivery": "전달 시점",
