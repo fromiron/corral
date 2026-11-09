@@ -358,11 +358,17 @@ export function userPrompt(start: PromptStart): string {
   );
 }
 
+/** How each worker opens a delivered directive; neither is the person's request. */
+export const DIRECTIVE_PREFIX = 'Instruction from the person supervising this run (';
+export const SDK_DIRECTIVE_PREFIX = 'Corral instruction (';
+
 export function directiveText(directives: { directiveId: string; text: string }[]): string {
-  return directives
-    .map((d) => `Instruction from the person supervising this run (${d.directiveId}): ${d.text}`)
-    .join('\n');
+  return directives.map((d) => `${DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`).join('\n');
 }
+
+/** The SDK worker's form of one delivered directive. */
+export const sdkDirectiveText = (d: { directiveId: string; text: string }) =>
+  `${SDK_DIRECTIVE_PREFIX}${d.directiveId}):\n${d.text}`;
 
 export function parentQuestionsText(questions: readonly ParentQuestionMessage[]): string {
   return (
