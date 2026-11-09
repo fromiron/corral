@@ -3,6 +3,7 @@ import type { HarnessBindingRef, ReasoningCapabilities, ReasoningPolicy } from '
 import type { CorralSummary } from '@corral/core';
 import { useEffect, useState } from 'react';
 import { useServices } from '../services.tsx';
+import { profileReady } from './modelReadiness.ts';
 
 // UX-06: which model each profile means and whether it is connected, as the local server
 // reports it. The in-browser demo has no profiles (its agents are simulated).
@@ -53,12 +54,7 @@ export function useModelProfiles(): ProfileInfo[] | null {
             reasoningCapabilities: p.reasoningCapabilities,
             imageInput: p.imageInput,
             label: `${p.providerName} · ${p.modelName ?? p.modelId}`,
-            // Ready to call: the model is known, a sign-in or key is set, and a subscription
-            // sign-in may use this model.
-            available:
-              p.available &&
-              p.method !== null &&
-              !(p.method === 'oauth' && p.subscriptionSupported === false),
+            available: profileReady(p),
           })),
         ),
       () => live && setProfiles(null),

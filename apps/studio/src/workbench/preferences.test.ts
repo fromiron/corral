@@ -19,6 +19,7 @@ describe('DW-02 workbench preferences', () => {
       sendKey: 'enter',
       notify: false,
       chatDensity: 'basic',
+      density: 'default',
     });
   });
   it('ignores corrupt and future preferences without losing access to navigation', () => {
@@ -36,6 +37,7 @@ describe('DW-02 workbench preferences', () => {
         sendKey: 'enter',
         notify: false,
         chatDensity: 'basic',
+        density: 'default',
       });
     }
   });

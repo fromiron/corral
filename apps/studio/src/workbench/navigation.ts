@@ -81,6 +81,7 @@ export const SETTINGS_SECTIONS = [
   'mcp',
   'defaults',
   'project-defaults',
+  'diagnostics',
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 /**
@@ -88,7 +89,7 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
  * narrow menu read this one list, so a section keeps its place and scope at any width.
  */
 export const SETTINGS_GROUPS = [
-  { id: 'app', items: ['general', 'shortcuts', 'vault', 'about'] },
+  { id: 'app', items: ['general', 'shortcuts', 'vault', 'diagnostics', 'about'] },
   { id: 'agents', items: ['models', 'harness', 'defaults', 'skills', 'hooks'] },
   { id: 'project', items: ['workspace', 'mcp', 'project-defaults'] },
 ] as const satisfies readonly { id: string; items: readonly SettingsSection[] }[];
@@ -121,7 +122,7 @@ export function settingsOnlyTransition(
   return current.pathname === next.pathname && sorted(current.search) === sorted(next.search);
 }
 export function standaloneSettingsLink(section: string, search: SettingsSearch = {}) {
-  const general = ['general', 'shortcuts', 'about', 'workspace'].includes(section);
+  const general = ['general', 'shortcuts', 'about', 'workspace', 'diagnostics'].includes(section);
   return {
     to: general ? '/settings' : `/settings/${section}`,
     search: { ...search, ...(general ? { section } : {}) },

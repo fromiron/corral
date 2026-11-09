@@ -1,5 +1,5 @@
 import {
-  Button,
+  cn,
   DialogTitle,
   Select,
   Sidebar,
@@ -14,7 +14,7 @@ import {
   SidebarProvider,
 } from '@corral/react/design-kit';
 import {
-  ArrowLeft,
+  Activity,
   BookOpen,
   Bot,
   FolderOpen,
@@ -23,7 +23,6 @@ import {
   Info,
   Keyboard,
   LayoutGrid,
-  PanelLeft,
   Settings,
   Shield,
   Terminal,
@@ -32,26 +31,16 @@ import {
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { projectName } from '../projects.ts';
-import { SETTINGS_GROUPS, type SettingsSection, useSettingsNavigation } from './navigation.ts';
-import { changePreferences } from './preferences.ts';
+import {
+  SETTINGS_GROUPS,
+  SETTINGS_SECTIONS,
+  type SettingsSection,
+  useSettingsNavigation,
+} from './navigation.ts';
 
 export function settingsSection(path: string, section?: unknown): string {
   const value = path !== '/settings' ? path.split('/')[2] : section;
-  return typeof value === 'string' &&
-    [
-      'general',
-      'shortcuts',
-      'about',
-      'workspace',
-      'models',
-      'vault',
-      'harness',
-      'skills',
-      'hooks',
-      'mcp',
-      'defaults',
-      'project-defaults',
-    ].includes(value)
+  return typeof value === 'string' && SETTINGS_SECTIONS.includes(value as SettingsSection)
     ? value
     : 'general';
 }
@@ -69,6 +58,7 @@ const SECTION_ICONS = {
   mcp: LayoutGrid,
   defaults: Settings,
   'project-defaults': Users,
+  diagnostics: Activity,
 } satisfies Record<SettingsSection, typeof Settings>;
 
 export function SettingsNavigation({
@@ -85,6 +75,7 @@ export function SettingsNavigation({
   const location = useRouterState({ select: (state) => state.location });
   const active = navigation.section ?? settingsSection(location.pathname, location.search.section);
   const label = useSettingsSectionLabel();
+  // `/settings/*` replaces into the dialog (#88), so the header holds only the title.
   const sidebar = (
     <nav data-testid="settings-sidebar" aria-label={td('settings')} className="h-full min-h-0">
       <Sidebar
@@ -97,33 +88,15 @@ export function SettingsNavigation({
           {navigation.overlay ? (
             <DialogTitle className="text-title font-normal">{td('settings')}</DialogTitle>
           ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <Link
-                  to={navigation.returnTo}
-                  resetScroll={false}
-                  className="mr-auto flex min-w-0 items-center gap-2 rounded-md py-1 text-body text-muted-foreground hover:text-foreground"
-                >
-                  <ArrowLeft size={16} />
-                  {t('backToWork')}
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="icon-compact"
-                  aria-label={w('collapseSidebar')}
-                  onClick={() => changePreferences({ sidebarOpen: false })}
-                >
-                  <PanelLeft />
-                </Button>
-              </div>
-              <h2 className="text-title">{td('settings')}</h2>
-            </>
+            <h2 className="text-title">{td('settings')}</h2>
           )}
         </SidebarHeader>
         <SidebarContent>
           {SETTINGS_GROUPS.map((group) => (
             <SidebarGroup key={group.id} aria-label={t(group.id)}>
               <SidebarGroupLabel>{t(group.id)}</SidebarGroupLabel>
+              {/* The one place the settings target project is chosen (#80). */}
+              {group.id === 'project' ? <SettingsProjectPicker className="px-2 pb-2" /> : null}
               <SidebarMenu focusRing={false}>
                 {group.items.map((key) => (
                   <SidebarMenuItem key={key}>
@@ -197,31 +170,26 @@ export function useSettingsSectionLabel() {
                 : td(key);
 }
 
-/** This changes the settings target, not the current work location. */
-export function SettingsProjectPicker({
-  label,
-  disabled = false,
-  className = 'border-b border-line/60 px-6 py-3 sm:px-10',
-}: {
-  label?: string;
-  disabled?: boolean;
-  className?: string;
-}) {
+/**
+ * "Settings for: <project>". This changes the settings target, not the current work location,
+ * and it is the only project choice in settings.
+ */
+export function SettingsProjectPicker({ className }: { className?: string }) {
   const t = useTranslations('Navigation');
   const p = useTranslations('Projects');
   const navigation = useSettingsNavigation();
   const navigate = useNavigate();
   return (
-    <div className={className}>
-      {/* A visible scope, so choosing here reads as a settings target, not navigation (#80). */}
-      {label ? null : (
-        <p className="mb-1.5 text-xs font-medium text-foreground">{t('settingsTarget')}</p>
-      )}
+    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
+      {/* Full-contrast text: the tinted settings sidebar leaves muted text below 4.5:1. */}
+      <span aria-hidden="true" className="text-caption text-foreground">
+        {t('settingsFor')}
+      </span>
       <Select
-        label={label ?? t('appliesToProject')}
-        disabled={disabled}
+        label={t('settingsFor')}
         value={navigation.projectId ?? ''}
         placeholder={t('chooseProject')}
+        className="w-full"
         options={[
           ...(navigation.projectId ? [] : [{ value: '', label: t('chooseProject') }]),
           ...navigation.projects.map((project) => ({

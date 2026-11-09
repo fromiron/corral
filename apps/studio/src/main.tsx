@@ -1,5 +1,4 @@
 import './csp.ts';
-import { DesignKitProvider } from '@corral/react/design-kit';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -10,6 +9,7 @@ import { StartupFailure } from './pages/StartupFailure.tsx';
 import { createStudioRouter } from './router.tsx';
 import { createStudioServices, ServicesProvider } from './services.tsx';
 import { applyTheme, preferences } from './workbench/preferences.ts';
+import { StudioDesignKit } from './workbench/StudioDesignKit.tsx';
 import './index.css';
 
 const root = document.getElementById('root');
@@ -29,23 +29,23 @@ try {
   const router = createStudioRouter(services);
   renderer.render(
     <StrictMode>
-      <DesignKitProvider>
+      <StudioDesignKit>
         <LocaleProvider>
           <ServicesProvider services={services}>
             {services.sessionMissing ? <SessionMissingView /> : <RouterProvider router={router} />}
           </ServicesProvider>
         </LocaleProvider>
-      </DesignKitProvider>
+      </StudioDesignKit>
     </StrictMode>,
   );
 } catch {
   renderer.render(
     <StrictMode>
-      <DesignKitProvider>
+      <StudioDesignKit>
         <LocaleProvider>
           <StartupFailure />
         </LocaleProvider>
-      </DesignKitProvider>
+      </StudioDesignKit>
     </StrictMode>,
   );
 }

@@ -633,6 +633,14 @@
     "loadFailed": "Could not load model settings. Check the connection and try again.",
     "loading": "Loading model settings…",
     "heading": "Models",
+    "tabs": {
+      "label": "Model settings",
+      "signIn": "Sign-in",
+      "profiles": "Profiles",
+      "judgment": "Local AI & judgment",
+      "images": "Images",
+      "usage": "Usage"
+    },
     "intro": "Corral signs in through the provider’s own page. Your sign-in is kept on this computer, outside the workspace. Corral never shows, logs or exports the token.",
     "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",
     "noLive": "This server runs simulated agents only.",
@@ -1939,6 +1947,7 @@
     "workspace": "Folders & tools",
     "shortcuts": "Shortcuts",
     "about": "About",
+    "diagnostics": "Diagnostics",
     "models": "Models",
     "appearance": "Appearance",
     "appearanceHint": "Choose how Corral looks on this device.",
@@ -2258,7 +2267,7 @@
   "Harness": {
     "heading": "Work styles",
     "intro": "Save skill, extension and tool selections as a revision. Apply it to a default or choose the new revision on a role.",
-    "sharedScope": "Shared work style: saving makes a new revision for every default and role that chooses it. The project above only supplies tools and the preview.",
+    "sharedScope": "Shared work style: saving makes a new revision for every default and role that chooses it. The project in Settings for only supplies tools and the preview.",
     "localOnly": "Work styles need the local Corral server.",
     "resources": "Resources",
     "sourceKind": "Source type",
@@ -2928,6 +2937,7 @@
     "backToWork": "Back to work",
     "appliesToProject": "Applies to project",
     "settingsTarget": "Settings apply to project",
+    "settingsFor": "Settings for",
     "onThisPage": "On this page",
     "chooseProject": "Choose a project",
     "projectRequired": "Choose the project whose settings you want to manage.",
@@ -3114,7 +3124,54 @@
     }
   },
   "Diagnostics": {
-    "title": "Diagnostics"
+    "title": "Diagnostics",
+    "rows": {
+      "models": "Model connection",
+      "server": "Server",
+      "folder": "Project source folder",
+      "pathEngine": "File path engine",
+      "localAi": "Local AI"
+    },
+    "status": {
+      "serverOnly": "Available with the local server",
+      "loading": "Checking…",
+      "failed": "Could not check",
+      "connected": "Connected · {ready} of {total} models ready",
+      "noModel": "No model connected",
+      "simulated": "Simulated agents only",
+      "server": "Local server · {version}",
+      "localServer": "Local server",
+      "browser": "Browser demo",
+      "noProject": "No project selected",
+      "unbound": "Not linked",
+      "trusted": "Linked · trusted",
+      "untrusted": "Linked · not trusted",
+      "missing": "Folder missing",
+      "builtIn": "Built-in",
+      "fff": "FFF"
+    },
+    "cause": {
+      "noModel": "Live requests are blocked until a model is connected.",
+      "fallback": {
+        "moduleUnavailable": "The FFF module could not be loaded, so the built-in engine is used.",
+        "noBinary": "FFF has no binary for this platform, so the built-in engine is used.",
+        "indexLimit": "The folder exceeds the FFF index limit, so the built-in engine is used.",
+        "callFailed": "An FFF search failed, so the built-in engine is used."
+      }
+    },
+    "action": {
+      "models": "Open Models",
+      "workspace": "Open Folders & tools",
+      "retry": "Try again"
+    },
+    "copy": "Copy diagnostics",
+    "copied": "Diagnostics copied",
+    "copyFailed": "Diagnostics could not be copied."
+  },
+  "Preferences": {
+    "density": "Interface density",
+    "densityDefault": "Default",
+    "densityCompact": "Compact"
   },
   "SessionSearch": {
     "title": "Search sessions and results",

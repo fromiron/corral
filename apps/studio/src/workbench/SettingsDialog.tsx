@@ -13,7 +13,11 @@ import { useTranslations } from 'use-intl';
 import { SETTINGS_GROUPS, type SettingsSection, useSettingsNavigation } from './navigation.ts';
 import { SettingsContent } from './SettingsContent.tsx';
 import { SettingsLeavePrompt } from './SettingsLifecycle.tsx';
-import { SettingsNavigation, useSettingsSectionLabel } from './SettingsNavigation.tsx';
+import {
+  SettingsNavigation,
+  SettingsProjectPicker,
+  useSettingsSectionLabel,
+} from './SettingsNavigation.tsx';
 
 export function SettingsDialog({
   section,
@@ -30,6 +34,8 @@ export function SettingsDialog({
   const n = useTranslations('Navigation');
   const [trigger] = useState(() => document.activeElement as HTMLElement | null);
   const projectScope = ['workspace', 'mcp', 'project-defaults'].includes(section);
+  // Sections that read the settings target project; on a narrow screen the picker joins them.
+  const projectTarget = projectScope || section === 'harness' || section === 'diagnostics';
   const label = useSettingsSectionLabel();
   return (
     <Dialog
@@ -103,6 +109,7 @@ export function SettingsDialog({
                 )}
                 onValueChange={(value) => void navigate(navigation.link(value))}
               />
+              {projectTarget ? <SettingsProjectPicker /> : null}
             </div>
             <div className="min-h-0 min-w-0 flex-1">
               <SettingsContent

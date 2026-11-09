@@ -8,7 +8,6 @@ import { useServices } from '../services.tsx';
 import { formatChord, sendKeyLabel } from '../shortcuts.ts';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { changePreferences, usePreferences } from '../workbench/preferences.ts';
-import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
 import { WorkFolderSection } from './FilesViews.tsx';
 import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
 
@@ -19,7 +18,6 @@ export function SettingsLayout({ children, active }: { children: ReactNode; acti
   const projectSection = ['workspace', 'mcp', 'project-defaults'].includes(active);
   return (
     <div className="settings-layout flex h-full min-h-0 flex-col" data-settings-section={active}>
-      {projectSection ? <SettingsProjectPicker /> : null}
       <ScrollArea className="min-h-0 flex-1" radius="none">
         {projectSection && !projectId ? (
           <main className="settings-content">
@@ -44,8 +42,9 @@ export function SettingsPage({
   section?: 'general' | 'workspace' | 'shortcuts' | 'about';
 }) {
   const t = useTranslations('Desktop');
+  const tp = useTranslations('Preferences');
   const { serverVersion } = useServices();
-  const { theme, sendKey, notify } = usePreferences();
+  const { theme, sendKey, notify, density } = usePreferences();
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
   return (
@@ -72,6 +71,20 @@ export function SettingsPage({
                   value,
                   label: t(value),
                 }))}
+              />
+            </section>
+            <section className="settings-row">
+              <div>
+                <h3>{tp('density')}</h3>
+              </div>
+              <Select
+                label={tp('density')}
+                value={density}
+                onValueChange={(density) => changePreferences({ density })}
+                options={[
+                  { value: 'default', label: tp('densityDefault') },
+                  { value: 'compact', label: tp('densityCompact') },
+                ]}
               />
             </section>
             <section className="settings-row">

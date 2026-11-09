@@ -633,6 +633,14 @@
     "loadFailed": "모델 설정을 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.",
     "loading": "모델 설정을 불러오는 중…",
     "heading": "모델",
+    "tabs": {
+      "label": "모델 설정",
+      "signIn": "로그인",
+      "profiles": "프로필",
+      "judgment": "로컬 AI·판정",
+      "images": "이미지",
+      "usage": "사용량"
+    },
     "intro": "Corral은 공급자의 로그인 페이지로 로그인합니다. 로그인 정보는 작업 공간 밖, 이 컴퓨터에 보관합니다. Corral은 토큰을 보여 주거나 기록하거나 내보내지 않습니다.",
     "browserOnly": "모델 설정은 로컬 서버가 필요합니다. 브라우저 데모는 항상 시뮬레이션 에이전트를 씁니다.",
     "noLive": "이 서버는 시뮬레이션 에이전트만 실행합니다.",
@@ -1939,6 +1947,7 @@
     "workspace": "폴더 및 도구",
     "shortcuts": "단축키",
     "about": "앱 정보",
+    "diagnostics": "진단",
     "models": "모델",
     "appearance": "화면 테마",
     "appearanceHint": "이 기기에서 사용할 화면 모양을 고르세요.",
@@ -2258,7 +2267,7 @@
   "Harness": {
     "heading": "작업 방식",
     "intro": "스킬·확장·도구 선택을 버전으로 저장합니다. 기본값에 반영하거나 역할에서 새 버전을 선택하세요.",
-    "sharedScope": "공용 작업 방식: 저장하면 이 방식을 고른 모든 기본값과 역할에 쓰일 새 리비전이 됩니다. 위의 프로젝트는 도구 목록과 미리보기만 제공합니다.",
+    "sharedScope": "공용 작업 방식: 저장하면 이 방식을 고른 모든 기본값과 역할에 쓰일 새 리비전이 됩니다. 설정 대상 프로젝트는 도구 목록과 미리보기만 제공합니다.",
     "localOnly": "작업 방식은 로컬 Corral 서버에서 사용할 수 있습니다.",
     "resources": "리소스",
     "sourceKind": "소스 종류",
@@ -2928,6 +2937,7 @@
     "backToWork": "작업으로 돌아가기",
     "appliesToProject": "적용 프로젝트",
     "settingsTarget": "설정 대상 프로젝트",
+    "settingsFor": "설정 대상",
     "onThisPage": "이 화면에서",
     "chooseProject": "프로젝트 선택",
     "projectRequired": "설정을 관리할 프로젝트를 선택하세요.",
@@ -3114,7 +3124,54 @@
     }
   },
   "Diagnostics": {
-    "title": "진단"
+    "title": "진단",
+    "rows": {
+      "models": "모델 연결",
+      "server": "서버",
+      "folder": "프로젝트 원본 폴더",
+      "pathEngine": "파일 경로 엔진",
+      "localAi": "로컬 AI"
+    },
+    "status": {
+      "serverOnly": "로컬 서버에서 사용할 수 있습니다",
+      "loading": "확인 중…",
+      "failed": "확인하지 못했습니다",
+      "connected": "연결됨 · 모델 {total}개 중 {ready}개 사용 가능",
+      "noModel": "연결된 모델 없음",
+      "simulated": "시뮬레이션 에이전트만 실행",
+      "server": "로컬 서버 · {version}",
+      "localServer": "로컬 서버",
+      "browser": "브라우저 데모",
+      "noProject": "선택한 프로젝트 없음",
+      "unbound": "연결되지 않음",
+      "trusted": "연결됨 · 신뢰함",
+      "untrusted": "연결됨 · 신뢰하지 않음",
+      "missing": "폴더 없음",
+      "builtIn": "내장",
+      "fff": "FFF"
+    },
+    "cause": {
+      "noModel": "모델을 연결하기 전에는 실제 요청을 보낼 수 없습니다.",
+      "fallback": {
+        "moduleUnavailable": "FFF 모듈을 불러오지 못해 내장 엔진을 씁니다.",
+        "noBinary": "이 플랫폼용 FFF 바이너리가 없어 내장 엔진을 씁니다.",
+        "indexLimit": "폴더가 FFF 색인 상한을 넘어 내장 엔진을 씁니다.",
+        "callFailed": "FFF 검색이 실패해 내장 엔진을 씁니다."
+      }
+    },
+    "action": {
+      "models": "모델 열기",
+      "workspace": "폴더 및 도구 열기",
+      "retry": "다시 시도"
+    },
+    "copy": "진단 정보 복사",
+    "copied": "진단 정보를 복사했습니다",
+    "copyFailed": "진단 정보를 복사하지 못했습니다."
+  },
+  "Preferences": {
+    "density": "인터페이스 밀도",
+    "densityDefault": "기본",
+    "densityCompact": "촘촘함"
   },
   "SessionSearch": {
     "title": "세션·결과 검색",

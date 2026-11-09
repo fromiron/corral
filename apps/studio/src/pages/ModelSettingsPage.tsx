@@ -1,6 +1,6 @@
 import type { ModelProfileView, ProviderAuthView } from '@corral/client';
-import { Button, Input } from '@corral/react/design-kit';
-import { type FormEvent, useState } from 'react';
+import { Button, Input, TabsSubtle, TabsSubtleItem } from '@corral/react/design-kit';
+import { type FormEvent, type ReactNode, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import {
@@ -8,7 +8,6 @@ import {
   useModelSettings,
   useModelSettingsRefresh,
 } from '../workbench/modelSettings.tsx';
-import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { DecisionApiSettings } from './DecisionApiSettings.tsx';
@@ -20,24 +19,95 @@ import { ModelImportPanel } from './ModelImportPanel.tsx';
 import { ModelUsagePanel } from './ModelUsagePanel.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
+/** The Models sub-views, in tab order. Each keeps its sections' ids for in-page links. */
+const MODEL_TABS = ['signIn', 'profiles', 'judgment', 'images', 'usage'] as const;
+
 /**
  * /settings/models. Sign-in happens on the provider's own page, opened by
  * the person; this page only shows status and expiry. No token is ever sent here.
  */
 export function ModelSettingsPage() {
   const t = useTranslations('Models');
-  const ti = useTranslations('ModelImport');
-  const tim = useTranslations('ImageProfiles');
-  const tu = useTranslations('ModelUsage');
-  const tl = useTranslations('LocalAi');
-  const td = useTranslations('DecisionApis');
-  const te = useTranslations('EffortRouting');
   const { models, mode, live } = useServices();
   const { profiles, providers, catalog, config, refresh, error, loading } =
     useModelSettings(models);
   const [editing, setEditing] = useState(false);
   // A key saved or removed below changes which decision APIs the judgment can use.
   const [apiKeys, setApiKeys] = useState(0);
+  const [tab, setTab] = useState(0);
+  const idPrefix = `models-tabs-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  // Every tab stays mounted while hidden, so an unsaved key, sign-in or profile edit survives a
+  // tab change and the leave guard still sees it.
+  const panels: Record<(typeof MODEL_TABS)[number], ReactNode> = {
+    signIn: (
+      <section
+        id="models-providers"
+        tabIndex={-1}
+        aria-labelledby="providers-heading"
+        className="flex flex-col gap-2 outline-none"
+      >
+        <h3 id="providers-heading" className="text-sm font-semibold">
+          {t('providers')}
+        </h3>
+        {providers.map((provider) => (
+          <ProviderCard
+            key={`${provider.providerId}:${config?.modelProviders.find((endpoint) => endpoint.id === provider.providerId)?.baseUrl ?? ''}`}
+            provider={provider}
+            revision={config?.revision}
+          />
+        ))}
+      </section>
+    ),
+    profiles: (
+      <>
+        {editing && config ? (
+          <div id="models-profiles" tabIndex={-1} className="outline-none">
+            <ModelConfigEditor config={config} catalog={catalog} onDone={() => setEditing(false)} />
+          </div>
+        ) : (
+          <div id="models-profiles" tabIndex={-1} className="flex flex-col gap-3 outline-none">
+            <ProfilesTable
+              profiles={profiles}
+              {...(config ? { onEdit: () => setEditing(true) } : {})}
+            />
+            {config ? (
+              <Button
+                variant="tertiary"
+                size="compact"
+                type="button"
+                onClick={() => setEditing(true)}
+                className="self-start"
+              >
+                {t('editModels')}
+              </Button>
+            ) : null}
+          </div>
+        )}
+        <div id="models-import" tabIndex={-1} className="outline-none">
+          <ModelImportPanel />
+        </div>
+      </>
+    ),
+    judgment: (
+      <>
+        <div id="models-local-ai" tabIndex={-1} className="outline-none">
+          <LocalAiPanel />
+        </div>
+        <div id="models-effort-routing" tabIndex={-1} className="outline-none">
+          <EffortRoutingSettings reloadKey={apiKeys} />
+        </div>
+        <div id="models-decision-apis" tabIndex={-1} className="outline-none">
+          <DecisionApiSettings onChange={() => setApiKeys((count) => count + 1)} />
+        </div>
+      </>
+    ),
+    images: (
+      <div id="models-images" tabIndex={-1} className="outline-none">
+        <ImageProfileSettings modelProfiles={profiles} />
+      </div>
+    ),
+    usage: <ModelUsagePanel />,
+  };
 
   return (
     <ModelSettingsRefresh value={refresh}>
@@ -58,82 +128,29 @@ export function ModelSettingsPage() {
           ) : (
             <>
               <p className="text-sm text-muted-foreground">{t('intro')}</p>
-              <SectionIndex
-                sections={[
-                  { id: 'models-profiles', label: t('profiles') },
-                  { id: 'models-providers', label: t('providers') },
-                  { id: 'models-import', label: ti('heading') },
-                  { id: 'models-images', label: tim('heading') },
-                  { id: 'models-local-ai', label: tl('heading') },
-                  { id: 'models-effort-routing', label: te('heading') },
-                  { id: 'models-decision-apis', label: td('heading') },
-                  { id: 'models-usage', label: tu('heading') },
-                ]}
-              />
-              {editing && config ? (
-                <div id="models-profiles" tabIndex={-1} className="outline-none">
-                  <ModelConfigEditor
-                    config={config}
-                    catalog={catalog}
-                    onDone={() => setEditing(false)}
-                  />
-                </div>
-              ) : (
-                <div
-                  id="models-profiles"
-                  tabIndex={-1}
-                  className="flex flex-col gap-3 outline-none"
-                >
-                  <ProfilesTable
-                    profiles={profiles}
-                    {...(config ? { onEdit: () => setEditing(true) } : {})}
-                  />
-                  {config ? (
-                    <Button
-                      variant="tertiary"
-                      size="compact"
-                      type="button"
-                      onClick={() => setEditing(true)}
-                      className="self-start"
-                    >
-                      {t('editModels')}
-                    </Button>
-                  ) : null}
-                </div>
-              )}
-              <section
-                id="models-providers"
-                tabIndex={-1}
-                aria-labelledby="providers-heading"
-                className="flex flex-col gap-2 outline-none"
+              <TabsSubtle
+                idPrefix={idPrefix}
+                selectedIndex={tab}
+                onSelect={setTab}
+                aria-label={t('tabs.label')}
               >
-                <h3 id="providers-heading" className="text-sm font-semibold">
-                  {t('providers')}
-                </h3>
-                {providers.map((provider) => (
-                  <ProviderCard
-                    key={`${provider.providerId}:${config?.modelProviders.find((endpoint) => endpoint.id === provider.providerId)?.baseUrl ?? ''}`}
-                    provider={provider}
-                    revision={config?.revision}
-                  />
+                {MODEL_TABS.map((id, index) => (
+                  <TabsSubtleItem key={id} index={index} label={t(`tabs.${id}`)} />
                 ))}
-              </section>
-              <div id="models-import" tabIndex={-1} className="outline-none">
-                <ModelImportPanel />
-              </div>
-              <div id="models-images" tabIndex={-1} className="outline-none">
-                <ImageProfileSettings modelProfiles={profiles} />
-              </div>
-              <div id="models-local-ai" tabIndex={-1} className="outline-none">
-                <LocalAiPanel />
-              </div>
-              <div id="models-effort-routing" tabIndex={-1} className="outline-none">
-                <EffortRoutingSettings reloadKey={apiKeys} />
-              </div>
-              <div id="models-decision-apis" tabIndex={-1} className="outline-none">
-                <DecisionApiSettings onChange={() => setApiKeys((count) => count + 1)} />
-              </div>
-              <ModelUsagePanel />
+              </TabsSubtle>
+              {MODEL_TABS.map((id, index) => (
+                <div
+                  key={id}
+                  id={`${idPrefix}-panel-${index}`}
+                  role="tabpanel"
+                  aria-labelledby={`${idPrefix}-tab-${index}`}
+                  hidden={tab !== index}
+                  tabIndex={-1}
+                  className="flex flex-col gap-6 outline-none"
+                >
+                  {panels[id]}
+                </div>
+              ))}
             </>
           )}
         </main>

@@ -24,7 +24,6 @@ import {
   useSettingsForm,
   useSettingsTask,
 } from '../workbench/SettingsLifecycle.tsx';
-import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
 import { HarnessMcpTools } from './HarnessMcpTools.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -141,7 +140,6 @@ export function HarnessSettingsPage() {
 function HarnessSettingsEditor({ projectId }: { projectId: string | undefined }) {
   const t = useTranslations('Harness'),
     r = useTranslations('Resources');
-  const n = useTranslations('Navigation');
   const projectsText = useTranslations('Projects');
   const navigation = useSettingsNavigation();
   const { harnesses: api } = useServices();
@@ -351,19 +349,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
           <h2 className="text-2xl font-semibold">{t('heading')}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{t('intro')}</p>
         </div>
-        {api ? (
-          <section id="project-context" className="settings-row">
-            <div>
-              <h3>{n('projectContext')}</h3>
-              <p>{n('projectContextHint')}</p>
-            </div>
-            <SettingsProjectPicker
-              label={n('projectContext')}
-              disabled={busy}
-              className="w-full sm:w-72"
-            />
-          </section>
-        ) : null}
         {!api ? (
           <p>{t('localOnly')}</p>
         ) : (

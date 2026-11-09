@@ -24,7 +24,6 @@ import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { ScheduledPage } from './pages/ScheduledPage.tsx';
 import { SessionPage } from './pages/SessionPage.tsx';
-import { SettingsPage } from './pages/SettingsPage.tsx';
 import { VaultSettingsPage } from './pages/VaultSettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
@@ -42,6 +41,7 @@ import {
   validateRunSearch,
   validateSessionSearch,
 } from './workbench/panels/routes.ts';
+import { SettingsContent } from './workbench/SettingsContent.tsx';
 
 export { type SessionSearch, validateSessionSearch } from './workbench/panels/routes.ts';
 
@@ -286,21 +286,24 @@ function settingsDialog(section: string, search: SettingsSearch) {
   return redirect({ href: `${url.pathname}${url.search}${url.hash}`, replace: true });
 }
 
+/** Sections `/settings` names by `?section=` rather than by its own path. */
+const SEARCH_SECTIONS = ['general', 'workspace', 'shortcuts', 'about', 'diagnostics'] as const;
+type SearchSection = (typeof SEARCH_SECTIONS)[number];
 export const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
   validateSearch: (
     search: Record<string, unknown>,
-  ): SettingsSearch & { section?: 'general' | 'workspace' | 'shortcuts' | 'about' } => ({
+  ): SettingsSearch & { section?: SearchSection } => ({
     ...validateSettingsSearch(search),
-    ...(['general', 'workspace', 'shortcuts', 'about'].includes(String(search.section))
-      ? { section: search.section as 'general' | 'workspace' | 'shortcuts' | 'about' }
+    ...(SEARCH_SECTIONS.includes(search.section as SearchSection)
+      ? { section: search.section as SearchSection }
       : {}),
   }),
   beforeLoad: ({ search }) => {
     throw settingsDialog(search.section ?? 'general', search);
   },
-  component: () => <SettingsPage section={settingsRoute.useSearch().section} />,
+  component: () => <SettingsContent section={settingsRoute.useSearch().section ?? 'general'} />,
 });
 
 export const harnessSettingsRoute = createRoute({
