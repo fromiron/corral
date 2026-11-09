@@ -18,9 +18,12 @@ export function FileTree({
   onOpen,
   onToggle,
   reveal,
+  notes,
 }: {
   label: string;
   rows: TreeRow[];
+  /** A short note at the end of a file's row, e.g. the run that made it. */
+  notes?: ReadonlyMap<string, string>;
   /** The file shown now, marked selected. */
   active: string | null;
   onOpen(path: string): void;
@@ -164,6 +167,10 @@ export function FileTree({
               ) : row.truncated ? (
                 <span className="ml-auto shrink-0 text-muted-foreground">
                   {t('folderTruncated')}
+                </span>
+              ) : !folder && notes?.has(row.path) ? (
+                <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+                  {notes.get(row.path)}
                 </span>
               ) : null}
             </button>

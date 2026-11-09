@@ -1,5 +1,6 @@
 import type { FileListView, FileSideView } from '@corral/client';
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
+import type { RunSummary } from '@corral/core';
 import {
   Banner,
   BannerActions,
@@ -38,6 +39,7 @@ import { type FolderListing, needsListing, visibleRows } from './fileTree.ts';
 import { languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { openQuickOpen, takeFileReveal, useFileReveal } from './QuickOpen.tsx';
+import { runResultFiles } from './runResults.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
 const SourceCode = lazy(() =>
@@ -49,6 +51,7 @@ const emptyDocuments = () => noDocuments;
 const fileViewId = (sessionId: string, path: string) => JSON.stringify(['files', sessionId, path]);
 const noPaths: ReadonlySet<string> = new Set();
 const noListings: ReadonlyMap<string, FolderListing> = new Map();
+const noRuns: readonly RunSummary[] = [];
 const parentsOf = (path: string) =>
   path
     .split('/')
@@ -100,9 +103,12 @@ export function FilePanel({
   onAttach,
   onOpenDocument,
   readOnly = false,
+  runs = noRuns,
 }: {
   projectId: string;
   sessionId: string;
+  /** The session's runs, oldest first: a result file names its run by its number among them. */
+  runs?: readonly RunSummary[];
   onReference: (reference: FileReference) => void;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   onOpenDocument?: (document: OpenDocumentRequest, range?: TextRange) => boolean;
@@ -115,6 +121,7 @@ export function FilePanel({
   const te = useTranslations('Documents');
   const td = useTranslations('Docking');
   const ts = useTranslations('ContentSearch');
+  const tw = useTranslations('Workbench');
   const sessionText = useTranslations('Sessions');
   const navigation = useSettingsNavigation();
   const services = useServices();
@@ -184,9 +191,54 @@ export function FilePanel({
     reads.base === list && reads.scopeKey === scopeKey ? reads : freshReads(list, scopeKey);
   const [opened, setOpened] = useState({ scopeKey, paths: noPaths });
   const expanded = opened.scopeKey === scopeKey ? opened.paths : noPaths;
-  const [filterClosed, setFilterClosed] = useState({ query: '', paths: noPaths });
-  const collapsed = filterClosed.query === query ? filterClosed.paths : noPaths;
-  const filtering = Boolean(query.trim());
+  // The Results filter: only the session copy has run writes to attribute.
+  const [resultsOn, setResultsOn] = useState(false);
+  const resultsAvailable = !readOnly && scope?.kind === 'session';
+  const results = resultsOn && resultsAvailable;
+  const runKey = runs.map((run) => `${run.runId}:${run.status}`).join(',');
+  const madeKey = `${scopeKey}:${runKey}`;
+  /** `files` is null when the records could not be read: nothing is then attributed. */
+  const [made, setMade] = useState<{ key: string; files: ReadonlyMap<string, string> | null }>();
+  const madeFiles = made?.key === madeKey ? made.files : undefined;
+  useEffect(() => {
+    // A tree refresh or a run's start or end reads the records again.
+    void list;
+    if (!results || !workspaces) return;
+    let live = true;
+    const key = madeKey;
+    void Promise.all([
+      workspaces.fileOperations(sessionId),
+      workspaces.changes(sessionId, { kind: 'session' }),
+    ]).then(
+      ([operations, changes]) => {
+        if (live) setMade({ key, files: runResultFiles(operations, changes.files) });
+      },
+      () => {
+        if (live) setMade({ key, files: null });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [results, workspaces, sessionId, madeKey, list]);
+  const only = useMemo(
+    () => (results ? new Set(madeFiles?.keys() ?? []) : undefined),
+    [results, madeFiles],
+  );
+  const runNotes = useMemo(() => {
+    if (!results || !madeFiles) return undefined;
+    const notes = new Map<string, string>();
+    for (const [path, runId] of madeFiles) {
+      // The same number the run's status pill shows.
+      const number = runs.findIndex((run) => run.runId === runId) + 1;
+      if (number) notes.set(path, tw('runNumber', { number }));
+    }
+    return notes;
+  }, [results, madeFiles, runs, tw]);
+  const filterKey = `${results ? 'results' : ''}:${query}`;
+  const [filterClosed, setFilterClosed] = useState({ key: ':', paths: noPaths });
+  const collapsed = filterClosed.key === filterKey ? filterClosed.paths : noPaths;
+  const filtering = Boolean(query.trim()) || results;
   const listings = useMemo(
     () => new Map<string, FolderListing>([['', list], ...folders.listings]),
     [list, folders.listings],
@@ -196,15 +248,25 @@ export function FilePanel({
       visibleRows(listings, {
         expanded,
         query,
+        ...(only ? { only } : {}),
         collapsed,
         loading: folders.loading,
         failed: folders.failed,
       }),
-    [listings, expanded, query, collapsed, folders.loading, folders.failed],
+    [listings, expanded, query, only, collapsed, folders.loading, folders.failed],
   );
+  // Folders to read: the expanded ones, and while filtering for results, each result's folder.
+  const reading = useMemo(() => {
+    const paths = new Set(expanded);
+    for (const path of only ?? []) {
+      const folder = parentsOf(path).at(-1);
+      if (folder) paths.add(folder);
+    }
+    return paths;
+  }, [expanded, only]);
   useEffect(() => {
     if (!workspaces || !scope) return;
-    const wanted = [...expanded].filter(
+    const wanted = [...reading].filter(
       (path) =>
         needsListing(path, listings) && !folders.loading.has(path) && !folders.failed.has(path),
     );
@@ -240,12 +302,12 @@ export function FilePanel({
               : state,
           ),
       );
-  }, [workspaces, scope, scopeKey, list, expanded, listings, folders.loading, folders.failed]);
+  }, [workspaces, scope, scopeKey, list, reading, listings, folders.loading, folders.failed]);
   const toggleFolder = (path: string, open: boolean) => {
     if (filtering)
       setFilterClosed((state) => ({
-        query,
-        paths: toggled(state.query === query ? state.paths : noPaths, path, !open),
+        key: filterKey,
+        paths: toggled(state.key === filterKey ? state.paths : noPaths, path, !open),
       }));
     else
       setOpened((state) => ({
@@ -661,6 +723,16 @@ export function FilePanel({
             ]}
           />
         )}
+        {resultsAvailable ? (
+          <Button
+            size="compact"
+            variant={results ? 'secondary' : 'ghost'}
+            aria-pressed={results}
+            onClick={() => setResultsOn(!resultsOn)}
+          >
+            {tf('results')}
+          </Button>
+        ) : null}
         {readOnly ? null : (
           <Tooltip content={`${tq('title')} (${formatChord({ mod: true, key: 'p' })})`}>
             <Button
@@ -753,7 +825,11 @@ export function FilePanel({
       )}
       {readOnly || searchMode === 'names' ? (
         <>
-          {treeRows.length ? (
+          {results && madeFiles === null ? (
+            <p role="alert" className="p-2 text-caption text-danger">
+              {tf('resultsFailed')}
+            </p>
+          ) : treeRows.length ? (
             <FileTree
               label={tf('tree')}
               rows={treeRows}
@@ -761,7 +837,12 @@ export function FilePanel({
               onOpen={(path) => void open(path)}
               onToggle={toggleFolder}
               reveal={revealed}
+              {...(runNotes ? { notes: runNotes } : {})}
             />
+          ) : results && madeFiles === undefined ? (
+            <p className="p-2 text-caption text-muted-foreground">{tf('folderLoading')}</p>
+          ) : results ? (
+            <p className="p-2 text-caption text-muted-foreground">{tf('noResultFiles')}</p>
           ) : !loading ? (
             <p className="p-2 text-caption text-muted-foreground">{t('noFiles')}</p>
           ) : null}

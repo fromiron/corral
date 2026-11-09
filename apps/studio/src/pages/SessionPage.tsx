@@ -196,6 +196,7 @@ function WorkSessionPage() {
       <FilePanel
         projectId={session.projectId}
         sessionId={session.sessionId}
+        runs={runs}
         onReference={handleReference}
         onAttach={handleAttachment}
         onOpenDocument={(document, range) => dock.current?.openDocument(document, range) ?? false}

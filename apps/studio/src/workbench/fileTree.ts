@@ -66,19 +66,23 @@ export function needsListing(folder: string, listings: ReadonlyMap<string, Folde
 
 /**
  * The rows on screen, depth first: folders before files, by name. A query shows only files whose
- * path contains it, with their folders open unless closed while filtering (`collapsed`).
+ * path contains it, and `only` only the files it holds; either way their folders stay open unless
+ * closed while filtering (`collapsed`), and `expanded` is left for when the filter ends.
  */
 export function visibleRows(
   listings: ReadonlyMap<string, FolderListing>,
   {
     expanded,
     query = '',
+    only,
     collapsed = new Set(),
     loading = new Set(),
     failed = new Set(),
   }: {
     expanded: ReadonlySet<string>;
     query?: string;
+    /** Keep just these files, e.g. the ones runs made. */
+    only?: ReadonlySet<string>;
     collapsed?: ReadonlySet<string>;
     loading?: ReadonlySet<string>;
     failed?: ReadonlySet<string>;
@@ -86,22 +90,21 @@ export function visibleRows(
 ): TreeRow[] {
   const folders = index(listings);
   const needle = query.trim().toLowerCase();
+  const keep = (path: string) =>
+    (!needle || path.toLowerCase().includes(needle)) && (!only || only.has(path));
   // While filtering, the folders on the way to a match.
-  const matched = needle ? new Set<string>() : null;
+  const matched = needle || only ? new Set<string>() : null;
   if (matched)
     for (const [, folder] of folders)
       for (const path of folder.files)
-        if (path.toLowerCase().includes(needle))
-          for (let at = parentOf(path); at; at = parentOf(at)) matched.add(at);
+        if (keep(path)) for (let at = parentOf(path); at; at = parentOf(at)) matched.add(at);
   const rows: TreeRow[] = [];
   const walk = (path: string, level: number) => {
     const folder = folders.get(path);
     if (!folder) return;
     const children = [
       ...[...folder.folders].filter((child) => !matched || matched.has(child)).sort(byName),
-      ...[...folder.files]
-        .filter((child) => !needle || child.toLowerCase().includes(needle))
-        .sort(byName),
+      ...[...folder.files].filter((child) => !matched || keep(child)).sort(byName),
     ];
     children.forEach((child, position) => {
       const isFolder = folder.folders.has(child);

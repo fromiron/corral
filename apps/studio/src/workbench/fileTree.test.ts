@@ -68,6 +68,29 @@ describe('the folder tree built from the recursive file listing', () => {
     ).toEqual(['/docs', 'README.md']);
   });
 
+  it('a results filter keeps only the given files, under their own folders', () => {
+    const loaded = listings([
+      ['', listing(['README.md', 'src/app.ts', 'src/gen/out.ts', 'notes.txt', 'docs/a.md'])],
+    ]);
+    const only = new Set(['src/gen/out.ts', 'notes.txt']);
+    expect(shape(visibleRows(loaded, { expanded: new Set(['docs']), only }))).toEqual([
+      '/src',
+      '  /gen',
+      '    out.ts',
+      'notes.txt',
+    ]);
+    // A folder closed while filtering stays closed; a query narrows the same set further.
+    expect(
+      shape(visibleRows(loaded, { expanded: new Set(), only, collapsed: new Set(['src/gen']) })),
+    ).toEqual(['/src', '  /gen', 'notes.txt']);
+    expect(shape(visibleRows(loaded, { expanded: new Set(), only, query: 'out' }))).toEqual([
+      '/src',
+      '  /gen',
+      '    out.ts',
+    ]);
+    expect(shape(visibleRows(loaded, { expanded: new Set(), only: new Set() }))).toEqual([]);
+  });
+
   it('reports loading and failed folders so their rows can say so', () => {
     const loaded = listings([['', listing(['src/a.ts'], true)]]);
     const rows = visibleRows(loaded, {

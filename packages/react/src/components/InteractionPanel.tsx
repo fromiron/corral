@@ -7,10 +7,10 @@ import {
   validUserAnswers,
 } from '@corral/contracts';
 import { pendingInteractions } from '@corral/core';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, Input, Select } from '../design-kit/index.ts';
+import { Button, fontWeights, Input, Select } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 
 export function InteractionPanel({ session }: { session: RunSessionStore }) {
@@ -261,9 +261,14 @@ function UserQuestionPrompt({
 }) {
   const t = useTranslations('Harness');
   const form = useRef<HTMLFormElement>(null);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const headingId = useId();
   const [values, setValues] = useState<Record<string, UserAnswers[number]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // With two or more questions, one question per step and then a review step (index = count).
+  const [step, setStep] = useState(0);
+  const moved = useRef(false);
   let request: UserInputRequest | null = null;
   try {
     request = text ? UserInputRequest.parse(JSON.parse(text)) : null;
@@ -271,6 +276,18 @@ function UserQuestionPrompt({
     /* Invalid records are not answerable. */
   }
   const answers = request?.questions.map((q) => values[q.id] ?? { questionId: q.id }) ?? [];
+  const count = request?.questions.length ?? 0;
+  const stepped = count >= 2;
+  const reviewing = stepped && step >= count;
+  useEffect(() => {
+    void step;
+    // Only a step change moves focus; the first render leaves it where the person is.
+    if (moved.current) stepHeading.current?.focus();
+  }, [step]);
+  const goTo = (index: number) => {
+    moved.current = true;
+    setStep(Math.max(0, Math.min(count, index)));
+  };
   async function submit() {
     const state = session.getState();
     if (
@@ -311,6 +328,75 @@ function UserQuestionPrompt({
       setBusy(false);
     }
   }
+  const questionFieldset = (q: UserInputRequest['questions'][number], hidden = false) => {
+    const value = values[q.id] ?? { questionId: q.id };
+    return (
+      <fieldset key={q.id} disabled={busy} hidden={hidden} className="flex flex-col gap-2">
+        <legend className="font-medium">{q.prompt}</legend>
+        {q.description ? (
+          <p className="whitespace-pre-wrap break-words text-muted-foreground">{q.description}</p>
+        ) : null}
+        {q.options?.map((option) => (
+          <label key={option.id} className="flex cursor-pointer items-start gap-2 rounded p-1">
+            <input
+              type={q.kind === 'multiple' ? 'checkbox' : 'radio'}
+              name={`${event.payload.requestId}_${q.id}`}
+              value={option.id}
+              checked={value.optionIds?.includes(option.id) ?? false}
+              onChange={(e) =>
+                setValues((current) => ({
+                  ...current,
+                  [q.id]:
+                    q.kind === 'single'
+                      ? { questionId: q.id, optionIds: [option.id] }
+                      : {
+                          ...value,
+                          optionIds: e.target.checked
+                            ? [...(value.optionIds ?? []), option.id]
+                            : value.optionIds?.filter((id) => id !== option.id),
+                        },
+                }))
+              }
+            />
+            <span>
+              {option.label}
+              {option.recommended ? ` (${t('recommended')})` : ''}
+              {option.description ? (
+                <span className="block text-xs text-muted-foreground">{option.description}</span>
+              ) : null}
+            </span>
+          </label>
+        ))}
+        {q.kind === 'text' || q.allowFreeText ? (
+          <label
+            className="flex flex-col gap-1"
+            htmlFor={`${event.payload.requestId}-${q.id}-text`}
+          >
+            {t('yourAnswer')}
+            <Input
+              id={`${event.payload.requestId}-${q.id}-text`}
+              nativeInput
+              value={value.text ?? ''}
+              maxLength={12000}
+              onChange={(e) => {
+                const content = e.target.value;
+                setValues((current) => ({
+                  ...current,
+                  [q.id]: {
+                    questionId: q.id,
+                    ...(q.kind === 'multiple' && value.optionIds?.length
+                      ? { optionIds: value.optionIds }
+                      : {}),
+                    ...(content.trim() ? { text: content } : {}),
+                  },
+                }));
+              }}
+            />
+          </label>
+        ) : null}
+      </fieldset>
+    );
+  };
   return (
     <form
       ref={form}
@@ -321,7 +407,9 @@ function UserQuestionPrompt({
       className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 p-3 text-sm"
       onSubmit={(e) => {
         e.preventDefault();
-        void submit();
+        // A question step's submit (Next, or Enter in a text answer) only moves on.
+        if (stepped && !reviewing) goTo(step + 1);
+        else void submit();
       }}
       aria-label={t('userQuestions')}
     >
@@ -338,85 +426,64 @@ function UserQuestionPrompt({
             {t('retryPrompt')}
           </Button>
         </>
-      ) : (
-        request.questions.map((q) => {
-          const value = values[q.id] ?? { questionId: q.id };
-          return (
-            <fieldset key={q.id} disabled={busy} className="flex flex-col gap-2">
-              <legend className="font-medium">{q.prompt}</legend>
-              {q.description ? (
-                <p className="whitespace-pre-wrap break-words text-muted-foreground">
-                  {q.description}
-                </p>
-              ) : null}
-              {q.options?.map((option) => (
-                <label
-                  key={option.id}
-                  className="flex cursor-pointer items-start gap-2 rounded p-1"
-                >
-                  <input
-                    type={q.kind === 'multiple' ? 'checkbox' : 'radio'}
-                    name={`${event.payload.requestId}_${q.id}`}
-                    value={option.id}
-                    checked={value.optionIds?.includes(option.id) ?? false}
-                    onChange={(e) =>
-                      setValues((current) => ({
-                        ...current,
-                        [q.id]:
-                          q.kind === 'single'
-                            ? { questionId: q.id, optionIds: [option.id] }
-                            : {
-                                ...value,
-                                optionIds: e.target.checked
-                                  ? [...(value.optionIds ?? []), option.id]
-                                  : value.optionIds?.filter((id) => id !== option.id),
-                              },
-                      }))
-                    }
-                  />
-                  <span>
-                    {option.label}
-                    {option.recommended ? ` (${t('recommended')})` : ''}
-                    {option.description ? (
-                      <span className="block text-xs text-muted-foreground">
-                        {option.description}
-                      </span>
-                    ) : null}
-                  </span>
-                </label>
+      ) : stepped ? (
+        <>
+          <h3
+            ref={stepHeading}
+            id={headingId}
+            tabIndex={-1}
+            className="text-xs text-muted-foreground tabular-nums outline-none"
+          >
+            {reviewing
+              ? t('reviewAnswers')
+              : t('questionStep', { current: step + 1, total: count })}
+          </h3>
+          {/* Every question keeps its native fieldset; only the current step is shown. */}
+          {request.questions.map((q, index) => questionFieldset(q, index !== step))}
+          {reviewing ? (
+            <ul aria-labelledby={headingId} className="flex flex-col divide-y divide-border">
+              {request.questions.map((q, index) => (
+                <ReviewRow
+                  key={q.id}
+                  question={q}
+                  answer={values[q.id]}
+                  busy={busy}
+                  onEdit={() => goTo(index)}
+                />
               ))}
-              {q.kind === 'text' || q.allowFreeText ? (
-                <label
-                  className="flex flex-col gap-1"
-                  htmlFor={`${event.payload.requestId}-${q.id}-text`}
-                >
-                  {t('yourAnswer')}
-                  <Input
-                    id={`${event.payload.requestId}-${q.id}-text`}
-                    nativeInput
-                    value={value.text ?? ''}
-                    maxLength={12000}
-                    onChange={(e) => {
-                      const content = e.target.value;
-                      setValues((current) => ({
-                        ...current,
-                        [q.id]: {
-                          questionId: q.id,
-                          ...(q.kind === 'multiple' && value.optionIds?.length
-                            ? { optionIds: value.optionIds }
-                            : {}),
-                          ...(content.trim() ? { text: content } : {}),
-                        },
-                      }));
-                    }}
-                  />
-                </label>
-              ) : null}
-            </fieldset>
-          );
-        })
+            </ul>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {step > 0 ? (
+              <Button
+                type="button"
+                size="compact"
+                variant="tertiary"
+                disabled={busy}
+                onClick={() => goTo(step - 1)}
+              >
+                {t('previousQuestion')}
+              </Button>
+            ) : null}
+            {reviewing ? (
+              <Button
+                type="submit"
+                size="compact"
+                disabled={busy || !validUserAnswers(request, answers)}
+              >
+                {t('sendAnswer')}
+              </Button>
+            ) : (
+              <Button type="submit" size="compact">
+                {t('nextQuestion')}
+              </Button>
+            )}
+          </div>
+        </>
+      ) : (
+        request.questions.map((q) => questionFieldset(q))
       )}
-      {request ? (
+      {request && !stepped ? (
         <Button type="submit" size="compact" disabled={busy || !validUserAnswers(request, answers)}>
           {t('sendAnswer')}
         </Button>
@@ -427,5 +494,53 @@ function UserQuestionPrompt({
         </p>
       ) : null}
     </form>
+  );
+}
+
+/** One question on the review step: its answer, or that an answer is still required. */
+function ReviewRow({
+  question,
+  answer,
+  busy,
+  onEdit,
+}: {
+  question: UserInputRequest['questions'][number];
+  answer: UserAnswers[number] | undefined;
+  busy: boolean;
+  onEdit(): void;
+}) {
+  const t = useTranslations('Harness');
+  const given = answer ?? { questionId: question.id };
+  // Every question needs an answer; this is the shared rule, asked about this one question.
+  const missing = !validUserAnswers({ key: question.id, questions: [question] }, [given]);
+  const summary = [
+    ...(question.options ?? [])
+      .filter((option) => given.optionIds?.includes(option.id))
+      .map((option) => option.label),
+    ...(given.text ? [given.text] : []),
+  ].join(', ');
+  return (
+    <li className="flex items-start gap-2 py-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="break-words" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {question.prompt}
+        </span>
+        {missing ? (
+          <span className="text-warning">{t('answerMissing')}</span>
+        ) : (
+          <span className="whitespace-pre-wrap break-words text-muted-foreground">{summary}</span>
+        )}
+      </div>
+      <Button
+        type="button"
+        size="compact"
+        variant="ghost"
+        disabled={busy}
+        aria-label={t('editAnswerFor', { question: question.prompt })}
+        onClick={onEdit}
+      >
+        {t('editAnswer')}
+      </Button>
+    </li>
   );
 }
