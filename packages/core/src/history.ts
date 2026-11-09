@@ -12,7 +12,6 @@ import {
   MeetingRunOrigin,
   ModelProfileSnapshot,
   PermissionMode,
-  ReasoningApplySettings,
   ResumedFrom,
   RunEvent,
   RunStatus,
@@ -49,7 +48,6 @@ const Snapshot = z.strictObject({
   mode: z.enum(['mock', 'live']),
   models: z.record(Identifier, ModelProfileSnapshot),
   harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
-  reasoningApply: ReasoningApplySettings.optional(),
   autoRoute: AutoRoute.optional(),
   startedAt: z.iso.datetime(),
 });
@@ -219,8 +217,6 @@ export function openRunArchive(input: unknown) {
     first.payload.permissionMode !== snapshot.permissionMode ||
     canonicalJson(first.payload.imageProfiles ?? null) !==
       canonicalJson(snapshot.imageProfiles ?? null) ||
-    canonicalJson(first.payload.reasoningApply ?? null) !==
-      canonicalJson(snapshot.reasoningApply ?? null) ||
     canonicalJson(first.payload.autoRoute ?? null) !== canonicalJson(snapshot.autoRoute ?? null) ||
     canonicalJson(first.payload.meeting ?? null) !== canonicalJson(snapshot.meeting ?? null) ||
     canonicalJson(first.payload.branchedFrom ?? null) !==

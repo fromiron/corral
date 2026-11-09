@@ -2,45 +2,33 @@ import { createHash } from 'node:crypto';
 import {
   canonicalJson,
   type DecisionApiId,
-  type DecisionCancellation,
   EFFORT_LEVELS,
-  type ExternalEffortJudge,
+  type EffortQuestion,
   type ModelAttempt,
   type ModelAttemptStore,
-  type ReasoningInput,
+  type RouterRequest,
+  type RouterResponse,
+  type RoutingBackend,
+  type RoutingEngine,
+  type RoutingFallbackReason,
+  type RoutingFlight,
+  type RoutingLease,
   type UsageRecordV2,
 } from '@corral/contracts';
-import { effortText } from '@corral/local-intelligence';
 import type { CredentialStore } from '@earendil-works/pi-ai';
 import { z } from 'zod';
 
-// Decision-only APIs asked when automatic reasoning's local judge abstains
-// (docs/specs/features/decision-apis.md). Each sees only the judge text the local judge read and
-// the level criteria. Keys live in the user's credential store under their own names, apart from
-// model sign-ins, and are never returned, logged or put in an error or attempt record.
+// Decision-only APIs (docs/specs/features/decision-apis.md), each one a Manual effort routing
+// engine. An API sees only the frame's state and the fixed question. Keys live in the user's
+// credential store under their own names, apart from model sign-ins, and are never returned,
+// logged or put in an error or attempt record.
 
 const MAX_RESPONSE = 64 * 1024;
-const MAX_TEXT_CODE_POINTS = 4_096;
-const INSTRUCTIONS =
-  'Choose how much reasoning effort an AI coding agent should spend on the request in the input. ' +
-  'Judge how hard the request is, not how long it is.';
-const CRITERIA = {
-  low: 'A direct answer, a lookup, a small mechanical edit, or a routine next step that needs little planning.',
-  medium:
-    'Ordinary development work: a focused change, a bug with a clear cause, or a step that needs some reasoning.',
-  high: 'Multi-step work that needs a plan: changes across several files, unclear causes, or careful trade-offs.',
-  xhigh:
-    'Hard, open-ended problems: system design, subtle concurrency or correctness issues, or deep analysis.',
-} satisfies Record<(typeof EFFORT_LEVELS)[number], string>;
+/** The data notice shown before a person agrees to send state to an API. */
+const NOTICE_VERSION = 1;
 
-/** The judge text's first code points; like the local judge, it keeps the start. */
-function judgeText(input: ReasoningInput): string {
-  const text = effortText(input);
-  let end = 0;
-  for (let n = 0; n < MAX_TEXT_CODE_POINTS && end < text.length; n++)
-    end += text.codePointAt(end)! > 0xffff ? 2 : 1;
-  return text.slice(0, end);
-}
+/** The consent a saved API engine must carry; another notice version sends nothing. */
+export const decisionApiConsent = (id: DecisionApiId) => `${id}:notice-${NOTICE_VERSION}`;
 
 const count = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
@@ -48,6 +36,7 @@ type Usage = Pick<
   UsageRecordV2,
   'inputTokens' | 'outputTokens' | 'reasoningTokens' | 'cacheReadTokens' | 'cacheWriteTokens'
 >;
+type Answer = { choice: string; probabilities?: Record<string, number> };
 
 interface DecisionApiSpec {
   id: DecisionApiId;
@@ -55,17 +44,22 @@ interface DecisionApiSpec {
   provider: string;
   model: string;
   endpoint: string;
-  body(text: string, model: string): unknown;
-  /** The chosen level and the model that answered, or null when the answer cannot be used. */
-  answer(raw: unknown): { answer: string; model: string } | null;
+  body(state: string, question: EffortQuestion, model: string): unknown;
+  /** The chosen level and the distribution, or null when the answer cannot be used. */
+  answer(raw: unknown): Answer | null;
   usage(raw: unknown): Partial<Usage>;
 }
 
+const Probability = z.number().finite();
 // TypeSafe OpenAPI 0.2.0: https://api.typesafe.ai/openapi.json
 const JevAnswer = z.object({
   model: z.string().min(1).max(200),
   answers: z.object({
-    effort: z.object({ type: z.literal('choice'), choice: z.enum(EFFORT_LEVELS) }),
+    effort: z.object({
+      type: z.literal('choice'),
+      choice: z.enum(EFFORT_LEVELS),
+      probabilities: z.record(z.string().max(20), Probability).optional(),
+    }),
   }),
 });
 // https://developers.openai.com/api/reference/resources/decisions
@@ -77,6 +71,10 @@ const OpenAiAnswer = z.object({
         type: z.literal('choice'),
         name: z.literal('effort'),
         choice: z.enum(EFFORT_LEVELS),
+        probabilities: z
+          .array(z.object({ value: z.string().max(20), probability: Probability }))
+          .max(EFFORT_LEVELS.length)
+          .optional(),
       }),
     )
     .length(1),
@@ -95,16 +93,22 @@ const SPECS: readonly DecisionApiSpec[] = [
     provider: 'TypeSafe',
     model: 'jev-latest',
     endpoint: 'https://api.typesafe.ai/v1/systemone',
-    body: (text, model) => ({
+    body: (state, question, model) => ({
       model,
-      state: text,
-      questions: { effort: { type: 'choice', instructions: INSTRUCTIONS, criteria: CRITERIA } },
+      state,
+      questions: {
+        effort: {
+          type: 'choice',
+          instructions: question.instructions,
+          criteria: question.criteria,
+        },
+      },
     }),
     answer: (raw) => {
       const parsed = JevAnswer.safeParse(raw);
-      return parsed.success
-        ? { answer: parsed.data.answers.effort.choice, model: parsed.data.model }
-        : null;
+      if (!parsed.success) return null;
+      const { choice, probabilities } = parsed.data.answers.effort;
+      return probabilities ? { choice, probabilities } : { choice };
     },
     usage: (raw) => {
       const usage = (raw as { usage?: Record<string, unknown> } | null)?.usage;
@@ -116,15 +120,18 @@ const SPECS: readonly DecisionApiSpec[] = [
     provider: 'OpenAI',
     model: 'gpt-6-luna',
     endpoint: 'https://api.openai.com/v1/decisions',
-    body: (text, model) => ({
+    body: (state, question, model) => ({
       model,
-      input: text,
+      input: state,
       questions: [
         {
           type: 'choice',
           name: 'effort',
-          instructions: INSTRUCTIONS,
-          choices: EFFORT_LEVELS.map((value) => ({ value, description: CRITERIA[value] })),
+          instructions: question.instructions,
+          choices: Object.entries(question.criteria).map(([value, description]) => ({
+            value,
+            description,
+          })),
         },
       ],
     }),
@@ -132,7 +139,14 @@ const SPECS: readonly DecisionApiSpec[] = [
     answer: (raw) => {
       const parsed = OpenAiAnswer.safeParse(raw);
       const [effort] = parsed.success ? parsed.data.answers : [];
-      return parsed.success && effort ? { answer: effort.choice, model: parsed.data.model } : null;
+      if (!effort) return null;
+      if (!effort.probabilities) return { choice: effort.choice };
+      const probabilities = Object.fromEntries(
+        effort.probabilities.map((p) => [p.value, p.probability]),
+      );
+      // A level listed twice is not a distribution.
+      if (Object.keys(probabilities).length !== effort.probabilities.length) return null;
+      return { choice: effort.choice, probabilities };
     },
     // input_tokens already includes cached reads and writes, as Corral's records count them.
     usage: (raw) => {
@@ -149,7 +163,16 @@ const SPECS: readonly DecisionApiSpec[] = [
 ];
 
 type Cause = 'provider_error' | 'invalid_response' | 'cancelled' | 'unavailable';
-const failure = (message: string, cause: Cause) => new Error(message, { cause });
+const REASONS: Record<Cause, RoutingFallbackReason> = {
+  provider_error: 'transport-error',
+  invalid_response: 'invalid-response',
+  // The host stopped waiting; its own outcome already stands.
+  cancelled: 'transport-error',
+  unavailable: 'unavailable',
+};
+/** An engine failure: `reason` is the routing fallback, `cause` the attempt record's code. */
+const failure = (message: string, cause: Cause) =>
+  Object.assign(new Error(message, { cause }), { reason: REASONS[cause] });
 const credentialId = (id: DecisionApiId) => `decision-api:${id}`;
 
 async function boundedJson(response: Response): Promise<unknown> {
@@ -181,9 +204,10 @@ interface Shared {
   attempts: ModelAttemptStore | undefined;
   fetchFn: typeof fetch;
   now: () => string;
+  monotonicMs: () => number;
 }
 
-class DecisionApiJudge implements ExternalEffortJudge {
+export class DecisionApiJudge {
   readonly provider: DecisionApiId;
   private readonly spec: DecisionApiSpec;
   private readonly shared: Shared;
@@ -200,21 +224,58 @@ class DecisionApiJudge implements ExternalEffortJudge {
     return `no ${this.spec.provider} ${this.spec.id === 'jev' ? 'Jev' : 'Decisions'} API key is configured`;
   }
 
-  available(): true | string {
-    return this.hasKey || this.noKey;
+  /**
+   * The routing engine for a saved setting. No queue and no Busy: each request makes its own one
+   * call. Without the current consent or a key it sends nothing.
+   */
+  backend(consentRevision: string): RoutingBackend {
+    const identity = `${this.spec.id}/${this.spec.model}`;
+    return {
+      kind: 'api',
+      identity: () => identity,
+      admit: () => {
+        if (consentRevision !== decisionApiConsent(this.spec.id))
+          return { ok: false, reason: 'consent-required' };
+        if (!this.hasKey) return { ok: false, reason: 'unavailable' };
+        return { ok: true, lease: this.lease(identity) };
+      },
+    };
   }
 
-  async judge(
-    input: ReasoningInput,
-    request: Parameters<ExternalEffortJudge['judge']>[1],
-    cancellation: DecisionCancellation,
-  ): Promise<{ answer: string; model: string }> {
+  private lease(identity: string): RoutingLease {
+    const { spec } = this;
+    return {
+      identity,
+      frame: 'api-bounded',
+      device: null,
+      countState: async (text) => Buffer.byteLength(text),
+      // The exact request body: what is counted is what is sent.
+      countInput: async (state, question) =>
+        Buffer.byteLength(JSON.stringify(spec.body(state, question, spec.model))),
+      start: (request) => this.call(request),
+      release: () => {},
+    };
+  }
+
+  private call(request: RouterRequest): RoutingFlight {
+    const result = this.send(request);
+    // The only physical end Corral sees for a remote call is its connection closing.
+    const end = () => ({
+      basis: 'remote-transport-closed' as const,
+      finishedAtMs: this.shared.monotonicMs(),
+    });
+    return { result, settled: result.then(end, end) };
+  }
+
+  private async send(request: RouterRequest): Promise<RouterResponse> {
     const { attempts, fetchFn, now } = this.shared;
+    const { owner, signal } = request;
+    if (!owner) throw failure('no run effect owns this judgment', 'unavailable');
     const key = await readKey(this.shared.credentials, this.spec.id);
     if (!key) throw failure(this.noKey, 'unavailable');
-    if (cancellation.aborted) throw failure('the judgment was cancelled', 'cancelled');
-    const body = this.spec.body(judgeText(input), request.model);
-    const { owner } = request;
+    if (signal.aborted) throw failure('the judgment was cancelled', 'cancelled');
+    const body = this.spec.body(request.state, request.question, this.spec.model);
+    const text = JSON.stringify(body);
     const attempt: ModelAttempt = {
       version: 2,
       attemptId: `judge_${owner.runId}_${owner.effectId}`,
@@ -230,7 +291,7 @@ class DecisionApiJudge implements ExternalEffortJudge {
         },
       },
       provider: this.spec.id,
-      modelId: request.model,
+      modelId: this.spec.model,
       status: 'started',
       startedAt: now(),
       endedAt: null,
@@ -253,7 +314,7 @@ class DecisionApiJudge implements ExternalEffortJudge {
     };
     attempts?.put(attempt);
     const abort = new AbortController();
-    const off = cancellation.onCancel(() => abort.abort());
+    const off = signal.onCancel(() => abort.abort());
     let status: number | null = null;
     try {
       const response = await fetchFn(this.spec.endpoint, {
@@ -261,7 +322,7 @@ class DecisionApiJudge implements ExternalEffortJudge {
         redirect: 'error',
         signal: abort.signal,
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: text,
       });
       status = response.status;
       attempt.firstEventAt = now();
@@ -280,15 +341,15 @@ class DecisionApiJudge implements ExternalEffortJudge {
       const answer = this.spec.answer(raw);
       if (!answer)
         throw failure('the decision API returned an answer Corral cannot use', 'invalid_response');
-      if (abort.signal.aborted) throw failure('the judgment was cancelled', 'cancelled');
       attempt.status = 'completed';
       attempt.endedAt = now();
       attempts?.put(attempt);
-      return answer;
+      return { ...answer, inputTokens: usage.inputTokens ?? null, billableUnits: null };
     } catch (error) {
       const cancelled = abort.signal.aborted;
       const known = error instanceof Error && typeof error.cause === 'string';
-      // A request that failed without a response may still have reached the API.
+      // A request that failed without a response may still have reached the API. A closed
+      // connection is Corral's stop; it says nothing about the remote's work or billing.
       attempt.status = cancelled ? 'cancelled' : known ? 'failed' : 'unknown';
       attempt.endedAt = now();
       attempt.failure = {
@@ -328,6 +389,8 @@ export interface DecisionApiOptions {
   attempts?: ModelAttemptStore;
   fetchFn?: typeof fetch;
   now?: () => string;
+  /** The host's monotonic clock, for when a call physically ended. */
+  monotonicMs?: () => number;
 }
 
 /** The supported decision APIs on one credential store. */
@@ -335,13 +398,14 @@ export class DecisionApis {
   private readonly credentials: CredentialStore;
   private readonly entries: readonly DecisionApiJudge[];
 
-  /** Reads once which keys are stored, so `available()` needs no I/O. */
+  /** Reads once which keys are stored, so admission needs no I/O. */
   static async open(options: DecisionApiOptions): Promise<DecisionApis> {
     const shared: Shared = {
       credentials: options.credentials,
       attempts: options.attempts,
       fetchFn: options.fetchFn ?? fetch,
       now: options.now ?? (() => new Date().toISOString()),
+      monotonicMs: options.monotonicMs ?? (() => performance.now()),
     };
     const entries = await Promise.all(
       SPECS.map(
@@ -357,8 +421,11 @@ export class DecisionApis {
     this.entries = entries;
   }
 
-  judges(): readonly ExternalEffortJudge[] {
-    return this.entries;
+  /** The engine a saved API setting names, or null for an API Corral does not support. */
+  backend(engine: Extract<RoutingEngine, { kind: 'api' }>): RoutingBackend | null {
+    return (
+      this.entries.find((e) => e.provider === engine.id)?.backend(engine.consentRevision) ?? null
+    );
   }
   list(): DecisionApiView[] {
     return SPECS.map((spec, index) => ({

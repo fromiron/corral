@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from '@corral/contracts';
 import { type Context, fauxAssistantMessage } from '@earendil-works/pi-ai';
 import { expect, it } from 'vitest';
+import { callSnapshotInput } from '../src/call-snapshot.ts';
 import {
   ContextMeter,
   measureContext,
@@ -10,7 +11,7 @@ import {
   summarizeRegion,
 } from '../src/ported/dsh/context.ts';
 import { requestOutputCap } from '../src/reasoning.ts';
-import { missingParentQuestions, withProtectedContext } from '../src/request-record.ts';
+import { withProtectedContext } from '../src/request-record.ts';
 
 it('an internal summary suspends the normal output contract without changing the retained prefix', async () => {
   const system = {
@@ -94,7 +95,7 @@ it('preserves fresh tool evidence and compacts an oversized first input', () => 
   ).toEqual({ start: 0, end: 0 });
 });
 
-it('parent questions already present in current host state are not appended again', () => {
+it('reports parent questions already present in current host state', () => {
   const question = {
     questionId: 'question_1',
     senderExecutionId: 'child',
@@ -110,9 +111,11 @@ it('parent questions already present in current host state are not appended agai
       reason: 'coordinator_state',
     },
   ];
-  expect(missingParentQuestions([question], sections)).toEqual([]);
-  expect(missingParentQuestions([{ ...question, body: '다른 질문' }], sections)).toHaveLength(1);
-  expect(missingParentQuestions([question], [])).toEqual([question]);
+  // The worker names what its context holds; the host appends only the rest (P05).
+  expect(callSnapshotInput({ messages: [] }, sections[0]!.text).presentQuestionIds).toEqual([
+    'question_1',
+  ]);
+  expect(callSnapshotInput({ messages: [] }).presentQuestionIds).toEqual([]);
 });
 
 it('keeps only current host state and leaves model output space', () => {

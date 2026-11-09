@@ -136,7 +136,7 @@ it.each(['claude-sonnet-4-6', 'claude-opus-5-5'])(
       const resolution: ReasoningResolution = {
         requested: level === null ? { mode: 'provider_default' } : { mode: 'fixed', level },
         resolved: level,
-        source: level === null ? 'provider_default' : 'fixed',
+        source: level === null ? 'provider-default' : 'fixed',
         preparationId: 'fixture',
       };
       const request = reasoningRequest(model, { maxTokens: 4096 }, resolution);

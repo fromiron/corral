@@ -1,12 +1,5 @@
 export { type Bundle, bundledManifest, validBundle } from './bundle.ts';
-export {
-  type EffortClassifier,
-  type EffortJudgment,
-  type EffortWeights,
-  loadEffortClassifier,
-} from './effort/classifier.ts';
-export { EFFORT_PREPROCESS_VERSION, effortText, requestInput } from './effort/preprocess.ts';
-export { type EffortEngine, effortRequest, LocalEffortProvider } from './effort/provider.ts';
+export * from './d1/index.ts';
 export {
   type Backend,
   type Device,
@@ -27,7 +20,6 @@ export {
   spawnHelper,
 } from './engine/helper.ts';
 export {
-  bundledEffortWeights,
   createLocalIntelligence,
   type LocalAiStatus,
   type LocalIntelligence,
@@ -46,11 +38,14 @@ export {
   closestParticipant,
   LocalMeetingSelector,
   MEETING_PREPROCESS_VERSION,
+  type MeetingEngine,
   meetingTexts,
 } from './meeting/selector.ts';
 export {
   cpuThreads,
+  d1Threads,
   dataBase,
+  defaultD1Dir,
   defaultLocalAiDir,
   legacyJudgeDir,
   runtimeTarget,

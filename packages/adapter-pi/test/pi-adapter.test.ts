@@ -453,6 +453,42 @@ describe('worker lifecycle and protocol checks', () => {
     expect(dispatched).toEqual(['call_1']);
   });
 
+  it('hands the request identity, retry link and snapshot to the host', async () => {
+    const { adapter, worker } = scriptedWorker();
+    const seen: unknown[] = [];
+    const base = recordingHost();
+    const { host } = recordingHost({
+      prepareModelRequest: async (record, preparation) => {
+        seen.push(preparation);
+        return base.host.prepareModelRequest(record);
+      },
+    });
+    await adapter.start(startInput(), host);
+    worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+    const snapshot = {
+      request: { text: 'Fix it.' },
+      requestImages: 0,
+      previousAssistant: null,
+      toolCalls: [],
+      earlierReplies: [],
+      presentQuestionIds: [],
+    };
+    worker.send({
+      type: 'prepare_request',
+      protocolVersion: PROTOCOL_VERSION,
+      executionId: 'exec_1',
+      requestId: 'req_1',
+      logicalRequestId: 'request_1',
+      retryIndex: 1,
+      retryOfModelCallId: 'call_0',
+      snapshot,
+    });
+    await tick();
+    expect(seen).toEqual([
+      { logicalRequestId: 'request_1', retryOfModelCallId: 'call_0', snapshot },
+    ]);
+  });
+
   it('starts the worker only after it says it is ready, bound to one execution', async () => {
     const { adapter, worker, received } = scriptedWorker();
     await adapter.start(startInput(), recordingHost().host);

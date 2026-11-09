@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { availableParallelism, homedir, hostname } from 'node:os';
 import { join } from 'node:path';
 import { recoverSdkWorkers } from '@corral/adapter-pi';
 import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
@@ -16,9 +16,9 @@ import {
   CorralDefinitionDraft,
   CreateRunRequest,
   canonicalJson,
-  type DecisionProvider,
   DevelopmentStart,
   DocumentCommand,
+  EffortRoutingSettings,
   type ErrorCode,
   GitDiffRequest,
   GitOid,
@@ -49,6 +49,8 @@ import {
   ResourcePath,
   RestoreCheckpoint,
   ResumeRuntimeRequest,
+  type RoutingBackend,
+  type RoutingEngine,
   type RunEvent,
   RunInput,
   RunReferences,
@@ -72,8 +74,6 @@ import {
   exportRunArchive,
   InProcessTransport,
   type InstallationPolicy,
-  judgmentSettings,
-  LocalHeuristicProvider,
   MeetingDecisionsService,
   type MeetingResult,
   MeetingService,
@@ -81,13 +81,18 @@ import {
   type ProjectResult,
   parseWorkspaceConfig,
   planRun,
-  reasoningApplyPolicy,
   type SaveResult,
   SessionEntryAuto,
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
-import type { LocalIntelligence } from '@corral/local-intelligence';
+import {
+  bundledManifest,
+  type D1Engine,
+  d1Threads,
+  type LocalAiStatus,
+  type LocalIntelligence,
+} from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
   openDatabase,
@@ -101,7 +106,12 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
-import { DecisionApis, decisionApiList, decisionApiModel } from './decision-apis.ts';
+import {
+  DecisionApis,
+  decisionApiConsent,
+  decisionApiList,
+  decisionApiModel,
+} from './decision-apis.ts';
 import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
@@ -119,6 +129,7 @@ import { ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
+import { defaultD1Engine } from './local-ai.ts';
 import { MeetingHandoffService, registerMeetingHandoffRoutes } from './meeting-handoffs.ts';
 import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
@@ -141,6 +152,7 @@ import { registerProjectRoutes } from './projects/routes.ts';
 import { materialsVaultAdapters } from './projects/vault.ts';
 import { drainRejectedBody } from './rejected-body.ts';
 import { onceResourceCleanup } from './resource-cleanup.ts';
+import { routingEngines } from './routing-engines.ts';
 import { RandomIdFactory, systemClock, systemTimers } from './runtime.ts';
 import { InputError } from './safe-http.ts';
 import { registerScheduleRoutes } from './schedules/routes.ts';
@@ -167,11 +179,11 @@ import { createSubagentsVaultAdapter } from './vault/subagents.ts';
 import { registerVoiceRoutes } from './voice/routes.ts';
 import {
   configRevision,
+  currentEffortRouting,
   prepareWorkspace,
   readWorkspaceConfig,
-  writeExternalJudge,
+  writeEffortRouting,
   writeModelConfig,
-  writeReasoningApply,
 } from './workspace.ts';
 import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
@@ -187,12 +199,14 @@ function defaultWorktreeRoot(env: NodeJS.ProcessEnv = process.env): string {
 }
 export interface ServerOptions {
   workspace: string;
-  /** Judgment providers beyond the built-in local-heuristic@1 and the local AI judge. */
-  decisionProviders?: DecisionProvider[];
-  /** The local AI engine and its `local-model` effort judge; the server closes it on shutdown. */
+  /** The local AI engine for meeting analysis; the server closes it on shutdown. */
   localIntelligence?: LocalIntelligence;
   /** Decision APIs and their keys; live servers otherwise open them on their credentials. */
   decisionApis?: DecisionApis;
+  /** Effort routing engines in place of the server's own; tests pass fakes. */
+  routingBackend?: (engine: RoutingEngine) => RoutingBackend | null;
+  /** The Local effort routing engine; a server with real models makes its own, null none. */
+  localRouting?: D1Engine | null;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -466,26 +480,6 @@ async function createCorralServer(
     );
     await registry.refreshStatus();
   }
-  const decisionProviders = [
-    new LocalHeuristicProvider(),
-    ...(local ? [local.effort] : []),
-    ...(options.decisionProviders ?? []),
-  ];
-  // A configured, installed provider loads ahead of the first judgment (the local model takes
-  // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
-  const observed = judgmentSettings(workspace.config).reasoning_effort;
-  for (const id of new Set([
-    ...(observed.mode === 'observe' ? observed.providers : []),
-    ...(workspace.config.decisions?.reasoning_effort.apply &&
-    reasoningApplyPolicy(workspace.config) === 'judged'
-      ? ['local-model']
-      : []),
-  ])) {
-    const provider = decisionProviders.find((p) => p.id === id) as
-      | (DecisionProvider & { warmUp?: () => Promise<unknown> })
-      | undefined;
-    if (provider?.available() === true) void provider.warmUp?.().catch(() => {});
-  }
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // linked folders, session worktrees and the file broker.
@@ -582,10 +576,6 @@ async function createCorralServer(
   });
   resources.defer(() => harnesses.dispose());
 
-  const judgmentConfig = {
-    providers: decisionProviders,
-    settings: judgmentSettings(workspace.config),
-  };
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
   const decisionApis =
@@ -597,6 +587,22 @@ async function createCorralServer(
           now: () => clock.nowIso(),
         })
       : undefined);
+  const localRouting =
+    options.localRouting !== undefined
+      ? (options.localRouting ?? undefined)
+      : options.live
+        ? defaultD1Engine()
+        : undefined;
+  // Manual + Local readies the engine ahead of the first request; it never downloads.
+  const prepareLocal = () => {
+    const saved = currentEffortRouting(workspace.root);
+    if (saved.mode === 'manual' && saved.engine.kind === 'local')
+      localRouting?.prepare(saved.engine.device.threads);
+  };
+  if (localRouting) {
+    resources.defer(() => localRouting.close());
+    prepareLocal();
+  }
   const imageProfiles = new ImageProfileStore(db, () => registry);
   const imageGeneration = new ImageGenerationService(
     db,
@@ -654,8 +660,10 @@ async function createCorralServer(
     corrals,
     policy: workspace.policy,
     sessionId: backendSessionId,
-    judgments: judgmentConfig,
-    ...(decisionApis ? { externalJudges: decisionApis.judges() } : {}),
+    effortRouting: {
+      settings: () => currentEffortRouting(workspace.root),
+      backend: options.routingBackend ?? routingEngines({ decisionApis, local: localRouting }),
+    },
   });
   registry?.configureRequests({
     store: modelAttempts,
@@ -1131,101 +1139,31 @@ async function createCorralServer(
     return registry.authView();
   });
 
-  const reasoningSettings = () => {
-    // A bundle installed while the server runs counts from the next settings read.
-    local?.engine.refreshInstall();
-    const provider = decisionProviders.find((p) => p.id === 'local-model' && p.privacy === 'local');
-    const availability = provider?.available() ?? 'this server has no local AI';
-    return {
-      apply: workspace.config.decisions?.reasoning_effort.apply === true,
-      policy: reasoningApplyPolicy(workspace.config),
-      available: availability === true,
-      version: provider?.version ?? null,
-      reason: availability === true ? null : `Local AI is unavailable: ${availability}`,
-      revision: configRevision(workspace.root),
-    };
-  };
-  app.get('/api/v1/models/reasoning', async () => reasoningSettings());
-  app.put('/api/v1/models/reasoning', async (request, reply) => {
-    const parsed = z
-      .strictObject({ apply: z.boolean(), revision: z.string().min(1) })
-      .safeParse(request.body);
-    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'invalid reasoning setting');
-    const changed = writeReasoningApply(workspace.root, parsed.data.apply, parsed.data.revision);
-    if (!changed.ok)
-      return reply
-        .code(409)
-        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
-    workspace.config = changed.config;
-    workspace.configRevision = changed.revision;
-    registry?.setConfigRevision(changed.revision);
-    judgmentConfig.settings = judgmentSettings(changed.config);
-    if (parsed.data.apply && reasoningApplyPolicy(changed.config) === 'judged') {
-      const provider = decisionProviders.find((p) => p.id === 'local-model');
-      if (
-        provider?.available() === true &&
-        'warmUp' in provider &&
-        typeof provider.warmUp === 'function'
-      )
-        void provider.warmUp().catch(() => {});
-    }
-    return reasoningSettings();
-  });
-
   // ── local AI (settings panel) ─────────────────────────────────────
   const noLocalAi = (reply: FastifyReply) =>
     fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
-  const localAiView = (local: LocalIntelligence, status = local.status()) => {
-    const wanted = workspace.config.decisions?.reasoning_effort;
-    const chosen = wanted?.allowExternal ? wanted.external : undefined;
+  // A server started without the engine reads like an environment that cannot run it.
+  const noLocalAiView = (): LocalAiStatus => {
+    const bundle = bundledManifest();
     return {
-      ...status,
-      external: {
-        provider: chosen?.provider ?? null,
-        model: chosen?.model ?? null,
-        policy: reasoningApplyPolicy(workspace.config),
-        judgeAbstains: local.effort.abstains,
-        revision: configRevision(workspace.root),
-      },
+      release: bundle.release,
+      models: { meeting: bundle.models.meeting.name },
+      state: 'unsupported',
+      downloadBytes: null,
+      progress: null,
+      error: null,
     };
   };
-  app.get('/api/v1/local-ai', async (_request, reply) =>
-    local ? localAiView(local) : noLocalAi(reply),
-  );
+  app.get('/api/v1/local-ai', async () => (local ? local.status() : noLocalAiView()));
   app.post('/api/v1/local-ai/install', async (_request, reply) => {
     if (!local) return noLocalAi(reply);
     if (local.status().state === 'unsupported')
       return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
-    return reply.code(202).send(localAiView(local, local.install()));
+    return reply.code(202).send(local.install());
   });
   app.delete('/api/v1/local-ai/install', async (_request, reply) =>
-    local ? localAiView(local, await local.cancelInstall()) : noLocalAi(reply),
+    local ? await local.cancelInstall() : noLocalAi(reply),
   );
-  app.put('/api/v1/local-ai/external-judge', async (request, reply) => {
-    if (!local) return noLocalAi(reply);
-    const parsed = z
-      .strictObject({ provider: z.string().min(1).max(64).nullable(), revision: z.string().min(1) })
-      .safeParse(request.body);
-    const chosen =
-      parsed.success && parsed.data.provider ? decisionApiModel(parsed.data.provider) : null;
-    if (!parsed.success || (parsed.data.provider && !chosen))
-      return fail(reply, 'SCHEMA_INVALID', 'invalid external judge setting');
-    const changed = writeExternalJudge(
-      workspace.root,
-      chosen ? { provider: chosen.id, model: chosen.model } : null,
-      parsed.data.revision,
-    );
-    if (!changed.ok)
-      return reply
-        .code(409)
-        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
-    workspace.config = changed.config;
-    workspace.configRevision = changed.revision;
-    registry?.setConfigRevision(changed.revision);
-    judgmentConfig.settings = judgmentSettings(changed.config);
-    return localAiView(local);
-  });
-
   // ── decision APIs (features/decision-apis.md) ─────────────────────
   type DecisionApiParams = { Params: { id: string } };
   const listDecisionApis = () => decisionApis?.list() ?? decisionApiList();
@@ -1248,6 +1186,92 @@ async function createCorralServer(
     if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
     await decisionApis?.deleteKey(id);
     return listDecisionApis();
+  });
+
+  // ── effort routing (features/effort-routing.md) ───────────────────
+  const noLocal = {
+    model: null,
+    host: hostname(),
+    supported: false,
+    reason: 'the Local engine is not available on this server',
+    install: 'absent',
+    runtime: 'stopped',
+    downloadBytes: null,
+    progress: null,
+    error: null,
+    device: { requested: 'cpu', active: null },
+    threads: null,
+    defaultThreads: d1Threads(availableParallelism()),
+  } as const;
+  const effortRoutingView = () => ({
+    settings: currentEffortRouting(workspace.root),
+    revision: configRevision(workspace.root),
+    local: localRouting?.status() ?? noLocal,
+    // No decision API has been checked against its provider yet.
+    apis: listDecisionApis().map((api) => ({
+      id: api.id,
+      keyConfigured: api.keyConfigured,
+      noticeRevision: decisionApiConsent(api.id),
+      verified: false,
+    })),
+  });
+  const routingDenied = (reply: FastifyReply) =>
+    fail(reply, 'CAPABILITY_DENIED', 'effort routing needs a server with real models');
+  app.get('/api/v1/effort-routing', async (_request, reply) =>
+    options.live ? effortRoutingView() : routingDenied(reply),
+  );
+  app.put('/api/v1/effort-routing', async (request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    const parsed = z
+      .strictObject({ settings: EffortRoutingSettings, revision: z.string().min(1) })
+      .safeParse(request.body);
+    if (!parsed.success)
+      return fail(reply, 'SCHEMA_INVALID', 'the effort routing setting is invalid');
+    const { settings, revision } = parsed.data;
+    const engine = settings.mode === 'manual' ? settings.engine : null;
+    if (engine?.kind === 'api') {
+      const api = listDecisionApis().find((a) => a.id === engine.id);
+      if (!api?.keyConfigured)
+        return fail(reply, 'SCHEMA_INVALID', 'connect this decision API before choosing it');
+      if (engine.consentRevision !== decisionApiConsent(engine.id))
+        return fail(reply, 'SCHEMA_INVALID', 'agree to the current notice for this decision API');
+    }
+    if (engine?.kind === 'local' && !localRouting?.status().supported)
+      return fail(reply, 'SCHEMA_INVALID', 'the Local engine is not available on this computer');
+    const written = writeEffortRouting(workspace.root, settings, revision);
+    if (!written.ok)
+      return fail(
+        reply,
+        written.conflict ? 'REVISION_CONFLICT' : 'SCHEMA_INVALID',
+        written.errors.join('; '),
+      );
+    workspace.config = readWorkspaceConfig(workspace.root).config;
+    workspace.configRevision = written.revision;
+    // Saving never downloads; leaving Local ends the child Corral started.
+    if (engine?.kind === 'local') localRouting?.prepare(engine.device.threads);
+    else await localRouting?.stop();
+    return effortRoutingView();
+  });
+  app.post('/api/v1/effort-routing/local/install', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    if (!localRouting?.status().supported)
+      return fail(reply, 'CAPABILITY_DENIED', 'the Local engine is not available on this computer');
+    localRouting.install();
+    void localRouting.installing()?.then(prepareLocal);
+    return reply.code(202).send(effortRoutingView());
+  });
+  app.delete('/api/v1/effort-routing/local/install', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    await localRouting?.cancelInstall();
+    return effortRoutingView();
+  });
+  app.post('/api/v1/effort-routing/local/start', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    const saved = currentEffortRouting(workspace.root);
+    if (saved.mode !== 'manual' || saved.engine.kind !== 'local' || !localRouting?.installed())
+      return fail(reply, 'SCHEMA_INVALID', 'save Manual with the installed Local engine first');
+    localRouting.prepare(saved.engine.device.threads);
+    return reply.code(202).send(effortRoutingView());
   });
 
   // ── model settings ────────────────────────────────────────────────

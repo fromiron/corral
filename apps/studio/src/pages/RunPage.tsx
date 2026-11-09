@@ -15,13 +15,13 @@ import {
   AgentStatusText,
   ApprovalPanel,
   ArtifactViewer,
-  EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
   FailureNotice,
   primaryWorkPlan,
   QuestionsPanel,
   ReinsPanel,
+  RoutingTally,
   RunActions,
   RunCanvas,
   type RunFlowCheck,
@@ -797,7 +797,7 @@ function RunWorkspace({
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
                     <UsageInspector session={session} prices={prices} />
-                    <EffortJudgments session={session} />
+                    {projection ? <RoutingTally projection={projection} /> : null}
                   </TabPanel>
                 </Tabs>
               ) : null}

@@ -4,16 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createLocalIntelligence } from '../src/factory.ts';
 import { bundleDir } from '../src/install.ts';
 import { fakeLauncher, markInstalled } from './fake-helper.ts';
-import {
-  EFFORT_MODEL,
-  fakeFetch,
-  MODEL,
-  servedBodies,
-  tempDir,
-  testBundle,
-  testWeights,
-  WHEEL,
-} from './helpers.ts';
+import { fakeFetch, MODEL, servedBodies, tempDir, testBundle, WHEEL } from './helpers.ts';
 
 /** Holds every request until released or aborted; afterwards serves the test bundle. */
 function heldFetch(bundle = testBundle()) {
@@ -44,7 +35,6 @@ function localAi(root: string, fetchFn: typeof fetch, platform = 'linux') {
   return createLocalIntelligence({
     root,
     bundle: testBundle(),
-    effortWeights: testWeights(),
     fetchFn,
     launch: fakeLauncher().launch,
     env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
@@ -63,14 +53,14 @@ const notInstalling = async (li: ReturnType<typeof localAi>) =>
   vi.waitFor(() => expect(li.status().state).not.toBe('installing'));
 
 describe('local AI install from the settings panel', () => {
-  it('shows the size first, one install with progress while it runs, and a usable judge after', async () => {
+  it('shows the size first, one install with progress while it runs, and a usable engine after', async () => {
     const root = tempDir();
     const held = heldFetch();
     const li = localAi(root, held.fetchFn);
-    const total = MODEL.length + EFFORT_MODEL.length + WHEEL.length;
+    const total = MODEL.length + WHEEL.length;
     expect(li.status()).toEqual({
       release: 'test-release-1',
-      models: { meeting: 'Test model', effort: 'Test effort model' },
+      models: { meeting: 'Test model' },
       state: 'missing',
       downloadBytes: total,
       progress: null,
@@ -84,9 +74,9 @@ describe('local AI install from the settings panel', () => {
 
     expect(held.requested).toEqual(Object.keys(servedBodies(testBundle())));
     expect(li.status()).toMatchObject({ state: 'idle', progress: null, error: null });
-    expect(li.effort.available()).toBe(true);
+    expect(li.engine.available()).toBe(true);
     expect(li.install()).toMatchObject({ state: 'idle' });
-    expect(held.requested).toHaveLength(3);
+    expect(held.requested).toHaveLength(2);
     await li.close();
   });
 
@@ -103,7 +93,7 @@ describe('local AI install from the settings panel', () => {
     });
     expect(held.aborted).toEqual([testBundle().models.meeting.url]);
     expect(leftovers(root)).toEqual([]);
-    expect(li.effort.available()).toMatch(/not installed/);
+    expect(li.engine.available()).toMatch(/not installed/);
     await li.close();
   });
 
@@ -157,7 +147,6 @@ describe('local AI install from the settings panel', () => {
     const li = createLocalIntelligence({
       root,
       bundle: testBundle(),
-      effortWeights: testWeights(),
       launch: launcher.launch,
       env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
       platform: 'linux',
@@ -167,7 +156,6 @@ describe('local AI install from the settings panel', () => {
       texts: ['hi'],
       task: 'classification',
       overflow: 'truncate',
-      priority: 'effort',
     });
     await vi.waitFor(() => expect(launcher.helpers).toHaveLength(1));
     const cache = join(bundleDir(root, testBundle()), 'cache');

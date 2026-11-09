@@ -33,7 +33,7 @@ it('Hive endpoint defaults produce the documented Pi wire and preserve explicit 
     const resolution: ReasoningResolution = {
       requested: level === null ? { mode: 'provider_default' } : { mode: 'fixed', level },
       resolved: level,
-      source: level === null ? 'provider_default' : 'fixed',
+      source: level === null ? 'provider-default' : 'fixed',
       preparationId: 'fixture',
     };
     const request = reasoningRequest(model, { maxTokens: 4096 }, resolution);

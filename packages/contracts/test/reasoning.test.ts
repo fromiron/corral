@@ -1,115 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DecisionAnswer,
-  DecisionApiId,
-  ModelRequestIntent,
-  ReasoningApplySettings,
-  ReasoningResolution,
-} from '../src/index.ts';
-
-const base = {
-  requested: { mode: 'auto' },
-  resolved: 'high',
-  source: 'local-model',
-  preparationId: 'prep_1',
-} as const;
+import { DecisionApiId, ModelRequestIntent, ReasoningResolution } from '../src/index.ts';
 
 describe('reasoning records', () => {
-  it('records the judged v4 policy without invalidating older decisions', () => {
-    for (const policyVersion of [
-      'corral-effort-v4',
-      'corral-effort-v2',
-      'corral-effort-v1',
-      'mixdog-relative-v1',
-    ])
-      expect(ReasoningResolution.safeParse({ ...base, policyVersion }).success).toBe(true);
-  });
-  it('records corral-effort-v1 judgments and still reads mixdog-relative-v1 runs', () => {
-    expect(
-      ReasoningResolution.safeParse({ ...base, policyVersion: 'corral-effort-v1' }).success,
-    ).toBe(true);
-    expect(
-      ReasoningResolution.safeParse({ ...base, policyVersion: 'mixdog-relative-v1' }).success,
-    ).toBe(true);
-    expect(ReasoningResolution.safeParse({ ...base, policyVersion: 'other-v1' }).success).toBe(
-      false,
-    );
-  });
-
-  it('records the medium policy and keeps guarded low records readable', () => {
-    expect(
-      ReasoningResolution.safeParse({
-        ...base,
-        resolved: 'medium',
-        source: 'fallback',
-        fallback: 'policy',
-        policyVersion: 'corral-effort-v3',
-      }).success,
-    ).toBe(true);
-    const settings = { enabled: true, maxCalls: 4, provider: 'local-model', version: null };
-    for (const policy of ['medium', 'judged'])
-      expect(ReasoningApplySettings.safeParse({ ...settings, policy }).success).toBe(true);
-    expect(ReasoningApplySettings.safeParse(settings).success).toBe(true);
-    expect(ReasoningApplySettings.safeParse({ ...settings, policy: 'high' }).success).toBe(false);
-  });
-
-  it('names an abstained judgment as its own fallback reason', () => {
-    expect(
-      ReasoningResolution.safeParse({
-        ...base,
-        resolved: 'medium',
-        source: 'fallback',
-        fallback: 'abstained',
-      }).success,
-    ).toBe(true);
-  });
-
-  it('lets a provider say it abstains, and nothing else beyond the answer', () => {
-    const answer = {
-      answer: 'high',
-      probabilities: { low: 0.1, medium: 0.3, high: 0.35, xhigh: 0.25 },
-      evidenceLevel: 'model_probability',
+  it('records an automatic request sent with the provider default while the effort mode is off', () => {
+    const off = {
+      requested: { mode: 'auto' },
+      resolved: null,
+      source: 'off',
+      preparationId: 'prep_1',
     };
-    expect(DecisionAnswer.safeParse({ ...answer, abstain: true }).success).toBe(true);
-    expect(DecisionAnswer.safeParse(answer).success).toBe(true);
-    expect(DecisionAnswer.safeParse({ ...answer, abstain: 'yes' }).success).toBe(false);
-    expect(DecisionAnswer.safeParse({ ...answer, note: 'x' }).success).toBe(false);
+    expect(ReasoningResolution.parse(off)).toEqual(off);
+    expect(
+      ReasoningResolution.safeParse({
+        ...off,
+        resolved: 'medium',
+        source: 'internal-policy',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('no longer reads the removed judge records', () => {
+    const base = { requested: { mode: 'auto' }, resolved: 'high', preparationId: 'prep_1' };
+    for (const source of ['local-model', 'external-model', 'provider_default', 'compaction'])
+      expect(ReasoningResolution.safeParse({ ...base, source }).success).toBe(false);
+    expect(
+      ReasoningResolution.safeParse({ ...base, source: 'off', policyVersion: 'corral-effort-v4' })
+        .success,
+    ).toBe(false);
   });
 });
 
-describe('external judgment (decision APIs)', () => {
-  it('records an escalated request and where its level came from', () => {
-    const resolution = {
-      requested: { mode: 'auto' },
-      resolved: 'xhigh',
-      source: 'external-model',
-      preparationId: 'prep_1',
-      judged: 'xhigh',
-      judgeVersion: 'jev-2026-09-15',
-      ladder: ['low', 'medium', 'high', 'xhigh'],
-      policyVersion: 'corral-effort-v1',
-      escalated: true,
-    };
-    expect(ReasoningResolution.parse(resolution)).toEqual(resolution);
-    expect(ReasoningResolution.safeParse({ ...resolution, escalated: false }).success).toBe(false);
-  });
-
-  it('fixes the external judge at run start, and only a supported decision API', () => {
-    const apply = {
-      enabled: true,
-      maxCalls: 4,
-      provider: 'local-model',
-      version: 'corral-local-ai-1+effort-v1',
-      external: { provider: 'jev', model: 'jev-latest' },
-    };
-    expect(ReasoningApplySettings.parse(apply)).toEqual(apply);
-    const openai = { ...apply, external: { provider: 'openai-decisions', model: 'gpt-6-luna' } };
-    expect(ReasoningApplySettings.parse(openai)).toEqual(openai);
+describe('decision APIs', () => {
+  it('supports Jev and OpenAI Decisions only', () => {
     expect(DecisionApiId.options).toEqual(['jev', 'openai-decisions']);
-    expect(
-      ReasoningApplySettings.safeParse({ ...apply, external: { provider: 'other', model: 'x' } })
-        .success,
-    ).toBe(false);
   });
 
   it('owns a judge request by its decision effect', () => {

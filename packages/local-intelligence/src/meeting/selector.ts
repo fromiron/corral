@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { DecisionCancellation, MeetingSelectionInput, Scheduler } from '@corral/contracts';
-import type { EffortEngine } from '../effort/provider.ts';
+import type { EmbedRequest } from '../engine/engine.ts';
 
 export const MEETING_PREPROCESS_VERSION = 'meeting-text-v2';
 /** The share of a score that comes from name and role; the rest is the person's own turns. */
@@ -44,6 +44,12 @@ const dot = (a: ArrayLike<number>, b: ArrayLike<number>) => {
   return sum;
 };
 
+/** The part of the embedding engine the selector uses. */
+export interface MeetingEngine {
+  available(): true | string;
+  embed(request: EmbedRequest, cancellation?: DecisionCancellation): Promise<Float32Array[]>;
+}
+
 const realTimers: Scheduler = {
   after(ms, fn) {
     const timer = setTimeout(fn, ms);
@@ -52,13 +58,13 @@ const realTimers: Scheduler = {
 };
 
 export class LocalMeetingSelector {
-  private readonly engine: EffortEngine;
+  private readonly engine: MeetingEngine;
   private readonly release: string;
   private readonly timers: Scheduler;
   /** Keyed by a hash so that no meeting text stays in memory; oldest use goes first. */
   private readonly vectors = new Map<string, Float32Array>();
 
-  constructor(engine: EffortEngine, release: string, timers: Scheduler = realTimers) {
+  constructor(engine: MeetingEngine, release: string, timers: Scheduler = realTimers) {
     this.engine = engine;
     this.release = release;
     this.timers = timers;
@@ -75,7 +81,7 @@ export class LocalMeetingSelector {
       return known;
     }
     const [vector] = await this.engine.embed(
-      { texts: [text], task: 'classification', overflow: 'truncate', priority: 'meeting' },
+      { texts: [text], task: 'classification', overflow: 'truncate' },
       cancellation,
     );
     if (!vector || !vector.every(Number.isFinite)) throw new Error('unusable meeting embedding');

@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { DecisionApiId } from '@corral/contracts';
+import type { EffortRoutingSettings } from '@corral/contracts';
 import {
+  effortRoutingSettings,
   type InstallationPolicy,
   installationPolicy,
   parseWorkspaceConfig,
@@ -113,46 +114,43 @@ export function writeModelConfig(
   return { ok: true, config: parsed.config, revision: configRevision(root) };
 }
 
-type ReasoningEffortConfig = NonNullable<WorkspaceConfig['decisions']>['reasoning_effort'];
-
-/** Changes `decisions.reasoning_effort` only, guarding concurrent config edits. */
-function writeReasoningEffort(
+/**
+ * Replaces `decisions.effort_routing`, keeping every other key, only when the file is still the
+ * revision the caller read. Off removes the saved settings.
+ */
+export function writeEffortRouting(
   root: string,
+  settings: EffortRoutingSettings,
   expectedRevision: string,
-  change: (current: ReasoningEffortConfig) => ReasoningEffortConfig,
-) {
-  if (configRevision(root) !== expectedRevision) return { ok: false as const };
+):
+  | { ok: true; settings: EffortRoutingSettings; revision: string }
+  | { ok: false; conflict: boolean; errors: string[] } {
+  if (configRevision(root) !== expectedRevision)
+    return { ok: false, conflict: true, errors: ['the config changed since it was read'] };
   const path = join(root, CONFIG);
   const raw = existsSync(path)
-    ? (JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>)
+    ? (JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>)
     : { schemaVersion: '0.1' };
-  const current = parseWorkspaceConfig(raw);
-  if (!current.ok) return { ok: false as const };
-  const reasoning_effort = change(
-    current.config.decisions?.reasoning_effort ?? { mode: 'off', providers: ['local-model'] },
-  );
-  const next = { ...raw, decisions: { reasoning_effort } };
+  const { decisions: _, ...rest } = raw;
+  const next =
+    settings.mode === 'off' ? rest : { ...rest, decisions: { effort_routing: settings } };
   const parsed = parseWorkspaceConfig(next);
-  if (!parsed.ok) return { ok: false as const };
-  writeFileSync(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-  renameSync(`${path}.tmp`, path);
-  return { ok: true as const, config: parsed.config, revision: configRevision(root) };
+  if (!parsed.ok) return { ok: false, conflict: false, errors: parsed.errors };
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  renameSync(temporary, path);
+  return {
+    ok: true,
+    settings: effortRoutingSettings(parsed.config),
+    revision: configRevision(root),
+  };
 }
 
-/** Explicit apply opt-in; preserves observer and external judge settings. */
-export function writeReasoningApply(root: string, apply: boolean, expectedRevision: string) {
-  return writeReasoningEffort(root, expectedRevision, (current) => ({ ...current, apply }));
-}
-
-/** Automatic reasoning's decision API; null turns it and other external providers off. */
-export function writeExternalJudge(
-  root: string,
-  external: { provider: DecisionApiId; model: string } | null,
-  expectedRevision: string,
-) {
-  return writeReasoningEffort(root, expectedRevision, ({ external: _, ...current }) => ({
-    ...current,
-    allowExternal: external !== null,
-    ...(external ? { external } : {}),
-  }));
+/** The saved effort routing as it is now; an unreadable config routes nothing. */
+export function currentEffortRouting(root: string): EffortRoutingSettings {
+  try {
+    return effortRoutingSettings(readWorkspaceConfig(root).config);
+  } catch {
+    return { mode: 'off' };
+  }
 }

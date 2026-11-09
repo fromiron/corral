@@ -195,6 +195,16 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "reasoning.settled",
+    "requiredContent": "executionId,routeId,basis,physicalOccupiedMs,lateResult,lateSelected",
+    "status": "implemented"
+  },
+  {
+    "type": "reasoning.observed",
+    "requiredContent": "executionId,routeId,modelCallId,baseline,selected,skipped,probabilities,probabilityMeaning,engineIdentity,frame,timing",
+    "status": "implemented"
+  },
+  {
     "type": "model.finished",
     "requiredContent": "responseRef,rawUsage,normalizedUsage,certainty",
     "status": "payload_schema_to_implement"
@@ -243,21 +253,6 @@
     "type": "workflow.joined",
     "requiredContent": "nodeId,policy,iterationId,cancelledNodeIds",
     "status": "implemented"
-  },
-  {
-    "type": "decision.requested",
-    "requiredContent": "decisionId,questionKind,questionVersion,provider,subject,privacy,inputHash,features",
-    "status": "payload_schema_to_implement"
-  },
-  {
-    "type": "decision.observed",
-    "requiredContent": "decisionId,answer,probabilities,evidenceLevel,latencyMs,readyBeforeDispatch,afterRequestFinished",
-    "status": "payload_schema_to_implement"
-  },
-  {
-    "type": "decision.failed",
-    "requiredContent": "decisionId,reason,latencyMs",
-    "status": "payload_schema_to_implement"
   },
   {
     "type": "harness.loaded",

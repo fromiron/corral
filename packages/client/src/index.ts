@@ -23,6 +23,7 @@ import type {
   DevelopmentState,
   DocumentCommand,
   DocumentOperation,
+  EffortRoutingSettings,
   FileCheckpoint,
   FileDocument,
   FileEditApply,
@@ -1400,20 +1401,11 @@ export interface ProviderAuthView {
   permissionsOk: boolean;
 }
 
-export interface ReasoningSettings {
-  apply: boolean;
-  policy: 'medium' | 'judged';
-  available: boolean;
-  version: string | null;
-  reason: string | null;
-  revision: string;
-}
-
 /** GET /local-ai: the local AI bundle for the settings panel's install. */
 export interface LocalAiView {
   release: string;
-  /** Display names of the two models the bundle installs together. */
-  models: { meeting: string; effort: string };
+  /** Display name of the meeting analysis model the bundle installs. */
+  models: { meeting: string };
   state:
     | 'unsupported'
     | 'missing'
@@ -1426,16 +1418,6 @@ export interface LocalAiView {
   downloadBytes: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
-  /** The decision API the workspace asks when the local judge is unsure; null when none. */
-  external: {
-    provider: DecisionApiView['id'] | null;
-    model: string | null;
-    /** The automatic reasoning policy; medium never asks the decision API. */
-    policy: ReasoningSettings['policy'];
-    /** Whether the local judge can abstain; one that never does never asks the decision API. */
-    judgeAbstains: boolean;
-    revision: string;
-  };
 }
 
 /** GET /decision-apis: judge-only APIs and whether a key is stored, never the key. */
@@ -1444,6 +1426,39 @@ export interface DecisionApiView {
   provider: string;
   model: string;
   keyConfigured: boolean;
+}
+
+/** The Local engine as GET /effort-routing reports it: the server's computer, never the browser's. */
+export interface LocalRoutingView {
+  model: string | null;
+  host: string;
+  supported: boolean;
+  /** Why the engine cannot be used here, when it cannot. */
+  reason: string | null;
+  install: 'absent' | 'downloading' | 'verifying' | 'installed' | 'install-error';
+  runtime: 'stopped' | 'starting' | 'ready' | 'packing' | 'inferring' | 'draining' | 'error';
+  downloadBytes: number | null;
+  progress: { received: number; total: number } | null;
+  error: string | null;
+  device: { requested: 'cpu'; active: 'cpu' | null };
+  /** The running instance's threads. */
+  threads: number | null;
+  /** What a new Local setting starts with, from the server's processor. */
+  defaultThreads: number;
+}
+
+/** GET /effort-routing: the saved setting, its revision, and what each engine can do now. */
+export interface EffortRoutingView {
+  settings: EffortRoutingSettings;
+  revision: string;
+  local: LocalRoutingView;
+  apis: {
+    id: DecisionApiView['id'];
+    keyConfigured: boolean;
+    /** The notice a person agrees to before anything is sent; saved as `consentRevision`. */
+    noticeRevision: string;
+    verified: boolean;
+  }[];
 }
 
 export interface ModelProfileView {
@@ -1532,15 +1547,6 @@ export class ModelsApi {
     return this.http.json(`/model-attempts?${search}`, { signal });
   }
 
-  reasoning(): Promise<ReasoningSettings> {
-    return this.http.json('/models/reasoning');
-  }
-  setReasoning(apply: boolean, revision: string): Promise<ReasoningSettings> {
-    return this.http.json('/models/reasoning', {
-      method: 'PUT',
-      body: JSON.stringify({ apply, revision }),
-    });
-  }
   localAi(): Promise<LocalAiView> {
     return this.http.json('/local-ai');
   }
@@ -1549,12 +1555,6 @@ export class ModelsApi {
   }
   cancelLocalAiInstall(): Promise<LocalAiView> {
     return this.http.json('/local-ai/install', { method: 'DELETE' });
-  }
-  setExternalJudge(provider: DecisionApiView['id'] | null, revision: string): Promise<LocalAiView> {
-    return this.http.json('/local-ai/external-judge', {
-      method: 'PUT',
-      body: JSON.stringify({ provider, revision }),
-    });
   }
   decisionApis(): Promise<DecisionApiView[]> {
     return this.http.json('/decision-apis');
@@ -1570,6 +1570,26 @@ export class ModelsApi {
     return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
       method: 'DELETE',
     });
+  }
+  effortRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing');
+  }
+  /** Saves the setting against the revision it was read with; saving never downloads. */
+  saveEffortRouting(settings: EffortRoutingSettings, revision: string): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing', {
+      method: 'PUT',
+      body: JSON.stringify({ settings, revision }),
+    });
+  }
+  installLocalRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/install', { method: 'POST' });
+  }
+  cancelLocalRoutingInstall(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/install', { method: 'DELETE' });
+  }
+  /** Prepares the saved, installed Local engine again. */
+  startLocalRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/start', { method: 'POST' });
   }
   profiles(): Promise<ModelProfileView[]> {
     return this.http.json('/model-profiles');

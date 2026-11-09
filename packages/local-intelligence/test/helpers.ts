@@ -88,7 +88,6 @@ export function fakeFetch(bodies: Record<string, Buffer>, options: { chunk?: num
 export const LIBRARY = Buffer.from('fake shared library bytes '.repeat(40));
 export const EXTRA = Buffer.from('fake companion library');
 export const MODEL = Buffer.from('fake embedding model '.repeat(50));
-export const EFFORT_MODEL = Buffer.from('fake effort judge model '.repeat(60));
 export const WHEEL = makeZip([
   { name: 'litert_lm/__init__.py', data: Buffer.from('# python'), method: 0 },
   { name: 'litert_lm/libfake.so', data: LIBRARY, method: 8 },
@@ -108,15 +107,6 @@ export function testBundle(overrides: Partial<Bundle> = {}): Bundle {
         sha256: sha256(MODEL),
         dims: 4,
         maxInputTokens: 256,
-      },
-      effort: {
-        name: 'Test effort model',
-        file: 'effort.litertlm',
-        url: 'https://models.test/effort.litertlm',
-        size: EFFORT_MODEL.length,
-        sha256: sha256(EFFORT_MODEL),
-        dims: 4,
-        maxInputTokens: 1024,
       },
     },
     runtime: {
@@ -147,29 +137,6 @@ export function testBundle(overrides: Partial<Bundle> = {}): Bundle {
 export function servedBodies(bundle: Bundle = testBundle()) {
   return {
     [bundle.models.meeting.url]: MODEL,
-    [bundle.models.effort.url]: EFFORT_MODEL,
     [bundle.runtime.targets['linux-x64']!.url]: WHEEL,
-  };
-}
-
-/** Effort weights for the test bundle's 4-dim effort model. */
-export function testWeights(baseModelSha256 = testBundle().models.effort.sha256) {
-  return {
-    schemaVersion: 1,
-    version: 'test-weights',
-    labels: ['low', 'medium', 'high', 'xhigh'],
-    dims: 4,
-    baseModelSha256,
-    preprocessVersion: 'effort-text-v2',
-    task: 'classification',
-    weights: [
-      [1, 0, 0, 0],
-      [0, 1, 0, 0],
-      [0, 0, 1, 0],
-      [0, 0, 0, 1],
-    ],
-    bias: [0, 2, 0, 0],
-    temperature: 1,
-    abstainBelow: 0.5,
   };
 }

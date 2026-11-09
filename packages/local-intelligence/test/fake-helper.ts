@@ -6,7 +6,6 @@ import { bundleDir } from '../src/install.ts';
 
 export interface SentRequest {
   id: number;
-  model: 'meeting' | 'effort';
   texts: string[];
   overflow: string;
   dim: number;

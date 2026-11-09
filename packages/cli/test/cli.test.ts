@@ -304,68 +304,15 @@ describe('CLI command/query parity', () => {
   });
 });
 
-describe('judgments in inspect', () => {
-  it('inspect --judgments lists each request with its provider and level', async () => {
-    const cwd = workspace();
-    mkdirSync(join(cwd, '.corral'), { recursive: true });
-    writeFileSync(
-      join(cwd, '.corral', 'config.json'),
-      JSON.stringify({
-        schemaVersion: '0.1',
-        decisions: { reasoning_effort: { mode: 'observe', providers: ['local-heuristic'] } },
-      }),
-    );
-    const path = join(cwd, 'workflow.json');
-    writeFileSync(path, JSON.stringify(linearCorral(['writer'])));
+describe('inspect without effort judgments', () => {
+  it('refuses the removed --judgments option', async () => {
     const output: string[] = [];
     const io = {
-      cwd,
+      cwd: workspace(),
       write: (line: string) => output.push(line),
       signal: new AbortController().signal,
     };
-    expect(await runCli(['run', path, '--demo', '--port', '0'], io)).toBe(0);
-    const db = openReadOnlyDatabase(join(cwd, '.corral', 'corral.db'));
-    const run = new SqliteRunStore(db).listRuns()[0];
-    db.close();
-    if (!run) throw new Error('expected recorded run');
-    output.length = 0;
-    expect(await runCli(['inspect', run.runId, '--judgments'], io)).toBe(0);
-    const text = output.join('\n');
-    expect(text).toContain('observe only, not applied');
-    expect(text).toMatch(/call_\S+ .*local-heuristic@1 medium/);
-  });
-});
-
-describe('judgments the run ended before (#22)', () => {
-  it('inspect says "not collected", not "pending"', async () => {
-    const { judgmentReport } = await import('../src/index.ts');
-    const projection = {
-      runId: 'run_1',
-      decisionSettings: {
-        reasoning_effort: {
-          mode: 'observe',
-          providers: [{ id: 'local-model', version: 'v6', available: true, reason: null }],
-        },
-      },
-      executionOrder: ['exec_1'],
-      executions: { exec_1: { nodeId: 'write', modelCallIds: ['call_1'] } },
-      decisions: {
-        dec_1: {
-          decisionId: 'dec_1',
-          provider: 'local-model@v6',
-          modelCallId: 'call_1',
-          status: 'not_collected',
-          answer: null,
-          probabilities: null,
-          evidenceLevel: null,
-          reason: null,
-          latencyMs: null,
-        },
-      },
-    } as unknown as Parameters<typeof judgmentReport>[0];
-    const text = judgmentReport(projection);
-    expect(text).toContain('call_1 write local-model@v6 not collected (the run ended first)');
-    expect(text).not.toContain('pending');
+    expect(await runCli(['inspect', 'run_1', '--judgments'], io)).not.toBe(0);
   });
 });
 

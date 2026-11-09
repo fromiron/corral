@@ -199,32 +199,6 @@ export function withProtectedContext<T extends { messages: AgentMessage[] }>(
   return { context: { ...context, messages }, section };
 }
 
-export function missingParentQuestions(
-  questions: readonly import('@corral/contracts').ParentQuestionMessage[],
-  sections: readonly PromptSection[],
-) {
-  const state = sections.find((section) => section.name === 'corral_state');
-  if (!state) return questions;
-  try {
-    const current = JSON.parse(state.text).questions as
-      | import('@corral/contracts').ParentQuestionMessage[]
-      | undefined;
-    return questions.filter(
-      (question) =>
-        !current?.some(
-          (saved) =>
-            saved.questionId === question.questionId &&
-            saved.body === question.body &&
-            saved.senderExecutionId === question.senderExecutionId &&
-            saved.deadline === question.deadline &&
-            canonicalJson(saved.artifactRefs) === canonicalJson(question.artifactRefs),
-        ),
-    );
-  } catch {
-    return questions;
-  }
-}
-
 /** Restore only the public transcript; all active tools, permissions and system sections are rebuilt. */
 export function resumedMessages(
   state: import('@corral/contracts').RuntimeCheckpointState | undefined,

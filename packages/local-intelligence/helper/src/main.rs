@@ -1,10 +1,9 @@
-//! Corral local AI helper: loads the LiteRT-LM C library and two embedding models (the meeting
-//! model and the effort judge model), then answers embedding requests one at a time as JSON lines
-//! on stdin/stdout. Each request names the model it runs on. It opens no network socket.
+//! Corral local AI helper: loads the LiteRT-LM C library and the meeting embedding model, then
+//! answers embedding requests one at a time as JSON lines on stdin/stdout. It opens no network
+//! socket.
 //!
 //! Arguments (all required):
-//!   --lib <path> --meeting-model <path> --meeting-max-input <tokens>
-//!   --effort-model <path> --effort-max-input <tokens> --backend <cpu|gpu> --threads <n|0>
+//!   --lib <path> --model <path> --max-input <tokens> --backend <cpu|gpu> --threads <n|0>
 //!   --cache-dir <dir> --api-major <n> --api-minor <n>
 //!
 //! stdout lines:
@@ -13,7 +12,7 @@
 //!   {"type":"error","id":1,"message":"..."}
 //!   {"type":"fatal","message":"..."}   (then exit code 2)
 //! stdin lines:
-//!   {"id":1,"model":"meeting"|"effort","texts":["..."],"overflow":"truncate"|"chunk_average","dim":768}
+//!   {"id":1,"texts":["..."],"overflow":"truncate"|"chunk_average","dim":768}
 //!
 //! The library's handles are not thread-safe, so every call runs on the main thread.
 
@@ -33,7 +32,6 @@ const LOG_ERROR: c_int = 3;
 #[derive(Deserialize)]
 struct Request {
     id: u64,
-    model: String,
     texts: Vec<String>,
     overflow: String,
     dim: c_int,
@@ -177,8 +175,7 @@ fn arguments() -> Result<HashMap<String, String>, String> {
         found.insert(name.to_string(), value);
     }
     for name in [
-        "lib", "meeting-model", "meeting-max-input", "effort-model", "effort-max-input", "backend", "threads",
-        "cache-dir", "api-major", "api-minor",
+        "lib", "model", "max-input", "backend", "threads", "cache-dir", "api-major", "api-minor",
     ] {
         if !found.contains_key(name) {
             return Err(format!("missing --{name}"));
@@ -264,38 +261,26 @@ fn run() -> Result<(), String> {
     unsafe {
         let _ = set_log_level(LOG_ERROR);
     }
-    // One engine per model, on the same backend, threads and cache folder.
-    let create = |role: &str| -> Result<*mut c_void, String> {
-        let model = CString::new(args[&format!("{role}-model")].as_str()).map_err(|e| e.to_string())?;
-        let max_input = number(&args, &format!("{role}-max-input"))?;
-        let mut engine = null_mut();
-        unsafe {
-            let mut settings = null_mut();
-            api_fns.check(
-                "embedding_engine_settings_create",
-                settings_create(model.as_ptr(), backend_name.as_ptr(), null(), null(), &mut settings),
-            )?;
-            let configured = (|| {
-                if threads > 0 {
-                    api_fns.check("set_num_threads", settings_threads(settings, threads))?;
-                }
-                api_fns.check("set_max_input_length", settings_max_input(settings, max_input))?;
-                api_fns.check("set_cache_dir", settings_cache_dir(settings, cache_dir.as_ptr()))?;
-                api_fns.check("embedding_engine_create", engine_create(settings, &mut engine))
-            })();
-            settings_delete(settings);
-            configured.map_err(|message| format!("{role} model: {message}"))?;
-        }
-        Ok(engine)
-    };
-    let meeting = create("meeting")?;
-    let effort = match create("effort") {
-        Ok(engine) => engine,
-        Err(message) => {
-            unsafe { engine_delete(meeting) };
-            return Err(message);
-        }
-    };
+    let model = CString::new(args["model"].as_str()).map_err(|e| e.to_string())?;
+    let max_input = number(&args, "max-input")?;
+    let mut engine = null_mut();
+    unsafe {
+        let mut settings = null_mut();
+        api_fns.check(
+            "embedding_engine_settings_create",
+            settings_create(model.as_ptr(), backend_name.as_ptr(), null(), null(), &mut settings),
+        )?;
+        let configured = (|| {
+            if threads > 0 {
+                api_fns.check("set_num_threads", settings_threads(settings, threads))?;
+            }
+            api_fns.check("set_max_input_length", settings_max_input(settings, max_input))?;
+            api_fns.check("set_cache_dir", settings_cache_dir(settings, cache_dir.as_ptr()))?;
+            api_fns.check("embedding_engine_create", engine_create(settings, &mut engine))
+        })();
+        settings_delete(settings);
+        configured?;
+    }
 
     emit(&Message::Ready { api, backend });
     for line in std::io::stdin().lock().lines() {
@@ -307,22 +292,11 @@ fn run() -> Result<(), String> {
                 continue;
             }
         };
-        let engine = match request.model.as_str() {
-            "meeting" => meeting,
-            "effort" => effort,
-            other => {
-                emit(&Message::Error { id: request.id, message: format!("unknown model {other}") });
-                continue;
-            }
-        };
         match api_fns.embed(engine, &request) {
             Ok(embeddings) => emit(&Message::Result { id: request.id, embeddings }),
             Err(message) => emit(&Message::Error { id: request.id, message }),
         }
     }
-    unsafe {
-        engine_delete(effort);
-        engine_delete(meeting);
-    }
+    unsafe { engine_delete(engine) };
     Ok(())
 }

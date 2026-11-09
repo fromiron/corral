@@ -39,7 +39,7 @@ describe('permit reasoning at the provider boundary', () => {
     const resolution: ReasoningResolution = {
       requested: { mode: 'provider_default' },
       resolved: null,
-      source: 'provider_default',
+      source: 'provider-default',
       preparationId: 'prep',
     };
     const request = reasoningRequest(model, { reasoning: 'high' }, resolution);
@@ -56,6 +56,34 @@ describe('permit reasoning at the provider boundary', () => {
     expect(reasoningRequest(model, { reasoning: 'high' }, undefined).options.reasoning).toBe(
       'high',
     );
+  });
+
+  it('C20: a routed level is checked like any other and a hook cannot change it', () => {
+    const routed: ReasoningResolution = {
+      requested: { mode: 'auto' },
+      resolved: 'low',
+      source: 'router',
+      preparationId: 'prep',
+    };
+    const request = reasoningRequest(model, { reasoning: 'high', maxTokens: 4096 }, routed);
+    expect(request.options.reasoning).toBe('low');
+    expect(request.options.maxTokens).toBe(4096);
+    expect(request.model.id).toBe(model.id);
+    const payload = { model: model.id, reasoning: { effort: 'low' } };
+    expect(verifyReasoningWire(model, payload, routed, 4096, 'oauth')).toEqual({
+      kind: 'effort',
+      value: 'low',
+    });
+    expect(() =>
+      verifyReasoningWire(model, { ...payload, reasoning: { effort: 'xhigh' } }, routed, 4096),
+    ).toThrow('differs');
+    expect(() =>
+      verifyReasoningWire(model, { ...payload, model: 'gpt-6.1-terra' }, routed, 4096, 'oauth'),
+    ).toThrow('model differs');
+    // A fallback to the provider default sends no reasoning field at all.
+    const fallback: ReasoningResolution = { ...routed, resolved: null, source: 'fallback' };
+    expect(() => verifyReasoningWire(model, payload, fallback)).toThrow('differs');
+    expect(verifyReasoningWire(model, {}, fallback)?.kind).toBe('omitted');
   });
 });
 
@@ -86,7 +114,7 @@ it('the actual Pi serializer agrees on off, provider default and non-reasoning m
   const defaultPolicy: ReasoningResolution = {
     requested: { mode: 'provider_default' },
     resolved: null,
-    source: 'provider_default',
+    source: 'provider-default',
     preparationId: 'prep',
   };
   for (const api of ['openai-codex-responses', 'openai-responses'] as const) {

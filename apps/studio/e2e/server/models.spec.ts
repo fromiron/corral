@@ -342,49 +342,6 @@ test.describe('editing models on the Models page', () => {
     expect(corral.errors.filter((e) => !e.includes('503'))).toEqual([]);
   });
 
-  test('saving an endpoint and local reasoning settings in either order preserves both', async ({
-    page,
-    corral,
-  }) => {
-    await corral.open('/settings/models');
-    const apply = page.getByRole('switch', {
-      name: 'Let the local judge choose reasoning effort in all projects on this server',
-    });
-    await expect(apply).toBeEnabled();
-    const changed = page.waitForResponse(
-      (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
-    );
-    await apply.click();
-    expect((await changed).status()).toBe(200);
-    await expect(apply).toBeChecked();
-    await page.getByRole('button', { name: 'Edit models' }).click();
-    const editor = page.getByRole('region', { name: 'Edit models' });
-    await editor.getByRole('button', { name: 'Add endpoint' }).click();
-    await editor.getByLabel('Endpoint id 1').fill('hive');
-    await editor.getByLabel('Endpoint name 1').fill('Hive');
-    await editor.getByLabel('Address of endpoint 1').fill('https://api-cdn.thehive.ai/api/v3');
-    await editor.getByRole('combobox', { name: 'Access of endpoint 1', exact: true }).click();
-    await page.getByRole('option', { name: 'API key', exact: true }).click();
-    await editor.getByLabel('Models of endpoint 1').fill('deepseek-ai/deepseek-v4.1-flash-1017');
-    const saved = page.waitForResponse(
-      (r) => r.url().endsWith('/model-config') && r.request().method() === 'PUT',
-    );
-    await editor.getByRole('button', { name: 'Save models' }).click();
-    expect((await saved).status()).toBe(200);
-    await expect(editor).toHaveCount(0);
-    await expect(apply).toBeChecked();
-    const toggled = page.waitForResponse(
-      (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
-    );
-    await apply.click();
-    expect((await toggled).status()).toBe(200);
-    await page.reload();
-    await expect(apply).not.toBeChecked();
-    await page.getByRole('button', { name: 'Edit models' }).click();
-    await expect(editor.getByLabel('Endpoint name 1')).toHaveValue('Hive');
-    expect(corral.errors).toEqual([]);
-  });
-
   test('a refreshed loader cannot overwrite a concurrent model edit and keeps the local endpoint draft', async ({
     page,
     corral,
@@ -479,10 +436,7 @@ test.describe('editing models on the Models page', () => {
   });
 });
 
-test('profile context preview, explicit zero, round-trip and a concurrent reasoning save', async ({
-  page,
-  corral,
-}) => {
+test('profile context preview, explicit zero and round-trip', async ({ page, corral }) => {
   await corral.open('/settings/models');
   await page.getByRole('button', { name: 'Edit models', exact: true }).click();
   const editor = page.getByRole('region', { name: 'Edit models' });
@@ -499,19 +453,6 @@ test('profile context preview, explicit zero, round-trip and a concurrent reason
   await page.getByRole('button', { name: 'Edit models', exact: true }).click();
   await expect(editor.getByLabel('Summary reserve · model-a')).toHaveValue('0');
   await expect(editor.getByLabel('Recent history · model-a')).toHaveValue('0');
-  await editor.getByLabel('Context window · model-a').fill('96000');
-  const changed = page.waitForResponse(
-    (r) => r.url().endsWith('/models/reasoning') && r.request().method() === 'PUT',
-  );
-  await page
-    .getByRole('switch', {
-      name: 'Let the local judge choose reasoning effort in all projects on this server',
-    })
-    .click();
-  expect((await changed).status()).toBe(200);
-  await editor.getByRole('button', { name: 'Save models' }).click();
-  await expect(editor.getByRole('alert')).toContainText('Models changed');
-  await expect(editor.getByLabel('Context window · model-a')).toHaveValue('96000');
   const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
   expect(saved.modelProfiles[0]).toMatchObject({
     contextWindow: 64000,

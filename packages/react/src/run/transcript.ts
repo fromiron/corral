@@ -4,7 +4,7 @@ import {
   type RunEvent,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
-import { canReadArtifactBody, type RunProjection } from '@corral/core';
+import { canReadArtifactBody, type ReasoningSettledView, type RunProjection } from '@corral/core';
 import type { StreamText } from './session.ts';
 
 // One execution's conversation, in commit order (roadmap UX-A3). Built only from committed
@@ -24,11 +24,11 @@ export type TranscriptEntry =
       kind: 'request';
       reasoning?: ReasoningResolution;
       reasoningWire?: ReasoningWire;
+      reasoningSettled?: ReasoningSettledView;
       seq: number;
       modelCallId: string;
       no: number;
       directives: { directiveId: string; text: string }[];
-      effort: { provider: string; answer: string | null; status: string }[];
     }
   | {
       kind: 'reply';
@@ -104,12 +104,14 @@ export function buildTranscript(
       case 'model.request_prepared': {
         if (event.payload.executionId !== executionId) break;
         const call = event.payload.modelCallId;
+        const settled = projection.modelCalls[call]?.reasoningSettled;
         entries.push({
           kind: 'request',
           ...(event.payload.reasoning ? { reasoning: event.payload.reasoning } : {}),
           ...(projection.modelCalls[call]?.reasoningWire
             ? { reasoningWire: projection.modelCalls[call]!.reasoningWire! }
             : {}),
+          ...(settled ? { reasoningSettled: settled } : {}),
           seq: event.runSeq,
           modelCallId: call,
           no: ++requests,
@@ -117,9 +119,6 @@ export function buildTranscript(
             directiveId: id,
             text: projection.directives[id]?.text ?? '',
           })),
-          effort: Object.values(projection.decisions ?? {})
-            .filter((d) => d.modelCallId === call)
-            .map((d) => ({ provider: d.provider, answer: d.answer, status: d.status })),
         });
         // The reply follows its request, streaming until model.finished brings the final text.
         const stream = streams[call];

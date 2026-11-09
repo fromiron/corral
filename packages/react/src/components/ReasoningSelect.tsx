@@ -46,7 +46,8 @@ export function ReasoningSelect({
           {
             value: 'auto',
             label: t('auto'),
-            disabled: Boolean(capabilities && !levels.includes('medium')),
+            // Automatic falls back to the provider default, so it needs a verified one.
+            disabled: capabilities?.providerDefault === false,
           },
           ...(unsupported
             ? [{ value: value.level, label: `${value.level} (${t('unsupported')})` }]
@@ -54,11 +55,6 @@ export function ReasoningSelect({
           ...levels.map((level) => ({ value: level, label: t(`level.${level}`) })),
         ]}
       />
-      {value?.mode === 'auto' ? (
-        <a className="text-muted-foreground underline" href="/settings/models">
-          {t('autoHint')}
-        </a>
-      ) : null}
       {unsupported ? (
         <p role="alert" className="text-warning">
           {t('unsupportedHint')}

@@ -20,6 +20,7 @@ import {
   normalizeContext,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai';
+import { callSnapshotInput } from './call-snapshot.ts';
 import type { Channel } from './channel.ts';
 import { inspectContext, reconcileContextUsage } from './context-usage.ts';
 import type { EndpointSpec } from './endpoint.ts';
@@ -41,14 +42,12 @@ import {
   requestOutputCap,
   verifyReasoningWire,
 } from './reasoning.ts';
-import { requestReasoningInput } from './reasoning-input.ts';
 import { providerRequestFence } from './request-fence.ts';
 import {
   assertImagePayload,
   assertProtectedPayload,
   checkpointContext,
   conversationMessages,
-  missingParentQuestions,
   requestRecord,
   resumedMessages,
   withProtectedContext,
@@ -270,12 +269,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
               { role: 'user', content: directiveText(missing), timestamp: Date.now() },
             ],
           };
-        const assignment =
-          start.assignment.kind === 'delegated'
-            ? start.assignment.brief
-            : start.assignment.kind === 'question'
-              ? start.assignment.body
-              : '';
         const saved = await call({
           type: 'checkpoint_context',
           value: checkpointContext(preparedContext, 'pi-core'),
@@ -330,7 +323,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                       logicalRequestId: summaryRequestId,
                       retryIndex,
                       record,
-                      reasoningInput: requestReasoningInput(summary, 'compaction', '', []),
                     });
                     if (grant.type !== 'permit' || cancelled) throw new Error('compaction refused');
                     summaryCalls.push(grant.modelCallId);
@@ -429,6 +421,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           type: 'prepare_request',
           logicalRequestId,
           retryIndex,
+          // An explicit transport retry names the call it repeats; nothing else may reuse a result.
+          ...(retryIndex && permit ? { retryOfModelCallId: permit.modelCallId } : {}),
+          snapshot: callSnapshotInput(
+            preparedContext,
+            protectedSections.find((section) => section.name === 'corral_state')?.text,
+          ),
           record: requestRecord(
             preparedContext,
             retryIndex ? 'retry' : 'turn',
@@ -440,9 +438,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             protectedSections,
             { usage: measuredContext.usage },
           ),
-          reasoningInput: requestReasoningInput(preparedContext, 'turn', assignment, [
-            ...directives.keys(),
-          ]),
         });
       };
       let reply = await prepare();
@@ -474,10 +469,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             { role: 'user', content: directiveText(missing), timestamp: Date.now() },
           ],
         };
-      const parentQuestions = missingParentQuestions(
-        reply.parentQuestions ?? [],
-        protectedSections,
-      );
+      // Exactly the questions the routing input held; the host left out those already present.
+      const parentQuestions = reply.parentQuestions ?? [];
       if (parentQuestions.length)
         preparedContext = {
           ...preparedContext,

@@ -80,7 +80,6 @@ describe('workflow branch observations', () => {
     });
     expect(selected[0] && RunEvent.safeParse(selected[0]).success).toBe(true);
     expect(final.status).toBe('succeeded');
-    expect(Object.keys(final.decisions)).toHaveLength(0);
   });
 
   it('records an unconnected selected branch without inventing a destination or explanation', async () => {

@@ -1,6 +1,5 @@
 import {
-  AutomaticReasoningPolicy,
-  DecisionApiId,
+  EffortRoutingSettings,
   Identifier,
   ProfileContextOverrides,
   type RunLimits,
@@ -126,34 +125,14 @@ export const WorkspaceConfig = z.strictObject({
       resultRevision: z.string().regex(/^[a-f0-9]{64}$/),
     })
     .optional(),
-  /** reasoning_effort judgments: observe only, off unless asked for. */
-  decisions: z
-    .strictObject({
-      reasoning_effort: z.strictObject({
-        mode: z.enum(['off', 'observe']),
-        apply: z.boolean().optional(),
-        /** What automatic reasoning does; unset means judged. */
-        policy: AutomaticReasoningPolicy.optional(),
-        providers: z.array(Identifier).min(1).max(2),
-        maxCalls: z.int().min(0).max(100).optional(),
-        allowExternal: z.boolean().optional(),
-        /** The decision API asked when automatic reasoning's local judge abstains. */
-        external: z
-          .strictObject({ provider: DecisionApiId, model: z.string().min(1).max(100) })
-          .optional(),
-      }),
-    })
-    .optional(),
+  /** Effort routing for automatic reasoning (features/effort-routing.md); absent means Off. */
+  decisions: z.strictObject({ effort_routing: EffortRoutingSettings }).optional(),
 });
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfig>;
 
-/** The automatic reasoning policy new runs start with. */
-export const reasoningApplyPolicy = (config: WorkspaceConfig): AutomaticReasoningPolicy =>
-  config.decisions?.reasoning_effort.policy ?? 'judged';
-
-/** The workspace's judgment settings; none configured means off. */
-export function judgmentSettings(config: WorkspaceConfig) {
-  return config.decisions ?? { reasoning_effort: { mode: 'off' as const, providers: [] } };
+/** The workspace's effort routing; none saved means Off. */
+export function effortRoutingSettings(config: WorkspaceConfig): EffortRoutingSettings {
+  return config.decisions?.effort_routing ?? { mode: 'off' };
 }
 
 const CREDENTIAL_KEY = /key|token|secret|password|credential|auth/i;

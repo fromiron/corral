@@ -1,12 +1,6 @@
 import './csp.ts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import {
-  Coordinator,
-  exportRunArchive,
-  InMemoryRunStore,
-  InProcessTransport,
-  LocalHeuristicProvider,
-} from '@corral/core';
+import { Coordinator, exportRunArchive, InMemoryRunStore, InProcessTransport } from '@corral/core';
 import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { createDemoReply, DEMO_TURNS, demoPlansFor, publishDemoPlan } from './demo/script.ts';
 import { DemoWorkspace } from './demo/workspace.ts';
@@ -34,12 +28,6 @@ const transport = new InProcessTransport(
         const timer = setTimeout(fn, ms);
         return () => clearTimeout(timer);
       },
-    },
-    // The demo shows effort judgments with the rule baseline; the local AI judge runs only in
-    // the local server. Observe only: nothing changes what the simulated agents do.
-    judgments: {
-      providers: [new LocalHeuristicProvider()],
-      settings: { reasoning_effort: { mode: 'observe', providers: ['local-heuristic'] } },
     },
     agents: new ScriptedAgentAdapter({
       turns: DEMO_TURNS,

@@ -117,12 +117,6 @@ export function describeEvent(
       return of('observationLate', { what: str(p.originalEventType) });
     case 'output.finalized':
       return of('outputFinalized');
-    case 'decision.requested':
-      return of('decisionRequested', { provider: str(p.provider) });
-    case 'decision.observed':
-      return of('decisionObserved', { provider: str(p.provider), level: str(p.answer) });
-    case 'decision.failed':
-      return of('decisionFailed', { provider: str(p.provider), reason: str(p.reason) });
     default:
       return null;
   }

@@ -1,6 +1,6 @@
-import type { ModelProfileView, ProviderAuthView, ReasoningSettings } from '@corral/client';
-import { Button, Input, Switch } from '@corral/react/design-kit';
-import { type FormEvent, useEffect, useState } from 'react';
+import type { ModelProfileView, ProviderAuthView } from '@corral/client';
+import { Button, Input } from '@corral/react/design-kit';
+import { type FormEvent, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import {
@@ -12,6 +12,7 @@ import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { DecisionApiSettings } from './DecisionApiSettings.tsx';
+import { EffortRoutingSettings } from './EffortRoutingSettings.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { LocalAiPanel } from './LocalAiPanel.tsx';
 import { ModelConfigEditor } from './ModelConfigEditor.tsx';
@@ -27,17 +28,16 @@ export function ModelSettingsPage() {
   const t = useTranslations('Models');
   const ti = useTranslations('ModelImport');
   const tim = useTranslations('ImageProfiles');
-  const tr = useTranslations('Reasoning');
   const tu = useTranslations('ModelUsage');
   const tl = useTranslations('LocalAi');
   const td = useTranslations('DecisionApis');
+  const te = useTranslations('EffortRouting');
   const { models, mode, live } = useServices();
   const { profiles, providers, catalog, config, refresh, error, loading } =
     useModelSettings(models);
   const [editing, setEditing] = useState(false);
-  // A finished local AI install changes what automatic reasoning can use.
-  const [localAiInstalls, setLocalAiInstalls] = useState(0);
-  const [decisionApiChanges, setDecisionApiChanges] = useState(0);
+  // A key saved or removed below changes which decision APIs the judgment can use.
+  const [apiKeys, setApiKeys] = useState(0);
 
   return (
     <ModelSettingsRefresh value={refresh}>
@@ -64,8 +64,8 @@ export function ModelSettingsPage() {
                   { id: 'models-providers', label: t('providers') },
                   { id: 'models-import', label: ti('heading') },
                   { id: 'models-images', label: tim('heading') },
-                  { id: 'models-reasoning', label: tr('workspaceHeading') },
                   { id: 'models-local-ai', label: tl('heading') },
+                  { id: 'models-effort-routing', label: te('heading') },
                   { id: 'models-decision-apis', label: td('heading') },
                   { id: 'models-usage', label: tu('heading') },
                 ]}
@@ -124,20 +124,14 @@ export function ModelSettingsPage() {
               <div id="models-images" tabIndex={-1} className="outline-none">
                 <ImageProfileSettings modelProfiles={profiles} />
               </div>
-              <div id="models-reasoning" tabIndex={-1} className="outline-none">
-                <ReasoningSettingsPanel key={`${config?.revision}:${localAiInstalls}`} />
-              </div>
               <div id="models-local-ai" tabIndex={-1} className="outline-none">
-                {/* Both panels save the workspace config; each re-reads after the other saves. */}
-                <LocalAiPanel
-                  key={`${config?.revision}:${decisionApiChanges}`}
-                  onInstalled={() => setLocalAiInstalls((count) => count + 1)}
-                />
+                <LocalAiPanel />
+              </div>
+              <div id="models-effort-routing" tabIndex={-1} className="outline-none">
+                <EffortRoutingSettings reloadKey={apiKeys} />
               </div>
               <div id="models-decision-apis" tabIndex={-1} className="outline-none">
-                <DecisionApiSettings
-                  onChanged={() => setDecisionApiChanges((count) => count + 1)}
-                />
+                <DecisionApiSettings onChange={() => setApiKeys((count) => count + 1)} />
               </div>
               <ModelUsagePanel />
             </>
@@ -474,65 +468,6 @@ function ProfilesTable({
           </li>
         ))}
       </ul>
-    </section>
-  );
-}
-
-function ReasoningSettingsPanel() {
-  const runSettingsTask = useSettingsTask('model-config');
-  const t = useTranslations('Reasoning');
-  const { models } = useServices();
-  const refresh = useModelSettingsRefresh();
-  const [settings, setSettings] = useState<ReasoningSettings | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    let mounted = true;
-    void models?.reasoning().then(
-      (value) => {
-        if (mounted) setSettings(value);
-      },
-      () => {
-        if (mounted) setError(true);
-      },
-    );
-    return () => {
-      mounted = false;
-    };
-  }, [models]);
-  return (
-    <section className="settings-row" aria-label={t('workspaceHeading')}>
-      <div>
-        <h3>{t('workspaceHeading')}</h3>
-        <p>{t('applyHint')}</p>
-        {settings?.policy === 'judged' ? (
-          <p>{settings.available ? `${settings.version} · ${t('ready')}` : t('installHint')}</p>
-        ) : null}
-        {error ? (
-          <p role="alert" className="text-danger">
-            {t('settingsError')}
-          </p>
-        ) : null}
-      </div>
-      <Switch
-        label={t(settings?.policy === 'judged' ? 'enableApply' : 'enableMedium')}
-        checked={settings?.apply ?? false}
-        disabled={!settings || busy}
-        onToggle={async () => {
-          if (!models || !settings) return;
-          setBusy(true);
-          setError(false);
-          try {
-            const apply = !settings.apply;
-            setSettings(await runSettingsTask(() => models.setReasoning(apply, settings.revision)));
-            await refresh();
-          } catch {
-            setError(true);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      />
     </section>
   );
 }
