@@ -80,7 +80,8 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
-async function matches(path: string, file: { size: number; sha256: string }) {
+/** Whether the file at `path` has exactly this size and sha256. */
+export async function matchesPinned(path: string, file: { size: number; sha256: string }) {
   if (!existsSync(path)) return false;
   const handle = await open(path, 'r');
   const { size } = await handle.stat();
@@ -88,12 +89,13 @@ async function matches(path: string, file: { size: number; sha256: string }) {
   return size === file.size && (await sha256File(path)) === file.sha256;
 }
 
-async function download(
+/** Streams `url` to `target`, refusing a wrong size or sha256. The caller removes `target`. */
+export async function downloadPinned(
   url: string,
   target: string,
   expected: { size: number; sha256: string },
   label: string,
-  options: InstallOptions,
+  options: Pick<InstallOptions, 'fetchFn' | 'signal' | 'onProgress'>,
 ): Promise<void> {
   const fetchFn = options.fetchFn ?? globalThis.fetch;
   const response = await fetchFn(url, { redirect: 'follow', signal: options.signal });
@@ -148,20 +150,21 @@ export async function installBundle(root: string, options: InstallOptions): Prom
   try {
     const pinned = bundle.models.meeting;
     const model = join(dir, pinned.file);
-    if (!(await matches(model, pinned))) {
+    if (!(await matchesPinned(model, pinned))) {
       const partial = `${model}.part`;
       partials.push(partial);
-      await download(pinned.url, partial, pinned, pinned.file, options);
+      await downloadPinned(pinned.url, partial, pinned, pinned.file, options);
       unstamp();
       renameSync(partial, model);
     }
     const files = Object.entries(runtime.files);
     const stale = [];
-    for (const [name, file] of files) if (!(await matches(join(dir, name), file))) stale.push(name);
+    for (const [name, file] of files)
+      if (!(await matchesPinned(join(dir, name), file))) stale.push(name);
     if (stale.length) {
       const wheel = join(dir, WHEEL);
       partials.push(wheel);
-      await download(runtime.url, wheel, runtime, 'runtime', options);
+      await downloadPinned(runtime.url, wheel, runtime, 'runtime', options);
       const extracted: [string, string][] = [];
       for (const name of stale) {
         const file = runtime.files[name]!;

@@ -184,7 +184,7 @@ fallback 이유: `unavailable`, `not-ready`, `busy`, `timeout`, `invalid-respons
 - 서버 호스트마다 daemon 하나, 동시 판정 하나, 대기열 0이다. Busy는 tokenizer 호출 전에 판단하며 Busy면 tokenizer·System One을 부르지 않고 fallback한다. 다른 에이전트의 메인 요청은 그대로 진행한다.
 - 실행은 셸 문자열이 아닌 인자 배열로 한다. CPU profile: `--model <절대 경로> --host 127.0.0.1 --port <호스트가 고른 빈 포트> --ctx-size 1024 --batch-size 1024 --ubatch-size 1024 --parallel 1 --threads <n> --threads-batch <n> --n-gpu-layers 0 --device none --no-op-offload --no-warmup --offline --cache-ram 0`, Web UI 끄기. 1024는 런타임 용량이며 입력 상한은 그대로 512토큰이다.
 - instance마다 무작위 인증 키를 쓰고 명령줄 인자에 넣지 않는다. 인증을 지원하지 않는 build는 무인증으로 띄우지 않고 오류로 둔다. 키는 renderer로 보내지 않는다. 최소 환경 변수로 실행한다.
-- Manual + Local이 저장돼 있고 설치가 끝났으면 비동기로 준비한다. 첫 요청에서 다운로드나 cold load를 기다리지 않는다. 준비되지 않았으면 `not-ready`로 fallback한다. 시작은 30초 안에 ready가 돼야 하며 아니면 오류다.
+- Manual + Local이 저장돼 있고 설치가 끝났으면 비동기로 준비한다. 첫 요청에서 다운로드나 cold load를 기다리지 않는다. 준비되지 않았거나(멈춤·시작 중·다른 스레드 수) 준비 중이면 `not-ready`로 fallback하고, 멈춰 있거나 스레드 수가 다르면 그 요청이 준비를 시작한다. 설치되지 않았거나 설치 중이거나 `error`이면 `unavailable`이다. 시작은 30초 안에 ready가 돼야 하며 아니면 오류다. ready는 health 응답, 키 없는 요청의 거절, 고정 모델의 크기·파라미터 수와 decisions 출력을 확인한 뒤다.
 - 활성 판정·패킹·draining 없이 5분이 지나면 내린다(`stopped`). 그 뒤 첫 요청은 `not-ready`로 fallback하고 준비를 다시 시작한다.
 - 예상하지 않은 종료나 watchdog 종료 뒤에는 `error`이며 자동으로 다시 시작하지 않는다. 설정의 다시 준비나 Local 재활성화로 시작한다. 정상 요청마다 새 프로세스를 띄우지 않는다.
 - Off 전환, 앱 종료, 장치 변경에서는 새 판정을 막고 Corral이 시작한 프로세스만 끝낸다. 이름으로 다른 `llama-server`를 찾아 끝내지 않는다. 장치를 바꾸면 이전 instance의 실제 종료 뒤에 새 instance를 시작한다. 엔진·장치를 몰래 바꾸지 않는다.

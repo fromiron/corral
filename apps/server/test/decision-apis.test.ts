@@ -10,6 +10,7 @@ import type {
   RoutingLease,
 } from '@corral/contracts';
 import { effortQuestion } from '@corral/core';
+import { D1Engine, LINUX_X64_CPU } from '@corral/local-intelligence';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DecisionApis, decisionApiConsent } from '../src/decision-apis.ts';
 import { FileCredentialStore } from '../src/models/credential-store.ts';
@@ -425,10 +426,24 @@ describe('a decision API as the routing engine', () => {
     expect(t.attempts.size).toBe(0);
   });
 
-  it('judges with an API and no Local install, and builds no API for a Local setting (P09, C18)', async () => {
+  it('judges with an API and no Local install, and asks only the chosen engine (P09, C18)', async () => {
     const t = await apisWith(() => new Response(jevAnswer('low')));
     await t.apis.setKey('jev', KEY);
-    const engines = routingEngines({ decisionApis: t.apis });
+    const launched: unknown[] = [];
+    const downloads: string[] = [];
+    const local = new D1Engine({
+      root: join(t.dir, 'd1'),
+      manifest: LINUX_X64_CPU,
+      launch: (command) => {
+        launched.push(command);
+        throw new Error('no Local process in this test');
+      },
+      fetchFn: (async (url: string | URL | Request) => {
+        downloads.push(String(url));
+        return new Response('', { status: 404 });
+      }) as typeof fetch,
+    });
+    const engines = routingEngines({ decisionApis: t.apis, local });
     const api = engines(engineOf('jev'));
     expect(api?.kind).toBe('api');
     const admitted = api?.admit();
@@ -436,12 +451,18 @@ describe('a decision API as the routing engine', () => {
     const answer = await admitted.lease.start(request()).result;
     expect(answer.choice).toBe('low');
     expect(t.sent).toHaveLength(1);
+    expect([launched, downloads]).toEqual([[], []]);
 
-    expect(
-      engines({ kind: 'local', device: { kind: 'cpu', threads: 2 }, callerTimeoutMs: 5000 }),
-    ).toBeNull();
-    expect(routingEngines({ decisionApis: undefined })(engineOf('jev'))).toBeNull();
+    const localBackend = engines({
+      kind: 'local',
+      device: { kind: 'cpu', threads: 2 },
+      callerTimeoutMs: 5000,
+    });
+    expect(localBackend?.kind).toBe('local');
+    expect(localBackend?.admit()).toEqual({ ok: false, reason: 'unavailable' });
+    expect(routingEngines({ decisionApis: undefined, local })(engineOf('jev'))).toBeNull();
     expect(t.sent).toHaveLength(1);
+    expect([launched, downloads]).toEqual([[], []]);
   });
 
   it('knows no engine for an unknown API', async () => {

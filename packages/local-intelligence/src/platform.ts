@@ -39,6 +39,16 @@ export function defaultLocalAiDir(base: string = dataBase()): string {
   return join(base, 'corral', 'local-ai');
 }
 
+/** Where the Local effort routing engine installs, one folder per manifest. */
+export function defaultD1Dir(base: string = dataBase()): string {
+  return join(base, 'corral', 'local-ai', 'd1');
+}
+
+/** The Local engine's default CPU threads: what the machine offers, at most 4. */
+export function d1Threads(availableCores: number): number {
+  return Math.max(1, Math.min(4, Math.floor(availableCores)));
+}
+
 /** Where the removed effort judge installed its model. */
 export function legacyJudgeDir(base: string = dataBase()): string {
   return join(base, 'corral', 'effort-judge');

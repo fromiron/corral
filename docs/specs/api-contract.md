@@ -208,10 +208,10 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
 | GET /effort-routing | — | settings(`decisions.effort_routing`, 없으면 `{mode:'off'}`), revision, local(`{model, host, supported, reason, install, runtime, downloadBytes, progress, error, device:{requested, active}, threads}`: install은 `absent`·`downloading`·`verifying`·`installed`·`install-error`, runtime은 `stopped`·`starting`·`ready`·`packing`·`inferring`·`draining`·`error`, 쓸 수 없는 환경은 supported false와 이유), apis(판정 API마다 `{id, keyConfigured, noticeRevision, verified}`). 키·로컬 경로는 담지 않는다 |
-| PUT /effort-routing | `{settings, revision}` | 설정 저장. 형식 오류, 키가 없는 판정 API, 현재 고지와 다른 동의 revision은 400 `SCHEMA_INVALID`, revision이 다르면 409 `REVISION_CONFLICT`. 다운로드는 시작하지 않는다. 응답은 GET /effort-routing과 같다 |
-| POST /effort-routing/local/install | — | 202. Local 모델·런타임 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
-| DELETE /effort-routing/local/install | — | 진행 중인 설치를 취소하고 부분 파일을 지운 뒤의 상태를 돌려준다. 이미 설치된 버전은 그대로다 |
-| POST /effort-routing/local/start | — | 202. 설치된 Local을 다시 준비한다(오류 뒤 다시 준비). 설정이 Manual + Local이 아니거나 설치되지 않았으면 400 `SCHEMA_INVALID` |
+| PUT /effort-routing | `{settings, revision}` | 설정 저장. 형식 오류, 키가 없는 판정 API, 현재 고지와 다른 동의 revision, 이 컴퓨터에서 쓸 수 없는 Local은 400 `SCHEMA_INVALID`, revision이 다르면 409 `REVISION_CONFLICT`. 다운로드는 시작하지 않는다. 설치된 Local을 저장하면 준비를 시작하고, Off나 판정 API를 저장하면 Corral이 시작한 Local 프로세스를 끝낸다. 응답은 GET /effort-routing과 같다 |
+| POST /effort-routing/local/install | — | 202. Local 모델·런타임 설치를 시작한다. 진행 중이면 같은 설치, 이미 설치됐으면 그대로다. 설치가 끝나고 설정이 Manual + Local이면 준비를 시작한다. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED`. 응답은 GET /effort-routing과 같다 |
+| DELETE /effort-routing/local/install | — | 진행 중인 설치를 취소하고 부분 파일을 지운다. 이미 설치된 버전은 그대로다. 응답은 GET /effort-routing과 같다 |
+| POST /effort-routing/local/start | — | 202. 설치된 Local을 다시 준비한다(오류 뒤 다시 준비). 설정이 Manual + Local이 아니거나 설치되지 않았으면 400 `SCHEMA_INVALID`. 응답은 GET /effort-routing과 같다 |
 | GET /decision-apis | — | [판정 API](features/decision-apis.md) 목록: `{id, provider, model, keyConfigured}`. 키 값은 담지 않는다 |
 | PUT /decision-apis/:id/api-key | `{key}` | 판정 API 키 저장. 응답은 GET /decision-apis와 같다. 모르는 id는 404, 실제 모델이 없는 서버는 403 `CAPABILITY_DENIED` |
 | DELETE /decision-apis/:id/api-key | — | 판정 API 키 삭제. 응답은 GET /decision-apis와 같다 |

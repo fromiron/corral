@@ -1,4 +1,5 @@
 export { type Bundle, bundledManifest, validBundle } from './bundle.ts';
+export * from './d1/index.ts';
 export {
   type Backend,
   type Device,
@@ -42,7 +43,9 @@ export {
 } from './meeting/selector.ts';
 export {
   cpuThreads,
+  d1Threads,
   dataBase,
+  defaultD1Dir,
   defaultLocalAiDir,
   legacyJudgeDir,
   runtimeTarget,

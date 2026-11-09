@@ -36,8 +36,8 @@
 | 0 | 명세와 이 플랜 | 완료 | `0c55103e` |
 | 1 | v4·외부 판정·관측 모드 제거 | 완료 | `736e579d` |
 | 2 | 공통 계약·snapshot·resolver(fake backend) | 완료 | `78fd89d0` |
-| 3 | 판정 API backend | 완료 | |
-| 4 | d1 로컬 런타임 | 대기 | |
+| 3 | 판정 API backend | 완료 | `1c8d78eb` |
+| 4 | d1 로컬 런타임 | fake로 구현, 실물 고정 대기 | |
 | 5 | 설정 UI·실행 기록 | 대기 | |
 | 6 | 실제 앱 인수·배포 자료 | 대기 | |
 
@@ -82,7 +82,7 @@
 ### 4. d1 로컬 런타임
 
 - `packages/local-intelligence/src/d1/`: `manifest.ts`, `install.ts`(기존 설치 방식 재사용, 최소 tar.gz 리더, 경로·링크 공격 거절), `runtime.ts`(인자 배열 실행, per-instance 인증, loopback, 소유 프로세스만 종료, 자동 재시작 없음), `client.ts`(`/tokenize`, `/v1/systemone`), `render.ts`(System One 렌더링 이식, 실측 토큰 검사), `lease.ts`(daemon·lease 하나, 대기열 0, Busy는 tokenize 전), `backend.ts`.
-- 개발용 override `CORRAL_D1_LLAMA_SERVER`, `CORRAL_D1_MODEL`.
+- 개발용 경로 override는 두지 않았다. 실물 확인은 설치 경로 그대로 한다.
 - 서버의 d1 상태·설치·취소·준비 라우트. GPU는 구조만 두고 검증 전 사용 불가.
 - 가짜 `llama-server`로 C08–C13·설치 실패·P01·P06. 실제 모델은 opt-in live 테스트만.
 - 출처·라이선스를 `docs/dependency-lock.json`과 `THIRD-PARTY-NOTICES`에 기록.
@@ -111,21 +111,25 @@
 
 ## 다음 단계
 
-4단계: d1 로컬 런타임. 먼저 3단계 커밋 hash를 진행표에 채운다.
+4단계 마무리: 실물 고정과 확인. 다운로드 승인이 필요하다(llama.cpp 배포물 23 MB, d1 GGUF 1.1 GB).
 
-앞 단계에서 정한 구현 사항(4단계 이후가 기대는 것):
+1. 공식 `llama-b12189-bin-ubuntu-x64.tar.gz`의 hash가 고정값과 같은지 확인하고, 압축 안의 `llama-server`와 함께 쓰는 shared library의 경로·크기·sha256을 `LINUX_X64_CPU.runtime.files`에 기록한다. 그 전까지 manifest는 불완전으로 거절되어 Local은 이 환경에서 쓸 수 없음으로 보인다.
+2. 실제 바이너리로 확인: `--version`의 build·commit, `LLAMA_API_KEY` 인증(키 없는 `/tokenize`가 401), `--no-ui`·`--offline`·`--cache-ram 0` 인자, `/v1/models`의 decisions 출력과 크기·파라미터 수.
+3. opt-in live 테스트(실제 모델): P01 renderer와 native usage 일치(원본 smoke·한/일 Unicode·control token), 정상 추천 1회, 시간 초과와 물리 완료 분리.
+4. 4단계 커밋 hash를 진행표에 채우고 5단계로 간다.
 
-- 엔진 경계는 `RoutingBackend.admit()` → lease(`countState`·`countInput`·`start`·`release`) → flight(`result`, `settled`)다. lease는 flight가 settle되거나 시작 전에 `release()`될 때 끝난다. 정본은 `packages/contracts/src/ports.ts`.
-- 엔진 요청(`RouterRequest`)의 `signal`은 호출자가 기다림을 멈출 때(deadline·취소) 켜진다. 판정 API는 연결을 닫고, Local 추론은 물리 종료까지 간다. `owner`는 API 호출에만 Coordinator가 채운다.
-- 서버는 `apps/server/src/routing-engines.ts`에서 저장된 엔진 하나만 만든다. 지금은 판정 API만 있고 Local은 `null`(Manual은 `unavailable` fallback)이다. 4단계는 여기에 d1 backend를 넣는다. `createServer`의 `routingBackend`는 테스트용 대체다.
+앞 단계에서 정한 구현 사항(뒤 단계가 기대는 것):
+
+- 엔진 경계는 `RoutingBackend.admit()` → lease(`countState`·`countInput`·`start`·`release`) → flight(`result`, `settled`)다. 정본은 `packages/contracts/src/ports.ts`. `RouterRequest.signal`은 호출자가 기다림을 멈출 때 켜진다. 판정 API는 연결을 닫고 Local 추론은 물리 종료까지 간다. `owner`는 API 호출에만 Coordinator가 채운다.
+- 서버는 `apps/server/src/routing-engines.ts`에서 저장된 엔진 하나만 묻는다. Local은 `D1Engine`(`packages/local-intelligence/src/d1/`)이고, 실제 모델이 있는 서버가 `defaultD1Engine()`으로 만든다. `createServer`의 `routingBackend`·`localRouting`은 테스트용 대체다.
 - 판정 API 호출은 Coordinator(`recordedEngine`)가 execution의 `decision` 효과로 승인·정산한다. Local 추론은 효과를 남기지 않는다.
-- 동의 revision은 `decisionApiConsent(id)`(`<id>:notice-1`)다. 5단계의 설정 저장 라우트가 키와 이 값을 확인한다.
-- 판정 API 실호출은 아직 하지 않았다(설정 가능·미검증). opt-in `decision-apis.live.test.ts`가 새 엔진 경로를 쓴다.
+- 라우트 다섯 개(GET/PUT `/effort-routing`, POST/DELETE `/local/install`, POST `/local/start`)는 4단계에서 만들었다. 응답은 모두 GET과 같은 형태다. 5단계는 client·화면·실행 기록이다.
+- 동의 revision은 `decisionApiConsent(id)`(`<id>:notice-1`)이고 GET의 `apis[].noticeRevision`으로 보인다. 판정 API 실호출은 아직 하지 않았다(`verified: false`).
+- d1 테스트는 실제 child process인 가짜 `llama-server`(`packages/local-intelligence/test/fake-llama-server.ts`)로 돈다.
 - 설정은 요청 준비마다 `.corral/config.json`을 읽는다(`currentEffortRouting`). 읽지 못하면 Off다. 시뮬레이션 실행(mock)은 판정하지 않는다.
 
 ## 열린 문제
 
 - 메인 체크아웃의 미추적 v3 작업 파일(헬퍼 `effort.rs`, `packed-effort.test.ts`, `tools/local-intelligence/effort/` 아래 새 파일 등)은 1단계에서 지우는 v4 도구에 의존해 이 브랜치와 충돌한다.
-- b12189의 인증·Web UI 끄기 옵션과 `/tokenize`·`/v1/systemone` 응답 형식은 4단계에서 실제 바이너리로 확인한다. 인증을 지원하지 않으면 무인증으로 띄우지 않는다.
+- b12189의 인증·Web UI 끄기 옵션과 `/tokenize`·`/v1/systemone` 응답 형식은 B 증빙(로그의 `--no-ui` 안내, 응답 형식)에 맞춰 구현했고 실제 바이너리 확인은 위 4단계 마무리에서 한다. 인증을 지원하지 않으면 시작 단계에서 오류로 멈춘다.
 - Linux x64 외 배포 대상 OS는 정하지 않았다.
-- 설정 저장 라우트(GET/PUT `/effort-routing`)는 5단계 설정 화면과 함께 만든다. 그 전에는 `writeEffortRouting`으로만 쓴다.

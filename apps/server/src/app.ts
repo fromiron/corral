@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { join } from 'node:path';
 import { recoverSdkWorkers } from '@corral/adapter-pi';
 import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
@@ -18,6 +18,7 @@ import {
   canonicalJson,
   DevelopmentStart,
   DocumentCommand,
+  EffortRoutingSettings,
   type ErrorCode,
   GitDiffRequest,
   GitOid,
@@ -85,7 +86,7 @@ import {
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
-import type { LocalIntelligence } from '@corral/local-intelligence';
+import type { D1Engine, LocalIntelligence } from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
   openDatabase,
@@ -99,7 +100,12 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
-import { DecisionApis, decisionApiList, decisionApiModel } from './decision-apis.ts';
+import {
+  DecisionApis,
+  decisionApiConsent,
+  decisionApiList,
+  decisionApiModel,
+} from './decision-apis.ts';
 import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
@@ -117,6 +123,7 @@ import { ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
+import { defaultD1Engine } from './local-ai.ts';
 import { MeetingHandoffService, registerMeetingHandoffRoutes } from './meeting-handoffs.ts';
 import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
@@ -169,6 +176,7 @@ import {
   currentEffortRouting,
   prepareWorkspace,
   readWorkspaceConfig,
+  writeEffortRouting,
   writeModelConfig,
 } from './workspace.ts';
 import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
@@ -191,6 +199,8 @@ export interface ServerOptions {
   decisionApis?: DecisionApis;
   /** Effort routing engines in place of the server's own; tests pass fakes. */
   routingBackend?: (engine: RoutingEngine) => RoutingBackend | null;
+  /** The Local effort routing engine; a server with real models makes its own, null none. */
+  localRouting?: D1Engine | null;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -571,6 +581,22 @@ async function createCorralServer(
           now: () => clock.nowIso(),
         })
       : undefined);
+  const localRouting =
+    options.localRouting !== undefined
+      ? (options.localRouting ?? undefined)
+      : options.live
+        ? defaultD1Engine()
+        : undefined;
+  // Manual + Local readies the engine ahead of the first request; it never downloads.
+  const prepareLocal = () => {
+    const saved = currentEffortRouting(workspace.root);
+    if (saved.mode === 'manual' && saved.engine.kind === 'local')
+      localRouting?.prepare(saved.engine.device.threads);
+  };
+  if (localRouting) {
+    resources.defer(() => localRouting.close());
+    prepareLocal();
+  }
   const imageProfiles = new ImageProfileStore(db, () => registry);
   const imageGeneration = new ImageGenerationService(
     db,
@@ -630,7 +656,7 @@ async function createCorralServer(
     sessionId: backendSessionId,
     effortRouting: {
       settings: () => currentEffortRouting(workspace.root),
-      backend: options.routingBackend ?? routingEngines({ decisionApis }),
+      backend: options.routingBackend ?? routingEngines({ decisionApis, local: localRouting }),
     },
   });
   registry?.configureRequests({
@@ -1144,6 +1170,91 @@ async function createCorralServer(
     if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
     await decisionApis?.deleteKey(id);
     return listDecisionApis();
+  });
+
+  // ── effort routing (features/effort-routing.md) ───────────────────
+  const noLocal = {
+    model: null,
+    host: hostname(),
+    supported: false,
+    reason: 'the Local engine is not available on this server',
+    install: 'absent',
+    runtime: 'stopped',
+    downloadBytes: null,
+    progress: null,
+    error: null,
+    device: { requested: 'cpu', active: null },
+    threads: null,
+  } as const;
+  const effortRoutingView = () => ({
+    settings: currentEffortRouting(workspace.root),
+    revision: configRevision(workspace.root),
+    local: localRouting?.status() ?? noLocal,
+    // No decision API has been checked against its provider yet.
+    apis: listDecisionApis().map((api) => ({
+      id: api.id,
+      keyConfigured: api.keyConfigured,
+      noticeRevision: decisionApiConsent(api.id),
+      verified: false,
+    })),
+  });
+  const routingDenied = (reply: FastifyReply) =>
+    fail(reply, 'CAPABILITY_DENIED', 'effort routing needs a server with real models');
+  app.get('/api/v1/effort-routing', async (_request, reply) =>
+    options.live ? effortRoutingView() : routingDenied(reply),
+  );
+  app.put('/api/v1/effort-routing', async (request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    const parsed = z
+      .strictObject({ settings: EffortRoutingSettings, revision: z.string().min(1) })
+      .safeParse(request.body);
+    if (!parsed.success)
+      return fail(reply, 'SCHEMA_INVALID', 'the effort routing setting is invalid');
+    const { settings, revision } = parsed.data;
+    const engine = settings.mode === 'manual' ? settings.engine : null;
+    if (engine?.kind === 'api') {
+      const api = listDecisionApis().find((a) => a.id === engine.id);
+      if (!api?.keyConfigured)
+        return fail(reply, 'SCHEMA_INVALID', 'connect this decision API before choosing it');
+      if (engine.consentRevision !== decisionApiConsent(engine.id))
+        return fail(reply, 'SCHEMA_INVALID', 'agree to the current notice for this decision API');
+    }
+    if (engine?.kind === 'local' && !localRouting?.status().supported)
+      return fail(reply, 'SCHEMA_INVALID', 'the Local engine is not available on this computer');
+    const written = writeEffortRouting(workspace.root, settings, revision);
+    if (!written.ok)
+      return fail(
+        reply,
+        written.conflict ? 'REVISION_CONFLICT' : 'SCHEMA_INVALID',
+        written.errors.join('; '),
+      );
+    workspace.config = readWorkspaceConfig(workspace.root).config;
+    workspace.configRevision = written.revision;
+    // Saving never downloads; leaving Local ends the child Corral started.
+    if (engine?.kind === 'local') localRouting?.prepare(engine.device.threads);
+    else await localRouting?.stop();
+    return effortRoutingView();
+  });
+  app.post('/api/v1/effort-routing/local/install', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    if (!localRouting?.status().supported)
+      return fail(reply, 'CAPABILITY_DENIED', 'the Local engine is not available on this computer');
+    localRouting.install();
+    void localRouting.installing()?.then(prepareLocal);
+    return reply.code(202).send(effortRoutingView());
+  });
+  app.delete('/api/v1/effort-routing/local/install', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    await localRouting?.cancelInstall();
+    return effortRoutingView();
+  });
+  app.post('/api/v1/effort-routing/local/start', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    const saved = currentEffortRouting(workspace.root);
+    if (saved.mode !== 'manual' || saved.engine.kind !== 'local' || !localRouting?.installed())
+      return fail(reply, 'SCHEMA_INVALID', 'save Manual with the installed Local engine first');
+    localRouting.prepare(saved.engine.device.threads);
+    return reply.code(202).send(effortRoutingView());
   });
 
   // ── model settings ────────────────────────────────────────────────
