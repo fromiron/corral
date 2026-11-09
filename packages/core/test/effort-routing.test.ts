@@ -63,6 +63,8 @@ async function setup(
     local?: FakeRoutingOptions;
     api?: FakeRoutingOptions;
     levels?: ('low' | 'medium' | 'high' | 'xhigh')[];
+    /** Holds every request at the model slot while it returns more than zero. */
+    retryAfterMs?: () => number;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -106,6 +108,7 @@ async function setup(
       },
     },
     models: {
+      ...(options.retryAfterMs ? { retryAfterMs: options.retryAfterMs } : {}),
       resolve: (profile) => ({
         ok: true,
         snapshot: {
@@ -627,6 +630,47 @@ describe('effort routing through request preparation', () => {
     s.local.flights[0]!.respond();
     s.local.flights[0]!.settle();
     await expect(pending).rejects.toThrow('REASONING_STALE');
+  });
+
+  it('#198: Shadow asks no engine once the settings were turned Off before dispatch', async () => {
+    const s = await setup({ settings: { ...API, application: 'shadow' } });
+    const permit = await s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    s.settings.current = { mode: 'off' };
+    await s.host().modelRequestDispatched?.(permit.modelCallId);
+    await drain();
+    expect(s.api.requests).toHaveLength(0);
+    expect(s.events.some((e) => e.type === 'reasoning.observed')).toBe(false);
+    expect(
+      s.events.some((e) => e.type === 'effect.admitted' && e.payload.kind === 'decision'),
+    ).toBe(false);
+  });
+
+  it('#198: a Shadow observation that answers after the settings changed is discarded', async () => {
+    const s = await setup({
+      settings: { ...LOCAL, application: 'shadow' },
+      local: { answer: 'hold' },
+    });
+    const permit = await s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    await s.host().modelRequestDispatched?.(permit.modelCallId);
+    await drain();
+    expect(s.local.requests).toHaveLength(1);
+    s.settings.current = { mode: 'off' };
+    s.local.flights[0]!.respond();
+    s.local.flights[0]!.settle();
+    await drain();
+    expect(s.events.some((e) => e.type === 'reasoning.observed')).toBe(false);
+  });
+
+  it('#198: settings changed while a request waits for a model slot make it stale', async () => {
+    let wait = 1000;
+    const s = await setup({ settings: { mode: 'off' }, retryAfterMs: () => wait });
+    const pending = s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    await drain();
+    s.settings.current = LOCAL;
+    wait = 0;
+    s.clock.advance(1000);
+    await expect(pending).rejects.toThrow('REASONING_STALE');
+    expect(s.local.requests).toHaveLength(0);
   });
 
   it('a pause waits for an open API call, and the paused request is prepared again', async () => {

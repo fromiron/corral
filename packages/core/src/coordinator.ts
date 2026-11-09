@@ -7056,7 +7056,9 @@ export class Coordinator {
     const agent: Actor = { kind: 'agent', id: executionId };
     // The settled route of the last request, for an explicit transport retry of it only.
     let lastRoute: { modelCallId: string; stored: StoredRoute } | null = null;
-    let pendingShadow: { modelCallId: string; shadow: Shadow } | null = null;
+    // `current` says whether the settings it was prepared under still hold.
+    let pendingShadow: { modelCallId: string; shadow: Shadow; current: () => boolean } | null =
+      null;
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
     let partialWriter: PartialOutputWriter | undefined;
@@ -8331,6 +8333,10 @@ export class Coordinator {
             settings.mode === 'manual' &&
             settings.application !== 'shadow';
           const preparedAt = judged ? fingerprint() : '';
+          // Any automatic request depends on the settings, also one that waited only for a slot.
+          const routed = input.role.reasoning?.mode === 'auto' && record?.purpose !== 'compaction';
+          const settingsAt = routingRevision(settings);
+          const settingsHold = () => routingRevision(routingSettings()) === settingsAt;
           const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
           run.cancelListeners.set(executionId, listeners);
           const cancellation: DecisionCancellation = {
@@ -8412,7 +8418,8 @@ export class Coordinator {
               await this.boundary(run, executionId);
             } while (!WORKING.has(run.projection.status));
             requireActive();
-            if (awaited && fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
+            if ((awaited && fingerprint() !== preparedAt) || (routed && !settingsHold()))
+              throw new Error('REASONING_STALE');
             if (
               protectedContextIssued &&
               record?.sections.find((section) => section.name === 'corral_state')?.hash !==
@@ -8498,7 +8505,9 @@ export class Coordinator {
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
           lastRoute = prepared.stored ? { modelCallId, stored: prepared.stored } : null;
-          pendingShadow = prepared.shadow ? { modelCallId, shadow: prepared.shadow } : null;
+          pendingShadow = prepared.shadow
+            ? { modelCallId, shadow: prepared.shadow, current: settingsHold }
+            : null;
           const routeId = reasoning?.route?.routeId;
           if (prepared.settled && routeId)
             void prepared.settled.then((facts) =>
@@ -8564,8 +8573,12 @@ export class Coordinator {
           });
         if (drafts.length) this.commit(run, drafts);
         // Shadow judges only after the baseline request went out, and never changes it.
+        // Settings changed since the preparation (Off, another engine, a withdrawn consent) start
+        // no observation, and an observation that answers after such a change is dropped.
+        if (pendingShadow?.modelCallId === modelCallId && !pendingShadow.current())
+          pendingShadow = null;
         if (pendingShadow?.modelCallId === modelCallId) {
-          const { shadow } = pendingShadow;
+          const { shadow, current } = pendingShadow;
           pendingShadow = null;
           const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
           run.cancelListeners.set(executionId, listeners);
@@ -8585,6 +8598,7 @@ export class Coordinator {
             },
           };
           void shadow.observe(scope).then((outcome) => {
+            if (!current()) return;
             this.recordRouting(run, executionId, {
               type: 'reasoning.observed',
               executionId,

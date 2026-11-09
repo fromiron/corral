@@ -222,6 +222,7 @@ fallback 이유: `unavailable`, `not-ready`, `busy`, `timeout`, `invalid-respons
 
 - `application: shadow`는 개발·진단용이며 Off에서는 켜지지 않는다. 같은 설정에서 Active와 함께 쓰지 않는다.
 - 기준 수준(고정 수준, provider default, 자동 요청은 fallback 대상)을 정하고 취소·stale를 확인한 뒤 원래 요청을 그대로 보낸다. 그 뒤 별도 관찰로, 자원이 비어 있을 때만 판정해 기록한다. 메인 payload는 바뀌지 않으며 reasoning 필드를 강제로 넣지 않는다.
+- 관찰도 설정 경계를 따른다. 준비 뒤 설정이 바뀌었으면(Off, 다른 엔진, 동의 철회) 원래 요청을 보낸 뒤에도 관찰을 시작하지 않고, 진행 중 관찰이 설정이 바뀐 뒤 답하면 기록하지 않는다.
 - Shadow의 결과·fallback·대기 중 Promise를 Active resolution에 쓰지 않는다. 자원이 없어 건너뛴 관찰은 성공으로 세지 않는다. scope가 끝나면 관찰을 정리한다.
 - Shadow가 low를 추천하고 실제 기준 수준 high로 성공했다는 기록으로 low도 성공했을 것이라고 보지 않는다. 그 행의 반사실 품질은 알 수 없음이다.
 
