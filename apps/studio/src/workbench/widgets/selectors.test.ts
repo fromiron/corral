@@ -682,28 +682,16 @@ describe('viewed run label (#72)', () => {
 });
 
 describe('composer run status pill', () => {
-  it('leaves a live run to the top bar unless it needs the person', () => {
-    expect(
-      composerShowsRunStatus({ runStatus: 'running', readState: 'ready', needsAction: false }),
-    ).toBe(false);
-    expect(
-      composerShowsRunStatus({ runStatus: 'paused', readState: 'ready', needsAction: false }),
-    ).toBe(false);
-    expect(
-      composerShowsRunStatus({ runStatus: 'running', readState: 'ready', needsAction: true }),
-    ).toBe(true);
+  it('leaves a live run to the top bar, also when it needs the person (the notice links to it)', () => {
+    expect(composerShowsRunStatus({ runStatus: 'running', readState: 'ready' })).toBe(false);
+    expect(composerShowsRunStatus({ runStatus: 'paused', readState: 'ready' })).toBe(false);
+    expect(composerShowsRunStatus({ runStatus: 'awaiting_user', readState: 'ready' })).toBe(false);
   });
 
   it('keeps one pill for an ended run and for a state it cannot read', () => {
-    expect(
-      composerShowsRunStatus({ runStatus: 'succeeded', readState: 'ready', needsAction: false }),
-    ).toBe(true);
-    expect(
-      composerShowsRunStatus({ runStatus: 'cancelled', readState: 'ready', needsAction: false }),
-    ).toBe(true);
-    expect(
-      composerShowsRunStatus({ runStatus: null, readState: 'error', needsAction: false }),
-    ).toBe(true);
+    expect(composerShowsRunStatus({ runStatus: 'succeeded', readState: 'ready' })).toBe(true);
+    expect(composerShowsRunStatus({ runStatus: 'cancelled', readState: 'ready' })).toBe(true);
+    expect(composerShowsRunStatus({ runStatus: null, readState: 'error' })).toBe(true);
   });
 });
 

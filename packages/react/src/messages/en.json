@@ -1663,7 +1663,15 @@
     "restoreNamed": "Restore session: {title}",
     "listSessionUnavailable": "This session is no longer available.",
     "terminalNeedsAttention": "Terminal needs attention",
-    "hideWorkingCopyNotice": "Hide working copy notice"
+    "hideWorkingCopyNotice": "Hide working copy notice",
+    "queueCount": "{count, plural, one {# queued request} other {# queued requests}}",
+    "queueAttachments": "{count, plural, one {# attachment} other {# attachments}}",
+    "editQueuedMessage": "Edit queued request: {text}",
+    "removeQueuedMessage": "Remove queued request: {text}",
+    "collapseQueue": "Collapse queued requests",
+    "collapse": "Collapse",
+    "startSuggestions": "Start suggestions",
+    "startWithTeam": "Start with {team}"
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -1994,9 +2002,6 @@
     "noMatches": "No matching sessions",
     "activity": "Work log",
     "result": "Result",
-    "noRequests": "What can I help with?",
-    "startHint": "Ask a question or describe a task. Connect a work folder when you need files.",
-    "startHintLinked": "Ask a question or describe a task.",
     "requestPlaceholder": "Ask your team, send a follow-up, or reference a file…",
     "sessionDetails": "Session details",
     "team": "Team",
@@ -2087,7 +2092,8 @@
     "densityResults": "Results",
     "densityBasic": "Basic",
     "densityDetailed": "Detailed activity",
-    "developmentBuild": "Development build"
+    "developmentBuild": "Development build",
+    "homeTitle": "What should we work on?"
   },
   "Composer": {
     "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
@@ -3316,11 +3322,7 @@
     "planMismatch": "This plan body does not match the current revision",
     "follow": "Follow current work",
     "teamLast": "Last team plan",
-    "activityRecord": "Work record",
     "activityWorking": "Working",
-    "activityFailed": "Needs attention",
-    "activityUser": "Waiting for you",
-    "activityElapsed": "Elapsed {time}",
     "actionApproval": "Approval needed",
     "actionQuestion": "A question is waiting",
     "actionFailure": "A failure needs attention",
@@ -3431,7 +3433,8 @@
     "activityStarting": "Preparing to run…",
     "actionCompletedWithFailures": "The run completed, but some tool steps failed. Review those steps before relying on the result.",
     "actionOpenFailure": "Review failed steps",
-    "planMore": "{count, plural, one {# more} other {# more}}"
+    "planMore": "{count, plural, one {# more} other {# more}}",
+    "questionTitle": "{count, plural, =1 {Question: {title}} other {Question: {title} · # waiting}}"
   },
   "ModelImport": {
     "heading": "Import model settings",
@@ -3869,7 +3872,6 @@
     "openActiveRun": "Open run",
     "activeRunTarget": "Request: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
-    "pendingActions": "{count, plural, one {# response needed} other {# responses needed}}",
     "runDisconnected": "Run connection lost; its state is unconfirmed.",
     "layoutControls": "Arrange panes",
     "savedLayout": "Custom layout",
@@ -3877,7 +3879,9 @@
     "team": "Team",
     "debug": "Debugger",
     "paneActions": "Pane actions",
-    "size": "Size"
+    "size": "Size",
+    "checkNow": "{count, plural, =1 {Check now} other {Check now ({count})}}",
+    "runElapsed": "Elapsed {time}"
   },
   "Context": {
     "previewSource": "Preview capture",

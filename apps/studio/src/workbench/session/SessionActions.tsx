@@ -245,6 +245,9 @@ export function SessionActions({
           </MenuTrigger>
         </Tooltip>
         <MenuPopup align="end" className="min-w-52">
+          {/* The page's display choice leads its menu. */}
+          <ChatDensityMenu />
+          <MenuSeparator />
           <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
           <MenuSub>
             <MenuSubTrigger>
@@ -288,8 +291,6 @@ export function SessionActions({
               {t('editTeam')}
             </MenuItem>
           ) : null}
-          <MenuSeparator />
-          <ChatDensityMenu />
           <MenuSeparator />
           <MenuItem onClick={() => void update({ pinned: !session.pinned })}>
             {session.pinned ? t('unpin') : t('pin')}

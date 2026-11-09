@@ -145,25 +145,7 @@
     display: flex;
   }
 }
-.corral-quiet-activity > span {
-  animation: corral-quiet-wave 1.4s ease-in-out infinite;
-}
-@keyframes corral-quiet-wave {
-  0%,
-  70%,
-  100% {
-    opacity: 0.4;
-    transform: translateY(0);
-  }
-  35% {
-    opacity: 1;
-    transform: translateY(-2px);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .corral-quiet-activity > span {
-    animation: none;
-  }
   /* a running turn's header stays still; its ticking time still says it works. */
   .turn-process .shimmer-text {
     animation: none;
@@ -176,6 +158,27 @@
   .work-plan-items {
     max-height: 18dvh;
   }
+}
+/*
+ * The kit QueuedStack shows a card's Start now, Edit and Remove only under the pointer and takes
+ * them out of layout otherwise, which leaves keyboard users without them. Keep them in the tab
+ * order, invisible and over the end of the card until it is hovered or holds focus, and bring a
+ * focused card in front of the pile.
+ */
+[data-corral-queue] .group\/qm > .hidden {
+  display: flex;
+  position: absolute;
+  inset-block: 0;
+  right: 0.25rem;
+  opacity: 0;
+}
+[data-corral-queue] .group\/qm:is(:hover, :focus-within) > .hidden {
+  position: static;
+  opacity: 1;
+}
+[data-corral-queue] .group\/qm:focus-within {
+  /* biome-ignore lint/complexity/noImportantStyles: the kit card sets its pile order as an inline style. */
+  z-index: 300 !important;
 }
 .chat-turn {
   margin-bottom: 32px;

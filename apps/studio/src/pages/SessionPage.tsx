@@ -429,6 +429,7 @@ function WorkSessionPage() {
                       <DockRunControls
                         key={active.runId}
                         runId={active.runId}
+                        runs={runs}
                         request={session.entries
                           .find((entry) => entry.runId === active.runId)
                           ?.text.slice(0, 80)}

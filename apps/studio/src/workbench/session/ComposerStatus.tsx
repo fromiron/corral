@@ -2,7 +2,7 @@ import type { CorralSummary, RunSummary, SessionIntent, WorkSession } from '@cor
 import { Button, Select } from '@corral/react/design-kit';
 import { Square } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../../pages/FilesViews.tsx';
 import { useServices } from '../../services.tsx';
 import type { Blocked } from '../composerIntent.ts';
@@ -10,7 +10,10 @@ import { ComposerStats } from '../widgets/ComposerStats.tsx';
 
 // The rows around the input that say what the next request is and what it would start with.
 
-/** Above the input: cancelling the pre-run auto choice, and what the request is and for whom. */
+/**
+ * The one-line status's lead: cancelling the pre-run auto choice, and what the request is and
+ * for whom. The intent stays visible while idle, except on an empty session's home.
+ */
 export function ComposerHeader({
   choosingAuto,
   onCancelAuto,
@@ -22,6 +25,7 @@ export function ComposerHeader({
   targets,
   targetName,
   onChooseTarget,
+  quiet = false,
 }: {
   choosingAuto: boolean;
   onCancelAuto: () => void;
@@ -33,6 +37,8 @@ export function ComposerHeader({
   targets: { id: string; label: string }[];
   targetName: (id: string) => string;
   onChooseTarget: (value: string) => void;
+  /** An empty session has nothing to follow up yet. */
+  quiet?: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
@@ -40,61 +46,60 @@ export function ComposerHeader({
     <>
       {/* A live run's status and Cancel sit in the top bar; only the pre-run auto choice is cancelled here. */}
       {choosingAuto ? (
-        <div
-          className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1"
+        <Button
+          variant="tertiary"
+          size="compact"
           data-slot="composer-run-header"
+          onClick={onCancelAuto}
         >
-          <span className="text-body">{tc('groupRun')}</span>
-          <Button variant="tertiary" size="compact" onClick={onCancelAuto}>
-            <Square className="size-3.5 fill-current" />
-            {t('cancelAutoChoice')}
-          </Button>
-        </div>
+          <Square className="size-3.5 fill-current" />
+          {t('cancelAutoChoice')}
+        </Button>
       ) : null}
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        {allowed.length > 1 && !blocked ? (
-          <Select
-            variant="chip"
-            label={t('intentLabel')}
-            value={intent}
-            onValueChange={onChooseIntent}
-            options={allowed.map((value) => ({
-              value,
-              label: t(`intentShort.${value}`),
-              hint: t(`intentHint.${value}`),
-            }))}
-          />
-        ) : intent !== 'next' || blocked ? (
-          <span className="px-2 text-ui text-muted-foreground">{t(`intentShort.${intent}`)}</span>
-        ) : null}
-        {intent === 'steer' ? (
-          <Select
-            variant="chip"
-            label={t('target')}
-            value={steerTarget || null}
-            placeholder={t('noTarget')}
-            onValueChange={onChooseTarget}
-            options={[
-              ...(steerTarget && !targets.some((x) => x.id === steerTarget)
-                ? [
-                    {
-                      value: steerTarget,
-                      label: tc('ended', { name: targetName(steerTarget) }),
-                      disabled: true,
-                    },
-                  ]
-                : []),
-              ...targets.map((x) => ({ value: x.id, label: x.label })),
-            ]}
-            disabled={targets.length === 0}
-          />
-        ) : null}
-      </div>
+      {allowed.length > 1 && !blocked ? (
+        <Select
+          variant="chip"
+          label={t('intentLabel')}
+          value={intent}
+          onValueChange={onChooseIntent}
+          options={allowed.map((value) => ({
+            value,
+            label: t(`intentShort.${value}`),
+            hint: t(`intentHint.${value}`),
+          }))}
+        />
+      ) : intent !== 'next' || blocked || !quiet ? (
+        <span title={t(`intentHint.${intent}`)} className="px-2 text-ui text-muted-foreground">
+          {t(`intentShort.${intent}`)}
+        </span>
+      ) : null}
+      {intent === 'steer' ? (
+        <Select
+          variant="chip"
+          label={t('target')}
+          value={steerTarget || null}
+          placeholder={t('noTarget')}
+          onValueChange={onChooseTarget}
+          options={[
+            ...(steerTarget && !targets.some((x) => x.id === steerTarget)
+              ? [
+                  {
+                    value: steerTarget,
+                    label: tc('ended', { name: targetName(steerTarget) }),
+                    disabled: true,
+                  },
+                ]
+              : []),
+            ...targets.map((x) => ({ value: x.id, label: x.label })),
+          ]}
+          disabled={targets.length === 0}
+        />
+      ) : null}
     </>
   );
 }
 
-/** Below the queue: what the next request would start with, and why it cannot be sent now. */
+/** Below the input: what the next request would start with, and why it cannot be sent now. */
 export function ComposerStatus({
   session,
   runs,
@@ -105,7 +110,6 @@ export function ComposerStatus({
   latest,
   lastEnded,
   liveUnavailable,
-  heldForNew,
   reasoningBlocked,
   error,
 }: {
@@ -120,13 +124,11 @@ export function ComposerStatus({
   /** The newest ended run, which a follow-up continues. */
   lastEnded: RunSummary | null;
   liveUnavailable: boolean;
-  heldForNew: readonly ('references' | 'images' | 'attachments')[];
   reasoningBlocked: boolean;
   error: string | null;
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
-  const format = useFormatter();
   return (
     <>
       <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted-foreground">
@@ -155,18 +157,9 @@ export function ComposerStatus({
         {intent === 'steer' ? <span>{t('intentHint.steer')}</span> : null}
         {intent === 'queue' ? <span>{t('intentHint.queue')}</span> : null}
       </div>
-      {liveUnavailable || heldForNew.length > 0 || reasoningBlocked ? (
+      {liveUnavailable || reasoningBlocked ? (
         <div className="flex flex-col gap-1 px-4 pt-1 text-caption text-warning">
           {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
-          {heldForNew.length ? (
-            <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
-              <span>
-                {tc('heldForNew', {
-                  items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
-                })}
-              </span>
-            </div>
-          ) : null}
           {reasoningBlocked ? (
             <p role="status" data-testid="reasoning-not-supported" className="text-warning">
               {tc('reasoningUnsupportedHint')}

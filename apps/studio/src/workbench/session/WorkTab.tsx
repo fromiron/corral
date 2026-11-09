@@ -1,6 +1,6 @@
 import type { CorralSummary, RunSummary, WorkSession } from '@corral/core';
-import { Button } from '@corral/react/design-kit';
-import { FolderOpen, MessageSquare } from '@corral/react/icons';
+import { Button, cn, useSize } from '@corral/react/design-kit';
+import { FolderOpen } from '@corral/react/icons';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
@@ -14,6 +14,9 @@ import type { SessionSearch } from '../panels/routes.ts';
 import { WorkFolderNotice } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
+
+/** The kit's display weight (its `fontWeights.bold`, which the kit entry does not export). */
+const DISPLAY_WEIGHT = "'wght' 700, 'opsz' 25";
 
 /** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
 export function WorkTab({
@@ -60,6 +63,9 @@ export function WorkTab({
   const runChecks = useRunChecks(session.sessionId, runs);
   const artifactMetadataVersion = runs.findLast((run) => run.status === 'succeeded')?.runId ?? '';
   const td = useTranslations('Desktop');
+  const size = useSize();
+  // Nothing asked and nothing run: the conversation is the kit home composition.
+  const home = session.entries.length === 0 && loose.length === 0;
   return (
     <RunChecks.Provider value={runChecks}>
       <ChatView
@@ -124,19 +130,24 @@ export function WorkTab({
             onChange={onChange}
             reference={reference}
             onReferenceUsed={onReferenceUsed}
+            home={home}
           />
         }
       >
         <section aria-label={t('heading')}>
-          {session.entries.length === 0 && loose.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-5 text-center">
-              <MessageSquare size={28} strokeWidth={1.25} className="text-muted-foreground" />
-              <h3 className="text-xl font-medium tracking-tight">{td('noRequests')}</h3>
-              <p className="max-w-md text-sm text-muted-foreground">
-                {session.objective
-                  ? session.objective
-                  : td(workspaces && binding ? 'startHintLinked' : 'startHint')}
-              </p>
+          {home ? (
+            // The kit home composition: a centered title right above the composer.
+            <div className="flex flex-col items-center gap-3 pb-4 text-center">
+              <h2
+                className={cn(size.type.display, 'm-0 text-foreground')}
+                style={{ fontVariationSettings: DISPLAY_WEIGHT }}
+              >
+                {td('homeTitle')}
+              </h2>
+              {/* The purpose given when the session was made, not an explanation. */}
+              {session.objective ? (
+                <p className="m-0 max-w-md text-ui text-muted-foreground">{session.objective}</p>
+              ) : null}
               {workspaces && binding === null ? (
                 <Button variant="ghost" size="compact" onClick={() => onPanel('changes')}>
                   <FolderOpen />

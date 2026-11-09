@@ -1,5 +1,15 @@
-import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
+import {
+  ExtensionUiRequest,
+  TERMINAL_EXECUTION_STATUSES,
+  TERMINAL_RUN_STATUSES,
+  UserInputRequest,
+} from '@corral/contracts';
+import {
+  canReadArtifactBody,
+  type InteractionView,
+  pendingInteractions,
+  type RunProjection,
+} from '@corral/core';
 import {
   ApprovalPanel,
   CopyTextButton,
@@ -23,6 +33,7 @@ import {
   BannerActions,
   BannerTitle,
   Button,
+  ThinkingIndicator,
   ThinkingStep,
   ThinkingStepDetails,
   ThinkingSteps,
@@ -41,6 +52,26 @@ import { type ChatDensity, preferences } from './preferences.ts';
 import { TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { toolRows } from './widgets/selectors.ts';
+
+type WaitingQuestion = Exclude<InteractionView, { kind: 'approval' }>;
+
+/** A waiting question's own words for the notice: its first line, shortened. */
+function questionTitle(question: WaitingQuestion, body: string | undefined): string | null {
+  if (!body) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const title =
+    question.kind === 'question'
+      ? UserInputRequest.safeParse(parsed).data?.questions[0]?.prompt
+      : ExtensionUiRequest.safeParse(parsed).data?.title;
+  const line = title?.trim().split(/\r?\n/, 1)[0]?.trim();
+  if (!line) return null;
+  return line.length > 120 ? `${line.slice(0, 119).trimEnd()}…` : line;
+}
 
 /** Expandable work log and response surface, projected from Corral executions. */
 export function RunMessage({
@@ -137,6 +168,19 @@ export function RunMessage({
     };
   }, [ids, store, retry]);
   const projection = state.projection;
+  // Waiting questions are answered in the exact run's response area; the notice names the first.
+  const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
+  const questions = interactions.flatMap((interaction) =>
+    interaction.kind === 'approval' ? [] : [interaction],
+  );
+  const firstQuestionRef = questions[0]?.event.payload.bodyRef;
+  useEffect(() => {
+    if (!firstQuestionRef || firstQuestionRef in store.getState().artifactTexts) return;
+    void store
+      .getState()
+      .loadArtifact(firstQuestionRef)
+      .catch(() => undefined);
+  }, [store, firstQuestionRef]);
   if (!projection)
     return state.streamError ? (
       <p role="alert" className="text-sm text-danger">
@@ -148,10 +192,15 @@ export function RunMessage({
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
   if (working && !watched) setWatched(true);
   const processOpen = chosen ?? (chatDensity === 'detailed' || working);
-  const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
-  const questions = interactions.filter((interaction) => interaction.kind !== 'approval');
-  const requiredLabel =
-    questions.length === 1 ? tw('actionQuestion') : tw('actionMixed', { count: questions.length });
+  const firstTitle = questions[0]
+    ? questionTitle(questions[0], firstQuestionRef ? state.artifactTexts[firstQuestionRef] : '')
+    : null;
+  // Until its text is read, the notice keeps the generic count.
+  const requiredLabel = firstTitle
+    ? tw('questionTitle', { title: firstTitle, count: questions.length })
+    : questions.length === 1
+      ? tw('actionQuestion')
+      : tw('actionMixed', { count: questions.length });
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   // Current session activity lives by the composer and in the agent widget.
   // Historical failures stay visible here, while standalone consumers keep their activity row.
@@ -221,6 +270,15 @@ export function RunMessage({
   // does not vanish and return with every call.
   const writing = current ?? streams.filter(([, stream]) => stream.text).at(-1);
   const writer = writing ? projection.modelCalls[writing[0]]?.executionId : undefined;
+  // Observed only: the run is starting or working, nothing waits on the person, and no words
+  // or result have arrived yet. A paused or waiting run does not animate.
+  const replyPending =
+    Boolean(sessionId) &&
+    ['created', 'validating', 'running'].includes(projection.status) &&
+    interactions.length === 0 &&
+    !streams.some(([, stream]) => stream.text) &&
+    visible.length === 0;
+  const pendingWord = tw(projection.status === 'running' ? 'activityWorking' : 'activityStarting');
   const agentRow = (execution: (typeof executions)[number]) => (
     <li key={execution.executionId} className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs">
       <Link
@@ -442,6 +500,17 @@ export function RunMessage({
             ) : null}
           </ThinkingStepsContent>
         </ThinkingSteps>
+      ) : null}
+      {replyPending ? (
+        // Where the answer will appear, until the run shows its first words or a result.
+        // The composer's region announces the run, so this status stays silent.
+        <ThinkingIndicator
+          data-testid="reply-pending"
+          aria-live="off"
+          size="compact"
+          className="px-0"
+          labels={{ status: pendingWord, words: [pendingWord] }}
+        />
       ) : null}
       {writing && sessionId && chatDensity !== 'results' ? (
         // The reply being written reads as the answer it may become.

@@ -819,15 +819,14 @@ export function viewedRun(input: {
 }
 
 /**
- * Whether the composer shows its run status pill. A live run's status and controls belong to the
- * top bar, so the pill appears only when the person is needed, when the state cannot be read,
- * and for an ended run.
+ * Whether the composer's one-line status shows the run's state. A live run's state and controls
+ * belong to the top bar's pill, even while it needs the person (the attention notice links to
+ * it), so the line shows it only for an ended run and when the state cannot be read.
  */
 export function composerShowsRunStatus(input: {
   runStatus: string | null;
   readState: 'empty' | 'loading' | 'ready' | 'error';
-  needsAction: boolean;
 }): boolean {
-  if (input.needsAction || input.readState === 'error') return true;
+  if (input.readState === 'error') return true;
   return input.runStatus !== null && (TERMINAL_RUN_STATUSES as Set<string>).has(input.runStatus);
 }

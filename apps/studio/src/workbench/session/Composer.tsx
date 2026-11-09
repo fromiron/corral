@@ -51,8 +51,16 @@ import {
 } from '@corral/react/design-kit';
 import { AtSign, Plus, X } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useFormatter, useTranslations } from 'use-intl';
 import {
   type AppCommand,
   useRegisterCommands,
@@ -139,6 +147,7 @@ export function Composer({
   reference,
   onReferenceUsed,
   runControlsOwnConfirmation = false,
+  home = false,
 }: {
   session: WorkSession;
   team: CorralSummary | null;
@@ -153,10 +162,15 @@ export function Composer({
   onReferenceUsed: () => void;
   /** The active session view already has one RunActions confirmation host. */
   runControlsOwnConfirmation?: boolean;
+  /** An empty session: the kit home composition offers the saved teams as start suggestions. */
+  home?: boolean;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const format = useFormatter();
+  // The Todo the one-line status expands, inside the input surface.
+  const planRegion = useId();
   const contextMessages = useTranslations('Context');
   const materialMessages = useTranslations('Materials');
   const navigation = useSettingsNavigation();
@@ -1389,7 +1403,11 @@ export function Composer({
       )}
       contentSlot={
         <>
-          <ComposerPlan showAllKey={planAllKey} onShowAllKeyChange={setPlanAllKey} />
+          <ComposerPlan
+            id={planRegion}
+            showAllKey={planAllKey}
+            onShowAllKeyChange={setPlanAllKey}
+          />
           {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
           {viewingOtherRun ? (
             <Banner data-testid="viewed-run-warning" status="warning" size="compact">
@@ -1779,20 +1797,35 @@ export function Composer({
   );
   return (
     <ComposerSurface.Shell>
-      <ComposerDock summary={<OverviewAccess />} />
-      <ComposerHeader
-        choosingAuto={choosingAuto}
-        onCancelAuto={cancelAuto}
-        allowed={allowed}
-        blocked={resolved.blocked}
-        intent={intent}
-        onChooseIntent={chooseIntent}
-        steerTarget={steerTarget}
-        targets={targets}
-        targetName={targetName}
-        onChooseTarget={chooseTarget}
+      {/* One line above the input: intent, an ended run, plan, changes, activity, held items, Overview. */}
+      <ComposerDock
+        planId={planRegion}
+        lead={
+          <ComposerHeader
+            choosingAuto={choosingAuto}
+            onCancelAuto={cancelAuto}
+            allowed={allowed}
+            blocked={resolved.blocked}
+            intent={intent}
+            onChooseIntent={chooseIntent}
+            steerTarget={steerTarget}
+            targets={targets}
+            targetName={targetName}
+            onChooseTarget={chooseTarget}
+            quiet={home}
+          />
+        }
+        note={
+          heldForNew.length ? (
+            <span role="status" className="px-2 text-caption text-warning">
+              {tc('heldForNew', {
+                items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
+              })}
+            </span>
+          ) : null
+        }
+        summary={<OverviewAccess />}
       />
-      {compose}
       <ComposerQueue
         queued={queued}
         autoStart={autoStart}
@@ -1802,6 +1835,27 @@ export function Composer({
         onEdit={(entry) => void editQueued(entry)}
         onRemove={(entry) => void removeQueued(entry)}
       />
+      {compose}
+      {home && corrals.length > 0 ? (
+        // The kit home's start suggestions: a saved team picks the team chip, never a prompt.
+        <ul aria-label={t('startSuggestions')} className="mt-3 flex flex-wrap justify-center gap-2">
+          {corrals.slice(0, 4).map((corral) => (
+            <li key={corral.corralId}>
+              <Button
+                variant="tertiary"
+                size="compact"
+                disabled={busy}
+                onClick={() => {
+                  void updateTeam(corral.corralId);
+                  input.current?.focus();
+                }}
+              >
+                {t('startWithTeam', { team: corral.name })}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <ComposerStatus
         session={session}
         runs={runs}
@@ -1812,7 +1866,6 @@ export function Composer({
         latest={latest}
         lastEnded={lastEnded}
         liveUnavailable={liveUnavailable}
-        heldForNew={heldForNew}
         reasoningBlocked={reasoningBlocked}
         error={error}
       />

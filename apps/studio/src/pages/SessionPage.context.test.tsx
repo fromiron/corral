@@ -57,7 +57,13 @@ vi.mock('../workbench/useModels.ts', () => ({
 }));
 vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
 vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
-  ComposerDock: () => null,
+  // The one-line status keeps the composer's own intent chips (lead) and held-items note.
+  ComposerDock: ({ lead, note }: { lead?: ReactNode; note?: ReactNode }) => (
+    <div data-testid="composer-status-pills">
+      {lead}
+      {note}
+    </div>
+  ),
   ComposerPlan: () => <div data-testid="composer-plan-fixture">Work plan</div>,
 }));
 vi.mock('../workbench/widgets/ComposerStats.tsx', () => ({ ComposerStats: () => null }));
@@ -143,6 +149,7 @@ async function mount(
   selectedRunId: string | null = null,
   mode: 'server' | 'browser' = 'server',
   runControlsOwnConfirmation = false,
+  extra: { home?: boolean; corrals?: CorralSummary[] } = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
@@ -194,6 +201,7 @@ async function mount(
       session,
     })),
     updateSessionEntry: vi.fn(async () => ({ ok: true, session })),
+    updateSession: vi.fn(async (_sessionId: string, _change: unknown) => ({ ok: true, session })),
   };
   const transport = {
     sendCommand: vi.fn(async (_command: unknown) => ({ error: null })),
@@ -262,6 +270,7 @@ async function mount(
             onChange={() => {}}
             reference={null}
             onReferenceUsed={() => {}}
+            {...extra}
           />
         </IntlProvider>,
       ),
@@ -1044,4 +1053,68 @@ it('two independent composers use one queued identity and a conflicting loser ca
   });
   await second.click('Start now');
   expect(second.startAuto).toHaveBeenCalledTimes(1);
+});
+
+it('an empty session suggests up to four saved teams, and a chip sets the team through the existing selection', async () => {
+  const corrals = Array.from({ length: 5 }, (_, index) => ({
+    ...team,
+    corralId: `team_${index + 1}`,
+    name: `Team ${index + 1}`,
+  }));
+  const f = await mount('home_teams', null, [], [], null, 'server', false, {
+    home: true,
+    corrals,
+  });
+  const list = f.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`);
+  const chips = [...(list?.querySelectorAll('button') ?? [])];
+  expect(chips.map((chip) => chip.textContent)).toEqual(
+    ['Team 1', 'Team 2', 'Team 3', 'Team 4'].map((name) =>
+      messages.Sessions.startWithTeam.replace('{team}', name),
+    ),
+  );
+  await f.click(messages.Sessions.startWithTeam.replace('{team}', 'Team 2'));
+  expect(f.repository.updateSession).toHaveBeenCalledWith('home_teams', {
+    corralId: 'team_2',
+    expectedRevision: 1,
+  });
+  expect(fixture.invalidate).toHaveBeenCalled();
+  // A suggestion never writes a prompt.
+  expect(f.container.querySelector('textarea')?.value).toBe('');
+  expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it('shows no start suggestions without saved teams or outside the empty session', async () => {
+  const empty = await mount('home_none', null, [], [], null, 'server', false, {
+    home: true,
+    corrals: [],
+  });
+  expect(
+    empty.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`),
+  ).toBeNull();
+  const busy = await mount('home_later', null, [], [], null, 'server', false, { home: false });
+  expect(
+    busy.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`),
+  ).toBeNull();
+});
+
+it('editing a queued request puts its text back in the composer and dismisses the entry', async () => {
+  const sessionId = 'queue_edit';
+  const f = await mount(sessionId, active, [queuedEntry(captured)]);
+  await f.click(`Edit queued request: ${queuedEntry(captured).text}`);
+  expect(
+    f.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]')?.value,
+  ).toBe('Use the captured source');
+  expect(f.repository.updateSessionEntry).toHaveBeenCalledWith(sessionId, 'queued', {
+    state: 'dismissed',
+    detail: 'edited',
+  });
+  expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+});
+
+it('keeps the send intent visible while idle', async () => {
+  const sessionId = 'idle_intent';
+  const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
+  const f = await mount(sessionId, null, [], [finished]);
+  const line = f.container.querySelector('[data-testid="composer-status-pills"]');
+  expect(line?.textContent).toContain(messages.Sessions.intentShort.next);
 });
