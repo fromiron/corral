@@ -1,9 +1,11 @@
 import type { UserTaskView, WorkspacePreview, WorktreeCommandView } from '@corral/client';
 import { Button, Input, Select } from '@corral/react/design-kit';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
+import { workHref } from './navigation.ts';
 import { PreviewFeedback } from './PreviewFeedback.tsx';
 import { type PreviewOutput, PreviewView } from './PreviewView.tsx';
 
@@ -92,10 +94,15 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
     },
     [opened, context],
   );
-  if (mode !== 'server') return null;
+  if (mode !== 'server') return <BrowserQaPreviewLink />;
   // The Preview tab is this pane's own view, so an idle one says why it is empty.
   if (!commands.length)
-    return <p className="text-caption text-muted-foreground">{t('noService')}</p>;
+    return (
+      <>
+        <p className="text-caption text-muted-foreground">{t('noService')}</p>
+        <BrowserQaPreviewLink />
+      </>
+    );
   const selected = commands.find((item) => item.id === operationId)?.id ?? commands[0]?.id ?? '';
   return (
     <section aria-label={t('service')} className="flex flex-col gap-2 border-b border-line pb-2">
@@ -200,6 +207,32 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
           {error}
         </p>
       ) : null}
+      <BrowserQaPreviewLink />
     </section>
+  );
+}
+
+/**
+ * The browser QA feature preview, which returns here. Only a link: this pane never shows the
+ * preview's sample page, snapshot or screenshot (docs/specs/features/feature-preview.md).
+ */
+function BrowserQaPreviewLink() {
+  const t = useTranslations('Preview');
+  const returnTo = workHref(useRouterState({ select: (state) => state.location.href }));
+  return (
+    <Button
+      variant="ghost"
+      size="compact"
+      className="self-start"
+      render={
+        <Link
+          to="/preview/$feature"
+          params={{ feature: 'browser-qa' }}
+          search={returnTo ? { returnTo } : {}}
+        />
+      }
+    >
+      {t('browserQaPreview')}
+    </Button>
   );
 }

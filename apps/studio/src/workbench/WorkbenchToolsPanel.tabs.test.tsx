@@ -35,7 +35,11 @@ vi.mock('../services.tsx', () => {
   const services = { mode: 'server', workspaceId: 'local', workspaces: fixture.workspaces };
   return { useServices: () => services };
 });
-vi.mock('@tanstack/react-router', () => ({ Link: () => null }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: () => null,
+  useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
+    select({ location: { href: '/sessions/session' } }),
+}));
 
 const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {

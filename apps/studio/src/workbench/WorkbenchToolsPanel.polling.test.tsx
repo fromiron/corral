@@ -31,6 +31,12 @@ vi.mock('./TerminalPanel.tsx', () => ({ TerminalPanel: () => null }));
 vi.mock('./WorktreeCommandPanel.tsx', () => ({ WorktreeCommandPanel: () => null }));
 vi.mock('./navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+  workHref: (value: unknown) => value,
+}));
+vi.mock('@tanstack/react-router', () => ({
+  Link: () => null,
+  useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
+    select({ location: { href: '/sessions/session' } }),
 }));
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0 }),
