@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox, selectSessionTeam } from '../workbench.ts';
+import { lastRunSucceeded, requestBox, selectSessionTeam } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Workbench UX review: pinpoint checks of the fixes
@@ -65,9 +65,7 @@ test('a referenced result keeps its exact version through a reload', async ({
   };
   await requestBox(page).fill('First draft');
   await sendAcrossSettings();
-  await expect(
-    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: true }),
-  ).toBeVisible({
+  await expect(lastRunSucceeded(page)).toBeVisible({
     timeout: 20_000,
   });
   const [first] = corral.server.coordinator.listRuns();

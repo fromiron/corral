@@ -1,6 +1,6 @@
 # Managed LLM runtime
 
-[Product §9](product-contract.md#9-사용량-예산과-자원-정책) owns usage/resource defaults.
+[Product §9](product-contract.md#9-사용량과-자원-정책) owns usage/resource defaults.
 
 ## Request ownership and transport
 
@@ -9,6 +9,8 @@ Core and SDK use the host ModelRegistry → ModelRequestRuntime path in normal a
 Workers measure for compaction; the execution broker's host meter uses actual sent context and reported usage for the final output allowance. Bridge enforces permit/model ceilings without replacing that measurement with a separate density estimate. Broker lifetime isolates anchors between executions.
 
 Profile explicit values precede endpoint explicit values, matching catalog metadata, permitted environment defaults, then product defaults. Context, cache and reasoning sources are frozen; the final transport applies model capabilities. Authentication remains host-owned. Endpoint keys retain their destination binding; credentials are never persisted in policy/attempt snapshots or sent to workers. Direct network from trusted native extensions is outside the managed boundary and is not represented as fully controlled traffic.
+
+The host request permit compares the provider's JSON payload after decoding its actual supported transport encoding. Plain JSON and the subscription transport's zstd-compressed JSON retain the same approved model, destination, method, payload, and one-send boundary. Malformed or unsupported encodings and changed decoded payloads are rejected before dispatch; the approved original wire body is sent unchanged.
 
 Provider retries are zero (Bedrock maxAttempts=1). Corral allows two retries only for explicit transient errors or known pre-send failures. Retry-After precedes jittered exponential delay; cancellation interrupts waiting. Auth/quota, partial response and ambiguous delivered requests are not automatically repeated. Same operation ID returns its stored receipt; confirmed failed user operations can start a new explicit intent. Waiting does not hold a model slot. A cancelled but still-running transport retains its resource slot until termination.
 
@@ -44,9 +46,9 @@ Checkpoint v2 reuses immutable message and artifact bodies through a versioned m
 
 Source closure follows owned finished tool records, not only toolResult messages still visible after compaction. The execution reuses successfully committed chunk/source references, while message snapshots and restored body hashes remain validated. Selecting one checkpoint does not hydrate every other checkpoint.
 
-Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage settles the original attempt and Run reservation without reviving tasks. History pages are bounded and do not load the whole ledger into Settings.
+Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings.
 
-Chooser Run reservations derive from the existing attempt ledger: one reservation per prepared physical request, its actual output allowance, and its reported usage or unknown remainder. No payload prepared means no model reservation. Late usage updates only the matching reservation; past snapshots and choice text are not rewritten. Callers without a managed ledger record only reported usage. The chooser prompt and visible-text gate share a 4,096-byte JSON bound; model output allowance and reasoning are separate from that byte bound.
+Chooser usage in the Run derives from the existing attempt ledger: one `usage.recorded` per prepared physical request, with its reported usage or null when unknown. No payload prepared means no usage record. Late usage fills only the matching record; past snapshots and choice text are not rewritten. Callers without a managed ledger record only reported usage. The chooser prompt and visible-text gate share a 4,096-byte JSON bound; model output allowance and reasoning are separate from that byte bound.
 
 Each physical chooser attempt has 30 seconds from provider SDK dispatch to completion. Admission and retry waits are excluded, including reacquiring a slot. User cancellation remains active while waiting and during transmission. The response timer ends with its attempt; retries use the same rule and the existing two-retry maximum.
 

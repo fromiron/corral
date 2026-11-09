@@ -1,8 +1,11 @@
 import { emptyProjection, type RunProjection } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import { overviewWidgets, sessionStats, usageSummary } from './selectors.ts';
-
-const limits = { maxOutputTokens: 64_000, maxModelCalls: 40 };
+import {
+  currentAgentExecutions,
+  overviewWidgets,
+  sessionStats,
+  usageSummary,
+} from './selectors.ts';
 
 function call(
   id: string,
@@ -35,31 +38,27 @@ function call(
 function run(): RunProjection {
   const projection = emptyProjection('run_overview');
   projection.status = 'succeeded';
-  projection.budget.spent = 930;
-  projection.budget.reserved = 0;
-  projection.budget.modelCalls = 4;
   projection.modelCalls = {
     a: call('a', 194),
     b: call('b', 63),
     c: call('c', null),
-    d: call('d', 500, false),
+    d: call('d', null, false),
   };
   return projection;
 }
 
 describe('overview usage widget', () => {
-  it('states output tokens and calls against their limits with a per-call chart', () => {
-    expect(usageSummary(run(), limits)).toEqual({
-      spent: 930,
-      reserved: 0,
-      unknown: 0,
-      tokenLimit: 64_000,
-      calls: 4,
-      callLimit: 40,
+  it('states reported output tokens and requests with a per-call chart, and no limit', () => {
+    expect(usageSummary(run())).toEqual({
+      outputTokens: 257,
+      requests: 4,
+      // c ended without usage; d is still running.
+      unknown: 1,
       // Finished calls with reported output, oldest first; a call still streaming is not a bar.
       perCall: [194, 63],
       // input of the finished calls; none of them reported cached input.
       input: { tokens: 300, cached: null, cacheShare: null, cacheUnreported: 3 },
+      inputUnreported: 0,
     });
   });
 
@@ -73,27 +72,44 @@ describe('overview usage widget', () => {
       e: call('e', null, false, { inputTokens: 9_000, cachedInputTokens: 9_000 }),
     };
     // The share counts only calls that reported both figures; an unreported cache is not zero.
-    expect(usageSummary(projection, limits)?.input).toEqual({
+    expect(usageSummary(projection)?.input).toEqual({
       tokens: 3_500,
       cached: 1_500,
       cacheShare: 0.5,
       cacheUnreported: 2,
     });
     projection.modelCalls = { d: call('d', 10, true, { inputTokens: null, cachedInputTokens: 5 }) };
-    expect(usageSummary(projection, limits)?.input).toBeNull();
+    expect(usageSummary(projection)?.input).toBeNull();
   });
 
-  it('names unconfirmed usage and a run without limits, never as zero', () => {
+  it('keeps incomplete input coverage visible beside the known-only total', () => {
     const projection = run();
-    projection.budget.unknownOutstanding = 256;
-    projection.usageLimits = 'none';
-    expect(usageSummary(projection, limits)).toMatchObject({
-      unknown: 256,
-      tokenLimit: null,
-      callLimit: null,
+    projection.modelCalls = {
+      reported: call('reported', 10, true, { inputTokens: 100, cachedInputTokens: 0 }),
+      missing: { ...call('missing', 20), usage: null },
+      streaming: call('streaming', 30, false),
+    };
+    expect(usageSummary(projection)).toMatchObject({
+      input: { tokens: 100 },
+      inputUnreported: 1,
     });
+    projection.modelCalls = { missing: { ...call('missing', 20), usage: null } };
+    expect(usageSummary(projection)).toMatchObject({ input: null, inputUnreported: 1 });
+  });
+
+  it('counts unreported usage apart, never as zero, and counts team choice requests', () => {
+    const projection = run();
+    projection.usage.route = {
+      usageId: 'route',
+      kind: 'auto_route',
+      profileId: null,
+      inputTokens: null,
+      outputTokens: null,
+      costMicros: null,
+    };
+    expect(usageSummary(projection)).toMatchObject({ outputTokens: 257, requests: 5, unknown: 2 });
     const empty = emptyProjection('run_empty');
-    expect(usageSummary(empty, limits)).toBeNull();
+    expect(usageSummary(empty)).toBeNull();
   });
 
   it('keeps the per-call chart to the latest twelve calls', () => {
@@ -101,9 +117,7 @@ describe('overview usage widget', () => {
     projection.modelCalls = Object.fromEntries(
       Array.from({ length: 15 }, (_, index) => [`c${index}`, call(`c${index}`, index + 1)]),
     );
-    expect(usageSummary(projection, limits)?.perCall).toEqual([
-      4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-    ]);
+    expect(usageSummary(projection)?.perCall).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
   });
 });
 
@@ -114,24 +128,67 @@ describe('overview widget order', () => {
     results: [] as { id: string; label: string }[],
   };
 
-  it('stacks context, usage, results, changes, agents and environment in order', () => {
+  it('prioritizes pending attention and active agents over supporting resources', () => {
     expect(
       overviewWidgets({
         chips: ['environment', 'changes', 'agents', 'context'],
-        usage: usageSummary(run(), limits),
+        usage: usageSummary(run()),
         results: [{ id: 'r', label: 'draft v1' }],
+        action: { needsUser: true },
+        live: true,
       }),
-    ).toEqual(['context', 'usage', 'results', 'changes', 'agents', 'environment']);
+    ).toEqual(['attention', 'agents', 'results', 'changes', 'context', 'usage']);
+  });
+
+  it('puts results first after completion without treating a past failure as pending input', () => {
+    expect(
+      overviewWidgets({
+        chips: ['environment', 'changes', 'agents', 'context'],
+        usage: usageSummary(run()),
+        results: [{ id: 'r', label: 'draft v1' }],
+        action: { needsUser: false },
+        live: false,
+      }),
+    ).toEqual(['results', 'changes', 'agents', 'context', 'usage']);
+  });
+
+  it('keeps the environment in the composer status rather than repeating it in Overview', () => {
+    expect(overviewWidgets({ ...base, chips: ['environment'], live: true })).toEqual([]);
   });
 
   it('hides a widget with nothing to say', () => {
     expect(overviewWidgets(base)).toEqual([]);
     const idle = emptyProjection('run_idle');
-    expect(overviewWidgets({ ...base, usage: usageSummary(idle, limits) })).toEqual([]);
+    expect(overviewWidgets({ ...base, usage: usageSummary(idle) })).toEqual([]);
     expect(overviewWidgets({ ...base, results: [{ id: 'r', label: 'draft v1' }] })).toEqual([
       'results',
     ]);
   });
+});
+
+it('keeps the current attempt per task and does not reuse a failed earlier attempt', () => {
+  const projection = emptyProjection('run_attempts');
+  const executions = [
+    { executionId: 'old', taskId: 'task', nodeId: 'agent', attemptNo: 1, status: 'failed' },
+    { executionId: 'current', taskId: 'task', nodeId: 'agent', attemptNo: 2, status: 'succeeded' },
+    { executionId: 'other', taskId: 'other_task', nodeId: 'agent', attemptNo: 1, status: 'active' },
+  ] as RunProjection['executions'][string][];
+  projection.executionOrder = executions.map((execution) => execution.executionId);
+  projection.executions = Object.fromEntries(
+    executions.map((execution) => [execution.executionId, execution]),
+  );
+  expect(currentAgentExecutions(projection).map((execution) => execution.executionId)).toEqual([
+    'current',
+    'other',
+  ]);
+  projection.tasks.task = {
+    taskId: 'task',
+    activeExecutionId: 'current',
+  } as RunProjection['tasks'][string];
+  expect(currentAgentExecutions(projection).map((execution) => execution.status)).toEqual([
+    'succeeded',
+    'active',
+  ]);
 });
 
 describe('session statistics', () => {

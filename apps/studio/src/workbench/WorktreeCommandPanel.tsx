@@ -130,9 +130,10 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
                 size="compact"
                 aria-pressed={item.id === selected}
                 onClick={() => select(item.id)}
+                title={item.command ?? undefined}
                 className="w-full justify-between text-left"
               >
-                <span className="min-w-0 flex-1 truncate" title={item.command ?? undefined}>
+                <span className="min-w-0 flex-1 truncate">
                   {item.command ?? t('unavailableCommand')}
                 </span>
                 <span className="shrink-0 text-muted-foreground">{t(`state.${item.state}`)}</span>

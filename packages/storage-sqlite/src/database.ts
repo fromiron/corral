@@ -618,6 +618,56 @@ CREATE VIRTUAL TABLE session_search_v1 USING fts5(
 );
 `,
   },
+  {
+    name: '0037_artifact_body_lifetime',
+    sql: `
+-- Idempotent: a rewound schema version may apply this again.
+DROP TRIGGER IF EXISTS artifact_texts_no_delete;
+CREATE TABLE IF NOT EXISTS artifact_body_retention (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id),
+  retained_json TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS conversation_turns (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id),
+  turn_json TEXT NOT NULL
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS conversation_turns_no_update BEFORE UPDATE ON conversation_turns
+BEGIN SELECT RAISE(ABORT, 'conversation_turns rows are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_turns_no_delete BEFORE DELETE ON conversation_turns
+BEGIN SELECT RAISE(ABORT, 'conversation_turns rows are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS artifact_texts_released BEFORE INSERT ON artifact_texts
+WHEN EXISTS (SELECT 1 FROM artifact_body_retention WHERE run_id=NEW.run_id)
+AND NOT EXISTS (SELECT 1 FROM artifact_body_retention, json_each(retained_json)
+  WHERE run_id=NEW.run_id AND value=NEW.artifact_version_id)
+BEGIN SELECT RAISE(ABORT, 'artifact body has been released'); END;
+CREATE TRIGGER IF NOT EXISTS generated_media_released BEFORE INSERT ON generated_media
+WHEN EXISTS (SELECT 1 FROM artifact_body_retention WHERE run_id=NEW.run_id)
+AND NOT EXISTS (SELECT 1 FROM artifact_body_retention, json_each(retained_json)
+  WHERE run_id=NEW.run_id AND value=NEW.version_id)
+BEGIN SELECT RAISE(ABORT, 'artifact body has been released'); END;
+`,
+  },
+  {
+    name: '0038_artifact_search_lifetime',
+    sql: `
+-- Old event-derived search rows may contain copies of bodies already released.
+-- Ordinary conversation entry rows remain; event rows rebuild from current readable sources.
+DELETE FROM session_search_v1 WHERE substr(id,1,6)='event:';
+DELETE FROM session_search_state_v1 WHERE substr(id,1,4)='run:';
+`,
+  },
+  {
+    name: '0039_drop_layouts',
+    sql: `
+-- The team editor lays teams out from their structure; saved node positions are gone.
+DROP TABLE IF EXISTS layouts;
+`,
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(corrals)').all() as { name: string }[];
+      if (columns.some((column) => column.name === 'layout_revision'))
+        db.exec('ALTER TABLE corrals DROP COLUMN layout_revision');
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

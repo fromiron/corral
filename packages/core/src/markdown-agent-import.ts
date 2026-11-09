@@ -3,14 +3,11 @@ import {
   type CorralDefinition,
   CorralDefinitionDraft,
   type EffectiveHarnessSnapshot,
-  type NodeLayout,
   WorkTool,
 } from '@corral/contracts';
-import { MAX_CANVAS_NODES } from './compiler/index.ts';
 
 export interface AgentImportDraft {
   definition: CorralDefinition;
-  layout: Record<string, NodeLayout>;
 }
 export interface AgentImportProfile {
   profileId: string;
@@ -187,8 +184,6 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
   parentHarness?: Pick<EffectiveHarnessSnapshot, 'binding' | 'policy' | 'allowedTools'> | undefined;
 }): T {
   const { draft, candidate, parentNodeId, modelProfile, profiles, mappings, suffix } = input;
-  if (draft.definition.nodes.length >= MAX_CANVAS_NODES)
-    throw new Error(`This version supports at most ${MAX_CANVAS_NODES} nodes per Corral.`);
   if (candidate.errors.length) throw new Error(candidate.errors.join('\n'));
   if (!profiles.some((profile) => profile.profileId === modelProfile && profile.available))
     throw new Error('Select an available model profile.');
@@ -350,13 +345,5 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
       },
     ],
   });
-  const position = draft.layout[parentNodeId];
-  return {
-    ...draft,
-    definition,
-    layout: {
-      ...draft.layout,
-      [nodeId]: { x: (position?.x ?? 0) + 280, y: (position?.y ?? 0) + 160 },
-    },
-  };
+  return { ...draft, definition };
 }

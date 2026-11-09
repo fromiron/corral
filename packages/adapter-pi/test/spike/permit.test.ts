@@ -1,4 +1,5 @@
-import { fauxAssistantMessage, fauxToolCall, Type } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
+import { Type } from 'typebox';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MODEL_ID, PROVIDER, spikeSession } from './sdk-session.ts';
 

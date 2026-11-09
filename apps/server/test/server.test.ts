@@ -92,7 +92,6 @@ async function saved(server: CorralServer, definition: CorralDefinition, call: t
   const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
   const result = await repo.save({
     definition,
-    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     expectedDefinitionRevision: null,
   });
   if (!result.ok) throw new Error(result.message);
@@ -254,7 +253,6 @@ describe('local security boundary', () => {
         headers: { 'content-type': 'application/json', origin },
         body: JSON.stringify({
           definition: linearCorral(['w']),
-          layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
         }),
       });
     const evil = await create('https://evil.example');
@@ -434,34 +432,34 @@ describe('local security boundary', () => {
 });
 
 describe('REST: Corrals and runs', () => {
-  it('saves Corrals with separate revisions and refuses a stale save', async () => {
+  it('saves Corrals by definition revision and refuses a stale save', async () => {
     const server = await start();
     const { call } = await browser(server);
     const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
     const record = await saved(server, linearCorral(['writer']), call);
-    expect(record).toMatchObject({ definitionRevision: 1, layoutRevision: 1 });
-    const moved = await repo.save({
+    expect(record).toMatchObject({ definitionRevision: 1 });
+    const unchanged = await repo.save({
       definition: record.definition,
-      layout: { nodes: { writer: { x: 10, y: 10 } }, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: 1,
     });
-    expect(moved.ok && [moved.record.definitionRevision, moved.record.layoutRevision]).toEqual([
-      1, 2,
-    ]);
+    expect(unchanged.ok && unchanged.record.definitionRevision).toBe(1);
     const renamed = { ...record.definition, name: 'Renamed' };
     await repo.save({
       definition: renamed,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: 1,
     });
     const stale = await repo.save({
       definition: record.definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: 1,
     });
     expect(stale).toMatchObject({ ok: false, error: 'revision_conflict' });
     expect((await repo.list()).map((c) => c.name)).toEqual(['Renamed']);
     expect(await repo.get('corral_missing')).toBeNull();
+    // A reference Team reads the revision it names, not the latest one.
+    expect((await repo.getRevision(record.corralId, 1))?.name).toBe(record.definition.name);
+    expect((await repo.getRevision(record.corralId, 2))?.name).toBe('Renamed');
+    expect(await repo.getRevision(record.corralId, 9)).toBeNull();
+    expect(await repo.getRevision('corral_missing', 1)).toBeNull();
 
     // The revision travels as If-Match (API-Contract §1); without it nothing is saved.
     const noPrecondition = await call(`${server.url}/api/v1/corrals/${record.corralId}`, {
@@ -469,7 +467,6 @@ describe('REST: Corrals and runs', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         definition: renamed,
-        layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       }),
     });
     expect(noPrecondition.status).toBe(400);
@@ -1106,7 +1103,7 @@ describe('SSE event stream', () => {
     expect(response.status).toBe(404);
   });
 
-  it('serves artifact bodies and snapshots of finished runs', async () => {
+  it('serves current final results and metadata while releasing completed internal responses', async () => {
     const { server, call, runId, final } = await finishedRun();
     const versionId = final.output?.artifactVersionIds[0] ?? '';
     const text = await call(`${server.url}/api/v1/runs/${runId}/artifact-versions/${versionId}`);
@@ -1116,10 +1113,13 @@ describe('SSE event stream', () => {
       `${server.url}/api/v1/runs/${runId}/artifact-versions/${modelCall?.responseRef}`,
     );
     expect(responseText.status).toBe(200);
-    expect((await responseText.json()).text).toContain('writer (writer) turn 1');
+    expect(await responseText.json()).toMatchObject({ text: null, bodyAvailable: false });
+    expect(modelCall?.responseRef).toBeTruthy();
     const snapshot = await (await call(`${server.url}/api/v1/runs/${runId}/snapshot`)).json();
-    expect(snapshot.seq).toBe(final.lastSeq);
-    expect(snapshot.projection).toEqual(final);
+    const committed = server.coordinator.getSnapshot(runId);
+    expect(snapshot.seq).toBe(committed.seq);
+    expect(snapshot.projection).toEqual(committed.projection);
+    expect(snapshot.projection.output).toEqual(final.output);
   });
 });
 
@@ -1127,6 +1127,8 @@ describe('registered input API and tool integration', () => {
   it('imports text, searches and reads by ID through authorized Coordinator tools', async () => {
     let documentId = '';
     const seen: unknown[] = [];
+    const readsReady = new Gate(),
+      finishRead = new Gate();
     const workspace = tempWorkspace();
     const server = await start({
       workspace,
@@ -1138,6 +1140,8 @@ describe('registered input API and tool integration', () => {
           seen.push(
             await host.invokeTool({ name: 'read_document', args: { path: '/etc/passwd' } }),
           );
+          readsReady.open();
+          await finishRead.wait();
           return null;
         },
       }),
@@ -1201,12 +1205,9 @@ describe('registered input API and tool integration', () => {
       mode: 'mock',
     });
     const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
-    const completed = await waitForProjection(
-      transport,
-      created.runId ?? '',
-      (p) => p.status === 'succeeded',
-    );
-    const readCall = Object.values(completed.toolCalls).find(
+    await readsReady.wait();
+    const active = server.coordinator.getSnapshot(created.runId ?? '').projection;
+    const readCall = Object.values(active.toolCalls).find(
       (tool) => tool.name === 'read_document' && tool.resultRef,
     );
     const readback = await call(
@@ -1221,6 +1222,18 @@ describe('registered input API and tool integration', () => {
       (await call(`${server.url}/api/v1/runs/run_other/artifact-versions/${readCall?.resultRef}`))
         .status,
     ).toBe(404);
+    finishRead.open();
+    const completed = await waitForProjection(
+      transport,
+      created.runId ?? '',
+      (p) => p.status === 'succeeded',
+    );
+    expect(completed.toolCalls[readCall?.toolCallId ?? '']?.resultRef).toBe(readCall?.resultRef);
+    const released = await call(
+      `${server.url}/api/v1/runs/${created.runId}/artifact-versions/${readCall?.resultRef}`,
+    );
+    expect(released.status).toBe(200);
+    expect(await released.json()).toMatchObject({ text: null, bodyAvailable: false });
     expect(seen[0]).toMatchObject({
       ok: true,
       result: { provider: 'corpus', results: [{ documentId }] },
@@ -1259,9 +1272,9 @@ describe('workspace configuration', () => {
     await mkdir(join(workspace, '.corral'));
     writeFileSync(
       join(workspace, '.corral', 'config.json'),
-      JSON.stringify({ schemaVersion: '0.1', hardCaps: { maxModelCalls: 500 } }),
+      JSON.stringify({ schemaVersion: '0.1', hardCaps: { maxSpawns: 500 } }),
     );
-    await expect(start({ workspace })).rejects.toThrow(/hardCaps\.maxModelCalls/);
+    await expect(start({ workspace })).rejects.toThrow(/hardCaps\.maxSpawns/);
   });
 
   it('matches the product contract §9 table: defaults and hard caps', () => {
@@ -1278,15 +1291,15 @@ describe('workspace configuration', () => {
     const number = (text: string) => Number((text.match(/[\d,]+/)?.[0] ?? '').replaceAll(',', ''));
     expect(number(row('실행당 동적 생성')[2] ?? '')).toBe(DEFAULT_LIMITS.maxSpawns);
     expect(number(row('실행당 동적 생성')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxSpawns);
-    expect(row('실행당 모델 요청')[2]).toBe('무제한');
-    expect(row('총 출력 토큰 예산')[2]).toBe('무제한');
+    expect(section).toContain('실행에 사용량 예산은 없다.');
+    expect(section).not.toMatch(/\| (실행당 모델 요청|총 출력 토큰 예산|전체 wall deadline)/);
     expect(row('요청별 출력 토큰 상한')[2]).toBe('모델 능력·남은 컨텍스트');
     expect(number(row('동시 모델 요청')[2] ?? '')).toBe(DEFAULT_LIMITS.maxModelConcurrency);
     expect(number(row('실행당 질문')[2] ?? '')).toBe(DEFAULT_LIMITS.maxQuestions);
     expect(number(row('질문 대기')[2] ?? '') * 1000).toBe(DEFAULT_LIMITS.questionTimeoutMs);
-    expect(row('모델/문서 도구 timeout')[2]).toBe('무제한 / 30초');
-    expect(row('전체 wall deadline')[2]).toBe('무제한');
-    expect(number(row('Loop 자동 회차')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxLoopIterations);
+    expect(row('모델/문서 도구 timeout')[2]).toBe('없음 / 30초');
+    expect(row('Loop 회차 상한')[3]).toContain('설치 상한 없음');
+    expect(SPEC_HARD_CAPS).not.toHaveProperty('maxLoopIterations');
     expect(number(row('동적 위임 깊이')[2] ?? '')).toBe(DEFAULT_LIMITS.maxDelegationDepth);
   });
 });
@@ -1303,7 +1316,6 @@ describe('REST: projects', () => {
     const projectId = created.project.projectId;
     const corral = await repo.save({
       definition: linearCorral(['writer']),
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
       projectId,
     });
@@ -1374,7 +1386,6 @@ describe('REST: work sessions', () => {
     const projectId = project.project.projectId;
     const corral = await repo.save({
       definition: linearCorral(['writer']),
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
       projectId,
     });
@@ -1544,7 +1555,6 @@ describe('work folders and file changes', () => {
     ];
     const corral = await rest.save({
       definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
       expectedDefinitionRevision: null,
     });
     if (!corral.ok) throw new Error(corral.message);
@@ -1720,4 +1730,81 @@ it('serves partial output only through the authenticated workspace snapshot, nev
     expect(response.status).toBe(200);
     expect(await response.text()).not.toContain('PRIVATE incomplete prefix');
   }
+});
+
+// docs/specs/features/fork-and-breakpoints.md over the local server.
+describe('fork and breakpoints', () => {
+  it('pauses at a breakpoint, then forks the finished run from a step', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+    const project = await repo.createProject({ name: 'Fork' });
+    if (!project.ok) throw new Error(project.message);
+    const corral = await repo.save({
+      definition: linearCorral(['a', 'b'], 'ab'),
+      expectedDefinitionRevision: null,
+      projectId: project.project.projectId,
+    });
+    if (!corral.ok) throw new Error(corral.message);
+    const session = await repo.createSession({
+      projectId: project.project.projectId,
+      title: '',
+      objective: 'Fork a run',
+      corralId: corral.record.corralId,
+    });
+    if (!session.ok) throw new Error(session.message);
+    const sessionId = session.session.sessionId;
+    const begin = (commandId: string, extra: object) =>
+      transport.startRun({
+        schemaVersion: '0.1',
+        commandId,
+        corralId: corral.record.corralId,
+        definitionRevision: corral.record.definitionRevision,
+        mode: 'mock',
+        sessionId,
+        ...extra,
+      });
+
+    const first = await begin('cmd_bp', { breakpoints: ['b'] });
+    expect(first.receipt.error ?? null).toBeNull();
+    const runId = first.runId ?? '';
+    const waiting = await waitForProjection(transport, runId, (p) =>
+      Object.values(p.approvals).some((a) => a.status === 'pending'),
+    );
+    const approval = Object.values(waiting.approvals).find((a) => a.status === 'pending');
+    expect(approval?.kind).toBe('breakpoint');
+    expect(approval?.nodeId).toBe('b');
+    const resolved = await transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cmd_bp_go',
+      runId,
+      type: 'resolve_approval',
+      expectedControlRevision: waiting.controlRevision,
+      payload: {
+        approvalId: approval?.approvalId ?? '',
+        decision: 'approve',
+        subjectVersionId: approval?.subjectVersionIds[0] ?? '',
+      },
+    });
+    expect(resolved.error ?? null).toBeNull();
+    const done = await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
+    const aVersion = approval?.subjectVersionIds[0] ?? '';
+    const aText = await transport.getArtifactText(runId, aVersion);
+    expect(aText).toBeTruthy();
+    expect(done.breakpoints).toEqual(['b']);
+
+    const fork = await begin('cmd_fork', { forkFrom: { runId, nodeId: 'b' } });
+    expect(fork.receipt.error ?? null).toBeNull();
+    const forked = await waitForProjection(transport, fork.runId ?? '', (p) =>
+      ['succeeded', 'failed', 'cancelled'].includes(p.status),
+    );
+    expect(forked.status).toBe('succeeded');
+    expect(forked.forkedFrom?.runId).toBe(runId);
+    expect(forked.nodeExecutions.a).toBeUndefined();
+    const copy = forked.forkedFrom?.carried[0]?.artifactVersionIds[0] ?? '';
+    expect(await transport.getArtifactText(fork.runId ?? '', copy)).toBe(aText);
+    // The source's step results ended with the fork's success.
+    expect(await transport.getArtifactText(runId, aVersion)).toBeNull();
+  });
 });

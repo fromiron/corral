@@ -7,7 +7,6 @@ import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
 import {
   type AgentAdapter,
   AutoModelChoice,
-  CanvasLayout,
   CaptureCheckpoint,
   type Clock,
   CommandError,
@@ -66,6 +65,7 @@ import {
 import {
   autoDefinition,
   Coordinator,
+  canReadArtifactBody,
   compileDefinition,
   createAutoStarter,
   explainDefinition,
@@ -81,11 +81,13 @@ import {
   type ProjectResult,
   parseWorkspaceConfig,
   planRun,
+  reasoningApplyPolicy,
   type SaveResult,
   SessionEntryAuto,
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
+import type { LocalIntelligence } from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
   openDatabase,
@@ -99,6 +101,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import packageJson from '../package.json' with { type: 'json' };
+import { DecisionApis, decisionApiList, decisionApiModel } from './decision-apis.ts';
 import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
@@ -166,6 +169,7 @@ import {
   configRevision,
   prepareWorkspace,
   readWorkspaceConfig,
+  writeExternalJudge,
   writeModelConfig,
   writeReasoningApply,
 } from './workspace.ts';
@@ -183,8 +187,12 @@ function defaultWorktreeRoot(env: NodeJS.ProcessEnv = process.env): string {
 }
 export interface ServerOptions {
   workspace: string;
-  /** Judgment providers beyond the built-in local-heuristic@1, e.g. the local model. */
+  /** Judgment providers beyond the built-in local-heuristic@1 and the local AI judge. */
   decisionProviders?: DecisionProvider[];
+  /** The local AI engine and its `local-model` effort judge; the server closes it on shutdown. */
+  localIntelligence?: LocalIntelligence;
+  /** Decision APIs and their keys; live servers otherwise open them on their credentials. */
+  decisionApis?: DecisionApis;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -288,13 +296,8 @@ const STATUS: Record<ErrorCode, number> = {
 
 const HEARTBEAT_MS = 15_000;
 
-const LayoutInput = z.strictObject({
-  nodes: CanvasLayout.shape.nodes,
-  viewport: CanvasLayout.shape.viewport,
-});
 const CreateCorral = z.strictObject({
   definition: CorralDefinitionDraft,
-  layout: LayoutInput,
   projectId: Identifier.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
@@ -378,7 +381,7 @@ const UpdateProject = z.strictObject({
   archived: z.boolean().optional(),
   expectedRevision: z.int().min(1),
 });
-const UpdateCorral = z.strictObject({ definition: CorralDefinitionDraft, layout: LayoutInput });
+const UpdateCorral = z.strictObject({ definition: CorralDefinitionDraft });
 
 /** `If-Match: 3` or `If-Match: "3"`: the definition revision the edit started from. */
 function ifMatchRevision(header: string | undefined): number | null {
@@ -422,6 +425,8 @@ async function createCorralServer(
   resources: AsyncDisposableStack,
   closeResources: () => Promise<void>,
 ): Promise<CorralServer> {
+  const local = options.localIntelligence;
+  if (local) resources.defer(() => local.close());
   const host = options.host ?? '127.0.0.1';
   assertLoopback(host);
   const workspace = prepareWorkspace(options.workspace);
@@ -439,7 +444,6 @@ async function createCorralServer(
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
-  await corrals.migrateExecutionPolicies();
   let registry: ModelRegistry | null = null;
   if (options.live) {
     assertOutsideWorkspace(options.live.configDir, workspace.root);
@@ -458,17 +462,24 @@ async function createCorralServer(
           : {}),
         endpoints,
         configRevision: workspace.configRevision,
-        maxOutputTokensPerCall: workspace.policy.maxOutputTokensPerCall,
       },
     );
     await registry.refreshStatus();
   }
-  const decisionProviders = [new LocalHeuristicProvider(), ...(options.decisionProviders ?? [])];
+  const decisionProviders = [
+    new LocalHeuristicProvider(),
+    ...(local ? [local.effort] : []),
+    ...(options.decisionProviders ?? []),
+  ];
   // A configured, installed provider loads ahead of the first judgment (the local model takes
   // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
+  const observed = judgmentSettings(workspace.config).reasoning_effort;
   for (const id of new Set([
-    ...judgmentSettings(workspace.config).reasoning_effort.providers,
-    ...(workspace.config.decisions?.reasoning_effort.apply ? ['local-model'] : []),
+    ...(observed.mode === 'observe' ? observed.providers : []),
+    ...(workspace.config.decisions?.reasoning_effort.apply &&
+    reasoningApplyPolicy(workspace.config) === 'judged'
+      ? ['local-model']
+      : []),
   ])) {
     const provider = decisionProviders.find((p) => p.id === id) as
       | (DecisionProvider & { warmUp?: () => Promise<unknown> })
@@ -577,6 +588,15 @@ async function createCorralServer(
   };
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
+  const decisionApis =
+    options.decisionApis ??
+    (options.live
+      ? await DecisionApis.open({
+          credentials: options.live.credentials,
+          attempts: modelAttempts,
+          now: () => clock.nowIso(),
+        })
+      : undefined);
   const imageProfiles = new ImageProfileStore(db, () => registry);
   const imageGeneration = new ImageGenerationService(
     db,
@@ -606,15 +626,8 @@ async function createCorralServer(
         return image.success ? image.data : null;
       },
       resolve: (id) => imageProfiles.resolve(id)?.profile ?? null,
-      generate: (owner, args, profile, cancellation, reservedCostUsd, referenceImages) =>
-        imageGeneration.generate(
-          owner,
-          args,
-          cancellation,
-          reservedCostUsd,
-          profile,
-          referenceImages,
-        ),
+      generate: (owner, args, profile, cancellation, referenceImages) =>
+        imageGeneration.generate(owner, args, cancellation, profile, referenceImages),
     },
     runtimeRecovery: {
       confirm: async () => {
@@ -642,16 +655,23 @@ async function createCorralServer(
     policy: workspace.policy,
     sessionId: backendSessionId,
     judgments: judgmentConfig,
+    ...(decisionApis ? { externalJudges: decisionApis.judges() } : {}),
   });
   registry?.configureRequests({
     store: modelAttempts,
-    onUsage: (intent) => coordinator.settleAutoRouteUsage(intent),
+    onUsage: (intent) => coordinator.recordAutoRouteUsage(intent),
     acquire: (signal) => coordinator.acquireAuxiliaryModelSlot(signal),
     adopt: (intent) => coordinator.adoptModelSlot(intent),
     now: () => new Date(clock.nowIso()),
   });
   // meeting rounds start each answer as its own Run through the same Coordinator.
   const meetings = new MeetingService({
+    ...(local
+      ? {
+          selectParticipants: (input: import('@corral/contracts').MeetingSelectionInput) =>
+            local.meeting.select(input),
+        }
+      : {}),
     continuation: (runId, sessionId, participantId, definition, mode) =>
       coordinator.meetingContinuation(runId, sessionId, participantId, definition.roles[0]!, mode),
     random: Math.random,
@@ -878,6 +898,27 @@ async function createCorralServer(
     const record = await corrals.get(request.params.corralId);
     return record ?? fail(reply, 'TARGET_NOT_FOUND', 'no such Corral');
   });
+  app.get<{ Params: { corralId: string; revision: string } }>(
+    '/api/v1/corrals/:corralId/revisions/:revision',
+    async (request, reply) => {
+      const revision = Number(request.params.revision);
+      const definition = Number.isSafeInteger(revision)
+        ? await corrals.getRevision(request.params.corralId, revision)
+        : null;
+      return definition ?? fail(reply, 'TARGET_NOT_FOUND', 'no such Corral revision');
+    },
+  );
+  app.get<{ Params: { corralId: string; revision: string } }>(
+    '/api/v1/corrals/:corralId/revisions/:revision/stats',
+    async (request, reply) => {
+      const revision = Number(request.params.revision);
+      const definition = Number.isSafeInteger(revision)
+        ? await corrals.getRevision(request.params.corralId, revision)
+        : null;
+      if (!definition) return fail(reply, 'TARGET_NOT_FOUND', 'no such Corral revision');
+      return coordinator.runStats(request.params.corralId, revision);
+    },
+  );
   app.put<{ Params: { corralId: string } }>('/api/v1/corrals/:corralId', async (request, reply) => {
     const expectedDefinitionRevision = ifMatchRevision(request.headers['if-match']);
     if (expectedDefinitionRevision === null) {
@@ -953,8 +994,10 @@ async function createCorralServer(
   app.post('/api/v1/corrals/validate', async (request, reply) => {
     const body = parse(z.strictObject({ definition: z.unknown() }), request, reply);
     if (!body) return reply;
-    const compiled = compileDefinition(body.definition, {});
-    const runnable = compiled.ok ? planRun(compiled.definition) : null;
+    const resolveTeam = (corralId: string, revision: number) =>
+      corrals.getDefinition(corralId, revision) ?? undefined;
+    const compiled = compileDefinition(body.definition, { resolveTeam });
+    const runnable = compiled.ok ? planRun(compiled.definition, { resolveTeam }) : null;
     return {
       diagnostics: compiled.diagnostics,
       runnable: runnable?.ok ?? false,
@@ -1089,14 +1132,16 @@ async function createCorralServer(
   });
 
   const reasoningSettings = () => {
+    // A bundle installed while the server runs counts from the next settings read.
+    local?.engine.refreshInstall();
     const provider = decisionProviders.find((p) => p.id === 'local-model' && p.privacy === 'local');
-    const availability = provider?.available();
+    const availability = provider?.available() ?? 'this server has no local AI';
     return {
       apply: workspace.config.decisions?.reasoning_effort.apply === true,
+      policy: reasoningApplyPolicy(workspace.config),
       available: availability === true,
       version: provider?.version ?? null,
-      reason:
-        availability === true ? null : 'Local judge is unavailable. Run corral judge install.',
+      reason: availability === true ? null : `Local AI is unavailable: ${availability}`,
       revision: configRevision(workspace.root),
     };
   };
@@ -1115,7 +1160,7 @@ async function createCorralServer(
     workspace.configRevision = changed.revision;
     registry?.setConfigRevision(changed.revision);
     judgmentConfig.settings = judgmentSettings(changed.config);
-    if (parsed.data.apply) {
+    if (parsed.data.apply && reasoningApplyPolicy(changed.config) === 'judged') {
       const provider = decisionProviders.find((p) => p.id === 'local-model');
       if (
         provider?.available() === true &&
@@ -1125,6 +1170,84 @@ async function createCorralServer(
         void provider.warmUp().catch(() => {});
     }
     return reasoningSettings();
+  });
+
+  // ── local AI (settings panel) ─────────────────────────────────────
+  const noLocalAi = (reply: FastifyReply) =>
+    fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
+  const localAiView = (local: LocalIntelligence, status = local.status()) => {
+    const wanted = workspace.config.decisions?.reasoning_effort;
+    const chosen = wanted?.allowExternal ? wanted.external : undefined;
+    return {
+      ...status,
+      external: {
+        provider: chosen?.provider ?? null,
+        model: chosen?.model ?? null,
+        policy: reasoningApplyPolicy(workspace.config),
+        judgeAbstains: local.effort.abstains,
+        revision: configRevision(workspace.root),
+      },
+    };
+  };
+  app.get('/api/v1/local-ai', async (_request, reply) =>
+    local ? localAiView(local) : noLocalAi(reply),
+  );
+  app.post('/api/v1/local-ai/install', async (_request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (local.status().state === 'unsupported')
+      return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
+    return reply.code(202).send(localAiView(local, local.install()));
+  });
+  app.delete('/api/v1/local-ai/install', async (_request, reply) =>
+    local ? localAiView(local, await local.cancelInstall()) : noLocalAi(reply),
+  );
+  app.put('/api/v1/local-ai/external-judge', async (request, reply) => {
+    if (!local) return noLocalAi(reply);
+    const parsed = z
+      .strictObject({ provider: z.string().min(1).max(64).nullable(), revision: z.string().min(1) })
+      .safeParse(request.body);
+    const chosen =
+      parsed.success && parsed.data.provider ? decisionApiModel(parsed.data.provider) : null;
+    if (!parsed.success || (parsed.data.provider && !chosen))
+      return fail(reply, 'SCHEMA_INVALID', 'invalid external judge setting');
+    const changed = writeExternalJudge(
+      workspace.root,
+      chosen ? { provider: chosen.id, model: chosen.model } : null,
+      parsed.data.revision,
+    );
+    if (!changed.ok)
+      return reply
+        .code(409)
+        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
+    workspace.config = changed.config;
+    workspace.configRevision = changed.revision;
+    registry?.setConfigRevision(changed.revision);
+    judgmentConfig.settings = judgmentSettings(changed.config);
+    return localAiView(local);
+  });
+
+  // ── decision APIs (features/decision-apis.md) ─────────────────────
+  type DecisionApiParams = { Params: { id: string } };
+  const listDecisionApis = () => decisionApis?.list() ?? decisionApiList();
+  app.get('/api/v1/decision-apis', async () => listDecisionApis());
+  const knownApi = (id: string) => decisionApiModel(id)?.id ?? null;
+  app.put<DecisionApiParams>('/api/v1/decision-apis/:id/api-key', async (request, reply) => {
+    const id = knownApi(request.params.id);
+    if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
+    if (!decisionApis)
+      return fail(reply, 'CAPABILITY_DENIED', 'decision API keys need a server with real models');
+    const parsed = z
+      .strictObject({ key: z.string().trim().min(1).max(4096) })
+      .safeParse(request.body);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'enter an API key');
+    await decisionApis.setKey(id, parsed.data.key);
+    return decisionApis.list();
+  });
+  app.delete<DecisionApiParams>('/api/v1/decision-apis/:id/api-key', async (request, reply) => {
+    const id = knownApi(request.params.id);
+    if (!id) return fail(reply, 'TARGET_NOT_FOUND', 'unknown decision API');
+    await decisionApis?.deleteKey(id);
+    return listDecisionApis();
   });
 
   // ── model settings ────────────────────────────────────────────────
@@ -3127,8 +3250,10 @@ async function createCorralServer(
     '/api/v1/runs/:runId/artifact-versions/:versionId/media',
     async (request, reply) => {
       const { runId, versionId } = request.params;
-      const artifact = coordinator.findSnapshot(runId)?.projection.artifacts[versionId];
-      if (!artifact?.media) return fail(reply, 'TARGET_NOT_FOUND', 'no generated image version');
+      const projection = coordinator.findSnapshot(runId)?.projection;
+      const artifact = projection?.artifacts[versionId];
+      if (!artifact?.media || !canReadArtifactBody(projection ?? null, versionId))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no generated image version');
       const stored = imageGeneration.read(runId, versionId);
       if (!stored || canonicalJson(stored.media) !== canonicalJson(artifact.media))
         return fail(
@@ -3169,6 +3294,11 @@ async function createCorralServer(
       fail(reply, 'TARGET_NOT_FOUND', 'no such run')
     );
   });
+  app.get<RunParams>('/api/v1/runs/:runId/conversation-turn', async (request, reply) => {
+    const turn = coordinator.getConversationTurn(request.params.runId);
+    if (!turn) return fail(reply, 'TARGET_NOT_FOUND', 'no conversation turn');
+    return reply.header('Cache-Control', 'private, no-store').send(turn);
+  });
   app.post<RunParams>('/api/v1/runs/:runId/commands', async (request, reply) => {
     const body = request.body as { runId?: unknown; commandId?: unknown } | null;
     if (body?.runId !== request.params.runId) {
@@ -3191,6 +3321,9 @@ async function createCorralServer(
       const known =
         projection &&
         (projection.artifacts[versionId] ||
+          projection.forkedFrom?.carried.some((copy) =>
+            copy.artifactVersionIds.includes(versionId),
+          ) ||
           coordinator
             .getRunSnapshot(runId)
             ?.definition.input.images?.some((image) => image.imageId === versionId) ||
@@ -3217,6 +3350,10 @@ async function createCorralServer(
                   event.payload.answerRef === versionId) ||
                 (event.type === 'approval.requested' && event.payload.tool?.bodyRef === versionId),
             ));
+      if (known && !canReadArtifactBody(projection ?? null, versionId))
+        return reply
+          .header('Cache-Control', 'private, no-store')
+          .send({ text: null, bodyAvailable: false });
       const text = known ? coordinator.getArtifactText(runId, versionId) : null;
       return text === null ? fail(reply, 'TARGET_NOT_FOUND', 'no such version') : { text };
     },

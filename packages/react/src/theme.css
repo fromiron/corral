@@ -2,8 +2,8 @@
 @import "./design-kit/tokens.css";
 
 :root,
-.light:not(.react-flow),
-.dark:not(.react-flow) {
+.light,
+.dark {
   /* Small secondary/status text and focus need stronger contrast on light surfaces. */
   --destructive: light-dark(#b91c1c, #fca5a5);
   --destructive-contrast: light-dark(#ffffff, #171717);
@@ -11,6 +11,7 @@
   --warning: light-dark(#92400e, #fcd34d);
   --info: light-dark(#1d4ed8, #93c5fd);
   --focus-ring: light-dark(#2563eb, #6b97ff);
+  --emphasis: light-dark(#3568d4, #6b97ff);
   --muted-foreground: light-dark(#666666, #b8b8b8);
 
   --primary: var(--foreground);
@@ -266,4 +267,27 @@
   --xy-controls-button-color: var(--foreground);
   --xy-controls-button-color-hover: var(--foreground);
   --xy-controls-button-border-color: var(--border);
+}
+
+/* Run graph: a finished relation keeps its direction with a slow, sparse grey flow. */
+@keyframes flow-dash-slow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+.flow-dash.flow-dash-slow {
+  stroke-dasharray: 2 8;
+  animation: flow-dash-slow 4.5s linear infinite;
+}
+/* Without motion the dashes stop, so a mark at each midpoint carries the direction. */
+.run-graph-direction {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-dash.flow-dash-slow {
+    animation: none;
+  }
+  .run-graph-direction {
+    display: inline;
+  }
 }

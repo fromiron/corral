@@ -27,19 +27,17 @@ import { fontWeights } from '../../lib/font-weight';
 import { omit } from '../../lib/omit';
 import { useShape } from '../../lib/shape-context';
 import { fieldTouchClass, type SizeVariant, useSizeVariant } from '../../lib/size-context';
-import { spring } from '../../lib/springs';
+import { spring, tween } from '../../lib/springs';
 import { cn } from '../../lib/utils';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Two engines picked by size: ComfortableSlider (default step) and
 // CompactSlider (compact step). Both draw motion values over an invisible
 // primitive that supplies ARIA and arrow keys; pointer input never reaches it,
 // so presses can spring instead of jump.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type SliderValue = number | [number, number];
 type SliderValues = [number] | [number, number];
@@ -87,9 +85,7 @@ interface SliderEngineProps
   thumbBorderColor?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 // The thumb's layout box. Travel is the track width minus this, so the thumb
 // never overhangs either end; the visible knob is THUMB_SIZE_REST inside it.
@@ -102,9 +98,7 @@ const PIP_SIZE = 5;
 // Inset track BG so its rounded-end centers align with thumb centers at min/max
 const TRACK_INSET = (THUMB_SIZE - TRACK_BG_HEIGHT) / 2;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // Value → the thumb's left offset in layout px.
 function valueToPixel(v: number, min: number, max: number, trackWidth: number): number {
@@ -140,13 +134,11 @@ function pixelToValue(
   return Math.max(min, Math.min(max, snapped));
 }
 
-function toRadixValue(value: SliderValue): SliderValues {
+function toPrimitiveValues(value: SliderValue): SliderValues {
   return Array.isArray(value) ? value : [value];
 }
 
-// ---------------------------------------------------------------------------
-// ValueDisplay (internal)
-// ---------------------------------------------------------------------------
+// ─── ValueDisplay (internal) ─────────────────────────────────────────────────
 
 interface ValueDisplayProps {
   values: SliderValues;
@@ -277,7 +269,7 @@ function ValueDisplay({
   return (
     <span
       className={cn(
-        'inline-grid shrink-0 text-[length:var(--fs-body,13px)] leading-none text-muted-foreground transition-[font-variation-settings] duration-100',
+        'inline-grid shrink-0 text-[length:var(--fs-body,13px)] leading-none text-muted-foreground transition-[font-variation-settings] duration-80',
         'tabular-nums',
       )}
       style={{
@@ -309,9 +301,7 @@ function ValueDisplay({
   );
 }
 
-// ---------------------------------------------------------------------------
-// TooltipValue (internal)
-// ---------------------------------------------------------------------------
+// ─── TooltipValue (internal) ─────────────────────────────────────────────────
 
 interface TooltipValueProps {
   value: number;
@@ -348,9 +338,9 @@ function TooltipValue({ value, formatValue, motionX }: TooltipValueProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // CompactSlider — the compact-step design.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
   (
@@ -380,7 +370,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
     ref,
   ) => {
     const isRange = Array.isArray(value);
-    const values = toRadixValue(value);
+    const values = toPrimitiveValues(value);
     const shape = useShape();
 
     // Keyed on the joined string so inline array literals don't recompute.
@@ -394,7 +384,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
     const min = stepValues ? stepValues[0] : minProp;
     const max = stepValues ? (stepValues[stepValues.length - 1] as number) : maxProp;
 
-    // --- Refs ---
+    // ─── Refs ────────────────────────────────────────────────────────────────
     const trackRef = useRef<HTMLDivElement>(null);
     // Layout width, unaffected by ancestor CSS transforms.
     const trackWidthRef = useRef(0);
@@ -412,7 +402,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       maxRef.current = max;
     });
 
-    // --- State ---
+    // ─── State ───────────────────────────────────────────────────────────────
     const [isHovered, setIsHovered] = useState(false);
     const [isPressed, setIsPressed] = useState(false);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -435,12 +425,12 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
     }, [isHovered]);
     const showHoverTooltip = isHovered && hoverDelayDone;
 
-    // --- Motion values ---
+    // ─── Motion values ───────────────────────────────────────────────────────
     // Each thumb's left offset in layout px; every layer derives from these.
     const motionX0 = useMotionValue(0);
     const motionX1 = useMotionValue(0);
 
-    // --- Derived motion values for fill ---
+    // ─── Derived motion values for fill ──────────────────────────────────────
     // Single: pill start → thumb center. Range: center → center.
     // `- TRACK_INSET` converts to the inset pill's own px.
     const fillLeft = useTransform(motionX0, (x) =>
@@ -453,7 +443,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
     );
     const fillWidth = isRange ? fillWidthRange : fillWidthSingle;
 
-    // --- Step dots mask (hides dots on the filled side) ---
+    // ─── Step dots mask (hides dots on the filled side) ──────────────────────
     // A 2px feather at each thumb center instead of a hard clip.
     const stepDotsMaskSingle = useTransform(motionX0, (x) => {
       const edge = x + THUMB_SIZE / 2;
@@ -469,7 +459,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
     );
     const stepDotsMask = isRange ? stepDotsMaskRange : stepDotsMaskSingle;
 
-    // --- Hover preview computation ---
+    // ─── Hover preview computation ───────────────────────────────────────────
     // The bar runs from the nearer thumb's center to the snapped hover value.
     const computeHoverPreview = useCallback(
       (cursorX: number, trackWidth: number) => {
@@ -503,7 +493,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       [min, max, step, stepValues, isRange, motionX0, motionX1],
     );
 
-    // --- Initial sync (before paint) ---
+    // ─── Initial sync (before paint) ─────────────────────────────────────────
     // Runs once, unanimated; the track stays hidden until `ready` so thumbs
     // never visibly slide in from 0.
     const initialSyncDone = useRef(false);
@@ -523,7 +513,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       setReady(true);
     }, [values, min, max, isRange, motionX0, motionX1]);
 
-    // --- Track width measurement (resize only) ---
+    // ─── Track width measurement (resize only) ───────────────────────────────
     // Thumbs spring to their new spots; skipped mid-drag.
     useEffect(() => {
       const el = trackRef.current;
@@ -547,7 +537,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       return () => ro.disconnect();
     }, [isRange, motionX0, motionX1]);
 
-    // --- Sync motion values on value change (keyboard, programmatic) ---
+    // ─── Sync motion values on value change (keyboard, programmatic) ─────────
     // Keyed on a string: `values` is a new array every render, which would
     // restart the spring on unrelated re-renders. Skipped mid-drag.
     const valuesKey = values.join(',');
@@ -565,7 +555,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       }
     }, [valuesKey, min, max, isRange, motionX0, motionX1]);
 
-    // --- Range crossing prevention ---
+    // ─── Range crossing prevention ───────────────────────────────────────────
     // Each thumb stops half a thumb short of the other, so they never swap.
     const clampForRange = useCallback(
       (px: number, thumbIndex: number): number => {
@@ -579,7 +569,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       [isRange, motionX0, motionX1],
     );
 
-    // --- Emit value change ---
+    // ─── Emit value change ───────────────────────────────────────────────────
     // Range mode replaces only the moving thumb's entry.
     const emitChange = useCallback(
       (thumbIndex: number, newValue: number) => {
@@ -594,7 +584,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       [isRange, values, onChange],
     );
 
-    // --- Pointer handlers on track ---
+    // ─── Pointer handlers on track ───────────────────────────────────────────
     const handlePointerDown = useCallback(
       (e: React.PointerEvent<HTMLDivElement>) => {
         if (disabled) return;
@@ -697,9 +687,11 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       animate(motionX, snappedPx, spring.moderate);
     }, [min, max, step, stepValues, motionX0, motionX1]);
 
-    // --- Base UI keyboard handler ---
-    // In steps mode the primitive runs on indices; map them back to values.
-    const handleRadixChange = useCallback(
+    // ─── Keyboard changes from the slider primitive ──────────────────────────
+    // Arrow keys are handled by the Base UI slider underneath. In steps mode
+    // it reports step indices; map those back to values. Pointer drags update
+    // the thumb through the track handlers above.
+    const handlePrimitiveChange = useCallback(
       (newValues: number[]) => {
         if (dragging.current) return;
         const mapped = stepValues
@@ -714,7 +706,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       [isRange, onChange, stepValues],
     );
 
-    // --- Click-to-edit handlers ---
+    // ─── Click-to-edit handlers ──────────────────────────────────────────────
     const handleStartEdit = useCallback((index: number) => {
       setEditingIndex(index);
     }, []);
@@ -731,7 +723,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       setEditingIndex(null);
     }, []);
 
-    // --- Step dots ---
+    // ─── Step dots ───────────────────────────────────────────────────────────
     const stepDots = useMemo(
       () =>
         showSteps
@@ -749,10 +741,10 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       [showSteps, min, max, step, stepValues],
     );
 
-    // --- Interaction state for tooltip ---
+    // ─── Interaction state for tooltip ───────────────────────────────────────
     const isInteracting = isHovered || isPressed;
 
-    // --- Per-thumb accessible names ---
+    // ─── Per-thumb accessible names ──────────────────────────────────────────
     // aria-label on Root lands on a role-less div and never reaches the
     // thumb's input, so each Thumb gets its own label.
     const thumbAriaLabel = (index: number): string | undefined => {
@@ -761,7 +753,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       return index === 0 ? `${label} minimum` : `${label} maximum`;
     };
 
-    // --- Value display component ---
+    // ─── Value display component ─────────────────────────────────────────────
     const valueDisplay = showValue && valuePosition !== 'tooltip' && (
       <ValueDisplay
         values={values}
@@ -780,8 +772,10 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       />
     );
 
-    // --- Render visual thumb (not the Base UI thumb, purely visual) ---
-    // pointer-events-none lets presses fall through to the track handlers.
+    // ─── Visual thumb ────────────────────────────────────────────────────────
+    // Painted above the track. It ignores the pointer, so presses reach the
+    // track handlers. Arrow keys still go to the Base UI thumb, which stays
+    // invisible.
     const renderVisualThumb = (index: number) => {
       const motionX = index === 0 ? motionX0 : motionX1;
       return (
@@ -816,7 +810,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
           />
           {/* Focus ring, only on :focus-visible so a pointer press never shows it. */}
           <motion.span
-            className="absolute rounded-full border border-[color:var(--focus-ring,#6B97FF)] pointer-events-none"
+            className="absolute rounded-full border-2 border-[color:var(--focus-ring)] pointer-events-none"
             initial={false}
             animate={{
               opacity: focusedThumb === index ? 1 : 0,
@@ -901,7 +895,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
               on indices, so thumbs announce the real value via aria-valuetext. */}
           <SliderPrimitive.Root
             value={stepValues ? values.map((v) => nearestStepIndex(v, stepValues)) : values}
-            onValueChange={(v) => handleRadixChange(v as number[])}
+            onValueChange={(v) => handlePrimitiveChange(v as number[])}
             min={stepValues ? 0 : min}
             max={stepValues ? stepValues.length - 1 : max}
             step={stepValues ? 1 : step}
@@ -1029,7 +1023,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
                   opacity: hoverPreview && !isPressed ? 1 : 0,
                 }}
                 transition={{
-                  opacity: { duration: 0.15 },
+                  opacity: tween.moderate,
                 }}
                 style={{
                   left: hoverPreview ? hoverPreview.left - TRACK_INSET : 0,
@@ -1098,9 +1092,9 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
 
 CompactSlider.displayName = 'SliderCompact';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ComfortableSlider — the default-step design (pips / scrubber layouts).
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // The drag and animation handlers are omitted because rest props spread onto
 // a motion.div, whose own types for those names clash with the DOM ones.
@@ -1228,7 +1222,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
       },
     );
 
-    // --- Hover preview computation ---
+    // ─── Hover preview computation ───────────────────────────────────────────
     const computeHoverPreview = useCallback(
       (clientX: number) => {
         const el = containerRef.current;
@@ -1389,7 +1383,8 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
       setHoverPreview(null);
     }, []);
 
-    const handleRadixChange = useCallback(
+    // Arrow keys are handled by the Base UI slider underneath.
+    const handlePrimitiveChange = useCallback(
       (newValues: number[]) => {
         onChange(newValues[0] as number);
       },
@@ -1467,7 +1462,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           )}
           initial={false}
           animate={{
-            outline: isFocused ? '1px solid var(--focus-ring, #6B97FF)' : '1px solid transparent',
+            outline: isFocused ? '2px solid var(--focus-ring)' : '2px solid transparent',
           }}
           transition={spring.fast}
           onPointerDown={handlePointerDown}
@@ -1480,7 +1475,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
             keeps its thumb off the hit path. */}
           <SliderPrimitive.Root
             value={[value]}
-            onValueChange={(v) => handleRadixChange(v as number[])}
+            onValueChange={(v) => handlePrimitiveChange(v as number[])}
             min={min}
             max={max}
             step={step}
@@ -1511,7 +1506,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
             animate={{
               opacity: hoverPreview && !isPressed ? 1 : 0,
             }}
-            transition={{ opacity: { duration: 0.15 } }}
+            transition={{ opacity: tween.moderate }}
             style={{
               left: hoverPreview ? hoverPreview.left : 0,
               width: hoverPreview ? hoverPreview.width : 0,
@@ -1713,10 +1708,10 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
 
 ComfortableSlider.displayName = 'SliderComfortable';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Slider — the public component. Features only the compact engine implements
 // (ranges, step lists, value display, track styling) force it at any size.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /** Props only the compact engine implements; setting any one routes the
  *  slider to it (see needsCompactEngine below). */

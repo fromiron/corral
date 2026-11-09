@@ -8,12 +8,11 @@ ignoredBuiltDependencies:
   - '@google/genai'
   - better-sqlite3
   - esbuild
-  - onnxruntime-node
   - protobufjs
 
 onlyBuiltDependencies:
   - node-pty@1.1.0
 
 patchedDependencies:
-  '@earendil-works/pi-coding-agent@1.3.0': patches/@earendil-works__pi-coding-agent@1.3.0.patch
-  '@earendil-works/pi-ai@1.3.0': patches/@earendil-works__pi-ai@1.3.0.patch
+  '@earendil-works/pi-coding-agent@1.5.0': patches/@earendil-works__pi-coding-agent@1.5.0.patch
+  '@earendil-works/pi-ai@1.5.0': patches/@earendil-works__pi-ai@1.5.0.patch

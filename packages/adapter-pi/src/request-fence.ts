@@ -1,3 +1,4 @@
+import { zstdDecompressSync } from 'node:zlib';
 import { canonicalJson } from '@corral/contracts';
 import type { Model } from '@earendil-works/pi-ai';
 
@@ -72,20 +73,34 @@ export function providerRequestFence(
         (init?.method ?? request?.method ?? 'GET').toUpperCase() !== 'POST'
       )
         throw new Error('provider destination differs from the permit');
-      const body =
-        typeof init?.body === 'string'
-          ? init.body
-          : init?.body == null && request
-            ? await request.clone().text()
-            : null;
+      const headers = new Headers(init?.headers ?? request?.headers);
+      const encoding = (headers.get('content-encoding') ?? 'identity').trim().toLowerCase();
       let serialized: string | undefined;
       try {
+        let body: string | null = null;
+        if (encoding === 'identity') {
+          body =
+            typeof init?.body === 'string'
+              ? init.body
+              : init?.body == null && request
+                ? await request.clone().text()
+                : null;
+        } else if (encoding === 'zstd') {
+          // Pi's subscription SSE transport compresses after its payload hook.
+          // Compare decoded JSON while forwarding the original wire bytes.
+          const bytes =
+            init?.body instanceof Uint8Array
+              ? init.body
+              : init?.body == null && request
+                ? new Uint8Array(await request.clone().arrayBuffer())
+                : null;
+          if (bytes !== null) body = zstdDecompressSync(bytes).toString('utf8');
+        }
         if (body !== null) serialized = canonicalJson(JSON.parse(body));
       } catch {
         /* Refuse without including request data in the error. */
       }
       if (serialized !== approved) throw new Error('provider payload differs from the permit');
-      const headers = new Headers(init?.headers ?? request?.headers);
       if (
         transportHeaders &&
         Object.entries(transportHeaders).some(([name, value]) => headers.get(name) !== value)

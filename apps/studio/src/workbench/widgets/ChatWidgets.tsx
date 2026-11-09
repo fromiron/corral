@@ -1,4 +1,5 @@
 import {
+  AgentSteeringPlan,
   Banner,
   BannerActions,
   BannerTitle,
@@ -31,8 +32,9 @@ import {
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { SessionSearch } from '../panels/routes.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
-import { actionCopy, type WidgetChip } from './selectors.ts';
+import { actionCopy, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -455,7 +457,7 @@ export function RunLink({
     <Link
       to="/sessions/$sessionId"
       params={{ sessionId: model.sessionId }}
-      search={(previous) => ({
+      search={(previous: SessionSearch): SessionSearch => ({
         ...previous,
         ...(previous.run !== model.runId
           ? { execution: undefined, artifact: undefined, result: undefined, message: undefined }
@@ -494,23 +496,29 @@ export function ComposerDock({ summary }: { summary?: ReactNode }) {
         data-testid="composer-status-pills"
         className="mb-2 flex min-w-0 flex-wrap items-center gap-1"
       >
-        <RunLink model={model} className={`${chipClass} bg-raised`}>
-          <Circle
-            size={12}
-            aria-hidden="true"
-            className={model.action.visible ? 'text-warning' : 'text-muted-foreground'}
-          />
-          <span>
-            {model.readState === 'error'
-              ? t('runUnavailable')
-              : model.readState === 'loading'
-                ? t('runLoading')
-                : model.plan.runStatus
-                  ? ts(model.plan.runStatus)
-                  : t('runUnavailable')}
-          </span>
-          {model.viewed ? <span className="text-2xs">{viewedLabel(model.viewed, t)}</span> : null}
-        </RunLink>
+        {composerShowsRunStatus({
+          runStatus: model.plan.runStatus,
+          readState: model.readState,
+          needsAction: model.action.visible,
+        }) ? (
+          <RunLink model={model} className={`${chipClass} bg-raised`}>
+            <Circle
+              size={12}
+              aria-hidden="true"
+              className={model.action.visible ? 'text-warning' : 'text-muted-foreground'}
+            />
+            <span>
+              {model.readState === 'error'
+                ? t('runUnavailable')
+                : model.readState === 'loading'
+                  ? t('runLoading')
+                  : model.plan.runStatus
+                    ? ts(model.plan.runStatus)
+                    : t('runUnavailable')}
+            </span>
+            {model.viewed ? <span className="text-2xs">{viewedLabel(model.viewed, t)}</span> : null}
+          </RunLink>
+        ) : null}
         {!model.plan.open && 'completed' in status ? (
           <Button
             variant="ghost"
@@ -569,12 +577,25 @@ export function ComposerDock({ summary }: { summary?: ReactNode }) {
     </div>
   );
 }
-export function ComposerPlan() {
+export function ComposerPlan({
+  variant = 'composer',
+  showAllKey,
+  onShowAllKeyChange,
+}: {
+  variant?: 'composer' | 'steering';
+  showAllKey?: string | null;
+  onShowAllKeyChange?: (key: string | null) => void;
+} = {}) {
   const model = useChatWidget();
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
   const panelId = useId();
-  const [allKey, setAllKey] = useState<string | null>(null);
+  const [internalAllKey, setInternalAllKey] = useState<string | null>(null);
+  const allKey = showAllKey !== undefined ? showAllKey : internalAllKey;
+  const setAllKey = (key: string | null) => {
+    if (showAllKey === undefined) setInternalAllKey(key);
+    onShowAllKeyChange?.(key);
+  };
   if (!model?.runId) return null;
   const status = model.plan.status;
   const plan = 'plan' in status ? status.plan : null;
@@ -622,7 +643,7 @@ export function ComposerPlan() {
         </div>
       ) : null}
       {status.state !== 'hidden' ? (
-        <div className="border-b border-line/50">
+        <div className={variant === 'steering' ? undefined : 'border-b border-line/50'}>
           <Button
             type="button"
             variant="ghost"
@@ -648,7 +669,7 @@ export function ComposerPlan() {
             {model.plan.open ? (
               <div
                 data-testid="work-plan-items"
-                className="work-plan-items max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain px-4 pb-2"
+                className={`work-plan-items max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain ${variant === 'steering' ? 'pb-2' : 'px-4 pb-2'}`}
               >
                 {status.state === 'stale-criteria' || status.state === 'stale-attempt' ? (
                   <p className="mb-2 text-xs text-warning">
@@ -677,7 +698,36 @@ export function ComposerPlan() {
                     </Button>
                   </div>
                 ) : null}
-                {plan ? (
+                {plan && variant === 'steering' ? (
+                  <AgentSteeringPlan
+                    steps={(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => ({
+                      id: item.id,
+                      title: item.title,
+                      status:
+                        item.status === 'completed'
+                          ? 'done'
+                          : item.status === 'in_progress'
+                            ? 'active'
+                            : 'pending',
+                    }))}
+                    status={
+                      model.plan.runStatus === 'running' && selection?.status === 'active'
+                        ? 'running'
+                        : 'waiting'
+                    }
+                    labels={{ plan: t('planHeading') }}
+                    statusLabel={(state) =>
+                      t(
+                        state === 'done'
+                          ? 'completed'
+                          : state === 'active'
+                            ? 'in_progress'
+                            : 'pending',
+                      )
+                    }
+                    wrapTitles
+                  />
+                ) : plan ? (
                   <ol className="flex flex-col">
                     {(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => (
                       <li
@@ -711,7 +761,7 @@ export function ComposerPlan() {
           </div>
         </div>
       ) : null}
-      <RunActivity model={model} />
+      {variant === 'steering' ? null : <RunActivity model={model} />}
     </div>
   );
 }

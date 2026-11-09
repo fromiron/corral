@@ -1,14 +1,8 @@
-import type { Page } from '@playwright/test';
+import { addAgentAndOutput, startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Projects against the local server: saved in the
 // workspace database, so they survive reloads, and a run stays where it started.
-
-function handle(page: Page, nodeId: string, port: string) {
-  return page.locator(
-    `.react-flow__node[data-id="${nodeId}"] .react-flow__handle[data-handleid="${port}"]`,
-  );
-}
 
 test('a run stays in the project it started in when its Corral moves', async ({ page, corral }) => {
   await corral.open('/projects');
@@ -20,11 +14,8 @@ test('a run stays in the project it started in when its Corral moves', async ({ 
 
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
-  await page.getByRole('button', { name: 'Add Agent' }).click();
-  await page.getByRole('button', { name: 'Add Output' }).click();
-  await handle(page, 'agent_1', 'out').dragTo(handle(page, 'output_1', 'in'));
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await addAgentAndOutput(page);
+  await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
   await page.getByRole('link', { name: 'Project home', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${projectPath}$`));

@@ -125,7 +125,7 @@
       "id": "write",
       "type": "agent",
       "label": "Writer",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "roleId": "writer",
       "invocation": "scheduled",
       "inputBindings": [
@@ -153,7 +153,7 @@
       "id": "review",
       "type": "agent",
       "label": "Reviewer",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "roleId": "reviewer",
       "invocation": "scheduled",
       "inputBindings": [
@@ -173,7 +173,7 @@
       "id": "review_decision",
       "type": "decision",
       "label": "Review decision",
-      "loopId": "review_loop",
+      "parentId": "review_loop",
       "mode": "review",
       "rule": "review_verdict",
       "inputBindings": [
@@ -273,12 +273,7 @@
     "maxDelegationDepth": 2,
     "maxModelConcurrency": 3,
     "maxSpawns": 12,
-    "maxModelCalls": 40,
-    "maxOutputTokens": 64000,
-    "maxOutputTokensPerCall": 4096,
     "maxQuestions": 6,
-    "questionTimeoutMs": 120000,
-    "modelTimeoutMs": 180000,
-    "runDeadlineMs": 3600000
+    "questionTimeoutMs": 120000
   }
 }

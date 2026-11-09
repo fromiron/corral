@@ -1,20 +1,12 @@
 import type { Page } from '@playwright/test';
+import { addAgentAndOutput, openResult, renameTeam, startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
-
-function handle(page: Page, nodeId: string, port: string) {
-  return page.locator(
-    `.react-flow__node[data-id="${nodeId}"] .react-flow__handle[data-handleid="${port}"]`,
-  );
-}
 
 async function agentToOutput(page: Page) {
   await page.getByRole('tab', { name: /^Teams/ }).click();
   await page.getByRole('button', { name: 'New team' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
-  await page.getByRole('button', { name: 'Add Agent' }).click();
-  await page.getByRole('button', { name: 'Add Output' }).click();
-  await handle(page, 'agent_1', 'out').dragTo(handle(page, 'output_1', 'in'));
-  await expect(page.getByText('Ready to run.')).toBeVisible();
+  await addAgentAndOutput(page);
 }
 
 test('a run on the local server saves first, finishes, and survives a reload', async ({
@@ -25,9 +17,7 @@ test('a run on the local server saves first, finishes, and survives a reload', a
   await expect(page.getByText('Local · simulated', { exact: true })).toBeVisible();
   await agentToOutput(page);
   for (const returnBeforeResponse of [false, true]) {
-    await page
-      .getByRole('textbox', { name: 'Team name', exact: true })
-      .fill(`Saved team ${returnBeforeResponse}`);
+    await renameTeam(page, `Saved team ${returnBeforeResponse}`);
     let release!: () => void, entered!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -63,29 +53,22 @@ test('a run on the local server saves first, finishes, and survives a reload', a
     await finished;
     if (!returnBeforeResponse)
       await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
-    await expect(page.getByText('● Unsaved changes', { exact: true })).toBeVisible();
+    await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
-    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   }
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   // The run started from a saved revision: nothing is left unsaved.
-  await expect(page.getByText('All changes saved')).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
 
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
-  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await page.reload();
-  await page
-    .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Results', exact: true })
-    .click();
+  await openResult(page);
   await expect(page.getByTestId('result-body')).toContainText('Agent 1 (agent_1) turn 2');
   expect(corral.errors).toEqual([]);
 });
@@ -96,8 +79,7 @@ test.describe('slow replies', () => {
   test('a steer sent over HTTP reaches the next request', async ({ page, corral }) => {
     await corral.open('/');
     await agentToOutput(page);
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await startTestRun(page);
     const box = page.getByLabel('Instruction');
     await box.fill('Use primary sources only.');
     await box.press('Enter');
@@ -116,8 +98,7 @@ test.describe('slow replies', () => {
   }) => {
     await corral.open('/');
     await agentToOutput(page);
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await startTestRun(page);
     await page.getByRole('link', { name: 'Open execution page' }).click();
     await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
     const runPath = new URL(page.url()).pathname;
@@ -147,8 +128,7 @@ test('Studio works under the strict CSP, and a tab without a session says so', a
   });
   await corral.open('/');
   await agentToOutput(page);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-output')).toContainText('turn 2');
   expect(violations).toEqual([]);
   expect(page.url()).not.toContain('bootstrap');

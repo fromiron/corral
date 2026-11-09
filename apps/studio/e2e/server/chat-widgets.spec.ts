@@ -61,6 +61,25 @@ async function send(page: Page, text: string) {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
 }
 
+/** Overview is explicitly opened from the same trigger at every conversation width. */
+async function openOverview(page: Page) {
+  await expect(page.getByTestId('chat-overview')).toHaveCount(0);
+  const access = page.getByTestId('session-summary-trigger');
+  const popup = page.getByTestId('session-summary-popup');
+  await expect(access).toBeVisible();
+  if (!(await popup.isVisible())) await access.click();
+  const widgets = page.locator('[data-testid="session-summary-card"]:visible');
+  await expect(widgets).toHaveCount(1);
+  return widgets;
+}
+
+async function closeOverview(page: Page) {
+  const popup = page.getByTestId('session-summary-popup');
+  if (await popup.isVisible()) {
+    await page.keyboard.press('Escape');
+    await expect(popup).toBeHidden();
+  }
+}
 test('plain completion is announced once and opening history is silent', async ({
   page,
   corral,
@@ -76,7 +95,8 @@ test('plain completion is announced once and opening history is silent', async (
     await session(page, corral);
     await send(page, 'Review the current state.');
     const dock = page.getByTestId('composer-dock');
-    await expect(dock.getByText('Running', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('active-run-status')).toContainText('Running');
+    await expect(dock.getByText('Running', { exact: true })).toHaveCount(0);
     await expect(
       page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
     ).toHaveCount(0);
@@ -106,7 +126,7 @@ test('plain completion is announced once and opening history is silent', async (
 test('live plans, context, manual collapse and an answer use the primary session flow', async ({
   page,
   corral,
-}) => {
+}, testInfo) => {
   const next = gate();
   const later = gate();
   const ask = gate();
@@ -147,26 +167,27 @@ test('live plans, context, manual collapse and an answer use the primary session
     await session(page, corral);
     await expect(
       page.getByTestId('chat-composer').getByRole('button', { name: 'Model', exact: true }),
-    ).toContainText('From next request');
+    ).toHaveAttribute('aria-description', /^From next request · /);
     await send(page, 'Review and update the chat layout in several steps.');
     const plan = page.getByTestId('composer-work-plan');
     const toggle = plan.getByRole('button', { name: /Work plan/ });
     await expect(toggle).toContainText('0/7 done');
     const pills = page.getByTestId('composer-status-pills');
     await expect(pills).toBeVisible();
-    await expect(pills.getByRole('link').first()).toHaveAttribute(
-      'href',
-      new RegExp(`run=${current(corral).runId}`),
-    );
+    await expect(pills.getByRole('link')).toHaveCount(0);
+    await page.getByTestId('dock-open-active-run').click();
+    await expect(page).toHaveURL(new RegExp(`run=${current(corral).runId}`));
+    await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
+    await panelTab(page, 'Conversation');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(plan.getByRole('listitem')).toHaveCount(5);
-    await expect(page.getByTestId('run-monitor')).toHaveCount(0);
+    await expect(page.getByTestId('run-monitor')).toBeHidden();
+    await page.screenshot({ path: testInfo.outputPath('composer-plan-restored.png') });
 
-    const overview = page.getByRole('button', { name: 'Overview', exact: true });
-    await overview.click();
-    const summaryPopup = page.getByTestId('session-summary-popup');
-    const widgets = summaryPopup.getByTestId('session-summary-card');
+    const widgets = await openOverview(page);
     await expect(widgets).toBeVisible();
+    await expect(widgets.getByTestId('overview-plan')).toHaveCount(0);
+    await expect(plan.getByRole('listitem')).toHaveCount(5);
     expect(await widgets.evaluate((node) => !!node.closest('[data-testid="chat-timeline"]'))).toBe(
       false,
     );
@@ -184,8 +205,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await page.keyboard.press('Escape');
     await expect(inspector).toBeHidden();
     await expect(context).toBeFocused();
-    await page.keyboard.press('Escape');
-    await expect(summaryPopup).toBeHidden();
+    await closeOverview(page);
     expect(
       subscriptions.filter((path) => path.includes(`/runs/${current(corral).runId}/events`)),
     ).toHaveLength(1);
@@ -223,20 +243,32 @@ test('live plans, context, manual collapse and an answer use the primary session
     later.release();
     await expect(toggle).toContainText('2/7 done');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // Verify the unfinished checklist while its operational body is still owned by the live run.
+    const liveSnapshot = current(corral);
+    const liveRef = Object.values(liveSnapshot.projection.workPlans ?? {})[0];
+    if (!liveRef) throw new Error('The live run must retain the plan reference');
+    expect(liveRef.revision).toBe(3);
+    const liveBody = JSON.parse(
+      corral.server.coordinator.getArtifactText(liveSnapshot.runId, liveRef.bodyRef) ?? 'null',
+    );
+    expect(
+      liveBody.items.filter((item: { status: string }) => item.status === 'completed'),
+    ).toHaveLength(2);
+    expect(liveBody.items[2].status).toBe('in_progress');
     ask.release();
     const question = page.getByRole('form', { name: 'Waiting for your answer' });
     await expect(page.getByTestId('action-required')).toBeVisible();
     // Faux responses do not serialize a provider request or invoke onPayload.
     // Their assembled context must not be promoted to a complete measurement.
-    await overview.click();
-    await expect(context).toBeVisible();
-    await expect(context).not.toContainText(/Context about \d+%/);
-    await page.keyboard.press('Escape');
-    await expect(summaryPopup).toBeHidden();
+    await expect((await openOverview(page)).getByTestId('context-usage-chip')).not.toContainText(
+      /Context about \d+%/,
+    );
+    await closeOverview(page);
     await page
       .getByTestId('action-required')
       .getByText('Go to the request', { exact: true })
       .click();
+    await page.getByRole('button', { name: /^Needs your input/ }).click();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
@@ -244,23 +276,19 @@ test('live plans, context, manual collapse and an answer use the primary session
     await panelTab(page, 'Conversation');
     await expect(page.getByTestId('chat-result')).toContainText('ready for review');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
+    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(toggle).toContainText('2/7 done');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(page.getByTestId('action-required')).toHaveCount(0);
     await expect(input).toHaveValue('다음 요청 日本語');
 
-    // Authoritative readback preserves the actual unfinished items after run success.
+    // Settlement retains the reference metadata, without keeping a historical plan-body archive.
     const snapshot = current(corral);
     const ref = Object.values(snapshot.projection.workPlans ?? {})[0];
     expect(ref?.revision).toBe(3);
     if (!ref) throw new Error('The Coordinator must retain the plan reference');
-    const body = JSON.parse(
-      corral.server.coordinator.getArtifactText(snapshot.runId, ref.bodyRef) ?? 'null',
-    );
-    expect(
-      body.items.filter((item: { status: string }) => item.status === 'completed'),
-    ).toHaveLength(2);
-    expect(body.items[2].status).toBe('in_progress');
+    expect(ref.bodyRef).toBe(liveRef.bodyRef);
+    expect(corral.server.coordinator.getArtifactText(snapshot.runId, ref.bodyRef)).toBeNull();
     await toggle.click();
     await expect(plan.getByRole('listitem')).toHaveCount(7);
     expect(corral.errors).toEqual([]);
@@ -331,9 +359,7 @@ test.describe('serialized provider context', () => {
       0,
     );
     expect(usage?.usedTokens).toBe(usage?.parts.reduce((total, part) => total + part.tokens, 0));
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
-    const summaryPopup = page.getByTestId('session-summary-popup');
-    const context = summaryPopup.getByTestId('context-usage-chip');
+    const context = (await openOverview(page)).getByTestId('context-usage-chip');
     await expect(context).toContainText(
       `Context about ${Math.round(((usage?.usedTokens ?? 0) / 8000) * 100)}%`,
     );
@@ -354,12 +380,13 @@ test.describe('serialized provider context', () => {
     }
     await page.keyboard.press('Escape');
     await expect(inspector).toBeHidden();
-    await page.keyboard.press('Escape');
-    await expect(summaryPopup).toBeHidden();
+    await closeOverview(page);
     await page.getByTestId('action-required').getByRole('link').click();
+    await page.getByRole('button', { name: /^Needs your input/ }).click();
     const question = page.getByRole('form', { name: 'Waiting for your answer' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();
+    await panelTab(page, 'Conversation');
     await expect(page.getByTestId('chat-result')).toContainText('recorded provider payload');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     expect(corral.endpoint.models.every((model) => model === 'llama3.2')).toBe(true);
@@ -367,7 +394,7 @@ test.describe('serialized provider context', () => {
   });
 });
 
-test('opening an earlier result preserves the draft and keeps the active Run separate', async ({
+test('inspecting the current result preserves the draft while a newer result replaces only its body', async ({
   page,
   corral,
 }) => {
@@ -377,6 +404,8 @@ test('opening an earlier result preserves the draft and keeps the active Run sep
   await expect(page.getByTestId('chat-result')).toContainText('Earlier result.');
   await expect.poll(() => current(corral).projection.status).toBe('succeeded');
   const earlierRunId = current(corral).runId;
+  const earlierResultId = current(corral).projection.output?.artifactVersionIds[0];
+  if (!earlierResultId) throw new Error('The first completed run must have a final result');
   const next = gate();
   corral.fake?.setResponses([
     () => updatePlan(corral, 0),
@@ -386,7 +415,7 @@ test('opening an earlier result preserves the draft and keeps the active Run sep
     },
   ]);
   try {
-    await send(page, 'Update the layout and retain the earlier result.');
+    await send(page, 'Update the layout with a new result.');
     const plan = page.getByTestId('composer-work-plan');
     const toggle = plan.getByRole('button', { name: /Work plan/ });
     await expect(toggle).toContainText('0/7 done');
@@ -402,13 +431,49 @@ test('opening an earlier result preserves the draft and keeps the active Run sep
     await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(earlierRunId);
     await expect(page.getByTestId('result-body')).toContainText('Earlier result.');
     await expect(toggle).toHaveCount(0);
+    expect(current(corral).runId).toBe(activeRunId);
+    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(requestBox(page)).toHaveValue('Do not replace this draft.');
     expect(current(corral).runId).toBe(activeRunId);
+    await page
+      .getByTestId('chat-timeline')
+      .getByRole('link', { name: 'Open in Results', exact: true })
+      .first()
+      .click();
+    await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(earlierRunId);
+    await expect(page.getByTestId('result-body')).toContainText('Earlier result.');
 
     next.release();
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     await expect(toggle).toHaveCount(0);
-    await expect(page.getByTestId('result-body')).toContainText('Earlier result.');
+    // A new successful result replaces the old artifact body, not its relation metadata or chat answer.
+    await expect
+      .poll(
+        () =>
+          corral.server.coordinator.getSnapshot(earlierRunId).projection.artifacts[earlierResultId]
+            ?.bodyAvailable,
+      )
+      .toBe(false);
+    expect(corral.server.coordinator.getArtifactText(earlierRunId, earlierResultId)).toBeNull();
+    expect(
+      corral.server.coordinator.getSnapshot(earlierRunId).projection.artifacts[earlierResultId]
+        ?.authorExecutionId,
+    ).toBeTruthy();
+    await expect(page.getByTestId('result-body')).toHaveCount(0);
+    await expect(page.getByTestId('run-results').getByRole('alert')).toContainText(
+      'This result could not be loaded.',
+    );
+    await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(earlierRunId);
+    expect(current(corral).runId).toBe(activeRunId);
+    expect(corral.server.coordinator.getConversationTurn(earlierRunId)?.answer).toContain(
+      'Earlier result.',
+    );
+    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    const earlierAnswer = page.getByTestId('chat-result').filter({ hasText: 'Earlier result.' });
+    await expect(earlierAnswer).toBeVisible();
+    await expect(
+      earlierAnswer.getByRole('link', { name: 'Open in Results', exact: true }),
+    ).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Do not replace this draft.');
     expect(corral.errors).toEqual([]);
   } finally {

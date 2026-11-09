@@ -1,6 +1,7 @@
 import {
   type AgentStartInput,
   DecisionAnswer,
+  type DecisionApiId,
   type DecisionFailureReason,
   type DecisionProvider,
   type DecisionProviderSnapshot,
@@ -27,12 +28,16 @@ export interface JudgmentConfig {
     reasoning_effort: {
       mode: 'off' | 'observe';
       apply?: boolean;
+      /** What automatic reasoning does; unset means judged. */
+      policy?: 'medium' | 'judged';
       /** Provider ids, at most two (two = side-by-side comparison, plan v0.1 §11). */
       providers: readonly string[];
-      /** Judgment calls per run; default the run's model request limit, at most 100. */
+      /** Judgment calls per run; default and at most 100. */
       maxCalls?: number;
       /** External providers are refused unless the workspace opted in. */
       allowExternal?: boolean;
+      /** The decision API automatic reasoning asks, only with allowExternal. */
+      external?: { provider: DecisionApiId; model: string };
     };
   };
 }
@@ -43,7 +48,7 @@ const EXCERPT_CHARS = 1_500;
 /** The settings a run starts with: fixed for the whole run (`run.started.decisions`). */
 export function resolveDecisionSettings(
   config: JudgmentConfig,
-  run: { mode: 'mock' | 'live'; maxModelCalls: number },
+  run: { mode: 'mock' | 'live' },
 ): RunDecisionSettings {
   const wanted = config.settings.reasoning_effort;
   const providers = wanted.providers.slice(0, 2).map((id): DecisionProviderSnapshot => {
@@ -74,7 +79,7 @@ export function resolveDecisionSettings(
     reasoning_effort: {
       mode: wanted.mode,
       providers,
-      maxCalls: Math.min(DECISION_HARD_CAP, wanted.maxCalls ?? run.maxModelCalls),
+      maxCalls: Math.min(DECISION_HARD_CAP, wanted.maxCalls ?? DECISION_HARD_CAP),
     },
   };
 }
@@ -157,10 +162,14 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
       if (settings?.mode !== 'observe') return;
       const input = deps.startInputOf(context.runId, event.payload.executionId);
       if (!input) return;
+      // Under the judged policy the local model already judged this request before it was prepared.
+      const reasoning = event.payload.reasoning;
+      const applied = reasoning?.requested.mode === 'auto' && reasoning.fallback !== 'policy';
       const providers = settings.providers.flatMap((snapshot) => {
-        const provider = snapshot.available
-          ? deps.providers.find((p) => p.id === snapshot.id)
-          : undefined;
+        const provider =
+          snapshot.available && !(applied && snapshot.id === 'local-model')
+            ? deps.providers.find((p) => p.id === snapshot.id)
+            : undefined;
         return provider ? [provider] : [];
       });
       if (providers.length === 0) return;
@@ -193,7 +202,6 @@ export function createDecisionHub(deps: DecisionHubDeps): AdmissionObserver {
                 payload: {
                   limitKind: 'decision_calls',
                   used,
-                  reserved: 0,
                   max: settings.maxCalls,
                 },
               },
@@ -260,7 +268,7 @@ function judge(provider: DecisionProvider, question: EffortQuestion, context: Ob
           kind: 'decision',
           scope: subject.executionId,
           epoch: subject.attemptNo,
-          reservationId: null,
+          modelCallId: null,
         },
       },
     ]);
@@ -361,7 +369,7 @@ function judge(provider: DecisionProvider, question: EffortQuestion, context: Ob
 /** Timing facts of a judgment, from the run as committed right now. */
 export function requestTiming(projection: RunProjection, modelCallId: string) {
   const dispatched = Object.values(projection.effects).some(
-    (effect) => effect.reservationId === modelCallId && effect.dispatched,
+    (effect) => effect.modelCallId === modelCallId && effect.dispatched,
   );
   return {
     readyBeforeDispatch: !dispatched,

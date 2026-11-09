@@ -259,6 +259,7 @@ import type {
   ProjectResult,
   ProjectSummary,
   RunArchive,
+  RunStats,
   RunSummary,
   RuntimeSnapshot,
   RuntimeTransport,
@@ -268,6 +269,7 @@ import type {
   SessionEntryChange,
   SessionResult,
   StartRunResult,
+  StoredConversationTurn,
   TransportHandlers,
   WorkSession,
 } from '@corral/core';
@@ -808,7 +810,19 @@ export class HttpSseTransport implements RuntimeTransport {
     );
     if (response.status === 404) return null;
     if (!response.ok) throw await apiError(response);
-    return ((await response.json()) as { text: string }).text;
+    return ((await response.json()) as { text: string | null }).text;
+  }
+
+  async getConversationTurn(runId: string): Promise<StoredConversationTurn | null> {
+    const response = await this.http.request(
+      `/runs/${encodeURIComponent(runId)}/conversation-turn`,
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    const turn = (await response.json()) as StoredConversationTurn;
+    if (turn.runId !== runId)
+      throw new Error('The conversation turn does not match the requested run.');
+    return turn;
   }
 
   listRuns(): Promise<RunSummary[]> {
@@ -820,6 +834,12 @@ export class HttpSseTransport implements RuntimeTransport {
     if (response.status === 404) return null;
     if (!response.ok) throw await apiError(response);
     return ((await response.json()) as { definition: CorralDefinition }).definition;
+  }
+
+  getRunStats(corralId: string, definitionRevision: number): Promise<RunStats> {
+    return this.http.json(
+      `/corrals/${encodeURIComponent(corralId)}/revisions/${definitionRevision}/stats`,
+    );
   }
 
   exportRun(runId: string, options: { privateTranscript?: boolean } = {}): Promise<RunArchive> {
@@ -1183,8 +1203,17 @@ export class RestCorralRepository implements CorralRepository {
     return (await response.json()) as CorralRecord;
   }
 
+  async getRevision(corralId: string, definitionRevision: number) {
+    const response = await this.http.request(
+      `/corrals/${encodeURIComponent(corralId)}/revisions/${definitionRevision}`,
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as CorralDefinition;
+  }
+
   save(request: SaveRequest): Promise<SaveResult> {
-    const body = { definition: request.definition, layout: request.layout };
+    const body = { definition: request.definition };
     if (request.expectedDefinitionRevision === null)
       return this.write('/corrals', 'POST', {
         ...body,
@@ -1373,10 +1402,48 @@ export interface ProviderAuthView {
 
 export interface ReasoningSettings {
   apply: boolean;
+  policy: 'medium' | 'judged';
   available: boolean;
   version: string | null;
   reason: string | null;
   revision: string;
+}
+
+/** GET /local-ai: the local AI bundle for the settings panel's install. */
+export interface LocalAiView {
+  release: string;
+  /** Display names of the two models the bundle installs together. */
+  models: { meeting: string; effort: string };
+  state:
+    | 'unsupported'
+    | 'missing'
+    | 'stale'
+    | 'installing'
+    | 'idle'
+    | 'starting'
+    | 'ready'
+    | 'error';
+  downloadBytes: number | null;
+  progress: { received: number; total: number } | null;
+  error: string | null;
+  /** The decision API the workspace asks when the local judge is unsure; null when none. */
+  external: {
+    provider: DecisionApiView['id'] | null;
+    model: string | null;
+    /** The automatic reasoning policy; medium never asks the decision API. */
+    policy: ReasoningSettings['policy'];
+    /** Whether the local judge can abstain; one that never does never asks the decision API. */
+    judgeAbstains: boolean;
+    revision: string;
+  };
+}
+
+/** GET /decision-apis: judge-only APIs and whether a key is stored, never the key. */
+export interface DecisionApiView {
+  id: 'jev' | 'openai-decisions';
+  provider: string;
+  model: string;
+  keyConfigured: boolean;
 }
 
 export interface ModelProfileView {
@@ -1472,6 +1539,36 @@ export class ModelsApi {
     return this.http.json('/models/reasoning', {
       method: 'PUT',
       body: JSON.stringify({ apply, revision }),
+    });
+  }
+  localAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai');
+  }
+  installLocalAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai/install', { method: 'POST' });
+  }
+  cancelLocalAiInstall(): Promise<LocalAiView> {
+    return this.http.json('/local-ai/install', { method: 'DELETE' });
+  }
+  setExternalJudge(provider: DecisionApiView['id'] | null, revision: string): Promise<LocalAiView> {
+    return this.http.json('/local-ai/external-judge', {
+      method: 'PUT',
+      body: JSON.stringify({ provider, revision }),
+    });
+  }
+  decisionApis(): Promise<DecisionApiView[]> {
+    return this.http.json('/decision-apis');
+  }
+  /** Stores the key server-side; the response says only that one is stored. */
+  setDecisionApiKey(id: DecisionApiView['id'], key: string): Promise<DecisionApiView[]> {
+    return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
+      method: 'PUT',
+      body: JSON.stringify({ key }),
+    });
+  }
+  deleteDecisionApiKey(id: DecisionApiView['id']): Promise<DecisionApiView[]> {
+    return this.http.json(`/decision-apis/${encodeURIComponent(id)}/api-key`, {
+      method: 'DELETE',
     });
   }
   profiles(): Promise<ModelProfileView[]> {

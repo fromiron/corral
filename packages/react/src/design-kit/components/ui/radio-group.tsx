@@ -18,15 +18,15 @@ import { useFluidHover, useRegisterFluidHoverItem } from '../../hooks/use-fluid-
 import { fontWeights } from '../../lib/font-weight.ts';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, useSize } from '../../lib/size-context.tsx';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import { FluidHoverHighlight } from './fluid-hover-highlight.tsx';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // RadioGroup: rows share one fluid hover scope; the group paints the shared
 // selected background, hover highlight and focus ring. Selection API: `value`
 // + `onValueChange`, `selectedIndex`, or per-item `selected` + `onSelect`.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // Set while a row's mousedown calls focus(): Chrome reports script focus as
 // :focus-visible, so without it every click would draw the focus ring.
@@ -171,7 +171,7 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
             }}
             transition={{
               ...spring.moderate,
-              opacity: { duration: 0.08 },
+              opacity: tween.fast,
             }}
           />
         )}
@@ -184,7 +184,7 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
         <AnimatePresence>
           {focusRect && (
             <motion.div
-              className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+              className={`absolute ${shape.focusRing} pointer-events-none z-20 border-2 border-[color:var(--focus-ring)]`}
               initial={false}
               animate={{
                 left: focusRect.left - 2,
@@ -195,7 +195,7 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
               exit={{ opacity: 0, transition: spring.fast.exit }}
               transition={{
                 ...spring.fast,
-                opacity: { duration: 0.08 },
+                opacity: tween.fast,
               }}
             />
           )}
@@ -338,7 +338,7 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
               isSelected
                 ? 'border-[1.5px] border-transparent'
                 : isActive
-                  ? 'border-[1.5px] border-neutral-400 dark:border-neutral-500'
+                  ? 'border-[1.5px] border-muted-foreground'
                   : 'border-[1.5px] border-border',
             )}
           />
@@ -352,7 +352,7 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
                   scale: 0.3,
                 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.3, transition: { duration: 0.04 } }}
+                exit={{ opacity: 0, scale: 0.3, transition: tween.fast.exit }}
                 transition={spring.fast}
               >
                 <div

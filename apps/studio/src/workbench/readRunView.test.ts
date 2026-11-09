@@ -3,6 +3,46 @@ import { linearCorral } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
 import { readRunView } from './readRunView.ts';
 
+it('reads the retained conversation turn without restoring released artifact bodies', async () => {
+  const turn = {
+    runId: 'run_chat',
+    request: 'Question',
+    answer: 'Kept answer',
+    status: 'succeeded' as const,
+    artifactVersionId: 'released_result',
+  };
+  const transport = {
+    getSnapshot: async () => ({
+      projection: { ...emptyProjection('run_chat'), status: 'succeeded' as const },
+      seq: 0,
+    }),
+    getRunDefinition: async () => linearCorral(['writer']),
+    getConversationTurn: vi.fn(async () => turn),
+  };
+  const history = vi.fn(async () => null);
+  const view = await readRunView(transport, history, 'run_chat', false);
+  expect(view.conversationTurn).toEqual(turn);
+  expect(view.artifactTexts).toEqual({});
+  expect(history).not.toHaveBeenCalled();
+});
+
+it('rejects a conversation turn from a different run', async () => {
+  const transport = {
+    getSnapshot: async () => ({ projection: emptyProjection('run_chat'), seq: 0 }),
+    getRunDefinition: async () => linearCorral(['writer']),
+    getConversationTurn: async () => ({
+      runId: 'other',
+      request: 'Other question',
+      answer: 'Other answer',
+      status: 'succeeded' as const,
+      artifactVersionId: null,
+    }),
+  };
+  await expect(readRunView(transport, async () => null, 'run_chat', false)).rejects.toThrow(
+    /match/i,
+  );
+});
+
 it('[DW-03] reading more than sixteen finished turns opens no event streams or commands', async () => {
   const transport = {
     getSnapshot: vi.fn(async (id: string) => ({

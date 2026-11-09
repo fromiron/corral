@@ -16,11 +16,16 @@ export function useSessionRuns(
   const router = useRouter();
   const [all, setAll] = useState<RunSummary[]>([]);
   const [lost, setLost] = useState(false);
+  // The selection the last answered listing was asked for: a run requested after it may be too
+  // new to be listed yet.
+  const [listedFor, setListedFor] = useState<string | null>(null);
+  const request = `${sessionId}:${selectedRunId ?? ''}`;
   const refreshRead = useRef(() => {});
   const refresh = useCallback(() => refreshRead.current(), []);
   const persistedState = canonicalJson([revision, entries]);
   useEffect(() => {
     void selectedRunId;
+    const asked = request;
     let knownState = persistedState;
     const watcher = watchRunList(transport, async (result, current) => {
       try {
@@ -36,6 +41,7 @@ export function useSessionRuns(
         // Publish run transitions after their request records are revalidated.
         if (!current()) return;
         setAll(runs);
+        setListedFor(asked);
         setLost(false);
       } catch {
         if (current()) setLost(true);
@@ -43,11 +49,11 @@ export function useSessionRuns(
     });
     refreshRead.current = watcher.refresh;
     return watcher.dispose;
-  }, [transport, repository, router, sessionId, selectedRunId, persistedState]);
+  }, [transport, repository, router, sessionId, selectedRunId, persistedState, request]);
   const runs = all
     .filter((run) => run.sessionId === sessionId)
     .reverse()
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   const active = runs.findLast((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ?? null;
-  return { runs, active, refresh, lost };
+  return { runs, active, refresh, lost, listed: listedFor === request };
 }

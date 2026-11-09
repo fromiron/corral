@@ -1,4 +1,6 @@
 import {
+  AutomaticReasoningPolicy,
+  DecisionApiId,
   Identifier,
   ProfileContextOverrides,
   type RunLimits,
@@ -13,34 +15,19 @@ import { z } from 'zod';
 export interface InstallationPolicy {
   maxModelConcurrency: number;
   maxSpawns: number;
-  maxModelCalls: number;
-  maxOutputTokens: number;
-  maxOutputTokensPerCall: number;
   maxQuestions: number;
   questionTimeoutMs: number;
-  modelTimeoutMs: number;
-  runDeadlineMs: number;
-  maxLoopIterations: number;
   maxArtifactBytes: number;
   /** Executions alive at once on this host, including waiting workers. */
   maxResidentExecutions: number;
 }
 
-/**
- * The "hard cap" column of product contract §9. Timeouts have no cap in the spec; the definition schema's
- * maxima stand in for them.
- */
+/** The installation caps of product contract §9. Usage has no cap (§9). */
 export const SPEC_HARD_CAPS: InstallationPolicy = {
   maxModelConcurrency: 6,
   maxSpawns: 32,
-  maxModelCalls: 100,
-  maxOutputTokens: 256_000,
-  maxOutputTokensPerCall: 4_096,
   maxQuestions: 6,
   questionTimeoutMs: 300_000,
-  modelTimeoutMs: 300_000,
-  runDeadlineMs: 3_600_000,
-  maxLoopIterations: 10,
   maxArtifactBytes: 1024 * 1024,
   maxResidentExecutions: 12,
 };
@@ -145,14 +132,24 @@ export const WorkspaceConfig = z.strictObject({
       reasoning_effort: z.strictObject({
         mode: z.enum(['off', 'observe']),
         apply: z.boolean().optional(),
+        /** What automatic reasoning does; unset means judged. */
+        policy: AutomaticReasoningPolicy.optional(),
         providers: z.array(Identifier).min(1).max(2),
         maxCalls: z.int().min(0).max(100).optional(),
         allowExternal: z.boolean().optional(),
+        /** The decision API asked when automatic reasoning's local judge abstains. */
+        external: z
+          .strictObject({ provider: DecisionApiId, model: z.string().min(1).max(100) })
+          .optional(),
       }),
     })
     .optional(),
 });
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfig>;
+
+/** The automatic reasoning policy new runs start with. */
+export const reasoningApplyPolicy = (config: WorkspaceConfig): AutomaticReasoningPolicy =>
+  config.decisions?.reasoning_effort.policy ?? 'judged';
 
 /** The workspace's judgment settings; none configured means off. */
 export function judgmentSettings(config: WorkspaceConfig) {
@@ -212,34 +209,17 @@ export function installationPolicy(config: WorkspaceConfig): InstallationPolicy 
 }
 
 const LIMIT_FIELDS = [
-  'maxModelConcurrency',
-  'maxSpawns',
-  'maxModelCalls',
-  'maxOutputTokens',
-  'maxOutputTokensPerCall',
   'maxQuestions',
   'questionTimeoutMs',
-  'modelTimeoutMs',
-  'runDeadlineMs',
 ] as const satisfies readonly (keyof RunLimits & keyof InstallationPolicy)[];
 
 /** Every limit a definition asks for above what this installation allows. */
-export function limitViolations(
-  limits: RunLimits,
-  loopRounds: number,
-  policy: InstallationPolicy,
-  unlimited = false,
-): string[] {
-  const above = (label: string, value: number, max: number) =>
-    value > max ? [`${label} ${value} is above this installation’s cap of ${max}`] : [];
-  return [
-    ...LIMIT_FIELDS.filter(
-      (field) =>
-        field !== 'maxModelConcurrency' &&
-        (!unlimited || ['maxSpawns', 'maxQuestions', 'questionTimeoutMs'].includes(field)),
-    ).flatMap((field) => above(field, limits[field], policy[field])),
-    ...above('Loop rounds', loopRounds, policy.maxLoopIterations),
-  ];
+export function limitViolations(limits: RunLimits, policy: InstallationPolicy): string[] {
+  return LIMIT_FIELDS.flatMap((field) =>
+    limits[field] > policy[field]
+      ? [`${field} ${limits[field]} is above this installation’s cap of ${policy[field]}`]
+      : [],
+  );
 }
 
 function stripUndefined<T extends object>(value: T): { [K in keyof T]: Exclude<T[K], undefined> } {

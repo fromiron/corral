@@ -62,7 +62,6 @@ it('new blank and template teams keep their definition revision on reload', asyn
   const blank = emptyDraft();
   await repository.save({
     definition: blank.definition,
-    layout: { nodes: blank.layout, viewport: blank.viewport },
     expectedDefinitionRevision: null,
   });
   await createFromTemplate(repository, 'research-team', 'Untitled');

@@ -22,7 +22,7 @@ describe('demo templates', () => {
   it('the default research team compiles and shows delegation, a question, a review Loop and approval', () => {
     const template = demoTemplate(undefined);
     expect(template.id).toBe('research-team');
-    const { definition, layout } = template;
+    const { definition } = template;
     const compiled = compileDefinition(definition);
     expect(compiled.ok).toBe(true);
     // No warnings either: the reviewer gets the criteria text (#20).
@@ -35,7 +35,6 @@ describe('demo templates', () => {
     expect(definition.nodes.filter((n) => n.type === 'loop')).toHaveLength(1);
     expect(definition.nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(true);
     expect(definition.nodes.some((n) => n.type === 'output' && n.requireApproval)).toBe(true);
-    for (const node of definition.nodes) expect(layout.nodes[node.id]).toBeDefined();
     // The UI has one English locale, so the demo speaks it too.
     expect(JSON.stringify(definition)).not.toMatch(HANGUL);
   });
@@ -369,18 +368,28 @@ describe('demo replies', () => {
       if (!started.runId) throw new Error('Demo run was not created');
       const runId = started.runId;
       const events: RunEvent[] = [];
-      const stop = transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
+      const plans: WorkPlan[] = [];
+      const stop = transport.subscribe(runId, 0, {
+        onEvent: (event) => {
+          events.push(event);
+          if (event.type === 'work_plan.updated')
+            plans.push(
+              WorkPlan.parse(
+                JSON.parse(coordinator.getArtifactText(runId, event.payload.bodyRef) ?? 'null'),
+              ),
+            );
+        },
+      });
       try {
         const projection = await waitForProjection(transport, runId, (run) =>
           ['succeeded', 'failed', 'cancelled'].includes(run.status),
         );
         expect(projection.status).toBe('succeeded');
         const updates = events.filter((event) => event.type === 'work_plan.updated');
-        const plans = updates.map((event) =>
-          WorkPlan.parse(
-            JSON.parse(coordinator.getArtifactText(runId, event.payload.bodyRef) ?? 'null'),
-          ),
-        );
+        // Plan payloads are consumed while their owner runs; completed Runs retain the
+        // sequence/revision metadata, not a body archive of each intermediate plan.
+        for (const event of updates)
+          expect(coordinator.getArtifactText(runId, event.payload.bodyRef)).toBeNull();
         expect(
           plans.map((plan) => plan.items.filter((item) => item.status === 'completed').length),
         ).toEqual(completed);

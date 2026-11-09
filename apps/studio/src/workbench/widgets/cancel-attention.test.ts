@@ -1,7 +1,27 @@
-import { Coordinator, emptyProjection } from '@corral/core';
+import { Coordinator, emptyProjection, usageTotals } from '@corral/core';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
 import { actionCopy, actionRequired, effectAttention } from './selectors.ts';
+
+const unreported = { inputTokens: null, outputTokens: null, costMicros: null };
+const imageWithoutCost = {
+  usageId: 'image',
+  kind: 'image',
+  profileId: 'images',
+  ...unreported,
+} as const;
+const routeWithoutUsage = {
+  usageId: 'route',
+  kind: 'auto_route',
+  profileId: null,
+  ...unreported,
+} as const;
+const callWithoutUsage = {
+  modelCallId: 'call',
+  executionId: 'exec_one',
+  finished: true,
+  usage: null,
+} as never;
 
 it('confirmed user cancellation is not an unresolved external effect', async () => {
   const entered = new Gate();
@@ -46,7 +66,7 @@ it('confirmed user cancellation is not an unresolved external effect', async () 
   expect(Object.values(projection.effects).some((effect) => effect.outcome === 'cancelled')).toBe(
     true,
   );
-  expect(projection.budget.unknownOutstanding).toBe(0);
+  expect(usageTotals(projection).unknown).toBe(0);
   expect(
     actionRequired({
       pendingApprovals: 0,
@@ -57,15 +77,15 @@ it('confirmed user cancellation is not an unresolved external effect', async () 
   ).toMatchObject({ visible: false, count: 0, hasFailure: false });
 });
 
-it('cancellation does not hide unknown billing, real failure or unconfirmed termination', () => {
+it('cancellation does not hide unreported usage, real failure or unconfirmed termination', () => {
   const projection = emptyProjection('run_cancelled');
   projection.status = 'cancelled';
-  projection.budget.imageUnknownOutstandingMicros = 125000;
+  projection.usage.image = imageWithoutCost;
   expect(effectAttention(projection).unclearEffects).toBe(1);
-  projection.budget.imageUnknownOutstandingMicros = 0;
-  projection.budget.unknownOutstanding = 100;
+  delete projection.usage.image;
+  projection.modelCalls.call = callWithoutUsage;
   expect(effectAttention(projection).unclearEffects).toBe(1);
-  projection.budget.unknownOutstanding = 0;
+  delete projection.modelCalls.call;
   projection.statusReason = 'service_termination_unconfirmed';
   expect(effectAttention(projection).unclearEffects).toBe(1);
   projection.statusReason = null;
@@ -75,7 +95,7 @@ it('cancellation does not hide unknown billing, real failure or unconfirmed term
     scope: 'exec_one',
     epoch: 0,
     dispatched: true,
-    reservationId: null,
+    modelCallId: null,
     status: 'settled',
     outcome: 'failed',
   };
@@ -95,12 +115,12 @@ it('the attention banner names why an outcome is unclear', () => {
       }),
     );
   // A finished turn whose routing usage was never reported: usage, not a file effect.
-  projection.budget.unknownOutstanding = 256;
+  projection.usage.route = routeWithoutUsage;
   expect(copy()).toEqual(['actionUsageUnknown']);
-  projection.budget.unknownOutstanding = 0;
-  projection.budget.imageUnknownOutstandingMicros = 125000;
+  delete projection.usage.route;
+  projection.usage.image = imageWithoutCost;
   expect(copy()).toEqual(['actionUsageUnknown']);
-  projection.budget.imageUnknownOutstandingMicros = 0;
+  delete projection.usage.image;
   projection.statusReason = 'service_termination_unconfirmed';
   expect(copy()).toEqual(['actionStopUnconfirmed']);
   projection.statusReason = null;
@@ -110,16 +130,16 @@ it('the attention banner names why an outcome is unclear', () => {
     scope: 'exec_one',
     epoch: 0,
     dispatched: true,
-    reservationId: null,
+    modelCallId: null,
     status: 'settled',
     outcome: 'unknown',
   };
   expect(copy()).toEqual(['actionUnclear']);
   // Several causes are each named; nothing unclear shows nothing.
-  projection.budget.unknownOutstanding = 256;
+  projection.usage.route = routeWithoutUsage;
   expect(copy()).toEqual(['actionUnclear', 'actionUsageUnknown']);
   delete projection.effects.write;
-  projection.budget.unknownOutstanding = 0;
+  delete projection.usage.route;
   expect(copy()).toEqual([]);
 });
 
@@ -132,7 +152,7 @@ it('a cancelled model request is not presented as an unconfirmed file operation'
     scope: 'exec_one',
     epoch: 0,
     dispatched: true,
-    reservationId: null,
+    modelCallId: null,
     status: 'settled',
     outcome: 'unknown',
   };

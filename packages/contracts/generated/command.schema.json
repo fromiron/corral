@@ -767,7 +767,7 @@
                 "maxIterations": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 10
+                  "maximum": 9007199254740991
                 }
               },
               "required": [
@@ -791,20 +791,12 @@
                       "type": "integer",
                       "minimum": 1,
                       "maximum": 32
-                    },
-                    "maxModelCalls": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 9007199254740991
-                    },
-                    "maxOutputTokens": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 9007199254740991
                     }
                   },
-                  "additionalProperties": false,
-                  "minProperties": 1
+                  "required": [
+                    "maxSpawns"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -895,6 +887,10 @@
             "subjectVersionId": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "routeId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
             }
           },
           "required": [
@@ -968,6 +964,57 @@
         "commandId",
         "runId",
         "expectedControlRevision",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "expectedControlRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "type": {
+          "type": "string",
+          "const": "set_breakpoints"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "nodeIds": {
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+              }
+            }
+          },
+          "required": [
+            "nodeIds"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "runId",
         "type",
         "payload"
       ],

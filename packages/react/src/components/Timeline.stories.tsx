@@ -83,7 +83,10 @@ export const TenThousandEvents: Story = {
     expect(scroller.scrollTop).toBe(top);
     const still = rows().find((r) => r.dataset.seq === picked);
     expect(still && within(still).getByRole('button')).toHaveAttribute('aria-pressed', 'true');
-    expect(canvas.getByTestId('timeline-selected')).toHaveTextContent(`#${picked}`);
+    // The selection shows what the picked event recorded: its tool call or directive id.
+    expect(canvas.getByTestId('timeline-selected')).toHaveTextContent(
+      new RegExp(`"(tool|dir)_${picked}"`),
+    );
     expect(rows().length).toBeLessThan(60);
 
     // Filters: only what the reader asked for.
@@ -98,6 +101,10 @@ export const TenThousandEvents: Story = {
     await userEvent.click(canvas.getByRole('combobox', { name: 'Execution' }));
     await userEvent.click(await popup.findByRole('option', { name: 'exec_0001' }));
     await waitFor(() => expect(popup.queryByRole('listbox')).toBeNull());
+    await expect(canvas.getByRole('combobox', { name: 'Execution' })).toHaveFocus();
+    await waitFor(() =>
+      expect(canvas.getByTestId('timeline-count')).toHaveTextContent('350 events'),
+    );
     for (const r of rows()) expect(r).toHaveTextContent('exec_0001');
     expect(canvas.getByRole('combobox', { name: 'Execution' })).toHaveFocus();
   },

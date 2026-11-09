@@ -52,6 +52,7 @@ describe('stored Ultra records', () => {
     const comparison = runIdOf(recorded.comparison);
     expect(coordinator.findSnapshot(comparison)?.projection.status).toBe('interrupted');
     const added = store.readEvents(comparison, recorded.comparison.events.length);
+    // The newest run of its session keeps its step results: no later run has succeeded.
     expect(added.map((event) => event.type)).toEqual(['run.interrupted', 'run.state_changed']);
     for (const event of added) expect(RunEvent.safeParse(event).success).toBe(true);
   });

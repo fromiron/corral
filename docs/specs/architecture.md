@@ -7,7 +7,7 @@
 | 사용자 인터페이스 | `apps/studio`, `packages/react` | 편집 draft, 조회 캐시, 실행 projection, 대화·결과·Reins |
 | Desktop | `apps/desktop` | Electron 셸, 로컬 runtime 수명과 패키징 |
 | 서버·클라이언트 | `apps/server`, `packages/client` | 설정·프로젝트 서비스, HTTP·SSE와 클라이언트 계약 |
-| 도메인 | `packages/core`, `packages/contracts` | Coordinator, 명령·이벤트·상태·예산, 검증 가능한 타입 |
+| 도메인 | `packages/core`, `packages/contracts` | Coordinator, 명령·이벤트·상태·사용량, 검증 가능한 타입 |
 | 실행 어댑터 | `packages/adapter-pi`, `packages/runner-langgraph` | 모델·도구 실행과 정적 제어 흐름을 기존 Coordinator 경로에 연결 |
 | 관리형 모델 요청 | `apps/server/src/models/request-runtime.ts`, `packages/pi-runtime-port` | host 전송·attempt 정산·공유 context/stream 정책 |
 | 저장 | `packages/storage-sqlite` | 영속 기록·투영·재열람 |
@@ -15,9 +15,9 @@
 
 ## 소유권
 
-Run·Task·Execution·Approval, event sequence, control revision, 실행 효과의 permit·예산·완료는 Coordinator 경로에서 확정한다. Pi와 GraphRunner는 실행 어댑터이며, UI store는 관찰용 투영이다. 스트리밍 delta나 어댑터 반환만으로 Run 성공을 확정하지 않는다.
+Run·Task·Execution·Approval, event sequence, control revision, 실행 효과의 permit·사용량·완료는 Coordinator 경로에서 확정한다. Pi와 GraphRunner는 실행 어댑터이며, UI store는 관찰용 투영이다. 스트리밍 delta나 어댑터 반환만으로 Run 성공을 확정하지 않는다.
 
-정의·레이아웃·설정·import·금고의 저장은 각 기존 서비스의 revision·원자 저장 경로를 따른다. 모든 설정 변경을 새로운 Coordinator 원장으로 옮기거나, 반대로 설정 저장소가 실행 효과를 직접 확정하게 만들지 않는다.
+정의·설정·import·금고의 저장은 각 기존 서비스의 revision·원자 저장 경로를 따른다. 모든 설정 변경을 새로운 Coordinator 원장으로 옮기거나, 반대로 설정 저장소가 실행 효과를 직접 확정하게 만들지 않는다.
 
 영속 이벤트와 현재 SQL 투영의 트랜잭션 경계를 지킨다. 실행 당시 snapshot과 산출물 버전은 불변이다. 편집 draft나 미래 설정 변경은 과거 Run의 입력을 바꾸지 않는다.
 

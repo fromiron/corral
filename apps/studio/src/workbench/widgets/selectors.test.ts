@@ -5,6 +5,7 @@ import {
   activityLine,
   agentActivity,
   changesPresentation,
+  composerShowsRunStatus,
   fileChangeSignals,
   planBodyStatus,
   presentContext,
@@ -540,7 +541,7 @@ describe('chat widget selectors', () => {
     });
   });
 
-  it('SURFACE-02 hides low-priority chips without dropping them', () => {
+  it('SURFACE-02 keeps current work visible and hides idle low-priority chips', () => {
     const chips = visibleWidgets({
       hasContext: true,
       agents: { total: 3, working: 2, waiting: 1, failed: 0, delegated: true },
@@ -564,7 +565,7 @@ describe('chat widget selectors', () => {
         toolCount: 9,
         resultCount: 3,
       }),
-    ).toEqual([]);
+    ).toEqual(['agents']);
     expect(
       visibleWidgets({
         hasContext: true,
@@ -677,6 +678,32 @@ describe('viewed run label (#72)', () => {
   });
   it('does not claim an order for a run the session does not list', () => {
     expect(viewedRun({ runIds, presentationRunId: 'run_x', live: false })?.latest).toBe(false);
+  });
+});
+
+describe('composer run status pill', () => {
+  it('leaves a live run to the top bar unless it needs the person', () => {
+    expect(
+      composerShowsRunStatus({ runStatus: 'running', readState: 'ready', needsAction: false }),
+    ).toBe(false);
+    expect(
+      composerShowsRunStatus({ runStatus: 'paused', readState: 'ready', needsAction: false }),
+    ).toBe(false);
+    expect(
+      composerShowsRunStatus({ runStatus: 'running', readState: 'ready', needsAction: true }),
+    ).toBe(true);
+  });
+
+  it('keeps one pill for an ended run and for a state it cannot read', () => {
+    expect(
+      composerShowsRunStatus({ runStatus: 'succeeded', readState: 'ready', needsAction: false }),
+    ).toBe(true);
+    expect(
+      composerShowsRunStatus({ runStatus: 'cancelled', readState: 'ready', needsAction: false }),
+    ).toBe(true);
+    expect(
+      composerShowsRunStatus({ runStatus: null, readState: 'error', needsAction: false }),
+    ).toBe(true);
   });
 });
 

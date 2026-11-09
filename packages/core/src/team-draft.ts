@@ -37,10 +37,8 @@ const ENGLISH_LABELS: TeamLabels = {
   output: 'Output',
 };
 
-type Box = { x: number; y: number; width?: number; height?: number };
 export interface TeamDraft {
   definition: CorralDefinition;
-  layout: { nodes: Record<string, Box>; viewport: { x: number; y: number; zoom: number } };
 }
 
 const RESEARCH =
@@ -111,7 +109,7 @@ const CONTRACT: Record<TeamSlot, CorralDefinition['roles'][number]['outputContra
   reviewer: 'review',
 };
 
-/** The plan as a Corral and its layout. Tools and wiring come from the pattern alone. */
+/** The plan as a Corral. Tools and wiring come from the pattern alone. */
 export function draftFromPlan(
   plan: TeamPlan,
   corralId: string,
@@ -168,13 +166,7 @@ export function draftFromPlan(
         { id: 'e1', source: 'work', sourcePort: 'out', target: 'output', targetPort: 'in' },
       ],
     } satisfies CorralDefinition;
-    return {
-      definition,
-      layout: {
-        nodes: { work: { x: 80, y: 120 }, output: { x: 360, y: 120 } },
-        viewport: { x: 16, y: 16, zoom: 1 },
-      },
-    };
+    return { definition };
   }
 
   // The first step (research or an outline) feeds the review Loop.
@@ -200,7 +192,7 @@ export function draftFromPlan(
       id: 'write',
       type: 'agent',
       label: label('writer'),
-      loopId: 'review_loop',
+      parentId: 'review_loop',
       roleId: 'writer',
       invocation: 'scheduled',
       inputBindings: [
@@ -220,7 +212,7 @@ export function draftFromPlan(
       id: 'review',
       type: 'agent',
       label: label('reviewer'),
-      loopId: 'review_loop',
+      parentId: 'review_loop',
       roleId: 'reviewer',
       invocation: 'scheduled',
       // The criteria text, so the review is against what the person asked for (#20).
@@ -234,7 +226,7 @@ export function draftFromPlan(
       id: 'review_decision',
       type: 'decision',
       label: labels.decision,
-      loopId: 'review_loop',
+      parentId: 'review_loop',
       mode: 'review',
       rule: 'review_verdict',
       inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'review' }],
@@ -269,19 +261,5 @@ export function draftFromPlan(
     nodes,
     controlEdges: edges,
   };
-  return {
-    definition,
-    layout: {
-      nodes: {
-        [firstNode]: { x: 20, y: 90 },
-        review_loop: { x: 230, y: 20, width: 650, height: 210 },
-        write: { x: 260, y: 90 },
-        review: { x: 470, y: 90 },
-        review_decision: { x: 680, y: 90 },
-        // Below the Loop, so the team fits a 1280px canvas.
-        output: { x: 680, y: 290 },
-      },
-      viewport: { x: 16, y: 16, zoom: 0.75 },
-    },
-  };
+  return { definition };
 }

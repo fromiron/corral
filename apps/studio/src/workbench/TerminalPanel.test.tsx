@@ -227,10 +227,11 @@ it('unresolved creation exposes receipt recovery and prevents a new terminal', (
   const html = render(terminal, true);
   expect(html).toContain('Check creation result');
   const document = new DOMParser().parseFromString(html, 'text/html');
-  expect(
-    [...document.querySelectorAll('button')].find((button) => button.textContent === 'New terminal')
-      ?.disabled,
-  ).toBe(true);
+  const create = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'New terminal',
+  );
+  expect(create).toBeDefined();
+  expect(create?.disabled).toBe(true);
   expect(html).not.toContain('Retry original creation request');
 });
 

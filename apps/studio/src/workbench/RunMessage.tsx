@@ -1,5 +1,5 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { pendingInteractions, type RunProjection } from '@corral/core';
+import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
   CopyTextButton,
@@ -30,13 +30,12 @@ import {
 } from '@corral/react/design-kit';
 import { ChevronRight, FileText, LoaderCircle, PanelRight, Pause } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
-import { MessageBranch } from './MessageBranch.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
 import { TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
@@ -48,11 +47,13 @@ export function RunMessage({
   sessionId,
   live,
   onOpenArtifact,
+  artifactMetadataVersion,
 }: {
   runId: string;
   sessionId: string | null;
   live: boolean;
   onOpenArtifact(id: string): void;
+  artifactMetadataVersion?: string;
 }) {
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
@@ -77,7 +78,16 @@ export function RunMessage({
   const [watched, setWatched] = useState(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const { store, state } = useCorralRun(runId, live, expanded);
+  const {
+    store,
+    state,
+    conversationTurn,
+    bodyMetadataCurrent = true,
+  } = useCorralRun(runId, live, expanded, artifactMetadataVersion);
+  const label = useCallback(
+    (nodeId: string) => state.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
+    [state.definition],
+  );
   const results = useMemo(
     () => (state.projection ? runResults(state.projection) : null),
     [state.projection],
@@ -87,8 +97,23 @@ export function RunMessage({
     : results?.kind === 'partial'
       ? results.intermediate.map((g) => g.latest)
       : [];
+  const preservedTurn =
+    sessionId &&
+    conversationTurn?.runId === runId &&
+    state.projection &&
+    TERMINAL_RUN_STATUSES.has(state.projection.status) &&
+    conversationTurn.answer !== null
+      ? conversationTurn
+      : null;
   const ids = visible
-    .filter((item) => !item.media)
+    .filter(
+      (item) =>
+        !item.media &&
+        item.artifactVersionId !== preservedTurn?.artifactVersionId &&
+        state.projection &&
+        bodyMetadataCurrent &&
+        canReadArtifactBody(state.projection, item.artifactVersionId),
+    )
     .map((x) => x.artifactVersionId)
     .join(',');
   useEffect(() => {
@@ -126,8 +151,6 @@ export function RunMessage({
   const questions = interactions.filter((interaction) => interaction.kind !== 'approval');
   const requiredLabel =
     questions.length === 1 ? tw('actionQuestion') : tw('actionMixed', { count: questions.length });
-  const label = (nodeId: string) =>
-    state.definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   // Current session activity lives by the composer and in the agent widget.
   // Historical failures stay visible here, while standalone consumers keep their activity row.
@@ -166,6 +189,9 @@ export function RunMessage({
       (result) =>
         !result.media &&
         !projection.reviews[result.artifactVersionId] &&
+        result.artifactVersionId !== preservedTurn?.artifactVersionId &&
+        bodyMetadataCurrent &&
+        canReadArtifactBody(projection, result.artifactVersionId) &&
         state.artifactTexts[result.artifactVersionId] === undefined,
     );
   // In a conversation only the lead's reply can become the answer; delegates speak in rows.
@@ -338,7 +364,7 @@ export function RunMessage({
           ) : null}
         </section>
       ) : null}
-      {/* in a conversation, the turn's process is one flat list above its answer. */}
+      {/* The kit's observed work steps sit above the separately streamed answer. */}
       {sessionId && (!working || chatDensity !== 'results') ? (
         <TurnProcess
           events={state.events}
@@ -460,8 +486,15 @@ export function RunMessage({
         <ChatResult
           key={result.artifactVersionId}
           result={result}
-          text={state.artifactTexts[result.artifactVersionId]}
+          text={
+            result.artifactVersionId === preservedTurn?.artifactVersionId
+              ? (preservedTurn.answer ?? undefined)
+              : bodyMetadataCurrent && canReadArtifactBody(projection, result.artifactVersionId)
+                ? state.artifactTexts[result.artifactVersionId]
+                : undefined
+          }
           projection={projection}
+          bodyMetadataCurrent={bodyMetadataCurrent}
           label={label}
           sessionId={sessionId}
           partial={results?.kind === 'partial'}
@@ -485,6 +518,7 @@ function ChatResult({
   sessionId,
   partial,
   first,
+  bodyMetadataCurrent,
 }: {
   result: ResultItem;
   text: string | undefined;
@@ -493,6 +527,7 @@ function ChatResult({
   sessionId: string | null;
   partial: boolean;
   first: boolean;
+  bodyMetadataCurrent: boolean;
 }) {
   const t = useTranslations('Desktop');
   const tr = useTranslations('Results');
@@ -508,6 +543,7 @@ function ChatResult({
   }, [open, inline, text, result.media]);
   const author = projection.executions[result.authorExecutionId];
   const review = projection.reviews[result.artifactVersionId];
+  const readable = bodyMetadataCurrent && canReadArtifactBody(projection, result.artifactVersionId);
   const target = review ? projection.artifacts[review.targetVersionId] : null;
   const location = {
     to: sessionId ? ('/sessions/$sessionId' as const) : ('/runs/$runId' as const),
@@ -523,25 +559,24 @@ function ChatResult({
     return (
       <div className="min-w-0 space-y-2 text-sm leading-7 wrap-anywhere" data-testid="chat-result">
         {text === undefined ? (
-          <p className="text-xs text-muted-foreground">{ta('loading')}</p>
+          <p className="text-xs text-muted-foreground">
+            {ta(!bodyMetadataCurrent || readable ? 'loading' : 'retired')}
+          </p>
         ) : (
           <MessageBody text={text} markdown />
         )}
-        <div className="chat-result-actions flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <Link
-            {...location}
-            search={search(result.artifactVersionId)}
-            className="inline-flex items-center gap-1 hover:text-text"
-          >
-            <PanelRight size={12} aria-hidden="true" />
-            {tr('openResults')}
-          </Link>
-          <MessageBranch
-            runId={projection.runId}
-            artifactVersionId={result.artifactVersionId}
-            disabled={!TERMINAL_RUN_STATUSES.has(projection.status)}
-          />
-        </div>
+        {readable ? (
+          <div className="chat-result-actions flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <Link
+              {...location}
+              search={search(result.artifactVersionId)}
+              className="inline-flex items-center gap-1 hover:text-text"
+            >
+              <PanelRight size={12} aria-hidden="true" />
+              {tr('openResults')}
+            </Link>
+          </div>
+        ) : null}
       </div>
     );
   return (
@@ -563,7 +598,11 @@ function ChatResult({
       </summary>
       {open === true ? (
         <>
-          {result.media ? (
+          {!bodyMetadataCurrent ? (
+            <p className="text-xs text-muted-foreground">{ta('loading')}</p>
+          ) : !readable ? (
+            <p className="text-xs text-muted-foreground">{ta('retired')}</p>
+          ) : result.media ? (
             <GeneratedImage
               runId={projection.runId}
               versionId={result.artifactVersionId}
@@ -594,21 +633,16 @@ function ChatResult({
             <SafeMarkdown text={text} />
           )}
           {text !== undefined ? <CopyTextButton text={text} /> : null}
-          <Link
-            {...location}
-            search={search(result.artifactVersionId)}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-text"
-          >
-            {sessionId ? <PanelRight size={12} aria-hidden="true" /> : null}
-            {tr('openResults')}
-            {sessionId ? null : <ChevronRight size={12} />}
-          </Link>
-          {sessionId ? (
-            <MessageBranch
-              runId={projection.runId}
-              artifactVersionId={result.artifactVersionId}
-              disabled={!TERMINAL_RUN_STATUSES.has(projection.status)}
-            />
+          {readable ? (
+            <Link
+              {...location}
+              search={search(result.artifactVersionId)}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-text"
+            >
+              {sessionId ? <PanelRight size={12} aria-hidden="true" /> : null}
+              {tr('openResults')}
+              {sessionId ? null : <ChevronRight size={12} />}
+            </Link>
           ) : null}
         </>
       ) : null}

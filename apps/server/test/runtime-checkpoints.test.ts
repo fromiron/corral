@@ -13,18 +13,16 @@ import { checkpointReferences } from '../../../packages/core/src/context-checkpo
 const hash = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
 
 it.each([false, true])(
-  'a private checkpoint preserves its policy across restart (recorded=%s)',
+  'active checkpoints preserve policy, then release bodies on restart without historical recovery (recorded=%s)',
   async (recorded) => {
     const directory = mkdtempSync(join(tmpdir(), 'corral-runtime-checkpoint-')),
       path = join(directory, 'state.db');
     let db = openDatabase(path);
-    const started = new Gate(),
-      resumed = new Gate(),
-      done = new Gate();
-    let resumedHost!: AgentHost;
-    let sourceHost!: AgentHost, sourceInput!: AgentStartInput, resumedInput!: AgentStartInput;
+    const started = new Gate();
+    let sourceHost!: AgentHost, sourceInput!: AgentStartInput;
+    const resumedStart = vi.fn();
     const confirm = vi.fn(async () => {});
-    let modelId = 'fixture';
+    const modelId = 'fixture';
     const originalPolicy = resolveProfileContext(
       { contextWindow: 64000 },
       { contextWindow: 128000, source: 'catalog' },
@@ -77,7 +75,6 @@ it.each([false, true])(
         sessionId: 'session_resume',
         definition: {
           ...linearCorral(['writer']),
-          limits: { ...linearCorral(['writer']).limits, maxModelCalls: 1 },
           roles: linearCorral(['writer']).roles.map((role) => ({
             ...role,
             allowedWorkTools: ['write_artifact', 'read_document'],
@@ -212,10 +209,31 @@ it.each([false, true])(
       );
       expect(
         JSON.stringify(exportRunArchive(sourceStore, created.runId!, { privateTranscript: true })),
-      ).toContain('Private preserved');
+      ).not.toContain('Private preserved');
       expect(
         openRunArchive(exportRunArchive(sourceStore, created.runId!, { privateTranscript: true })),
       ).toBeDefined();
+      expect(sourceInput.model.contextPolicy).toEqual(recorded ? originalPolicy : undefined);
+      expect(sourceInput.model.contextWindow).toBe(recorded ? 64000 : undefined);
+      for (const toolCallId of [original.toolCallId, unprojected.toolCallId]) {
+        expect(
+          await sourceHost.invokeTool({
+            name: 'read_artifact',
+            args: { toolCallId, offset: 9900, limit: 300 },
+          }),
+        ).toMatchObject({
+          ok: true,
+          result: { text: expect.stringContaining('MIDDLE_SOURCE_IDENTIFIER') },
+        });
+      }
+      expect(
+        (
+          await sourceHost.invokeTool({
+            name: 'read_artifact',
+            args: { toolCallId: 'unrelated_old_tool' },
+          })
+        ).ok,
+      ).toBe(false);
       expect((await source.runtimeCheckpoints(created.runId!))[0]?.blockers).toContain(
         'source_not_stopped',
       );
@@ -235,17 +253,9 @@ it.each([false, true])(
         },
         runtimeRecovery: { confirm },
         agents: {
-          start: async (input, host) => {
-            resumedHost = host;
-            resumedInput = input;
-            resumed.open();
-            return {
-              cancel: async () => done.open(),
-              waitForSettlement: async () => {
-                await done.wait();
-                return { outcome: 'cancelled' };
-              },
-            };
+          start: async () => {
+            resumedStart();
+            throw new Error('released context must never start');
           },
         },
       });
@@ -257,12 +267,12 @@ it.each([false, true])(
         4096,
       ).policy!;
       const preview = (await restarted.runtimeCheckpoints(created.runId!))[0]!;
-      expect(preview.ready).toBe(true);
-      modelId = 'different';
-      expect((await restarted.runtimeCheckpoints(created.runId!))[0]?.blockers).toContain(
-        'model_changed',
-      );
-      modelId = 'fixture';
+      expect(preview.ready).toBe(false);
+      expect(preview.blockers).toContain('content_released');
+      expect(restartedStore.getArtifactText(created.runId!, checkpoint!.contextRef)).toBeNull();
+      expect(restartedStore.getArtifactText(created.runId!, checkpoint!.manifestRef)).toBeNull();
+      for (const ref of previousBodies)
+        if (ref) expect(restartedStore.getArtifactText(created.runId!, ref)).toBeNull();
       const request = {
         commandId: 'continue_checkpoint',
         sourceRunId: created.runId!,
@@ -270,81 +280,21 @@ it.each([false, true])(
         manifestHash: preview.manifestHash,
         expectedSourceSeq: preview.sourceSeq,
       };
-      expect(
-        (
-          await restarted.resumeRuntime({
-            ...request,
-            commandId: 'bad_hash',
-            manifestHash: '0'.repeat(64),
-          })
-        ).receipt.status,
-      ).toBe('rejected');
-      expect(
-        (
-          await restarted.resumeRuntime({
-            ...request,
-            commandId: 'old_sequence',
-            expectedSourceSeq: preview.sourceSeq - 1,
-          })
-        ).receipt.status,
-      ).toBe('rejected');
-      const restoreReads = vi.spyOn(restartedStore, 'getArtifactText');
-      const continued = await restarted.resumeRuntime(request);
-      expect(restoreReads.mock.calls.some(([, ref]) => ref === beforeSummary!.contextRef)).toBe(
-        false,
-      );
-      restoreReads.mockRestore();
-      expect(continued.runId).not.toBeNull();
-      expect(continued.runId).not.toBe(created.runId);
-      expect(new SqliteRunStore(db).getRun(continued.runId!)?.sessionId).toBe('session_resume');
-      await resumed.wait();
-      expect(resumedInput.executionId).not.toBe(sourceInput.executionId);
-      for (const toolCallId of [original.toolCallId, unprojected.toolCallId]) {
-        const sourceRange = await resumedHost.invokeTool({
-          name: 'read_artifact',
-          args: { toolCallId, offset: 9900, limit: 300 },
-        });
-        expect(sourceRange).toMatchObject({
-          ok: true,
-          result: { text: expect.stringContaining('MIDDLE_SOURCE_IDENTIFIER') },
-        });
-      }
-      expect(
-        (
-          await resumedHost.invokeTool({
-            name: 'read_artifact',
-            args: { toolCallId: 'unrelated_old_tool' },
-          })
-        ).ok,
-      ).toBe(false);
-
-      expect(resumedInput.model.contextPolicy).toEqual(recorded ? originalPolicy : undefined);
-      expect(resumedInput.model.contextWindow).toBe(recorded ? 64000 : undefined);
-      expect(JSON.stringify(resumedInput.resumeContext)).toContain('Private preserved request');
-      expect(restarted.getRunSnapshot(continued.runId!)?.resumedFrom).toMatchObject({
-        runId: created.runId,
-        checkpointId: preview.checkpointId,
-      });
-      expect(preview.usageLimits).toBe('none');
-      expect(restarted.getSnapshot(continued.runId!).projection.usageLimits).toBe('none');
-      expect(restarted.getRunSnapshot(continued.runId!)?.definition.limits.maxModelCalls).toBe(1);
-      expect(restarted.getRunSnapshot(continued.runId!)?.definition.limits.maxOutputTokens).toBe(
-        64000,
-      );
-      expect(await restarted.resumeRuntime(request)).toEqual(continued);
-      expect(restarted.getSnapshot(created.runId!).projection.status).toBe('interrupted');
-      expect((await restarted.runtimeCheckpoints(created.runId!))[0]?.blockers).toContain(
-        'already_resumed',
-      );
-      expect(confirm).toHaveBeenCalledTimes(1);
-      expect(
-        openRunArchive(
-          exportRunArchive(new SqliteRunStore(db), continued.runId!, { privateTranscript: true }),
-        ),
-      ).toBeDefined();
+      const count = restarted.listRuns().length;
+      const rejected = await restarted.resumeRuntime(request);
+      expect(rejected.runId).toBeNull();
+      expect(rejected.receipt.status).toBe('rejected');
+      expect(rejected.receipt.error?.message).toContain('released');
+      expect(await restarted.resumeRuntime(request)).toEqual(rejected);
+      expect(restarted.listRuns()).toHaveLength(count);
+      expect(resumedStart).not.toHaveBeenCalled();
+      expect(confirm).not.toHaveBeenCalled();
+      const archive = exportRunArchive(restartedStore, created.runId!, { privateTranscript: true });
+      expect(openRunArchive(archive)).toBeDefined();
+      if (archive.visibility !== 'private') throw new Error('private archive missing');
+      expect(archive.unavailableBodyRefs).toContain(checkpoint!.contextRef);
+      expect(JSON.stringify(archive)).not.toContain('Private preserved');
     } finally {
-      done.open();
-      await Promise.resolve();
       db.close();
       rmSync(directory, { recursive: true, force: true });
     }

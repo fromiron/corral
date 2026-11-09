@@ -9,6 +9,7 @@ import {
   type MeetingRound,
   MeetingRoundRequest,
   type MeetingRunOrigin,
+  type MeetingSelectionInput,
   type MeetingState,
   type MeetingView,
   QueuedMeetingMessage,
@@ -16,10 +17,12 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import { validTextAttachments } from './attachments.ts';
+import { readMeetingAddress } from './meeting-address.ts';
 import { recordMeetingMinutes, SECRETARY_MINUTES_INSTRUCTIONS } from './meeting-decisions.ts';
 import { formatMeetingEvidence } from './meeting-evidence.ts';
 import type { CorralRepository, SessionResult, WorkSession } from './repository/index.ts';
 import { type RuntimeTransport, waitForProjection } from './transport.ts';
+import { usageTotals } from './usage.ts';
 
 // Chat messages ask for read-only replies through the Coordinator. Persisted
 // batch IDs remain stable for cancellation, replay and references from existing minutes.
@@ -30,6 +33,7 @@ export interface MeetingServiceDeps {
   clock: Clock;
   newRoundId(): string;
   random(): number;
+  selectParticipants?(input: MeetingSelectionInput): Promise<string[] | null>;
   continuation?(
     runId: string,
     sessionId: string,
@@ -248,7 +252,9 @@ export class MeetingService {
         if (previous)
           return previous.message === request.text &&
             (previous.mode === undefined || previous.mode === request.mode) &&
-            sameParticipants(previous.participantIds, participantIds) &&
+            (mentions.length
+              ? previous.kind !== 'all' && sameParticipants(previous.participantIds, participantIds)
+              : previous.kind === 'all') &&
             canonicalJson(previous.attachments ?? []) === canonicalJson(request.attachments ?? [])
             ? { ok: true, outcome: 'started', roundId: previous.roundId }
             : err('conflict', 'This command was already sent with different arguments.');
@@ -417,7 +423,7 @@ export class MeetingService {
 
   private nextRebuttal(meeting: MeetingState) {
     const last = meeting.rounds.at(-1);
-    if (!last || last.kind === 'secretary') return null;
+    if (!last || last.kind === 'secretary' || !last.participantIds.length) return null;
     const rebuttalNo = last.kind === 'rebuttal' ? (last.rebuttalNo ?? 0) + 1 : 1;
     return { basedOnRoundId: last.roundId, rebuttalNo };
   }
@@ -469,11 +475,11 @@ export class MeetingService {
         text: null,
       };
     }
-    const { budget } = projection;
+    const usage = usageTotals(projection);
     base.usage = {
-      modelCalls: budget.modelCalls,
-      outputTokens: budget.spent,
-      unknown: budget.unknownOutstanding > 0,
+      modelCalls: usage.requests,
+      outputTokens: usage.outputTokens,
+      unknown: usage.unknown + usage.inFlight > 0,
     };
     if (!TERMINAL_RUN_STATUSES.has(projection.status))
       return { ...base, status: 'running', text: null };
@@ -579,7 +585,66 @@ export class MeetingService {
     consumeQueue = false,
   ): Promise<MeetingResult> {
     const meeting = session.meeting!;
-    const participantIds = [...spec.participantIds];
+    let participantIds = [...spec.participantIds];
+    const message = spec.kind === 'all' ? spec.message : null;
+    const address = message ? readMeetingAddress(message, meeting.config.participants) : null;
+    if (address) participantIds = participantIds.filter((id) => !address.excluded.includes(id));
+    if (address?.participantIds.length) participantIds = address.participantIds;
+    else if (message && this.deps.selectParticipants) {
+      const history: { id: string; order: number; participantId: string | null; text: string }[] =
+        [];
+      for (const past of meeting.rounds.slice(-6)) {
+        const index = meeting.rounds.indexOf(past);
+        if (past.message)
+          history.push({
+            id: `${past.roundId}:message`,
+            order: roundOrder(past, index),
+            participantId: null,
+            text: past.message.slice(0, 2000),
+          });
+        const view = await this.roundView(session.sessionId, past);
+        for (const [n, answer] of view.answers.entries()) {
+          if (answer.status === 'answered' && answer.text)
+            history.push({
+              id: `answer:${answer.runId}`,
+              order: answerOrder(past, index, past.answers[n]!, n),
+              participantId: answer.participantId,
+              text: answer.text.slice(0, 2000),
+            });
+        }
+      }
+      history.sort((a, b) => a.order - b.order);
+      const selected = await this.deps
+        .selectParticipants({
+          message,
+          participants: meeting.config.participants
+            .filter(({ participantId }) => participantIds.includes(participantId))
+            .map(({ participantId, name, prompt }) => ({ participantId, name, prompt })),
+          history: history
+            .slice(-12)
+            .map(({ id, participantId, text }) => ({ id, participantId, text })),
+        })
+        .catch(() => null);
+      if (
+        selected !== null &&
+        new Set(selected).size === selected.length &&
+        selected.every((id) => participantIds.includes(id))
+      )
+        participantIds = selected;
+      else {
+        const allowed = participantIds.filter((id) => id !== SECRETARY_ID);
+        const replyTarget = spec.replyTo?.participantId;
+        const recent = history.findLast(
+          (entry) => entry.participantId !== null && allowed.includes(entry.participantId),
+        )?.participantId;
+        const turn = meeting.rounds.filter((past) => past.kind === 'all').length;
+        const fallback =
+          (replyTarget && allowed.includes(replyTarget) ? replyTarget : null) ??
+          recent ??
+          allowed[turn % allowed.length];
+        participantIds = fallback ? [fallback] : [];
+      }
+    }
     for (let i = participantIds.length - 1; i > 0; i--) {
       const j = Math.floor(this.deps.random() * (i + 1));
       [participantIds[i], participantIds[j]] = [participantIds[j]!, participantIds[i]!];

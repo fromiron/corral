@@ -21,7 +21,7 @@ import { FluidHoverHighlight } from './fluid-hover-highlight.tsx';
 // in by passing `index`; the lit row hides its borders so the highlight reads
 // as one clean pill.
 
-// ── Context ──────────────────────────────────────────────
+// ─── Context ─────────────────────────────────────────────────────────────────
 
 interface TableContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
@@ -30,7 +30,7 @@ interface TableContextValue {
 
 const TableContext = createContext<TableContextValue | null>(null);
 
-// ── Table ────────────────────────────────────────────────
+// ─── Table ───────────────────────────────────────────────────────────────────
 
 interface TableProps extends HTMLAttributes<HTMLTableElement> {
   children: ReactNode;
@@ -85,7 +85,7 @@ const Table = forwardRef<HTMLTableElement, TableProps>(
 
 Table.displayName = 'Table';
 
-// ── TableHeader ──────────────────────────────────────────
+// ─── TableHeader ─────────────────────────────────────────────────────────────
 
 const TableHeader = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(
   ({ className, ...props }, ref) => <thead ref={ref} className={cn('', className)} {...props} />,
@@ -93,7 +93,7 @@ const TableHeader = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTable
 
 TableHeader.displayName = 'TableHeader';
 
-// ── TableBody ────────────────────────────────────────────
+// ─── TableBody ───────────────────────────────────────────────────────────────
 
 const TableBody = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(
   ({ className, ...props }, ref) => <tbody ref={ref} className={cn('', className)} {...props} />,
@@ -101,7 +101,7 @@ const TableBody = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSe
 
 TableBody.displayName = 'TableBody';
 
-// ── TableRow ─────────────────────────────────────────────
+// ─── TableRow ────────────────────────────────────────────────────────────────
 
 interface TableRowProps extends HTMLAttributes<HTMLTableRowElement> {
   index?: number;
@@ -150,7 +150,7 @@ const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
 
 TableRow.displayName = 'TableRow';
 
-// ── TableHead ────────────────────────────────────────────
+// ─── TableHead ───────────────────────────────────────────────────────────────
 
 const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => {
@@ -172,7 +172,7 @@ const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCel
 
 TableHead.displayName = 'TableHead';
 
-// ── TableCell ────────────────────────────────────────────
+// ─── TableCell ───────────────────────────────────────────────────────────────
 
 const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => {
@@ -194,6 +194,6 @@ const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCel
 
 TableCell.displayName = 'TableCell';
 
-// ── Exports ──────────────────────────────────────────────
+// ─── Exports ─────────────────────────────────────────────────────────────────
 
 export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow };

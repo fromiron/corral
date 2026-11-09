@@ -1,5 +1,7 @@
+import type { ExecutionStatus, RunStatus } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
-import { KitBadge } from '../design-kit/index.ts';
+import { AgentStatusBadge, KitBadge } from '../design-kit/index.ts';
+import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 
 // Status is never conveyed by colour alone: every badge has a dot and text.
 
@@ -70,5 +72,24 @@ export function StatusBadge({ status }: { status: string }) {
     <KitBadge variant="dot" color={COLOR[statusTone(status)]} data-status={status}>
       {label}
     </KitBadge>
+  );
+}
+
+/**
+ * A run or execution status in the kit's agent language: its glyph and colour come from the six
+ * kit states, while the word stays Corral's exact status.
+ */
+export function AgentStatusText({
+  status,
+  kind,
+}: { kind: 'run'; status: RunStatus } | { kind: 'execution'; status: ExecutionStatus }) {
+  const t = useTranslations('Status');
+  const label = t.has(status) ? t(status) : status;
+  return (
+    <AgentStatusBadge
+      status={kind === 'run' ? runAgentStatus(status) : executionAgentStatus(status)}
+      label={label}
+      data-status={status}
+    />
   );
 }

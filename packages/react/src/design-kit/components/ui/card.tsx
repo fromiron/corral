@@ -17,6 +17,7 @@ import {
 const Link = 'a';
 
 import { useFluidHover, useRegisterFluidHoverItem } from '../../hooks/use-fluid-hover.ts';
+import { focusRing } from '../../lib/focus.ts';
 import { fontWeights } from '../../lib/font-weight.ts';
 import { type IconComponent, useIcons } from '../../lib/icon-context.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
@@ -24,17 +25,17 @@ import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/si
 import { cn } from '../../lib/utils.ts';
 import { FluidHoverHighlight } from './fluid-hover-highlight.tsx';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Compositional card (Card, CardHeader, CardTitle, CardDescription, CardAction,
 // CardContent, CardFooter, with `data-slot`s). CardGroup owns layout (list,
 // inline rows, or grid) and the fluid hover highlight. Surfaces are transparent
 // and borderless by default, relying on hairline dividers and the highlight.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 type CardOrientation = 'card' | 'inline';
 type CardBorder = 'none' | 'outlined';
 
-// ── Group context ────────────────────────────────────────
+// ─── Group context ───────────────────────────────────────────────────────────
 
 interface CardGroupContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
@@ -53,7 +54,7 @@ interface CardGroupContextValue {
 
 const CardGroupContext = createContext<CardGroupContextValue | null>(null);
 
-// ── Per-card context ─────────────────────────────────────
+// ─── Per-card context ────────────────────────────────────────────────────────
 
 interface CardContextValue {
   emphasized: boolean;
@@ -70,7 +71,7 @@ const CardContext = createContext<CardContextValue>({
   hasImage: false,
 });
 
-// ── CardGroup ────────────────────────────────────────────
+// ─── CardGroup ───────────────────────────────────────────────────────────────
 
 interface CardGroupProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrag'> {
   /** "card" stacks content vertically; "inline" lays it out as a row.
@@ -189,7 +190,7 @@ const CardGroup = forwardRef<HTMLDivElement, CardGroupProps>(
 
 CardGroup.displayName = 'CardGroup';
 
-// ── Card ─────────────────────────────────────────────────
+// ─── Card ────────────────────────────────────────────────────────────────────
 
 interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onClick'> {
   /** Makes the whole card an interactive target; fluid hover previews it.
@@ -300,7 +301,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
             target={external ? '_blank' : undefined}
             rel={external ? 'noopener noreferrer' : undefined}
             aria-label={label}
-            className="absolute inset-0 z-20 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] rounded-[inherit]"
+            className={cn('absolute inset-0 z-20 rounded-[inherit]', focusRing)}
           />
         ) : (
           <button
@@ -308,7 +309,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
             onClick={onClick}
             aria-label={label}
             aria-pressed={selected || undefined}
-            className="absolute inset-0 z-20 outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] rounded-[inherit]"
+            className={cn('absolute inset-0 z-20 rounded-[inherit]', focusRing)}
           />
         )
       ) : null;
@@ -412,7 +413,8 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
               onClick={onDismiss}
               aria-label="Dismiss"
               className={cn(
-                'absolute right-2 top-2 z-30 flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer outline-none transition-colors duration-80 focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+                'absolute right-2 top-2 z-30 flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer transition-colors duration-80',
+                focusRing,
                 // Over an image the icon needs its own backdrop.
                 hasImage ? 'bg-card/70 backdrop-blur-sm hover:bg-card' : 'hover:bg-hover',
                 // pointer-events gates with opacity so the hidden control can't
@@ -435,7 +437,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
 
 Card.displayName = 'Card';
 
-// ── CardHeader ───────────────────────────────────────────
+// ─── CardHeader ──────────────────────────────────────────────────────────────
 // Title + description, with CardAction pinned top-right.
 
 const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
@@ -467,7 +469,7 @@ const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
 
 CardHeader.displayName = 'CardHeader';
 
-// ── CardTitle ────────────────────────────────────────────
+// ─── CardTitle ───────────────────────────────────────────────────────────────
 
 const CardTitle = forwardRef<HTMLSpanElement, HTMLAttributes<HTMLSpanElement>>(
   ({ className, children, ...props }, ref) => {
@@ -518,7 +520,7 @@ const CardTitle = forwardRef<HTMLSpanElement, HTMLAttributes<HTMLSpanElement>>(
 
 CardTitle.displayName = 'CardTitle';
 
-// ── CardDescription ──────────────────────────────────────
+// ─── CardDescription ─────────────────────────────────────────────────────────
 
 const CardDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
   ({ className, ...props }, ref) => {
@@ -541,7 +543,7 @@ const CardDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLPara
 
 CardDescription.displayName = 'CardDescription';
 
-// ── CardAction ───────────────────────────────────────────
+// ─── CardAction ──────────────────────────────────────────────────────────────
 // z-30 keeps controls clickable above the stretched overlay.
 
 const CardAction = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
@@ -560,7 +562,7 @@ const CardAction = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
 
 CardAction.displayName = 'CardAction';
 
-// ── CardContent ──────────────────────────────────────────
+// ─── CardContent ─────────────────────────────────────────────────────────────
 
 const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => {
@@ -583,7 +585,7 @@ const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
 
 CardContent.displayName = 'CardContent';
 
-// ── CardFooter ───────────────────────────────────────────
+// ─── CardFooter ──────────────────────────────────────────────────────────────
 // Actions row, z-30 above the overlay. Trailing slot in inline cards.
 
 const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
@@ -613,7 +615,7 @@ const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
 
 CardFooter.displayName = 'CardFooter';
 
-// ── CardMedia ────────────────────────────────────────────
+// ─── CardMedia ───────────────────────────────────────────────────────────────
 // A leading icon or logo; a tuple renders a connected logo pair.
 
 type CardLogo = string | [string, string];
@@ -680,7 +682,7 @@ function CardMedia({ logo, logoAlt, icon: Icon, size = 22, className }: CardMedi
   return null;
 }
 
-// ── CardImage ────────────────────────────────────────────
+// ─── CardImage ───────────────────────────────────────────────────────────────
 // Full-bleed image: a top banner when stacked, a leading image when inline.
 
 interface CardImageProps {
@@ -711,7 +713,7 @@ function CardImage({ src, alt, className }: CardImageProps) {
 // Card detects image children by this name as well as by identity.
 CardImage.displayName = 'CardImage';
 
-// ── CardEyebrow ──────────────────────────────────────────
+// ─── CardEyebrow ─────────────────────────────────────────────────────────────
 // Kept for backward compatibility.
 
 /** @deprecated No eyebrows: a card starts with its title. */
@@ -736,7 +738,7 @@ const CardEyebrow = forwardRef<HTMLSpanElement, HTMLAttributes<HTMLSpanElement>>
 
 CardEyebrow.displayName = 'CardEyebrow';
 
-// ── CardFeature ──────────────────────────────────────────
+// ─── CardFeature ─────────────────────────────────────────────────────────────
 // Icon + title + description row for feature lists.
 
 interface CardFeatureProps {
@@ -779,7 +781,7 @@ function CardFeature({ icon: Icon, title, description }: CardFeatureProps) {
   );
 }
 
-// ── CardButton ───────────────────────────────────────────
+// ─── CardButton ──────────────────────────────────────────────────────────────
 // Self-contained so Card doesn't depend on Button. A link when `href` is set.
 
 type CardButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link';
@@ -845,10 +847,10 @@ function CardButton({
   );
 
   const classes = cn(
-    'group/action relative z-30 inline-flex items-center justify-center gap-1.5 h-7 px-2.5 cursor-pointer outline-none',
+    'group/action relative z-30 inline-flex items-center justify-center gap-1.5 h-7 px-2.5 cursor-pointer',
     typeClass('caption', compact ? 'compact' : 'default'),
     'transition-colors duration-80',
-    'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+    focusRing,
     'disabled:opacity-50 disabled:pointer-events-none',
     shape.button,
     CARD_BUTTON_VARIANTS[variant],
@@ -856,7 +858,7 @@ function CardButton({
 
   if (href) {
     return (
-      <Link
+      <a
         href={href}
         onClick={onClick}
         target={external ? '_blank' : undefined}
@@ -865,7 +867,7 @@ function CardButton({
         style={{ fontVariationSettings: fontWeights.normal }}
       >
         {inner}
-      </Link>
+      </a>
     );
   }
 

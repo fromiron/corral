@@ -78,7 +78,7 @@ describe('draftFromPlan', () => {
       }),
     ];
     for (const p of patterns) {
-      const { definition, layout } = draftFromPlan(p, 'drafted_1');
+      const { definition } = draftFromPlan(p, 'drafted_1');
       const compiled = compileDefinition(definition);
       expect(compiled.ok, `${p.pattern}: ${JSON.stringify(compiled)}`).toBe(true);
       // No warnings either: a reviewer gets the criteria text (#20).
@@ -90,7 +90,6 @@ describe('draftFromPlan', () => {
         const made = definition.roles.find((r) => r.name === role.name);
         expect(made?.prompt).toContain(role.duty);
       }
-      for (const node of definition.nodes) expect(layout.nodes[node.id]).toBeDefined();
     }
     const full = draftFromPlan(plan(), 'drafted_2').definition;
     expect(full.nodes.find((n) => n.type === 'loop')).toMatchObject({ maxIterations: 3 });

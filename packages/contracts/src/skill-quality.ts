@@ -50,7 +50,7 @@ export const SkillEvaluationCase = z.strictObject({
   modelHashes: z.array(ContentHash),
   modelCalls: z.int().min(0),
   outputTokens: z.number().min(0),
-  unknownTokens: z.number().min(0),
+  unknownCalls: z.int().min(0),
 });
 export const SkillEvaluationView = z.strictObject({
   id: Identifier,

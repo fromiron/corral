@@ -14,10 +14,15 @@ const base = {
 };
 
 describe('composer intent (UX-01)', () => {
-  it('follows the run while the box is empty', () => {
+  it('keeps an empty composer on the queue until instruction mode is explicitly chosen', () => {
     expect(resolveIntent({ ...base, allowed: ['steer', 'queue'] })).toEqual({
-      intent: 'steer',
-      target: 'exec_research',
+      intent: 'queue',
+      target: null,
+      blocked: null,
+    });
+    expect(resolveIntent({ ...base, chosenTarget: 'exec_writer' })).toEqual({
+      intent: 'queue',
+      target: null,
       blocked: null,
     });
     expect(resolveIntent({ ...base, allowed: ['queue'], targets: [] })).toEqual({
@@ -84,9 +89,14 @@ describe('composer intent (UX-01)', () => {
       target: null,
       blocked: null,
     });
-    expect(resolveIntent({ ...base, chosenTarget: 'exec_writer' })).toEqual({
+    expect(resolveIntent({ ...base, chosen: 'steer', chosenTarget: 'exec_writer' })).toEqual({
       intent: 'steer',
       target: 'exec_writer',
+      blocked: null,
+    });
+    expect(resolveIntent({ ...base, chosen: 'steer' })).toEqual({
+      intent: 'steer',
+      target: 'exec_research',
       blocked: null,
     });
   });

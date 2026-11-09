@@ -1,7 +1,13 @@
 import type { AgentHost, AgentObservation, AgentSettlement } from '@corral/contracts';
 import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
-import { applyEvent, Coordinator, emptyProjection, InMemoryRunStore } from '../src/index.ts';
+import {
+  applyEvent,
+  Coordinator,
+  emptyProjection,
+  InMemoryRunStore,
+  usageTotals,
+} from '../src/index.ts';
 
 async function setup() {
   const clock = new FakeClock();
@@ -90,7 +96,7 @@ describe('late usage accounting', () => {
     const accounting = s.events().filter((event) => event.type === 'model.usage_reconciled');
     expect(accounting).toHaveLength(2);
     expect(accounting[1]?.payload).toMatchObject({ normalizedUsage: usage, rawUsage });
-    expect(after.budget).toMatchObject({ spent: 37, reserved: 0, unknownOutstanding: 0 });
+    expect(usageTotals(after)).toMatchObject({ outputTokens: 37, inFlight: 0, unknown: 0 });
     expect(after.status).toBe('cancelled');
     expect(after.tasks).toEqual(before.tasks);
     expect(after.executions).toEqual(before.executions);
@@ -127,7 +133,7 @@ describe('late usage accounting', () => {
         certainty: 'reported',
       });
       expect(s.events().filter((event) => event.type === 'model.usage_reconciled')).toHaveLength(1);
-      expect(s.projection().budget.spent).toBe(37);
+      expect(usageTotals(s.projection()).outputTokens).toBe(37);
       expect(s.projection().progress).toEqual(progress);
       expect(s.store.getArtifactText(s.runId, `response_${s.permit.modelCallId}`)).toBe(
         'original response',

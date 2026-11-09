@@ -66,7 +66,6 @@ test.describe('extension input during an SDK run', () => {
           );
           const saved = await call('/corrals', {
             definition,
-            layout: { viewport: { x: 0, y: 0, zoom: 1 }, nodes: {} },
           });
           const workSession = await call('/sessions', {
             projectId: 'default',

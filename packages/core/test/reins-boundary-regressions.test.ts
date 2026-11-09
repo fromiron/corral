@@ -27,21 +27,6 @@ async function drain() {
 }
 
 function controlled(definition = linearCorral(['writer'])) {
-  const { maxModelCalls, maxOutputTokens, maxOutputTokensPerCall, modelTimeoutMs, runDeadlineMs } =
-    definition.limits;
-  definition = {
-    ...definition,
-    executionPolicy: {
-      version: 2,
-      budget: {
-        maxModelCalls,
-        maxOutputTokens,
-        maxOutputTokensPerCall,
-        modelTimeoutMs,
-        runDeadlineMs,
-      },
-    },
-  };
   const store = new InMemoryRunStore();
   const clock = new FakeClock();
   const hosts = new Map<string, AgentHost>();

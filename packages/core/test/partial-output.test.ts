@@ -106,10 +106,13 @@ describe('private partial model output', () => {
       usage: { inputTokens: 1, outputTokens: 1 },
     });
     await f.cancel();
-    expect(
-      f.coordinator.getSnapshot(f.runId).partialOutputs?.[f.permit.modelCallId],
-    ).toBeUndefined();
-    expect(f.store.getArtifactText(f.runId, `response_${f.permit.modelCallId}`)).toBe('confirmed');
+    const snapshot = f.coordinator.getSnapshot(f.runId);
+    expect(snapshot.partialOutputs?.[f.permit.modelCallId]).toBeUndefined();
+    // The confirmed record stays; its body follows the artifact lifetime, never the partial text.
+    expect(snapshot.projection.modelCalls[f.permit.modelCallId]?.responseRef).toBe(
+      `response_${f.permit.modelCallId}`,
+    );
+    expect(f.store.getArtifactText(f.runId, `stream:${f.permit.modelCallId}:0`)).toBeNull();
   });
 });
 

@@ -18,9 +18,7 @@ import { useShape } from '../../lib/shape-context.tsx';
 import { exitFallbackMs, spring } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 
-// ---------------------------------------------------------------------------
-// Portal container context
-// ---------------------------------------------------------------------------
+// ─── Portal container context ────────────────────────────────────────────────
 
 const TooltipPortalContainerContext = createContext<HTMLElement | null>(null);
 
@@ -38,9 +36,7 @@ function TooltipPortalContainer({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Provider
-// ---------------------------------------------------------------------------
+// ─── Provider ────────────────────────────────────────────────────────────────
 
 const DEFAULT_DELAY = 200;
 
@@ -73,9 +69,7 @@ function TooltipProvider({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type TooltipSide = 'top' | 'right' | 'bottom' | 'left';
 
@@ -98,9 +92,7 @@ interface TooltipProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Animation helpers
-// ---------------------------------------------------------------------------
+// ─── Animation helpers ───────────────────────────────────────────────────────
 
 function getSlideOffset(side: TooltipSide) {
   switch (side) {
@@ -115,9 +107,7 @@ function getSlideOffset(side: TooltipSide) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tooltip
-// ---------------------------------------------------------------------------
+// ─── Tooltip ─────────────────────────────────────────────────────────────────
 
 // Base UI can't see the Motion exit spring and would unmount mid-exit. Closes
 // call preventUnmountOnClose() and the content unmounts via actionsRef. A

@@ -6,7 +6,14 @@ import type {
   ImageGenerationOwner,
   ImageGenerationProfile,
 } from '@corral/contracts';
-import { Coordinator, exportRunArchive, openRunArchive } from '@corral/core';
+import {
+  Coordinator,
+  definitionHash,
+  emptyProjection,
+  exportRunArchive,
+  openRunArchive,
+  usageTotals,
+} from '@corral/core';
 import { openDatabase, SqliteModelAttemptStore, SqliteRunStore } from '@corral/storage-sqlite';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { PNG } from 'pngjs';
@@ -21,8 +28,6 @@ const profile: ImageGenerationProfile = {
   modelId: 'configured-image-model',
   api: 'openai-images',
   timeoutMs: 1000,
-  maxCallsPerRun: 2,
-  maxCostUsdPerCall: 0.2,
 };
 const owner: ImageGenerationOwner = {
   runId: 'run_one',
@@ -39,9 +44,20 @@ function database() {
   const db = openDatabase(':memory:');
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE name='generated_media'").get())
     db.exec(MEDIA_ARTIFACT_MIGRATION.sql);
-  db.prepare(
-    "INSERT INTO runs (id,corral_id,definition_hash,snapshot_json,status,last_seq,projection_json,started_at) VALUES ('run_one','corral_one','hash','{}','running',0,'{}','now')",
-  ).run();
+  const definition = linearCorral(['writer']);
+  new SqliteRunStore(db).insertRun({
+    runId: 'run_one',
+    projection: emptyProjection('run_one'),
+    snapshot: {
+      definition,
+      definitionHash: definitionHash(definition),
+      criteriaVersionId: 'criteria_one',
+      source: null,
+      mode: 'mock',
+      models: {},
+      startedAt: now(),
+    },
+  });
   return db;
 }
 async function endpoint(
@@ -93,20 +109,15 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       );
       try {
         await expect(
-          service.generate(
-            owner,
-            args,
-            {
-              aborted: false,
-              onCancel: () => {
-                active++;
-                return () => {
-                  active--;
-                };
-              },
+          service.generate(owner, args, {
+            aborted: false,
+            onCancel: () => {
+              active++;
+              return () => {
+                active--;
+              };
             },
-            0.2,
-          ),
+          }),
         ).rejects.toMatchObject({ outcome: stage === 'started' ? 'not_started' : 'unknown' });
         expect(active).toBe(0);
         expect(fetcher).toHaveBeenCalledTimes(stage === 'started' ? 0 : 1);
@@ -140,17 +151,12 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         attempts,
       );
       await expect(
-        service.generate(
-          owner,
-          args,
-          {
-            get aborted() {
-              return received;
-            },
-            onCancel: () => () => {},
+        service.generate(owner, args, {
+          get aborted() {
+            return received;
           },
-          0.2,
-        ),
+          onCancel: () => () => {},
+        }),
       ).rejects.toMatchObject({ outcome: 'unknown' });
       expect(service.read(owner.runId, owner.artifactVersionId)).toBeNull();
       expect(attempts.list()[0]).toMatchObject({
@@ -214,8 +220,8 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
               : null;
           },
           resolve: () => profile,
-          generate: (owner, args, pinned, cancellation, reserved) =>
-            service.generate(owner, args, cancellation, reserved, pinned),
+          generate: (owner, args, pinned, cancellation) =>
+            service.generate(owner, args, cancellation, pinned),
         },
         agents: {
           start: async (_input, h) => {
@@ -226,7 +232,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
               cancel: async () => done.open(),
               waitForSettlement: async () => {
                 await done.wait();
-                return { outcome: 'cancelled' as const };
+                return { outcome: 'succeeded' as const };
               },
             };
           },
@@ -263,39 +269,50 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         expect(read.result.images).toMatchObject([
           { data: bytes.toString('base64'), imageId: versionId },
         ]);
-      expect(coordinator.getSnapshot(startedRun.runId).projection.budget).toMatchObject({
-        imageSpentMicros: 0,
-        imageReservedMicros: 0,
-        imageUnknownOutstandingMicros: 200000,
+      // The fixture reports no price: the call is recorded with an unknown cost, never zero.
+      expect(usageTotals(coordinator.getSnapshot(startedRun.runId).projection)).toMatchObject({
+        imageCalls: 1,
+        imageCostMicros: 0,
+        imageCostUnknown: 1,
       });
-      const effect = store
+      const record = store
         .readEvents(startedRun.runId, 0)
-        .find((event) => event.type === 'budget.reserved' && event.payload.amount.image);
-      expect(effect?.type).toBe('budget.reserved');
-      const archive = exportRunArchive(store, startedRun.runId, { privateTranscript: true });
+        .find((event) => event.type === 'usage.recorded' && event.payload.kind === 'image');
+      expect(record?.type === 'usage.recorded' && record.payload.costMicros).toBeNull();
+      const activeArchive = exportRunArchive(store, startedRun.runId, { privateTranscript: true });
+      if (activeArchive.visibility !== 'private') throw new Error('private archive missing');
+      expect(activeArchive.media?.[versionId]).toBeUndefined();
+      expect(activeArchive.unavailableBodyRefs).toContain(versionId);
+      // No call or price cap: a third image in the same run is generated too.
+      expect((await host.invokeTool({ name: 'generate_image', args })).ok).toBe(true);
+      expect((await host.invokeTool({ name: 'generate_image', args })).ok).toBe(true);
+      expect(usageTotals(coordinator.getSnapshot(startedRun.runId).projection).imageCalls).toBe(3);
+      expect(
+        (
+          await host.invokeTool({
+            name: 'submit_result',
+            args: { artifactVersionIds: [versionId] },
+          })
+        ).ok,
+      ).toBe(true);
+      done.open();
+      const sourceRunId = startedRun.runId;
+      await vi.waitFor(() =>
+        expect(coordinator.getSnapshot(sourceRunId).projection.status).toBe('succeeded'),
+      );
+      const archive = exportRunArchive(store, sourceRunId, { privateTranscript: true });
       const opened = openRunArchive(archive);
-      expect(opened.visibility).toBe('private');
       if (opened.visibility !== 'private') throw new Error('private archive missing');
       expect(opened.media?.[versionId]?.dataHex).toBe(bytes.toString('hex'));
       const corrupt = structuredClone(archive);
       if (corrupt.visibility === 'private' && corrupt.media?.[versionId])
         corrupt.media[versionId].dataHex = '00';
       expect(() => openRunArchive(corrupt)).toThrow('generated image');
-      expect((await host.invokeTool({ name: 'generate_image', args })).ok).toBe(true);
-      const overBudget = await host.invokeTool({ name: 'generate_image', args });
-      expect(overBudget.ok).toBe(false);
-      if (!overBudget.ok) expect(overBudget.error.message).toContain('call/cost limit');
-      coordinator.submit({
-        schemaVersion: '0.1',
-        commandId: 'stop_image',
-        runId: startedRun.runId,
-        type: 'cancel',
-        payload: { scope: { kind: 'run' }, reason: 'next request' },
-      });
-      const sourceRunId = startedRun.runId;
-      await vi.waitFor(() =>
-        expect(coordinator.getSnapshot(sourceRunId).projection.status).toBe('cancelled'),
-      );
+      expect(service.read(sourceRunId, versionId)?.bytes).toEqual(bytes);
+      const intermediates = Object.keys(
+        coordinator.getSnapshot(sourceRunId).projection.artifacts,
+      ).filter((id) => id !== versionId);
+      for (const id of intermediates) expect(service.read(sourceRunId, id)).toBeNull();
       const next = coordinator.startRun({
         schemaVersion: '0.1',
         commandId: 'reuse_image',
@@ -344,7 +361,7 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         fetch,
         attempts,
       );
-      const generated = await service.generate(owner, args, idle, 0.2);
+      const generated = await service.generate(owner, args, idle);
       expect(received).toEqual({
         model: profile.modelId,
         prompt: args.prompt,
@@ -358,16 +375,16 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         costUsd: null,
       });
       expect(service.read(owner.runId, owner.artifactVersionId)?.bytes).toEqual(bytes);
-      expect(await service.generate(owner, args, idle, 0.2)).toEqual(generated);
+      expect(await service.generate(owner, args, idle)).toEqual(generated);
       expect(calls).toBe(1);
       expect(attempts.list()).toHaveLength(1);
       expect(attempts.list()[0]).toMatchObject({
         status: 'completed',
         usage: { inputTokens: 12, outputTokens: 34, source: 'reported', costUsd: null },
       });
-      await expect(
-        service.generate(owner, { ...args, prompt: 'changed' }, idle, 0.2),
-      ).rejects.toThrow('identity changed');
+      await expect(service.generate(owner, { ...args, prompt: 'changed' }, idle)).rejects.toThrow(
+        'identity changed',
+      );
       expect(service.read('other_run', owner.artifactVersionId)).toBeNull();
     } finally {
       await http.close();
@@ -406,15 +423,12 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         data: bytes.toString('base64'),
       };
       await expect(
-        service.generate(owner, { ...args, references: ['outside'] }, idle, 0.2, profile, [
-          reference,
-        ]),
+        service.generate(owner, { ...args, references: ['outside'] }, idle, profile, [reference]),
       ).rejects.toMatchObject({ outcome: 'not_started' });
       const result = await service.generate(
         owner,
         { ...args, references: [reference.imageId] },
         idle,
-        0.2,
         profile,
         [reference],
       );
@@ -426,11 +440,11 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
       db.close();
     }
   });
-  it('missing explicit profile and insufficient reservation never call the provider', async () => {
+  it('a missing or changed profile never calls the provider', async () => {
     const db = database();
     try {
       const service = new ImageGenerationService(db, async () => null, now);
-      await expect(service.generate(owner, args, idle, 0.2)).rejects.toThrow('configure');
+      await expect(service.generate(owner, args, idle)).rejects.toThrow('configure');
       const configured = new ImageGenerationService(
         db,
         async () => ({
@@ -440,9 +454,9 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         }),
         now,
       );
-      await expect(configured.generate(owner, args, idle, 0.1)).rejects.toThrow(
-        'reservation changed',
-      );
+      await expect(
+        configured.generate(owner, args, idle, { ...profile, timeoutMs: 2000 }),
+      ).rejects.toThrow('profile changed after Run start');
       expect(db.prepare('SELECT count(*) AS count FROM image_generation_operations').get()).toEqual(
         { count: 0 },
       );
@@ -464,12 +478,12 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         apiKey: async () => 'fixture',
       });
       const service = new ImageGenerationService(db, resolve, now);
-      await expect(service.generate(owner, args, idle, 0.2)).rejects.toMatchObject({
+      await expect(service.generate(owner, args, idle)).rejects.toMatchObject({
         outcome: 'unknown',
       });
       expect(service.read(owner.runId, owner.artifactVersionId)).toBeNull();
       const restarted = new ImageGenerationService(db, resolve, now);
-      await expect(restarted.generate(owner, args, idle, 0.2)).rejects.toThrow('reconciliation');
+      await expect(restarted.generate(owner, args, idle)).rejects.toThrow('reconciliation');
       expect(calls).toBe(1);
     } finally {
       await http.close();
@@ -492,28 +506,23 @@ describe('configured image generation and immutable bytes (ABS-10)', () => {
         async () => ({ profile, baseUrl: http.baseUrl, apiKey: async () => 'fixture' }),
         now,
       );
-      const pending = service.generate(
-        owner,
-        args,
-        {
-          get aborted() {
-            return aborted;
-          },
-          onCancel(fn) {
-            cancel = fn;
-            return () => {
-              cancel = undefined;
-            };
-          },
+      const pending = service.generate(owner, args, {
+        get aborted() {
+          return aborted;
         },
-        0.2,
-      );
+        onCancel(fn) {
+          cancel = fn;
+          return () => {
+            cancel = undefined;
+          };
+        },
+      });
       await dispatched.wait();
       aborted = true;
       cancel?.();
       await expect(pending).rejects.toMatchObject({ outcome: 'unknown' });
       expect(service.read(owner.runId, owner.artifactVersionId)).toBeNull();
-      await expect(service.generate(owner, args, idle, 0.2)).rejects.toMatchObject({
+      await expect(service.generate(owner, args, idle)).rejects.toMatchObject({
         outcome: 'unknown',
       });
       expect(calls).toBe(1);

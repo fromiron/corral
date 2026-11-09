@@ -48,7 +48,6 @@ async function setup() {
   };
   const saved = await repository.save({
     definition,
-    layout: { nodes: { parent: { x: 0, y: 0 } }, viewport: { x: 0, y: 0, zoom: 1 } },
     expectedDefinitionRevision: null,
   });
   if (!saved.ok) throw new Error(saved.message);
@@ -78,7 +77,6 @@ async function setup() {
         { ...definition.nodes[0], id: 'child', roleId: 'child_role', invocation: 'callable' },
       ],
     },
-    layout: { ...saved.record.layout, corralId: 'other' },
   };
   const bindings = {
     corralId: 'target',
@@ -141,7 +139,6 @@ describe('subagents domain owner adapter', () => {
     if (!current) throw new Error('Missing team');
     await repository.save({
       definition: { ...current.definition, name: 'Later edit' },
-      layout: current.layout,
       expectedDefinitionRevision: current.definitionRevision,
     });
     await expect(adapter.apply(preview.value, before.revision, 'operation-1')).resolves.toEqual(
@@ -155,7 +152,7 @@ describe('subagents domain owner adapter', () => {
     );
     expect((await repository.get('target'))?.name).toBe('Later edit');
   });
-  it('preserves layout edits made while resolving model bindings', async () => {
+  it('preserves edits made while resolving model bindings', async () => {
     const { adapter, source, bindings, before, repository } = await setup();
     const preview = await adapter.preview(source, bindings);
     let release = () => {};
@@ -175,17 +172,16 @@ describe('subagents domain owner adapter', () => {
         return [{ profileId: 'local', available: true }];
       },
     });
-    const applying = delayed.apply(preview.value, before.revision, 'operation-layout');
+    const applying = delayed.apply(preview.value, before.revision, 'operation-edit');
     await waiting;
     const current = await repository.get('target');
     if (!current) throw new Error('Missing team');
     await repository.save({
-      definition: current.definition,
-      layout: { ...current.layout, nodes: { parent: { x: 900, y: 400 } } },
+      definition: { ...current.definition, name: 'Edited while resolving' },
       expectedDefinitionRevision: current.definitionRevision,
     });
     release();
     await expect(applying).rejects.toThrow(/revision conflict/);
-    expect((await repository.get('target'))?.layout.nodes.parent).toEqual({ x: 900, y: 400 });
+    expect((await repository.get('target'))?.name).toBe('Edited while resolving');
   });
 });

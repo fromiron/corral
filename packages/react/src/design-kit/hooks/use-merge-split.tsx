@@ -121,7 +121,7 @@ function bridgePair(outer: Run, runs: Run[]) {
   return lo.start === up.end + 2 ? { up, lo, gap: up.end + 1 } : null;
 }
 
-// ── Merge / split boundary animation ─────────────────────────────
+// ─── Merge / split boundary animation ────────────────────────────────────────
 // Selecting a bridging row glides both inner edges to its midpoint, then swaps
 // to one block invisibly; deselecting a middle row snaps into two halves that
 // glide apart. Returns the blocks to paint with <SelectionBackgrounds>.

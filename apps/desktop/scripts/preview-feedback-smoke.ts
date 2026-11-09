@@ -175,10 +175,6 @@ try {
   const team = await api<{ record: { corralId: string } }>('/corrals', 'POST', {
     definition,
     projectId: 'default',
-    layout: {
-      nodes: { answer: { x: 80, y: 120 }, output: { x: 360, y: 120 } },
-      viewport: { x: 0, y: 0, zoom: 1 },
-    },
   });
   await api('/projects/default/workspace', 'PUT', { path: original });
   await api('/projects/default/workspace', 'PATCH', { trusted: true });

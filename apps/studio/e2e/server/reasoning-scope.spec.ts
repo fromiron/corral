@@ -1,5 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
+import { editorSettings, openTestRun, startTestRun, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const modeLabels = {
@@ -28,22 +29,17 @@ async function importTeam(page: Page, id: string) {
     buffer: Buffer.from(JSON.stringify(definition)),
   });
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
 }
 
-test('another team never inherits the previous run or its canvas status', async ({
-  page,
-  corral,
-}) => {
+test('another team never inherits the previous run', async ({ page, corral }) => {
   await corral.open('/');
   await importTeam(page, 'team-a');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await importTeam(page, 'team-b');
   await expect(page.getByTestId('run-status')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open execution page' })).toHaveCount(0);
-  await expect(page.locator('.react-flow__node[data-id="output"]')).not.toContainText('Completed');
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
 });
 
@@ -57,14 +53,14 @@ test.describe('explicit live selection', () => {
     await importTeam(page, 'team-a');
     await chooseMode(page, 'live');
     await page.reload();
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+    await openTestRun(page);
     await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toContainText(
       modeLabels.live,
     );
     const path = new URL(page.url()).pathname;
     await corral.restart();
     await corral.open(path);
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+    await openTestRun(page);
     await expect(page.getByRole('combobox', { name: 'Agents', exact: true })).toContainText(
       modeLabels.live,
     );
@@ -79,20 +75,23 @@ test.describe('explicit live selection', () => {
 test('role reasoning survives save, reload and undo', async ({ page, corral }) => {
   await corral.open('/');
   await importTeam(page, 'reasoning-editor');
-  await page.getByRole('group', { name: 'agent: writer', exact: true }).click();
-  const effort = page.getByRole('combobox', { name: 'Reasoning effort', exact: true });
+  await teamNode(page, 'writer').click();
+  const effort = editorSettings(page).getByRole('combobox', {
+    name: 'Reasoning effort',
+    exact: true,
+  });
   await effort.click();
   await page.getByRole('option', { name: 'Low', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await page.reload();
-  await page.getByRole('group', { name: 'agent: writer', exact: true }).click();
+  await teamNode(page, 'writer').click();
   await expect(effort).toContainText('Low');
   await effort.click();
   await page.getByRole('option', { name: 'High', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(effort).toContainText('Low');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
   await page.getByText('Model and reasoning for this run', { exact: true }).click();
   const oneRun = page.getByTestId('run-role-overrides');
   await oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }).click();
@@ -105,8 +104,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
   await expect(
     oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }),
   ).toContainText('High');
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByTestId('reasoning-summary').first()).toContainText('high');
   const run = corral.server.coordinator.listRuns()[0];
@@ -114,10 +112,8 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
     corral.server.coordinator.getRunSnapshot(run!.runId)?.definition.roles[0]?.reasoning,
   ).toEqual({ mode: 'fixed', level: 'high' });
   await page.reload();
-  await page.getByRole('group', { name: 'agent: writer', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Reasoning effort', exact: true })).toContainText(
-    'Low',
-  );
+  await teamNode(page, 'writer').click();
+  await expect(effort).toContainText('Low');
 });
 
 test.describe('ordered explicit mode choices', () => {
@@ -162,7 +158,7 @@ test.describe('ordered explicit mode choices', () => {
     release();
     await Promise.all([liveSaved, mockSaved]);
     await page.reload();
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
+    await openTestRun(page);
     await expect(mode).toContainText(modeLabels.mock);
   });
 });

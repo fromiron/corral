@@ -21,15 +21,15 @@ import { fontWeights } from '../../lib/font-weight.ts';
 import { omit } from '../../lib/omit.ts';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, useSize } from '../../lib/size-context.tsx';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import { FluidHoverHighlight } from './fluid-hover-highlight.tsx';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // CheckboxGroup — CheckboxItem rows sharing one fluid-hover scope. The group
 // paints the merged checked backgrounds, hover highlight and focus ring; each
 // row is the focusable role="checkbox". The parent owns state.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // Set while mousedown focuses a row: Chrome reports script focus() as
 // :focus-visible, which would draw the keyboard ring on every click.
@@ -146,7 +146,7 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
           <AnimatePresence>
             {focusRect && (
               <motion.div
-                className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                className={`absolute ${shape.focusRing} pointer-events-none z-20 border-2 border-[color:var(--focus-ring)]`}
                 initial={false}
                 animate={{
                   left: focusRect.left - 2,
@@ -157,7 +157,7 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
                 exit={{ opacity: 0, transition: spring.fast.exit }}
                 transition={{
                   ...spring.fast,
-                  opacity: { duration: 0.08 },
+                  opacity: tween.fast,
                 }}
               />
             )}
@@ -258,7 +258,7 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
                 checked
                   ? 'border-[1.5px] border-transparent'
                   : isActive
-                    ? 'border-[1.5px] border-neutral-400 dark:border-neutral-500'
+                    ? 'border-[1.5px] border-muted-foreground'
                     : 'border-[1.5px] border-border',
               )}
             />
@@ -299,11 +299,11 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
                           initial={{ pathLength: 0 }}
                           animate={{
                             pathLength: 1,
-                            transition: { duration: 0.08, ease: 'easeOut' },
+                            transition: tween.fast,
                           }}
                           exit={{
                             pathLength: 0,
-                            transition: { duration: 0.04, ease: 'easeIn' },
+                            transition: tween.fast.exit,
                           }}
                         />
                       </motion.svg>

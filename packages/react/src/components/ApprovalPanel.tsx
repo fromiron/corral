@@ -8,15 +8,31 @@ import {
   RunCommandArgs,
   ToolPermissionPlan,
 } from '@corral/contracts';
-import { validToolPermissionPlan } from '@corral/core';
+import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button } from '../design-kit/index.ts';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  AgentCard,
+  AgentStatusIcon,
+  Banner,
+  BannerTitle,
+  Button,
+} from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { InteractionPanel } from './InteractionPanel.tsx';
 import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
+
+/** A Loop that stopped for a stall is asked about in its own words. */
+const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
+  approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
+    ? `loop_${approval.loopStop}`
+    : approval.kind;
 
 /**
  * Decisions waiting for the person: each names the exact versions and the
@@ -48,6 +64,7 @@ export function ApprovalPanel({
   const headingId = useId();
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
+  const nodes = useStore(session, (s) => s.definition?.nodes);
   const approvals = useMemo(
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
     [all],
@@ -117,10 +134,17 @@ export function ApprovalPanel({
     );
   const label = (id: string) =>
     artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
-  const decide = async (approvalId: string, decision: 'approve' | 'reject') => {
+  /** What waits; a breakpoint names the step it holds. */
+  const kindText = (approval: ApprovalView) =>
+    t(`kind.${copyKey(approval)}`, {
+      step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
+    });
+  const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
     setBusy(true);
     try {
-      const receipt = await session.getState().resolveApproval(approvalId, decision);
+      const receipt = routeId
+        ? await session.getState().resolveApproval(approvalId, decision, routeId)
+        : await session.getState().resolveApproval(approvalId, decision);
       setRefused(receipt.error ? receipt : null);
     } catch {
       // The session preserves the unconfirmed receipt; approval stays pending.
@@ -128,6 +152,89 @@ export function ApprovalPanel({
       setBusy(false);
     }
   };
+
+  // Buttons are the only way to decide: the card has no Enter/Escape shortcut. As in the kit's
+  // permission card, the decline sits left of the primary action.
+  const decisionButtons = (approval: (typeof approvals)[number]) =>
+    approval.kind === 'route' ? (
+      // A router that could not choose: each connected route is its own answer.
+      <>
+        <Button
+          variant="tertiary"
+          size="compact"
+          disabled={busy}
+          onClick={() => void decide(approval.approvalId, 'reject')}
+        >
+          {t('rejectAs.route')}
+        </Button>
+        {(approval.routes ?? []).map((route) => (
+          <Button
+            key={route.id}
+            variant="secondary"
+            size="compact"
+            disabled={busy}
+            title={t('then.route')}
+            onClick={() => void decide(approval.approvalId, 'approve', route.id)}
+          >
+            {route.label}
+          </Button>
+        ))}
+      </>
+    ) : (
+      <>
+        <Button
+          variant="tertiary"
+          size="compact"
+          disabled={busy}
+          onClick={() => void decide(approval.approvalId, 'reject')}
+        >
+          {approval.tool
+            ? t(
+                approval.tool.purpose === 'tool'
+                  ? 'rejectTool'
+                  : approval.tool.purpose === 'lsp'
+                    ? 'rejectLsp'
+                    : 'rejectCheck',
+              )
+            : t(`rejectAs.${copyKey(approval)}`)}
+        </Button>
+        <Button
+          size="compact"
+          disabled={
+            busy ||
+            !!(
+              approval.tool &&
+              !(approval.tool.purpose === 'tool'
+                ? toolPlans[approval.tool.bodyRef]
+                : checkPlans[approval.tool.bodyRef])
+            )
+          }
+          title={
+            approval.tool
+              ? t(
+                  approval.tool.purpose === 'tool'
+                    ? 'toolOnce'
+                    : approval.tool.purpose === 'lsp'
+                      ? 'lspOnce'
+                      : 'checkOnce',
+                )
+              : t(`then.${copyKey(approval)}`)
+          }
+          onClick={() => void decide(approval.approvalId, 'approve')}
+        >
+          {approval.tool
+            ? t(
+                approval.tool.purpose === 'tool'
+                  ? 'approveTool'
+                  : approval.tool.purpose === 'lsp'
+                    ? 'approveLsp'
+                    : 'approveCheck',
+              )
+            : t(`approveAs.${copyKey(approval)}`)}
+        </Button>
+        {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
+      </>
+    );
 
   return (
     <>
@@ -146,163 +253,147 @@ export function ApprovalPanel({
           <p
             key={approval.approvalId}
             data-testid={`approved-${approval.approvalId}`}
-            className="text-xs text-muted-foreground"
+            className="flex items-center gap-1.5 text-caption text-muted-foreground"
           >
+            <AgentStatusIcon status="done" size={12} />
             {t('done', {
-              step: t(`kind.${approval.kind}`),
+              step: kindText(approval),
               subject: label(approval.subjectVersionIds[0] ?? ''),
             })}
           </p>
         ))}
         {approvals.map((approval) => (
-          <article
+          <AgentCard
             key={approval.approvalId}
             data-testid={`approval-${approval.approvalId}`}
-            className={
-              compact
-                ? 'flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-warning/5 px-2.5 py-2 text-xs'
-                : 'flex flex-col gap-2 rounded-xl border border-warning/50 bg-warning/5 p-3 text-xs'
-            }
+            role="article"
+            aria-label={t('heading')}
+            className="text-caption"
           >
-            <p className="font-medium">
-              {approval.tool
-                ? t(
-                    approval.tool.purpose === 'tool'
-                      ? 'toolHeading'
-                      : approval.tool.purpose === 'lsp'
-                        ? 'lspHeading'
-                        : 'checkHeading',
-                  )
-                : t(`kind.${approval.kind}`)}
-            </p>
-            {approval.tool?.purpose === 'tool' ? (
-              <PermissionDetails plan={toolPlans[approval.tool.bodyRef]} />
-            ) : approval.tool ? (
-              <div className="flex min-w-0 flex-col gap-1">
-                {checkPlans[approval.tool.bodyRef] ? (
-                  <>
-                    <p>{checkPlans[approval.tool.bodyRef]?.name}</p>
-                    {checkPlans[approval.tool.bodyRef]?.query ? (
-                      <p>
-                        {checkPlans[approval.tool.bodyRef]?.query?.operation} ·{' '}
-                        {checkPlans[approval.tool.bodyRef]?.query?.path}
-                      </p>
-                    ) : null}
-                    <code className="whitespace-pre-wrap break-all">
-                      {checkPlans[approval.tool.bodyRef]?.argv.join(' ')}
-                    </code>
-                    <p className="text-muted-foreground">
-                      {t('checkScope', {
-                        execution: approval.tool.executionId,
-                        attempt: approval.tool.attemptNo,
-                        revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
-                        fingerprint: approval.tool.fingerprint.slice(0, 12),
-                        tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
-                      })}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')}
-                    </p>
-                  </>
-                ) : (
-                  <p role={checkPlans[approval.tool.bodyRef] === null ? 'alert' : 'status'}>
-                    {t(
-                      checkPlans[approval.tool.bodyRef] === null
-                        ? 'checkUnavailable'
-                        : 'checkLoading',
-                    )}
-                  </p>
-                )}
-              </div>
-            ) : null}
-            {compact || approval.tool ? null : (
-              <p className="text-muted-foreground">{t(`explain.${approval.kind}`)}</p>
-            )}
-            {approval.tool ? null : (
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="text-muted-foreground">{t('subject')}</span>
-                {approval.subjectVersionIds.map((id) => (
-                  <Button
-                    key={id}
-                    variant="tertiary"
-                    size="compact"
-                    title={id}
-                    onClick={() => onOpenArtifact(id)}
-                  >
-                    {label(id)}
-                  </Button>
-                ))}
-              </div>
-            )}
-            {criteria ? (
-              <div className={`text-muted-foreground ${compact ? 'w-full' : ''}`}>
-                {t('criteria')}
-                <ul className="list-disc pl-5">
-                  {criteria.split('\n').map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            <div className={`flex flex-wrap items-center gap-2 ${compact ? 'ml-auto' : ''}`}>
-              <Button
-                size="compact"
-                disabled={
-                  busy ||
-                  !!(
-                    approval.tool &&
-                    !(approval.tool.purpose === 'tool'
-                      ? toolPlans[approval.tool.bodyRef]
-                      : checkPlans[approval.tool.bodyRef])
-                  )
-                }
-                title={
-                  approval.tool
+            <div
+              className={
+                compact
+                  ? 'flex flex-wrap items-center gap-2.5 px-3 py-2'
+                  : 'flex items-start gap-2.5 px-4 pt-3.5 pr-3.5'
+              }
+            >
+              <AgentStatusIcon
+                status="waiting"
+                size={14}
+                className={compact ? undefined : 'mt-0.5 self-start'}
+              />
+              <div className="grid min-w-0 flex-1">
+                <p className="text-body font-medium text-foreground [overflow-wrap:anywhere]">
+                  {approval.tool
                     ? t(
                         approval.tool.purpose === 'tool'
-                          ? 'toolOnce'
+                          ? 'toolHeading'
                           : approval.tool.purpose === 'lsp'
-                            ? 'lspOnce'
-                            : 'checkOnce',
+                            ? 'lspHeading'
+                            : 'checkHeading',
                       )
-                    : t(`then.${approval.kind}`)
-                }
-                onClick={() => void decide(approval.approvalId, 'approve')}
-              >
-                {approval.tool
-                  ? t(
-                      approval.tool.purpose === 'tool'
-                        ? 'approveTool'
-                        : approval.tool.purpose === 'lsp'
-                          ? 'approveLsp'
-                          : 'approveCheck',
-                    )
-                  : t(`approveAs.${approval.kind}`)}
-              </Button>
-              <Button
-                variant="tertiary"
-                size="compact"
-                disabled={busy}
-                onClick={() => void decide(approval.approvalId, 'reject')}
-              >
-                {approval.tool
-                  ? t(
-                      approval.tool.purpose === 'tool'
-                        ? 'rejectTool'
-                        : approval.tool.purpose === 'lsp'
-                          ? 'rejectLsp'
-                          : 'rejectCheck',
-                    )
-                  : t(`rejectAs.${approval.kind}`)}
-              </Button>
-              {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
+                    : kindText(approval)}
+                </p>
+                {approval.tool && !compact ? (
+                  <span className="truncate text-muted-foreground">
+                    {approval.tool.executionId}
+                  </span>
+                ) : null}
+              </div>
+              {compact ? (
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {decisionButtons(approval)}
+                </div>
+              ) : null}
             </div>
+            <div
+              className={
+                compact
+                  ? 'flex min-w-0 flex-col gap-2 px-3 pb-2'
+                  : 'flex min-w-0 flex-col gap-2 py-3 pr-4 pl-10'
+              }
+            >
+              {approval.tool?.purpose === 'tool' ? (
+                <PermissionDetails plan={toolPlans[approval.tool.bodyRef]} />
+              ) : approval.tool ? (
+                <div className="flex min-w-0 flex-col gap-1">
+                  {checkPlans[approval.tool.bodyRef] ? (
+                    <>
+                      <p>{checkPlans[approval.tool.bodyRef]?.name}</p>
+                      {checkPlans[approval.tool.bodyRef]?.query ? (
+                        <p>
+                          {checkPlans[approval.tool.bodyRef]?.query?.operation} ·{' '}
+                          {checkPlans[approval.tool.bodyRef]?.query?.path}
+                        </p>
+                      ) : null}
+                      <code className="whitespace-pre-wrap break-all">
+                        {checkPlans[approval.tool.bodyRef]?.argv.join(' ')}
+                      </code>
+                      <p className="text-muted-foreground">
+                        {t('checkScope', {
+                          execution: approval.tool.executionId,
+                          attempt: approval.tool.attemptNo,
+                          revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
+                          fingerprint: approval.tool.fingerprint.slice(0, 12),
+                          tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
+                        })}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')}
+                      </p>
+                    </>
+                  ) : (
+                    <p role={checkPlans[approval.tool.bodyRef] === null ? 'alert' : 'status'}>
+                      {t(
+                        checkPlans[approval.tool.bodyRef] === null
+                          ? 'checkUnavailable'
+                          : 'checkLoading',
+                      )}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+              {compact || approval.tool ? null : (
+                <p className="text-muted-foreground">{t(`explain.${copyKey(approval)}`)}</p>
+              )}
+              {approval.tool ? null : (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-muted-foreground">{t('subject')}</span>
+                  {approval.subjectVersionIds.map((id) => (
+                    <Button
+                      key={id}
+                      variant="tertiary"
+                      size="compact"
+                      title={id}
+                      onClick={() => onOpenArtifact(id)}
+                    >
+                      {label(id)}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              {criteria ? (
+                <div className="text-muted-foreground">
+                  {t('criteria')}
+                  <ul className="list-disc pl-5">
+                    {criteria.split('\n').map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+            {compact ? null : (
+              <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 pt-3 pb-4">
+                {decisionButtons(approval)}
+              </div>
+            )}
             {refused?.error ? (
-              <p role="alert" className="text-danger">
-                {t('refused', { message: refused.error.message })}
-              </p>
+              <Banner role="alert" status="error" size="compact" className="mx-3 mb-3">
+                <BannerTitle>{t('refused', { message: refused.error.message })}</BannerTitle>
+              </Banner>
             ) : null}
-          </article>
+          </AgentCard>
         ))}
       </section>
     </>
@@ -326,28 +417,32 @@ function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefin
           <p className="font-medium">
             {plan.descriptor.name} · {plan.descriptor.source}
           </p>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-surface p-2">
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2">
             {JSON.stringify(plan.arguments, null, 2)}
           </pre>
         </>
       )}
       <p className="text-muted-foreground">{t('toolOnce')}</p>
-      <details>
-        <summary className="cursor-pointer">{t('toolIdentity')}</summary>
-        {summary ? (
-          <>
-            <p className="mt-2">
-              {plan.descriptor.name} · {plan.descriptor.source}
-            </p>
-            <pre className="my-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-surface p-2">
-              {JSON.stringify(plan.arguments, null, 2)}
-            </pre>
-          </>
-        ) : null}
-        <p className="break-all">{plan.descriptorHash}</p>
-        <p>{t('toolPolicyRevision', { revision: plan.policyRevision })}</p>
-        <p className="break-all">{plan.fingerprint}</p>
-      </details>
+      <Accordion>
+        <AccordionItem value="identity">
+          <AccordionTrigger>{t('toolIdentity')}</AccordionTrigger>
+          <AccordionContent>
+            {summary ? (
+              <>
+                <p className="mt-2">
+                  {plan.descriptor.name} · {plan.descriptor.source}
+                </p>
+                <pre className="my-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2">
+                  {JSON.stringify(plan.arguments, null, 2)}
+                </pre>
+              </>
+            ) : null}
+            <p className="break-all">{plan.descriptorHash}</p>
+            <p>{t('toolPolicyRevision', { revision: plan.policyRevision })}</p>
+            <p className="break-all">{plan.fingerprint}</p>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </div>
   );
 }
@@ -382,7 +477,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre
           data-testid="file-approval-content"
-          className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono"
+          className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono"
         >
           {parsed.data.content}
         </pre>
@@ -401,11 +496,11 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
             // biome-ignore lint/suspicious/noArrayIndexKey: the fingerprint fixes this immutable ordered edit list.
             <li key={`${plan.fingerprint}:${index}`}>
               <p className="text-muted-foreground">{ko ? '교체 전' : 'Before'}</p>
-              <pre className="overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.oldText}
               </pre>
               <p className="text-muted-foreground">{ko ? '교체 후' : 'After'}</p>
-              <pre className="overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.newText}
               </pre>
             </li>
@@ -423,7 +518,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="command-approval-summary">
         <p className="font-medium">{ko ? '명령 실행' : 'Run command'}</p>
-        <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+        <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {source}
         </pre>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
@@ -460,7 +555,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
       <div className="flex min-w-0 flex-col gap-2" data-testid="hashline-approval-summary">
         <p className="font-medium">{ko ? '파일 변경' : 'Edit file'}</p>
         <p className="break-words font-mono">{parsed.data.path}</p>
-        <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-surface p-2 font-mono">
+        <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {parsed.data.ops}
         </pre>
       </div>

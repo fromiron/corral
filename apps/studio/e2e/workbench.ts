@@ -74,3 +74,81 @@ export async function panelTab(page: Page, name: string) {
     .filter({ has: page.getByText(`Open ${name}`, { exact: true }) })
     .click();
 }
+
+/** Chooses a run of the open session from the run segment of the top bar's path (run history). */
+export async function chooseRun(page: Page, number: number) {
+  await page
+    .getByRole('banner')
+    .getByRole('button', { name: /Run #\d+/ })
+    .click();
+  await page.getByRole('menuitemradio', { name: new RegExp(`Run #${number}\\b`) }).click();
+}
+
+/**
+ * Opens a result from the workspace's result list into the central document reader.
+ */
+export async function openResult(page: Page, name?: RegExp) {
+  const section = page
+    .getByTestId('run-column')
+    .getByRole('region', { name: 'Results', exact: true })
+    .filter({ hasNot: page.getByTestId('run-results') });
+  await (name
+    ? section.getByRole('button', { name })
+    : section.getByRole('button').first()
+  ).click();
+  await expect(page.getByTestId('run-document').getByTestId('run-results')).toBeVisible();
+  await expect(page.getByTestId('run-side')).toBeHidden();
+}
+
+/**
+ * The newest turn's run has succeeded: the composer names it as the last run. (The timeline
+ * itself repeats the status in hidden kit copies, so its text is not a single target.)
+ */
+export function lastRunSucceeded(page: Page) {
+  return page.getByRole('link', { name: /^Succeeded Last run/ });
+}
+
+/** The team editor's canvas and one of its steps. */
+export const teamCanvas = (page: Page) => page.locator('[data-team-canvas]');
+export const teamNode = (page: Page, nodeId: string) =>
+  teamCanvas(page).locator(`[data-node="${nodeId}"]`).first();
+/** The editor's settings sheet for the selection or the team. */
+export const editorSettings = (page: Page) => page.getByRole('complementary', { name: 'Settings' });
+
+/**
+ * In a new team: an agent and an output after it. With the agent selected, the output is placed
+ * after it and connected.
+ */
+export async function addAgentAndOutput(page: Page) {
+  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
+  await expect(teamCanvas(page).locator('[data-edge]')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
+}
+
+/** Renames the team in its settings sheet. */
+export async function renameTeam(page: Page, name: string) {
+  const settings = editorSettings(page);
+  if (!(await settings.getByRole('heading', { name: 'Limits and criteria' }).isVisible()))
+    await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
+}
+
+/** Opens the editor's test-run panel, which may already be open, and returns it. */
+export async function openTestRun(page: Page) {
+  const open = page.getByRole('button', { name: 'Test run', exact: true });
+  const close = page.getByRole('button', { name: 'Close test run', exact: true });
+  // The first page of a cold dev server can take a while.
+  await expect(open.or(close)).toBeVisible({ timeout: 20_000 });
+  if (await open.isVisible()) await open.click();
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+/** Starts a test run from the editor's run panel. */
+export async function startTestRun(page: Page) {
+  const panel = await openTestRun(page);
+  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  return panel;
+}

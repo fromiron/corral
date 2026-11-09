@@ -25,11 +25,12 @@ import {
   useState,
 } from 'react';
 import { type ItemRect, useFluidHover } from '../../hooks/use-fluid-hover.ts';
+import { focusRing } from '../../lib/focus.ts';
 import { fontWeights } from '../../lib/font-weight.ts';
 import type { IconComponent } from '../../lib/icon-context.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import { FluidHoverHighlight } from './fluid-hover-highlight.tsx';
 import { resolveSlotTemplate, SlotElement } from './sidebar-core.tsx';
@@ -205,8 +206,42 @@ function useMenuScope(
   containerRef: RefObject<HTMLElement | null>,
   { focusRing = true }: MenuScopeOptions = {},
 ): MenuScope {
-  const { activeIndex, setActiveIndex, itemRects, isMeasured, session, handlers, registerItem } =
-    useFluidHover(containerRef, { isItemDisabled: rowSkipped });
+  const {
+    activeIndex,
+    setActiveIndex,
+    itemRects,
+    isMeasured,
+    session,
+    handlers,
+    registerItem,
+    measureItems,
+  } = useFluidHover(containerRef, { isItemDisabled: rowSkipped });
+
+  // A virtualized host moves rows by their inline position without resizing them, which no
+  // ResizeObserver reports. Re-measure when a row's own style changes so the active and hover
+  // backgrounds follow the row instead of staying where it used to be.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof MutationObserver === 'undefined') return;
+    let frame: number | null = null;
+    const observer = new MutationObserver((mutations) => {
+      const moved = mutations.some(
+        (m) =>
+          m.target instanceof HTMLElement &&
+          m.target.matches('[data-sidebar="menu-item"],[data-sidebar="menu-sub-item"]'),
+      );
+      if (!moved || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        measureItems();
+      });
+    });
+    observer.observe(container, { subtree: true, attributes: true, attributeFilter: ['style'] });
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [containerRef, measureItems]);
 
   const rowsRef = useRef<Set<HTMLElement>>(new Set());
   const rowButtonsRef = useRef<Map<HTMLElement, HTMLElement>>(new Map());
@@ -472,7 +507,7 @@ function useMenuScope(
             exit={{ opacity: 0, transition: spring.moderate.exit }}
             transition={
               activeTargets.get(key)?.rowChanged
-                ? { ...spring.moderate, opacity: { duration: 0.08 } }
+                ? { ...spring.moderate, opacity: tween.fast }
                 : { duration: 0 }
             }
           />
@@ -491,7 +526,7 @@ function useMenuScope(
       <AnimatePresence>
         {focusRect && (
           <motion.div
-            className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+            className={`absolute ${shape.focusRing} pointer-events-none z-20 border-2 border-[color:var(--focus-ring)]`}
             initial={false}
             animate={{
               left: focusRect.left - 2,
@@ -500,9 +535,7 @@ function useMenuScope(
               height: focusRect.height + 4,
             }}
             exit={{ opacity: 0, transition: spring.fast.exit }}
-            transition={
-              focusRowChanged ? { ...spring.fast, opacity: { duration: 0.08 } } : { duration: 0 }
-            }
+            transition={focusRowChanged ? { ...spring.fast, opacity: tween.fast } : { duration: 0 }}
           />
         )}
       </AnimatePresence>
@@ -1034,8 +1067,8 @@ const SidebarMenuAction = forwardRef<HTMLButtonElement, SidebarMenuActionProps>(
             // right-1.5 centers the 24px box on the badge's axis (18px from the
             // edge); with a badge present the action slides left of it.
             inCluster
-              ? 'relative flex size-6 shrink-0 items-center justify-center text-muted-foreground outline-none'
-              : 'absolute right-1.5 z-10 flex size-6 items-center justify-center text-muted-foreground outline-none',
+              ? 'relative flex size-6 shrink-0 items-center justify-center text-muted-foreground'
+              : 'absolute right-1.5 z-10 flex size-6 items-center justify-center text-muted-foreground',
             !inCluster &&
               (item?.isSubRow
                 ? 'group-has-[>[data-sidebar=menu-badge]]/menu-sub-item:right-8.5'
@@ -1043,7 +1076,7 @@ const SidebarMenuAction = forwardRef<HTMLButtonElement, SidebarMenuActionProps>(
             !inCluster &&
               (item?.isSubRow || sizeClasses.variant === 'compact' ? 'top-0.5' : 'top-1'),
             'hover:bg-hover hover:text-foreground transition-[color,background-color,opacity] duration-80',
-            'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+            focusRing,
             // Normalize icon size and stroke (1.5, 2 on hover); icon libraries vary.
             '[&_svg]:size-[var(--icon-size)] [&_svg]:shrink-0 [&_svg]:stroke-[1.5] [&_svg]:transition-[stroke-width] [&_svg]:duration-80 hover:[&_svg]:stroke-[2]',
             shape.item,
@@ -1173,6 +1206,7 @@ const SKELETON_WIDTHS = ['62%', '74%', '55%', '82%', '68%'];
 const SidebarMenuSkeleton = forwardRef<HTMLDivElement, SidebarMenuSkeletonProps>(
   ({ className, showIcon = false, ...props }, ref) => {
     const sizeClasses = useSize();
+    const shape = useShape();
     const id = useId();
     let sum = 0;
     for (let i = 0; i < id.length; i++) sum += id.charCodeAt(i);
@@ -1191,12 +1225,12 @@ const SidebarMenuSkeleton = forwardRef<HTMLDivElement, SidebarMenuSkeletonProps>
         {showIcon && (
           <div
             data-sidebar="menu-skeleton-icon"
-            className="size-4 shrink-0 animate-pulse rounded-md bg-hover"
+            className={cn('size-4 shrink-0 pulse-soft bg-hover', shape.chip)}
           />
         )}
         <div
           data-sidebar="menu-skeleton-text"
-          className="h-4 flex-1 animate-pulse rounded-md bg-hover"
+          className={cn('h-4 flex-1 pulse-soft bg-hover', shape.chip)}
           style={{ maxWidth: width }}
         />
       </div>

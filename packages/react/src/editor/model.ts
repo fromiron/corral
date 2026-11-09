@@ -1,7 +1,6 @@
 import {
   type AgentNode,
   type AgentRole,
-  CanvasLayout,
   type CapabilityLink,
   type ControlEdge,
   type CorralDefinition,
@@ -12,46 +11,39 @@ import {
   FILE_TOOLS,
   type InputBinding,
   type LoopNode,
-  type NodeLayout,
   type OutputContract,
-  type SourcePort,
   type TargetPort,
 } from '@corral/contracts';
 import {
+  boxBoundaryViolation,
+  type CompileOptions,
   compileDefinition,
   DECISION_PORTS,
   DECISION_RULE,
   type Diagnostic,
   inputPortsOf,
-  loopBoundaryViolation,
   outputPortsOf,
   type PlanIssue,
   planRun,
   wouldCreateCycle,
 } from '@corral/core';
-import { autoLayout } from '../run/layout.ts';
 
-// Editor draft = the definition being drawn + where each node sits. Every gesture is a pure
-// function here, so the canvas only translates pointer and keyboard input into these calls.
+// Editor draft = the definition being edited. Every edit is a pure function here, so views
+// only translate pointer and keyboard input into these calls. Where nodes sit is not stored:
+// the team editor lays a team out from its structure.
 // Connection rules come from the compiler's port table; the editor never invents its own.
 
-export type EditorNodeType = CorralNode['type'];
-
-export interface Point {
-  x: number;
-  y: number;
-}
+/** Node kinds this editor creates. */
+export type EditorNodeType = 'agent' | 'decision' | 'loop' | 'output';
 
 export interface EditorDraft {
   definition: CorralDefinition;
-  layout: Record<string, NodeLayout>;
-  viewport: { x: number; y: number; zoom: number };
   counters: Record<string, number>;
 }
 
 export interface ConnectionRequest {
   source: string;
-  sourcePort: SourcePort;
+  sourcePort: string;
   target: string;
   targetPort: TargetPort;
 }
@@ -81,7 +73,7 @@ export interface NodeChange {
   modelProfile?: string;
   reasoning?: AgentRole['reasoning'] | null;
   harness?: AgentRole['harness'] | null;
-  mode?: DecisionNode['mode'];
+  mode?: Extract<DecisionNode, { rule: unknown }>['mode'];
   maxIterations?: number;
   reviewRecipe?: LoopNode['reviewRecipe'] | null;
   requireApproval?: boolean;
@@ -109,7 +101,6 @@ export interface DraftCompilation {
 }
 
 export const DEFAULT_AGENT_PROMPT = 'Answer the brief clearly and say which inputs you used.';
-const LOOP_SIZE = { width: 460, height: 260 };
 const MAX_IMPORT_BYTES = 1024 * 1024;
 
 // ── creation ─────────────────────────────────────────────────────────────────
@@ -118,7 +109,6 @@ export function emptyDraft(corralId = 'untitled', name = 'Untitled Corral'): Edi
   return {
     definition: {
       schemaVersion: '0.1',
-      executionPolicy: { version: 2 },
       id: corralId,
       name,
       entryNodeId: '',
@@ -132,13 +122,12 @@ export function emptyDraft(corralId = 'untitled', name = 'Untitled Corral'): Edi
       capabilityLinks: [],
       limits: DEFAULT_LIMITS,
     },
-    layout: {},
-    viewport: { x: 0, y: 0, zoom: 1 },
     counters: {},
   };
 }
 
-function nextId(
+/** A fresh id with this prefix, and the counters that remember it. */
+export function nextId(
   draft: EditorDraft,
   prefix: string,
 ): { id: string; counters: Record<string, number> } {
@@ -172,7 +161,6 @@ function newRole(id: string, name: string): AgentRole {
 export function addNode(
   draft: EditorDraft,
   type: EditorNodeType,
-  position: Point,
 ): { draft: EditorDraft; nodeId: string } {
   const { id, counters } = nextId(draft, type);
   const index = counters[type] as number;
@@ -217,11 +205,10 @@ export function addNode(
       };
       break;
   }
-  const size = type === 'loop' ? LOOP_SIZE : {};
   return {
     nodeId: id,
     draft: withDefinition(
-      { ...draft, counters, layout: { ...draft.layout, [id]: { ...position, ...size } } },
+      { ...draft, counters },
       { ...draft.definition, roles, nodes: [...draft.definition.nodes, node] },
     ),
   };
@@ -246,87 +233,16 @@ export function duplicateNode(
     });
     copy = { ...copy, roleId };
   }
-  const at = draft.layout[nodeId] ?? { x: 0, y: 0 };
   return {
     nodeId: id,
     draft: withDefinition(
-      {
-        ...draft,
-        counters,
-        layout: { ...draft.layout, [id]: { ...at, x: at.x + 40, y: at.y + 40 } },
-      },
+      { ...draft, counters },
       { ...draft.definition, roles, nodes: [...draft.definition.nodes, copy] },
     ),
   };
 }
 
-// ── layout-only changes ──────────────────────────────────────────────────────
-
-/** Moves a node; moving a Loop area moves its members too. Never changes the definition. */
-export function moveNode(draft: EditorDraft, nodeId: string, position: Point): EditorDraft {
-  const current = draft.layout[nodeId];
-  if (!current) return draft;
-  const layout = { ...draft.layout, [nodeId]: { ...current, ...position } };
-  if (findNode(draft, nodeId)?.type === 'loop') {
-    const dx = position.x - current.x;
-    const dy = position.y - current.y;
-    for (const member of draft.definition.nodes) {
-      const at = layout[member.id];
-      if ('loopId' in member && member.loopId === nodeId && at) {
-        layout[member.id] = { ...at, x: at.x + dx, y: at.y + dy };
-      }
-    }
-  }
-  return { ...draft, layout };
-}
-
-/**
- * Tidy up: places every node by the control flow, Loops around their members.
- * Layout only; one step for undo.
- */
-export function arrangeDraft(draft: EditorDraft): EditorDraft {
-  if (draft.definition.nodes.length === 0) return draft;
-  const placed = autoLayout(draft.definition);
-  const layout: Record<string, NodeLayout> = {};
-  for (const node of draft.definition.nodes) {
-    const at = placed[node.id] ?? draft.layout[node.id];
-    if (at) layout[node.id] = { ...draft.layout[node.id], ...at };
-  }
-  return { ...draft, layout };
-}
-
-/** Resizes a Loop area (resizing from the left or top also moves its corner). Layout only. */
-export function resizeNode(
-  draft: EditorDraft,
-  nodeId: string,
-  box: { x?: number; y?: number; width: number; height: number },
-): EditorDraft {
-  const current = draft.layout[nodeId];
-  return current
-    ? { ...draft, layout: { ...draft.layout, [nodeId]: { ...current, ...box } } }
-    : draft;
-}
-
-export function setViewport(draft: EditorDraft, viewport: EditorDraft['viewport']): EditorDraft {
-  return { ...draft, viewport };
-}
-
 // ── definition changes ───────────────────────────────────────────────────────
-
-/** Puts a node into a Loop body or takes it out. This is a definition change. */
-export function setLoopMembership(
-  draft: EditorDraft,
-  nodeId: string,
-  loopId: string | null,
-): EditorDraft {
-  const nodes = draft.definition.nodes.map((node) => {
-    if (node.id !== nodeId || (node.type !== 'agent' && node.type !== 'decision')) return node;
-    if (node.type === 'agent' && node.invocation === 'callable') return node;
-    const { loopId: _old, ...rest } = node;
-    return (loopId ? { ...rest, loopId } : rest) as CorralNode;
-  });
-  return withDefinition(draft, { ...draft.definition, nodes });
-}
 
 export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChange): EditorDraft {
   const node = findNode(draft, nodeId);
@@ -337,7 +253,12 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   };
   let next: CorralNode = { ...node };
   if (change.label !== undefined) next = { ...next, label: change.label };
-  if (change.inputBindings && next.type !== 'loop')
+  if (change.inputBindings && next.type === 'team') {
+    // Only a referenced Team takes inputs; an empty list leaves none.
+    const { inputBindings: _was, ...team } = next;
+    if (team.source.kind === 'reference')
+      next = change.inputBindings.length ? { ...team, inputBindings: change.inputBindings } : team;
+  } else if (change.inputBindings && 'inputBindings' in next)
     next = { ...next, inputBindings: change.inputBindings };
 
   if (next.type === 'agent') {
@@ -425,7 +346,7 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
       if (change.invocation === 'callable') {
         // Callable agents run only when called: they leave the control flow and any Loop.
         controlEdges = controlEdges.filter((e) => e.source !== nodeId && e.target !== nodeId);
-        const { loopId: _loop, ...rest } = next;
+        const { parentId: _loop, ...rest } = next;
         next = { ...rest, invocation: 'callable' };
       } else {
         capabilityLinks = capabilityLinks.filter((l) => l.targetNodeId !== nodeId);
@@ -485,34 +406,28 @@ export function removeNode(draft: EditorDraft, nodeId: string): EditorDraft {
     .filter((n) => n.id !== nodeId)
     .map((n): CorralNode => {
       let next = n;
-      if (removed.type === 'loop' && 'loopId' in next && next.loopId === nodeId) {
-        const { loopId: _loop, ...rest } = next;
+      if (removed.type === 'loop' && next.parentId === nodeId) {
+        const { parentId: _loop, ...rest } = next;
         next = rest as CorralNode;
       }
-      if (next.type !== 'loop') {
+      if ('inputBindings' in next && next.inputBindings) {
         const inputBindings = next.inputBindings.filter((b) => b.sourceNodeId !== nodeId);
         if (inputBindings.length !== next.inputBindings.length) next = { ...next, inputBindings };
       }
       return next;
     });
   const usedRoles = new Set(nodes.flatMap((n) => (n.type === 'agent' ? [n.roleId] : [])));
-  const { [nodeId]: _gone, ...layout } = draft.layout;
   const { planOwnerRoleId, ...remainingDefinition } = definition;
-  return withDefinition(
-    { ...draft, layout },
-    {
-      ...remainingDefinition,
-      ...(planOwnerRoleId && usedRoles.has(planOwnerRoleId) ? { planOwnerRoleId } : {}),
-      nodes,
-      roles: definition.roles.filter((r) => usedRoles.has(r.id)),
-      controlEdges: definition.controlEdges.filter(
-        (e) => e.source !== nodeId && e.target !== nodeId,
-      ),
-      capabilityLinks: definition.capabilityLinks.filter(
-        (l) => l.sourceNodeId !== nodeId && l.targetNodeId !== nodeId,
-      ),
-    },
-  );
+  return withDefinition(draft, {
+    ...remainingDefinition,
+    ...(planOwnerRoleId && usedRoles.has(planOwnerRoleId) ? { planOwnerRoleId } : {}),
+    nodes,
+    roles: definition.roles.filter((r) => usedRoles.has(r.id)),
+    controlEdges: definition.controlEdges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+    capabilityLinks: definition.capabilityLinks.filter(
+      (l) => l.sourceNodeId !== nodeId && l.targetNodeId !== nodeId,
+    ),
+  });
 }
 
 export function removeEdge(draft: EditorDraft, edgeId: string): EditorDraft {
@@ -549,7 +464,7 @@ export function checkConnection(
   if (edges.some((e) => e.source === source.id && e.sourcePort === request.sourcePort)) {
     return refuse('duplicateOutgoing');
   }
-  if (loopBoundaryViolation(source, request.sourcePort, target, request.targetPort))
+  if (boxBoundaryViolation(new Map(draft.definition.nodes.map((n) => [n.id, n])), request))
     return refuse('loopBoundary');
   if (wouldCreateCycle(draft.definition.nodes, edges, request)) return refuse('cycle');
   return { ok: true };
@@ -619,9 +534,12 @@ export function connectCapability(
  * Proposes an input for a newly connected node: the nearest agent before it. Review decisions
  * read the nearest reviewer; Outputs and other decisions read the nearest work product.
  */
-function withSuggestedBinding(definition: CorralDefinition, consumerId: string): CorralDefinition {
+export function withSuggestedBinding(
+  definition: CorralDefinition,
+  consumerId: string,
+): CorralDefinition {
   const consumer = definition.nodes.find((n) => n.id === consumerId);
-  if (!consumer || consumer.type === 'loop') return definition;
+  if (!consumer || !('inputBindings' in consumer)) return definition;
   const roleOf = (id: string) => {
     const node = definition.nodes.find((n) => n.id === id);
     return node?.type === 'agent' ? definition.roles.find((r) => r.id === node.roleId) : undefined;
@@ -634,17 +552,18 @@ function withSuggestedBinding(definition: CorralDefinition, consumerId: string):
     return wantsReview ? contract === 'review' : contract !== 'review';
   };
   const source = nearestUpstream(definition, consumerId, accept);
-  if (!source || consumer.inputBindings.some((b) => b.sourceNodeId === source)) return definition;
+  const existing = consumer.inputBindings ?? [];
+  if (!source || existing.some((b) => b.sourceNodeId === source)) return definition;
   const sourceNode = definition.nodes.find((n) => n.id === source) as AgentNode;
-  const names = new Set(consumer.inputBindings.map((b) => b.name));
+  const names = new Set(existing.map((b) => b.name));
   let name = sourceNode.outputName;
   for (let i = 2; names.has(name); i++) name = `${sourceNode.outputName}_${i}`;
   const binding: InputBinding = { kind: 'task_output', name, sourceNodeId: source };
   return {
     ...definition,
     nodes: definition.nodes.map((n) =>
-      n.id === consumerId && n.type !== 'loop'
-        ? { ...n, inputBindings: [...n.inputBindings, binding] }
+      n.id === consumerId && 'inputBindings' in n
+        ? { ...n, inputBindings: [...(n.inputBindings ?? []), binding] }
         : n,
     ),
   };
@@ -657,10 +576,10 @@ function nearestUpstream(
 ): string | null {
   // Walk control edges backwards. Through a Loop: from "next" go back to what exits the body,
   // from "body" go back to what enters the Loop.
-  const queue: { id: string; viaPort: SourcePort | null }[] = [{ id: startId, viaPort: null }];
+  const queue: { id: string; viaPort: string | null }[] = [{ id: startId, viaPort: null }];
   const seen = new Set<string>();
   while (queue.length > 0) {
-    const { id, viaPort } = queue.shift() as { id: string; viaPort: SourcePort | null };
+    const { id, viaPort } = queue.shift() as { id: string; viaPort: string | null };
     const key = `${id}:${viaPort}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -679,10 +598,7 @@ function nearestUpstream(
 
 // ── import, export, compile ──────────────────────────────────────────────────
 
-export function draftFromDefinition(
-  definition: CorralDefinition,
-  layout?: CanvasLayout,
-): EditorDraft {
+export function draftFromDefinition(definition: CorralDefinition): EditorDraft {
   const counters: Record<string, number> = {};
   const ids = [
     ...definition.nodes.map((n) => n.id),
@@ -694,44 +610,16 @@ export function draftFromDefinition(
     if (match)
       counters[match[1] as string] = Math.max(counters[match[1] as string] ?? 0, Number(match[2]));
   }
-  const positions: Record<string, NodeLayout> = {};
-  definition.nodes.forEach((node, index) => {
-    positions[node.id] = layout?.nodes[node.id] ?? {
-      x: 60 + (index % 5) * 240,
-      y: 80 + Math.floor(index / 5) * 160,
-      ...(node.type === 'loop' ? LOOP_SIZE : {}),
-    };
-  });
-  return {
-    definition: structuredCopy(definition),
-    layout: positions,
-    viewport: layout?.viewport ?? { x: 0, y: 0, zoom: 1 },
-    counters,
-  };
+  return { definition: structuredCopy(definition), counters };
 }
 
 export function draftToDefinition(draft: EditorDraft): CorralDefinition {
   return draft.definition;
 }
 
-export function draftLayout(draft: EditorDraft, layoutRevision: number): CanvasLayout {
-  return {
-    schemaVersion: '0.1',
-    corralId: draft.definition.id,
-    layoutRevision,
-    viewport: draft.viewport,
-    nodes: draft.layout,
-  };
-}
-
-export function exportDocuments(
-  draft: EditorDraft,
-  layoutRevision = 1,
-): { definition: string; layout: string } {
-  return {
-    definition: `${JSON.stringify(draft.definition, null, 2)}\n`,
-    layout: `${JSON.stringify(draftLayout(draft, layoutRevision), null, 2)}\n`,
-  };
+/** The definition as the JSON file a team is exported to. */
+export function exportDefinition(draft: EditorDraft): string {
+  return `${JSON.stringify(draft.definition, null, 2)}\n`;
 }
 
 export type ImportResult = { ok: true; draft: EditorDraft } | { ok: false; errors: string[] };
@@ -740,22 +628,16 @@ export type ImportResult = { ok: true; draft: EditorDraft } | { ok: false; error
  * Imports are untrusted: size-limited, strictly parsed, unknown fields and versions refused.
  * Unfinished drafts can be imported; running still requires the strict compile.
  */
-export function importDocuments(definitionText: string, layoutText?: string): ImportResult {
-  const parse = (
-    text: string,
-    what: string,
-  ): { ok: true; value: unknown } | { ok: false; error: string } => {
-    if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES)
-      return { ok: false, error: `${what} is larger than 1 MiB` };
-    try {
-      return { ok: true, value: JSON.parse(text) };
-    } catch {
-      return { ok: false, error: `${what} is not valid JSON` };
-    }
-  };
-  const raw = parse(definitionText, 'The definition');
-  if (!raw.ok) return { ok: false, errors: [raw.error] };
-  const definition = CorralDefinitionDraft.safeParse(raw.value);
+export function importDefinition(text: string): ImportResult {
+  if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES)
+    return { ok: false, errors: ['The definition is larger than 1 MiB'] };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { ok: false, errors: ['The definition is not valid JSON'] };
+  }
+  const definition = CorralDefinitionDraft.safeParse(raw);
   if (!definition.success) {
     return {
       ok: false,
@@ -764,32 +646,17 @@ export function importDocuments(definitionText: string, layoutText?: string): Im
       ),
     };
   }
-  let layout: CanvasLayout | undefined;
-  if (layoutText !== undefined) {
-    const rawLayout = parse(layoutText, 'The layout');
-    if (!rawLayout.ok) return { ok: false, errors: [rawLayout.error] };
-    const parsed = CanvasLayout.safeParse(rawLayout.value);
-    if (!parsed.success) {
-      return {
-        ok: false,
-        errors: parsed.error.issues.map(
-          (i) => `layout ${i.path.map(String).join('.')}: ${i.message}`,
-        ),
-      };
-    }
-    if (parsed.data.corralId !== definition.data.id) {
-      return { ok: false, errors: ['The layout belongs to a different Corral.'] };
-    }
-    layout = parsed.data;
-  }
-  return { ok: true, draft: draftFromDefinition(definition.data, layout) };
+  return { ok: true, draft: draftFromDefinition(definition.data) };
 }
 
-export function compileDraft(draft: EditorDraft): DraftCompilation {
-  const compiled = compileDefinition(draft.definition);
+export function compileDraft(
+  draft: EditorDraft,
+  options: Pick<CompileOptions, 'resolveTeam'> = {},
+): DraftCompilation {
+  const compiled = compileDefinition(draft.definition, options);
   if (!compiled.ok)
     return { diagnostics: compiled.diagnostics, runnable: false, runtimeLimits: [] };
-  const plan = planRun(compiled.definition);
+  const plan = planRun(compiled.definition, options);
   return {
     definition: compiled.definition,
     diagnostics: compiled.diagnostics,
@@ -804,16 +671,18 @@ export function findNode(draft: EditorDraft, nodeId: string): CorralNode | undef
   return draft.definition.nodes.find((n) => n.id === nodeId);
 }
 
-function withDefinition(draft: EditorDraft, definition: CorralDefinition): EditorDraft {
+export function withDefinition(draft: EditorDraft, definition: CorralDefinition): EditorDraft {
   return { ...draft, definition: { ...definition, entryNodeId: entryOf(definition) } };
 }
 
-/** Keeps the entry pointing at the scheduled agent where the flow starts. */
+/** Keeps the entry pointing where the flow starts: a scheduled agent, else a Loop or Team. */
 function entryOf(definition: CorralDefinition): string {
   const targets = new Set(definition.controlEdges.map((e) => e.target));
-  const candidates = definition.nodes.filter(
-    (n) => n.type === 'agent' && n.invocation === 'scheduled' && !n.loopId && !targets.has(n.id),
-  );
+  const starts = definition.nodes.filter((n) => !n.parentId && !targets.has(n.id));
+  const candidates = [
+    ...starts.filter((n) => n.type === 'agent' && n.invocation === 'scheduled'),
+    ...starts.filter((n) => n.type === 'loop' || n.type === 'team'),
+  ];
   if (candidates.some((n) => n.id === definition.entryNodeId)) return definition.entryNodeId;
   return candidates[0]?.id ?? definition.entryNodeId;
 }

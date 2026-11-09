@@ -1,22 +1,26 @@
-import type { RunEvent } from '@corral/contracts';
+import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import {
   buildTurnProcess,
+  ExecutionToolGroup,
   type ProcessRow,
+  ReasoningSummary,
   type RunSessionState,
   turnSummary,
 } from '@corral/react';
 import {
   ThinkingStep,
+  ThinkingStepDetails,
+  ThinkingStepSource,
+  ThinkingStepSources,
   ThinkingSteps,
   ThinkingStepsContent,
   ThinkingStepsHeader,
 } from '@corral/react/design-kit';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
-type IconName = 'brain' | 'search' | 'pencil' | 'play' | 'users' | 'message-circle' | 'dot';
-
+type IconName = 'brain' | 'search' | 'pencil' | 'play' | 'users' | 'message-circle' | 'dot' | 'x';
 const ICONS: Record<string, IconName> = {
   read_file: 'search',
   list_files: 'search',
@@ -37,28 +41,30 @@ const ICONS: Record<string, IconName> = {
   spawn_subagents: 'users',
   await_tasks: 'users',
 };
-
-/** Seconds elapsed since `from`, ticking once a second while the turn runs. */
-function useElapsed(from: string | null, to: string | null) {
+function useElapsed(from: string | null, to: string | null, active: boolean) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (to || !from) return;
+    if (!active || to || !from) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [from, to]);
-  if (!from) return 0;
-  const end = to ? Date.parse(to) : now;
-  return Math.max(0, Math.round((end - Date.parse(from)) / 1000));
+  }, [from, to, active]);
+  if (!from) return null;
+  return Math.max(0, Math.round(((to ? Date.parse(to) : now) - Date.parse(from)) / 1000));
+}
+function Sources({ sources }: { sources: ProcessRow['sources'] }) {
+  return sources.length ? (
+    <ThinkingStepSources>
+      {sources.map((source) => (
+        <ThinkingStepSource key={source.id}>{source.label}</ThinkingStepSource>
+      ))}
+    </ThinkingStepSources>
+  ) : null;
 }
 
-/**
- * a chat turn's process as flat one-line rows (DSH-style). While the turn runs, rows
- * stream in above a working line; a finished turn folds under its duration and step count.
- */
+/** The source kit's progressive work log, composed from observed requests and tools. */
 export function TurnProcess({
   events,
   projection,
-  streams,
   label,
   open,
   onOpenChange,
@@ -72,51 +78,69 @@ export function TurnProcess({
 }) {
   const t = useTranslations('Turn');
   const ts = useTranslations('Status');
-  const process = buildTurnProcess(events, projection, streams, label);
-  // Finished turns load their events only when opened; the header reads the projection.
+  const tt = useTranslations('Transcript');
+  const process = useMemo(
+    () => buildTurnProcess(events, projection, {}, label),
+    [events, projection, label],
+  );
   const summary = events.length ? process : { ...process, ...turnSummary(projection) };
-  const seconds = useElapsed(summary.startedAt, summary.endedAt);
+  const seconds = useElapsed(summary.startedAt, summary.endedAt, summary.active);
   const time =
-    seconds < 60
-      ? t('seconds', { s: seconds })
-      : t('minutes', { m: Math.floor(seconds / 60), s: seconds % 60 });
-  if (!summary.running && summary.steps === 0 && process.rows.length === 0) return null;
-  const header = summary.running
-    ? t('working', { time })
-    : summary.steps > 0
-      ? t('workedSteps', { time, count: summary.steps })
-      : t('worked', { time });
-  const rowLabel = (row: ProcessRow) => {
-    switch (row.kind) {
-      case 'think':
-        return `${t('think')} · ${row.text}`;
-      case 'tool': {
-        const name = t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name;
-        const state =
-          row.status === 'cancelled'
-            ? ts('cancelled')
-            : row.status === 'blocked'
-              ? t('blocked')
-              : row.status === 'failed'
-                ? t('failed')
-                : null;
-        const target = row.artifact ? t('artifactTarget', row.artifact) : row.target;
-        return [name, target, state].filter(Boolean).join(' · ');
-      }
-      case 'agent':
-        return t('agentStatus', {
-          label: row.label,
-          status: ts.has(row.status) ? ts(row.status) : row.status,
-        });
-    }
+    seconds === null
+      ? null
+      : seconds < 60
+        ? t('seconds', { s: seconds })
+        : t('minutes', { m: Math.floor(seconds / 60), s: seconds % 60 });
+  const terminal = TERMINAL_RUN_STATUSES.has(projection.status);
+  const header =
+    summary.active && time
+      ? t('working', { time })
+      : projection.status === 'succeeded' && time
+        ? summary.steps
+          ? t('workedSteps', { time, count: summary.steps })
+          : t('worked', { time })
+        : ts.has(projection.status)
+          ? ts(projection.status)
+          : projection.status;
+  if (
+    terminal &&
+    summary.steps === 0 &&
+    process.rows.length === 0 &&
+    Object.keys(projection.modelCalls).length === 0
+  )
+    return null;
+  const modelDescription = (row: Extract<ProcessRow, { kind: 'model' }>) => {
+    const phase =
+      row.phase === 'preparing'
+        ? t('requestPreparing')
+        : row.phase === 'generating'
+          ? t('requestGenerating')
+          : row.phase === 'finished'
+            ? t('requestFinished')
+            : row.phase === 'unconfirmed'
+              ? t('requestUnconfirmed')
+              : row.phase === 'waiting'
+                ? ts.has(row.state)
+                  ? ts(row.state)
+                  : row.state
+                : ts(row.phase);
+    return [row.model, phase].filter(Boolean).join(' · ');
   };
-  const icon = (row: ProcessRow): IconName =>
-    row.kind === 'think' ? 'brain' : row.kind === 'agent' ? 'users' : (ICONS[row.name] ?? 'dot');
-  const active = (row: ProcessRow) =>
-    summary.running &&
-    ((row.kind === 'think' && row.live) ||
-      (row.kind === 'tool' && (row.status === 'requested' || row.status === 'allowed')) ||
-      (row.kind === 'agent' && !['succeeded', 'failed', 'cancelled'].includes(row.status)));
+  const activityState = (active: boolean, executionState?: string) => {
+    if (active) return undefined;
+    const state =
+      projection.status === 'running'
+        ? (executionState ??
+          projection.executions[projection.executionOrder[0] ?? '']?.status ??
+          projection.status)
+        : projection.status;
+    return {
+      status: (terminal || state === 'cancelled' || state === 'failed' ? 'stopped' : 'waiting') as
+        | 'waiting'
+        | 'stopped',
+      label: ts.has(state) ? ts(state) : state,
+    };
+  };
   return (
     <ThinkingSteps
       data-testid="turn-process"
@@ -128,22 +152,79 @@ export function TurnProcess({
       <ThinkingStepsHeader>
         <span
           data-testid="turn-process-header"
-          className={summary.running ? 'shimmer-text tabular-nums' : 'tabular-nums'}
+          className={summary.active ? 'shimmer-text tabular-nums' : 'tabular-nums'}
         >
           {header}
         </span>
       </ThinkingStepsHeader>
       <ThinkingStepsContent>
-        {process.rows.map((row, index) => (
-          <ThinkingStep
-            key={`${row.kind}:${row.id}`}
-            icon={icon(row)}
-            label={rowLabel(row)}
-            status={active(row) ? 'active' : 'complete'}
-            isLast={index === process.rows.length - 1}
-            className="turn-process-row"
-          />
-        ))}
+        {process.rows.map((row, index) => {
+          const last = index === process.rows.length - 1;
+          if (row.kind === 'model')
+            return (
+              <ThinkingStep
+                key={`model:${row.id}`}
+                icon="brain"
+                label={t('request', { no: row.no })}
+                description={modelDescription(row)}
+                status={row.active ? 'active' : 'complete'}
+                isLast={last}
+                className="turn-process-row"
+              >
+                <Sources sources={row.sources} />
+                <ThinkingStepDetails summary={t('requestDetails')}>
+                  <ReasoningSummary call={row.call} />
+                </ThinkingStepDetails>
+              </ThinkingStep>
+            );
+          if (row.kind === 'tool')
+            return (
+              <ThinkingStep
+                key={`tool:${row.id}`}
+                icon={
+                  row.status === 'blocked' || row.status === 'failed'
+                    ? 'x'
+                    : (ICONS[row.name] ?? 'dot')
+                }
+                label={t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name}
+                description={[
+                  row.artifact ? t('artifactTarget', row.artifact) : row.target,
+                  tt(`tool.${row.status}`),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                status={row.active ? 'active' : 'complete'}
+                isLast={last}
+                className="turn-process-row"
+              >
+                <Sources sources={row.sources} />
+                <ThinkingStepDetails summary={t('toolDetails')}>
+                  <ExecutionToolGroup tools={[row]} activityState={activityState(row.active)} />
+                </ThinkingStepDetails>
+              </ThinkingStep>
+            );
+          return (
+            <ThinkingStep
+              key={`agent:${row.id}`}
+              icon={row.status === 'failed' || row.status === 'cancelled' ? 'x' : 'users'}
+              label={row.label}
+              description={ts.has(row.status) ? ts(row.status) : row.status}
+              status={row.active ? 'active' : 'complete'}
+              isLast={last}
+              className="turn-process-row"
+            >
+              <Sources sources={row.sources} />
+              {row.tools.length ? (
+                <ThinkingStepDetails summary={t('agentDetails')}>
+                  <ExecutionToolGroup
+                    tools={row.tools}
+                    activityState={activityState(row.active, row.status)}
+                  />
+                </ThinkingStepDetails>
+              ) : null}
+            </ThinkingStep>
+          );
+        })}
       </ThinkingStepsContent>
     </ThinkingSteps>
   );

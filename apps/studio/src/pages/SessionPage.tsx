@@ -45,6 +45,7 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
+  InputMessage,
   KitChatMessage,
   Menu,
   MenuItem,
@@ -56,12 +57,12 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
+  ModelPicker,
   Select,
   Switch,
   Tooltip,
 } from '@corral/react/design-kit';
 import {
-  ArrowUp,
   AtSign,
   Ellipsis,
   FileDiff,
@@ -98,6 +99,7 @@ import {
   SESSION_PANELS,
   type SessionPanel,
 } from '../workbench/panels/registry.ts';
+
 import {
   patchSessionSearch,
   resolveSessionSearch,
@@ -120,6 +122,7 @@ import {
   autoReasoningUnsupported,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
+import { RunMenu } from '../workbench/Breadcrumbs.tsx';
 import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { ComposerInput } from '../workbench/ComposerInput.tsx';
 import { ComposerSurface } from '../workbench/ComposerSurface.tsx';
@@ -160,6 +163,7 @@ import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { PermissionModePicker } from '../workbench/PermissionModePicker.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { ProjectMaterialPicker } from '../workbench/ProjectMaterials.tsx';
+import { panelRunId } from '../workbench/panelRun.ts';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import {
   EDIT_REQUEST,
@@ -181,7 +185,7 @@ import {
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TerminalWriterNotice } from '../workbench/TerminalWriterNotice.tsx';
 import { TextAttachmentList, TextAttachmentPicker } from '../workbench/TextAttachments.tsx';
-import { TopbarActions } from '../workbench/TopbarSlot.tsx';
+import { TopbarActions, TopbarCrumb } from '../workbench/TopbarSlot.tsx';
 import { useMentionSearch } from '../workbench/useMentionSearch.ts';
 import {
   type ProfileInfo,
@@ -193,7 +197,7 @@ import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { WorkFolderNotice } from '../workbench/WorkFolderNotice.tsx';
 import { ComposerDock, ComposerPlan } from '../workbench/widgets/ChatWidgets.tsx';
-import { OverviewAccess, OverviewPanel } from '../workbench/widgets/OverviewWidgets.tsx';
+import { OverviewAccess } from '../workbench/widgets/OverviewWidgets.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding, WORKSPACE_CHANGED } from './FilesViews.tsx';
@@ -260,7 +264,7 @@ function WorkSessionPage() {
     });
   }, [urlViewKey, viewKey, navigate]);
   const router = useRouter();
-  const { runs, active, refresh, lost } = useSessionRuns(
+  const { runs, active, refresh, lost, listed } = useSessionRuns(
     session.sessionId,
     search.run,
     session.revision,
@@ -364,7 +368,15 @@ function WorkSessionPage() {
     ),
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
     problems: () => <ProblemsPanel sessionId={session.sessionId} />,
-    run: () => <RunPanel runs={runs} search={search} setSearch={setSearch} />,
+    run: () => (
+      <RunPanel
+        runs={runs}
+        listed={listed}
+        entries={session.entries}
+        search={search}
+        setSearch={setSearch}
+      />
+    ),
   };
   const renderContext = (view: DockContextView, requestedView: DockContextView = view) => {
     if (view === 'chat')
@@ -474,7 +486,7 @@ function WorkSessionPage() {
       session.projectId,
       session.sessionId,
       view,
-      search.run ?? runs.at(-1)?.runId,
+      panelRunId(runs, search.run, listed),
     );
     return (
       <div key={target ? panelKey(services, target) : view} className="flex flex-col gap-3 p-3">
@@ -494,17 +506,6 @@ function WorkSessionPage() {
         onPanel={(value) => showPanel({ panel: value })}
         fileViewerOpen={fileViewerOpen}
         onToggleFileViewer={toggleFileViewer}
-        runs={runs}
-        selectedRunId={presentationRunId}
-        onSelectRun={(run) =>
-          setSearch({
-            run,
-            view: 'run',
-            execution: undefined,
-            artifact: undefined,
-            result: undefined,
-          })
-        }
         onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
       <ArchivedSessionNotice key={session.sessionId} session={session} />
@@ -583,24 +584,26 @@ function WorkSessionPage() {
                 }}
                 controls={
                   active && panel !== 'run' ? (
-                    <DockRunControls
-                      key={active.runId}
-                      runId={active.runId}
-                      request={session.entries
-                        .find((entry) => entry.runId === active.runId)
-                        ?.text.slice(0, 80)}
-                      viewingOther={presentationRunId !== active.runId}
-                      onOpen={(run) =>
-                        showPanel({
-                          panel: 'run',
-                          run,
-                          view: 'run',
-                          execution: undefined,
-                          artifact: undefined,
-                          result: undefined,
-                        })
-                      }
-                    />
+                    <TopbarActions>
+                      <DockRunControls
+                        key={active.runId}
+                        runId={active.runId}
+                        request={session.entries
+                          .find((entry) => entry.runId === active.runId)
+                          ?.text.slice(0, 80)}
+                        viewingOther={presentationRunId !== active.runId}
+                        onOpen={(run) =>
+                          showPanel({
+                            panel: 'run',
+                            run,
+                            view: 'run',
+                            execution: undefined,
+                            artifact: undefined,
+                            result: undefined,
+                          })
+                        }
+                      />
+                    </TopbarActions>
                   ) : null
                 }
               />
@@ -680,9 +683,6 @@ function SessionActions({
   onPanel,
   fileViewerOpen,
   onToggleFileViewer,
-  runs,
-  selectedRunId,
-  onSelectRun,
   onEditTeam,
 }: {
   session: WorkSession;
@@ -695,15 +695,11 @@ function SessionActions({
   onPanel: (panel: SessionPanel | undefined) => void;
   fileViewerOpen: boolean;
   onToggleFileViewer: (open: boolean) => void;
-  runs: RunSummary[];
-  selectedRunId: string | null;
-  onSelectRun: (runId: string) => void;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workbench');
   const td = useTranslations('Desktop');
-  const status = useTranslations('Status');
   const { repository } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -834,26 +830,6 @@ function SessionActions({
         >
           {team.name} · r{team.definitionRevision}
         </span>
-      ) : null}
-      {runs.length > 1 ? (
-        <Select
-          variant="chip"
-          className="max-w-32 sm:max-w-60"
-          label={t('selectedRun')}
-          value={selectedRunId}
-          onValueChange={onSelectRun}
-          options={runs.map((run, index) => ({
-            value: run.runId,
-            label: (
-              <span className="block max-w-[min(26rem,70vw)] truncate">
-                {tw('runNumber', { number: index + 1 })} · {t('selectedRun')} · {status(run.status)}
-              </span>
-            ),
-            hint:
-              session.entries.find((entry) => entry.runId === run.runId)?.text.slice(0, 55) ||
-              run.runId,
-          }))}
-        />
       ) : null}
       {error ? (
         <p role="alert" className="max-w-64 truncate text-xs text-danger" title={error}>
@@ -1006,7 +982,8 @@ function WorkTab({
   const { runFor, sessionFor, retainRun, workspaces } = useServices();
   const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
-  const messageId = sessionRoute.useSearch().message;
+  const currentSearch = sessionRoute.useSearch();
+  const messageId = currentSearch.message;
   useEffect(() => {
     if (!liveRunId) return;
     const release = retainRun(liveRunId);
@@ -1018,13 +995,13 @@ function WorkTab({
   const loose = runs.filter((r) => !named.has(r.runId));
   const queued = session.entries.filter((e) => e.state === 'queued');
   const runChecks = useRunChecks(session.sessionId, runs);
+  const artifactMetadataVersion = runs.findLast((run) => run.status === 'succeeded')?.runId ?? '';
   const td = useTranslations('Desktop');
   return (
     <RunChecks.Provider value={runChecks}>
       <ChatView
         centerEmpty
         key={session.sessionId}
-        aside={<OverviewPanel />}
         sessionId={session.sessionId}
         messageId={messageId}
         header={
@@ -1051,18 +1028,28 @@ function WorkTab({
                   sessionId={session.sessionId}
                   entry={entry}
                   runs={runs}
+                  artifactMetadataVersion={artifactMetadataVersion}
                   onPanel={onPanel}
                 />
               ),
             })),
           ...loose.map((run) => ({
             id: run.runId,
-            content: <RunCard run={run} onPanel={onPanel} />,
+            content: (
+              <RunCard
+                run={run}
+                artifactMetadataVersion={artifactMetadataVersion}
+                onPanel={onPanel}
+              />
+            ),
           })),
         ]}
         composer={
           <Composer
             key={session.sessionId}
+            runControlsOwnConfirmation={
+              currentSearch.panel !== 'run' || selectedRunId === active?.runId
+            }
             session={session}
             team={team}
             corrals={corrals}
@@ -1104,56 +1091,68 @@ function WorkTab({
 /** Run detail in the side panel: the chosen run (newest by default) with its own views. */
 function RunPanel({
   runs,
+  listed,
+  entries,
   search,
   setSearch,
 }: {
   runs: RunSummary[];
+  /** The run list has answered for the current selection. */
+  listed: boolean;
+  /** The session's turns: the request that started a run is its title. */
+  entries: WorkSession['entries'];
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
 }) {
   const tw = useTranslations('Workbench');
-  const ts = useTranslations('Status');
-  const runId = search.run ?? runs.at(-1)?.runId;
+  const runId = panelRunId(runs, search.run, listed);
   if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
+  // A fallback run must not inherit the selection made inside the run that has gone.
+  const own = search.run === undefined || search.run === runId;
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-line/50 px-3 py-1.5">
-        <Select
-          label={tw('chooseRun')}
-          size="xs"
-          variant="ghost"
-          value={runId}
-          onValueChange={(value) =>
-            setSearch({
-              run: value,
-              atSeq: undefined,
-              execution: undefined,
-              artifact: undefined,
-              view: undefined,
-              result: undefined,
-            })
-          }
-          options={[...runs].reverse().map((r, index) => ({
-            value: r.runId,
-            label: `${tw('runNumber', { number: runs.length - index })}${search.atSeq === undefined ? ` · ${ts(r.status)}` : ''}`,
-            hint: r.runId,
-          }))}
-        />
-      </div>
+      {search.panel === 'run' ? (
+        <TopbarCrumb>
+          <span aria-hidden="true" className="text-muted-foreground/50">
+            /
+          </span>
+          <RunMenu
+            runs={runs}
+            runId={runId}
+            onSelect={(value) =>
+              setSearch({
+                run: value,
+                atSeq: undefined,
+                execution: undefined,
+                artifact: undefined,
+                view: undefined,
+                result: undefined,
+              })
+            }
+          />
+        </TopbarCrumb>
+      ) : null}
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
           runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
+          request={
+            entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
+          }
           embedded
-          search={{
-            atSeq: search.atSeq,
-            execution: search.execution,
-            artifact: search.artifact,
-            view: search.view ?? (search.result ? 'results' : 'run'),
-            result: search.result,
-          }}
+          search={
+            own
+              ? {
+                  atSeq: search.atSeq,
+                  execution: search.execution,
+                  artifact: search.artifact,
+                  view: search.view ?? (search.result ? 'results' : 'run'),
+                  result: search.result,
+                }
+              : { view: 'run' }
+          }
           setSearch={(patch, options) => setSearch({ run: runId, ...patch }, options)}
         />
       </div>
@@ -1277,11 +1276,12 @@ function ArtifactsPanel({
                 className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
                 aria-label={`${tr(item.kind)} ${item.label} · ${tw('runNumber', { number: runs.findIndex((run) => run.runId === item.runId) + 1 })} · ${item.author}`}
                 onClick={() => onOpen(item.runId, item.id)}
+                title={item.runId}
               >
                 <FileText className="text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.label}</span>
-                  <span className="truncate text-2xs text-muted-foreground" title={item.runId}>
+                  <span className="truncate text-2xs text-muted-foreground">
                     {[
                       tw('runNumber', {
                         number: runs.findIndex((run) => run.runId === item.runId) + 1,
@@ -1344,11 +1344,13 @@ function EntryCard({
   sessionId,
   entry,
   runs,
+  artifactMetadataVersion,
   onPanel,
 }: {
   sessionId: string;
   entry: SessionEntry;
   runs: RunSummary[];
+  artifactMetadataVersion: string;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
@@ -1471,7 +1473,14 @@ function EntryCard({
           </Button>
         </div>
       ) : null}
-      {run && entry.intent !== 'steer' ? <RunCard run={run} nested onPanel={onPanel} /> : null}
+      {run && entry.intent !== 'steer' ? (
+        <RunCard
+          run={run}
+          nested
+          artifactMetadataVersion={artifactMetadataVersion}
+          onPanel={onPanel}
+        />
+      ) : null}
       {entry.intent === 'steer' && entry.runId ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <DeliveryStatus
@@ -1547,10 +1556,12 @@ function useRunChecks(sessionId: string, runs: RunSummary[]) {
  */
 function RunCard({
   run,
+  artifactMetadataVersion,
   nested = false,
   onPanel,
 }: {
   run: RunSummary;
+  artifactMetadataVersion: string;
   nested?: boolean;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
@@ -1603,6 +1614,7 @@ function RunCard({
         runId={run.runId}
         sessionId={run.sessionId ?? null}
         live={!ended}
+        artifactMetadataVersion={artifactMetadataVersion}
         onOpenArtifact={(result) => onPanel('run', { run: run.runId, view: 'results', result })}
       />
       {/* Only a session with a working copy has changes to review (its checks are known). */}
@@ -1717,6 +1729,7 @@ export function Composer({
   onChange,
   reference,
   onReferenceUsed,
+  runControlsOwnConfirmation = false,
 }: {
   session: WorkSession;
   team: CorralSummary | null;
@@ -1729,6 +1742,8 @@ export function Composer({
   onChange: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
+  /** The active session view already has one RunActions confirmation host. */
+  runControlsOwnConfirmation?: boolean;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
@@ -1854,6 +1869,8 @@ export function Composer({
   );
   const roles = useTeamRoles(team);
   const [recall, setRecall] = useState(-1);
+  // A plan can move between the steering shell and the next-request surface at settlement.
+  const [planAllKey, setPlanAllKey] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (session.entries.length === 0) input.current?.focus();
@@ -2847,7 +2864,6 @@ export function Composer({
     (missingTeam && (intent === 'next' || intent === 'explain')) ||
     (intent === 'explain' && !latest) ||
     (intent === 'steer' && !steerTarget);
-  const stopping = Boolean(ownActive) && !text.trim();
   const runNumber = (runId: string) => runs.findIndex((run) => run.runId === runId) + 1;
   const viewingOtherRun = active && selectedRunId && active.runId !== selectedRunId;
   const destination =
@@ -2941,55 +2957,31 @@ export function Composer({
     },
   ]);
   const commands = useRegisteredCommands();
-  return (
-    <ComposerSurface.Shell>
-      {queued.length > 0 ? (
-        <section aria-label={t('queueHeading')} className="mx-3 rounded-t-xl bg-raised px-3 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">
-              {t('queueHeading')} · {queued.length}
-            </h3>
-            <Switch
-              label={t('autoStart')}
-              title={t('autoStartHint')}
-              checked={autoStart}
-              onToggle={() => setAutoStart(!autoStart)}
-            />
-          </div>
-          <ul className="mt-1 flex flex-col">
-            {queued.map((entry) => (
-              <li key={entry.entryId} className="group/queued flex items-center gap-1 text-ui">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate" title={entry.text}>
-                    {entry.text}
-                  </p>
-                  {entry.attachments?.length ? (
-                    <TextAttachmentList attachments={entry.attachments} />
-                  ) : null}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="compact"
-                  disabled={Boolean(active) || busy || savedRequestUnavailable}
-                  onClick={() => void startQueued(entry)}
-                >
-                  {t('startNow')}
-                </Button>
-                <Button variant="ghost" size="compact" onClick={() => void editQueued(entry)}>
-                  {t('editQueued')}
-                </Button>
-                <Button variant="ghost" size="compact" onClick={() => void removeQueued(entry)}>
-                  {t('remove')}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      <ComposerDock summary={<OverviewAccess />} />
-      <ComposerSurface.Host>
-        <ComposerPlan />
-        <section aria-label={t('requestLabel')} className="flex flex-col gap-1 p-2">
+  const compose = (
+    <InputMessage
+      data-slot="composer-host"
+      role="region"
+      aria-label={t('requestLabel')}
+      inputRef={input}
+      value={text}
+      onValueChange={(value) => {
+        setRecall(-1);
+        write(value);
+      }}
+      onSend={() => void send()}
+      placeholder={tc('placeholder')}
+      textareaProps={{ 'aria-label': t('requestLabel') }}
+      sendDisabled={busy || !text.trim() || unavailable}
+      sendLabel={t('send')}
+      sendDescription={sendMeaning}
+      renderAction={(action) => (
+        <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
+          {action}
+        </Tooltip>
+      )}
+      contentSlot={
+        <>
+          <ComposerPlan showAllKey={planAllKey} onShowAllKeyChange={setPlanAllKey} />
           {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
           {viewingOtherRun ? (
             <Banner data-testid="viewed-run-warning" status="warning" size="compact">
@@ -3158,6 +3150,9 @@ export function Composer({
             onChange={setAttachments}
             disabled={busy || attachmentsBusy}
           />
+          <p data-testid="composer-destination" className="px-1 text-caption text-muted-foreground">
+            {destination}
+          </p>
           {attachments.length > 0 && intent !== 'next' && intent !== 'queue' ? (
             <div
               role="status"
@@ -3178,35 +3173,43 @@ export function Composer({
                 ))}
             </div>
           ) : null}
-          <ComposerInput
-            inputRef={input}
-            label={t('requestLabel')}
-            placeholder={tc('placeholder')}
-            value={text}
-            onChange={(value) => {
-              setRecall(-1);
-              write(value);
-            }}
-            onKeyDown={onKeyDown}
-            commands={commands}
-            searchMentions={searchMentions}
-            onMention={(item) => {
-              const selected = selectMention(item, picked);
-              setPicked((list) =>
-                list.some((existing) => existing.id === selected.id) ? list : [...list, selected],
-              );
-              return selected;
-            }}
-          />
-          <p data-testid="composer-destination" className="px-2 text-xs text-muted-foreground">
-            {destination}
-          </p>
-          <div className="flex flex-wrap items-center gap-0.5">
-            <Tooltip content={tc('addReference')}>
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label={tc('addReference')}
+        </>
+      }
+      renderInput={(inputProps) => (
+        <ComposerInput
+          inputRef={inputProps.ref}
+          textareaProps={inputProps}
+          label={t('requestLabel')}
+          placeholder={tc('placeholder')}
+          value={text}
+          onChange={(value) => {
+            setRecall(-1);
+            write(value);
+          }}
+          onKeyDown={onKeyDown}
+          commands={commands}
+          searchMentions={searchMentions}
+          onMention={(item) => {
+            const selected = selectMention(item, picked);
+            setPicked((list) =>
+              list.some((existing) => existing.id === selected.id) ? list : [...list, selected],
+            );
+            return selected;
+          }}
+        />
+      )}
+      leftSlot={
+        <>
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button variant="ghost" size="icon-compact" aria-label={tc('attachmentActions')} />
+              }
+            >
+              <Plus />
+            </MenuTrigger>
+            <MenuPopup align="start">
+              <MenuItem
                 onClick={() => {
                   const box = input.current;
                   const at = box?.selectionStart ?? text.length;
@@ -3220,204 +3223,251 @@ export function Composer({
                 }}
               >
                 <AtSign />
-              </Button>
-            </Tooltip>
-            <Menu>
-              <Tooltip content={tc('attachmentActions')}>
-                <MenuTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-compact"
-                      aria-label={tc('attachmentActions')}
-                      disabled={
-                        busy ||
-                        attachmentsBusy ||
-                        imagesBusy ||
-                        (intent !== 'next' && intent !== 'queue')
-                      }
-                    />
-                  }
-                >
-                  <Plus />
-                </MenuTrigger>
-              </Tooltip>
-              <MenuPopup align="start">
-                {mode === 'server' ? (
-                  <MenuItem
-                    disabled={intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
-                    onClick={() => imageFiles.current?.click()}
-                  >
-                    {tc('attachImages')}
-                  </MenuItem>
-                ) : null}
+                {tc('addReference')}
+              </MenuItem>
+              <MenuSeparator />
+              {mode === 'server' ? (
                 <MenuItem
-                  disabled={attachments.length >= TEXT_ATTACHMENT_MAX_COUNT}
-                  onClick={() => textFiles.current?.click()}
-                >
-                  {tc('attachText')}
-                </MenuItem>
-                {mode === 'server' ? (
-                  <MenuItem
-                    disabled={attachments.length >= TEXT_ATTACHMENT_MAX_COUNT}
-                    onClick={() => setMaterialsOpen(true)}
-                  >
-                    {materialMessages('attachPlaceholder')}
-                  </MenuItem>
-                ) : null}
-              </MenuPopup>
-            </Menu>
-
-            {allowed.length > 1 && !resolved.blocked ? (
-              <Select
-                variant="chip"
-                label={t('intentLabel')}
-                value={intent}
-                onValueChange={chooseIntent}
-                options={allowed.map((value) => ({
-                  value,
-                  label: t(`intentShort.${value}`),
-                  hint: t(`intentHint.${value}`),
-                }))}
-              />
-            ) : intent !== 'next' || resolved.blocked ? (
-              <span className="px-2 text-ui text-muted-foreground">
-                {t(`intentShort.${intent}`)}
-              </span>
-            ) : null}
-            {intent === 'steer' ? (
-              <Select
-                variant="chip"
-                label={t('target')}
-                value={steerTarget || null}
-                placeholder={t('noTarget')}
-                onValueChange={chooseTarget}
-                options={[
-                  ...(steerTarget && !targets.some((x) => x.id === steerTarget)
-                    ? [
-                        {
-                          value: steerTarget,
-                          label: tc('ended', { name: targetName(steerTarget) }),
-                          disabled: true,
-                        },
-                      ]
-                    : []),
-                  ...targets.map((x) => ({ value: x.id, label: x.label })),
-                ]}
-                disabled={targets.length === 0}
-              />
-            ) : null}
-            {intent === 'next' && !resolved.blocked ? (
-              <Select
-                variant="chip"
-                label={tc('teamLabel')}
-                value={team ? `corral:${team.corralId}` : teamMode}
-                disabled={busy}
-                open={teamOpen}
-                onOpenChange={setTeamOpen}
-                onValueChange={(value) => {
-                  const choice = String(value);
-                  if (choice === 'manage')
-                    void navigate({
-                      to: '/projects/$projectId',
-                      params: { projectId: session.projectId },
-                      hash: 'corrals',
-                    });
-                  else if (choice.startsWith('corral:')) void updateTeam(choice.slice(7));
-                  else {
-                    setTeamMode(choice === 'auto' ? 'auto' : 'none');
-                    if (!isAuto) void updateTeam('');
+                  disabled={
+                    busy ||
+                    imagesBusy ||
+                    attachmentsBusy ||
+                    intent !== 'next' ||
+                    images.length >= IMAGE_MAX_COUNT
                   }
-                }}
-                options={[
-                  { value: 'none', label: tc('teamNone'), hint: tc('teamNoneHint') },
-                  // Corral: the automatic team first, then each saved Corral.
-                  {
-                    value: 'auto',
-                    label: tc('teamAuto'),
-                    hint: tc('teamAutoHint'),
-                    group: tc('teamCorralGroup'),
-                  },
-                  ...corrals.map((corral) => ({
-                    value: `corral:${corral.corralId}`,
-                    label: corral.name,
-                    hint: tc('teamCorralHint'),
-                    group: tc('teamCorralGroup'),
-                  })),
-                  // Creating or editing a Corral happens on the project page.
-                  { value: 'manage', label: tc('manageCorrals'), group: tc('teamCorralGroup') },
-                ]}
-              />
-            ) : null}
-            {(isAuto || team) && (intent === 'next' || intent === 'explain') && profiles ? (
+                  onClick={() => imageFiles.current?.click()}
+                >
+                  {tc('attachImages')}
+                </MenuItem>
+              ) : null}
+              <MenuItem
+                disabled={
+                  busy ||
+                  attachmentsBusy ||
+                  imagesBusy ||
+                  (intent !== 'next' && intent !== 'queue') ||
+                  attachments.length >= TEXT_ATTACHMENT_MAX_COUNT
+                }
+                onClick={() => textFiles.current?.click()}
+              >
+                {tc('attachText')}
+              </MenuItem>
+              {mode === 'server' ? (
+                <MenuItem
+                  disabled={
+                    busy ||
+                    attachmentsBusy ||
+                    imagesBusy ||
+                    (intent !== 'next' && intent !== 'queue') ||
+                    attachments.length >= TEXT_ATTACHMENT_MAX_COUNT
+                  }
+                  onClick={() => setMaterialsOpen(true)}
+                >
+                  {materialMessages('attachPlaceholder')}
+                </MenuItem>
+              ) : null}
+            </MenuPopup>
+          </Menu>{' '}
+          {(intent === 'next' || intent === 'queue') && !resolved.blocked ? (
+            <Select
+              variant="chip"
+              label={tc('teamLabel')}
+              value={team ? `corral:${team.corralId}` : teamMode}
+              disabled={busy}
+              open={teamOpen}
+              onOpenChange={setTeamOpen}
+              onValueChange={(value) => {
+                const choice = String(value);
+                if (choice === 'manage')
+                  void navigate({
+                    to: '/projects/$projectId',
+                    params: { projectId: session.projectId },
+                    hash: 'corrals',
+                  });
+                else if (choice.startsWith('corral:')) void updateTeam(choice.slice(7));
+                else {
+                  setTeamMode(choice === 'auto' ? 'auto' : 'none');
+                  if (!isAuto) void updateTeam('');
+                }
+              }}
+              options={[
+                { value: 'none', label: tc('teamNone'), hint: tc('teamNoneHint') },
+                // Corral: the automatic team first, then each saved Corral.
+                {
+                  value: 'auto',
+                  label: tc('teamAuto'),
+                  hint: tc('teamAutoHint'),
+                  group: tc('teamCorralGroup'),
+                },
+                ...corrals.map((corral) => ({
+                  value: `corral:${corral.corralId}`,
+                  label: corral.name,
+                  hint: tc('teamCorralHint'),
+                  group: tc('teamCorralGroup'),
+                })),
+                // Creating or editing a Corral happens on the project page.
+                { value: 'manage', label: tc('manageCorrals'), group: tc('teamCorralGroup') },
+              ]}
+            />
+          ) : null}
+        </>
+      }
+      rightSlot={
+        <>
+          {(isAuto || team) &&
+          (intent === 'next' || intent === 'explain' || intent === 'queue') &&
+          (profiles || services.mode === 'browser') ? (
+            profiles ? (
               <AutoModelMenu
                 value={autoChoice}
                 profiles={profiles}
-                showReasoning={intent === 'next'}
+                showReasoning={intent === 'next' || intent === 'queue'}
                 disabled={busy}
                 open={autoModelOpen}
                 onOpenChange={setAutoModelOpen}
                 onChange={(value) => void updateAuto(value)}
               />
-            ) : null}
-            {intent === 'next' || intent === 'queue' ? (
-              <PermissionModePicker
-                value={permissionMode}
-                onChange={setPermissionMode}
+            ) : (
+              <ModelPicker
+                models={[]}
+                value=""
+                placeholder={tc('modelPicker.demo')}
+                reasoning={null}
                 disabled={busy}
-              />
-            ) : null}
-            <div className="ml-auto flex items-center gap-1">
-              <LiveVoice
-                api={services.voice ?? null}
-                target={{
-                  hostId: window.location.origin,
-                  sessionId: session.sessionId,
-                  ...(ownActive ? { runId: ownActive.runId } : {}),
-                  ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
+                open={autoModelOpen}
+                onOpenChange={setAutoModelOpen}
+                side="top"
+                align="end"
+                labels={{
+                  model: t('autoModel'),
+                  settings: tc('modelPicker.settings'),
+                  trigger: () => t('autoModel'),
+                  empty: tc('modelPicker.demoEmpty'),
                 }}
-                targetLabel={session.title}
-                onTranscript={submitVoice}
               />
-              {choosingAuto ? (
-                <Tooltip content={t('cancelAutoChoice')}>
-                  <Button
-                    variant="tertiary"
-                    size="icon-compact"
-                    aria-label={t('cancelAutoChoice')}
-                    onClick={cancelAuto}
-                  >
-                    <Square className="fill-current" />
-                  </Button>
-                </Tooltip>
-              ) : stopping ? (
-                <Tooltip content={tr('cancelRun')} shortcut={shortcutLabel('run.stop')}>
-                  <Button
-                    variant="tertiary"
-                    size="icon-compact"
-                    aria-label={tr('cancelRun')}
-                    onClick={requestStop}
-                  >
-                    <Square className="fill-current" />
-                  </Button>
-                </Tooltip>
-              ) : (
-                <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
-                  <Button
-                    size="icon-compact"
-                    aria-label={t('send')}
-                    aria-description={sendMeaning}
-                    disabled={busy || !text.trim() || unavailable}
-                    onClick={() => void send()}
-                  >
-                    <ArrowUp />
-                  </Button>
-                </Tooltip>
-              )}
-            </div>
+            )
+          ) : null}
+          {intent === 'next' || intent === 'queue' ? (
+            <PermissionModePicker
+              value={permissionMode}
+              onChange={setPermissionMode}
+              disabled={busy}
+            />
+          ) : null}
+          <LiveVoice
+            api={services.voice ?? null}
+            target={{
+              hostId: window.location.origin,
+              sessionId: session.sessionId,
+              ...(ownActive ? { runId: ownActive.runId } : {}),
+              ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
+            }}
+            targetLabel={session.title}
+            onTranscript={submitVoice}
+          />
+        </>
+      }
+    />
+  );
+  return (
+    <ComposerSurface.Shell>
+      <ComposerDock summary={<OverviewAccess />} />
+      {/* A live run's status and Cancel sit in the top bar; only the pre-run auto choice is cancelled here. */}
+      {choosingAuto ? (
+        <div
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1"
+          data-slot="composer-run-header"
+        >
+          <span className="text-body">{tc('groupRun')}</span>
+          <Button variant="tertiary" size="compact" onClick={cancelAuto}>
+            <Square className="size-3.5 fill-current" />
+            {t('cancelAutoChoice')}
+          </Button>
+        </div>
+      ) : null}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {allowed.length > 1 && !resolved.blocked ? (
+          <Select
+            variant="chip"
+            label={t('intentLabel')}
+            value={intent}
+            onValueChange={chooseIntent}
+            options={allowed.map((value) => ({
+              value,
+              label: t(`intentShort.${value}`),
+              hint: t(`intentHint.${value}`),
+            }))}
+          />
+        ) : intent !== 'next' || resolved.blocked ? (
+          <span className="px-2 text-ui text-muted-foreground">{t(`intentShort.${intent}`)}</span>
+        ) : null}
+        {intent === 'steer' ? (
+          <Select
+            variant="chip"
+            label={t('target')}
+            value={steerTarget || null}
+            placeholder={t('noTarget')}
+            onValueChange={chooseTarget}
+            options={[
+              ...(steerTarget && !targets.some((x) => x.id === steerTarget)
+                ? [
+                    {
+                      value: steerTarget,
+                      label: tc('ended', { name: targetName(steerTarget) }),
+                      disabled: true,
+                    },
+                  ]
+                : []),
+              ...targets.map((x) => ({ value: x.id, label: x.label })),
+            ]}
+            disabled={targets.length === 0}
+          />
+        ) : null}
+      </div>
+      {compose}
+      {queued.length > 0 ? (
+        <section aria-label={t('queueHeading')} className="mx-3 rounded-t-xl bg-raised px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              {t('queueHeading')} · {queued.length}
+            </h3>
+            <Switch
+              label={t('autoStart')}
+              title={t('autoStartHint')}
+              checked={autoStart}
+              onToggle={() => setAutoStart(!autoStart)}
+            />
           </div>
+          <ul className="mt-1 flex flex-col">
+            {queued.map((entry) => (
+              <li key={entry.entryId} className="group/queued flex items-center gap-1 text-ui">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate" title={entry.text}>
+                    {entry.text}
+                  </p>
+                  {entry.attachments?.length ? (
+                    <TextAttachmentList attachments={entry.attachments} />
+                  ) : null}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="compact"
+                  disabled={Boolean(active) || busy || savedRequestUnavailable}
+                  onClick={() => void startQueued(entry)}
+                >
+                  {t('startNow')}
+                </Button>
+                <Button variant="ghost" size="compact" onClick={() => void editQueued(entry)}>
+                  {t('editQueued')}
+                </Button>
+                <Button variant="ghost" size="compact" onClick={() => void removeQueued(entry)}>
+                  {t('remove')}
+                </Button>
+              </li>
+            ))}
+          </ul>
         </section>
-      </ComposerSurface.Host>
+      ) : null}
       <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted-foreground">
         <ComposerStats runs={runs} />
         {(intent === 'next' || intent === 'explain') && isAuto ? (
@@ -3425,21 +3475,6 @@ export function Composer({
         ) : null}
         {intent === 'explain' && !latest ? (
           <span className="text-warning">{t('noResult')}</span>
-        ) : null}
-        {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
-        {heldForNew.length ? (
-          <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
-            <span>
-              {tc('heldForNew', {
-                items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
-              })}
-            </span>
-          </div>
-        ) : null}
-        {reasoningBlocked ? (
-          <p role="status" data-testid="reasoning-not-supported" className="text-warning">
-            {tc('reasoningUnsupportedHint')}
-          </p>
         ) : null}
         {(intent === 'next' || intent === 'explain') && team ? (
           <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
@@ -3459,6 +3494,25 @@ export function Composer({
         {intent === 'steer' ? <span>{t('intentHint.steer')}</span> : null}
         {intent === 'queue' ? <span>{t('intentHint.queue')}</span> : null}
       </div>
+      {liveUnavailable || heldForNew.length > 0 || reasoningBlocked ? (
+        <div className="flex flex-col gap-1 px-4 pt-1 text-caption text-warning">
+          {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
+          {heldForNew.length ? (
+            <div role="status" className="flex flex-wrap items-center gap-2 text-warning">
+              <span>
+                {tc('heldForNew', {
+                  items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
+                })}
+              </span>
+            </div>
+          ) : null}
+          {reasoningBlocked ? (
+            <p role="status" data-testid="reasoning-not-supported" className="text-warning">
+              {tc('reasoningUnsupportedHint')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="px-4 pt-1 text-xs text-danger">
           {error}
@@ -3532,7 +3586,7 @@ export function Composer({
           </DialogFooter>
         </DialogPopup>
       </Dialog>
-      <Dialog open={confirmStop} onOpenChange={setConfirmStop}>
+      <Dialog open={confirmStop && !runControlsOwnConfirmation} onOpenChange={setConfirmStop}>
         <DialogPopup>
           <DialogHeader>
             <DialogTitle>{tr('cancelRun')}</DialogTitle>
@@ -3631,18 +3685,12 @@ function PreRunSummary({
         intent === 'explain' ? record.definition.roles.slice(0, 1) : record.definition.roles;
       const fileTools =
         intent === 'next' && roles.some((r) => r.allowedWorkTools.includes('write_file'));
-      const budget = record.definition.executionPolicy?.budget;
       if (!live) return;
       setText(
         t('preRun', {
           team: `${record.name} r${record.definitionRevision}`,
           profiles: [...new Set(roles.map((r) => r.modelProfile))].join(', '),
           files: fileTools ? (copy ? t('filesCopy') : t('filesNoCopy')) : t('filesNone'),
-          calls: budget?.maxModelCalls ?? t('unlimited'),
-          minutes:
-            budget?.runDeadlineMs === undefined
-              ? t('unlimited')
-              : Math.round(budget.runDeadlineMs / 60_000),
           mode: mode === 'live' ? t('modeLive') : t('modeMock'),
         }),
       );

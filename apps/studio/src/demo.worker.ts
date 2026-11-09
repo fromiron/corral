@@ -35,8 +35,8 @@ const transport = new InProcessTransport(
         return () => clearTimeout(timer);
       },
     },
-    // The demo shows effort judgments with the rule baseline; the ONNX model runs only in the
-    // local server. Observe only: nothing changes what the simulated agents do.
+    // The demo shows effort judgments with the rule baseline; the local AI judge runs only in
+    // the local server. Observe only: nothing changes what the simulated agents do.
     judgments: {
       providers: [new LocalHeuristicProvider()],
       settings: { reasoning_effort: { mode: 'observe', providers: ['local-heuristic'] } },
@@ -92,10 +92,14 @@ function request(message: DemoRequest): Promise<unknown> {
       return transport.getSnapshot(...message.args);
     case 'getArtifactText':
       return transport.getArtifactText(...message.args);
+    case 'getConversationTurn':
+      return transport.getConversationTurn(...message.args);
     case 'listRuns':
       return transport.listRuns(...message.args);
     case 'getRunDefinition':
       return transport.getRunDefinition(...message.args);
+    case 'getRunStats':
+      return transport.getRunStats(...message.args);
   }
 }
 

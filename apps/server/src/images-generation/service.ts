@@ -80,8 +80,6 @@ export class ImageGenerationService {
     owner: ImageGenerationOwner,
     raw: GenerateImageArgs,
     cancellation: ToolCancellation,
-    /** Coordinator already reserved this upper bound; the server may not increase it. */
-    reservedCostUsd: number,
     expectedProfile?: ImageGenerationProfile,
     referenceImages: ImageInput[] = [],
   ): Promise<ImageGenerationResult> {
@@ -114,15 +112,8 @@ export class ImageGenerationService {
     const profile = ImageGenerationProfile.parse(resolved.profile);
     if (expectedProfile && canonicalJson(profile) !== canonicalJson(expectedProfile))
       throw new ImageGenerationUnavailable('image profile changed after Run start', 'not_started');
-    if (
-      profile.profileId !== args.profileId ||
-      reservedCostUsd < profile.maxCostUsdPerCall ||
-      !Number.isFinite(reservedCostUsd)
-    )
-      throw new ImageGenerationUnavailable(
-        'image profile or cost reservation changed',
-        'not_started',
-      );
+    if (profile.profileId !== args.profileId)
+      throw new ImageGenerationUnavailable('image profile changed', 'not_started');
     const endpoint = new URL(
       `${resolved.baseUrl.replace(/\/+$/, '')}/images/${references.length ? 'edits' : 'generations'}`,
     );
@@ -211,16 +202,6 @@ export class ImageGenerationService {
     };
     try {
       this.db.transaction(() => {
-        const count = this.db
-          .prepare(
-            'SELECT COUNT(*) AS count FROM image_generation_operations WHERE run_id=? AND profile_id=?',
-          )
-          .get(owner.runId, profile.profileId) as { count: number };
-        if (count.count >= profile.maxCallsPerRun)
-          throw new ImageGenerationUnavailable(
-            'image generation call limit reached',
-            'not_started',
-          );
         this.db
           .prepare("INSERT INTO image_generation_operations VALUES (?,?,?,?,'running',NULL)")
           .run(owner.runId, owner.effectId, identity, profile.profileId);

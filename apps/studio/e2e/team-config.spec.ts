@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 
 test('opening a template waits for an explicit named copy and cancel leaves no team', async ({
   page,
@@ -28,6 +28,17 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
   await page.setViewportSize({ width: 1179, height: 757 });
   await page.goto('/');
   const projectUrl = page.url();
+  const settings = page.getByRole('complementary', { name: 'Settings' });
+  /** Every control lies inside the settings sheet, across its width. */
+  const inSheet = async (control: Locator) => {
+    await control.scrollIntoViewIfNeeded();
+    await expect(control).toBeInViewport();
+    const box = await control.boundingBox();
+    const sheet = await settings.boundingBox();
+    expect(box && sheet && box.x >= sheet.x && box.x + box.width <= sheet.x + sheet.width + 1).toBe(
+      true,
+    );
+  };
   for (let team = 1; team <= 2; team++) {
     await page.goto(projectUrl);
     await page.getByRole('tab', { name: /^Teams/ }).click();
@@ -35,31 +46,19 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
     await page.getByRole('button', { name: 'Save copy and edit' }).click();
     await expect(page).toHaveURL(/\/edit$/);
     const name = `Saved research ${team}`;
-    await page.getByRole('textbox', { name: 'Team name', exact: true }).fill(name);
+    await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+    await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(name);
-    await page.locator('.react-flow__node[data-id="research"]').click();
-    const inputs = page.getByRole('group', { name: 'Inputs', exact: true });
-    const inputKind = await inputs
-      .getByRole('combobox', { name: 'Kind', exact: true })
-      .boundingBox();
-    const inputSource = await inputs
-      .getByRole('combobox', { name: 'From', exact: true })
-      .boundingBox();
-    expect(inputKind && inputSource && inputKind.x + inputKind.width <= inputSource.x).toBe(true);
-    const calls = page.getByRole('group', { name: 'May call', exact: true });
+    await page.locator('[data-team-canvas] [data-node="research"]').click();
+    const inputs = settings.getByRole('group', { name: 'Inputs', exact: true });
+    for (const label of ['Kind', 'From'])
+      await inSheet(inputs.getByRole('combobox', { name: label, exact: true }));
+    const calls = settings.getByRole('group', { name: 'May call', exact: true });
     const kind = calls.getByRole('combobox', { name: 'Kind', exact: true });
     const target = calls.getByRole('combobox', { name: 'Callable agent', exact: true });
     const add = calls.getByRole('button', { name: 'Add call link', exact: true });
-    await add.scrollIntoViewIfNeeded();
-    for (const control of [kind, target, add]) {
-      await expect(control).toBeInViewport();
-      const box = await control.boundingBox();
-      const panel = await page.locator('.editor-inspector').boundingBox();
-      expect(
-        box && panel && box.x >= panel.x && box.x + box.width <= panel.x + panel.width + 1,
-      ).toBe(true);
-    }
+    for (const control of [kind, target, add]) await inSheet(control);
     await calls
       .getByRole('button', { name: /^Remove link/ })
       .first()

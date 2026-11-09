@@ -111,10 +111,9 @@ describe('Coordinator model-based property', () => {
           }
         }
         for (const gate of gates) gate.open();
-        const final: RunProjection = await waitForProjection(transport, id, (p) =>
-          ['succeeded', 'failed'].includes(p.status),
-        );
+        await waitForProjection(transport, id, (p) => ['succeeded', 'failed'].includes(p.status));
         await drain();
+        const { projection: final } = await transport.getSnapshot(id);
 
         // The log is contiguous and rebuilds the same projection.
         expect(events.map((e) => e.runSeq)).toEqual(events.map((_, i) => i + 1));

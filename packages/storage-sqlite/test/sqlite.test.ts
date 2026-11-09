@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type CanvasLayout, CorralDefinition } from '@corral/contracts';
+import { CorralDefinition } from '@corral/contracts';
 import {
   Coordinator,
   InProcessTransport,
@@ -23,7 +23,6 @@ import {
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
-import researchLayout from '../../../examples/research-team.layout.json' with { type: 'json' };
 import {
   MIGRATIONS,
   openDatabase as openSqliteDatabase,
@@ -176,16 +175,10 @@ function describeOnce(store: SqliteRunStore) {
 }
 
 describe('SQLite Corral repository', () => {
-  const layout = () => ({
-    nodes: JSON.parse(JSON.stringify((researchLayout as unknown as CanvasLayout).nodes)),
-    viewport: { x: 0, y: 0, zoom: 1 },
-  });
-
   it('keeps every saved definition revision for runs to start from', async () => {
     const repo = repository(openDatabase(':memory:'));
     const created = await repo.save({
       definition: CorralDefinition.parse(researchTeam),
-      layout: layout(),
       expectedDefinitionRevision: null,
     });
     if (!created.ok) throw new Error(created.message);
@@ -195,7 +188,6 @@ describe('SQLite Corral repository', () => {
     if (role) role.prompt = 'Changed.';
     const saved = await repo.save({
       definition: edited,
-      layout: layout(),
       expectedDefinitionRevision: 1,
     });
     expect(saved.ok && saved.record.definitionRevision).toBe(2);
@@ -212,11 +204,10 @@ describe('SQLite Corral repository', () => {
     const repo = repository(db);
     const created = await repo.save({
       definition: CorralDefinition.parse(researchTeam),
-      layout: layout(),
       expectedDefinitionRevision: null,
     });
     if (!created.ok) throw new Error(created.message);
-    db.prepare('UPDATE layouts SET layout_json = \'{"broken":\'').run();
+    db.prepare('UPDATE definition_versions SET definition_json = \'{"broken":\'').run();
     await expect(repo.get(created.record.corralId)).rejects.toThrow(/cannot be read/);
   });
 });
@@ -246,7 +237,7 @@ describe('Coordinator over a SQLite file', () => {
     const cached = new SqliteRunStore(dbA).getRun(runId ?? '')?.projection;
     if (!cached) throw new Error('expected running projection');
     const oldProjection: Partial<RunProjection> = { ...cached };
-    delete oldProjection.budget;
+    delete oldProjection.usage;
     dbA
       .prepare('UPDATE runs SET projection_json = ? WHERE id = ?')
       .run(JSON.stringify(oldProjection), runId);
@@ -296,7 +287,7 @@ describe('Coordinator over a SQLite file', () => {
     if (!runId) throw new Error('expected run');
     const done = await waitForProjection(transport, runId, settled);
     const legacy: Partial<RunProjection> = { ...done };
-    delete legacy.budget;
+    delete legacy.usage;
     const cached = JSON.stringify(legacy);
     db.prepare('UPDATE runs SET projection_json = ? WHERE id = ?').run(cached, runId);
     const events = store.readEvents(runId, 0);
@@ -325,7 +316,8 @@ describe('Coordinator over a SQLite file', () => {
       definition: linearCorral(['research', 'writer']),
       mode: 'mock',
     });
-    const done = await waitForProjection(transportA, runId ?? '', settled);
+    await waitForProjection(transportA, runId ?? '', settled);
+    const { projection: done } = await transportA.getSnapshot(runId ?? '');
     dbA.close();
 
     const reader = new Coordinator({
@@ -361,8 +353,6 @@ describe('read-only history', () => {
 
 describe('projects in SQLite', () => {
   // One agent: runs end on their own, with no person to approve anything.
-  const layout = () => ({ nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } });
-
   async function runOf(db: Database.Database, corralId: string, commandId: string) {
     const repo = repository(db);
     const transport = new InProcessTransport(
@@ -393,7 +383,6 @@ describe('projects in SQLite', () => {
     if (!project.ok) throw new Error(project.message);
     const created = await repo.save({
       definition: linearCorral(['writer']),
-      layout: layout(),
       expectedDefinitionRevision: null,
       projectId: project.project.projectId,
     });
@@ -413,7 +402,6 @@ describe('projects in SQLite', () => {
     const repo = repository(source);
     const created = await repo.save({
       definition: linearCorral(['writer']),
-      layout: layout(),
       expectedDefinitionRevision: null,
     });
     if (!created.ok) throw new Error(created.message);
@@ -427,12 +415,15 @@ describe('projects in SQLite', () => {
     source.exec(`ATTACH DATABASE '${path}' AS old`);
     const copy = (table: string, columns: string) =>
       source.exec(`INSERT INTO old.${table} (${columns}) SELECT ${columns} FROM main.${table}`);
-    copy('corrals', 'id, name, definition_revision, layout_revision, updated_at');
+    // Files of that age kept node positions too; the current schema drops them.
+    source.exec(`INSERT INTO old.corrals (id, name, definition_revision, layout_revision, updated_at)
+      SELECT id, name, definition_revision, 1, updated_at FROM main.corrals`);
     copy(
       'definition_versions',
       'corral_id, revision, definition_hash, definition_json, created_at',
     );
-    copy('layouts', 'corral_id, layout_revision, definition_revision, layout_json');
+    source.exec(`INSERT INTO old.layouts (corral_id, layout_revision, definition_revision, layout_json)
+      SELECT id, 1, definition_revision, '{}' FROM main.corrals`);
     copy(
       'runs',
       'id, corral_id, definition_hash, snapshot_json, status, last_seq, projection_json, started_at',

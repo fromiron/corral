@@ -1,7 +1,7 @@
+import { canReadArtifactBody } from '@corral/core';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { diffLines } from '../artifacts/diff.ts';
 import { Button, RadioGroup, RadioItem } from '../design-kit/index.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import { type ResultItem, runResults } from '../run/results.ts';
@@ -26,9 +26,8 @@ export function sandboxedSrcDoc(html: string): string {
 type Format = 'document' | 'source' | 'preview';
 
 /**
- * Everything a run produced, read in a wide pane: the Output's final results, the
- * work in between grouped by artifact, and a failed run's work as a partial result. Run,
- * review and submission are shown apart. File/check evidence belongs to the session panels.
+ * Current final results, read in a wide pane. Earlier artifact bodies are not a result
+ * archive; their creation and delivery relationships belong to the execution flow.
  */
 export function RunResults({
   session,
@@ -36,10 +35,12 @@ export function RunResults({
   selectedId,
   onSelect,
   previewUrl,
-  onStartFrom,
+  headed = true,
 }: {
   session: RunSessionStore;
   runNumber?: number;
+  /** Name the list of final results; off where the surrounding section already names it. */
+  headed?: boolean;
   /** The chosen version (from the address); null opens the first final result. */
   selectedId: string | null;
   onSelect: (artifactVersionId: string) => void;
@@ -51,11 +52,17 @@ export function RunResults({
   const tw = useTranslations('Workbench');
   const targetText = useTranslations('RunPage');
   const projection = useRunDisplay(session, (s) => s.projection);
+  const currentProjection = useStore(session, (s) => s.projection);
   const results = useMemo(() => (projection ? runResults(projection) : null), [projection]);
   if (!projection || !results) return null;
 
-  const all = [...results.final, ...results.intermediate.flatMap((g) => g.versions)];
-  const chosen = all.find((r) => r.artifactVersionId === (selectedId ?? results.defaultId)) ?? null;
+  const current = results.final.filter((item) =>
+    canReadArtifactBody(currentProjection, item.artifactVersionId),
+  );
+  const chosen =
+    current.find(
+      (item) => item.artifactVersionId === (selectedId ?? current[0]?.artifactVersionId),
+    ) ?? null;
 
   return (
     // UX-03: one column until the results have room for a list beside the text, measured on
@@ -74,14 +81,14 @@ export function RunResults({
               {tw('runNumber', { number: runNumber })}
             </p>
           ) : null}
-          {results.kind === 'final' ? null : (
-            <p role="status" className="rounded fill-group p-2 text-xs text-muted-foreground">
-              {t(`kind.${results.kind}`, { status: projection.status })}
+          {current.length === 0 && selectedId === null ? (
+            <p role="status" className="text-caption text-muted-foreground">
+              {t('noCurrentResult')}
             </p>
-          )}
-          {results.final.length > 0 ? (
-            <ResultSection heading={t('final')}>
-              {results.final.map((item) => (
+          ) : null}
+          {current.length > 0 ? (
+            <ResultSection heading={headed ? t('final') : null}>
+              {current.map((item) => (
                 <ResultButton
                   key={item.artifactVersionId}
                   session={session}
@@ -92,44 +99,6 @@ export function RunResults({
               ))}
             </ResultSection>
           ) : null}
-          {results.intermediate.length > 0 ? (
-            <ResultSection heading={results.kind === 'partial' ? t('partial') : t('intermediate')}>
-              {results.intermediate.map((group) => (
-                <li key={group.artifactId} className="flex flex-col gap-1">
-                  <ResultButton
-                    session={session}
-                    item={group.latest}
-                    chosen={chosen?.artifactVersionId === group.latest.artifactVersionId}
-                    onSelect={onSelect}
-                    bare
-                  />
-                  {group.versions.length > 1 ? (
-                    <details
-                      className="pl-3 text-xs"
-                      open={group.versions.some(
-                        (v, i) => i > 0 && v.artifactVersionId === chosen?.artifactVersionId,
-                      )}
-                    >
-                      <summary className="cursor-pointer text-muted-foreground">
-                        {t('earlier', { count: group.versions.length - 1 })}
-                      </summary>
-                      <ul className="mt-1 flex flex-col gap-1">
-                        {group.versions.slice(1).map((item) => (
-                          <ResultButton
-                            key={item.artifactVersionId}
-                            session={session}
-                            item={item}
-                            chosen={chosen?.artifactVersionId === item.artifactVersionId}
-                            onSelect={onSelect}
-                          />
-                        ))}
-                      </ul>
-                    </details>
-                  ) : null}
-                </li>
-              ))}
-            </ResultSection>
-          ) : null}
         </nav>
         {chosen ? (
           <ResultReader
@@ -137,11 +106,12 @@ export function RunResults({
             session={session}
             item={chosen}
             {...(previewUrl ? { previewUrl } : {})}
-            {...(onStartFrom ? { onStartFrom } : {})}
           />
         ) : selectedId !== null ? (
           <p role="alert" className="p-3 text-sm text-warning">
-            {targetText('resultMissing', { result: selectedId })}
+            {projection.artifacts[selectedId]
+              ? t('unavailable')
+              : targetText('resultMissing', { result: selectedId })}
           </p>
         ) : null}
       </div>
@@ -149,8 +119,15 @@ export function RunResults({
   );
 }
 
-function ResultSection({ heading, children }: { heading: string; children: React.ReactNode }) {
+function ResultSection({
+  heading,
+  children,
+}: {
+  heading: string | null;
+  children: React.ReactNode;
+}) {
   const id = useId();
+  if (heading === null) return <ul className="flex flex-col gap-1">{children}</ul>;
   return (
     <section aria-labelledby={id} className="flex flex-col gap-1">
       <h3 id={id} className="text-xs font-semibold text-muted-foreground">
@@ -185,14 +162,11 @@ function ResultButton({
   item,
   chosen,
   onSelect,
-  bare = false,
 }: {
   session: RunSessionStore;
   item: ResultItem;
   chosen: boolean;
   onSelect: (id: string) => void;
-  /** Already inside a list item. */
-  bare?: boolean;
 }) {
   const t = useTranslations('Results');
   const ta = useTranslations('Artifact');
@@ -218,14 +192,13 @@ function ResultButton({
       </span>
     </Button>
   );
-  return bare ? button : <li>{button}</li>;
+  return <li>{button}</li>;
 }
 
 export function ResultReader({
   session,
   item,
   previewUrl,
-  onStartFrom,
   embedded = false,
 }: {
   session: RunSessionStore;
@@ -241,43 +214,31 @@ export function ResultReader({
   const headingId = useId();
   const id = item.artifactVersionId;
   const runId = useStore(session, (s) => s.runId);
-  const status = useRunDisplay(session, (s) => s.projection?.status ?? 'created');
+  const projection = useRunDisplay(session, (s) => s.projection);
+  const currentProjection = useStore(session, (s) => s.projection);
+  const status = projection?.status ?? 'created';
+  const canLoad = Boolean(projection?.artifacts[id]) && canReadArtifactBody(currentProjection, id);
   const text = useStore(session, (s) => s.artifactTexts[id]);
-  const parentText = useStore(session, (s) =>
-    item.parentVersionId ? s.artifactTexts[item.parentVersionId] : undefined,
-  );
   const author = useAuthorLabel(session, item);
   const [failed, setFailed] = useState(false);
   const [chosenFormat, setFormat] = useState<Format | null>(null);
-  const [comparing, setComparing] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (item.media) return;
+    if (!canLoad || item.media) return;
     void session
       .getState()
       .loadArtifact(id)
       .catch(() => setFailed(true));
-  }, [session, id, item.media]);
-  useEffect(() => {
-    if (comparing && item.parentVersionId)
-      void session.getState().loadArtifact(item.parentVersionId);
-  }, [session, comparing, item.parentVersionId]);
+  }, [session, id, item.media, canLoad]);
 
   const html = text !== undefined && isHtmlDocument(text);
   const formats: Format[] = html ? ['preview', 'source'] : ['document', 'source'];
   const format = chosenFormat && formats.includes(chosenFormat) ? chosenFormat : formats[0];
   const label = t('itemName', { name: item.name, version: item.version });
-  const diff = useMemo(
-    () =>
-      comparing && text !== undefined && parentText !== undefined
-        ? diffLines(parentText, text)
-        : null,
-    [comparing, text, parentText],
-  );
 
   const copy = async () => {
-    if (text === undefined) return;
+    if (!canLoad || text === undefined) return;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -286,7 +247,7 @@ export function ResultReader({
     }
   };
   const download = () => {
-    if (text === undefined) return;
+    if (!canLoad || text === undefined) return;
     const extension = html ? 'html' : item.contract === 'review' ? 'json' : 'md';
     const url = URL.createObjectURL(
       new Blob([text], { type: html ? 'text/html' : 'text/plain;charset=utf-8' }),
@@ -297,7 +258,14 @@ export function ResultReader({
     link.click();
     URL.revokeObjectURL(url);
   };
-  const src = html && runId && previewUrl ? previewUrl(runId, id) : null;
+  const src = canLoad && html && runId && previewUrl ? previewUrl(runId, id) : null;
+
+  if (!canLoad)
+    return (
+      <p role="status" className="p-4 text-body text-muted-foreground">
+        {ta('retired')}
+      </p>
+    );
 
   return (
     <article aria-labelledby={headingId} className="flex min-w-0 flex-col @3xl:min-h-0 @3xl:flex-1">
@@ -364,28 +332,7 @@ export function ResultReader({
               >
                 {t('download')}
               </Button>
-              {item.parentVersionId ? (
-                <Button
-                  type="button"
-                  aria-pressed={comparing}
-                  onClick={() => setComparing(!comparing)}
-                  variant="tertiary"
-                  size="compact"
-                >
-                  {comparing ? ta('hideCompare') : t('comparePrevious')}
-                </Button>
-              ) : null}
             </>
-          ) : null}
-          {onStartFrom && runId ? (
-            <Button
-              type="button"
-              onClick={() => onStartFrom({ runId, artifactVersionId: id, label })}
-              variant="secondary"
-              size="compact"
-            >
-              {ta('newRunFromVersion')}
-            </Button>
           ) : null}
         </div>
       </header>
@@ -401,19 +348,6 @@ export function ResultReader({
           <p className="text-sm text-muted-foreground">
             {failed ? t('unavailable') : ta('loading')}
           </p>
-        ) : diff ? (
-          <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">
-            {diff.map((line, index) => (
-              <span
-                // biome-ignore lint/suspicious/noArrayIndexKey: lines have no identity beyond their position
-                key={index}
-                className={`block ${line.kind === 'added' ? 'bg-success/15' : line.kind === 'removed' ? 'bg-danger/15 line-through' : ''}`}
-              >
-                {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
-                {line.text}
-              </span>
-            ))}
-          </pre>
         ) : format === 'source' ? (
           <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">
             {text}

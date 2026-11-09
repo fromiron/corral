@@ -163,6 +163,16 @@ export function assertImagePayload(
 }
 
 /** Replace the protected state section without retaining a stale copy in a new system turn. */
+/** The runtime state message Corral appends at the request tail; it is not the person's request. */
+export function isCorralState(message: { role?: unknown; timestamp?: unknown; content?: unknown }) {
+  return (
+    message.role === 'user' &&
+    message.timestamp === 0 &&
+    typeof message.content === 'string' &&
+    message.content.startsWith('[Corral current state]\n')
+  );
+}
+
 export function withProtectedContext<T extends { messages: AgentMessage[] }>(
   context: T,
   value: import('@corral/contracts').ProtectedContext,
@@ -174,15 +184,7 @@ export function withProtectedContext<T extends { messages: AgentMessage[] }>(
     version: 1,
     reason: 'coordinator_state',
   };
-  const messages = context.messages.filter(
-    (message) =>
-      !(
-        message.role === 'user' &&
-        message.timestamp === 0 &&
-        typeof message.content === 'string' &&
-        message.content.startsWith('[Corral current state]\n')
-      ),
-  );
+  const messages = context.messages.filter((message) => !isCorralState(message));
   // Runtime state belongs at the request tail. Stable system/tool prefixes retain their bytes.
   for (let index = 0; index < messages.length; index++) {
     const message = messages[index];
@@ -230,14 +232,7 @@ export function resumedMessages(
 ): import('@earendil-works/pi-ai').Message[] {
   if (!state) return [];
   const messages = state.context.context.messages.filter(
-    (message) =>
-      message.role !== 'system' &&
-      !(
-        message.role === 'user' &&
-        message.timestamp === 0 &&
-        typeof message.content === 'string' &&
-        message.content.startsWith('[Corral current state]\n')
-      ),
+    (message) => message.role !== 'system' && !isCorralState(message),
   ) as unknown as import('@earendil-works/pi-ai').Message[];
   return [
     ...messages,

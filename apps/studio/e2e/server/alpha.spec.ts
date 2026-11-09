@@ -253,13 +253,8 @@ function writerTeam(path: string) {
         maxDelegationDepth: 2,
         maxModelConcurrency: 3,
         maxSpawns: 12,
-        maxModelCalls: 40,
-        maxOutputTokens: 64000,
-        maxOutputTokensPerCall: 4096,
         maxQuestions: 6,
         questionTimeoutMs: 120000,
-        modelTimeoutMs: 180000,
-        runDeadlineMs: 3600000,
       },
     }),
   );

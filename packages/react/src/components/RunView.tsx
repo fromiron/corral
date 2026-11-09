@@ -1,13 +1,29 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button } from '../design-kit/index.ts';
+import {
+  type AgentMark,
+  AgentTree,
+  type AgentTreeLabels,
+  type AgentTreeNode,
+  Button,
+  formatClock,
+  Select,
+} from '../design-kit/index.ts';
+import { useIcon } from '../design-kit/lib/icon-context.tsx';
 import type { ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
+import {
+  runFlowExecutionIterationId,
+  runFlowExecutionLoopId,
+  selectRunFlowIterations,
+} from '../run/flow.ts';
+import { executionHandoffs } from '../run/handoffs.ts';
+import { executionIntervals } from '../run/history.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
-import { BudgetInspector } from './BudgetInspector.tsx';
+import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
@@ -15,6 +31,7 @@ import { RunActions } from './RunActions.tsx';
 import { RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
+import { UsageInspector } from './UsageInspector.tsx';
 
 /** Run status, executions and output, from committed events only. Needs no editor. */
 export function RunView({
@@ -35,12 +52,9 @@ export function RunView({
   const startError = useStore(session, (s) => s.startError);
   const definitionError = useStore(session, (s) => s.definitionError);
   const streamError = useStore(session, (s) => s.streamError);
-  const streams = useRunDisplay(session, (s) => s.streams);
   const simulatedHarness = useRunDisplay(session, (s) =>
     s.events.some((event) => event.type === 'harness.simulated'),
   );
-  const labelOf = (nodeId: string) =>
-    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
 
   return (
     <div className="flex flex-col gap-3">
@@ -76,7 +90,7 @@ export function RunView({
           {simulatedHarness ? (
             <p className="text-xs text-muted-foreground">{t('harnessSimulation')}</p>
           ) : null}
-          <BudgetInspector session={session} prices={prices} />
+          <UsageInspector session={session} prices={prices} />
           <HarnessDetails session={session} />
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">{t('status')}</span>
@@ -93,19 +107,7 @@ export function RunView({
               />
             </p>
           ) : null}
-          <div className="flex flex-col gap-1">
-            <h3 className="text-xs font-semibold">{t('executions')}</h3>
-            {projection.executionOrder.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t('noExecutions')}</p>
-            ) : (
-              <ExecutionRows
-                projection={projection}
-                streams={streams}
-                labelOf={labelOf}
-                onSteer={onSteer}
-              />
-            )}
-          </div>
+          <ExecutionTree session={session} onSteer={onSteer} />
           <RunOutput session={session} {...(onStartFrom ? { onStartFrom } : {})} />
         </>
       ) : null}
@@ -202,146 +204,375 @@ export function RunOutput({
 }
 
 /** The call tree of one run, for pages that lay out the run's parts themselves (Run page). */
+/** Kit logo for a provider; unknown providers fall back to initials. */
+function providerMark(provider: string | null | undefined): AgentMark | undefined {
+  if (!provider) return undefined;
+  if (provider.startsWith('anthropic')) return 'claude';
+  if (provider.startsWith('openai')) return 'openai';
+  if (provider.startsWith('google') || provider.startsWith('gemini')) return 'gemini';
+  if (provider.startsWith('mistral')) return 'mistral';
+  return undefined;
+}
+
+/**
+ * The execution tree as the kit's card tree: the run at the root, each execution under the one
+ * that started it. Each Loop has one group with only its inspected round's execution cards.
+ * Round inspection never changes the current projection or the selected command target.
+ */
 export function ExecutionTree({
   session,
   onSteer,
   selectedExecutionId = null,
   compact = false,
+  now,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
   compact?: boolean;
+  /** Fixed clock for a past view, ms. Omitted, open spans run to the present. */
+  now?: number;
 }) {
   const t = useTranslations('Run');
+  const tree = useTranslations('Run.tree');
+  const loopText = useTranslations('RunLoop');
+  const outcomeText = useTranslations('Canvas.nodeStatus.loopOutcome');
+  const LoopIcon = useIcon('rotate-ccw');
+  const [inspected, setInspected] = useState<{
+    runId: string | null;
+    rounds: Record<string, { iterationId: string | null; selectedExecutionId: string | null }>;
+  }>({ runId: null, rounds: {} });
+  const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
+  const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
   const streams = useRunDisplay(session, (s) => s.streams);
+  const selectedScope =
+    projection && selectedExecutionId
+      ? runFlowExecutionIterationId(projection, selectedExecutionId)
+      : null;
+  const selectedLoop = selectedScope ? projection?.iterations[selectedScope]?.loopNodeId : null;
+  const runId = projection?.runId;
+  useEffect(() => {
+    if (!runId || !selectedScope || !selectedLoop) return;
+    setInspected((previous) => ({
+      runId,
+      rounds: {
+        ...(previous.runId === runId ? previous.rounds : {}),
+        [selectedLoop]: { iterationId: selectedScope, selectedExecutionId },
+      },
+    }));
+  }, [runId, selectedScope, selectedLoop, selectedExecutionId]);
+  const intervals = useMemo(
+    () => new Map(executionIntervals(events).map((row) => [row.executionId, row])),
+    [events],
+  );
+  const labels = useMemo<Partial<AgentTreeLabels>>(
+    () => ({
+      agents: (count) => tree('count', { count }),
+      running: (count) => tree('running', { count }),
+      needsYou: (count) => tree('needsYou', { count }),
+      failed: (count) => tree('failed', { count }),
+      needsYouList: tree('needsYouList'),
+      failedList: tree('failedList'),
+      showBranch: (count, name) => tree('showBranch', { count, name }),
+      foldBranch: (name) => tree('foldBranch', { name }),
+      duration: formatClock,
+    }),
+    [tree],
+  );
   if (!projection) return null;
-  if (projection.executionOrder.length === 0)
-    return <p className="text-xs text-muted-foreground">{t('noExecutions')}</p>;
+  const selectedIterations: Record<string, string> = {};
+  const manual = inspected.runId === projection.runId ? inspected.rounds : {};
+  for (const [loopId, choice] of Object.entries(manual)) {
+    if (choice.iterationId) selectedIterations[loopId] = choice.iterationId;
+  }
+  if (
+    selectedScope &&
+    selectedLoop &&
+    manual[selectedLoop]?.selectedExecutionId !== selectedExecutionId
+  )
+    selectedIterations[selectedLoop] = selectedScope;
+  const loops = definition
+    ? selectRunFlowIterations(projection, definition, selectedIterations, events)
+    : [];
+  if (projection.executionOrder.length === 0 && loops.length === 0)
+    return <p className="text-caption text-muted-foreground">{t('noExecutions')}</p>;
+  const loopById = new Map(loops.map((loop) => [loop.nodeId, loop]));
+  const loopTreeId = (id: string) => `loop-group-${id}`;
+  const treeLoop = new Map(loops.map((loop) => [loopTreeId(loop.nodeId), loop]));
+  const nodeDefinition = new Map(definition?.nodes.map((node) => [node.id, node]));
+  const iterationOf = new Map(
+    projection.executionOrder.map((id) => [id, runFlowExecutionIterationId(projection, id)]),
+  );
+  const loopOf = new Map(
+    projection.executionOrder.map((id) => [
+      id,
+      definition ? runFlowExecutionLoopId(projection, definition, id) : undefined,
+    ]),
+  );
+  const visible = new Set(
+    projection.executionOrder.filter((id) => {
+      const loopId = loopOf.get(id);
+      const iterationId = iterationOf.get(id);
+      return (
+        !!projection.executions[id] &&
+        (!loopId ||
+          !iterationId ||
+          !loopById.has(loopId) ||
+          loopById.get(loopId)?.selectedIterationId === iterationId)
+      );
+    }),
+  );
+  const statusLabel = (value: string) => (status.has(value) ? status(value) : value);
+  const labelOf = (nodeId: string) => nodeDefinition.get(nodeId)?.label ?? nodeId;
+  const childrenOf = new Map<string | null, string[]>();
+  const addChild = (parent: string | null, id: string) => {
+    const children = childrenOf.get(parent) ?? [];
+    children.push(id);
+    childrenOf.set(parent, children);
+  };
+  const loopParents = new Map<string, Set<string | null>>();
+  for (const id of visible) {
+    const execution = projection.executions[id];
+    if (!execution) continue;
+    const parent =
+      execution.parentExecutionId && visible.has(execution.parentExecutionId)
+        ? execution.parentExecutionId
+        : null;
+    const loopId = loopOf.get(id);
+    if (loopId && loopById.has(loopId) && (!parent || loopOf.get(parent) !== loopId)) {
+      addChild(loopTreeId(loopId), id);
+      const parents = loopParents.get(loopId) ?? new Set<string | null>();
+      parents.add(parent);
+      loopParents.set(loopId, parents);
+    } else addChild(parent, id);
+  }
+  for (const loop of loops) {
+    const parents = loopParents.get(loop.nodeId);
+    addChild(parents?.size === 1 ? ([...parents][0] ?? null) : null, loopTreeId(loop.nodeId));
+  }
+  const node = (id: string): AgentTreeNode | null => {
+    const loop = treeLoop.get(id);
+    if (loop) {
+      const latest = loop.iterations.find((round) => round.iterationId === loop.latestIterationId);
+      const selected = loop.iterations.find(
+        (round) => round.iterationId === loop.selectedIterationId,
+      );
+      const outcome = outcomeText(latest?.outcome ?? 'pending');
+      return {
+        id,
+        name: loopText('title', { name: loop.label }),
+        logo: LoopIcon,
+        status:
+          loop.status === 'active'
+            ? 'running'
+            : loop.status === 'unrecorded'
+              ? 'queued'
+              : loop.status === 'cancelled'
+                ? 'stopped'
+                : 'done',
+        statusLabel: outcome,
+        task: loopText('summary', { count: loop.iterations.length, max: loop.maxIterations }),
+        selectable: false,
+        summaryExcluded: true,
+        cardProps: { 'data-testid': id, 'data-loop-id': loop.nodeId },
+        detail: (
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-muted-foreground">
+              {latest ? loopText('current', { no: latest.no, outcome }) : loopText('noIterations')}
+            </p>
+            {loop.iterations.length > 0 ? (
+              <Select
+                label={loopText('iterationLabel', { name: loop.label })}
+                value={selectedIterations[loop.nodeId] ?? 'latest'}
+                onValueChange={(iterationId) =>
+                  setInspected((previous) => ({
+                    runId: projection.runId,
+                    rounds: {
+                      ...(previous.runId === projection.runId ? previous.rounds : {}),
+                      [loop.nodeId]: {
+                        iterationId: iterationId === 'latest' ? null : iterationId,
+                        selectedExecutionId,
+                      },
+                    },
+                  }))
+                }
+                size="xs"
+                options={[
+                  { value: 'latest', label: loopText('latest') },
+                  ...(!selected && selectedIterations[loop.nodeId]
+                    ? [
+                        {
+                          value: selectedIterations[loop.nodeId] as string,
+                          label: loopText('unavailable'),
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  ...[...loop.iterations].reverse().map((round) => ({
+                    value: round.iterationId,
+                    label: t('round', { no: round.no }),
+                  })),
+                ]}
+              />
+            ) : null}
+            {!selected && selectedIterations[loop.nodeId] ? (
+              <p role="status" className="text-caption text-muted-foreground">
+                {loopText('unavailable')}
+              </p>
+            ) : null}
+            {selected && selected.iterationId !== loop.latestIterationId ? (
+              <p className="text-caption text-muted-foreground">
+                {loopText('selected', {
+                  no: selected.no,
+                  outcome: outcomeText(selected.outcome ?? 'pending'),
+                })}
+              </p>
+            ) : null}
+          </div>
+        ),
+        children: (childrenOf.get(id) ?? []).flatMap((child) => node(child) ?? []),
+      };
+    }
+    const execution = projection.executions[id];
+    if (!execution) return null;
+    const executionLoop = loopById.get(loopOf.get(id) ?? '');
+    const priorRound = Boolean(
+      executionLoop && iterationOf.get(id) !== executionLoop.latestIterationId,
+    );
+    const interval = intervals.get(id);
+    const model = projection.modelProfiles[execution.modelProfile];
+    const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
+    const handoffs = executionHandoffs(projection, id);
+    // A card names what its execution made, then where it sits among rounds and attempts.
+    const made = handoffs.flatMap((handoff) =>
+      handoff.kind === 'artifact' ? [`${handoff.name} v${handoff.version}`] : [],
+    );
+    const task = [
+      made.join(', ') || null,
+      execution.item ? t('item', execution.item) : null,
+      round ? t('round', { no: round }) : null,
+      execution.attemptNo > 1 ? t('attempt', { no: execution.attemptNo }) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    const sent = handoffs.flatMap((handoff) => {
+      const to = handoff.targets.map(labelOf).join(', ');
+      if (handoff.kind === 'artifact')
+        return to ? [{ id: handoff.id, text: `${handoff.name} v${handoff.version} → ${to}` }] : [];
+      return [
+        {
+          id: handoff.id,
+          text: `${tree('question')} → ${to} · ${tree(`questionStatus.${handoff.status}`)}`,
+        },
+      ];
+    });
+    const children = (childrenOf.get(id) ?? []).flatMap((child) => node(child) ?? []);
+    return {
+      id,
+      name: labelOf(execution.nodeId),
+      model: model?.modelId ?? execution.modelProfile,
+      ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
+      status: executionAgentStatus(execution.status),
+      statusLabel: statusLabel(execution.status),
+      ...(task ? { task } : {}),
+      ...(interval ? { startedAt: Date.parse(interval.startedAt) } : {}),
+      ...(interval?.finished ? { endedAt: Date.parse(interval.endedAt) } : {}),
+      ...(execution.waitingOn
+        ? {
+            ask: t(`waiting.${execution.waitingOn.kind}`, {
+              count: execution.waitingOn.targetIds.length,
+            }),
+          }
+        : {}),
+      ...(execution.error ? { error: execution.error } : {}),
+      detail: (
+        <>
+          {sent.length ? (
+            <ul aria-label={tree('sent')} className="flex flex-wrap gap-1">
+              {sent.map((item) => (
+                <li
+                  key={item.id}
+                  data-handoff
+                  className="rounded-md bg-muted px-1.5 text-caption text-muted-foreground"
+                >
+                  {item.text}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <ExecutionDetail
+            id={id}
+            projection={projection}
+            streams={streams}
+            compact={compact || priorRound}
+          />
+        </>
+      ),
+      cardProps: {
+        id: `execution-${id}`,
+        'data-testid': `execution-${id}`,
+        'data-execution-id': id,
+        'aria-current': id === selectedExecutionId ? 'true' : undefined,
+      },
+      ...(children.length ? { children } : {}),
+    };
+  };
+  const root: AgentTreeNode = {
+    id: projection.runId,
+    name: definition?.name ?? projection.runId,
+    status: runAgentStatus(projection.status),
+    statusLabel: statusLabel(projection.status),
+    selectable: false,
+    summaryExcluded: true,
+    children: (childrenOf.get(null) ?? []).flatMap((id) => node(id) ?? []),
+  };
   return (
-    <ExecutionRows
-      projection={projection}
-      streams={streams}
-      labelOf={(nodeId) => definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId}
-      onSteer={onSteer}
-      selectedExecutionId={selectedExecutionId}
-      compact={compact}
+    <AgentTree
+      root={root}
+      title={tree('title')}
+      selectedId={selectedExecutionId}
+      onSelect={(agent) => onSteer(agent.id)}
+      labels={labels}
+      size="compact"
+      // The column shrinks to the panel; cards truncate instead of widening it.
+      className="grid-cols-[minmax(0,1fr)]"
+      {...(now === undefined ? {} : { now })}
     />
   );
 }
 
-/**
- * Executions as a call tree: children under the execution that started them, each Loop round
- * and attempt as its own row (a node is not one execution). A waiting execution names
- * what it waits for and links to those rows.
- */
-function ExecutionRows({
-  projection,
-  streams,
-  labelOf,
-  onSteer,
-  selectedExecutionId = null,
-  compact = false,
-}: {
-  projection: RunProjection;
-  streams: Record<string, StreamText>;
-  labelOf: (nodeId: string) => string;
-  onSteer: (executionId: string) => void;
-  selectedExecutionId?: string | null;
-  compact?: boolean;
-}) {
-  const childrenOf = new Map<string | null, string[]>();
-  for (const id of projection.executionOrder) {
-    const parent = projection.executions[id]?.parentExecutionId ?? null;
-    childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), id]);
-  }
-  const rows = (parent: string | null) => (
-    <ul className={`flex flex-col gap-1 ${parent ? 'mt-1 border-l border-line pl-2' : ''}`}>
-      {(childrenOf.get(parent) ?? []).map((id) => (
-        <ExecutionRow
-          key={id}
-          id={id}
-          projection={projection}
-          streams={streams}
-          labelOf={labelOf}
-          onSteer={onSteer}
-          selected={id === selectedExecutionId}
-          compact={compact}
-          nested={childrenOf.has(id) ? rows(id) : null}
-        />
-      ))}
-    </ul>
-  );
-  return rows(null);
-}
-
-function ExecutionRow({
+/** What a card adds under its summary: wait targets, the error and a streaming response. */
+function ExecutionDetail({
   id,
   projection,
   streams,
-  labelOf,
-  onSteer,
-  selected,
-  nested,
   compact,
 }: {
   id: string;
   projection: RunProjection;
   streams: Record<string, StreamText>;
-  labelOf: (nodeId: string) => string;
-  onSteer: (executionId: string) => void;
-  selected: boolean;
-  nested: ReactNode;
   compact: boolean;
 }) {
   const t = useTranslations('Run');
   const execution = projection.executions[id];
   if (!execution) return null;
   const done = TERMINAL_EXECUTION_STATUSES.has(execution.status);
-  const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
   const waiting = execution.waitingOn;
-  // While a request streams, its text so far; it is replaced by the submitted output.
   const openCall = execution.modelCallIds.at(-1);
   const lastResponse = openCall ? streams[openCall] : undefined;
   const live =
     lastResponse?.completed || (!done && openCall && !projection.modelCalls[openCall]?.finished)
       ? lastResponse
       : undefined;
+  const call = openCall ? projection.modelCalls[openCall] : undefined;
+  if (!waiting && !execution.error && !live && (compact || !call)) return null;
   return (
-    <li
-      id={`execution-${id}`}
-      data-testid={`execution-${id}`}
-      data-execution-id={id}
-      aria-current={selected ? 'true' : undefined}
-      className={`rounded-md border p-2 text-xs ${selected ? 'border-primary bg-raised ring-1 ring-primary/40' : 'border-transparent fill-group'}`}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex min-w-0 flex-col">
-          <span className="break-all font-medium">
-            {labelOf(execution.nodeId)}
-            {compact ? '' : ` · ${id}`}
-          </span>
-          <span className="text-muted-foreground">
-            {execution.item ? `${t('item', execution.item)} · ` : ''}
-            {round ? `${t('round', { no: round })} · ` : ''}
-            {execution.attemptNo > 1 ? `${t('attempt', { no: execution.attemptNo })} · ` : ''}
-            {t('requests', { count: execution.modelCallIds.length })}
-          </span>
-        </span>
-        <span className="flex items-center gap-2">
-          <StatusBadge status={execution.status} />
-          <Button type="button" onClick={() => onSteer(id)} variant="tertiary" size="compact">
-            {t(compact ? 'openControls' : 'steerThis')}
-          </Button>
-        </span>
-      </div>
-      {!compact && openCall && projection.modelCalls[openCall] ? (
-        <ReasoningSummary call={projection.modelCalls[openCall]} />
-      ) : null}
+    <>
+      {!compact && call ? <ReasoningSummary call={call} /> : null}
       {waiting ? (
-        <p className="mt-1 text-muted-foreground" data-testid="waiting-on">
+        <p className="text-muted-foreground" data-testid="waiting-on">
           {t(`waiting.${waiting.kind}`, { count: waiting.targetIds.length })}:{' '}
           {waiting.targetIds.map((target, i) => (
             <span key={target}>
@@ -367,13 +598,12 @@ function ExecutionRow({
         <p
           data-testid="live-text"
           aria-live="off"
-          className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded fill-group p-1 text-muted-foreground"
+          className="max-h-24 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-1.5 text-muted-foreground"
         >
           {live.text}
           {live.broken ? ` ${t('streamGap')}` : ''}
         </p>
       ) : null}
-      {nested}
-    </li>
+    </>
   );
 }

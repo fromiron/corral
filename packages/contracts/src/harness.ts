@@ -12,10 +12,7 @@ export const HarnessBindingRef = z.strictObject({
   revision: z.int().min(1),
 });
 export type HarnessBindingRef = z.infer<typeof HarnessBindingRef>;
-export const HarnessOverrides = z
-  .record(Identifier, HarnessBindingRef)
-  .refine((value) => Object.keys(value).length <= 20, 'too many role overrides')
-  .meta({ maxProperties: 20 });
+export const HarnessOverrides = z.record(Identifier, HarnessBindingRef);
 export type HarnessOverrides = z.infer<typeof HarnessOverrides>;
 
 export const ContentHash = z.string().regex(/^[a-f0-9]{64}$/);

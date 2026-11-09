@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { focusRing } from '../../lib/focus.ts';
 import { omit } from '../../lib/omit.ts';
 import { type SizeVariant, useSize } from '../../lib/size-context.tsx';
 import { spring } from '../../lib/springs.ts';
@@ -113,7 +114,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
       }
     }, [thumbX, motionX, thumbTransition]);
 
-    // --- Pointer handlers ---
+    // ─── Pointer handlers ────────────────────────────────────────────────────
 
     const handlePointerDown = useCallback(
       (e: React.PointerEvent<HTMLDivElement>) => {
@@ -242,9 +243,9 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
           disabled={disabled}
           tabIndex={0}
           className={cn(
-            'relative shrink-0 rounded-full outline-none cursor-pointer',
+            'relative shrink-0 rounded-full cursor-pointer',
             'transition-colors duration-80',
-            'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            focusRing,
           )}
           style={{
             width: m.trackWidth,
@@ -253,8 +254,8 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
             // light mode, lighter in dark).
             backgroundColor: checked
               ? hovered
-                ? '#5C89F2'
-                : '#6B97FF'
+                ? 'var(--emphasis-hover)'
+                : 'var(--emphasis)'
               : hovered
                 ? 'color-mix(in oklab, var(--accent), rgb(var(--overlay)) 10%)'
                 : 'var(--accent)',

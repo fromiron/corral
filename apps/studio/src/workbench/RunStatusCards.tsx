@@ -1,5 +1,5 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { BudgetInspector, HarnessDetails, type RunSessionStore } from '@corral/react';
+import { HarnessDetails, type RunSessionStore, UsageInspector } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -145,7 +145,7 @@ export function RunStatusCards({
               supported={Boolean(role?.harness) && projection.mode === 'live'}
             />
           ) : null}
-          <BudgetInspector session={session} prices={prices} />
+          <UsageInspector session={session} prices={prices} />
           {['interrupted', 'failed', 'cancelled'].includes(projection.status) &&
           projection.mode === 'live' ? (
             <RuntimeRecovery
@@ -202,6 +202,55 @@ export function RunStatusCards({
         </div>
       </details>
     </div>
+  );
+}
+
+/**
+ * One line for the execution detail: how much context its last recorded request carried, and
+ * compaction while the execution can still use it. Run-wide diagnostics stay in Run info.
+ */
+export function ExecutionContext({
+  session,
+  executionId,
+}: {
+  session: RunSessionStore;
+  executionId: string;
+}) {
+  const t = useTranslations('RunStatus');
+  const { projection, events, definition } = useStore(session);
+  if (!projection) return null;
+  const execution = projection.executions[executionId];
+  const node = definition?.nodes.find((item) => item.id === execution?.nodeId);
+  const role =
+    node?.type === 'agent' ? definition?.roles.find((item) => item.id === node.roleId) : null;
+  const request = events
+    .filter(
+      (event) =>
+        event.type === 'model.request_recorded' &&
+        projection.modelCalls[event.payload.modelCallId]?.executionId === executionId,
+    )
+    .at(-1);
+  const estimate =
+    request?.type === 'model.request_recorded' ? request.payload.contextEstimate : undefined;
+  const open =
+    execution &&
+    !TERMINAL_EXECUTION_STATUSES.has(execution.status) &&
+    !TERMINAL_RUN_STATUSES.has(projection.status);
+  if (!estimate && !open) return null;
+  return (
+    <section data-testid="execution-context" className="grid gap-1 text-xs">
+      <p>
+        <span className="font-medium">{t('contextOnly')}</span> ·{' '}
+        {estimate ? t('estimate', { count: estimate.tokens }) : t('unknown')}
+      </p>
+      {open ? (
+        <ContextCompaction
+          session={session}
+          executionId={executionId}
+          supported={Boolean(role?.harness) && projection.mode === 'live'}
+        />
+      ) : null}
+    </section>
   );
 }
 

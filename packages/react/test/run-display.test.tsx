@@ -3,19 +3,29 @@ import { type ArtifactVersionView, applyEvent, emptyProjection } from '@corral/c
 import { linearCorral } from '@corral/testkit';
 import { act, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
-import { expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { ArtifactViewer } from '../src/components/ArtifactViewer.tsx';
-import { BudgetInspector } from '../src/components/BudgetInspector.tsx';
 import { ExecutionTranscript } from '../src/components/ExecutionTranscript.tsx';
 import { RunCanvas } from '../src/components/RunCanvas.tsx';
 import { RunResults } from '../src/components/RunResults.tsx';
 import { ExecutionTree, RunOutput } from '../src/components/RunView.tsx';
+import { UsageInspector } from '../src/components/UsageInspector.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { RunDisplayProvider, type RunDisplaySnapshot, useRunDisplay } from '../src/run/display.tsx';
 import { historicalStreams } from '../src/run/history.ts';
-import { runCanvasLayout } from '../src/run/layout.ts';
 import { nodeRunStatus } from '../src/run/selectors.ts';
 import { sessionStore } from '../src/stories/fixtures.tsx';
+
+beforeAll(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+afterAll(() => vi.restoreAllMocks());
 
 function artifact(id: string): ArtifactVersionView {
   return {
@@ -101,7 +111,6 @@ function fixture() {
   const events = [...records];
   const past = records.reduce(applyEvent, emptyProjection('run_display'));
   past.artifacts = { past_result: artifact('past_result') };
-  past.budget = { ...past.budget, spent: 42 };
   add('model.finished', finished('call_open'));
   add('execution.settled', {
     executionId: 'exec_past',
@@ -119,7 +128,7 @@ function fixture() {
   live.status = 'succeeded';
   live.artifacts = { ...past.artifacts, future_result: artifact('future_result') };
   live.output = { nodeId: 'out', artifactVersionIds: ['future_result'] };
-  live.budget = { ...live.budget, spent: 999 };
+  live.controlRevision = 999;
   const streams = {
     call_past: { text: 'PAST RESPONSE', next: 1, broken: false, completed: true },
     call_open: { text: 'FUTURE RESPONSE', next: 1, broken: false, completed: true },
@@ -141,7 +150,7 @@ function fixture() {
   return { definition, session, snapshot, live };
 }
 
-it('graph, tree, calls, results and usage read one prefix while future cache bodies stay hidden', async () => {
+it('a display prefix keeps its observed metadata without restoring retired or future artifact bodies', async () => {
   const { definition, session, snapshot } = fixture();
   const view = render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -149,7 +158,6 @@ it('graph, tree, calls, results and usage read one prefix while future cache bod
         <RunCanvas
           session={session}
           definition={definition}
-          layout={runCanvasLayout(definition, null)}
           selectedNodeId={null}
           onSelectNode={() => {}}
         />
@@ -160,13 +168,13 @@ it('graph, tree, calls, results and usage read one prefix while future cache bod
         <RunResults session={session} selectedId={null} onSelect={() => {}} />
         <RunOutput session={session} />
         <ArtifactViewer session={session} versionId="future_result" onClose={() => {}} />
-        <BudgetInspector session={session} />
+        <UsageInspector session={session} />
       </RunDisplayProvider>
     </IntlProvider>,
   );
   expect(
     view.container
-      .querySelector('[data-id="worker"] [data-run-status]')
+      .querySelector('[data-agent-id="worker"] [data-run-status]')
       ?.getAttribute('data-run-status'),
   ).toBe(nodeRunStatus(snapshot.projection, 'worker'));
   expect(within(screen.getByTestId('tree')).getByTestId('execution-exec_past')).toBeInTheDocument();
@@ -174,20 +182,22 @@ it('graph, tree, calls, results and usage read one prefix while future cache bod
     within(screen.getByTestId('tree')).queryByTestId('execution-exec_future'),
   ).not.toBeInTheDocument();
   expect(await screen.findByText('PAST RESPONSE')).toBeInTheDocument();
-  expect(await screen.findByText('PAST RESULT')).toBeInTheDocument();
-  expect(screen.getByText('Confirmed output tokens').nextSibling).toHaveTextContent('42');
+  expect(screen.queryByText('PAST RESULT')).not.toBeInTheDocument();
+  expect(screen.getByText('No current final result is available.')).toBeInTheDocument();
+  expect(screen.getByText('Output tokens').nextSibling).toHaveTextContent('1');
+  expect(screen.getByText('Model requests').nextSibling).toHaveTextContent('2');
   for (const future of ['FUTURE RESPONSE', 'FUTURE RESULT', 'FUTURE OUTPUT', 'Future failure']) {
     expect(screen.queryByText(future)).not.toBeInTheDocument();
   }
-  expect(session.getState().projection?.budget.spent).toBe(999);
+  expect(session.getState().projection?.controlRevision).toBe(999);
   expect(session.getState().events).toHaveLength(9);
 });
 
 it('outside a display provider the same hook follows the original live session', () => {
   const { session, live } = fixture();
   function Current() {
-    const spent = useRunDisplay(session, (s) => s.projection?.budget.spent);
-    return <output>{spent}</output>;
+    const revision = useRunDisplay(session, (s) => s.projection?.controlRevision);
+    return <output>{revision}</output>;
   }
   render(<Current />);
   expect(screen.getByRole('status')).toHaveTextContent('999');
@@ -195,7 +205,7 @@ it('outside a display provider the same hook follows the original live session',
     session.setState({
       projection: {
         ...live,
-        budget: { ...live.budget, spent: 1000 },
+        controlRevision: 1000,
       },
     }),
   );

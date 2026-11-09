@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { CreateRunRequest, RunCommand } from './commands.ts';
 import { CorralDefinition } from './definition.ts';
 import { RunEvent } from './events.ts';
-import { CanvasLayout } from './layout.ts';
 import { Receipt } from './receipt.ts';
 import { ReviewArtifact } from './review.ts';
 
@@ -15,7 +14,6 @@ const SOURCES = {
     'urn:corral:definition:0.1',
     'CorralDefinition',
   ],
-  'layout.schema.json': [CanvasLayout, 'urn:corral:layout:0.1', 'CanvasLayout'],
   'command.schema.json': [RunCommand, 'urn:corral:command:0.1', 'RunCommand'],
   'create-run.schema.json': [CreateRunRequest, 'urn:corral:create-run:0.1', 'CreateRunRequest'],
   'run-event.schema.json': [RunEvent, 'urn:corral:run-event:0.1', 'RunEvent'],

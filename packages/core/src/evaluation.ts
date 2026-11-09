@@ -13,6 +13,7 @@ import { type AutoStart, createAutoStarter } from './auto-team.ts';
 import type { Coordinator } from './coordinator.ts';
 import type { RunProjection } from './projection.ts';
 import { type RuntimeTransport, waitForProjection } from './transport.ts';
+import { usageTotals } from './usage.ts';
 
 // Headless runs and the variant comparison harness (roadmap Core-③, product contract §1.3 and §12).
 // A headless run never decides for a person: when it would wait for an approval it is cancelled
@@ -47,7 +48,8 @@ export interface ExecResult {
   wallMs: number;
   modelCalls: number;
   outputTokens: number;
-  unknownTokensHeld: number;
+  /** Model requests that ended without reported output usage. */
+  unknownCalls: number;
   executions: number;
   candidateOutput: string | null;
   definitionHash: string | null;
@@ -328,6 +330,7 @@ export async function executeOnce(
     byAnswer[key] = (byAnswer[key] ?? 0) + 1;
     judgments[d.provider] = byAnswer;
   }
+  const usage = usageTotals(projection);
   return {
     runId,
     status: pendingInput ? 'needs_input' : projection.status,
@@ -336,9 +339,9 @@ export async function executeOnce(
     reason: projection.statusReason,
     output: texts.some((t) => t !== null) ? texts.filter((t) => t !== null).join('\n\n') : null,
     wallMs: Math.round(now() - started),
-    modelCalls: projection.budget.modelCalls,
-    outputTokens: projection.budget.spent,
-    unknownTokensHeld: projection.budget.unknownOutstanding,
+    modelCalls: usage.requests,
+    outputTokens: usage.outputTokens,
+    unknownCalls: usage.unknown,
     executions: projection.executionOrder.length,
     candidateOutput: candidateTexts.some((text) => text !== null)
       ? candidateTexts.filter((text) => text !== null).join('\n\n')

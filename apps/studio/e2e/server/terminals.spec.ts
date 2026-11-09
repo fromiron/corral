@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TerminalView } from '@corral/contracts';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { lastRunSucceeded, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function api(page: Page, path: string, method: string, body?: unknown) {
@@ -276,9 +276,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
       timeout: 20000,
     });
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-    await expect(
-      page.getByTestId('chat-timeline').getByText('Succeeded', { exact: true }),
-    ).toBeVisible();
+    await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
     await expect(sidebarSession).toBeVisible();
     await expect(
       page.getByTestId('app-sidebar').getByRole('img', { name: 'Failed', exact: true }),

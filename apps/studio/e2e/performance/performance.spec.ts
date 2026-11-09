@@ -50,15 +50,27 @@ test('production fixed load stays within latency and DOM budgets', async ({
         .length,
   );
   expect(steadyCanvasMutations).toBe(0);
-  const node = page.locator('.react-flow__node').first();
-  const before = await node.getAttribute('style');
-  const box = await node.boundingBox();
-  if (!box) throw new Error('missing draggable node');
-  await page.mouse.move(box.x + 50, box.y + 20);
+  // Pan the team graph by hand while events stream: the drag starts on empty canvas.
+  const stage = page.locator('[data-testid="performance-canvas"] [data-graph-stage]');
+  const before = await stage.getAttribute('style');
+  const start = await page
+    .locator('[data-testid="performance-canvas"] [data-team-canvas]')
+    .evaluate((pane) => {
+      const box = pane.getBoundingClientRect();
+      for (let y = box.top + 24; y < box.bottom - 24; y += 16)
+        for (let x = box.left + 24; x < box.right - 24; x += 16) {
+          const hit = document.elementFromPoint(x, y);
+          if (hit && pane.contains(hit) && !hit.closest('button, [data-edge], [role="toolbar"]'))
+            return { x, y };
+        }
+      return null;
+    });
+  if (!start) throw new Error('no empty canvas to pan from');
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(box.x + 120, box.y + 60, { steps: 30 });
+  await page.mouse.move(start.x + 70, start.y + 40, { steps: 30 });
   await page.mouse.up();
-  await expect(node).not.toHaveAttribute('style', before ?? '');
+  await expect(stage).not.toHaveAttribute('style', before ?? '');
   await expect(page.getByTestId('performance-result')).not.toHaveText('ready', { timeout: 30_000 });
   const result = JSON.parse(await page.getByTestId('performance-result').innerText()) as {
     transport: string;
@@ -131,7 +143,7 @@ test('production fixed load stays within latency and DOM budgets', async ({
         framesPerSecond,
         canvasMutations,
         steadyCanvasMutations,
-        draggedDuringLoad: true,
+        pannedDuringLoad: true,
         timelineRows: await page.getByTestId('timeline-row').count(),
         ...result,
         domainMs,

@@ -11,6 +11,7 @@ import {
   InProcessTransport,
   parseAutoRoute,
   type RouteAnswer,
+  usageTotals,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -136,44 +137,20 @@ function setup() {
 }
 
 describe('auto run regressions', () => {
-  it('keeps router model calls in the budget after an absolute limit patch and event replay', async () => {
+  it('records the router call in the run usage and replays it', async () => {
     const s = setup();
     const started = await s.starter().start(request('cmd_calls'), { fileTools: false });
     const runId = started.runId ?? '';
     await drain();
-    const receipt = s.coordinator.submit({
-      schemaVersion: '0.1',
-      commandId: 'cmd_cap',
-      runId,
-      type: 'patch',
-      expectedControlRevision: 0,
-      payload: { kind: 'run_limits', changes: { maxModelCalls: 1 } },
-    });
-    expect(receipt.status).toBe('applied');
-    await expect(s.host().prepareModelRequest()).rejects.toThrow();
     const replay = s.store.readEvents(runId, 0).reduce(applyEvent, emptyProjection(runId));
-    expect(replay.budget.modelCalls).toBe(1);
-    expect(replay.budget.spent).toBe(50);
-    expect(replay.budget).toEqual(s.coordinator.getSnapshot(runId).projection.budget);
+    expect(usageTotals(replay)).toMatchObject({ outputTokens: 50 });
+    expect(replay.usage).toEqual(s.coordinator.getSnapshot(runId).projection.usage);
+    expect(Object.values(replay.usage)).toEqual([
+      expect.objectContaining({ kind: 'auto_route', outputTokens: 50 }),
+    ]);
   });
 
-  it('keeps router output tokens in the budget when the output limit is replaced', async () => {
-    const s = setup();
-    const started = await s.starter().start(request('cmd_tokens'), { fileTools: false });
-    const runId = started.runId ?? '';
-    await drain();
-    s.coordinator.submit({
-      schemaVersion: '0.1',
-      commandId: 'cmd_tokens_cap',
-      runId,
-      type: 'patch',
-      expectedControlRevision: 0,
-      payload: { kind: 'run_limits', changes: { maxOutputTokens: 100 } },
-    });
-    expect((await s.host().prepareModelRequest()).maxOutputTokens).toBe(50);
-  });
-
-  it('retains missing router usage as an unknown reservation, including failed choices', async () => {
+  it('records missing router usage as unknown, including failed choices', async () => {
     for (const result of [
       { ok: true, text: answer.ok ? answer.text : '', usage: null },
       { ok: false, reason: 'timeout' },
@@ -182,12 +159,10 @@ describe('auto run regressions', () => {
       const started = await s
         .starter(async () => result)
         .start(request('cmd_unknown'), { fileTools: false });
-      expect(s.coordinator.getSnapshot(started.runId ?? '').projection.budget).toMatchObject({
-        modelCalls: 1,
-        spent: 0,
-        reserved: 0,
-        unknownOutstanding: ROUTER_ALLOWANCE,
-      });
+      const usage = s.coordinator.getSnapshot(started.runId ?? '').projection.usage;
+      expect(Object.values(usage)).toEqual([
+        expect.objectContaining({ kind: 'auto_route', outputTokens: null }),
+      ]);
     }
   });
 
@@ -201,10 +176,10 @@ describe('auto run regressions', () => {
       }))
       .start(request('cmd_failed_usage'), { fileTools: false });
     expect(started.autoRoute?.usage).toEqual({ inputTokens: 10, outputTokens: 35 });
-    expect(s.coordinator.getSnapshot(started.runId ?? '').projection.budget).toMatchObject({
-      modelCalls: 1,
-      spent: 35,
-      unknownOutstanding: 0,
+    expect(usageTotals(s.coordinator.getSnapshot(started.runId ?? '').projection)).toMatchObject({
+      requests: 1,
+      outputTokens: 35,
+      unknown: 0,
     });
   });
 

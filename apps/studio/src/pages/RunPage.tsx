@@ -1,33 +1,42 @@
-import type { CorralDefinition, NodeLayout } from '@corral/contracts';
-import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
+  type CorralDefinition,
+  TERMINAL_EXECUTION_STATUSES,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
+import {
+  canReadArtifactBody,
+  compileDefinition,
+  forkSteps,
+  pendingInteractions,
+  type RunProjection,
+  stepResultIds,
+} from '@corral/core';
+import {
+  AgentStatusText,
   ApprovalPanel,
   ArtifactViewer,
-  BudgetInspector,
   EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
   FailureNotice,
-  HarnessDetails,
-  historicalStreams,
+  primaryWorkPlan,
   QuestionsPanel,
   ReinsPanel,
   RunActions,
   RunCanvas,
-  type RunCanvasLayout,
-  RunDisplayProvider,
-  type RunDisplaySnapshot,
+  type RunFlowCheck,
+  RunFlowDecisions,
   RunReason,
   RunResults,
   type RunSessionStore,
-  reconstructRunHistory,
-  runCanvasLayout,
   runResults,
+  SettingsPatchPanel,
   StatusBadge,
   TaskBoard,
   Timeline,
+  UsageInspector,
   useRunDisplay,
+  useRunWorkPlan,
   useSteerTarget,
   WorkPlanPanel,
 } from '@corral/react';
@@ -37,32 +46,50 @@ import {
   AccordionItem,
   AccordionTrigger,
   Button,
-  Slider,
+  formatClock,
+  MetaDot,
+  Switch,
   TabItem,
   TabPanel,
   Tabs,
   TabsList,
+  ToolStack,
+  useNow,
 } from '@corral/react/design-kit';
+import { Check, Copy, X } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import {
+  Fragment,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
 import { useModelPrices } from '../prices.ts';
 import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
-import { MessageBranch } from '../workbench/MessageBranch.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
-import { RunStatusCards } from '../workbench/RunStatusCards.tsx';
+import { RunPlanStrip } from '../workbench/RunActivity.tsx';
+import { breakpointSteps } from '../workbench/RunBreakpoints.tsx';
+import { ExecutionContext, RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
+import { RunViews } from '../workbench/RunViews.tsx';
+import { runFlowChecks } from '../workbench/runFlowChecks.ts';
+import { toolMarks } from '../workbench/toolMarks.ts';
+import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
 
-/** /runs/$runId?execution=…&artifact=… — one run: graph, call tree, details and Reins. */
+/** One run: observed work flow, execution details and Reins. */
 export function RunPage() {
   const services = useServices();
   const { runId } = runRoute.useParams();
@@ -91,8 +118,11 @@ export function RunDetail({
   setSearch,
   embedded = false,
   sessionId = null,
+  request = null,
 }: {
   sessionId?: string | null;
+  /** The request that started the run, when the caller knows it: the run's title. */
+  request?: string | null;
   runId: string;
   runNumber?: number;
   search: RunDetailSearch;
@@ -106,6 +136,10 @@ export function RunDetail({
   const missing = useStore(session, (s) => s.missingRunId === runId);
   const error = useStore(session, (s) => s.streamError ?? s.definitionError);
   const definition = useStore(session, (s) => s.definition);
+  const [recordSession, setRecordSession] = useState<{
+    runId: string;
+    sessionId: string | null;
+  } | null>(null);
 
   // A direct link or a reload: follow the run from the runtime's record.
   useEffect(() => {
@@ -120,7 +154,10 @@ export function RunDetail({
     Promise.all([transport.listRuns(), repository.list()]).then(
       ([runs, corrals]) => {
         const run = runs.find((r) => r.runId === runId);
-        if (live && run) setCurrentProject(projectOfRun(run, corrals));
+        if (live && run) {
+          setCurrentProject(projectOfRun(run, corrals));
+          setRecordSession({ runId: run.runId, sessionId: run.sessionId });
+        }
       },
       () => {},
     );
@@ -136,9 +173,7 @@ export function RunDetail({
         <p role="status" className="text-sm text-muted-foreground">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
-        {activeRunId === runId && search.atSeq === undefined ? (
-          <RunActions session={session} />
-        ) : null}
+        {activeRunId === runId ? <RunActions session={session} /> : null}
         {error ? (
           <Button
             variant="tertiary"
@@ -161,7 +196,8 @@ export function RunDetail({
       key={runId}
       session={session}
       definition={definition}
-      sessionId={sessionId}
+      sessionId={sessionId ?? (recordSession?.runId === runId ? recordSession.sessionId : null)}
+      request={request}
       search={search}
       setSearch={setSearch}
       embedded={embedded}
@@ -179,12 +215,6 @@ function ResultChoices({
   const t = useTranslations('Results');
   const items =
     results.kind === 'partial' ? results.intermediate.map((group) => group.latest) : results.final;
-  if (!items.length)
-    return (
-      <p className="text-sm text-muted-foreground">
-        {t(`kind.${results.kind === 'final' ? 'none' : results.kind}`)}
-      </p>
-    );
   return (
     <ul aria-label={t('label')} className="flex flex-col gap-1">
       {items.map((item) => (
@@ -203,19 +233,18 @@ function ResultChoices({
   );
 }
 
-const NO_STREAMS = {};
-
 function RunWorkspace({
   runId,
-  runNumber,
   session,
   sessionId,
   definition,
   search,
   setSearch,
   embedded,
+  request,
 }: {
   runId: string;
+  request: string | null;
   runNumber: number | undefined;
   session: RunSessionStore;
   sessionId: string | null;
@@ -226,30 +255,13 @@ function RunWorkspace({
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
-  const { execution, artifact, result, atSeq } = search;
-  const historical = atSeq !== undefined;
-  const view = search.view ?? (result ? 'results' : 'run');
-  const navigate = useNavigate();
+  const { execution, artifact, result } = search;
+  const resultOpen = search.view === 'results' || result !== undefined;
+  const documentOpen = resultOpen || artifact !== undefined;
   const Main = embedded ? 'div' : 'main';
-  const { previewUrl } = useServices();
-  const liveProjection = useStore(session, (s) => s.projection);
+  const { previewUrl, workspaces } = useServices();
+  const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
-  const history = useMemo(
-    () => (atSeq === undefined ? null : reconstructRunHistory(runId, events, atSeq)),
-    [runId, events, atSeq],
-  );
-  const completedStreams = useStore(
-    session,
-    useShallow((s) => (history ? historicalStreams(history.projection, s.streams) : NO_STREAMS)),
-  );
-  const display = useMemo<RunDisplaySnapshot | null>(
-    () =>
-      history
-        ? { projection: history.projection, events: history.events, streams: completedStreams }
-        : null,
-    [history, completedStreams],
-  );
-  const projection = display?.projection ?? liveProjection;
   const failedTools = execution
     ? Object.values(projection?.toolCalls ?? {}).filter(
         (call) =>
@@ -258,330 +270,488 @@ function RunWorkspace({
           (!call.effectId || projection?.effects[call.effectId]?.outcome !== 'cancelled'),
       )
     : [];
-  const head = events.at(-1)?.runSeq ?? 0;
-  const chooseSeq = (value: number | undefined) => setSearch({ atSeq: value }, { replace: true });
-  const savedTeam = useSavedTeam(liveProjection?.corralId);
-  const layout = useSavedLayout(definition, liveProjection?.corralId ?? null, savedTeam);
+  const checkReferences = useMemo(
+    () =>
+      [
+        ...new Set(
+          Object.values(projection?.workflowBranches ?? {}).flatMap((branch) =>
+            branch.evidenceRefs.filter((ref) => ref.kind === 'check').map((ref) => ref.id),
+          ),
+        ),
+      ]
+        .sort()
+        .join('|'),
+    [projection?.workflowBranches],
+  );
+  const [loadedChecks, setLoadedChecks] = useState<{ key: string; values: RunFlowCheck[] } | null>(
+    null,
+  );
+  const checkOwner = `${sessionId}:${runId}:${checkReferences}`;
+  useEffect(() => {
+    if (!workspaces || !sessionId || !checkReferences) return;
+    let active = true;
+    void workspaces
+      .verifications(sessionId)
+      .then((records) => {
+        if (active)
+          setLoadedChecks({
+            key: checkOwner,
+            values: runFlowChecks(records, runId, checkReferences.split('|')),
+          });
+      })
+      .catch(() => {
+        if (active) setLoadedChecks({ key: checkOwner, values: [] });
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspaces, sessionId, runId, checkReferences, checkOwner]);
+  const checks = loadedChecks?.key === checkOwner ? loadedChecks.values : [];
+
+  const normalizingCursor = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (search.atSeq === undefined) {
+      normalizingCursor.current = undefined;
+      return;
+    }
+    // Remembering the view can render the parent before the router commits this patch.
+    if (normalizingCursor.current === search.atSeq) return;
+    normalizingCursor.current = search.atSeq;
+    setSearch({ atSeq: undefined }, { replace: true });
+  }, [search.atSeq, setSearch]);
   const prices = useModelPrices();
   const target = useSteerTarget(session, execution ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [panel, setPanel] = useState('canvas');
-  const [detailOpen, setDetailOpen] = useState(Boolean(execution || artifact));
-  const [monitor, setMonitor] = useState('graph');
+  const [listedNodeId, setListedNodeId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<'closed' | 'selection' | 'approval' | 'run'>(
+    execution ? 'selection' : 'closed',
+  );
+  const [steeringId, setSteeringId] = useState<string | null>(null);
+  const [steeringOpen, setSteeringOpen] = useState(false);
+  const [steeringTargets, setSteeringTargets] = useState<Set<string>>(() => new Set());
+  const documentTrigger = useRef<HTMLElement | null>(null);
+  const steeringTrigger = useRef<HTMLElement | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const wide = useContainerAtLeast(body, 640 + 360);
   const [detail, setDetail] = useState('overview');
   const trigger = useRef<HTMLElement | null>(null);
   const detailsButton = useRef<HTMLButtonElement>(null);
   const response = useRef<HTMLDivElement>(null);
-  const openedResponseRun = useRef<string | null>(null);
+  const detailPane = useRef<HTMLElement>(null);
+  const documentPane = useRef<HTMLElement>(null);
+  const steeringPane = useRef<HTMLElement>(null);
   const hasOutput = useStore(session, (s) => s.outputText !== null);
+  const workPlan = useRunWorkPlan(session, primaryWorkPlan(projection?.workPlans));
+  const plan = 'plan' in workPlan.status ? workPlan.status.plan : null;
+  const pending = projection ? pendingInteractions(events, projection).length : 0;
+  const sideShown =
+    !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || pending > 0);
   useEffect(() => {
-    if (hasOutput && !historical) markRunReviewed();
-  }, [hasOutput, historical]);
+    if (hasOutput) markRunReviewed();
+  }, [hasOutput]);
+  const executionNodeId = execution ? (projection?.executions[execution]?.nodeId ?? null) : null;
+  const routedExecution = useRef(execution);
   useEffect(() => {
-    if (!execution && !artifact) return;
-    setDetailOpen(true);
-    setPanel('side');
-  }, [execution, artifact]);
+    // Only navigation selects an inspector. Replayed data and local close/list changes do not.
+    if (routedExecution.current === execution) return;
+    routedExecution.current = execution;
+    if (execution) {
+      setPanel('selection');
+      setSelectedNodeId(executionNodeId);
+    } else if (listedNodeId) {
+      setSelectedNodeId(listedNodeId);
+    } else {
+      setPanel((current) => (current === 'selection' ? 'closed' : current));
+    }
+  }, [execution, executionNodeId, listedNodeId]);
   useEffect(() => {
-    if (historical || !projection?.startedAt || openedResponseRun.current === projection.runId)
-      return;
-    openedResponseRun.current = projection.runId;
-    // Only an existing decision at entry may move focus; later events leave editing alone.
-    if (
-      execution ||
-      artifact ||
-      result ||
-      view === 'results' ||
-      !pendingInteractions(session.getState().events, projection).length
-    )
-      return;
-    response.current?.focus({ preventScroll: true });
-    response.current?.scrollIntoView({ block: 'nearest' });
-  }, [projection, session, execution, artifact, result, view, historical]);
-  const rememberTrigger = () => {
-    trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (panel === 'approval' && pending === 0) setPanel('closed');
+  }, [panel, pending]);
+  const activeElement = () =>
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const rememberTrigger = (origin = activeElement()) => {
+    trigger.current = origin;
   };
-  const chooseExecution = (id: string) => {
-    rememberTrigger();
-    setSelectedNodeId(null);
-    setDetailOpen(true);
-    setPanel('side');
-    setSearch({ execution: id, artifact: undefined });
-  };
-  const openArtifact = (id: string) => {
-    rememberTrigger();
-    setDetailOpen(true);
+  const chooseExecution = (id: string, origin = activeElement()) => {
+    rememberTrigger(origin);
+    const nodeId = projection?.executions[id]?.nodeId ?? null;
+    setSelectedNodeId(nodeId);
+    setListedNodeId((current) => (current === nodeId ? current : null));
+    setPanel('selection');
     setDetail('overview');
-    setPanel('side');
-    setSearch({ artifact: id, view: 'run', result: undefined });
+    setSearch({ execution: id, artifact: undefined, result: undefined, view: undefined });
+    requestAnimationFrame(() => detailPane.current?.focus({ preventScroll: true }));
+  };
+  const openArtifact = (id: string, origin = activeElement()) => {
+    documentTrigger.current = origin;
+    setSearch({ artifact: id, view: undefined, result: undefined });
+    requestAnimationFrame(() => documentPane.current?.focus({ preventScroll: true }));
+  };
+  const closeDocument = () => {
+    setSearch({ artifact: undefined, result: undefined, view: undefined });
+    requestAnimationFrame(() => {
+      if (documentTrigger.current?.isConnected) documentTrigger.current.focus();
+      else detailsButton.current?.focus();
+    });
+  };
+  const openSteering = (id: string, origin = activeElement()) => {
+    if (!projection?.executions[id]) return;
+    steeringTrigger.current = origin;
+    setSteeringId(id);
+    setSteeringTargets((previous) => new Set(previous).add(id));
+    setSteeringOpen(true);
+    requestAnimationFrame(() => steeringPane.current?.focus({ preventScroll: true }));
+  };
+  const closeSteering = () => {
+    setSteeringOpen(false);
+    requestAnimationFrame(() =>
+      (steeringTrigger.current?.isConnected
+        ? steeringTrigger.current
+        : detailsButton.current
+      )?.focus(),
+    );
   };
   const closeDetail = () => {
-    setSelectedNodeId(null);
-    setDetailOpen(false);
-    const returnTo = trigger.current?.closest('.run-tree') ? 'tree' : 'canvas';
-    setPanel(returnTo);
+    setListedNodeId(null);
+    setPanel('closed');
     setSearch({ execution: undefined, artifact: undefined });
     requestAnimationFrame(() =>
       (trigger.current?.isConnected ? trigger.current : detailsButton.current)?.focus(),
     );
   };
-  const startFrom =
-    savedTeam && !historical
-      ? (from: { runId: string; artifactVersionId: string }) =>
-          void navigate({
-            to: '/corrals/$corralId/edit',
-            params: { corralId: projection?.corralId ?? '' },
-            search: { fromRun: from.runId, fromVersion: from.artifactVersionId },
-          })
-      : null;
-  const highlightedNode =
-    selectedNodeId ?? (execution ? (projection?.executions[execution]?.nodeId ?? null) : null);
-  const historicalExecution = execution ? projection?.executions[execution] : null;
-  const selectedTarget = historical
-    ? historicalExecution
-      ? {
-          executionId: historicalExecution.executionId,
-          nodeLabel:
-            definition.nodes.find((node) => node.id === historicalExecution.nodeId)?.label ??
-            historicalExecution.nodeId,
-          finished: TERMINAL_EXECUTION_STATUSES.has(historicalExecution.status),
-        }
-      : null
-    : execution
-      ? target
-      : null;
+  const highlightedNode = selectedNodeId ?? executionNodeId;
+  const selectedTarget = execution ? target : null;
   const results = projection ? runResults(projection) : null;
-  const selectedResultId = result ?? results?.defaultId ?? undefined;
-
-  if (history?.status === 'loading') {
-    return (
-      <section className="flex flex-col items-start gap-3 p-4" aria-busy="true">
-        <p role="status">{t('loading')}</p>
-        <Button variant="tertiary" size="compact" onClick={() => chooseSeq(undefined)}>
-          {m('latest')}
-        </Button>
-      </section>
-    );
-  }
   return (
-    <RunDisplayProvider snapshot={display}>
-      <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
-        <RunSummary
-          session={session}
-          definition={definition}
-          view={view}
-          readOnly={historical}
-          onView={(view) => setSearch({ view })}
-        />
-        <div className="shrink-0 border-b border-line p-3">
+    <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
+      <RunHeader
+        session={session}
+        definition={definition}
+        request={request}
+        trailing={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-40 flex-1">
-              <Slider
+            {pending > 0 ? (
+              <Button
+                variant="tertiary"
                 size="compact"
-                label={m('cursor')}
-                min={0}
-                max={Math.max(1, head)}
-                step={1}
-                value={Math.min(atSeq ?? head, head)}
-                formatValue={(value) => m('record', { seq: value })}
-                disabled={head === 0}
-                onChange={(value) => chooseSeq(typeof value === 'number' ? value : value[0])}
-              />
-            </div>
-            <Button
-              variant="tertiary"
-              size="compact"
-              disabled={(atSeq ?? head) === 0}
-              onClick={() => chooseSeq(Math.max(0, (atSeq ?? head) - 1))}
-            >
-              {m('previous')}
-            </Button>
-            <Button
-              variant="tertiary"
-              size="compact"
-              disabled={!historical || atSeq >= head}
-              onClick={() => chooseSeq(Math.min(head, (atSeq ?? head) + 1))}
-            >
-              {m('next')}
-            </Button>
-            <Button
-              variant="secondary"
-              size="compact"
-              disabled={!historical}
-              onClick={() => chooseSeq(undefined)}
-            >
-              {m('latest')}
-            </Button>
-          </div>
-          {historical ? (
-            <p
-              role="status"
-              data-testid="history-mode"
-              className="mt-2 text-xs text-muted-foreground"
-            >
-              {m('historical', {
-                seq: atSeq,
-                visible: projection?.lastSeq ?? 0,
-                newer: Math.max(0, head - atSeq),
-              })}
-            </p>
-          ) : null}
-          {history?.gap ? (
-            <p role="alert" className="mt-2 text-xs text-warning">
-              {m('historyGap', {
-                expected: history.gap.expectedSeq,
-                visible: history.projection.lastSeq,
-              })}
-            </p>
-          ) : null}
-        </div>
-        <fieldset disabled={historical} hidden={historical} className="m-0 min-w-0 border-0 p-0">
-          <div
-            ref={response}
-            data-run-response={projection?.runId}
-            tabIndex={-1}
-            className="shrink-0 outline-none"
-          >
-            <ApprovalPanel
-              session={session}
-              compact
-              showPlan={false}
-              onOpenArtifact={openArtifact}
-              className="shrink-0 border-b border-line px-3 py-2"
-            />
-          </div>
-        </fieldset>
-        <Main
-          style={view !== 'results' ? { display: 'none' } : undefined}
-          className="min-h-0 flex-1 overflow-auto"
-        >
-          <RunResults
-            session={session}
-            runNumber={runNumber}
-            selectedId={result ?? null}
-            onSelect={(id) => setSearch({ view: 'results', result: id })}
-            {...(previewUrl ? { previewUrl } : {})}
-            {...(startFrom ? { onStartFrom: startFrom } : {})}
-          />
-          {sessionId && selectedResultId && projection?.artifacts[selectedResultId] ? (
-            <MessageBranch
-              runId={projection.runId}
-              artifactVersionId={selectedResultId}
-              disabled={historical || !TERMINAL_RUN_STATUSES.has(projection.status)}
-            />
-          ) : null}
-        </Main>
-        <Tabs
-          style={view === 'results' ? { display: 'none' } : undefined}
-          value={monitor}
-          onValueChange={(value) => {
-            setMonitor(value);
-            setPanel('canvas');
-          }}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="flex flex-wrap items-center gap-2 border-b border-line p-2">
-            <TabsList aria-label={m('views')}>
-              <TabItem value="graph" label={m('graph')} onClick={() => setPanel('canvas')} />
-              <TabItem value="time" label={m('time')} onClick={() => setPanel('canvas')} />
-              <TabItem value="events" label={m('events')} onClick={() => setPanel('canvas')} />
-            </TabsList>
-            <Button
-              variant="tertiary"
-              size="compact"
-              aria-pressed={panel === 'tree'}
-              onClick={() => setPanel(panel === 'tree' ? 'canvas' : 'tree')}
-            >
-              {t('executions')}
-            </Button>
+                onClick={() => {
+                  rememberTrigger();
+                  setSteeringOpen(false);
+                  setSearch({ artifact: undefined, result: undefined, view: undefined });
+                  setPanel('approval');
+                  requestAnimationFrame(() => response.current?.focus({ preventScroll: true }));
+                }}
+              >
+                {m('needsYou')} · {pending}
+              </Button>
+            ) : null}
             <Button
               ref={detailsButton}
-              variant="tertiary"
+              variant="ghost"
               size="compact"
-              aria-pressed={detailOpen && panel !== 'tree'}
+              aria-pressed={panel === 'run' && sideShown}
               onClick={() => {
-                setDetailOpen(true);
-                setPanel('side');
+                rememberTrigger();
+                setSteeringOpen(false);
+                setSearch({ artifact: undefined, result: undefined, view: undefined });
+                setDetail('overview');
+                setPanel(panel === 'run' && sideShown ? 'closed' : 'run');
               }}
             >
-              {m('details')}
+              {m('runInfo')}
             </Button>
           </div>
-          <Main className="run-layout min-h-0 flex-1" data-panel={panel} data-details={detailOpen}>
-            <aside
-              aria-label={t('executions')}
-              className="run-tree min-h-0 overflow-auto border-r border-line p-3"
-            >
-              <ExecutionTree
-                session={session}
-                onSteer={chooseExecution}
-                selectedExecutionId={execution ?? null}
-              />
-            </aside>
-            <div className="run-center relative min-h-0">
-              <TabPanel value="graph" keepMounted className="h-full min-h-0">
-                {layout ? (
-                  <RunCanvas
-                    session={session}
-                    definition={definition}
-                    layout={layout}
-                    selectedNodeId={highlightedNode}
-                    onSelectNode={(id) => {
-                      rememberTrigger();
-                      setSelectedNodeId(id);
-                      if (id) {
-                        setDetailOpen(true);
-                        setDetail('overview');
-                        setPanel('side');
-                        setSearch({ execution: undefined, artifact: undefined });
-                      }
-                    }}
-                  />
-                ) : null}
-              </TabPanel>
-              <TabPanel value="time" keepMounted className="h-full min-h-0">
-                <RunTimeChart
-                  events={display?.events ?? events}
-                  projection={projection}
-                  definition={definition}
-                  selected={execution}
-                  onSelect={chooseExecution}
+        }
+      />
+      <div ref={body} className="flex min-h-0 flex-1">
+        <div
+          data-testid="run-column"
+          hidden={!wide && sideShown}
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+        >
+          <Main
+            data-testid="run-column-scroll"
+            hidden={documentOpen || steeringOpen}
+            className="min-h-0 flex-1"
+          >
+            <RunViews
+              visible={!documentOpen && !steeringOpen && (wide || !sideShown)}
+              views={[
+                {
+                  id: 'graph',
+                  label: m('graph'),
+                  render: () => (
+                    <div className="h-full min-h-0">
+                      <RunCanvas
+                        session={session}
+                        definition={definition}
+                        selectedNodeId={highlightedNode}
+                        onSelectNode={(id) => setSelectedNodeId(id)}
+                        renderNodePreview={(nodeId, { close, trigger: origin }) =>
+                          projection ? (
+                            <>
+                              <NodeExecutions
+                                projection={projection}
+                                definition={definition}
+                                nodeId={nodeId}
+                                selectedExecutionId={execution ?? null}
+                                preview
+                                onChoose={(id) => {
+                                  close();
+                                  chooseExecution(id, origin);
+                                }}
+                                onOpenArtifact={(id) => {
+                                  close();
+                                  openArtifact(id, origin);
+                                }}
+                                onSteer={(id) => {
+                                  close();
+                                  openSteering(id, origin);
+                                }}
+                                onShowAll={() => {
+                                  close();
+                                  rememberTrigger(origin);
+                                  setListedNodeId(nodeId);
+                                  setSelectedNodeId(nodeId);
+                                  setPanel('selection');
+                                  setDetail('overview');
+                                  setSearch({
+                                    execution: undefined,
+                                    artifact: undefined,
+                                    result: undefined,
+                                    view: undefined,
+                                  });
+                                  requestAnimationFrame(() =>
+                                    detailPane.current?.focus({ preventScroll: true }),
+                                  );
+                                }}
+                              />
+                              <NodeRunActions
+                                session={session}
+                                definition={definition}
+                                nodeId={nodeId}
+                              />
+                            </>
+                          ) : null
+                        }
+                      />
+                    </div>
+                  ),
+                },
+                {
+                  id: 'flow',
+                  label: m('flow'),
+                  testId: 'run-flow-tab',
+                  render: () => (
+                    <div
+                      data-testid="run-work-flow"
+                      className="mx-auto grid w-full max-w-[1040px] gap-4 px-6 py-5"
+                    >
+                      {projection ? (
+                        <RunPlanStrip
+                          projection={projection}
+                          plan={plan}
+                          planCount={Object.keys(projection.workPlans ?? {}).length}
+                          allPlans={<WorkPlanPanel session={session} />}
+                        />
+                      ) : null}
+                      <ExecutionTree
+                        session={session}
+                        onSteer={chooseExecution}
+                        selectedExecutionId={execution ?? null}
+                        compact
+                      />
+                      <RunFlowDecisions
+                        session={session}
+                        definition={definition}
+                        checks={checks}
+                        onOpenArtifact={openArtifact}
+                      />
+                    </div>
+                  ),
+                },
+                {
+                  id: 'time',
+                  label: m('time'),
+                  render: () => (
+                    <RunTimeChart
+                      events={events}
+                      projection={projection}
+                      definition={definition}
+                      selected={execution}
+                      onSelect={chooseExecution}
+                    />
+                  ),
+                },
+                {
+                  id: 'events',
+                  label: `${m('events')} ${events.length}`,
+                  render: () => (
+                    <Timeline
+                      session={session}
+                      fill
+                      onOpenExecution={(id) => chooseExecution(id)}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </Main>
+          <section
+            ref={documentPane}
+            tabIndex={-1}
+            data-testid="run-document"
+            hidden={!documentOpen}
+            className="min-h-0 flex-1 overflow-auto p-6 outline-none"
+            aria-label={m('results')}
+          >
+            <Button variant="ghost" size="compact" onClick={closeDocument}>
+              {m('backToWork')}
+            </Button>
+            {documentOpen ? (
+              artifact ? (
+                <ArtifactViewer
+                  session={session}
+                  versionId={artifact}
+                  onOpen={openArtifact}
+                  onClose={closeDocument}
                 />
-              </TabPanel>
-              <TabPanel value="events" keepMounted className="h-full overflow-auto p-3">
-                <Timeline session={session} selectedSeq={atSeq} onSelectSeq={chooseSeq} />
-              </TabPanel>
+              ) : (
+                <RunResults
+                  session={session}
+                  headed={false}
+                  selectedId={result ?? null}
+                  onSelect={(id) => setSearch({ result: id })}
+                  {...(previewUrl ? { previewUrl } : {})}
+                />
+              )
+            ) : null}
+          </section>
+          <section
+            ref={steeringPane}
+            tabIndex={-1}
+            hidden={!steeringOpen || documentOpen}
+            className="min-h-0 flex-1 overflow-auto p-6 outline-none"
+            data-testid="run-instructions"
+          >
+            <div className="mx-auto grid w-full max-w-[760px] gap-4">
+              <Button
+                variant="ghost"
+                size="compact"
+                className="justify-self-start"
+                onClick={closeSteering}
+              >
+                {m('backToWork')}
+              </Button>
+              {[...steeringTargets].map((id) => (
+                <div key={id} hidden={id !== steeringId}>
+                  <RunInstructions session={session} executionId={id} />
+                </div>
+              ))}
             </div>
-            <aside
-              tabIndex={-1}
-              aria-label={m('details')}
-              className="run-side min-h-0 overflow-auto border-l border-line p-3 outline-none"
+          </section>
+          {!documentOpen &&
+          !steeringOpen &&
+          results &&
+          (results.kind === 'partial'
+            ? results.intermediate.length > 0
+            : results.final.length > 0) ? (
+            <section
+              aria-label={m('results')}
+              className="max-h-36 shrink-0 overflow-auto border-t border-line px-4 py-2"
             >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-medium">{selectedTarget?.nodeLabel ?? m('details')}</h2>
-                <Button variant="ghost" size="compact" onClick={closeDetail}>
-                  {m('closeDetails')}
-                </Button>
+              <ResultChoices
+                results={results}
+                onOpen={(id) => {
+                  documentTrigger.current =
+                    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                  if (results.kind === 'partial') openArtifact(id);
+                  else setSearch({ view: undefined, result: id, artifact: undefined });
+                }}
+              />
+            </section>
+          ) : null}
+        </div>
+        <aside
+          ref={detailPane}
+          data-testid="run-side"
+          hidden={!sideShown}
+          tabIndex={-1}
+          aria-label={m('details')}
+          className={
+            'min-h-0 overflow-auto p-4 outline-none ' +
+            (wide ? 'w-[360px] shrink-0 border-l border-line' : 'min-w-0 flex-1')
+          }
+        >
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="truncate text-subtitle font-medium">
+                  {panel === 'approval'
+                    ? m('needsYou')
+                    : panel === 'run'
+                      ? m('runInfo')
+                      : (selectedTarget?.nodeLabel ??
+                        definition.nodes.find((node) => node.id === listedNodeId)?.label ??
+                        m('details'))}
+                </h2>
+                {panel === 'selection' && execution && projection?.executions[execution] ? (
+                  <div className="text-caption text-muted-foreground">
+                    <ExecutionIdentity projection={projection} executionId={execution} />
+                  </div>
+                ) : null}
               </div>
-              {execution && projection && !projection.executions[execution] ? (
-                <p role="alert">
-                  {historical
-                    ? m('executionMissingAt', { executionId: execution })
-                    : t('executionMissing', { executionId: execution })}
-                </p>
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label={m('closeDetails')}
+                onClick={closeDetail}
+              >
+                <X />
+              </Button>
+            </div>
+            <div hidden={panel !== 'approval'}>
+              {pending > 0 ? (
+                <section data-testid="run-needs-you" aria-label={m('needsYou')}>
+                  <div
+                    ref={response}
+                    data-run-response={projection?.runId}
+                    tabIndex={-1}
+                    className="outline-none"
+                  >
+                    <ApprovalPanel
+                      session={session}
+                      showPlan={false}
+                      onOpenArtifact={openArtifact}
+                    />
+                  </div>
+                </section>
               ) : null}
-              {selectedNodeId && projection ? (
+            </div>
+            <div hidden={panel === 'approval'}>
+              {execution && projection && !projection.executions[execution] ? (
+                <p role="alert">{t('executionMissing', { executionId: execution })}</p>
+              ) : null}
+              {listedNodeId && !execution && projection && panel === 'selection' ? (
                 <NodeExecutions
                   projection={projection}
                   definition={definition}
-                  nodeId={selectedNodeId}
+                  nodeId={listedNodeId}
                   selectedExecutionId={execution ?? null}
-                  onChoose={chooseExecution}
-                  onClose={closeDetail}
+                  onChoose={(id) => chooseExecution(id, trigger.current)}
                 />
               ) : null}
-              {failedTools.length ? (
-                <section aria-label={m('failedSteps')} className="mb-3 space-y-2">
+              {selectedTarget && !selectedTarget.finished && panel === 'selection' ? (
+                <Button
+                  variant="primary"
+                  size="compact"
+                  onClick={() => openSteering(selectedTarget.executionId)}
+                >
+                  {m('steer')}
+                </Button>
+              ) : null}
+              {failedTools.length && panel === 'selection' ? (
+                <section aria-label={m('failedSteps')} className="my-3 space-y-2">
                   {failedTools.map((call) => (
                     <div key={call.toolCallId} data-testid={`failed-step-${call.toolCallId}`}>
                       <p className="text-xs font-medium">{call.name}</p>
@@ -590,44 +760,50 @@ function RunWorkspace({
                   ))}
                 </section>
               ) : null}
-              <Tabs value={detail} onValueChange={setDetail}>
-                <div className="overflow-x-auto">
-                  <TabsList aria-label={m('details')}>
-                    <TabItem value="overview" label={m('overview')} />
-                    <TabItem value="calls" label={m('calls')} />
-                    <TabItem value="usage" label={m('usage')} />
-                    <TabItem value="reins" label="Reins" />
-                  </TabsList>
-                </div>
-                <TabPanel value="overview" keepMounted className="space-y-3 pt-3">
-                  {artifact ? (
-                    <ArtifactViewer
-                      session={session}
-                      versionId={artifact}
-                      onOpen={openArtifact}
-                      {...(startFrom ? { onStartFrom: startFrom } : {})}
-                      onClose={() => {
-                        setSearch({ artifact: undefined });
-                        (trigger.current?.isConnected
-                          ? trigger.current
-                          : detailsButton.current
-                        )?.focus();
-                      }}
-                    />
-                  ) : results ? (
-                    <ResultChoices
-                      results={results}
-                      onOpen={(id) => setSearch({ view: 'results', result: id })}
-                    />
-                  ) : null}
-                  {sessionId && artifact && projection?.artifacts[artifact] ? (
-                    <MessageBranch
-                      runId={projection.runId}
-                      artifactVersionId={artifact}
-                      disabled={historical || !TERMINAL_RUN_STATUSES.has(projection.status)}
-                    />
-                  ) : null}
-                  {!historical && sessionId && selectedTarget ? (
+              {panel === 'run' ? (
+                <Tabs value={detail} onValueChange={setDetail} className="mt-3">
+                  <div className="overflow-x-auto">
+                    <TabsList aria-label={m('details')}>
+                      {['overview', 'usage'].map((value) => (
+                        <TabItem key={value} value={value} label={m(value)} />
+                      ))}
+                    </TabsList>
+                  </div>
+                  <TabPanel value="overview" keepMounted className="space-y-3 pt-3">
+                    <RunFacts session={session} definition={definition} request={request} />
+                    <Accordion>
+                      <AccordionItem value="tasks">
+                        <AccordionTrigger>{t('tabs.tasks')}</AccordionTrigger>
+                        <AccordionContent>
+                          <TaskBoard session={session} onOpenArtifact={openArtifact} />
+                        </AccordionContent>
+                      </AccordionItem>
+                      {Object.keys(projection?.questions ?? {}).length ? (
+                        <AccordionItem value="questions">
+                          <AccordionTrigger>{t('tabs.questions')}</AccordionTrigger>
+                          <AccordionContent>
+                            <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
+                          </AccordionContent>
+                        </AccordionItem>
+                      ) : null}
+                      <AccordionItem value="settings">
+                        <AccordionTrigger>{m('settings')}</AccordionTrigger>
+                        <AccordionContent>
+                          <SettingsPatchPanel session={session} />
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                    <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
+                  </TabPanel>
+                  <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
+                    <UsageInspector session={session} prices={prices} />
+                    <EffortJudgments session={session} />
+                  </TabPanel>
+                </Tabs>
+              ) : null}
+              {panel === 'selection' && selectedTarget ? (
+                <div className="grid gap-4">
+                  {sessionId ? (
                     <ExecutionEvidence
                       session={session}
                       sessionId={sessionId}
@@ -635,86 +811,34 @@ function RunWorkspace({
                       onOpenArtifact={openArtifact}
                     />
                   ) : null}
-                  {historical ? (
-                    <p className="text-xs text-muted-foreground">{m('currentEvidence')}</p>
-                  ) : null}
-                  <Accordion>
-                    {Object.keys(projection?.workPlans ?? {}).length > 0 ? (
-                      <AccordionItem value="plans">
-                        <AccordionTrigger>{m('workPlans')}</AccordionTrigger>
-                        <AccordionContent>
-                          <WorkPlanPanel session={session} />
-                        </AccordionContent>
-                      </AccordionItem>
-                    ) : null}
-                    {Object.keys(projection?.tasks ?? {}).length > 0 ? (
-                      <AccordionItem value="tasks">
-                        <AccordionTrigger>
-                          {t('tabs.tasks')} · {Object.keys(projection?.tasks ?? {}).length}
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="max-w-full overflow-x-auto">
-                            <TaskBoard session={session} onOpenArtifact={openArtifact} />
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    ) : null}
-                    {Object.keys(projection?.questions ?? {}).length > 0 ? (
-                      <AccordionItem value="questions">
-                        <AccordionTrigger>
-                          {t('tabs.questions')} · {Object.keys(projection?.questions ?? {}).length}
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <QuestionsPanel session={session} onOpenArtifact={openArtifact} />
-                        </AccordionContent>
-                      </AccordionItem>
-                    ) : null}
-                  </Accordion>
-                  {!historical && detailOpen && detail === 'overview' ? (
-                    <RunStatusCards
+                  <ExecutionContext session={session} executionId={selectedTarget.executionId} />
+                  <section aria-label={m('calls')} className="-mx-4 grid">
+                    <ExecutionTranscript
                       session={session}
-                      sessionId={sessionId}
-                      executionId={execution ?? null}
+                      executionId={selectedTarget.executionId}
+                      onOpenArtifact={openArtifact}
                     />
-                  ) : null}
-                </TabPanel>
-                <TabPanel value="calls" keepMounted className="space-y-3 pt-3">
-                  {selectedTarget ? (
-                    <div className="flex h-[50vh] min-h-40 flex-col">
-                      <ExecutionTranscript
-                        session={session}
-                        executionId={selectedTarget.executionId}
-                        onOpenArtifact={openArtifact}
-                      />
-                    </div>
-                  ) : (
-                    <p>{m('chooseExecution')}</p>
-                  )}
-                  <HarnessDetails session={session} />
-                </TabPanel>
-                <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
-                  <BudgetInspector session={session} prices={prices} />
-                  <EffortJudgments session={session} />
-                </TabPanel>
-                <TabPanel value="reins" keepMounted className="pt-3">
-                  {historical ? (
-                    <p className="text-xs text-muted-foreground">{m('readOnly')}</p>
-                  ) : null}
-                  <fieldset
-                    disabled={historical}
-                    hidden={historical}
-                    className="m-0 min-w-0 border-0 p-0"
-                  >
-                    <ReinsPanel session={session} target={execution ? target : null} />
-                  </fieldset>
-                </TabPanel>
-              </Tabs>
-            </aside>
-          </Main>
-        </Tabs>
+                  </section>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </aside>
       </div>
-    </RunDisplayProvider>
+    </div>
   );
+}
+
+/** A draft belongs to its explicitly opened execution, independently of inspected nodes. */
+function RunInstructions({
+  session,
+  executionId,
+}: {
+  session: RunSessionStore;
+  executionId: string;
+}) {
+  const target = useSteerTarget(session, executionId);
+  return <ReinsPanel session={session} target={target} compact />;
 }
 
 /**
@@ -742,58 +866,63 @@ function useSavedTeam(corralId: string | null | undefined) {
   return saved?.id === corralId ? saved.exists : null;
 }
 
-/** The Corral's saved layout, once looked up; null while loading (avoids a layout jump). */
-function useSavedLayout(
-  definition: CorralDefinition,
-  corralId: string | null,
-  savedTeam: boolean | null,
-) {
-  const { repository } = useServices();
-  const [saved, setSaved] = useState<{ nodes: Record<string, NodeLayout> | null } | null>(null);
-  useEffect(() => {
-    if (!savedTeam || !corralId) return;
-    let live = true;
-    repository.get(corralId).then(
-      (record) => live && setSaved({ nodes: record?.layout.nodes ?? null }),
-      () => live && setSaved({ nodes: null }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [repository, corralId, savedTeam]);
-  return useMemo<RunCanvasLayout | null>(
-    () =>
-      savedTeam === false
-        ? runCanvasLayout(definition, null)
-        : saved
-          ? runCanvasLayout(definition, saved.nodes)
-          : null,
-    [definition, saved, savedTeam],
-  );
-}
-
-/**
- * What the run is doing, from committed facts only: which steps are working, the
- * Loop round, completed tasks and requests in flight. No percentage. Whole-run controls live
- * here and nowhere else on the page.
- */
-function RunSummary({
+/** A compact, bounded run heading; optional diagnostics belong to the run inspector. */
+function RunHeader({
   session,
   definition,
-  view = 'run',
-  onView,
-  compact = false,
-  readOnly = false,
+  request,
+  trailing,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
-  view?: RunPageView;
-  onView?: (view: RunPageView) => void;
-  compact?: boolean;
-  readOnly?: boolean;
+  request: string | null;
+  trailing?: ReactNode;
+}) {
+  const t = useTranslations('RunPage');
+  const projection = useRunDisplay(session, (s) => s.projection);
+  if (!projection) return null;
+  return (
+    <section
+      data-testid="run-header"
+      aria-label={t('summary')}
+      className="max-h-[40%] shrink-0 overflow-auto border-b border-line px-4 py-3"
+    >
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="line-clamp-2 min-w-0 text-subtitle font-medium [overflow-wrap:anywhere]">
+            {request ?? definition.name}
+          </h2>
+          <span aria-live="polite" data-testid="run-status">
+            <AgentStatusText kind="run" status={projection.status} />
+          </span>
+          <span className="text-caption text-muted-foreground tabular-nums">
+            <RunElapsed
+              startedAt={projection.startedAt}
+              endedAt={projection.endedAt}
+              live={!TERMINAL_RUN_STATUSES.has(projection.status)}
+            />
+          </span>
+        </div>
+        {trailing}
+      </div>
+      <RunActions session={session} compact />
+    </section>
+  );
+}
+
+/** Diagnostics live in the run inspector, not in a second expanding workspace header. */
+function RunFacts({
+  session,
+  definition,
+  request,
+}: {
+  session: RunSessionStore;
+  definition: CorralDefinition;
+  request: string | null;
 }) {
   const t = useTranslations('RunPage');
   const tr = useTranslations('Run');
+  const format = useFormatter();
   const projection = useRunDisplay(session, (s) => s.projection);
   const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
   if (!projection) return null;
@@ -805,7 +934,9 @@ function RunSummary({
   ];
   const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
   const tasks = Object.values(projection.tasks);
-  const inFlight = Object.values(projection.modelCalls).filter((c) => !c.finished).length;
+  const calls = Object.values(projection.toolCalls);
+  const requests = Object.values(projection.modelCalls);
+  const inFlight = requests.filter((c) => !c.finished).length;
   const ended = TERMINAL_RUN_STATUSES.has(projection.status);
   const loops = definition.nodes.flatMap((node) =>
     node.type === 'loop' && projection.loopIterations[node.id]?.length
@@ -818,99 +949,187 @@ function RunSummary({
         ]
       : [],
   );
+  const team = definition.sourceTeam
+    ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
+    : definition.name;
   const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
+  const facts = [
+    corralId && savedTeam ? (
+      <Link
+        key="team"
+        to="/corrals/$corralId/edit"
+        params={{ corralId }}
+        className="underline-offset-2 hover:underline"
+      >
+        {t('openCorral')}
+      </Link>
+    ) : corralId && !definition.sourceTeam && savedTeam === false ? (
+      <span key="team">{t('unsavedTeam')}</span>
+    ) : null,
+    projection.startedFrom ? (
+      <span key="from">
+        {t('startedFrom')}:{' '}
+        <Link
+          to="/runs/$runId"
+          params={{ runId: projection.startedFrom.runId }}
+          search={{ artifact: projection.startedFrom.artifactVersionId }}
+          className="underline"
+        >
+          {t('startedFromLink', {
+            name: projection.startedFrom.artifactVersionId,
+            runId: projection.startedFrom.runId,
+          })}
+        </Link>
+      </span>
+    ) : null,
+    projection.forkedFrom ? (
+      <span key="forked">
+        {t('forkedFrom')}:{' '}
+        <Link
+          to="/runs/$runId"
+          params={{ runId: projection.forkedFrom.runId }}
+          className="underline"
+        >
+          {t('forkedFromLink', {
+            step: labelOf(projection.forkedFrom.nodeId),
+            runId: projection.forkedFrom.runId,
+          })}
+        </Link>
+      </span>
+    ) : null,
+    projection.statusReason ? (
+      <span key="reason">
+        {tr('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+      </span>
+    ) : null,
+  ];
+  // What is still moving; an ended run keeps only requests whose end was never confirmed.
+  const progress = [
+    projection.status === 'cancelling' ? (
+      <span key="working">{t('cancelling')}</span>
+    ) : ended ? null : working.length ? (
+      <span key="working">{t('working', { labels: working.join(', ') })}</span>
+    ) : inFlight || waiting || projection.status === 'paused' ? null : (
+      <span key="working">{t('starting')}</span>
+    ),
+    waiting ? <span key="waiting">{t('waitingExecutions', { count: waiting })}</span> : null,
+    ...loops.map((text) => <span key={text}>{text}</span>),
+    inFlight ? (
+      <span key="requests">
+        {t(ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests', {
+          count: inFlight,
+        })}
+      </span>
+    ) : null,
+  ];
+  const marks = toolMarks(calls.map((call) => call.name));
   return (
-    <section
-      aria-label={t('summary')}
-      className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-2"
-    >
-      <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          {onView ? <ViewSwitch view={view} onView={onView} /> : null}
-          <h2 className="text-base font-semibold">
-            {definition.sourceTeam
-              ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
-              : definition.name}
-          </h2>
-          {!compact ? (
-            <span className="font-mono text-xs text-muted-foreground">{projection.runId}</span>
-          ) : null}
-          {readOnly ? (
-            <span className="text-xs text-muted-foreground">{t('historicalStatus')}</span>
-          ) : null}
-          <span aria-live="polite" data-testid="run-status">
-            <StatusBadge status={projection.status} />
-          </span>
-          {corralId && savedTeam && !compact ? (
-            <Link to="/corrals/$corralId/edit" params={{ corralId }} className="text-xs underline">
-              {t('openCorral')}
-            </Link>
-          ) : corralId && !definition.sourceTeam && savedTeam === false && !compact ? (
-            <span className="text-xs text-muted-foreground">{t('unsavedTeam')}</span>
-          ) : null}
-          {projection.startedFrom && !compact ? (
-            <span className="text-xs text-muted-foreground">
-              {t('startedFrom')}:{' '}
-              <Link
-                to="/runs/$runId"
-                params={{ runId: projection.startedFrom.runId }}
-                search={{ artifact: projection.startedFrom.artifactVersionId }}
-                className="underline"
-              >
-                {t('startedFromLink', {
-                  name: projection.startedFrom.artifactVersionId,
-                  runId: projection.startedFrom.runId,
-                })}
-              </Link>
-            </span>
-          ) : null}
-        </div>
-        {compact && projection.status === 'succeeded' && working.length === 0 ? null : (
-          <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-            <span>
-              {projection.status === 'cancelling'
-                ? t('cancelling')
-                : ended
-                  ? null
-                  : working.length
-                    ? t('working', { labels: working.join(', ') })
-                    : inFlight || waiting || projection.status === 'paused'
-                      ? null
-                      : t('starting')}
-            </span>
-            {waiting ? <span>{t('waitingExecutions', { count: waiting })}</span> : null}
-            {loops.map((text) => (
-              <span key={text}>{text}</span>
-            ))}
-            {inFlight ? (
-              <span>
-                {t(
-                  ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests',
-                  { count: inFlight },
-                )}
-              </span>
-            ) : null}
-            {compact ? null : (
-              <span>
-                {t('tasks', {
-                  done: tasks.filter((task) => task.status === 'completed').length,
-                  total: tasks.length,
-                })}
-              </span>
-            )}
-            {projection.statusReason && !(compact && projection.status === 'succeeded') ? (
-              <span>
-                {tr('reasonPrefix')}{' '}
-                <RunReason code={projection.statusReason} nodeLabel={labelOf} />
-              </span>
-            ) : null}
-          </p>
-        )}
-      </div>
-      <div className="max-h-28 w-[24rem] max-w-full overflow-auto">
-        {readOnly ? null : <RunActions session={session} compact />}
-      </div>
-    </section>
+    <div data-testid="run-facts" className="grid gap-3 text-caption text-muted-foreground">
+      {request ? <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{request}</p> : null}
+      <p data-run-meta className="flex flex-wrap items-center gap-2">
+        <span>{team}</span>
+        {projection.startedAt ? (
+          <time dateTime={projection.startedAt}>
+            {format.dateTime(new Date(projection.startedAt), {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+          </time>
+        ) : null}
+        <span className="break-all font-mono">{projection.runId}</span>
+        <CopyRunId runId={projection.runId} />
+      </p>
+      {marks.length ? <ToolStack tools={marks} max={5} size={20} /> : null}
+      <p data-run-stats className="flex flex-wrap items-center gap-2 tabular-nums">
+        <span>
+          {t('stats.tasks', {
+            done: tasks.filter((task) => task.status === 'completed').length,
+            total: tasks.length,
+          })}
+        </span>
+        <span>{t('stats.toolCalls', { count: calls.length })}</span>
+        <span>{t('stats.modelRequests', { count: requests.length })}</span>
+      </p>
+      <MetaLine items={progress} />
+      <MetaLine items={facts} />
+    </div>
+  );
+}
+
+/** Copies the run's id; the icon turns into a check once it is on the clipboard. */
+function CopyRunId({ runId }: { runId: string }) {
+  const t = useTranslations('RunPage');
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-compact"
+        aria-label={t('copyRunId')}
+        onClick={() =>
+          void navigator.clipboard?.writeText(runId).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          )
+        }
+      >
+        {copied ? <Check /> : <Copy />}
+      </Button>
+      <span role="status" className="sr-only">
+        {copied ? t('runIdCopied') : ''}
+      </span>
+    </>
+  );
+}
+
+/** Caption-sized facts separated by the kit's meta dot; empty entries are skipped. */
+function MetaLine({ items }: { items: ReactNode[] }) {
+  const shown = items.filter(Boolean);
+  if (!shown.length) return null;
+  return (
+    <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-muted-foreground">
+      {shown.map((item, index) => (
+        <Fragment key={(item as ReactElement).key ?? index}>
+          {index > 0 ? <MetaDot /> : null}
+          {item}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * Run time as a clock. It ticks only while the latest view of a live run is shown; a past
+ * record without an observed end shows no clock rather than one running to the present.
+ */
+function RunElapsed({
+  startedAt,
+  endedAt,
+  live,
+  lead,
+}: {
+  startedAt: string | null;
+  endedAt: string | null;
+  live: boolean;
+  /** Shown before the clock, only when there is one. */
+  lead?: ReactNode;
+}) {
+  const t = useTranslations('RunPage');
+  const now = useNow(1000, live && startedAt !== null);
+  if (!startedAt) return null;
+  const end = endedAt ? Date.parse(endedAt) : live ? now : null;
+  if (end === null) return null;
+  const clock = formatClock(end - Date.parse(startedAt));
+  return (
+    <>
+      {lead}
+      <span className="tabular-nums">
+        <span className="sr-only">{t('elapsed')} </span>
+        {clock}
+      </span>
+    </>
   );
 }
 
@@ -923,81 +1142,267 @@ function loopLimit(projection: RunProjection, loopId: string): number | null {
   return typeof value === 'number' ? value : null;
 }
 
-/** A design node's executions in this run: one per Loop round, call and attempt. */
+function ExecutionIdentity({
+  projection,
+  executionId,
+}: {
+  projection: RunProjection;
+  executionId: string;
+}) {
+  const t = useTranslations('Run');
+  const reins = useTranslations('Reins');
+  const execution = projection.executions[executionId];
+  if (!execution) return null;
+  const number = projection.executionOrder.indexOf(executionId) + 1;
+  const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
+  const parts = [
+    number ? reins('executionNumber', { number }) : executionId,
+    ...(round ? [t('round', { no: round })] : []),
+    t('attempt', { no: execution.attemptNo }),
+  ];
+  return <span title={executionId}>{parts.join(' · ')}</span>;
+}
+
+/**
+ * One step's run options: its breakpoint while the run goes on, and once the run has ended a new
+ * run from this step with the team as it is saved now.
+ */
+function NodeRunActions({
+  session,
+  definition,
+  nodeId,
+}: {
+  session: RunSessionStore;
+  definition: CorralDefinition;
+  nodeId: string;
+}) {
+  const t = useTranslations('RunPage');
+  const { repository, transport, mode } = useServices();
+  const navigate = useNavigate();
+  const projection = useStore(session, (s) => s.projection);
+  const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
+  const plan = useMemo(() => {
+    const compiled = compileDefinition(definition);
+    return compiled.ok ? compiled.plan : null;
+  }, [definition]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!projection) return null;
+  const ended = TERMINAL_RUN_STATUSES.has(projection.status);
+  const breakable =
+    !ended &&
+    projection.status !== 'cancelling' &&
+    breakpointSteps(definition.nodes).some((node) => node.id === nodeId);
+  const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
+  // Until a later run of the session succeeds, the run keeps the step results a fork copies.
+  const forkable =
+    ended &&
+    savedTeam === true &&
+    !!corralId &&
+    !!plan &&
+    !('error' in forkSteps(definition, plan, nodeId)) &&
+    stepResultIds(projection).every((id) => projection.artifacts[id]?.bodyAvailable !== false);
+  if (!breakable && !forkable) return null;
+  const breakpoints = projection.breakpoints;
+  const fork = async () => {
+    if (!corralId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const [record, runs] = await Promise.all([repository.get(corralId), transport.listRuns()]);
+      if (!record) throw new Error(t('unsavedTeam'));
+      const sessionId = runs.find((run) => run.runId === projection.runId)?.sessionId;
+      const base = {
+        schemaVersion: '0.1' as const,
+        commandId: `cmd_${globalThis.crypto.randomUUID()}`,
+        mode: projection.mode ?? 'mock',
+        ...(sessionId ? { sessionId } : {}),
+        forkFrom: { runId: projection.runId, nodeId },
+      };
+      const { runId, receipt } = await transport.startRun(
+        mode === 'browser'
+          ? { ...base, definition: record.definition }
+          : { ...base, corralId, definitionRevision: record.definitionRevision },
+      );
+      if (!runId) throw new Error(receipt.error?.message ?? receipt.status);
+      void navigate({ to: '/runs/$runId', params: { runId } });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1 border-t border-line pt-2 text-caption">
+      {breakable ? (
+        <Switch
+          size="compact"
+          label={t('pauseBefore')}
+          checked={breakpoints.includes(nodeId)}
+          onToggle={() =>
+            void session.getState().sendCommand({
+              type: 'set_breakpoints',
+              payload: {
+                nodeIds: breakpoints.includes(nodeId)
+                  ? breakpoints.filter((id) => id !== nodeId)
+                  : [...breakpoints, nodeId],
+              },
+            })
+          }
+        />
+      ) : null}
+      {forkable ? (
+        <Button
+          variant="secondary"
+          size="compact"
+          className="justify-start"
+          disabled={busy}
+          onClick={() => void fork()}
+        >
+          {t('forkHere')}
+        </Button>
+      ) : null}
+      {error ? <p role="alert">{t('forkFailed', { message: error })}</p> : null}
+    </div>
+  );
+}
+
+/** Exact executions of one observed agent, either a quick list or its complete inspector. */
 function NodeExecutions({
   projection,
   definition,
   nodeId,
   selectedExecutionId,
   onChoose,
-  onClose,
+  preview = false,
+  onShowAll,
+  onOpenArtifact,
+  onSteer,
 }: {
   projection: RunProjection;
   definition: CorralDefinition;
   nodeId: string;
   selectedExecutionId: string | null;
   onChoose: (executionId: string) => void;
-  onClose: () => void;
+  preview?: boolean;
+  onShowAll?: () => void;
+  onOpenArtifact?: (artifactVersionId: string) => void;
+  onSteer?: (executionId: string) => void;
 }) {
   const t = useTranslations('RunPage');
-  const tr = useTranslations('Run');
   const m = useTranslations('RunMonitor');
+  const results = useTranslations('Results');
+  const identityPrefix = useId();
   const node = definition.nodes.find((n) => n.id === nodeId);
   const label = node?.label ?? nodeId;
-  const ids = projection.nodeExecutions[nodeId] ?? [];
+  const ids = (projection.nodeExecutions[nodeId] ?? []).filter(
+    (id) => projection.executions[id]?.nodeId === nodeId,
+  );
+  const runEnded = TERMINAL_RUN_STATUSES.has(projection.status);
+  const isActive = (id: string) => {
+    const execution = projection.executions[id];
+    return !!execution && !runEnded && !TERMINAL_EXECUTION_STATUSES.has(execution.status);
+  };
+  const visibleIds = preview
+    ? [...ids]
+        .reverse()
+        .sort((a, b) => Number(isActive(b)) - Number(isActive(a)))
+        .slice(0, 3)
+    : ids;
   return (
     <section
       aria-label={t('nodeExecutions', { label })}
-      className="flex flex-col gap-2 rounded-md fill-group p-2 text-xs"
+      className="flex flex-col gap-2 text-caption"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">{t('nodeExecutions', { label })}</h2>
-        <Button variant="ghost" size="compact" onClick={onClose}>
-          {t('closeNode')}
-        </Button>
-      </div>
       {ids.length === 0 ? (
         <p className="text-muted-foreground">
           {node && node.type !== 'agent' ? m('nonAgentNode') : t('noNodeExecutions')}
         </p>
       ) : null}
-      <ul className="flex flex-col gap-1">
-        {ids.map((id) => {
+      <ul className="flex flex-col divide-y divide-line">
+        {visibleIds.map((id) => {
           const e = projection.executions[id];
           if (!e) return null;
-          const round = e.iterationId ? projection.iterations[e.iterationId]?.no : null;
+          const identityId = `${identityPrefix}-${id}`;
+          const artifacts = Object.values(projection.artifacts).filter(
+            (artifact) => artifact.authorExecutionId === id,
+          );
+          const latest = artifacts.at(-1);
+          const readable = artifacts
+            .filter((artifact) => canReadArtifactBody(projection, artifact.artifactVersionId))
+            .at(-1);
           return (
-            <li key={id}>
-              <Button
-                variant={id === selectedExecutionId ? 'secondary' : 'ghost'}
-                size="compact"
-                aria-pressed={id === selectedExecutionId}
-                onClick={() => onChoose(id)}
-                className="w-full justify-between"
-              >
-                <span>
-                  {round ? `${tr('round', { no: round })} · ` : ''}
-                  {e.attemptNo > 1 ? `${tr('attempt', { no: e.attemptNo })} · ` : ''}
-                  <span className="font-mono">{id}</span>
-                </span>
+            <li key={id} data-execution-id={id} className="grid gap-1 px-2 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 break-words">
+                  {latest ? (
+                    readable?.artifactVersionId === latest.artifactVersionId && onOpenArtifact ? (
+                      <Button
+                        variant="ghost"
+                        size="compact"
+                        className="max-w-full justify-start whitespace-normal text-left"
+                        aria-describedby={identityId}
+                        onClick={() => onOpenArtifact(latest.artifactVersionId)}
+                      >
+                        {results('itemName', { name: latest.name, version: latest.version })}
+                      </Button>
+                    ) : (
+                      <div className="font-medium">
+                        {results('itemName', { name: latest.name, version: latest.version })}
+                      </div>
+                    )
+                  ) : null}
+                  <div id={identityId}>
+                    <ExecutionIdentity projection={projection} executionId={id} />
+                  </div>
+                </div>
                 <StatusBadge status={e.status} />
-              </Button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <Button
+                  variant={id === selectedExecutionId ? 'secondary' : 'ghost'}
+                  size="compact"
+                  aria-pressed={id === selectedExecutionId}
+                  aria-describedby={identityId}
+                  onClick={() => onChoose(id)}
+                >
+                  {m('details')}
+                </Button>
+                {readable &&
+                readable.artifactVersionId !== latest?.artifactVersionId &&
+                onOpenArtifact ? (
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    aria-describedby={identityId}
+                    onClick={() => onOpenArtifact(readable.artifactVersionId)}
+                  >
+                    {results('itemName', { name: readable.name, version: readable.version })}
+                  </Button>
+                ) : null}
+                {isActive(id) &&
+                projection.status !== 'cancelling' &&
+                e.status !== 'cancelling' &&
+                onSteer ? (
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    aria-describedby={identityId}
+                    onClick={() => onSteer(id)}
+                  >
+                    {m('steer')}
+                  </Button>
+                ) : null}
+              </div>
             </li>
           );
         })}
       </ul>
+      {preview && ids.length > visibleIds.length ? (
+        <Button variant="ghost" size="compact" className="justify-start" onClick={onShowAll}>
+          {t('allExecutions')} · {ids.length}
+        </Button>
+      ) : null}
     </section>
-  );
-}
-
-type RunPageView = 'results' | 'run';
-
-function ViewSwitch({ view, onView }: { view: RunPageView; onView: (view: RunPageView) => void }) {
-  const t = useTranslations('RunPage.view');
-  const next = view === 'run' ? 'results' : 'run';
-  return (
-    <Button variant="tertiary" size="compact" onClick={() => onView(next)}>
-      {t(next)}
-    </Button>
   );
 }

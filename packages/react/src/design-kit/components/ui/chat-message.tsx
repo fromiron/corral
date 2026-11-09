@@ -26,7 +26,7 @@ interface ChatMessageProps extends Omit<HTMLMotionProps<'div'>, 'children'> {
   size?: SizeVariant;
 }
 
-// ─── ChatMessage ──────────────────────────────────────────────────────────
+// ─── ChatMessage ─────────────────────────────────────────────────────────────
 // A single transcript entry. `layout="position"` lets earlier messages slide
 // up when a new one is appended.
 const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
@@ -81,7 +81,7 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
               'flex items-center gap-2 px-1 text-muted-foreground select-none',
               typeClass('caption', compact ? 'compact' : 'default'),
               !isTouch && [
-                'opacity-0 pointer-events-none transition-opacity duration-150',
+                'opacity-0 pointer-events-none transition-opacity duration-160',
                 'group-hover:opacity-100 group-hover:pointer-events-auto',
                 'group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
               ],

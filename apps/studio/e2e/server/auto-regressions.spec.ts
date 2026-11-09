@@ -41,7 +41,6 @@ test('a deleted selected team is unavailable, never silently auto', async ({ pag
   const sessionId = await autoSession(page, corral);
   const saved = await write(page, '/corrals', 'POST', {
     definition: linearCorral(['required_reviewer']),
-    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
   });
   await write(page, `/sessions/${sessionId}`, 'PATCH', {
     expectedRevision: 1,

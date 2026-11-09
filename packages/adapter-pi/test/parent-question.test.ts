@@ -285,7 +285,7 @@ it.each([
     if (!parentRole) throw new Error('missing parent role');
     if (sdk) for (const role of definition.roles) role.harness = harness.binding;
     const imported = importMarkdownAgent({
-      draft: { definition, layout: {} },
+      draft: { definition },
       candidate: parseMarkdownAgent(
         '---\nname: clarifier\ndescription: Ask about the output format\ntools: []\n---\nAsk your parent for the output format and continue.',
       ),

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AutoRoute } from './auto-team.ts';
-import { CancelScope, StartFrom } from './commands.ts';
+import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
 import {
   DecisionFailureReason,
   DecisionPrivacy,
@@ -112,16 +112,21 @@ export const RunStarted = event(
     resumedFrom: ResumedFrom.optional(),
     branchedFrom: BranchedFrom.optional(),
     limits: RunLimits,
-    usageLimits: z.literal('none').optional(),
     criteriaVersionId: Identifier.optional(),
     /** Judgment settings fixed for the run. Absent when the runtime has none. */
     decisions: RunDecisionSettings.optional(),
     reasoningApply: ReasoningApplySettings.optional(),
     /** The earlier version whose text this run's brief starts from. */
     startedFrom: StartFrom.optional(),
+    /** The finished run and step this run forked from, and the results copied from it. */
+    forkedFrom: ForkFrom.extend({
+      carried: z.array(z.strictObject({ nodeId: Identifier, artifactVersionIds: Ids })).max(200),
+    }).optional(),
     /** The session turns this run carries as conversation. */
     conversation: ContinuedConversation.optional(),
     harnesses: z.record(Identifier, EffectiveHarnessSnapshot).optional(),
+    /** The session project's checks a check Decision runs, pinned at start. */
+    checks: EffectiveHarnessSnapshot.shape.projectTools.unwrap().optional(),
     /** The auto choice the definition came from. */
     autoRoute: AutoRoute.optional(),
     /** the meeting answer this Run is; such Runs have no Corral usage limits. */
@@ -148,7 +153,7 @@ export const ExecutionCreated = event(
     nodeId: Identifier,
     taskId: Identifier,
     attemptNo: z.int().min(1),
-    depth: z.int().min(0).max(2),
+    depth: z.int().min(0),
     iterationId: Identifier.nullable(),
     modelProfile: Identifier,
     configRevision: z.int().min(0).optional(),
@@ -262,6 +267,13 @@ export const ArtifactVersionCreated = event(
     contextSnapshotId: Identifier.nullable(),
   }),
 );
+export const ArtifactContentReleased = event(
+  'artifact.content_released',
+  z.strictObject({
+    artifactVersionIds: z.array(Identifier),
+    reason: z.enum(['run_settled', 'superseded']),
+  }),
+);
 export const ArtifactRead = event(
   'artifact.read',
   z.strictObject({
@@ -324,7 +336,9 @@ export const LoopIterationStarted = event(
   z.strictObject({
     loopNodeId: Identifier,
     iterationId: Identifier,
-    no: z.int().min(1).max(10),
+    /** The round of the enclosing Loop this round runs in; absent before nested Loops ran. */
+    parentIterationId: Identifier.nullable().optional(),
+    no: z.int().min(1),
     pinnedCarryInputs: Ids,
     criteriaVersionId: Identifier,
   }),
@@ -334,15 +348,30 @@ export const LoopIterationFinished = event(
   z.strictObject({
     loopNodeId: Identifier,
     iterationId: Identifier,
-    outcome: z.enum(['pass', 'revise', 'inconclusive', 'cap_reached', 'cancelled']),
+    outcome: z.enum(['pass', 'revise', 'inconclusive', 'cap_reached', 'stalled', 'cancelled']),
     submittedVersionIds: Ids,
   }),
+);
+/** The run's whole breakpoint list after a start or a `set_breakpoints` command. */
+export const BreakpointsChanged = event(
+  'breakpoints.changed',
+  z.strictObject({ nodeIds: z.array(Identifier).max(200) }),
 );
 export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum(['final_output', 'loop_cap', 'user_action']),
+    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check', 'breakpoint']),
+    /** The step a `breakpoint` approval holds before it starts. */
+    nodeId: Identifier.optional(),
+    /** Why a Loop asks for another round: its round cap or a stall. */
+    loopStop: z.enum(['cap_reached', 'stalled']).optional(),
+    /** The connected routes a person may pick for a router that could not choose. */
+    routes: z
+      .array(z.strictObject({ id: Identifier, label: z.string().min(1) }))
+      .min(1)
+      .max(20)
+      .optional(),
     subjectVersionIds: Ids,
     criteriaVersionId: Identifier.nullable(),
     tool: z
@@ -378,8 +407,63 @@ export const ApprovalResolved = event(
     actor: Identifier,
     subjectVersionIds: Ids,
     reason: z.enum(['cancelled', 'timeout', 'execution_ended']).optional(),
+    /** The route a person picked when approving a `route` approval. */
+    routeId: Identifier.optional(),
   }),
 );
+/** A workflow routing fact, separate from observe-only reasoning-effort judgments. */
+/** A Join let one path continue; `any` names the steps of the branches it stopped. */
+export const WorkflowJoined = event(
+  'workflow.joined',
+  z.strictObject({
+    nodeId: Identifier,
+    policy: z.enum(['all', 'any']),
+    iterationId: Identifier.nullable(),
+    cancelledNodeIds: z.array(Identifier).max(1000),
+  }),
+);
+export const WorkflowBranchSelected = event(
+  'workflow.branch_selected',
+  z
+    .strictObject({
+      nodeId: Identifier,
+      mode: z.enum(['review', 'approval', 'rule', 'router', 'check']),
+      iterationId: Identifier.nullable(),
+      configRevision: z.int().min(0),
+      selectedPort: z.string().min(1).max(128),
+      targetNodeId: Identifier.nullable(),
+      targetPort: z.enum(['in', 'enter', 'repeat', 'exit']).nullable(),
+      reasonCode: z.enum([
+        'required_tasks_completed',
+        'tasks_unfinished',
+        'human_approval',
+        'review_verdict',
+        'review_checks_failed',
+        'criteria_changed',
+        'inconclusive_review_approval',
+        'external_policy',
+        'model_route',
+        'human_route',
+        'check_verdict',
+      ]),
+      evidenceRefs: z
+        .array(
+          z.strictObject({
+            kind: z.enum(['artifact', 'review', 'approval', 'check', 'task']),
+            id: Identifier,
+          }),
+        )
+        .max(1000),
+      executionRefs: z
+        .array(z.strictObject({ executionId: Identifier, attemptNo: z.int().min(1) }))
+        .max(1000),
+    })
+    .refine(
+      (value) => (value.targetNodeId === null) === (value.targetPort === null),
+      'branch destination must be complete',
+    ),
+);
+
 export const OutputFinalized = event(
   'output.finalized',
   z.strictObject({
@@ -449,7 +533,7 @@ export const CancelConfirmed = event(
   z.strictObject({ scope: CancelScope, settlementRefs: Ids, forced: z.boolean() }),
 );
 
-// ── effects, tools, models, budget ───────────────────────────────────────────
+// ── effects, tools, models, usage ────────────────────────────────────────────
 export const EffectAdmitted = event(
   'effect.admitted',
   z.strictObject({
@@ -457,7 +541,8 @@ export const EffectAdmitted = event(
     kind: z.enum(['model_request', 'tool', 'spawn', 'decision']),
     scope: Identifier,
     epoch: z.int().min(1),
-    reservationId: Identifier.nullable(),
+    /** The model call a model_request effect admits; null for every other effect. */
+    modelCallId: Identifier.nullable(),
   }),
 );
 export const EffectDispatchObserved = event(
@@ -551,49 +636,33 @@ export const ModelUsageReconciled = event(
   'model.usage_reconciled',
   ModelFinished.shape.payload.omit({ responseRef: true }),
 );
-export const BudgetReserved = event(
-  'budget.reserved',
+/**
+ * Usage spent outside the run's model calls: a team chooser call or an image generation.
+ * Unknown values are null, never zero; a later record with the same id fills only nulls.
+ */
+export const UsageRecorded = event(
+  'usage.recorded',
   z.strictObject({
-    reservationId: Identifier,
-    modelCallId: Identifier.nullable(),
-    amount: z.strictObject({
-      outputTokens: Count,
-      modelCalls: Count,
-      image: z.strictObject({ profileId: Identifier, costMicros: Count }).optional(),
-    }),
-    scope: Identifier,
-  }),
-);
-export const BudgetSettled = event(
-  'budget.settled',
-  z.strictObject({
-    reservationId: Identifier,
-    actual: z.strictObject({
-      outputTokens: Count.nullable(),
-      imageCostMicros: Count.nullable().optional(),
-      imageUsage: z
-        .strictObject({ inputTokens: Count.nullable(), outputTokens: Count.nullable() })
-        .optional(),
-    }),
-    unknownOutstanding: Count,
+    usageId: Identifier,
+    kind: z.enum(['auto_route', 'image']),
+    profileId: Identifier.nullable(),
+    inputTokens: Count.nullable(),
+    outputTokens: Count.nullable(),
+    costMicros: Count.nullable(),
   }),
 );
 export const LimitReached = event(
   'limit.reached',
   z.strictObject({
     limitKind: z.enum([
-      'model_calls',
-      'output_tokens',
       'spawns',
       'questions',
       'depth',
       'loop_iterations',
-      'deadline',
       'no_progress',
       'decision_calls',
     ]),
     used: Count,
-    reserved: Count,
     max: Count,
   }),
 );
@@ -798,6 +867,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   AnswerCommitted,
   MessageClosed,
   ArtifactVersionCreated,
+  ArtifactContentReleased,
   ArtifactRead,
   ReviewRecorded,
   RecipeEvaluated,
@@ -807,6 +877,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   LoopIterationFinished,
   ApprovalRequested,
   ApprovalResolved,
+  BreakpointsChanged,
   DirectiveAccepted,
   DirectiveAttached,
   DirectiveDispatched,
@@ -824,13 +895,14 @@ export const RunEvent = z.discriminatedUnion('type', [
   ModelRequestPrepared,
   ModelFinished,
   ModelUsageReconciled,
-  BudgetReserved,
-  BudgetSettled,
+  UsageRecorded,
   LimitReached,
   CancelRequested,
   CancelConfirmed,
   ObservationLate,
   OutputFinalized,
+  WorkflowBranchSelected,
+  WorkflowJoined,
   DecisionRequested,
   DecisionObserved,
   DecisionFailed,

@@ -8,19 +8,22 @@ import { afterEach, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => ({
   live: null as ReturnType<typeof createRunSession> | null,
   read: null as { resolve(view: unknown): void; reject(error: unknown): void } | null,
+  reads: 0,
 }));
 const services = vi.hoisted(() => ({
-  transport: {},
+  transport: { getSnapshot: vi.fn(), getArtifactText: vi.fn(), subscribe: vi.fn() },
   readHistory: async () => null,
   runFor: () => fixture.live,
   retainRun: () => () => {},
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => services }));
 vi.mock('./readRunView.ts', () => ({
-  readRunView: () =>
-    new Promise((resolve, reject) => {
+  readRunView: () => {
+    fixture.reads++;
+    return new Promise((resolve, reject) => {
       fixture.read = { resolve, reject };
-    }),
+    });
+  },
 }));
 const { useCorralRun } = await import('./useCorralChat.ts');
 
@@ -36,21 +39,72 @@ function projection(runId: string, status: 'running' | 'succeeded') {
   return value;
 }
 
+function resultProjection(bodyAvailable: boolean) {
+  const value = projection('run', 'succeeded');
+  value.artifacts.result = {
+    artifactVersionId: 'result',
+    artifactId: 'answer',
+    version: 1,
+    parentVersionId: null,
+    name: 'Answer',
+    contract: 'text',
+    contentHash: 'a'.repeat(64),
+    byteLength: 13,
+    authorExecutionId: 'exec',
+    modelCallId: null,
+    contextSnapshotId: null,
+    submitted: true,
+    configRevision: 0,
+    criteriaVersionId: null,
+    inputArtifactVersionIds: [],
+    bodyAvailable,
+  };
+  value.output = { nodeId: 'output', artifactVersionIds: ['result'] };
+  return value;
+}
+
 async function mount() {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.live = createRunSession({} as never);
+  fixture.reads = 0;
+  services.transport.getSnapshot.mockReset();
+  services.transport.getArtifactText.mockClear();
+  services.transport.subscribe.mockClear();
   const seen: {
     runId: string;
     status: string | null;
     error: string | null;
     texts?: Record<string, string>;
+    answer?: string | null;
+    metadataCurrent?: boolean;
+    bodyAvailable?: boolean;
   }[] = [];
-  function Probe({ runId, live }: { runId: string; live: boolean }) {
-    const { state } = useCorralRun(runId, live, false);
+  function Probe({
+    runId,
+    live,
+    metadataVersion,
+  }: {
+    runId: string;
+    live: boolean;
+    metadataVersion?: string;
+  }) {
+    const { state, conversationTurn, bodyMetadataCurrent } = useCorralRun(
+      runId,
+      live,
+      false,
+      metadataVersion,
+    );
     seen.push({
       runId,
       status: state.projection?.status ?? null,
       error: state.streamError ?? null,
+      ...(conversationTurn ? { answer: conversationTurn.answer } : {}),
+      ...(metadataVersion !== undefined
+        ? {
+            metadataCurrent: bodyMetadataCurrent,
+            bodyAvailable: state.projection?.artifacts.result?.bodyAvailable,
+          }
+        : {}),
       ...(Object.keys(state.artifactTexts).length ? { texts: state.artifactTexts } : {}),
     });
     return null;
@@ -58,8 +112,10 @@ async function mount() {
   const container = document.createElement('div');
   const root = createRoot(container);
   disposals.push(async () => act(async () => root.unmount()));
-  const render = (runId: string, live: boolean) =>
-    act(async () => root.render(<Probe runId={runId} live={live} />));
+  const render = (runId: string, live: boolean, metadataVersion?: string) =>
+    act(async () =>
+      root.render(<Probe runId={runId} live={live} metadataVersion={metadataVersion} />),
+    );
   await render('run', true);
   await act(async () =>
     fixture.live?.setState({ runId: 'run', projection: projection('run', 'running') }),
@@ -102,10 +158,86 @@ it('the finished view keeps result texts the live view already loaded', async ()
   await act(async () =>
     fixture.read?.resolve({
       runId: 'run',
-      projection: projection('run', 'succeeded'),
+      projection: resultProjection(true),
       artifactTexts: {},
     }),
   );
   expect(f.latest()?.status).toBe('succeeded');
   expect(f.latest()?.texts).toEqual({ result: 'Loaded answer' });
+});
+
+it('a finished snapshot discards released live bodies even when its ordinary answer is retained', async () => {
+  const f = await mount();
+  await act(async () =>
+    fixture.live?.setState({ artifactTexts: { result: 'Released artifact answer' } }),
+  );
+  await f.render('run', false);
+  await act(async () =>
+    fixture.read?.resolve({
+      runId: 'run',
+      projection: resultProjection(false),
+      artifactTexts: {},
+      conversationTurn: {
+        runId: 'run',
+        request: 'Question',
+        answer: 'Ordinary answer',
+        status: 'succeeded',
+        artifactVersionId: 'result',
+      },
+    }),
+  );
+  expect(f.latest()?.status).toBe('succeeded');
+  expect(f.latest()?.texts).toBeUndefined();
+});
+
+it('refreshes only eligibility metadata after a sibling success, preserving the answer and command owner', async () => {
+  const f = await mount();
+  await act(async () =>
+    fixture.live?.setState({
+      artifactTexts: { result: 'Cached artifact body' },
+      pendingCommandIds: ['owned_command'],
+    }),
+  );
+  await f.render('run', false, 'first_success');
+  await act(async () =>
+    fixture.read?.resolve({
+      runId: 'run',
+      projection: resultProjection(true),
+      artifactTexts: {},
+      conversationTurn: {
+        runId: 'run',
+        request: 'Question',
+        answer: 'Ordinary answer',
+        status: 'succeeded',
+        artifactVersionId: 'result',
+      },
+    }),
+  );
+  expect(f.latest()?.bodyAvailable).toBe(true);
+  expect(f.latest()?.texts).toEqual({ result: 'Cached artifact body' });
+  const reads = fixture.reads;
+  let resolve!: (snapshot: unknown) => void;
+  services.transport.getSnapshot.mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  await f.render('run', false, 'second_success');
+  expect(services.transport.getSnapshot).toHaveBeenCalledExactlyOnceWith('run');
+  expect(f.latest()?.metadataCurrent).toBe(false);
+  expect(f.latest()?.answer).toBe('Ordinary answer');
+  await act(async () => resolve({ projection: resultProjection(false), seq: 5 }));
+  expect(f.latest()).toMatchObject({
+    runId: 'run',
+    status: 'succeeded',
+    bodyAvailable: false,
+    metadataCurrent: true,
+    answer: 'Ordinary answer',
+  });
+  expect(f.latest()?.texts).toBeUndefined();
+  expect(fixture.reads).toBe(reads);
+  expect(services.transport.getArtifactText).not.toHaveBeenCalled();
+  expect(services.transport.subscribe).not.toHaveBeenCalled();
+  expect(fixture.live?.getState().pendingCommandIds).toEqual(['owned_command']);
 });

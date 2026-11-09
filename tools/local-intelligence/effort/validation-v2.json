@@ -1,0 +1,267 @@
+{
+  "corpusSha256": "2f3cea1d2ffac043ec8f886c6e57b30db35b5c73a52f6d4fa5ea0400ad5bd5f2",
+  "addedSha256": "89f7c960a02be51fe446156cb240b54d67b6ab45184c1e72a151f5664ba1a8bd",
+  "embedding": {
+    "release": "corral-local-ai-1",
+    "baseModelSha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb",
+    "preprocessVersion": "effort-text-v1",
+    "device": "cpu",
+    "count": 16123,
+    "dims": 768,
+    "samplesSha256": "2f3cea1d2ffac043ec8f886c6e57b30db35b5c73a52f6d4fa5ea0400ad5bd5f2"
+  },
+  "selection": "0.3 historical + 0.4 coding + 0.3 authored coding macro-F1; no validation accuracy/F1 regression on historical or coding; validation groups only",
+  "candidates": [
+    {
+      "name": "original-linear-0.1",
+      "augmented": false,
+      "score": 0.39230056473515007,
+      "eligible": false,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5007836990595611,
+          "macroF1": 0.49097363115745146,
+          "levelError": 0.6677115987460815
+        },
+        "coding": {
+          "accuracy": 0.4090909090909091,
+          "macroF1": 0.42006087100946904,
+          "levelError": 0.7896103896103897
+        },
+        "curriculum": {
+          "accuracy": 0.43333333333333335,
+          "macroF1": 0.2566137566137566,
+          "levelError": 0.6666666666666666
+        }
+      }
+    },
+    {
+      "name": "original-linear-1",
+      "augmented": false,
+      "score": 0.39341433147745497,
+      "eligible": false,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5,
+          "macroF1": 0.49062093171710086,
+          "levelError": 0.6700626959247649
+        },
+        "coding": {
+          "accuracy": 0.412987012987013,
+          "macroF1": 0.4231098124454944,
+          "levelError": 0.7857142857142857
+        },
+        "curriculum": {
+          "accuracy": 0.43333333333333335,
+          "macroF1": 0.2566137566137566,
+          "levelError": 0.6666666666666666
+        }
+      }
+    },
+    {
+      "name": "original-mlp32-1",
+      "augmented": false,
+      "score": 0.3928498996936431,
+      "eligible": false,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5094043887147336,
+          "macroF1": 0.49553917675809794,
+          "levelError": 0.6653605015673981
+        },
+        "coding": {
+          "accuracy": 0.4090909090909091,
+          "macroF1": 0.41079504199020966,
+          "levelError": 0.8025974025974026
+        },
+        "curriculum": {
+          "accuracy": 0.43333333333333335,
+          "macroF1": 0.2662337662337662,
+          "levelError": 0.6333333333333333
+        }
+      }
+    },
+    {
+      "name": "original-mlp32-10",
+      "augmented": false,
+      "score": 0.42577166222950197,
+      "eligible": true,
+      "validation": {
+        "historical": {
+          "accuracy": 0.530564263322884,
+          "macroF1": 0.5216096067645497,
+          "levelError": 0.6120689655172413
+        },
+        "coding": {
+          "accuracy": 0.43376623376623374,
+          "macroF1": 0.44638628616467835,
+          "levelError": 0.7402597402597403
+        },
+        "curriculum": {
+          "accuracy": 0.5,
+          "macroF1": 0.30244755244755245,
+          "levelError": 0.6
+        }
+      }
+    },
+    {
+      "name": "original-mlp64-10",
+      "augmented": false,
+      "score": 0.4270991494756773,
+      "eligible": true,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5274294670846394,
+          "macroF1": 0.5207843132660475,
+          "levelError": 0.6010971786833855
+        },
+        "coding": {
+          "accuracy": 0.43246753246753245,
+          "macroF1": 0.45215963873965753,
+          "levelError": 0.7116883116883117
+        },
+        "curriculum": {
+          "accuracy": 0.43333333333333335,
+          "macroF1": 0.3,
+          "levelError": 0.8
+        }
+      }
+    },
+    {
+      "name": "augmented-linear-0.1",
+      "augmented": true,
+      "score": 0.43820078878912494,
+      "eligible": false,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5,
+          "macroF1": 0.49268475880507695,
+          "levelError": 0.6598746081504702
+        },
+        "coding": {
+          "accuracy": 0.4090909090909091,
+          "macroF1": 0.4245273639079657,
+          "levelError": 0.7766233766233767
+        },
+        "curriculum": {
+          "accuracy": 0.5333333333333333,
+          "macroF1": 0.40194805194805194,
+          "levelError": 0.7
+        }
+      }
+    },
+    {
+      "name": "augmented-linear-1",
+      "augmented": true,
+      "score": 0.4483789304414497,
+      "eligible": false,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5015673981191222,
+          "macroF1": 0.49349929796884756,
+          "levelError": 0.6575235109717869
+        },
+        "coding": {
+          "accuracy": 0.4103896103896104,
+          "macroF1": 0.4249299954841314,
+          "levelError": 0.7779220779220779
+        },
+        "curriculum": {
+          "accuracy": 0.5666666666666667,
+          "macroF1": 0.4345238095238095,
+          "levelError": 0.6666666666666666
+        }
+      }
+    },
+    {
+      "name": "augmented-mlp32-1",
+      "augmented": true,
+      "score": 0.5011142065735492,
+      "eligible": false,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5133228840125392,
+          "macroF1": 0.49854165035404174,
+          "levelError": 0.6489028213166145
+        },
+        "coding": {
+          "accuracy": 0.42467532467532465,
+          "macroF1": 0.43147784497658553,
+          "levelError": 0.7688311688311689
+        },
+        "curriculum": {
+          "accuracy": 0.6333333333333333,
+          "macroF1": 0.5965352449223417,
+          "levelError": 0.36666666666666664
+        }
+      }
+    },
+    {
+      "name": "augmented-mlp32-10",
+      "augmented": true,
+      "score": 0.4671103490256061,
+      "eligible": true,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5344827586206896,
+          "macroF1": 0.5245441589529803,
+          "levelError": 0.6010971786833855
+        },
+        "coding": {
+          "accuracy": 0.44155844155844154,
+          "macroF1": 0.453295185566186,
+          "levelError": 0.7168831168831169
+        },
+        "curriculum": {
+          "accuracy": 0.5666666666666667,
+          "macroF1": 0.4280967570441255,
+          "levelError": 0.5666666666666667
+        }
+      }
+    },
+    {
+      "name": "augmented-mlp64-10",
+      "augmented": true,
+      "score": 0.4143380380166545,
+      "eligible": false,
+      "validation": {
+        "historical": {
+          "accuracy": 0.5164576802507836,
+          "macroF1": 0.5071314970247566,
+          "levelError": 0.627742946708464
+        },
+        "coding": {
+          "accuracy": 0.41688311688311686,
+          "macroF1": 0.42993256249863265,
+          "levelError": 0.7662337662337663
+        },
+        "curriculum": {
+          "accuracy": 0.4666666666666667,
+          "macroF1": 0.3007518796992481,
+          "levelError": 0.7
+        }
+      }
+    }
+  ],
+  "baselineValidation": {
+    "historical": {
+      "accuracy": 0.5109717868338558,
+      "macroF1": 0.5030154054212101,
+      "levelError": 0.6520376175548589
+    },
+    "coding": {
+      "accuracy": 0.42467532467532465,
+      "macroF1": 0.4362114022435567,
+      "levelError": 0.7584415584415585
+    },
+    "curriculum": {
+      "accuracy": 0.36666666666666664,
+      "macroF1": 0.23484848484848483,
+      "levelError": 0.8
+    }
+  },
+  "chosen": "augmented-mlp32-10",
+  "calibrationCount": 1287,
+  "temperature": 1.0803099764274189,
+  "abstainBelow": 0.27884437841684007
+}

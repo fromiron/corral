@@ -1,5 +1,15 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
-import type { RunProjection } from '@corral/core';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { canReadArtifactBody, type RunProjection, usageTotals } from '@corral/core';
+
+export function availableResultLinks(
+  projection: RunProjection | null,
+  items: readonly { artifactVersionId: string; name: string; version: number }[],
+) {
+  return items
+    .filter((item) => canReadArtifactBody(projection, item.artifactVersionId))
+    .map((item) => ({ id: item.artifactVersionId, label: `${item.name} v${item.version}` }));
+}
 
 /** Shell services can change files after the launch tool has already finished. */
 export function fileChangeSignals(
@@ -417,7 +427,7 @@ export function presentContext(input: {
   };
 }
 
-/** Why an outcome is unclear: an effect, usage still held against the budget, or a stop. */
+/** Why an outcome is unclear: an effect, unreported usage, or a stop. */
 export type UnclearCause = 'effect' | 'model' | 'usage' | 'termination';
 
 export function actionRequired(input: {
@@ -471,9 +481,8 @@ export function actionCopy(action: ReturnType<typeof actionRequired>) {
 
 export function effectAttention(projection: RunProjection | null) {
   const effects = Object.values(projection?.effects ?? {});
-  const budgetUnknown =
-    (projection?.budget.unknownOutstanding ?? 0) > 0 ||
-    (projection?.budget.imageUnknownOutstandingMicros ?? 0) > 0;
+  const totals = projection ? usageTotals(projection) : null;
+  const usageUnknown = (totals?.unknown ?? 0) > 0 || (totals?.imageCostUnknown ?? 0) > 0;
   const terminationUnknown =
     projection?.statusReason?.endsWith('termination_unconfirmed') === true ||
     Object.values(projection?.executions ?? {}).some(
@@ -484,16 +493,34 @@ export function effectAttention(projection: RunProjection | null) {
   const unclearCauses: UnclearCause[] = [
     ...(unknown.some((effect) => effect.kind !== 'model_request') ? (['effect'] as const) : []),
     ...(unknown.some((effect) => effect.kind === 'model_request') ? (['model'] as const) : []),
-    ...(budgetUnknown ? (['usage'] as const) : []),
+    ...(usageUnknown ? (['usage'] as const) : []),
     ...(terminationUnknown ? (['termination'] as const) : []),
   ];
   return {
     failedEffects: effects.filter((effect) => effect.outcome === 'failed').length,
     // A confirmed cancellation is a settled outcome. Unknown effects, unconfirmed cleanup
-    // and still-held billing remain actionable even when the run was intentionally stopped.
-    unclearEffects: Math.max(unknownEffects, budgetUnknown || terminationUnknown ? 1 : 0),
+    // and unreported usage stay visible even when the run was intentionally stopped.
+    unclearEffects: Math.max(unknownEffects, usageUnknown || terminationUnknown ? 1 : 0),
     unclearCauses,
   };
+}
+
+/** One current attempt per task; retry history stays in the execution view. */
+export function currentAgentExecutions(projection: RunProjection | null) {
+  if (!projection) return [];
+  const latest = new Map<string, RunProjection['executions'][string]>();
+  for (const id of projection.executionOrder) {
+    const execution = projection.executions[id];
+    if (!execution) continue;
+    const previous = latest.get(execution.taskId);
+    if (!previous || previous.attemptNo <= execution.attemptNo)
+      latest.set(execution.taskId, execution);
+  }
+  return [...latest.values()].map((last) => {
+    const activeId = projection.tasks[last.taskId]?.activeExecutionId;
+    const active = activeId ? projection.executions[activeId] : undefined;
+    return active?.taskId === last.taskId && active.nodeId === last.nodeId ? active : last;
+  });
 }
 
 export function agentActivity(executions: ExecutionFact[]) {
@@ -511,7 +538,7 @@ export function agentActivity(executions: ExecutionFact[]) {
     (execution) => !execution.ended && waitingStatuses.has(execution.status),
   ).length;
   const failed = executions.filter((execution) => execution.status === 'failed').length;
-  return executions.length > 1 || waiting > 0 || failed > 0
+  return executions.length > 1 || working > 0 || waiting > 0 || failed > 0
     ? { total: executions.length, working, waiting, failed }
     : null;
 }
@@ -542,16 +569,17 @@ export type WidgetChip = 'context' | 'environment' | 'agents' | 'changes';
 
 /** What the Usage widget states about a run. Limits are null when none apply. */
 export interface UsageSummary {
-  spent: number;
-  reserved: number;
+  /** Output tokens the providers reported. */
+  outputTokens: number;
+  requests: number;
+  /** Requests that ended without reported output usage; never counted as zero. */
   unknown: number;
-  tokenLimit: number | null;
-  calls: number;
-  callLimit: number | null;
   /** Output tokens of the latest finished calls with reported usage, oldest first. */
   perCall: number[];
   /** reported input of finished calls; null when none reported it. */
   input: UsageInput | null;
+  /** Completed calls without input usage; excluded from the known input total. */
+  inputUnreported: number;
 }
 
 export interface UsageInput {
@@ -566,27 +594,22 @@ export interface UsageInput {
 
 const PER_CALL_BARS = 12;
 
-export function usageSummary(
-  projection: RunProjection | null,
-  limits: { maxOutputTokens: number; maxModelCalls: number } | null,
-): UsageSummary | null {
+export function usageSummary(projection: RunProjection | null): UsageSummary | null {
   if (!projection) return null;
-  const { budget } = projection;
+  const totals = usageTotals(projection);
   const perCall = Object.values(projection.modelCalls).flatMap((call) =>
     call.finished && call.usage?.outputTokens != null ? [call.usage.outputTokens] : [],
   );
-  if (!budget.modelCalls && !budget.spent && !budget.unknownOutstanding && !perCall.length)
-    return null;
-  const unlimited = projection.usageLimits === 'none' || !limits;
+  if (!totals.requests && !perCall.length) return null;
   return {
-    spent: budget.spent,
-    reserved: budget.reserved,
-    unknown: budget.unknownOutstanding,
-    tokenLimit: unlimited ? null : limits.maxOutputTokens,
-    calls: budget.modelCalls,
-    callLimit: unlimited ? null : limits.maxModelCalls,
+    outputTokens: totals.outputTokens,
+    requests: totals.requests,
+    unknown: totals.unknown,
     perCall: perCall.slice(-PER_CALL_BARS),
     input: usageInput(projection),
+    inputUnreported: Object.values(projection.modelCalls).filter(
+      (call) => call.finished && call.usage?.inputTokens == null,
+    ).length,
   };
 }
 
@@ -658,20 +681,27 @@ export function sessionStats(
   };
 }
 
-export type OverviewWidget = 'context' | 'usage' | 'results' | 'changes' | 'agents' | 'environment';
+export type OverviewWidget = 'attention' | 'context' | 'usage' | 'results' | 'changes' | 'agents';
 
-/** The Overview's widgets in their fixed order; one with nothing to say is left out. */
+/**
+ * Put the current task ahead of telemetry, then lead with results after it ends. The execution
+ * environment is not a widget: the composer status line and the Run screen state it.
+ */
 export function overviewWidgets(input: {
   chips: readonly WidgetChip[];
   usage: UsageSummary | null;
   results: readonly unknown[];
+  live?: boolean;
+  action?: { needsUser: boolean };
 }): OverviewWidget[] {
-  const shown = new Set<OverviewWidget>(input.chips);
+  const shown = new Set<string>(input.chips);
+  if (input.action?.needsUser) shown.add('attention');
   if (input.usage) shown.add('usage');
   if (input.results.length) shown.add('results');
-  return (['context', 'usage', 'results', 'changes', 'agents', 'environment'] as const).filter(
-    (widget) => shown.has(widget),
-  );
+  const primary: OverviewWidget[] = input.live
+    ? ['attention', 'agents', 'results', 'changes']
+    : ['attention', 'results', 'changes', 'agents'];
+  return [...primary, 'context' as const, 'usage' as const].filter((widget) => shown.has(widget));
 }
 
 export function visibleWidgets(input: {
@@ -687,7 +717,13 @@ export function visibleWidgets(input: {
   if (input.environment && (input.environment.simulated || input.environment.restricted))
     chips.push('environment');
   const agents = input.agents;
-  if (agents.total > 1 || agents.delegated || agents.waiting > 0 || agents.failed > 0)
+  if (
+    agents.total > 1 ||
+    agents.delegated ||
+    agents.working > 0 ||
+    agents.waiting > 0 ||
+    agents.failed > 0
+  )
     chips.push('agents');
   if (input.changes) chips.push('changes');
   return chips;
@@ -780,4 +816,18 @@ export function viewedRun(input: {
     number: index + 1,
     total: input.runIds.length,
   };
+}
+
+/**
+ * Whether the composer shows its run status pill. A live run's status and controls belong to the
+ * top bar, so the pill appears only when the person is needed, when the state cannot be read,
+ * and for an ended run.
+ */
+export function composerShowsRunStatus(input: {
+  runStatus: string | null;
+  readState: 'empty' | 'loading' | 'ready' | 'error';
+  needsAction: boolean;
+}): boolean {
+  if (input.needsAction || input.readState === 'error') return true;
+  return input.runStatus !== null && (TERMINAL_RUN_STATUSES as Set<string>).has(input.runStatus);
 }

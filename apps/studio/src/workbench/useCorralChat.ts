@@ -1,11 +1,17 @@
+import { canReadArtifactBody, type RunProjection, type StoredConversationTurn } from '@corral/core';
 import { createRunSession } from '@corral/react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import { readRunView } from './readRunView.ts';
 
 /** Reading another turn must not replace the active run's command/retry state. */
-export function useCorralRun(runId: string, live: boolean, details: boolean) {
+export function useCorralRun(
+  runId: string,
+  live: boolean,
+  details: boolean,
+  metadataVersion?: string,
+) {
   const { transport, readHistory, runFor, retainRun } = useServices();
   const own = useMemo(() => {
     void runId;
@@ -16,7 +22,18 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
   const store = live ? runFor(runId) : own;
   const readDetails = !live && details;
   const state = useStore(store);
+  const revision = useRef(metadataVersion);
+  revision.current = metadataVersion;
+  const checked = useRef<{ store: typeof own; runId: string; revision: string | undefined } | null>(
+    null,
+  );
+
   const last = useRef<{ runId: string; store: typeof store; state: typeof state } | null>(null);
+  const [conversation, setConversation] = useState<{
+    runId: string;
+    turn: StoredConversationTurn | null;
+  } | null>(null);
+  const conversationTurn = !live && conversation?.runId === runId ? conversation.turn : null;
   useEffect(() => {
     if (live) {
       const release = retainRun(runId);
@@ -24,19 +41,27 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
       return release;
     }
     let current = true;
+    const readRevision = revision.current;
     void readRunView(transport, readHistory, runId, readDetails).then(
       (view) => {
-        if (current)
+        if (current) {
+          const { conversationTurn: turn, ...runView } = view;
+          const projection = keepKnownReleases(view.projection, own.getState().projection);
+          checked.current = { store: own, runId, revision: readRevision };
+          setConversation({ runId, turn });
           own.setState({
-            ...view,
-            // Result texts are per version and immutable: keep what the live view already
-            // read, so a finishing turn does not blank its answer while reading it again.
-            artifactTexts: {
-              ...(last.current?.runId === runId ? last.current.state.artifactTexts : {}),
-              ...own.getState().artifactTexts,
-              ...view.artifactTexts,
-            },
+            ...runView,
+            projection,
+            // Keep only still-readable bodies across the live-to-snapshot handoff.
+            artifactTexts: Object.fromEntries(
+              Object.entries({
+                ...(last.current?.runId === runId ? last.current.state.artifactTexts : {}),
+                ...own.getState().artifactTexts,
+                ...view.artifactTexts,
+              }).filter(([id]) => canReadArtifactBody(projection, id)),
+            ),
           });
+        }
       },
       (error: unknown) => {
         if (current)
@@ -51,6 +76,56 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
       own.getState().dispose();
     };
   }, [own, store, runId, transport, readHistory, live, readDetails, retainRun]);
+  // A newer successful sibling can retire a completed result while this card stays mounted.
+  // The host already observes that success; this reads only current metadata, never its archive/body.
+  useEffect(() => {
+    if (live || metadataVersion === undefined || state.runId !== runId || !state.projection) return;
+    if (
+      checked.current?.store === own &&
+      checked.current.runId === runId &&
+      checked.current.revision === metadataVersion
+    )
+      return;
+    let current = true;
+    void transport
+      .getSnapshot(runId)
+      .then(({ projection: next }) => {
+        if (!current) return;
+        if (next.runId !== runId) throw new Error('The run metadata does not match this turn.');
+        const before = own.getState();
+        const projection = keepKnownReleases(next, before.projection);
+        checked.current = { store: own, runId, revision: metadataVersion };
+        own.setState({
+          projection,
+          artifactTexts: Object.fromEntries(
+            Object.entries(before.artifactTexts).filter(([id]) =>
+              canReadArtifactBody(projection, id),
+            ),
+          ),
+          streams: Object.fromEntries(
+            Object.entries(before.streams).filter(([id]) => {
+              const ref = projection.modelCalls[id]?.responseRef;
+              return !!ref && canReadArtifactBody(projection, ref);
+            }),
+          ),
+          streamError: null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (current)
+          own.setState({ streamError: error instanceof Error ? error.message : String(error) });
+      });
+    return () => {
+      current = false;
+    };
+  }, [own, runId, transport, live, metadataVersion, state.runId, state.projection]);
+  const bodyMetadataCurrent =
+    live ||
+    metadataVersion === undefined ||
+    !checked.current ||
+    checked.current.store !== own ||
+    checked.current.runId !== runId ||
+    checked.current.revision === metadataVersion;
   useEffect(() => () => own.getState().dispose(), [own]);
   const current = state.runId === runId ? state : null;
   // A finishing turn swaps the live store for a finished snapshot that loads asynchronously.
@@ -58,9 +133,28 @@ export function useCorralRun(runId: string, live: boolean, details: boolean) {
   if (current?.projection) last.current = { runId, store, state: current };
   const kept = last.current;
   if (!current?.projection && !current?.streamError && kept?.runId === runId)
-    return { store: kept.store, state: kept.state };
+    return { store: kept.store, state: kept.state, conversationTurn, bodyMetadataCurrent };
   return {
     store,
     state: current ?? { ...state, projection: null, definition: null, streamError: null },
+    conversationTurn,
+    bodyMetadataCurrent,
   };
+}
+
+/** A late archive read cannot restore a body already confirmed as released for this Run. */
+function keepKnownReleases(next: RunProjection, previous: RunProjection | null): RunProjection {
+  if (previous?.runId !== next.runId) return next;
+  const retired = Object.values(previous.artifacts).filter(
+    (artifact) =>
+      artifact.bodyAvailable === false &&
+      next.artifacts[artifact.artifactVersionId]?.bodyAvailable !== false,
+  );
+  if (!retired.length) return next;
+  const artifacts = { ...next.artifacts };
+  for (const artifact of retired) {
+    const incoming = artifacts[artifact.artifactVersionId];
+    if (incoming) artifacts[artifact.artifactVersionId] = { ...incoming, bodyAvailable: false };
+  }
+  return { ...next, artifacts };
 }

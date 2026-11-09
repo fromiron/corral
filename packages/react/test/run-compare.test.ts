@@ -4,6 +4,14 @@ import { projectionWith } from '../src/stories/fixtures.tsx';
 
 // Roadmap 16: two runs side by side, on the figures the eval report uses.
 
+const calls = (tokens: number[]) =>
+  Object.fromEntries(
+    tokens.map((outputTokens, index) => [
+      `call_${index}`,
+      { modelCallId: `call_${index}`, executionId: 'e', finished: true, usage: { outputTokens } },
+    ]),
+  ) as never;
+
 const run = (overrides: Parameters<typeof projectionWith>[0]) =>
   projectionWith({
     status: 'succeeded',
@@ -17,7 +25,7 @@ describe('compareRuns', () => {
   it('lines up status, time, calls, tokens, rounds and models, and marks what differs', () => {
     const a = run({
       runId: 'run_a',
-      budget: { ...projectionWith({}).budget, spent: 1_200, modelCalls: 6 },
+      modelCalls: calls([200, 200, 200, 200, 200, 200]),
       modelProfiles: {
         'model-a': { profile: 'model-a', provider: 'openai', modelId: 'gpt-a', auth: 'api_key' },
       },
@@ -27,15 +35,23 @@ describe('compareRuns', () => {
           loopNodeId: 'l',
           no: 1,
           criteriaVersionId: 'c',
+          parentIterationId: null,
           outcome: 'revise',
         },
-        i2: { iterationId: 'i2', loopNodeId: 'l', no: 2, criteriaVersionId: 'c', outcome: 'pass' },
+        i2: {
+          iterationId: 'i2',
+          loopNodeId: 'l',
+          no: 2,
+          criteriaVersionId: 'c',
+          parentIterationId: null,
+          outcome: 'pass',
+        },
       },
     });
     const b = run({
       runId: 'run_b',
       endedAt: '2026-10-16T00:01:15.000Z',
-      budget: { ...projectionWith({}).budget, spent: 800, modelCalls: 6 },
+      modelCalls: calls([100, 100, 100, 100, 200, 200]),
       modelProfiles: {
         'model-a': { profile: 'model-a', provider: 'openai', modelId: 'gpt-b', auth: 'api_key' },
       },

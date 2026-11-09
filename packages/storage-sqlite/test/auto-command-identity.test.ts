@@ -112,8 +112,8 @@ describe('durable auto command identity', () => {
     );
     const failure = await first.starter.start(refused, { fileTools: false });
     expect(failure.receipt.error?.code).toBe('TARGET_NOT_FOUND');
-    const budget = first.coordinator.getSnapshot(success.runId ?? '').projection.budget;
-    expect(budget.modelCalls).toBe(2);
+    const usage = first.coordinator.getSnapshot(success.runId ?? '').projection.usage;
+    expect(Object.values(usage)).toHaveLength(1);
     first.db.close();
 
     const restarted = open();
@@ -128,9 +128,7 @@ describe('durable auto command identity', () => {
       expect(changed.runId).toBeNull();
     }
     expect(calls).toBe(2);
-    expect(restarted.coordinator.getSnapshot(success.runId ?? '').projection.budget).toEqual(
-      budget,
-    );
+    expect(restarted.coordinator.getSnapshot(success.runId ?? '').projection.usage).toEqual(usage);
     restarted.db.close();
   });
 });

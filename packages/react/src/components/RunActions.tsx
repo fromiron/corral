@@ -1,7 +1,7 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button } from '../design-kit/index.ts';
+import { Button, Popover, PopoverPopup, PopoverTrigger } from '../design-kit/index.ts';
 import { useCancelConfirmation } from '../run/cancel-confirmation.ts';
 import type { RunSessionStore, SessionCommand } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
@@ -37,6 +37,50 @@ export function RunActions({
       .sendCommand(command)
       .catch(() => undefined);
   };
+  const confirming = showCancel && confirmCancel && !terminal;
+  const confirmation = (
+    <div
+      className={
+        compact
+          ? 'flex max-w-72 flex-col gap-2 text-xs'
+          : 'flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/5 p-3'
+      }
+    >
+      <p>{t('cancelRunExplain')}</p>
+      <p role="status">{t('cancelNotSent')}</p>
+      <div className="flex flex-wrap gap-1">
+        <Button
+          variant="destructive"
+          size="compact"
+          disabled={pending}
+          onClick={() => {
+            const chosen = shownRun;
+            setConfirmCancel(false);
+            if (session.getState().runId !== chosen) return;
+            send({
+              type: 'cancel',
+              payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' },
+            });
+          }}
+        >
+          {t('confirmCancelRun')}
+        </Button>
+        <Button variant="tertiary" size="compact" onClick={() => setConfirmCancel(false)}>
+          {t('keepRunning')}
+        </Button>
+      </div>
+    </div>
+  );
+  const cancelButton = (
+    <Button
+      variant="ghost-destructive"
+      size="compact"
+      disabled={pending || projection.status === 'cancelling'}
+      onClick={() => setConfirmCancel(true)}
+    >
+      {t('cancelRun')}
+    </Button>
+  );
   return (
     <section
       aria-label={t('runControls')}
@@ -65,45 +109,20 @@ export function RunActions({
           >
             {projection.status === 'paused' ? t('resume') : t('pause')}
           </Button>
-          {showCancel ? (
-            <Button
-              variant="ghost-destructive"
-              size="compact"
-              disabled={pending || projection.status === 'cancelling'}
-              onClick={() => setConfirmCancel(true)}
-            >
-              {t('cancelRun')}
-            </Button>
+          {showCancel && compact ? (
+            // In a one-line bar the confirmation opens beside the button instead of growing the bar.
+            <Popover open={confirming} onOpenChange={setConfirmCancel}>
+              <PopoverTrigger render={cancelButton} />
+              <PopoverPopup align="end" side="bottom" width="sm" aria-label={t('cancelRun')}>
+                {confirmation}
+              </PopoverPopup>
+            </Popover>
+          ) : showCancel ? (
+            cancelButton
           ) : null}
         </div>
       ) : null}
-      {showCancel && confirmCancel && !terminal ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/5 p-3">
-          <p>{t('cancelRunExplain')}</p>
-          <p role="status">{t('cancelNotSent')}</p>
-          <div className="flex flex-wrap gap-1">
-            <Button
-              variant="destructive"
-              size="compact"
-              disabled={pending}
-              onClick={() => {
-                const chosen = shownRun;
-                setConfirmCancel(false);
-                if (session.getState().runId !== chosen) return;
-                send({
-                  type: 'cancel',
-                  payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' },
-                });
-              }}
-            >
-              {t('confirmCancelRun')}
-            </Button>
-            <Button variant="tertiary" size="compact" onClick={() => setConfirmCancel(false)}>
-              {t('keepRunning')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {!compact && confirming ? confirmation : null}
       <CommandReceipts session={session} target={`run:${projection.runId}`} />
     </section>
   );

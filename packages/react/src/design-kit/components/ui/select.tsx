@@ -21,6 +21,7 @@ import {
 import { useFluidHover, useRegisterFluidHoverItem } from '../../hooks/use-fluid-hover.ts';
 import { useKeyboardNavGate } from '../../hooks/use-keyboard-nav-gate.ts';
 import { Elevated } from '../../lib/elevated.tsx';
+import { focusRing } from '../../lib/focus.ts';
 import type { IconComponent } from '../../lib/icon-context.tsx';
 import {
   isDisabledRow,
@@ -30,17 +31,17 @@ import {
 } from '../../lib/popup.ts';
 import { shapeMap, useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
-import { exitFallbackMs, spring } from '../../lib/springs.ts';
+import { exitFallbackMs, spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import { FluidHoverHighlight } from './fluid-hover-highlight.tsx';
 import { ScrollArea } from './scroll-area.tsx';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Select context
 //
 // Every close calls preventUnmountOnClose; SelectContent releases the unmount
 // through actionsRef once the exit spring ends.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // How long a picked item holds the popup open, so the checkmark and selected
 // background are seen. Escape and outside presses still close immediately.
@@ -69,9 +70,7 @@ interface SelectContentContextValue {
 
 const SelectContentContext = createContext<SelectContentContextValue | null>(null);
 
-// ---------------------------------------------------------------------------
-// Select (root)
-// ---------------------------------------------------------------------------
+// ─── Select (root) ───────────────────────────────────────────────────────────
 
 // The popup always uses "rounded" radii: pill corners would break the
 // concentric fit of the rows' hover and selection backgrounds.
@@ -213,16 +212,14 @@ function Select({
 
 Select.displayName = 'Select';
 
-// ---------------------------------------------------------------------------
-// SelectTrigger
-// ---------------------------------------------------------------------------
+// ─── SelectTrigger ───────────────────────────────────────────────────────────
 
 const triggerVariants = cva(
   [
-    'group inline-flex items-center justify-between outline-none cursor-pointer',
+    'group inline-flex items-center justify-between cursor-pointer',
+    focusRing,
     'transition-all duration-80',
     'disabled:opacity-50 disabled:pointer-events-none',
-    'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
   ],
   {
     variants: {
@@ -329,9 +326,7 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
 
 SelectTrigger.displayName = 'SelectTrigger';
 
-// ---------------------------------------------------------------------------
-// SelectContent
-// ---------------------------------------------------------------------------
+// ─── SelectContent ───────────────────────────────────────────────────────────
 
 interface SelectContentProps {
   align?: ComponentProps<typeof SelectPrimitive.Positioner>['align'];
@@ -516,7 +511,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                             exit={{ opacity: 0, transition: spring.moderate.exit }}
                             transition={{
                               ...spring.moderate,
-                              opacity: { duration: 0.08 },
+                              opacity: tween.fast,
                             }}
                           />
                         )}
@@ -531,7 +526,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                       <AnimatePresence>
                         {focusRect && (
                           <motion.div
-                            className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                            className={`absolute ${shape.focusRing} pointer-events-none z-20 border-2 border-[color:var(--focus-ring)]`}
                             initial={false}
                             animate={{
                               left: focusRect.left - 2,
@@ -542,7 +537,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                             exit={{ opacity: 0, transition: spring.fast.exit }}
                             transition={{
                               ...spring.fast,
-                              opacity: { duration: 0.08 },
+                              opacity: tween.fast,
                             }}
                           />
                         )}
@@ -563,9 +558,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
 
 SelectContent.displayName = 'SelectContent';
 
-// ---------------------------------------------------------------------------
-// SelectItem
-// ---------------------------------------------------------------------------
+// ─── SelectItem ──────────────────────────────────────────────────────────────
 
 interface SelectItemProps extends HTMLAttributes<HTMLDivElement> {
   icon?: IconComponent;
@@ -661,11 +654,11 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
                   initial={{ pathLength: 0 }}
                   animate={{
                     pathLength: 1,
-                    transition: { duration: 0.08, ease: 'easeOut' },
+                    transition: tween.fast,
                   }}
                   exit={{
                     pathLength: 0,
-                    transition: { duration: 0.04, ease: 'easeIn' },
+                    transition: tween.fast.exit,
                   }}
                 />
               </motion.svg>
@@ -679,9 +672,7 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
 
 SelectItem.displayName = 'SelectItem';
 
-// ---------------------------------------------------------------------------
-// SelectGroup + SelectLabel + SelectSeparator
-// ---------------------------------------------------------------------------
+// ─── SelectGroup + SelectLabel + SelectSeparator ─────────────────────────────
 
 function SelectGroup({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
@@ -727,9 +718,7 @@ const SelectSeparator = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement
 
 SelectSeparator.displayName = 'SelectSeparator';
 
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
+// ─── Exports ─────────────────────────────────────────────────────────────────
 
 export type { SelectContentProps, SelectItemProps, SelectProps, SelectTriggerProps };
 export {

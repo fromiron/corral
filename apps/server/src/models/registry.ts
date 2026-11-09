@@ -24,12 +24,12 @@ import {
   AUTO_ROUTE_MAX_RESPONSE_BYTES,
   AUTO_ROUTE_TIMEOUT_MS,
   autoRouterPrompt,
+  FALLBACK_OUTPUT_TOKENS,
   fixedReasoning,
   type ModelResolution,
   type ModelResolver,
   type RouteAnswer,
   resolveProfileContext,
-  SPEC_HARD_CAPS,
 } from '@corral/core';
 import { accountModelStream, withSessionAffinityOptions } from '@corral/pi-runtime-port';
 import type {
@@ -165,7 +165,6 @@ export interface ModelProfileView {
 
 export interface RegistryOptions {
   configRevision?: string;
-  maxOutputTokensPerCall?: number;
   credentials: CredentialStore;
   getDeviceId(): string;
   now?: () => number;
@@ -728,11 +727,7 @@ export class ModelRegistry implements ModelResolver {
         source: endpoint ? (configured !== undefined ? 'endpoint' : 'fallback') : 'catalog',
       },
       configRevision,
-      model
-        ? 'maxTokens' in model
-          ? model.maxTokens
-          : model.maxOutput
-        : (this.options.maxOutputTokensPerCall ?? SPEC_HARD_CAPS.maxOutputTokensPerCall),
+      model ? ('maxTokens' in model ? model.maxTokens : model.maxOutput) : FALLBACK_OUTPUT_TOKENS,
     );
   }
 

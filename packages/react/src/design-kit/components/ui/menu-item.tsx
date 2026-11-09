@@ -17,15 +17,16 @@ import { fontWeights } from '../../lib/font-weight.ts';
 import type { IconComponent } from '../../lib/icon-context.tsx';
 import { shapeMap } from '../../lib/shape-context.tsx';
 import { useSize } from '../../lib/size-context.tsx';
+import { tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 
 // Dropdown opts out of the global pill shape (see dropdown.tsx).
 const shape = shapeMap.rounded;
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Dropdown context — defined here so MenuItem stays primitive-free;
 // dropdown.tsx re-exports useDropdown.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /** What MenuItem hands the popup's primitive wrapper: the styled row
  *  `element` and its `children`, wrapped in the dropdown's Item primitive. */
@@ -220,11 +221,11 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
                 initial={{ pathLength: 0 }}
                 animate={{
                   pathLength: 1,
-                  transition: { duration: 0.08, ease: 'easeOut' },
+                  transition: tween.fast,
                 }}
                 exit={{
                   pathLength: 0,
-                  transition: { duration: 0.04, ease: 'easeIn' },
+                  transition: tween.fast.exit,
                 }}
               />
             </motion.svg>

@@ -3,10 +3,9 @@ import {
   AutoReasoning,
   AutoRoute,
   AutoRouteLevel,
-  CanvasLayout,
   type Clock,
   CommandError,
-  type CorralDefinition,
+  CorralDefinition,
   CorralDefinitionDraft,
   HarnessBindingRef,
   type ImageAttachment,
@@ -14,7 +13,6 @@ import {
   MeetingConfig,
   MeetingHandoffOrigin,
   MeetingState,
-  type NodeLayout,
   PermissionMode,
   RunInput,
   type TextAttachment,
@@ -26,8 +24,7 @@ import { validTextAttachments } from '../attachments.ts';
 import { canonicalJson } from '../canonical-json.ts';
 import { definitionHash } from '../definition-hash.ts';
 
-// Saved Corrals. Definition and layout are versioned separately: moving nodes bumps
-// only layoutRevision; changing what runs bumps definitionRevision.
+// Saved Corrals. Changing what runs bumps definitionRevision; every revision stays readable.
 // Work in progress may be saved: records hold the draft schema, runs compile the strict one.
 // The browser uses this over localStorage until the local server replaces it (P2, PUT /corrals).
 
@@ -191,8 +188,6 @@ export interface CorralRecord {
   definition: CorralDefinition;
   definitionRevision: number;
   definitionHash: string;
-  layout: CanvasLayout;
-  layoutRevision: number;
   updatedAt: string;
 }
 
@@ -201,14 +196,12 @@ export interface CorralSummary {
   projectId: string;
   name: string;
   definitionRevision: number;
-  layoutRevision: number;
   nodeCount: number;
   updatedAt: string;
 }
 
 export interface SaveRequest {
   definition: CorralDefinition;
-  layout: { nodes: Record<string, NodeLayout>; viewport: CanvasLayout['viewport'] };
   /** null creates a new Corral; otherwise the revision this edit started from. */
   expectedDefinitionRevision: number | null;
   /** Where a new Corral goes; the default project when absent. Ignored on edits. */
@@ -216,7 +209,7 @@ export interface SaveRequest {
 }
 
 export type SaveResult =
-  | { ok: true; record: CorralRecord; changed: { definition: boolean; layout: boolean } }
+  | { ok: true; record: CorralRecord; changed: { definition: boolean } }
   | {
       ok: false;
       error: 'revision_conflict' | 'not_found' | 'storage_unavailable';
@@ -226,6 +219,11 @@ export type SaveResult =
 export interface CorralRepository {
   list(): Promise<CorralSummary[]>;
   get(corralId: string): Promise<CorralRecord | null>;
+  /**
+   * A saved revision as a runnable definition, as a run would read it; null when that revision
+   * was never saved or is not runnable yet.
+   */
+  getRevision(corralId: string, definitionRevision: number): Promise<CorralDefinition | null>;
   save(request: SaveRequest): Promise<SaveResult>;
   duplicate(corralId: string, name: string): Promise<SaveResult>;
   remove(corralId: string): Promise<void>;
@@ -708,7 +706,7 @@ export function planMove(
   return {
     ok: true,
     record: { ...current, projectId, updatedAt: now },
-    changed: { definition: false, layout: false },
+    changed: { definition: false },
   };
 }
 
@@ -735,6 +733,9 @@ const INDEX_KEY = `${PREFIX}index`;
 const PROJECTS_KEY = `${PREFIX}projects`;
 const SESSIONS_KEY = `${PREFIX}sessions`;
 const recordKey = (corralId: string) => `${PREFIX}corral:${corralId}`;
+// Every saved definition revision stays readable: reference Teams and runs name one.
+const revisionKey = (corralId: string, revision: number) =>
+  `${PREFIX}definition:${corralId}:${revision}`;
 
 const StoredRecord = z.strictObject({
   corralId: z.string().min(1),
@@ -744,8 +745,6 @@ const StoredRecord = z.strictObject({
   definition: CorralDefinitionDraft,
   definitionRevision: z.int().min(1),
   definitionHash: z.string(),
-  layout: CanvasLayout,
-  layoutRevision: z.int().min(1),
   updatedAt: z.string(),
 });
 
@@ -769,7 +768,6 @@ export function planSave(
     // A new Corral always gets its own id, even when imported from a file.
     return planCreate(
       request.definition,
-      request.layout,
       context.newCorralId(),
       context.now,
       request.projectId ?? DEFAULT_PROJECT_ID,
@@ -789,26 +787,18 @@ export function planSave(
     };
   }
   const hash = definitionHash(request.definition);
-  const definitionChanged = hash !== current.definitionHash;
-  const layoutChanged =
-    canonicalJson({ nodes: request.layout.nodes, viewport: request.layout.viewport }) !==
-    canonicalJson({ nodes: current.layout.nodes, viewport: current.layout.viewport });
-  if (!definitionChanged && !layoutChanged) {
-    return { ok: true, record: current, changed: { definition: false, layout: false } };
+  if (hash === current.definitionHash) {
+    return { ok: true, record: current, changed: { definition: false } };
   }
-  const definitionRevision = current.definitionRevision + (definitionChanged ? 1 : 0);
-  const layoutRevision = current.layoutRevision + (layoutChanged ? 1 : 0);
   const record: CorralRecord = {
     ...current,
     name: request.definition.name,
     definition: request.definition,
-    definitionRevision,
+    definitionRevision: current.definitionRevision + 1,
     definitionHash: hash,
-    layout: { ...current.layout, ...request.layout, layoutRevision },
-    layoutRevision,
     updatedAt: context.now,
   };
-  return { ok: true, record, changed: { definition: definitionChanged, layout: layoutChanged } };
+  return { ok: true, record, changed: { definition: true } };
 }
 
 /** A copy under a new id, starting again at revision 1. */
@@ -822,7 +812,6 @@ export function planDuplicate(
     return { ok: false, error: 'not_found', message: `Corral ${corralId} does not exist.` };
   return planCreate(
     { ...source.definition, name },
-    { nodes: source.layout.nodes, viewport: source.layout.viewport },
     context.newCorralId(),
     context.now,
     source.projectId,
@@ -831,7 +820,6 @@ export function planDuplicate(
 
 function planCreate(
   definition: CorralDefinition,
-  layout: SaveRequest['layout'],
   corralId: string,
   now: string,
   projectId: string,
@@ -844,11 +832,9 @@ function planCreate(
     definition: owned,
     definitionRevision: 1,
     definitionHash: definitionHash(owned),
-    layout: { schemaVersion: '0.1', corralId, layoutRevision: 1, ...layout },
-    layoutRevision: 1,
     updatedAt: now,
   };
-  return { ok: true, record, changed: { definition: true, layout: true } };
+  return { ok: true, record, changed: { definition: true } };
 }
 
 const StoredProject = z.strictObject({
@@ -938,6 +924,10 @@ export function createKeyValueCorralRepository(
   const write = (record: CorralRecord): SaveResult | null => {
     try {
       store.setItem(recordKey(record.corralId), JSON.stringify(record));
+      store.setItem(
+        revisionKey(record.corralId, record.definitionRevision),
+        JSON.stringify(record.definition),
+      );
       const index = readIndex();
       if (!index.includes(record.corralId))
         store.setItem(INDEX_KEY, JSON.stringify([...index, record.corralId]));
@@ -953,37 +943,7 @@ export function createKeyValueCorralRepository(
 
   const context = () => ({ now: options.clock.nowIso(), newCorralId: options.newCorralId });
   const persist = (result: SaveResult): SaveResult =>
-    result.ok && (result.changed.definition || result.changed.layout)
-      ? (write(result.record) ?? result)
-      : result;
-
-  // Write the backup/receipt first: an interrupted browser migration can resume without losing revision 1.
-  for (const id of readIndex()) {
-    const before = read(id);
-    if (!before || before.definition.executionPolicy) continue;
-    const result = planSave(
-      before,
-      {
-        definition: { ...before.definition, executionPolicy: { version: 2 } },
-        layout: before.layout,
-        expectedDefinitionRevision: before.definitionRevision,
-      },
-      context(),
-    );
-    if (!result.ok) throw new Error(result.message);
-    const key = `${PREFIX}cr052:${id}:${before.definitionRevision}`;
-    if (store.getItem(key) === null)
-      store.setItem(
-        key,
-        JSON.stringify({
-          before,
-          afterRevision: result.record.definitionRevision,
-          afterHash: result.record.definitionHash,
-        }),
-      );
-    const written = persist(result);
-    if (!written.ok) throw new Error(written.message);
-  }
+    result.ok && result.changed.definition ? (write(result.record) ?? result) : result;
 
   return {
     async list() {
@@ -995,7 +955,6 @@ export function createKeyValueCorralRepository(
           projectId: r.projectId,
           name: r.name,
           definitionRevision: r.definitionRevision,
-          layoutRevision: r.layoutRevision,
           nodeCount: r.definition.nodes.length,
           updatedAt: r.updatedAt,
         }))
@@ -1004,6 +963,11 @@ export function createKeyValueCorralRepository(
 
     async get(corralId) {
       return read(corralId);
+    },
+
+    async getRevision(corralId, definitionRevision) {
+      const raw = store.getItem(revisionKey(corralId, definitionRevision));
+      return raw === null ? null : (CorralDefinition.safeParse(safeJson(raw)).data ?? null);
     },
 
     async save(request) {

@@ -5,7 +5,7 @@ import {
   type CorralDefinition,
   CorralDefinition as Definition,
   type RunCommand,
-  RunEvent,
+  type RunEvent,
 } from '@corral/contracts';
 import {
   collaborationCorral,
@@ -52,11 +52,6 @@ declare global {
   }
 }
 
-const LEGACY_RECORDED = import.meta.glob('./golden/*.events.jsonl', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-});
 const RECORDED = import.meta.glob('./golden/cr052/*.events.jsonl', {
   query: '?raw',
   import: 'default',
@@ -89,21 +84,6 @@ function scripted(options: Partial<ScriptedAgentOptions> = {}) {
 }
 
 async function start(transport: InProcessTransport, definition: CorralDefinition) {
-  const { maxModelCalls, maxOutputTokens, maxOutputTokensPerCall, modelTimeoutMs, runDeadlineMs } =
-    definition.limits;
-  definition = {
-    ...definition,
-    executionPolicy: {
-      version: 2,
-      budget: {
-        maxModelCalls,
-        maxOutputTokens,
-        maxOutputTokensPerCall,
-        modelTimeoutMs,
-        runDeadlineMs,
-      },
-    },
-  };
   const { runId, receipt } = await transport.startRun({
     schemaVersion: '0.1',
     commandId: 'cmd_start',
@@ -227,16 +207,6 @@ const SCENARIOS: Record<string, () => Promise<RunEvent[]>> = {
     return events;
   },
 
-  async 'model-call-limit'() {
-    const definition = linearCorral(['writer']);
-    definition.limits = { ...definition.limits, maxModelCalls: 1 };
-    const { transport } = runtime(scripted({ turns: 2 }));
-    const { runId, events } = await start(transport, definition);
-    await waitForProjection(transport, runId, terminal);
-    await drain();
-    return events;
-  },
-
   async 'no-progress-approval'() {
     const { agents, hosts } = manualAgents();
     const { transport } = runtime(agents);
@@ -327,16 +297,6 @@ const env = (name: string) =>
 const lines = (events: RunEvent[]) => events.map((e) => canonicalJson(e));
 
 describe('admission golden event streams', () => {
-  it('original golden records remain readable without rewriting their events', () => {
-    for (const text of Object.values(LEGACY_RECORDED)) {
-      const events = text
-        .trim()
-        .split('\n')
-        .map((line) => RunEvent.parse(JSON.parse(line)));
-      const projection = events.reduce(applyEvent, emptyProjection(events[0]!.runId));
-      expect(projection.lastSeq).toBe(events.at(-1)!.runSeq);
-    }
-  });
   for (const [name, scenario] of Object.entries(SCENARIOS)) {
     it(`${name} keeps its recorded event stream`, async () => {
       const first = lines(await scenario());

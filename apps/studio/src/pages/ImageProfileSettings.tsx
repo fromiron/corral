@@ -234,42 +234,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 }
               />
             </label>
-            <label htmlFor={`${ids}-calls`} className="flex flex-col gap-1 text-xs">
-              {t('calls')}
-              <Input
-                nativeInput
-                id={`${ids}-calls`}
-                type="number"
-                min={1}
-                max={16}
-                step={1}
-                value={Number.isFinite(draft.maxCallsPerRun) ? draft.maxCallsPerRun : ''}
-                disabled={busy}
-                required
-                onChange={(event) =>
-                  setDraft({ ...draft, maxCallsPerRun: event.target.valueAsNumber })
-                }
-              />
-            </label>
-            <label htmlFor={`${ids}-cost`} className="flex flex-col gap-1 text-xs">
-              {t('cost')}
-              <Input
-                nativeInput
-                id={`${ids}-cost`}
-                type="number"
-                min={0.000001}
-                max={100}
-                step="any"
-                value={draft.maxCostUsdPerCall || ''}
-                disabled={busy}
-                required
-                onChange={(event) =>
-                  setDraft({ ...draft, maxCostUsdPerCall: event.target.valueAsNumber })
-                }
-              />
-            </label>
           </div>
-          <p className="text-xs text-muted-foreground">{t('limitsHint')}</p>
           <div className="flex gap-2">
             <Button type="submit" variant="tertiary" size="compact" disabled={busy}>
               {busy ? t('saving') : t('save')}
@@ -301,8 +266,6 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
               modelId: '',
               api: 'openai-images',
               timeoutMs: 120000,
-              maxCallsPerRun: 1,
-              maxCostUsdPerCall: 0,
             });
             setEditingId(null);
             setDeleteId(null);

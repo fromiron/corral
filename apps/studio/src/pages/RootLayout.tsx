@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogPopup,
   DialogTitle,
+  Sidebar as KitSidebar,
   Menu,
   MenuItem,
   MenuPopup,
@@ -14,6 +15,8 @@ import {
   MenuRadioItem,
   MenuSeparator,
   MenuTrigger,
+  SidebarProvider,
+  type SidebarRailProps,
   Tooltip,
   TooltipProvider,
 } from '@corral/react/design-kit';
@@ -27,7 +30,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router';
-import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
 import { useRegisterCommands } from '../commandRegistry.ts';
@@ -37,6 +40,7 @@ import { useServices } from '../services.tsx';
 import { SESSION_MISSING } from '../sessionConnection.ts';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
+import { SessionMenu } from '../workbench/Breadcrumbs.tsx';
 import { documentStore } from '../workbench/documents/store.ts';
 import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
 import {
@@ -49,7 +53,7 @@ import {
 } from '../workbench/navigation.ts';
 import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { ScheduledRunNotifications } from '../workbench/ScheduledRunNotifications.tsx';
-import { SessionTabs } from '../workbench/SessionTabs.tsx';
+import { useSessionJump } from '../workbench/SessionJump.tsx';
 import { SettingsDialog } from '../workbench/SettingsDialog.tsx';
 import {
   SettingsLeavePrompt,
@@ -126,6 +130,7 @@ function RootFrame() {
             sidebar.corrals.find((team) => team.corralId === selectedRun.corralId)?.projectId)
           : undefined));
   const project = sidebar.projects.find((item) => item.projectId === projectId) ?? data?.project;
+  useSessionJump(sidebar.sessions, projectId);
   const [lastWork, setLastWork] = useState<{ href: string; projectId?: string } | null>(null);
   const search = validateSettingsSearch(location.search);
   const settingsProjectId = sidebar.projects.find(
@@ -274,10 +279,15 @@ function RootFrame() {
       },
     },
   ]);
-  const showLocation = !/^\/sessions\/[^/]+(?:\/|$)/.test(location.pathname);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  const drag = useRef<{ x: number; width: number } | null>(null);
+  const [viewsSlot, setViewsSlot] = useState<HTMLElement | null>(null);
+  const [crumbsSlot, setCrumbsSlot] = useState<HTMLElement | null>(null);
+  const topbarSlots = useMemo(
+    () => ({ actions: slot, views: viewsSlot, crumbs: crumbsSlot }),
+    [slot, viewsSlot, crumbsSlot],
+  );
+  const openSessionId = /^\/sessions\/([^/]+)/.exec(location.pathname)?.[1];
   useEffect(() => {
     const media = matchMedia('(max-width: 1023px)');
     const update = () => {
@@ -305,14 +315,37 @@ function RootFrame() {
   useEffect(() => {
     if (!prefs.sidebarOpen) setMobileOpen(false);
   }, [prefs.sidebarOpen]);
+  const railProps: SidebarRailProps = {
+    role: 'separator',
+    'aria-label': tw('resizeSidebar'),
+    'aria-orientation': 'vertical',
+    'aria-valuenow': prefs.sidebarWidth,
+    'aria-valuemin': 220,
+    'aria-valuemax': 420,
+    tabIndex: 0,
+    tooltipContent: (
+      <span className="flex flex-col items-start gap-2">
+        <span className="[text-box:trim-both_cap_alphabetic]">{tw('sidebarResizeHint')}</span>
+        <span className="[text-box:trim-both_cap_alphabetic]">{tw('sidebarCollapseHint')}</span>
+      </span>
+    ),
+  };
   return (
     <TooltipProvider>
       <SettingsNavigationContext.Provider value={settingsNavigation}>
-        <TopbarSlotContext.Provider value={slot}>
-          <div
-            className="app-shell"
+        <TopbarSlotContext.Provider value={topbarSlots}>
+          <SidebarProvider
+            className="app-shell min-h-0"
             data-sidebar-open={prefs.sidebarOpen}
-            style={{ '--app-sidebar-width': `${prefs.sidebarWidth}px` } as CSSProperties}
+            persist={false}
+            shortcut={null}
+            mobileBreakpoint={0}
+            open={prefs.sidebarOpen}
+            onOpenChange={(sidebarOpen) => changePreferences({ sidebarOpen })}
+            width={`${prefs.sidebarWidth}px`}
+            onWidthChange={(width) => changePreferences({ sidebarWidth: Number.parseFloat(width) })}
+            minWidth={220}
+            maxWidth={420}
           >
             {narrow ? (
               <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -327,51 +360,17 @@ function RootFrame() {
                   {settings ? (
                     <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
                   ) : (
-                    <Sidebar model={sidebar} />
+                    <Sidebar model={sidebar} mobile />
                   )}
                 </DialogPopup>
               </Dialog>
+            ) : settings ? (
+              <KitSidebar railProps={railProps} className="h-full min-h-0">
+                <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
+              </KitSidebar>
             ) : (
-              <aside className="app-sidebar">
-                {settings ? (
-                  <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
-                ) : (
-                  <Sidebar model={sidebar} />
-                )}
-              </aside>
+              <Sidebar model={sidebar} railProps={railProps} />
             )}
-            {/* biome-ignore lint/a11y/useSemanticElements: WAI-ARIA window splitter */}
-            <div
-              role="separator"
-              aria-label={tw('resizeSidebar')}
-              aria-orientation="vertical"
-              tabIndex={0}
-              aria-valuenow={prefs.sidebarWidth}
-              aria-valuemin={220}
-              aria-valuemax={420}
-              className="app-sidebar-resizer"
-              onPointerDown={(e) => {
-                drag.current = { x: e.clientX, width: prefs.sidebarWidth };
-                e.currentTarget.setPointerCapture(e.pointerId);
-              }}
-              onPointerMove={(e) => {
-                if (drag.current)
-                  changePreferences({
-                    sidebarWidth: drag.current.width + e.clientX - drag.current.x,
-                  });
-              }}
-              onPointerUp={() => {
-                drag.current = null;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                  e.preventDefault();
-                  changePreferences({
-                    sidebarWidth: prefs.sidebarWidth + (e.key === 'ArrowRight' ? 16 : -16),
-                  });
-                }
-              }}
-            />
             <div className="app-main">
               {/* biome-ignore lint/a11y/noStaticElementInteractions: a title bar's double click is a pointer convenience; the window menu does the same */}
               <header className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
@@ -391,39 +390,40 @@ function RootFrame() {
                     <PanelLeft />
                   </Button>
                 </Tooltip>
-                {showLocation ? (
-                  <nav
-                    aria-label={tn('location')}
-                    className="flex min-w-0 items-center gap-1.5 text-ui"
-                  >
-                    {settings ? (
-                      <span className="shrink-0 text-muted-foreground">{td('settings')}</span>
-                    ) : narrow || !prefs.sidebarOpen ? (
-                      <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
-                    ) : project ? (
-                      <Link
-                        to="/projects/$projectId"
-                        params={{ projectId: project.projectId }}
-                        className="max-w-52 truncate text-muted-foreground hover:text-text"
-                      >
-                        {projectName(project, projectsText('defaultName'))}
-                      </Link>
-                    ) : null}
-                    {pageTitle ? (
-                      <>
-                        {settings || project ? (
-                          <span aria-hidden="true" className="text-muted-foreground/50">
-                            /
-                          </span>
-                        ) : null}
+                <nav
+                  aria-label={tn('location')}
+                  className="flex min-w-0 items-center gap-1.5 text-ui"
+                >
+                  {settings ? (
+                    <span className="shrink-0 text-muted-foreground">{td('settings')}</span>
+                  ) : (
+                    <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
+                  )}
+                  {pageTitle ? (
+                    <>
+                      {settings || project ? (
+                        <span aria-hidden="true" className="text-muted-foreground/50">
+                          /
+                        </span>
+                      ) : null}
+                      {openSessionId && projectId && data?.session ? (
+                        <SessionMenu
+                          sessions={sidebar.sessions}
+                          runs={sidebar.runs}
+                          projectId={projectId}
+                          sessionId={decodeURIComponent(openSessionId)}
+                          title={pageTitle}
+                          onOpen={(sessionId) =>
+                            void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+                          }
+                        />
+                      ) : (
                         <h2 className="truncate font-medium">{pageTitle}</h2>
-                      </>
-                    ) : null}
-                  </nav>
-                ) : (
-                  <h2 className="sr-only">{pageTitle}</h2>
-                )}
-                <SessionTabs sessions={sidebar.sessions} />
+                      )}
+                    </>
+                  ) : null}
+                  <span ref={setCrumbsSlot} className="contents" />
+                </nav>
                 {settings && activeRuns.length ? (
                   <Menu>
                     <MenuTrigger render={<Button variant="ghost" size="compact" />}>
@@ -448,7 +448,8 @@ function RootFrame() {
                     </MenuPopup>
                   </Menu>
                 ) : null}
-                <div ref={setSlot} className="ml-auto flex shrink-0 items-center gap-1" />
+                <div ref={setViewsSlot} className="ml-auto flex shrink-0 items-center" />
+                <div ref={setSlot} className="flex shrink-0 items-center gap-1" />
                 <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
                   <Button
                     variant="ghost"
@@ -483,7 +484,7 @@ function RootFrame() {
                 currentProject={sidebar.current}
               />
             ) : null}
-          </div>
+          </SidebarProvider>
         </TopbarSlotContext.Provider>
       </SettingsNavigationContext.Provider>
     </TooltipProvider>

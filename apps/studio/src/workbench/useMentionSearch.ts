@@ -1,6 +1,6 @@
 import type { FileBrowseScope } from '@corral/client';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { type CorralSummary, type RunSummary, rankFuzzy } from '@corral/core';
+import { type CorralSummary, canReadArtifactBody, type RunSummary, rankFuzzy } from '@corral/core';
 import { runResults } from '@corral/react';
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
@@ -82,6 +82,7 @@ export function useMentionSearch({
                 ...found.final,
                 ...found.intermediate.map((group) => group.latest),
               ]) {
+                if (!canReadArtifactBody(projection, artifact.artifactVersionId)) continue;
                 const nodeId = projection.executions[artifact.authorExecutionId]?.nodeId;
                 const author =
                   definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;

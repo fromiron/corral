@@ -80,7 +80,6 @@ for (const locale of ['en', 'ko'] as const) {
     const definition = { ...linearCorral(['writer']), name };
     await call(page, '/corrals', {
       definition,
-      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     await page.reload();
     await page.getByRole('tab', { name: locale === 'en' ? /^Teams/ : /^팀/ }).click();

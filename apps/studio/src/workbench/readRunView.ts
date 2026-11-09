@@ -2,7 +2,10 @@ import { openRunArchive, type RuntimeSnapshot, type RuntimeTransport } from '@co
 import type { RunSessionState } from '@corral/react';
 
 type HistoryReader = (runId: string) => Promise<unknown>;
-type ViewTransport = Pick<RuntimeTransport, 'getSnapshot' | 'getRunDefinition'>;
+type ViewTransport = Pick<
+  RuntimeTransport,
+  'getSnapshot' | 'getRunDefinition' | 'getConversationTurn'
+>;
 type RunView = Awaited<ReturnType<typeof loadRunView>>;
 const pendingReads = new WeakMap<
   ViewTransport,
@@ -51,10 +54,17 @@ async function loadRunView(
   runId: string,
   details: boolean,
 ) {
+  const readTurn = async () => {
+    const turn = (await transport.getConversationTurn?.(runId)) ?? null;
+    if (turn && turn.runId !== runId)
+      throw new Error('The conversation turn does not match this run.');
+    return turn;
+  };
   if (!details) {
-    const [{ projection, partialOutputs }, definition] = await Promise.all([
+    const [{ projection, partialOutputs }, definition, conversationTurn] = await Promise.all([
       transport.getSnapshot(runId),
       transport.getRunDefinition(runId),
+      readTurn(),
     ]);
     if (!definition || projection.runId !== runId) throw new Error('The run is unavailable.');
     return {
@@ -64,11 +74,16 @@ async function loadRunView(
       events: [],
       streams: partialStreams(partialOutputs),
       artifactTexts: {},
+      conversationTurn,
       streamError: null,
     };
   }
-  const [history, snapshot] = await Promise.all([readHistory(runId), transport.getSnapshot(runId)]);
-  const archive = openRunArchive(history);
+  const [record, conversationTurn, snapshot] = await Promise.all([
+    readHistory(runId),
+    readTurn(),
+    transport.getSnapshot(runId),
+  ]);
+  const archive = openRunArchive(record);
   if (archive.visibility !== 'private' || archive.runId !== runId)
     throw new Error('The run history does not match this turn.');
   const streams = partialStreams(snapshot.partialOutputs);
@@ -84,6 +99,7 @@ async function loadRunView(
     events: [...archive.events],
     streams,
     artifactTexts: archive.artifacts,
+    conversationTurn,
     streamError: null,
   };
 }

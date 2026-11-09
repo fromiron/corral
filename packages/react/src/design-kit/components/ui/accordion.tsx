@@ -20,12 +20,13 @@ import {
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 import { useFluidHover, useRegisterFluidHoverItem } from '../../hooks/use-fluid-hover.ts';
+import { focusRing } from '../../lib/focus.ts';
 import { fontWeights } from '../../lib/font-weight.ts';
 import { useIcons } from '../../lib/icon-context.tsx';
 import { omit } from '../../lib/omit.ts';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, useSize } from '../../lib/size-context.tsx';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import { FluidHoverHighlight } from './fluid-hover-highlight.tsx';
 
@@ -367,7 +368,7 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>((props, r
                       left: { duration: 0 },
                       width: { duration: 0 },
                       height: { duration: 0 },
-                      opacity: { duration: 0.12 },
+                      opacity: tween.fast,
                     }}
                   />
                 ))}
@@ -380,7 +381,7 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>((props, r
               <AnimatePresence>
                 {focusRect && (
                   <motion.div
-                    className={`absolute ${shape.focusRing} pointer-events-none z-20 border border-[color:var(--focus-ring,#6B97FF)]`}
+                    className={`absolute ${shape.focusRing} pointer-events-none z-20 border-2 border-[color:var(--focus-ring)]`}
                     initial={false}
                     animate={{
                       left: focusRect.left - 2,
@@ -391,7 +392,7 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>((props, r
                     exit={{ opacity: 0, transition: spring.fast.exit }}
                     transition={{
                       ...spring.fast,
-                      opacity: { duration: 0.08 },
+                      opacity: tween.fast,
                     }}
                   />
                 )}
@@ -593,7 +594,7 @@ const AccordionItem = forwardRef<HTMLDivElement, AccordionItemProps>(
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0, transition: spring.moderate.exit }}
-                        transition={{ duration: 0.12 }}
+                        transition={tween.fast}
                       />
                     )}
                   </AnimatePresence>
@@ -635,9 +636,8 @@ const AccordionTrigger = forwardRef<HTMLButtonElement, AccordionTriggerProps>(
         <AccordionPrimitive.Trigger
           ref={ref as React.Ref<HTMLElement>}
           className={cn(
-            `relative z-10 flex items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.px} ${sizeClasses.variant === 'compact' ? 'py-1' : 'py-2'} w-full cursor-pointer outline-none select-none`,
-            !groupCtx?.grouped &&
-              'focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-0',
+            `relative z-10 flex items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.px} ${sizeClasses.variant === 'compact' ? 'py-1' : 'py-2'} w-full cursor-pointer select-none`,
+            groupCtx?.grouped ? 'outline-none' : focusRing,
             className,
           )}
           {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
@@ -703,7 +703,7 @@ const AccordionTrigger = forwardRef<HTMLButtonElement, AccordionTriggerProps>(
               animate={{ opacity: 1 }}
               // Moderate tier: it marks a state, unlike the fast hover fill.
               exit={{ opacity: 0, transition: spring.moderate.exit }}
-              transition={{ duration: 0.12 }}
+              transition={tween.fast}
             />
           )}
         </AnimatePresence>
@@ -714,7 +714,7 @@ const AccordionTrigger = forwardRef<HTMLButtonElement, AccordionTriggerProps>(
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: spring.fast.exit }}
-              transition={{ duration: 0.08 }}
+              transition={tween.fast}
             />
           )}
         </AnimatePresence>
@@ -816,8 +816,8 @@ const AccordionContent = forwardRef<HTMLDivElement, AccordionContentProps>(
                   reduceMotion || !toggling
                     ? { duration: 0 }
                     : isOpen
-                      ? { ...spring.fast, opacity: { duration: 0.06 } }
-                      : { ...spring.fast.exit, opacity: { duration: 0.04 } }
+                      ? { ...spring.fast, opacity: tween.fast.exit }
+                      : { ...spring.fast.exit, opacity: tween.fast.exit }
                 }
                 onUpdate={() => {
                   groupCtx?.remeasure();

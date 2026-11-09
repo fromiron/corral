@@ -1,5 +1,6 @@
 import {
   FakeClock,
+  Gate,
   linearCorral,
   ScriptedAgentAdapter,
   SequentialIdFactory,
@@ -12,15 +13,25 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-describe('durable model and document responses', () => {
-  it('recovers completed text without replaying transient frames', async () => {
+describe('model and document response lifetimes', () => {
+  it('keeps completed response text during execution and releases it after the final result settles', async () => {
     const store = new InMemoryRunStore();
+    const secondRequest = new Gate();
+    const finish = new Gate();
     const transport = new InProcessTransport(
       new Coordinator({
         store,
         clock: new FakeClock(),
         ids: new SequentialIdFactory(),
-        agents: new ScriptedAgentAdapter({ turns: 1 }),
+        agents: new ScriptedAgentAdapter({
+          turns: 2,
+          beforeReply: async (turn) => {
+            if (turn === 2) {
+              secondRequest.open();
+              await finish.wait();
+            }
+          },
+        }),
       }),
     );
     const { runId } = await transport.startRun({
@@ -30,13 +41,21 @@ describe('durable model and document responses', () => {
       mode: 'mock',
     });
     if (!runId) throw new Error('run start failed');
-    const final = await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
+    await secondRequest.wait();
     const finished = store.readEvents(runId, 0).find((e) => e.type === 'model.finished');
     const ref = finished?.type === 'model.finished' ? finished.payload.responseRef : null;
     expect(ref).toBeTruthy();
     if (!ref) throw new Error('missing recorded response');
     expect(await transport.getArtifactText(runId, ref)).toContain('turn 1');
+    finish.open();
+    await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
+    const { projection: final } = await transport.getSnapshot(runId);
     expect(Object.values(final.modelCalls)[0]?.responseRef).toBe(ref);
+    expect(await transport.getArtifactText(runId, ref)).toBeNull();
+    expect(store.getArtifactText(runId, ref)).toBeNull();
+    expect(
+      await transport.getArtifactText(runId, final.output?.artifactVersionIds[0] ?? ''),
+    ).toContain('turn 2');
   });
 
   it('freezes the fetched response and links only subsequent requests to it', async () => {
@@ -45,6 +64,8 @@ describe('durable model and document responses', () => {
     if (!role) throw new Error('missing writer');
     role.allowedWorkTools.push('read_document');
     const store = new InMemoryRunStore();
+    const responsesReady = new Gate();
+    const finish = new Gate();
     const agents = new ScriptedAgentAdapter({
       turns: 1,
       script: async (_input, host) => {
@@ -69,6 +90,8 @@ describe('durable model and document responses', () => {
           text: 'Read.',
           usage: { inputTokens: 1, outputTokens: 1 },
         });
+        responsesReady.open();
+        await finish.wait();
         return { outcome: 'failed', error: 'no output submitted' };
       },
     });
@@ -95,7 +118,8 @@ describe('durable model and document responses', () => {
       mode: 'mock',
     });
     if (!runId) throw new Error('run start failed');
-    const final = await waitForProjection(transport, runId, (p) => p.status === 'failed');
+    await responsesReady.wait();
+    const { projection: active } = await transport.getSnapshot(runId);
     const finished = store.readEvents(runId, 0).find((e) => e.type === 'tool.finished');
     const ref = finished?.type === 'tool.finished' ? finished.payload.resultRef : null;
     expect(ref).toBeTruthy();
@@ -106,8 +130,16 @@ describe('durable model and document responses', () => {
       documentId: 'doc_1',
       text: 'Immutable source text.',
     });
-    const calls = Object.values(final.modelCalls);
+    const calls = Object.values(active.modelCalls);
     expect(calls[0]?.inputArtifactVersionIds).not.toContain(ref);
     expect(calls[1]?.inputArtifactVersionIds).toContain(ref);
+    finish.open();
+    await waitForProjection(transport, runId, (p) => p.status === 'failed');
+    expect(await transport.getArtifactText(runId, ref)).toBeNull();
+    expect(store.getArtifactText(runId, ref)).toBeNull();
+    expect(
+      (await transport.getSnapshot(runId)).projection.modelCalls[calls[1]?.modelCallId ?? '']
+        ?.inputArtifactVersionIds,
+    ).toContain(ref);
   });
 });

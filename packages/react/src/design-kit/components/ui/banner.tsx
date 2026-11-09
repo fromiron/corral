@@ -22,22 +22,23 @@ import {
   useRef,
   useState,
 } from 'react';
+import { focusRing } from '../../lib/focus.ts';
 import { fontWeights } from '../../lib/font-weight.ts';
 import { type IconComponent, useIcons } from '../../lib/icon-context.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
-import { spring } from '../../lib/springs.ts';
+import { spring, tween } from '../../lib/springs.ts';
 import { cn } from '../../lib/utils.ts';
 import { Button, type ButtonProps } from './button.tsx';
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Banner owns the status color, icon and dismiss control; BannerTitle,
 // BannerDescription and BannerActions fill the text column. contrast="low"
 // colors only the icon over a neutral fill; "high" adds a light wash of the
 // status color. Text stays foreground either way. Placement is pure CSS grid:
 // actions trail a title-only banner and drop under the text when there is a
 // description or the banner is narrower than 24rem.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 type BannerStatus = 'default' | 'info' | 'success' | 'warning' | 'error';
 type BannerContrast = 'low' | 'high';
@@ -64,7 +65,7 @@ function fillFor(status: BannerStatus, contrast: BannerContrast) {
   return `color-mix(in oklab, var(--banner-tone) ${amount}%, transparent)`;
 }
 
-// ── Status glyphs ────────────────────────────────────────
+// ─── Status glyphs ───────────────────────────────────────────────────────────
 // Colored statuses get filled shapes with the mark cut out: they carry color
 // at 16–20px better than a 1.5px outline, and stay filled whatever icon set
 // the app uses. The neutral default uses the icon set's outline info icon.
@@ -112,7 +113,7 @@ function StatusGlyph({ status, size }: { status: ColoredStatus; size: number }) 
   );
 }
 
-// ── Motion ───────────────────────────────────────────────
+// ─── Motion ──────────────────────────────────────────────────────────────────
 // The banner's space (a one-row grid animating 0fr ↔ 1fr) and the banner
 // itself move separately. Inline, the banner scales from its top edge in step
 // with the row, so the row never clips it; a full-bleed fixed bar slides with
@@ -153,7 +154,7 @@ const bannerMotion: BannerMotionConfig = {
     fromScale: 0.4,
   },
   dismiss: {
-    row: { duration: spring.moderate.exit.duration * 2, ease: 'easeInOut' },
+    row: tween.slow,
     shrinkTo: 0.6,
   },
 };
@@ -305,7 +306,7 @@ function BannerMotion({ fixed, reduceMotion, config, children }: BannerMotionPro
   );
 }
 
-// ── Banner ───────────────────────────────────────────────
+// ─── Banner ──────────────────────────────────────────────────────────────────
 
 interface BannerProps extends HTMLAttributes<HTMLDivElement> {
   /** Which status color the banner carries. @default "default" */
@@ -433,7 +434,8 @@ const Banner = forwardRef<HTMLDivElement, BannerProps>(
             onClick={handleDismiss}
             aria-label={dismissLabel}
             className={cn(
-              'col-start-4 row-start-1 flex size-7 cursor-pointer items-center justify-center text-muted-foreground outline-none transition-colors duration-80 hover:bg-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]',
+              'col-start-4 row-start-1 flex size-7 cursor-pointer items-center justify-center text-muted-foreground transition-colors duration-80 hover:bg-hover hover:text-foreground',
+              focusRing,
               // Pulled into the padding so the glyph, not the 28px box, sits
               // on the title line and the inset edge.
               compact ? '-my-[5px] -mr-1.5 ml-1.5' : '-my-1 -mr-1.5 ml-2',
@@ -467,7 +469,7 @@ const Banner = forwardRef<HTMLDivElement, BannerProps>(
 
 Banner.displayName = 'Banner';
 
-// ── BannerTitle ──────────────────────────────────────────
+// ─── BannerTitle ─────────────────────────────────────────────────────────────
 
 const BannerTitle = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
   ({ className, style, ...props }, ref) => {
@@ -490,7 +492,7 @@ const BannerTitle = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagrap
 
 BannerTitle.displayName = 'BannerTitle';
 
-// ── BannerDescription ────────────────────────────────────
+// ─── BannerDescription ───────────────────────────────────────────────────────
 // Foreground, not muted: muted grey drops under 4.5:1 on the banner fills.
 
 const BannerDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
@@ -513,7 +515,7 @@ const BannerDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLPa
 
 BannerDescription.displayName = 'BannerDescription';
 
-// ── BannerActions ────────────────────────────────────────
+// ─── BannerActions ───────────────────────────────────────────────────────────
 // Trails the title row (pulled into the padding so 28px buttons don't grow a
 // one-line banner); drops under the text with a description or below 24rem.
 
@@ -545,7 +547,7 @@ const BannerActions = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>
 
 BannerActions.displayName = 'BannerActions';
 
-// ── BannerAction ─────────────────────────────────────────
+// ─── BannerAction ────────────────────────────────────────────────────────────
 // A compact 28px Button, so a one-line banner doesn't grow. Ghost text steps
 // up from muted to hold 4.5:1 on every banner fill.
 

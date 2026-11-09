@@ -54,14 +54,6 @@ function definitions() {
     definition.id = `fixture_${group}`;
     definition.name = group;
     definition.input = { brief: 'set by suite', criteria };
-    definition.limits = {
-      ...definition.limits,
-      maxModelCalls: 40,
-      maxOutputTokens: 32000,
-      maxOutputTokensPerCall: 2048,
-      modelTimeoutMs: 15000,
-      runDeadlineMs: 60000,
-    };
     if (group === 'review_repair') {
       definition.roles = definition.roles.filter((role) =>
         ['researcher', 'writer', 'reviewer'].includes(role.id),
@@ -91,9 +83,6 @@ function definitions() {
         criteriaFiles: [],
         maxAttempts: 2,
         maxRepairs: 1,
-        maxWallMs: 60000,
-        maxModelCalls: 40,
-        maxOutputTokens: 32000,
       };
     }
     for (const role of definition.roles) {

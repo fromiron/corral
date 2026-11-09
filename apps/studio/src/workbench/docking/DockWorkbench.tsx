@@ -47,6 +47,7 @@ import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { validateSessionSearch } from '../panels/routes.ts';
+import { TopbarViews, useTopbarHostsViews } from '../TopbarSlot.tsx';
 import {
   addDocumentPanel,
   addGraphPanel,
@@ -387,6 +388,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const [dockApi, setDockApi] = useState<DockviewApi | null>(null);
     // Narrow hosts (a phone) show one pane at a time, the conversation first (#94).
     const [compact, setCompact] = useState(false);
+    const viewsInTopbar = useTopbarHostsViews();
 
     function documentLabel(descriptor: DockDocumentDescriptor) {
       return documentTabLabel(
@@ -1073,21 +1075,24 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             }}
             className="corral-dock-tabs"
           >
-            <div className="corral-dock-primary-tabs">
-              <TabsList aria-label={t('sessionViews')}>
-                {primaryTabs.map((view) => (
-                  <TabItem
-                    key={view}
-                    value={view}
-                    label={t(view === 'run' ? 'history' : view)}
-                    onClick={() => {
-                      if (sessionView === view && (view === 'changes' || view === 'run'))
-                        openContext(view, true);
-                    }}
-                  />
-                ))}
-              </TabsList>
-            </div>
+            {/* The session's views share the top bar's one row; standalone hosts keep their own. */}
+            <TopbarViews>
+              <div className={viewsInTopbar ? 'flex items-center' : 'corral-dock-primary-tabs'}>
+                <TabsList aria-label={t('sessionViews')}>
+                  {primaryTabs.map((view) => (
+                    <TabItem
+                      key={view}
+                      value={view}
+                      label={t(view === 'run' ? 'history' : view)}
+                      onClick={() => {
+                        if (sessionView === view && (view === 'changes' || view === 'run'))
+                          openContext(view, true);
+                      }}
+                    />
+                  ))}
+                </TabsList>
+              </div>
+            </TopbarViews>
             {compact && sessionView === 'files' ? (
               <div className="corral-dock-toolbar" data-testid="dock-toolbar">
                 <Select

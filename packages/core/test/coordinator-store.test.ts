@@ -32,6 +32,7 @@ import {
   type RunStore,
   SPEC_HARD_CAPS,
   ToolRefusal,
+  usageTotals,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -98,6 +99,11 @@ class FailingStore implements RunStore {
   putCommand: RunStore['putCommand'] = (command) => this.inner.putCommand(command);
   putArtifactText: RunStore['putArtifactText'] = (runId, id, text) =>
     this.inner.putArtifactText(runId, id, text);
+  retainArtifactBodies: RunStore['retainArtifactBodies'] = (id, retained) =>
+    this.inner.retainArtifactBodies(id, retained);
+  putConversationTurn: RunStore['putConversationTurn'] = (id, turn) =>
+    this.inner.putConversationTurn(id, turn);
+  getConversationTurn: RunStore['getConversationTurn'] = (id) => this.inner.getConversationTurn(id);
   getRun: RunStore['getRun'] = (runId) => this.inner.getRun(runId);
   listRuns: RunStore['listRuns'] = () => this.inner.listRuns();
   readEvents: RunStore['readEvents'] = (runId, after, limit) =>
@@ -156,7 +162,9 @@ describe('Coordinator over a RunStore: commit before effect', () => {
     const store = new InMemoryRunStore();
     const { transport } = coordinator({ store });
     const { runId } = await transport.startRun(start(linearCorral(['research', 'writer'])));
-    const final = await waitForProjection(transport, runId ?? '', settled);
+    await waitForProjection(transport, runId ?? '', settled);
+    // Terminal state and subsequent body release are separate committed facts.
+    const { projection: final } = await transport.getSnapshot(runId ?? '');
 
     const stored = store.getRun(runId ?? '');
     expect(stored?.projection).toEqual(final);
@@ -213,19 +221,19 @@ describe('Coordinator over a RunStore: restart', () => {
     expect(Object.values(projection.effects).find((e) => e.kind === 'model_request')?.outcome).toBe(
       'unknown',
     );
-    expect(projection.budget).toMatchObject({
-      spent: 0,
-      reserved: 0,
-      unknownOutstanding: 4_096,
-      modelCalls: 1,
+    expect(usageTotals(projection)).toMatchObject({
+      outputTokens: 0,
+      inFlight: 0,
+      unknown: 1,
+      requests: 1,
     });
     const recoveredAgain = coordinator({
       store,
       sessionId: 'backend_c',
       ids: new SequentialIdFactory('c'),
     });
-    expect((await recoveredAgain.transport.getSnapshot(runId)).projection.budget).toEqual(
-      projection.budget,
+    expect((await recoveredAgain.transport.getSnapshot(runId)).projection.modelCalls).toEqual(
+      projection.modelCalls,
     );
     const events = store.readEvents(runId, 0);
     for (const event of events) expect(RunEvent.safeParse(event).success).toBe(true);

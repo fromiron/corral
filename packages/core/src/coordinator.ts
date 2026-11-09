@@ -27,11 +27,13 @@ import {
   type DecisionCancellation,
   type DecisionNode,
   type DecisionProvider,
+  EFFORT_LEVELS,
   EffectiveHarnessSnapshot,
   type EventPayload,
   ExtensionUiNotice,
   ExtensionUiRequest,
   type ExtensionUiResult,
+  type ExternalEffortJudge,
   FILE_TOOLS,
   GenerateImageArgs,
   type HarnessBindingRef,
@@ -83,6 +85,7 @@ import {
   type RuntimeFiles,
   type Scheduler,
   SessionConversation,
+  type SetBreakpointsCommand,
   StartRunRequest,
   type SteerCommand,
   type StreamFrame,
@@ -93,7 +96,6 @@ import {
   type ToolOutcome,
   type ToolPermissionPlan,
   type ToolProposal,
-  taskBriefForModel,
   UserInputRequest,
   VerificationReport,
   validUserAnswers,
@@ -114,15 +116,16 @@ import {
   runGates,
   type ToolGateView,
 } from './admission/index.ts';
+import {
+  canReadArtifactBody,
+  canReleaseArtifactBodies,
+  stepResult,
+  stepResultIds,
+} from './artifact-retention.ts';
 import { validTextAttachments } from './attachments.ts';
 import { type AutoStart, autoDefinition } from './auto-team.ts';
-import {
-  admitImageRequest,
-  admitModelRequest,
-  settlementFor,
-  UNLIMITED_OUTPUT_TOKENS_PER_CALL,
-} from './budget.ts';
 import { canonicalJson } from './canonical-json.ts';
+import { BuiltInCheckRunner, CHECK_ROLE_ID, CHECKS_INPUT, checkRole } from './check-runner.ts';
 import type { CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
 import {
@@ -132,23 +135,38 @@ import {
 } from './context-checkpoint.ts';
 import {
   createDecisionHub,
+  DECISION_HARD_CAP,
   type JudgmentConfig,
   requestTiming,
   resolveDecisionSettings,
 } from './decisions/index.ts';
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
+import { carriedSources, forkPlan, forkSteps } from './fork.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
 import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
-import { PartialOutputWriter, type RuntimeSnapshot, readPartialOutputs } from './partial-output.ts';
+import {
+  PartialOutputWriter,
+  partialOutputRefs,
+  type RuntimeSnapshot,
+  readPartialOutputs,
+} from './partial-output.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
-import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
+import {
+  automaticReasoning,
+  type ExternalConsult,
+  fixedReasoning,
+  reasoningError,
+  reasoningPolicyOf,
+} from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
-import { planRun } from './run-plan.ts';
+import { planRun, type RunPlan } from './run-plan.ts';
+import { type RunStats, runStats } from './run-stats.ts';
 import {
   type GraphRunner,
   type IterationRef,
+  type LoopStop,
   type RoundOutcome,
   type RunnerCallbacks,
   type RunnerResult,
@@ -161,8 +179,16 @@ import {
   type RunStore,
   type RunSummary,
   type StoredCommand,
+  type StoredConversationTurn,
+  type StoredRun,
 } from './store/run-store.ts';
 import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
+import {
+  applyUsageRecord,
+  FALLBACK_OUTPUT_TOKENS,
+  type UsageRecordView,
+  usageRecordChanges,
+} from './usage.ts';
 
 // The single place domain state is decided. A command is validated and
 // turned into events; the events, the projection they produce, the command record and artifact
@@ -200,13 +226,21 @@ export interface DefinitionSource {
   getDefinition(corralId: string, definitionRevision: number): CorralDefinition | null;
 }
 
+/** Decision modes this runtime executes. */
+type RunnableDecisionMode = Exclude<DecisionNode['mode'], 'check' | 'router'>;
+
 export interface DecisionInput {
   runId: string;
   nodeId: string;
-  mode: DecisionNode['mode'];
+  mode: RunnableDecisionMode;
   iteration: IterationRef | null;
   projection: RunProjection;
 }
+
+type WorkflowDecision = Pick<
+  EventPayload<'workflow.branch_selected'>,
+  'reasonCode' | 'evidenceRefs' | 'configRevision'
+> & { branch: string };
 
 /** Chooses a Decision branch. Reviews and approvals provide it in P5; tests script it. */
 export interface DecisionPolicy {
@@ -330,7 +364,6 @@ export interface CoordinatorDeps {
       args: GenerateImageArgs,
       profile: ImageGenerationProfile,
       cancellation: ToolCancellation,
-      reservedCostUsd: number,
       referenceImages?: ImageInput[],
     ): Promise<ImageGenerationResult>;
   };
@@ -360,6 +393,8 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** reasoning_effort judgment providers and workspace settings. Observe only. */
   judgments?: JudgmentConfig;
+  /** Decision APIs; a live run asks the one it chose when the local judge abstains. */
+  externalJudges?: readonly ExternalEffortJudge[];
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -371,6 +406,15 @@ export interface HarnessResolver {
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
   ): EffectiveHarnessSnapshot | null;
   readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
+  /**
+   * The session project's registered check configuration with exactly these checks selected,
+   * for a run's check Decisions. Throws when the session has no project or a check is not
+   * registered there.
+   */
+  projectChecks?(
+    sessionId: string,
+    checkIds: string[],
+  ): NonNullable<EffectiveHarnessSnapshot['projectTools']>;
   checkMcpTool?(input: AgentStartInput, name: string, args: Record<string, unknown>): Promise<void>;
   mcpAuthorization?(
     input: AgentStartInput,
@@ -425,13 +469,10 @@ interface RecipeCandidate {
 }
 interface RecipeRun {
   recipe: ReviewRecipeRevision;
-  cancelDeadline(): void;
   candidates: Map<string, RecipeCandidate>;
   failureSignature?: string;
 }
 interface LiveRun {
-  /** An unlimited run: `limits` are not applied; only a person's cancel stops it. */
-  usageLimits?: 'none';
   recipes: Map<string, RecipeRun>;
   runId: string;
   snapshot: RunSnapshot;
@@ -444,6 +485,17 @@ interface LiveRun {
   handles: Map<string, AgentHandle>;
   /** The open round of each Loop node. */
   rounds: Map<string, { no: number; iterationId: string }>;
+  /**
+   * Each Loop since it was last entered: when, and the work its last finished round submitted
+   * (content hashes), for budgets and stall detection.
+   */
+  loopEntries: Map<string, { previousWork: string[] | null }>;
+  /** Steps of branches an `any` Join stopped (`node@round`): they start and decide nothing. */
+  stoppedSteps: Set<string>;
+  /** Approvals a step is waiting on, by node, so stopping its branch can withdraw them. */
+  stepApprovals: Map<string, Set<string>>;
+  /** A pending run-level limit intervention; concurrent workers wait on this one. */
+  limitApproval: Promise<'approve' | 'reject'> | null;
   /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
@@ -484,8 +536,6 @@ interface LiveRun {
   limits: RunLimits;
   criteriaVersionId: string;
   pendingCriteriaVersionId: string | null;
-  cancelDeadline: () => void;
-  requestDeadlines: Map<string, () => void>;
   nodePatches: Map<
     string,
     {
@@ -503,7 +553,6 @@ interface LiveRun {
   boundaryWaiters: Set<() => void>;
   cancelListeners: Map<string, Set<() => void>>;
   toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
-  capStop: 'declined' | 'hard_cap' | null;
 }
 
 interface OpenQuestion {
@@ -547,6 +596,58 @@ interface PendingExtensionUi {
 }
 
 /** What starts an execution: its node, place in the call tree and reason to exist. */
+const CHECK_RUNNER = new BuiltInCheckRunner();
+
+/**
+ * A run still doing work. Waiting for a person stops only the step that waits; other branches
+ * and executions go on (docs/specs/features/team-graph.md, "병렬 실행").
+ */
+const WORKING: ReadonlySet<RunProjection['status']> = new Set(['running', 'awaiting_user']);
+
+/** Error text handed to a model: a retry's last error, or what an error path is told. */
+const clip = (text: string) => text.slice(0, 2000);
+
+type RouterNode = Extract<CorralDefinition['nodes'][number], { mode: 'router' }>;
+
+/**
+ * The model a router's chooser uses: its own profile, else that of the Agent whose output it
+ * reads first, else the definition's first role's.
+ */
+export function routerModelProfile(definition: CorralDefinition, router: RouterNode): string {
+  if (router.modelProfile) return router.modelProfile;
+  const source = router.inputBindings.find((b) => b.kind === 'task_output')?.sourceNodeId;
+  const agent = definition.nodes.find((n) => n.id === source);
+  const role =
+    agent?.type === 'agent' ? definition.roles.find((r) => r.id === agent.roleId) : undefined;
+  return (role ?? definition.roles[0])?.modelProfile ?? '';
+}
+
+/** Every model profile a run pins at start: its roles' and its routers' choosers'. */
+export function runModelProfiles(definition: CorralDefinition): string[] {
+  return [
+    ...new Set([
+      ...definition.roles.map((r) => r.modelProfile),
+      ...definition.nodes.flatMap((n) =>
+        n.type === 'decision' && n.mode === 'router' ? [routerModelProfile(definition, n)] : [],
+      ),
+    ]),
+  ];
+}
+
+/** The built-in role a router's chooser runs with: no tools, its last reply is the answer. */
+const chooserRole = (modelProfile: string): import('@corral/contracts').AgentRole => ({
+  id: 'router_chooser',
+  name: 'Router',
+  prompt:
+    'You choose which way the work goes next. Read the inputs and the routes, then reply with ' +
+    'exactly one route id from the routes list and nothing else.',
+  modelProfile,
+  allowedWorkTools: [],
+  allowedCollaborationTools: [],
+  outputContract: 'text',
+  answer: 'final_reply',
+});
+
 interface ExecutionSpec {
   item?: AgentStartInput['item'];
   previousExecutionId?: string;
@@ -559,6 +660,10 @@ interface ExecutionSpec {
   assignment: Assignment;
   /** Inputs given by the caller (task brief, question), before the node's own bindings. */
   given: ResolvedInput[];
+  /** A step that is not an Agent (a router's chooser) runs with this role instead. */
+  role?: import('@corral/contracts').AgentRole;
+  /** The exact inputs of this attempt (a retry reuses its predecessor's); bindings are skipped. */
+  inputs?: ResolvedInput[];
 }
 
 interface PreparedExecution {
@@ -611,6 +716,7 @@ export class Coordinator {
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly judgments: JudgmentConfig | undefined;
+  private readonly externalJudges: readonly ExternalEffortJudge[];
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -665,6 +771,7 @@ export class Coordinator {
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
     this.judgments = deps.judgments;
+    this.externalJudges = deps.externalJudges ?? [];
     this.observers = [
       ...(deps.admission?.observers ?? []),
       ...(deps.judgments
@@ -764,7 +871,12 @@ export class Coordinator {
     const manifestText = this.store.getArtifactText(runId, record.manifestRef);
     const stateText = this.store.getArtifactText(runId, record.contextRef);
     if (!manifestText || !stateText)
-      throw new ToolRefusal('STORAGE_UNAVAILABLE', 'runtime checkpoint is incomplete');
+      throw new ToolRefusal(
+        'STORAGE_UNAVAILABLE',
+        canReleaseArtifactBodies(source.projection)
+          ? 'runtime checkpoint body has been released'
+          : 'runtime checkpoint is incomplete',
+      );
     const manifest = RuntimeCheckpointManifest.parse(JSON.parse(manifestText));
     const storedState = JSON.parse(stateText);
     const state = decodeContextCheckpoint(storedState, (id) =>
@@ -823,8 +935,6 @@ export class Coordinator {
     if (source.projection.currentCriteriaVersionId !== manifest.criteriaVersionId)
       blockers.push('criteria_changed');
     if (
-      source.projection.budget.reserved ||
-      source.projection.budget.unknownOutstanding ||
       Object.values(source.projection.effects).some(
         (effect) =>
           effect.kind !== 'spawn' && (effect.status === 'admitted' || effect.outcome === 'unknown'),
@@ -922,28 +1032,14 @@ export class Coordinator {
       )
         blockers.push('files_changed_or_uncertain');
     } else if (this.files?.available(runId)) blockers.push('files_changed_or_uncertain');
-    const limits = { ...(source.projection.limits ?? source.snapshot.definition.limits) };
-    if (!source.projection.usageLimits) {
-      limits.maxModelCalls -= source.projection.budget.modelCalls;
-      limits.maxOutputTokens -=
-        source.projection.budget.spent +
-        source.projection.budget.reserved +
-        source.projection.budget.unknownOutstanding;
-      limits.maxOutputTokensPerCall = Math.min(
-        limits.maxOutputTokensPerCall,
-        Math.max(1, limits.maxOutputTokens),
-      );
-      if (limits.maxModelCalls < 1 || limits.maxOutputTokens < 1) blockers.push('budget_exhausted');
-    }
     return {
       ...record,
       sourceSeq: source.projection.lastSeq,
       createdAt: manifest.createdAt,
       runtime: manifest.runtime,
-      ...(source.projection.usageLimits ? { usageLimits: source.projection.usageLimits } : {}),
       ready: !blockers.length,
       blockers: [...new Set(blockers)],
-      limits: limits.maxModelCalls > 0 && limits.maxOutputTokens > 0 ? limits : null,
+      limits: source.projection.limits ?? source.snapshot.definition.limits,
     };
   }
 
@@ -963,7 +1059,12 @@ export class Coordinator {
           createdAt: source.snapshot.startedAt,
           runtime: 'pi-core',
           ready: false,
-          blockers: ['checkpoint_corrupt'],
+          blockers: [
+            canReleaseArtifactBodies(source.projection) &&
+            !this.store.getArtifactText(runId, record.contextRef)
+              ? 'content_released'
+              : 'checkpoint_corrupt',
+          ],
           limits: null,
         });
       }
@@ -1011,23 +1112,6 @@ export class Coordinator {
         definition.roles = [recovery.state.role];
         definition.input.criteria = [recovery.state.criteria];
         definition.limits = preview.limits;
-        definition.executionPolicy =
-          preview.usageLimits === 'none'
-            ? { version: 2 }
-            : {
-                version: 2,
-                budget: {
-                  maxModelCalls: preview.limits.maxModelCalls,
-                  maxOutputTokens: preview.limits.maxOutputTokens,
-                  maxOutputTokensPerCall: preview.limits.maxOutputTokensPerCall,
-                  ...(definition.executionPolicy?.budget?.modelTimeoutMs !== undefined
-                    ? { modelTimeoutMs: definition.executionPolicy.budget.modelTimeoutMs }
-                    : {}),
-                  ...(definition.executionPolicy?.budget?.runDeadlineMs !== undefined
-                    ? { runDeadlineMs: definition.executionPolicy.budget.runDeadlineMs }
-                    : {}),
-                },
-              };
         return this.startRunWithRecovery(
           {
             schemaVersion: '0.1',
@@ -1082,7 +1166,6 @@ export class Coordinator {
         checkpointId: files?.checkpointId ?? null,
         tree: files?.tree ?? null,
         modelProfile: [...new Set(definition.roles.map((role) => role.modelProfile))].join(', '),
-        ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
         limits: definition.limits,
       };
       return {
@@ -1272,7 +1355,6 @@ export class Coordinator {
       checkpointId: recovery?.manifest.checkpointId ?? null,
       tree: files?.tree ?? null,
       modelProfile: role.modelProfile,
-      ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
       limits: definition.limits,
     };
     return {
@@ -1511,6 +1593,33 @@ export class Coordinator {
       });
     const resolved = this.resolveDefinition(request);
     if ('error' in resolved) return refuse(resolved.error);
+    // A fork takes its request and criteria from the finished run of this session it forks.
+    const forkFrom = 'forkFrom' in request ? request.forkFrom : undefined;
+    const forkSource = forkFrom ? this.store.getRun(forkFrom.runId) : null;
+    if (forkFrom) {
+      if (
+        ('input' in request && request.input !== undefined) ||
+        request.startFrom !== undefined ||
+        request.references?.length
+      )
+        return refuse({
+          code: 'SCHEMA_INVALID',
+          message: 'a fork takes its request from the run it forks',
+        });
+      if (
+        !forkSource ||
+        !TERMINAL_RUN_STATUSES.has(forkSource.projection.status) ||
+        (forkSource.sessionId ?? null) !== (request.sessionId ?? null)
+      )
+        return refuse({
+          code: 'TARGET_NOT_FOUND',
+          message: `no finished run ${forkFrom.runId} in this session`,
+        });
+      resolved.definition = {
+        ...(resolved.definition as CorralDefinition),
+        input: forkSource.snapshot.definition.input,
+      };
+    }
     const meeting = 'meeting' in request ? request.meeting : undefined;
     let meetingContext: RuntimeCheckpointState | undefined;
     if (meeting) {
@@ -1601,15 +1710,17 @@ export class Coordinator {
         message: 'referenced generated image is unavailable or exceeds vision input limits',
       });
     }
-    const planned = planRun(referenced.definition);
+    const corrals = this.corrals;
+    const planned = planRun(referenced.definition, {
+      ...(corrals
+        ? { resolveTeam: (id: string, revision: number) => corrals.getDefinition(id, revision) }
+        : {}),
+    });
     if (!planned.ok) {
-      const code = planned.issues.some((i) => i.code === 'GRAPH_INVALID')
-        ? 'GRAPH_INVALID'
-        : 'COMMAND_NOT_SUPPORTED';
       const message = planned.issues
         .map((i) => `${i.nodeId ?? i.edgeId ?? i.linkId ?? 'graph'}: ${i.message}`)
         .join('; ');
-      return refuse({ code, message });
+      return refuse({ code: 'GRAPH_INVALID', message });
     }
     for (const [roleId, override] of Object.entries(request.roleOverrides ?? {})) {
       const role = planned.definition.roles.find((role) => role.id === roleId);
@@ -1620,21 +1731,18 @@ export class Coordinator {
         });
       Object.assign(role, override);
     }
-    const loopRounds = Math.max(
-      0,
-      ...Object.values(planned.plan.loops).map((l) => l.maxIterations),
-    );
-    const overCaps = limitViolations(
-      planned.definition.limits,
-      loopRounds,
-      this.policy,
-      !planned.definition.executionPolicy?.budget,
-    );
+    const breakpoints = [...new Set(request.breakpoints ?? [])];
+    const breakpointError = this.breakpointError(planned.definition, breakpoints);
+    if (breakpointError) return refuse({ code: 'TARGET_NOT_FOUND', message: breakpointError });
+    const fork =
+      forkFrom && forkSource ? this.forkCopies(planned, forkSource, forkFrom.nodeId) : null;
+    if (fork && 'error' in fork) return refuse(fork.error);
+    const overCaps = limitViolations(planned.definition.limits, this.policy);
     if (overCaps.length > 0) return refuse({ code: 'GRAPH_INVALID', message: overCaps.join('; ') });
     // Every profile resolves now, so the run never meets an unusable model halfway.
     const models: Record<string, ModelProfileSnapshot> = {};
     const unusable: { code: CommandError['code']; message: string }[] = [];
-    for (const profile of new Set(planned.definition.roles.map((r) => r.modelProfile))) {
+    for (const profile of runModelProfiles(planned.definition)) {
       const frozen = (recovery?.source ?? branch?.source)?.snapshot.models[profile];
       const resolution: ModelResolution = preparedModels
         ? preparedModels[profile]
@@ -1809,6 +1917,35 @@ export class Coordinator {
           message: 'recipe criteria files require the file broker',
         });
     }
+    // A check Decision runs the session project's registered checks, pinned now.
+    const checkIds = [
+      ...new Set(
+        planned.definition.nodes.flatMap((n) =>
+          n.type === 'decision' && n.mode === 'check' ? n.checkIds : [],
+        ),
+      ),
+    ];
+    let checks: RunSnapshot['checks'];
+    if (checkIds.length) {
+      try {
+        if (!request.sessionId || !this.files?.planCheck || !this.files.runCheck)
+          throw new Error('no check runner');
+        checks = this.harnesses?.projectChecks?.(request.sessionId, checkIds);
+        if (!checks || !checkIds.every((id) => checks?.checkIds.includes(id)))
+          throw new Error('checks not selected');
+      } catch {
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'check decisions need a work session whose project registers their checks',
+        });
+      }
+      // Checks run in the session's working copy, which the person makes; a run never makes it.
+      if (!request.sessionId || !this.files?.worktreeScope?.(request.sessionId))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: "check decisions need the session's working copy",
+        });
+    }
     if (
       recovery &&
       (hashOf(models[recovery.state.role.modelProfile]) !== recovery.manifest.modelHash ||
@@ -1828,7 +1965,12 @@ export class Coordinator {
       return refuse({ code: 'CAPABILITY_DENIED', message: 'branch model or resources changed' });
     const runId = this.ids.next('run');
     const definition = planned.definition;
+    const carried = fork?.carried.map((copy) => ({
+      ...copy,
+      artifactVersionIds: copy.texts.map(() => this.ids.next('artifact_version')),
+    }));
     const writesFiles =
+      checks !== undefined ||
       definition.roles.some((role) =>
         role.allowedWorkTools.some((tool) =>
           [
@@ -1905,6 +2047,7 @@ export class Coordinator {
       ...(request.permissionMode ? { permissionMode: request.permissionMode } : {}),
       models,
       ...(Object.keys(harnesses).length ? { harnesses } : {}),
+      ...(checks ? { checks } : {}),
       ...(Object.keys(imageProfiles).length ? { imageProfiles } : {}),
       ...('autoRoute' in request && request.autoRoute ? { autoRoute: request.autoRoute } : {}),
       ...('meeting' in request && request.meeting ? { meeting: request.meeting } : {}),
@@ -1912,16 +2055,20 @@ export class Coordinator {
         ? {
             reasoningApply: {
               enabled: true,
+              policy: this.judgments.settings.reasoning_effort.policy ?? 'judged',
               provider: 'local-model' as const,
               version:
                 this.judgments.providers.find(
                   (p) => p.id === 'local-model' && p.privacy === 'local',
                 )?.version ?? null,
               maxCalls: Math.min(
-                100,
-                this.judgments.settings.reasoning_effort.maxCalls ??
-                  definition.limits.maxModelCalls,
+                DECISION_HARD_CAP,
+                this.judgments.settings.reasoning_effort.maxCalls ?? DECISION_HARD_CAP,
               ),
+              ...(this.judgments.settings.reasoning_effort.allowExternal &&
+              this.judgments.settings.reasoning_effort.external
+                ? { external: { ...this.judgments.settings.reasoning_effort.external } }
+                : {}),
             },
           }
         : {}),
@@ -1930,14 +2077,14 @@ export class Coordinator {
     const run: LiveRun = {
       runId,
       snapshot,
-      plan: planned.plan,
+      // A fork runs from its step; the definition and its own start step stay as they are.
+      plan: forkFrom && fork ? forkPlan(planned.plan, forkFrom.nodeId, fork.reached) : planned.plan,
       projection: emptyProjection(runId),
       stop: { aborted: false },
       activations: new Map(),
       handles: new Map(),
       rounds: new Map(),
       recipes: new Map(),
-      ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
       slots: { free: definition.limits.maxModelConcurrency, waiters: [], held: new Map() },
       taskOutcomes: new Map(),
       questions: new Map(),
@@ -1958,29 +2105,20 @@ export class Coordinator {
         (p) => p.id === 'local-model' && p.privacy === 'local',
       ),
       reasoningMaxCalls: Math.min(
-        100,
-        this.judgments?.settings.reasoning_effort.maxCalls ?? definition.limits.maxModelCalls,
+        DECISION_HARD_CAP,
+        this.judgments?.settings.reasoning_effort.maxCalls ?? DECISION_HARD_CAP,
       ),
-      capStop: null,
-      limits: definition.executionPolicy?.budget
-        ? {
-            ...definition.limits,
-            maxModelCalls:
-              definition.executionPolicy.budget.maxModelCalls ?? Number.MAX_SAFE_INTEGER,
-            maxOutputTokens:
-              definition.executionPolicy.budget.maxOutputTokens ?? Number.MAX_SAFE_INTEGER,
-            maxOutputTokensPerCall:
-              definition.executionPolicy.budget.maxOutputTokensPerCall ?? Number.MAX_SAFE_INTEGER,
-            runDeadlineMs:
-              definition.executionPolicy.budget.runDeadlineMs ?? Number.MAX_SAFE_INTEGER,
-            modelTimeoutMs:
-              definition.executionPolicy.budget.modelTimeoutMs ?? Number.MAX_SAFE_INTEGER,
-          }
-        : { ...definition.limits },
+      loopEntries: new Map(),
+      stoppedSteps: new Set(),
+      stepApprovals: new Map(),
+      limitApproval: null,
+      // A spawn limit above the installation's cap runs with the cap.
+      limits: {
+        ...definition.limits,
+        maxSpawns: Math.min(definition.limits.maxSpawns, this.policy.maxSpawns),
+      },
       criteriaVersionId: snapshot.criteriaVersionId,
       pendingCriteriaVersionId: null,
-      cancelDeadline: () => {},
-      requestDeadlines: new Map(),
       nodePatches: new Map(),
       assignments: new Map(),
       executionOutcomes: new Map(),
@@ -2003,12 +2141,23 @@ export class Coordinator {
           ...(snapshot.permissionMode ? { permissionMode: snapshot.permissionMode } : {}),
           modelProfiles: Object.values(models),
           limits: run.limits,
-          ...(!definition.executionPolicy?.budget ? { usageLimits: 'none' as const } : {}),
           criteriaVersionId: snapshot.criteriaVersionId,
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
+          ...(snapshot.checks ? { checks: snapshot.checks } : {}),
           ...(snapshot.imageProfiles ? { imageProfiles: snapshot.imageProfiles } : {}),
           ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
+          ...(forkFrom && carried
+            ? {
+                forkedFrom: {
+                  ...forkFrom,
+                  carried: carried.map(({ nodeId, artifactVersionIds }) => ({
+                    nodeId,
+                    artifactVersionIds,
+                  })),
+                },
+              }
+            : {}),
           ...(snapshot.conversation ? { conversation: snapshot.conversation } : {}),
           ...(snapshot.autoRoute ? { autoRoute: snapshot.autoRoute } : {}),
           ...(snapshot.meeting ? { meeting: snapshot.meeting } : {}),
@@ -2016,15 +2165,22 @@ export class Coordinator {
           ...(snapshot.branchedFrom ? { branchedFrom: snapshot.branchedFrom } : {}),
           ...(this.judgments
             ? {
-                decisions: resolveDecisionSettings(this.judgments, {
-                  mode: request.mode,
-                  maxModelCalls: definition.limits.maxModelCalls,
-                }),
+                decisions: resolveDecisionSettings(this.judgments, { mode: request.mode }),
               }
             : {}),
         },
       },
-      ...this.chooserBudget(
+      ...(breakpoints.length
+        ? [
+            {
+              type: 'breakpoints.changed' as const,
+              actor: USER,
+              commandId: request.commandId,
+              payload: { nodeIds: breakpoints },
+            },
+          ]
+        : []),
+      ...this.chooserUsage(
         { runId, snapshot, projection: run.projection, sessionId: request.sessionId },
         request.commandId,
       ),
@@ -2074,6 +2230,9 @@ export class Coordinator {
           );
         for (const image of images)
           this.store.putArtifactText(runId, image.imageId, canonicalJson(image));
+        for (const copy of carried ?? [])
+          for (const [index, id] of copy.artifactVersionIds.entries())
+            this.store.putArtifactText(runId, id, copy.texts[index] ?? '');
         this.store.putArtifactText(
           runId,
           snapshot.criteriaVersionId,
@@ -2095,33 +2254,59 @@ export class Coordinator {
     }
     this.live.set(runId, run);
     this.publish(run, projection);
-    if (definition.executionPolicy?.budget?.runDeadlineMs !== undefined)
-      run.cancelDeadline = this.timers.after(run.limits.runDeadlineMs, () => {
-        if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-        this.commit(run, [
-          {
-            type: 'limit.reached',
-            payload: {
-              limitKind: 'deadline',
-              used: run.limits.runDeadlineMs,
-              reserved: 0,
-              max: run.limits.runDeadlineMs,
-            },
-          },
-        ]);
-        this.submit({
-          schemaVersion: '0.1',
-          runId,
-          commandId: `deadline_${runId}`,
-          type: 'cancel',
-          payload: { scope: { kind: 'run' }, reason: 'run_deadline' },
-        });
-      });
     this.schedule(run, async () => {
       await this.files?.prepareRun?.(runId);
       if (!TERMINAL_RUN_STATUSES.has(run.projection.status)) await this.drive(run);
     });
     return { runId, receipt };
+  }
+
+  /**
+   * What a fork at `nodeId` copies from its source run: the results the remaining nodes read
+   * from nodes it does not run again. A required result the source no longer has refuses it.
+   */
+  private forkCopies(
+    planned: Extract<RunPlan, { ok: true }>,
+    source: StoredRun,
+    nodeId: string,
+  ):
+    | { carried: { nodeId: string; texts: string[] }[]; reached: Set<string> }
+    | { error: CommandError } {
+    if (!source.snapshot.definition.nodes.some((node) => node.id === nodeId))
+      return {
+        error: { code: 'TARGET_NOT_FOUND', message: `run ${source.runId} has no step ${nodeId}` },
+      };
+    const steps = forkSteps(planned.definition, planned.plan, nodeId);
+    if ('error' in steps) return { error: steps.error };
+    const carried: { nodeId: string; texts: string[] }[] = [];
+    let bytes = 0;
+    for (const [sourceNodeId, required] of carriedSources(
+      planned.definition,
+      planned.plan,
+      steps.reached,
+    )) {
+      const ids = stepResult(source.projection, sourceNodeId);
+      const texts = ids.map((id) => this.getArtifactText(source.runId, id));
+      if (!ids.length || texts.some((text) => text === null)) {
+        if (!required) continue;
+        return {
+          error: {
+            code: 'TARGET_NOT_FOUND',
+            message: `run ${source.runId} keeps no result of ${sourceNodeId}`,
+          },
+        };
+      }
+      for (const text of texts) bytes += utf8ToBytes(text ?? '').length;
+      if (bytes > this.policy.maxArtifactBytes)
+        return {
+          error: {
+            code: 'LIMIT_REACHED',
+            message: `the copied results are larger than this installation's ${this.policy.maxArtifactBytes} byte artifact cap`,
+          },
+        };
+      carried.push({ nodeId: sourceNodeId, texts: texts as string[] });
+    }
+    return { carried, reached: steps.reached };
   }
 
   private resolveDefinition(
@@ -2211,25 +2396,8 @@ export class Coordinator {
       const run = read(runId);
       if (!run || run.snapshot.meeting || !TERMINAL_RUN_STATUSES.has(run.projection.status))
         continue;
-      let request = run.snapshot.definition.input.brief;
-      const from = run.projection.startedFrom;
-      const source = from ? read(from.runId) : null;
-      const version = from ? source?.projection.artifacts[from.artifactVersionId] : undefined;
-      const copied =
-        from && version ? this.store.getArtifactText(from.runId, from.artifactVersionId) : null;
-      if (from && version && copied !== null)
-        request = request.replace(startPointText(version, from.runId, copied), '');
-      const outputId = run.projection.output?.artifactVersionIds[0];
-      const answer =
-        outputId && !run.projection.artifacts[outputId]?.media
-          ? this.store.getArtifactText(runId, outputId)
-          : null;
       turns.push({
-        runId,
-        request,
-        answer,
-        status: run.projection.status,
-        artifactVersionId: answer === null ? null : (outputId ?? null),
+        ...(this.store.getConversationTurn(runId) ?? this.primaryConversationTurn(run)),
       });
     }
     const bytes = (turn: ConversationTurn) =>
@@ -2565,6 +2733,7 @@ export class Coordinator {
       return refuse('TARGET_TERMINAL', 'the run is cancelling');
     if (command.type === 'patch') return this.patch(run, command, payloadHash);
     if (command.type === 'restart_task') return this.restart(run, command, payloadHash);
+    if (command.type === 'set_breakpoints') return this.setBreakpoints(run, command, payloadHash);
     if (command.type === 'pause') {
       const current = run.projection.status;
       if (current === 'cancelling') return refuse('TARGET_TERMINAL', 'the run is cancelling');
@@ -2730,13 +2899,6 @@ export class Coordinator {
       }));
       for (const executionId of unsettled) {
         this.releaseSlots(run, executionId, false);
-        for (const call of Object.values(run.projection.modelCalls))
-          if (call.executionId === executionId) {
-            run.requestDeadlines.get(call.modelCallId)?.();
-            run.requestDeadlines.delete(call.modelCallId);
-            const settled = settlementFor(run.projection.budget, call.modelCallId, null);
-            if (settled) timedOut.push({ type: 'budget.settled', payload: settled });
-          }
         for (const effect of Object.values(run.projection.effects))
           if (effect.scope === executionId && effect.status === 'admitted')
             timedOut.push({
@@ -2865,28 +3027,13 @@ export class Coordinator {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
       if (node.reviewRecipe && change.maxIterations > recipeAttempts(node.reviewRecipe))
         return refuse('LIMIT_REACHED', 'loop limit exceeds the pinned review recipe');
-      if (change.maxIterations > this.policy.maxLoopIterations)
-        return refuse('LIMIT_REACHED', 'loop cap exceeds installation policy');
       before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
       after = { maxIterations: change.maxIterations };
     } else if (change.kind === 'run_limits') {
-      for (const [key, value] of Object.entries(change.changes))
-        if (key === 'maxSpawns' && value > this.policy.maxSpawns)
-          return refuse('LIMIT_REACHED', `${key} exceeds installation policy`);
-      before = Object.fromEntries(
-        Object.keys(change.changes).map((k) => [k, run.limits[k as keyof typeof run.limits]]),
-      );
-      after = {
-        ...(run.usageLimits &&
-        (change.changes.maxModelCalls !== undefined || change.changes.maxOutputTokens !== undefined)
-          ? {
-              maxModelCalls: Number.MAX_SAFE_INTEGER,
-              maxOutputTokens: Number.MAX_SAFE_INTEGER,
-              maxOutputTokensPerCall: Number.MAX_SAFE_INTEGER,
-            }
-          : {}),
-        ...change.changes,
-      };
+      if (change.changes.maxSpawns > this.policy.maxSpawns)
+        return refuse('LIMIT_REACHED', 'maxSpawns exceeds installation policy');
+      before = { maxSpawns: run.limits.maxSpawns };
+      after = { maxSpawns: change.changes.maxSpawns };
     } else {
       if (run.snapshot.definition.nodes.some((node) => node.type === 'loop' && node.reviewRecipe))
         return refuse(
@@ -2961,11 +3108,6 @@ export class Coordinator {
       if (loop) loop.maxIterations = change.maxIterations;
     } else if (change.kind === 'run_limits') {
       run.limits = { ...run.limits, ...after };
-      if (
-        change.changes.maxModelCalls !== undefined ||
-        change.changes.maxOutputTokens !== undefined
-      )
-        delete run.usageLimits;
     } else {
       run.pendingCriteriaVersionId = String(after.criteriaVersionId);
       for (const [oldId, resolve] of [...run.approvals]) {
@@ -3116,11 +3258,7 @@ export class Coordinator {
   private async boundary(run: LiveRun, executionId?: string): Promise<void> {
     if (executionId) run.boundaries.add(executionId);
     try {
-      while (
-        run.projection.status === 'pausing' ||
-        run.projection.status === 'paused' ||
-        run.projection.status === 'awaiting_user'
-      ) {
+      while (run.projection.status === 'pausing' || run.projection.status === 'paused') {
         this.maybePaused(run);
         if (run.stop.aborted || (executionId && run.cancelRequested.has(executionId)))
           throw new Error('scope cancelled');
@@ -3359,6 +3497,13 @@ export class Coordinator {
     return this.store.listRuns();
   }
 
+  /** Recent finished live runs of one saved revision, step by step. */
+  runStats(corralId: string, definitionRevision: number): RunStats {
+    return runStats({ corralId, definitionRevision }, this.store.listRuns(), (runId) =>
+      this.store.getRun(runId),
+    );
+  }
+
   /** Whether a run-creation command is already recorded (a resend, not a new run). */
   hasStartCommand(commandId: string): boolean {
     return this.store.getCommand(START_SCOPE, commandId) !== null;
@@ -3551,7 +3696,119 @@ export class Coordinator {
   }
 
   getArtifactText(runId: string, artifactVersionId: string): string | null {
-    return this.store.getArtifactText(runId, artifactVersionId);
+    return canReadArtifactBody(this.projectionOf(runId), artifactVersionId)
+      ? this.store.getArtifactText(runId, artifactVersionId)
+      : null;
+  }
+
+  getConversationTurn(runId: string): StoredConversationTurn | null {
+    return this.store.getConversationTurn(runId);
+  }
+
+  private primaryConversationTurn(run: StoredRun): StoredConversationTurn {
+    let request = run.snapshot.definition.input.brief;
+    const from = run.projection.startedFrom;
+    const source = from ? this.store.getRun(from.runId) : null;
+    const version = from ? source?.projection.artifacts[from.artifactVersionId] : undefined;
+    const copied =
+      from && version ? this.store.getArtifactText(from.runId, from.artifactVersionId) : null;
+    if (from && version && copied !== null)
+      request = request.replace(startPointText(version, from.runId, copied), '');
+    const outputId = run.projection.output?.artifactVersionIds[0];
+    const answer =
+      outputId && !run.projection.artifacts[outputId]?.media
+        ? this.store.getArtifactText(run.runId, outputId)
+        : null;
+    return {
+      runId: run.runId,
+      request,
+      answer,
+      status: run.projection.status,
+      artifactVersionId: answer === null ? null : (outputId ?? null),
+    };
+  }
+
+  /** Called inside the same transaction as settlement. Retain relation facts, not old bodies. */
+  private releaseSettledBodies(runId?: string) {
+    const summaries = this.store.listRuns();
+    const current = runId ? this.store.getRun(runId) : null;
+    const candidates = summaries
+      .filter(
+        (summary) =>
+          !runId ||
+          summary.runId === runId ||
+          (current?.sessionId && summary.sessionId === current.sessionId),
+      )
+      .map((summary) => this.store.getRun(summary.runId)!)
+      .filter((run) => canReleaseArtifactBodies(run.projection));
+    // Capture ordinary conversation before any source/final body is released.
+    for (const run of candidates)
+      if (!run.snapshot.meeting && !this.store.getConversationTurn(run.runId))
+        this.store.putConversationTurn(run.runId, this.primaryConversationTurn(run));
+    const changes: { runId: string; events: RunEvent[]; projection: RunProjection }[] = [];
+    for (const run of candidates) {
+      const latest = run.sessionId
+        ? summaries.find((summary) => {
+            if (summary.sessionId !== run.sessionId || summary.status !== 'succeeded') return false;
+            const candidate = this.store.getRun(summary.runId);
+            return (
+              candidate?.snapshot.meeting?.participantId === run.snapshot.meeting?.participantId &&
+              !!candidate?.projection.output?.artifactVersionIds.length
+            );
+          })
+        : null;
+      const superseded = !!latest && latest.runId !== run.runId;
+      // Step results stay so the run can be forked, until a later run of its session succeeds.
+      const later = summaries.slice(
+        0,
+        Math.max(
+          summaries.findIndex((summary) => summary.runId === run.runId),
+          0,
+        ),
+      );
+      const stepsSuperseded =
+        !!run.snapshot.meeting ||
+        (!!run.sessionId &&
+          later.some(
+            (summary) => summary.sessionId === run.sessionId && summary.status === 'succeeded',
+          ));
+      const retained = [
+        ...new Set([
+          ...(superseded ? [] : (run.projection.output?.artifactVersionIds ?? [])),
+          ...(stepsSuperseded ? [] : stepResultIds(run.projection)),
+        ]),
+      ].filter((id) => run.projection.artifacts[id]?.bodyAvailable !== false);
+      const released = Object.keys(run.projection.artifacts).filter(
+        (id) => !retained.includes(id) && run.projection.artifacts[id]?.bodyAvailable !== false,
+      );
+      if (released.length) {
+        const prepared = this.prepare(run, [
+          {
+            type: 'artifact.content_released',
+            payload: {
+              artifactVersionIds: released,
+              reason: superseded ? 'superseded' : 'run_settled',
+            },
+          },
+        ]);
+        this.write(run.runId, prepared.events, prepared.projection);
+        changes.push({ runId: run.runId, ...prepared });
+      }
+      const operational: string[] = [];
+      // A meeting participant owns one current context for its next turn, never a checkpoint archive.
+      if (run.snapshot.meeting && !superseded) {
+        const checkpoint = Object.values(run.projection.runtimeCheckpoints ?? {}).at(-1);
+        if (checkpoint) {
+          operational.push(checkpoint.manifestRef, checkpoint.contextRef);
+          const context = this.store.getArtifactText(run.runId, checkpoint.contextRef);
+          if (context) operational.push(...checkpointReferences(JSON.parse(context)));
+        }
+      }
+      // An interrupted reply stays readable as private partial output (workbench contract).
+      operational.push(...partialOutputRefs(this.store, run.runId, run.projection));
+      this.store.retainArtifactBodies(run.runId, [...retained, ...operational]);
+    }
+    return changes;
   }
 
   /** Delivers every event after `afterSeq` exactly once, in order, then follows live commits. */
@@ -3639,14 +3896,93 @@ export class Coordinator {
 
   /** Commits drafts (plus `extra` writes) atomically, then updates readers. */
   private commit(run: LiveRun, drafts: EventDraft[], extra?: (events: RunEvent[]) => void) {
+    // Settled hosts can still reconcile usage after another Run released their bodies.
+    // Rebase that terminal closure on the committed metadata before assigning sequences.
+    if (TERMINAL_RUN_STATUSES.has(run.projection.status)) {
+      const stored = this.store.getRun(run.runId);
+      if (stored && stored.projection.lastSeq > run.projection.lastSeq)
+        run.projection = stored.projection;
+    }
     const { events, projection } = this.prepare(run, drafts);
+    let committedProjection = projection;
+    let releases: ReturnType<Coordinator['releaseSettledBodies']> = [];
     this.persist(() => {
       this.write(run.runId, events, projection);
       extra?.(events);
+      if (canReleaseArtifactBodies(projection)) releases = this.releaseSettledBodies(run.runId);
+      const own = releases.find((change) => change.runId === run.runId);
+      if (own) {
+        committedProjection = own.projection;
+        events.push(...own.events);
+      }
     });
-    this.publish(run, projection);
-    notifyObservers(this.observers, projection, events, () => this.observerContext(run));
+    this.publish(run, committedProjection);
+    for (const released of releases)
+      if (released.runId !== run.runId)
+        for (const subscriber of this.subscribers)
+          if (subscriber.runId === released.runId)
+            void Promise.resolve().then(() => this.pump(subscriber));
+    notifyObservers(this.observers, committedProjection, events, () => this.observerContext(run));
     return events;
+  }
+
+  /**
+   * The decision API one request may ask: only in live runs that chose it at start, while its
+   * key is configured. Each call is one decision effect, settled once.
+   */
+  private externalConsult(
+    run: LiveRun,
+    executionId: string,
+    attemptNo: number,
+  ): ExternalConsult | undefined {
+    const wanted = run.snapshot.reasoningApply?.external;
+    const judge = wanted && this.externalJudges.find((j) => j.provider === wanted.provider);
+    if (run.snapshot.mode !== 'live' || !wanted || !judge || judge.available() !== true)
+      return undefined;
+    return {
+      now: () => this.clock.monotonicMs(),
+      ask: async (input, cancellation) => {
+        const effectId = this.ids.next('effect');
+        this.commit(run, [
+          {
+            type: 'effect.admitted',
+            executionId,
+            payload: {
+              effectId,
+              kind: 'decision',
+              scope: executionId,
+              epoch: attemptNo,
+              modelCallId: null,
+            },
+          },
+        ]);
+        const settle = (outcome: EventPayload<'effect.settled'>['outcome']) => {
+          if (
+            this.live.get(run.runId) === run &&
+            !TERMINAL_RUN_STATUSES.has(run.projection.status) &&
+            run.projection.effects[effectId]?.status === 'admitted'
+          )
+            this.commit(run, [
+              { type: 'effect.settled', executionId, payload: { effectId, outcome } },
+            ]);
+        };
+        const off = cancellation.onCancel(() => settle('cancelled'));
+        try {
+          const answer = await judge.judge(
+            input,
+            { model: wanted.model, owner: { runId: run.runId, executionId, effectId, attemptNo } },
+            cancellation,
+          );
+          settle(EFFORT_LEVELS.some((level) => level === answer.answer) ? 'succeeded' : 'failed');
+          return answer;
+        } catch (error) {
+          settle(cancellation.aborted ? 'cancelled' : 'failed');
+          throw error;
+        } finally {
+          off();
+        }
+      },
+    };
   }
 
   /** What observers may do: record decision facts while the run is open. */
@@ -3729,9 +4065,7 @@ export class Coordinator {
       }
     }
     if (TERMINAL_RUN_STATUSES.has(projection.status)) {
-      for (const recipe of run.recipes.values()) recipe.cancelDeadline();
       this.live.delete(run.runId);
-      run.cancelDeadline();
       this.wake(run);
       this.files?.releaseRun?.(
         run.runId,
@@ -3831,12 +4165,18 @@ export class Coordinator {
 
   private recover() {
     for (const summary of this.store.listRuns()) {
-      if (TERMINAL_RUN_STATUSES.has(summary.status)) continue;
       const stored = this.store.getRun(summary.runId);
       if (!stored) continue;
+      const terminal = TERMINAL_RUN_STATUSES.has(summary.status);
+      if (terminal && canReleaseArtifactBodies(stored.projection)) continue;
+      const drafts = this.interruption(stored.projection);
       const { events, projection } = this.prepare(
         { runId: summary.runId, projection: stored.projection },
-        this.interruption(stored.projection),
+        terminal
+          ? drafts.filter(
+              (event) => event.type !== 'run.interrupted' && event.type !== 'run.state_changed',
+            )
+          : drafts,
       );
       try {
         this.persist(() => this.write(summary.runId, events, projection));
@@ -3844,15 +4184,18 @@ export class Coordinator {
         return;
       }
     }
+    try {
+      this.persist(() => {
+        this.releaseSettledBodies();
+      });
+    } catch {
+      /* admission is closed */
+    }
   }
 
   /** Ends what a dead process left open, without starting anything again. */
   private interruption(p: RunProjection): EventDraft[] {
     const drafts: EventDraft[] = [];
-    for (const reservationId of Object.keys(p.budget.reservations)) {
-      const settled = settlementFor(p.budget, reservationId, null);
-      if (settled) drafts.push({ type: 'budget.settled', payload: settled });
-    }
     for (const effect of Object.values(p.effects)) {
       if (effect.status !== 'admitted') continue;
       // It may have reached the provider; nobody knows. It is never dispatched again.
@@ -3927,7 +4270,7 @@ export class Coordinator {
   }
 
   private conclude(run: LiveRun, result: RunnerResult) {
-    if (run.projection.status !== 'running') return;
+    if (!WORKING.has(run.projection.status)) return;
     switch (result.kind) {
       case 'finished':
         // finalizeOutput already ended the run; reaching here still running is a runner bug.
@@ -3940,9 +4283,7 @@ export class Coordinator {
         return;
       // The person stopped it: at the Loop cap, at an approval, or after an inconclusive review.
       case 'cap_reached':
-        if (run.capStop === 'hard_cap')
-          this.failRun(run, `loop_hard_cap_reached: ${result.loopId}`);
-        else this.endRun(run, 'cancelled', `loop_cap_declined: ${result.loopId}`);
+        this.endRun(run, 'cancelled', `loop_cap_declined: ${result.loopId}`);
         return;
       case 'rejected':
         this.endRun(run, 'cancelled', `rejected: ${result.nodeId}`);
@@ -3960,18 +4301,77 @@ export class Coordinator {
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
-        if (this.decisions) {
-          return this.decisions.decide({
-            runId: run.runId,
-            nodeId,
-            mode: step.mode,
-            iteration,
-            projection: run.projection,
-          });
+        const iterationId = this.openRoundOf(run, nodeId);
+        if (!(await this.passBreakpoint(run, nodeId, iterationId))) return null;
+        const decisionRevision = run.projection.controlRevision;
+        // A router asks its own chooser and a check runs its checks; an external policy decides
+        // the other modes.
+        const decision: WorkflowDecision | null =
+          step.mode === 'router'
+            ? await this.route(run, nodeId, iterationId)
+            : step.mode === 'check'
+              ? await this.check(run, nodeId, iterationId)
+              : this.decisions
+                ? {
+                    branch: await this.decisions.decide({
+                      runId: run.runId,
+                      nodeId,
+                      mode: step.mode,
+                      iteration,
+                      projection: run.projection,
+                    }),
+                    reasonCode: 'external_policy',
+                    evidenceRefs: [],
+                    configRevision: decisionRevision,
+                  }
+                : await this.decide(run, nodeId, step.mode);
+        // The choice may have waited on a person or external policy. Never append a late
+        // routing fact to a cancelled Run or a different iteration.
+        await this.boundary(run);
+        if (iterationId !== this.openRoundOf(run, nodeId))
+          throw new Error('decision scope changed');
+        // A branch stopped while it decided records no route.
+        if (decision === null || run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`))
+          return null;
+        const next = step.branches[decision.branch]?.[0] ?? null;
+        const executionIds = new Set<string>();
+        const author = (id: string) => {
+          const executionId = run.projection.artifacts[id]?.authorExecutionId;
+          if (executionId) executionIds.add(executionId);
+        };
+        for (const ref of decision.evidenceRefs) {
+          if (ref.kind === 'artifact' || ref.kind === 'review') author(ref.id);
+          if (ref.kind === 'approval')
+            for (const id of run.projection.approvals[ref.id]?.subjectVersionIds ?? []) author(id);
+          if (ref.kind === 'task') {
+            const id = run.projection.tasks[ref.id]?.activeExecutionId;
+            if (id) executionIds.add(id);
+          }
         }
-        return this.decide(run, nodeId, step.mode);
+        this.commit(run, [
+          {
+            type: 'workflow.branch_selected',
+            payload: {
+              nodeId,
+              mode: step.mode,
+              iterationId,
+              configRevision: decision.configRevision,
+              selectedPort: decision.branch,
+              targetNodeId: next?.nodeId ?? null,
+              targetPort: next?.port ?? null,
+              reasonCode: decision.reasonCode,
+              evidenceRefs: decision.evidenceRefs,
+              executionRefs: [...executionIds].flatMap((id) => {
+                const execution = run.projection.executions[id];
+                return execution ? [{ executionId: id, attemptNo: execution.attemptNo }] : [];
+              }),
+            },
+          },
+        ]);
+        return decision.branch;
       },
-      loopCapReached: async (loopId, rounds) => this.atLoopCap(run, loopId, rounds),
+      loopCapReached: async (loopId, rounds, reason) => this.atLoopCap(run, loopId, rounds, reason),
+      loopCheck: async (loopId) => this.loopStopOf(run, loopId),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
       loopEntered: async (loopId, no) => {
         await this.boundary(run);
@@ -3983,9 +4383,6 @@ export class Coordinator {
           run.recipes.set(loopId, {
             recipe,
             candidates: new Map(),
-            cancelDeadline: run.usageLimits
-              ? () => {}
-              : this.timers.after(recipe.maxWallMs, () => this.stopRecipe(run, loopId, 'deadline')),
           });
           if (recipe.criteriaFiles.length) {
             try {
@@ -4002,15 +4399,17 @@ export class Coordinator {
           run.pendingCriteriaVersionId = null;
         }
         const iterationId = this.ids.next('iteration');
+        if (no === 1) run.loopEntries.set(loopId, { previousWork: null });
         this.commit(run, [
           {
             type: 'loop.iteration_started',
             payload: {
               loopNodeId: loopId,
               iterationId,
+              parentIterationId: this.openRoundOf(run, loopId),
               no,
-              // What the previous round hands to this one, fixed now.
-              pinnedCarryInputs: this.carriedInto(run, loop.members, loopId),
+              // What the previous round of this entry hands to this one, fixed now.
+              pinnedCarryInputs: no === 1 ? [] : this.carriedInto(run, loop.members, loopId),
               criteriaVersionId: run.criteriaVersionId,
             },
           },
@@ -4032,12 +4431,46 @@ export class Coordinator {
           );
         run.rounds.set(loopId, { no, iterationId });
       },
+      joined: async (joinId, _iteration, stopped, loops) => {
+        const join = run.plan.steps[joinId];
+        if (join?.kind !== 'join') throw new Error(`${joinId} is not a Join`);
+        for (const step of stopped) {
+          const round = this.openRoundOf(run, step.nodeId);
+          run.stoppedSteps.add(`${step.nodeId}@${round ?? '-'}`);
+          this.withdrawApprovals(run, step.nodeId);
+          for (const id of run.projection.nodeExecutions[step.nodeId] ?? []) {
+            const execution = run.projection.executions[id];
+            if (execution && !TERMINAL_EXECUTION_STATUSES.has(execution.status))
+              this.requestCancel(run, id, 'another branch reached the Join first');
+          }
+        }
+        const drafts: EventDraft[] = [];
+        for (const { loopId, no } of loops) {
+          this.withdrawApprovals(run, loopId);
+          const round = run.rounds.get(loopId);
+          if (round?.no !== no) continue;
+          drafts.push(this.roundFinished(run, loopId, round.iterationId, 'cancelled'));
+          run.rounds.delete(loopId);
+          run.loopEntries.delete(loopId);
+        }
+        drafts.push({
+          type: 'workflow.joined',
+          payload: {
+            nodeId: joinId,
+            policy: join.policy,
+            iterationId: this.openRoundOf(run, joinId),
+            cancelledNodeIds: stopped.map((step) => step.nodeId),
+          },
+        });
+        this.commit(run, drafts);
+      },
       loopLeft: async (loopId, no, outcome) => {
         const round = run.rounds.get(loopId);
         if (round?.no !== no) throw new Error(`Loop ${loopId} round ${no} is not open`);
         this.commit(run, [this.roundFinished(run, loopId, round.iterationId, outcome)]);
-        if (outcome === 'pass') run.recipes.get(loopId)?.cancelDeadline();
         run.rounds.delete(loopId);
+        // Another round of this entry follows only a revise; anything else leaves the Loop.
+        if (outcome !== 'revise') run.loopEntries.delete(loopId);
       },
     };
   }
@@ -4079,35 +4512,6 @@ export class Coordinator {
     const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
     const state = loopId ? run.recipes.get(loopId) : undefined;
     return loopId && state ? { loopId, state } : null;
-  }
-
-  private recipeUsage(run: LiveRun, loopId: string) {
-    const reservations = Object.values(run.projection.budget.reservations).filter(
-      (reservation) => this.recipeForExecution(run, reservation.scope)?.loopId === loopId,
-    );
-    const tokens = reservations.reduce(
-      (total, reservation) => total + (reservation.actual ?? reservation.reserved),
-      0,
-    );
-    return { calls: reservations.length, tokens };
-  }
-
-  private recipeAllowance(run: LiveRun, executionId: string): number {
-    const context = this.recipeForExecution(run, executionId);
-    if (!context || run.usageLimits) return Number.POSITIVE_INFINITY;
-    const { loopId, state } = context;
-    const { calls, tokens: used } = this.recipeUsage(run, loopId);
-    const reason =
-      calls >= state.recipe.maxModelCalls
-        ? 'call_limit'
-        : used >= state.recipe.maxOutputTokens
-          ? 'token_limit'
-          : null;
-    if (reason) {
-      this.stopRecipe(run, loopId, reason);
-      throw new Error(`review recipe stopped: ${reason}`);
-    }
-    return state.recipe.maxOutputTokens - used;
   }
 
   private recipeSubmission(
@@ -4153,9 +4557,6 @@ export class Coordinator {
     state: RecipeRun,
     candidate: RecipeCandidate,
   ): Promise<RecipeStopReason | null> {
-    const usage = this.recipeUsage(run, loopId);
-    if (!run.usageLimits && usage.tokens > state.recipe.maxOutputTokens) return 'token_limit';
-    if (!run.usageLimits && usage.calls > state.recipe.maxModelCalls) return 'call_limit';
     if (!(await this.recipeCriteriaValid(run, state))) return 'criteria_changed';
     if (candidate.checks.length !== state.recipe.checkIds.length) return 'check_error';
     const tree = candidate.checks[0]?.tree;
@@ -4178,7 +4579,7 @@ export class Coordinator {
       const problem = await this.recipeEvidenceProblem(run, loopId, state, candidate);
       if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status))
         throw new Error('recipe cancelled');
-      if (run.projection.status === 'running') return problem;
+      if (WORKING.has(run.projection.status)) return problem;
     }
   }
 
@@ -4285,11 +4686,222 @@ export class Coordinator {
       );
     }
     const key = `${nodeId}@${round?.iterationId ?? '-'}`;
+    if (run.stoppedSteps.has(key)) return Promise.resolve({ ok: false, reason: 'branch stopped' });
     const existing = run.activations.get(key);
     if (existing) return existing;
     const outcome = this.runAgent(run, nodeId, round?.iterationId ?? null);
     run.activations.set(key, outcome);
     return outcome;
+  }
+
+  /**
+   * A router's choice: the route its chooser execution submits, or the route a person picks
+   * when the answer is not a route. Null when the person stops the run instead.
+   */
+  private async route(
+    run: LiveRun,
+    nodeId: string,
+    iterationId: string | null,
+  ): Promise<WorkflowDecision | null> {
+    const { definition } = run.snapshot;
+    const node = definition.nodes.find((n) => n.id === nodeId);
+    const step = run.plan.steps[nodeId];
+    if (node?.type !== 'decision' || node.mode !== 'router' || step?.kind !== 'decision')
+      throw new Error(`${nodeId} is not a router`);
+    const choice = (
+      branch: string,
+      reasonCode: WorkflowDecision['reasonCode'],
+      evidenceRefs: WorkflowDecision['evidenceRefs'],
+    ): WorkflowDecision => ({
+      branch,
+      reasonCode,
+      evidenceRefs,
+      configRevision: run.projection.controlRevision,
+    });
+    const prepared = this.prepareExecution(run, {
+      nodeId,
+      iterationId,
+      parentExecutionId: null,
+      depth: 0,
+      assignment: { kind: 'scheduled' },
+      role: chooserRole(routerModelProfile(definition, node)),
+      given: [
+        {
+          name: 'routes',
+          kind: 'run_input',
+          artifactVersionId: null,
+          text: node.routes
+            .map((r) => `- ${r.id}: ${r.label}${r.description ? ` — ${r.description}` : ''}`)
+            .join('\n'),
+        },
+      ],
+    });
+    this.commit(run, prepared.drafts);
+    const outcome = await this.launch(run, prepared);
+    await this.boundary(run);
+    const task = run.projection.tasks[prepared.input.taskId];
+    const [answerId] =
+      outcome.ok && task?.status === 'completed' ? task.submittedArtifactVersionIds : [];
+    const evidence = answerId ? [{ kind: 'artifact' as const, id: answerId }] : [];
+    const answer = answerId ? this.store.getArtifactText(run.runId, answerId)?.trim() : undefined;
+    if (answer && node.routes.some((r) => r.id === answer))
+      return choice(answer, 'model_route', evidence);
+
+    // A branch stopped while its chooser ran asks nothing.
+    if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
+    const connected = node.routes.filter((r) => (step.branches[r.id] ?? []).length > 0);
+    if (connected.length === 0) throw new Error(`${nodeId} has no connected route to pick`);
+    const subjects = [
+      ...new Set([
+        ...prepared.input.inputs.flatMap((i) => (i.artifactVersionId ? [i.artifactVersionId] : [])),
+        ...(answerId ? [answerId] : []),
+      ]),
+    ];
+    const requested = this.requestApproval(
+      run,
+      'route',
+      subjects.length > 0 ? subjects : [run.criteriaVersionId],
+      undefined,
+      undefined,
+      connected.map((r) => ({ id: r.id, label: r.label })),
+      nodeId,
+    );
+    if ((await requested.decision) === 'reject') return null;
+    const picked = run.projection.approvals[requested.approvalId]?.routeId;
+    if (!picked) throw new Error(`route approval ${requested.approvalId} names no route`);
+    return choice(picked, 'human_route', [
+      { kind: 'approval', id: requested.approvalId },
+      ...evidence,
+    ]);
+  }
+
+  /**
+   * A check Decision: its own execution runs the node's checks, and the recorded reports decide.
+   * Without a verdict the person may run the checks again as the next attempt, or stop (null).
+   */
+  private async check(
+    run: LiveRun,
+    nodeId: string,
+    iterationId: string | null,
+  ): Promise<WorkflowDecision | null> {
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    if (node?.type !== 'decision' || node.mode !== 'check')
+      throw new Error(`${nodeId} is no check`);
+    const profile = run.snapshot.definition.roles[0]?.modelProfile ?? '';
+    let previous: AgentStartInput | undefined;
+    for (;;) {
+      const prepared = this.prepareExecution(run, {
+        nodeId,
+        iterationId,
+        parentExecutionId: null,
+        depth: 0,
+        assignment: { kind: 'scheduled' },
+        role: checkRole(profile),
+        given: [
+          {
+            name: CHECKS_INPUT,
+            kind: 'run_input',
+            artifactVersionId: null,
+            text: JSON.stringify(node.checkIds),
+          },
+        ],
+        ...(previous
+          ? {
+              taskId: previous.taskId,
+              previousExecutionId: previous.executionId,
+              attemptNo: previous.attemptNo + 1,
+              inputs: previous.inputs,
+            }
+          : {}),
+      });
+      this.commit(run, prepared.drafts);
+      await this.launch(run, prepared);
+      await this.boundary(run);
+      const { input } = prepared;
+      const task = run.projection.tasks[input.taskId];
+      const [summary] = task?.status === 'completed' ? task.submittedArtifactVersionIds : [];
+      const { verdict, reports } = this.checkVerdict(run, input, node.checkIds);
+      if (verdict)
+        return {
+          branch: verdict,
+          reasonCode: 'check_verdict',
+          evidenceRefs: [
+            ...reports.map((id) => ({ kind: 'check' as const, id })),
+            ...(summary ? [{ kind: 'artifact' as const, id: summary }] : []),
+          ],
+          configRevision: run.projection.controlRevision,
+        };
+      // A branch stopped while its checks ran asks nothing.
+      if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
+      const requested = this.requestApproval(
+        run,
+        'check',
+        summary ? [summary] : [run.criteriaVersionId],
+        undefined,
+        undefined,
+        undefined,
+        nodeId,
+      );
+      if ((await requested.decision) === 'reject') return null;
+      await this.boundary(run);
+      previous = input;
+    }
+  }
+
+  /**
+   * A check Decision's own execution. Known by its node, never by a role id a definition could
+   * also use: only check executions run on a check node.
+   */
+  private isCheckExecution(run: LiveRun, input: Pick<AgentStartInput, 'nodeId' | 'role'>) {
+    const step = run.plan.steps[input.nodeId];
+    return step?.kind === 'decision' && step.mode === 'check' && input.role.id === CHECK_ROLE_ID;
+  }
+
+  /**
+   * The verdict of one check execution from its recorded run_check results: a real failure
+   * takes fail, all real passes on one unchanged tree take pass, anything else has none.
+   */
+  private checkVerdict(
+    run: LiveRun,
+    input: AgentStartInput,
+    checkIds: string[],
+  ): { verdict: 'pass' | 'fail' | null; reports: string[] } {
+    const pinned = run.snapshot.checks;
+    const reports = new Map<string, VerificationReport & { stale: boolean }>();
+    for (const call of Object.values(run.projection.toolCalls)) {
+      if (call.executionId !== input.executionId || call.name !== 'run_check') continue;
+      if (call.phase !== 'finished' || !call.resultRef) continue;
+      const text = this.store.getArtifactText(run.runId, call.resultRef);
+      if (text === null) continue;
+      const { stale, ...raw } = JSON.parse(text) as Record<string, unknown>;
+      const parsed = VerificationReport.safeParse(raw);
+      if (!parsed.success) continue;
+      const report = parsed.data;
+      if (
+        report.configRevision !== pinned?.revision ||
+        report.owner.kind !== 'execution' ||
+        report.owner.runId !== run.runId ||
+        report.owner.executionId !== input.executionId ||
+        report.owner.attemptNo !== input.attemptNo
+      )
+        continue;
+      reports.set(report.commandId, { ...report, stale: stale !== false });
+    }
+    const results = checkIds.map((id) => reports.get(id));
+    const real = (r: (typeof results)[number]) =>
+      r !== undefined &&
+      r.state === 'completed' &&
+      !r.stale &&
+      r.cleanupConfirmed &&
+      r.targetUnchanged === true &&
+      ['pass', 'fail'].includes(r.verdict);
+    const ids = results.flatMap((r) => (r ? [r.verificationId] : []));
+    if (results.some((r) => real(r) && r?.verdict === 'fail'))
+      return { verdict: 'fail', reports: ids };
+    const trees = new Set(results.map((r) => r?.tree));
+    if (results.every((r) => real(r) && r?.verdict === 'pass') && trees.size === 1)
+      return { verdict: 'pass', reports: ids };
+    return { verdict: null, reports: ids };
   }
 
   private async runAgent(
@@ -4298,26 +4910,91 @@ export class Coordinator {
     iterationId: string | null,
   ): Promise<StepOutcome> {
     await this.boundary(run);
-    const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
-    const recipe = loopId ? run.recipes.get(loopId) : undefined;
-    const prepared = this.prepareExecution(run, {
+    if (!(await this.passBreakpoint(run, nodeId, iterationId)))
+      return { ok: false, reason: 'stopped at its breakpoint' };
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    const retries = node?.type === 'agent' ? (node.retry?.maxAttempts ?? 0) : 0;
+    let prepared = this.prepareExecution(run, {
       nodeId,
       iterationId,
       parentExecutionId: null,
       depth: 0,
       assignment: { kind: 'scheduled' },
-      given: [],
+      given: this.stepErrorFor(run, nodeId, iterationId),
     });
-    this.commit(run, prepared.drafts);
-    return this.launch(run, prepared);
+    for (;;) {
+      this.commit(run, prepared.drafts);
+      const outcome = await this.launch(run, prepared);
+      const { input } = prepared;
+      const ended = run.projection.executions[input.executionId];
+      // Only a failure is retried: never a cancellation, an unconfirmed stop or a run that ended.
+      if (outcome.ok || input.attemptNo > retries || ended?.status !== 'failed') return outcome;
+      if (!WORKING.has(run.projection.status) && !this.pausedOrWaiting(run)) return outcome;
+      await this.boundary(run);
+      if (!WORKING.has(run.projection.status)) return outcome;
+      prepared = this.prepareExecution(run, {
+        nodeId,
+        iterationId,
+        parentExecutionId: null,
+        depth: 0,
+        assignment: { kind: 'scheduled' },
+        given: [],
+        taskId: input.taskId,
+        previousExecutionId: input.executionId,
+        attemptNo: input.attemptNo + 1,
+        inputs: [
+          ...input.inputs.filter((i) => i.name !== 'previous_attempt_error'),
+          {
+            name: 'previous_attempt_error',
+            kind: 'run_input',
+            artifactVersionId: null,
+            text: clip(ended.error ?? outcome.reason),
+          },
+        ],
+      });
+    }
+  }
+
+  /**
+   * What an Agent reached through an `error` port is told: which step failed, after how many
+   * attempts, and its last error. Only for steps whose error port leads straight here.
+   */
+  private stepErrorFor(run: LiveRun, nodeId: string, iterationId: string | null): ResolvedInput[] {
+    const told: ResolvedInput[] = [];
+    for (const step of Object.values(run.plan.steps)) {
+      if (step.kind !== 'agent' || !step.error.some((target) => target.nodeId === nodeId)) continue;
+      const latest = [...(run.projection.nodeExecutions[step.nodeId] ?? [])]
+        .reverse()
+        .map((id) => run.projection.executions[id])
+        .find(
+          (e) => e && (iterationId === null || this.sameRound(run, e.iterationId, iterationId)),
+        );
+      if (latest?.status !== 'failed') continue;
+      const label =
+        run.snapshot.definition.nodes.find((n) => n.id === step.nodeId)?.label ?? step.nodeId;
+      told.push({
+        name: 'step_error',
+        kind: 'run_input',
+        artifactVersionId: null,
+        text: clip(
+          `${label} failed after ${latest.attemptNo} attempt${latest.attemptNo === 1 ? '' : 's'}: ${latest.error ?? 'no error was reported'}`,
+        ),
+      });
+    }
+    return told;
+  }
+
+  private pausedOrWaiting(run: LiveRun) {
+    return ['pausing', 'paused', 'awaiting_user'].includes(run.projection.status);
   }
 
   /** The Task, Execution and start effect of one step, child or responder; not committed. */
   private prepareExecution(run: LiveRun, spec: ExecutionSpec): PreparedExecution {
     const definition = run.snapshot.definition;
     const node = definition.nodes.find((n) => n.id === spec.nodeId);
-    const baseRole = node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId);
-    if (node?.type !== 'agent' || !baseRole) {
+    const baseRole =
+      spec.role ?? (node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId));
+    if (!node || !('inputBindings' in node) || node.type === 'output' || !baseRole) {
       throw new Error(`plan references missing agent ${spec.nodeId}`);
     }
     const patch = run.nodePatches.get(spec.nodeId);
@@ -4362,7 +5039,9 @@ export class Coordinator {
       !contextRef &&
       !item &&
       spec.assignment.kind === 'scheduled' &&
-      node.inputBindings.some((binding) => binding.kind === 'run_input' && binding.name === 'brief')
+      (node.inputBindings ?? []).some(
+        (binding) => binding.kind === 'run_input' && binding.name === 'brief',
+      )
         ? SessionConversation.parse(
             JSON.parse(this.store.getArtifactText(run.runId, SESSION_CONVERSATION) ?? 'null'),
           )
@@ -4411,7 +5090,7 @@ export class Coordinator {
         ],
         ...(callables.replyToChildren ? { replyToChildren: true } : {}),
       },
-      inputs: [
+      inputs: spec.inputs ?? [
         ...(run.snapshot.definition.input.images ?? []).map((image) => ({
           name: image.name,
           kind: 'explicit_version' as const,
@@ -4421,7 +5100,7 @@ export class Coordinator {
         ...spec.given,
         ...this.resolveInputs(
           run,
-          item ? [{ kind: 'run_input', name: 'criteria' }] : node.inputBindings,
+          item ? [{ kind: 'run_input', name: 'criteria' }] : (node.inputBindings ?? []),
           spec.iterationId,
         ),
       ],
@@ -4484,7 +5163,6 @@ export class Coordinator {
         ['write_file', 'delete_file', 'move_file', 'run_command'].includes(tool),
       ),
       limits: { ...run.limits },
-      ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
       sourceRefs: input.inputs.map((source) => ({
         name: source.name,
         artifactVersionId: source.artifactVersionId ?? source.sourceRef ?? null,
@@ -4536,7 +5214,7 @@ export class Coordinator {
           kind: 'spawn',
           scope: executionId,
           epoch: attemptNo,
-          reservationId: null,
+          modelCallId: null,
         },
       },
       {
@@ -4564,7 +5242,9 @@ export class Coordinator {
         this.hostResidents++;
         resident = true;
         const host = this.hostFor(run, input);
-        const handle = await this.agents.start(input, host);
+        // A check Decision's execution runs its checks in-process; every other step is an agent.
+        const adapter = this.isCheckExecution(run, input) ? CHECK_RUNNER : this.agents;
+        const handle = await adapter.start(input, host);
         run.handles.set(input.executionId, handle);
         if (run.cancelRequested.has(input.executionId)) await handle.cancel('cancelled');
         settlement = await handle.waitForSettlement();
@@ -4661,9 +5341,14 @@ export class Coordinator {
       const source = binding.sourceNodeId ?? '';
       let versionId: string | undefined;
       if (binding.kind === 'task_output') {
-        // Inside a Loop, a producer in the same round is read from this round.
-        const sameRound = iterationId !== null && this.loopOf(run, source) !== null;
-        versionId = this.submittedOutputOf(run, source, sameRound ? iterationId : undefined)[0];
+        // Inside a Loop, a producer in a Loop is read from this round: the round itself, a Loop
+        // round around it, or a nested Loop's round inside it, never an earlier round.
+        const scoped = iterationId !== null && this.loopOf(run, source) !== null;
+        versionId = this.submittedOutputOf(
+          run,
+          source,
+          scoped ? (round) => this.sameRound(run, round, iterationId) : undefined,
+        )[0];
       }
       if (binding.kind === 'previous_iteration_output' && previousRound) {
         versionId = this.submittedOutputOf(run, source, previousRound)[0];
@@ -4678,19 +5363,46 @@ export class Coordinator {
     });
   }
 
+  /** The round before this one in the same entry of its Loop; round 1 has none. */
   private previousRound(run: LiveRun, iterationId: string): string | null {
     const current = run.projection.iterations[iterationId];
-    if (!current) return null;
+    if (!current || current.no <= 1) return null;
     const rounds = run.projection.loopIterations[current.loopNodeId] ?? [];
     return rounds[rounds.indexOf(iterationId) - 1] ?? null;
   }
 
-  /** The latest completed submission of a node, optionally within one Loop round. */
-  private submittedOutputOf(run: LiveRun, nodeId: string, iterationId?: string): string[] {
+  /** Whether `round` is `reader`, a Loop round around it, or a round nested inside it. */
+  private sameRound(run: LiveRun, round: string | null, reader: string): boolean {
+    const { iterations } = run.projection;
+    const chain = (from: string | null) => {
+      const ids: string[] = [];
+      for (let id = from; id; id = iterations[id]?.parentIterationId ?? null) ids.push(id);
+      return ids;
+    };
+    return chain(reader).includes(round ?? '') || chain(round).includes(reader);
+  }
+
+  /**
+   * The latest completed submission of a node, optionally within one Loop round (an id) or
+   * within the rounds a predicate accepts.
+   */
+  private submittedOutputOf(
+    run: LiveRun,
+    nodeId: string,
+    within?: string | ((round: string | null) => boolean),
+  ): string[] {
     const executions = run.projection.nodeExecutions[nodeId] ?? [];
+    // A node a fork did not run again reads as the result the fork copied for it.
+    if (!executions.length) return stepResult(run.projection, nodeId);
     for (const executionId of [...executions].reverse()) {
       const execution = run.projection.executions[executionId];
-      if (iterationId !== undefined && execution?.iterationId !== iterationId) continue;
+      if (
+        within !== undefined &&
+        (typeof within === 'string'
+          ? execution?.iterationId !== within
+          : !within(execution?.iterationId ?? null))
+      )
+        continue;
       const task = run.projection.tasks[execution?.taskId ?? ''];
       if (task?.status === 'completed') return task.submittedArtifactVersionIds;
     }
@@ -4730,18 +5442,8 @@ export class Coordinator {
           : 'the agent finished without submit_result'
         : settlement.error;
     this.releaseSlots(run, input.executionId, settlement.terminationMode !== 'unconfirmed');
-    for (const call of Object.values(run.projection.modelCalls))
-      if (call.executionId === input.executionId) {
-        run.requestDeadlines.get(call.modelCallId)?.();
-        run.requestDeadlines.delete(call.modelCallId);
-      }
 
     const drafts: EventDraft[] = [];
-    for (const call of Object.values(run.projection.modelCalls))
-      if (call.executionId === input.executionId) {
-        const settled = settlementFor(run.projection.budget, call.modelCallId, null);
-        if (settled) drafts.push({ type: 'budget.settled', payload: settled });
-      }
     drafts.push(
       {
         type: 'execution.settled',
@@ -4825,7 +5527,8 @@ export class Coordinator {
 
   // ── model slots ───────────────────────────────────────────────────────────
 
-  private chooserBudget(
+  /** The team chooser's calls as usage records; one that adds nothing known is skipped. */
+  private chooserUsage(
     run: {
       runId: string;
       snapshot: RunSnapshot;
@@ -4836,7 +5539,18 @@ export class Coordinator {
   ): EventDraft[] {
     const route = run.snapshot.autoRoute;
     if (!route || route.source === 'local') return [];
-    const requests = this.modelAttempts
+    const record = (
+      usageId: string,
+      usage: { inputTokens: number | null; outputTokens: number | null } | null,
+    ): UsageRecordView => ({
+      usageId,
+      kind: 'auto_route',
+      profileId: route.modelProfile,
+      inputTokens: usage?.inputTokens ?? null,
+      outputTokens: usage?.outputTokens ?? null,
+      costMicros: null,
+    });
+    const records = this.modelAttempts
       ? this.modelAttempts
           .list(commandId)
           .filter(
@@ -4848,52 +5562,22 @@ export class Coordinator {
               (attempt.intent.owner.sessionId ?? null) === (run.sessionId ?? null) &&
               attempt.prepared,
           )
-          .map((attempt) => ({
-            id: `auto_route:${attempt.attemptId}`,
-            allowance: attempt.prepared!.outputAllowance,
-            actual: attempt.usage.outputTokens,
-          }))
+          .map((attempt) => record(`auto_route:${attempt.attemptId}`, attempt.usage))
       : route.usage
-        ? [
-            {
-              id: 'auto_route',
-              allowance: route.usage.outputTokens,
-              actual: route.usage.outputTokens,
-            },
-          ]
+        ? [record('auto_route', route.usage)]
         : [];
+    let known = run.projection.usage;
     const drafts: EventDraft[] = [];
-    for (const request of requests) {
-      const previous = run.projection.budget.reservations[request.id];
-      if (
-        previous?.status === 'settled' ||
-        (previous?.status === 'unknown' && request.actual === null)
-      )
-        continue;
-      if (!previous)
-        drafts.push({
-          type: 'budget.reserved',
-          payload: {
-            reservationId: request.id,
-            modelCallId: null,
-            scope: run.runId,
-            amount: { outputTokens: request.allowance, modelCalls: 1 },
-          },
-        });
-      drafts.push({
-        type: 'budget.settled',
-        payload: {
-          reservationId: request.id,
-          actual: { outputTokens: request.actual },
-          unknownOutstanding: request.actual === null ? request.allowance : 0,
-        },
-      });
+    for (const usage of records) {
+      if (known[usage.usageId] && !usageRecordChanges(known, usage)) continue;
+      known = applyUsageRecord(known, usage);
+      drafts.push({ type: 'usage.recorded', payload: usage });
     }
     return drafts;
   }
 
-  /** Host usage can settle the original choice after its Run has finished, without resuming it. */
-  settleAutoRouteUsage(intent: ModelRequestIntent) {
+  /** Host usage can complete the original choice's record after its Run has finished, without resuming it. */
+  recordAutoRouteUsage(intent: ModelRequestIntent) {
     if (
       intent.owner.kind !== 'chooser' ||
       intent.owner.id !== intent.requestId ||
@@ -4905,7 +5589,7 @@ export class Coordinator {
     if (!stored || (stored.sessionId ?? null) !== (intent.owner.sessionId ?? null)) return;
     const live = this.live.get(stored.runId);
     const run = { ...stored, projection: live?.projection ?? stored.projection };
-    const drafts = this.chooserBudget(run, intent.requestId);
+    const drafts = this.chooserUsage(run, intent.requestId);
     if (!drafts.length) return;
     if (live) this.commit(live, drafts);
     else {
@@ -5131,41 +5815,68 @@ export class Coordinator {
   // ── reviews and approvals ───────────────────────────────────
 
   /** The built-in decisions: review verdicts, the person's approvals, and simple rules. */
-  private async decide(run: LiveRun, nodeId: string, mode: DecisionNode['mode']): Promise<string> {
+  private async decide(
+    run: LiveRun,
+    nodeId: string,
+    mode: RunnableDecisionMode,
+  ): Promise<WorkflowDecision> {
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const round = this.openRoundOf(run, nodeId);
+    const choice = (
+      branch: string,
+      reasonCode: WorkflowDecision['reasonCode'],
+      evidenceRefs: WorkflowDecision['evidenceRefs'],
+    ): WorkflowDecision => ({
+      branch,
+      reasonCode,
+      evidenceRefs,
+      configRevision: run.projection.controlRevision,
+    });
     if (mode === 'rule') {
       const p = run.projection;
       const unfinished = Object.values(p.tasks).some(
         (t) => t.status !== 'completed' && !TERMINAL_TASK.has(t.status),
       );
-      return unfinished ? 'no' : 'yes';
+      return choice(
+        unfinished ? 'no' : 'yes',
+        unfinished ? 'tasks_unfinished' : 'required_tasks_completed',
+        Object.keys(p.tasks).map((id) => ({ kind: 'task', id })),
+      );
     }
     const bound = (node?.type === 'decision' ? node.inputBindings : []).flatMap((b) =>
       b.kind === 'task_output' && b.sourceNodeId
         ? this.submittedOutputOf(
             run,
             b.sourceNodeId,
-            round && this.loopOf(run, b.sourceNodeId) ? round : undefined,
+            round && this.loopOf(run, b.sourceNodeId)
+              ? (at) => this.sameRound(run, at, round)
+              : undefined,
           )
         : [],
     );
     if (mode === 'approval') {
       const review = this.latestReview(run);
-      const requested = this.requestApproval(run, 'user_action', [
-        ...bound,
-        ...(review ? [review] : []),
+      const requested = this.requestApproval(
+        run,
+        'user_action',
+        [...bound, ...(review ? [review] : [])],
+        undefined,
+        undefined,
+        undefined,
+        nodeId,
+      );
+      return choice(await requested.decision, 'human_approval', [
+        { kind: 'approval', id: requested.approvalId },
       ]);
-      return requested.decision;
     }
 
     // Review: the verdict counts only for the draft and criteria actually reviewed.
     const reviewVersionId = bound[0];
     if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
     const recorded = this.recordReview(run, reviewVersionId);
-    const recipe =
-      node && 'loopId' in node && node.loopId ? run.recipes.get(node.loopId) : undefined;
-    if (recipe && node && 'loopId' in node && node.loopId) {
+    const recipeLoopId = node?.parentId;
+    const recipe = recipeLoopId ? run.recipes.get(recipeLoopId) : undefined;
+    if (recipe && recipeLoopId) {
       const candidateExecution =
         run.projection.nodeExecutions[recipe.recipe.candidateNodeId]?.at(-1);
       const candidate = candidateExecution ? recipe.candidates.get(candidateExecution) : undefined;
@@ -5174,12 +5885,12 @@ export class Coordinator {
         recorded.targetVersionId !== candidate.artifactVersionId ||
         recorded.verdict === 'inconclusive'
       ) {
-        this.stopRecipe(run, node.loopId, 'review_invalid', candidate?.artifactVersionId);
+        this.stopRecipe(run, recipeLoopId, 'review_invalid', candidate?.artifactVersionId);
         throw new Error('review recipe stopped');
       }
-      const problem = await this.recipeBoundaryProblem(run, node.loopId, recipe, candidate);
+      const problem = await this.recipeBoundaryProblem(run, recipeLoopId, recipe, candidate);
       if (problem) {
-        this.stopRecipe(run, node.loopId, problem, candidate.artifactVersionId);
+        this.stopRecipe(run, recipeLoopId, problem, candidate.artifactVersionId);
         throw new Error('review recipe stopped');
       }
       const tree = candidate.checks[0]?.tree ?? null;
@@ -5190,7 +5901,7 @@ export class Coordinator {
         {
           type: 'recipe.evaluated',
           payload: {
-            ...this.recipeHead(run, node.loopId, recipe.recipe),
+            ...this.recipeHead(run, recipeLoopId, recipe.recipe),
             iterationId: round as string,
             candidateVersionId: candidate.artifactVersionId,
             reviewVersionId,
@@ -5200,26 +5911,64 @@ export class Coordinator {
           },
         },
       ]);
-      return verdict;
+      return choice(
+        verdict,
+        verdict !== recorded.verdict ? 'review_checks_failed' : 'review_verdict',
+        [
+          { kind: 'artifact', id: candidate.artifactVersionId },
+          { kind: 'review', id: reviewVersionId },
+          ...candidate.checks.map((check) => ({
+            kind: 'check' as const,
+            id: check.verificationId,
+          })),
+        ],
+      );
     }
     if (run.pendingCriteriaVersionId) {
-      const requested = this.requestApproval(run, 'user_action', [
-        recorded.targetVersionId,
-        reviewVersionId,
-      ]);
-      return (await requested.decision) === 'approve' ? 'revise' : 'reject';
+      const requested = this.requestApproval(
+        run,
+        'user_action',
+        [recorded.targetVersionId, reviewVersionId],
+        undefined,
+        undefined,
+        undefined,
+        nodeId,
+      );
+      return choice(
+        (await requested.decision) === 'approve' ? 'revise' : 'reject',
+        'criteria_changed',
+        [
+          { kind: 'review', id: reviewVersionId },
+          { kind: 'artifact', id: recorded.targetVersionId },
+          { kind: 'approval', id: requested.approvalId },
+        ],
+      );
     }
-    if (recorded.verdict !== 'inconclusive') return recorded.verdict;
+    if (recorded.verdict !== 'inconclusive')
+      return choice(recorded.verdict, 'review_verdict', [
+        { kind: 'review', id: reviewVersionId },
+        { kind: 'artifact', id: recorded.targetVersionId },
+      ]);
     // Not a usable verdict: the person decides whether the draft goes on.
-    const requested = this.requestApproval(run, 'user_action', [
-      recorded.targetVersionId,
-      reviewVersionId,
-    ]);
-    return (await requested.decision) === 'approve'
-      ? run.pendingCriteriaVersionId
-        ? 'revise'
-        : 'pass'
-      : 'reject';
+    const requested = this.requestApproval(
+      run,
+      'user_action',
+      [recorded.targetVersionId, reviewVersionId],
+      undefined,
+      undefined,
+      undefined,
+      nodeId,
+    );
+    const approved = (await requested.decision) === 'approve';
+    return choice(
+      approved ? (run.pendingCriteriaVersionId ? 'revise' : 'pass') : 'reject',
+      run.pendingCriteriaVersionId ? 'criteria_changed' : 'inconclusive_review_approval',
+      [
+        { kind: 'review', id: reviewVersionId },
+        { kind: 'artifact', id: recorded.targetVersionId },
+        { kind: 'approval', id: requested.approvalId },
+      ],
+    );
   }
 
   /** Validates a submitted review against what its reviewer was given. */
@@ -5323,11 +6072,20 @@ export class Coordinator {
   /** Asks the person; the run waits in `awaiting_user` until resolve_approval. */
   private requestApproval(
     run: LiveRun,
-    kind: 'final_output' | 'loop_cap' | 'user_action',
+    kind: EventPayload<'approval.requested'>['kind'],
     subjectVersionIds: string[],
     request?: { tool: NonNullable<EventPayload<'approval.requested'>['tool']>; body: string },
+    loopStop?: LoopStop,
+    routes?: EventPayload<'approval.requested'>['routes'],
+    /** The step that waits on it, so stopping that step's branch can withdraw it. */
+    step?: string,
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
+    if (step) {
+      const owned = run.stepApprovals.get(step) ?? new Set<string>();
+      owned.add(approvalId);
+      run.stepApprovals.set(step, owned);
+    }
     const decision = new Promise<'approve' | 'reject'>((resolve) => {
       run.approvals.set(approvalId, resolve);
     });
@@ -5344,6 +6102,9 @@ export class Coordinator {
               ? null
               : (run.pendingCriteriaVersionId ?? run.criteriaVersionId),
             ...(request ? { tool: request.tool } : {}),
+            ...(loopStop ? { loopStop } : {}),
+            ...(routes ? { routes } : {}),
+            ...(kind === 'breakpoint' && step ? { nodeId: step } : {}),
           },
         },
         ...(request && ['paused', 'pausing'].includes(run.projection.status)
@@ -5355,6 +6116,137 @@ export class Coordinator {
         : undefined,
     );
     return { approvalId, decision };
+  }
+
+  /**
+   * A step with a breakpoint waits before it starts, on its inputs. True when it may start: the
+   * person continued. A person who stops there cancels the run; a stopped branch or run ends the
+   * wait without starting the step.
+   */
+  private async passBreakpoint(
+    run: LiveRun,
+    nodeId: string,
+    iterationId: string | null,
+  ): Promise<boolean> {
+    if (!run.projection.breakpoints.includes(nodeId)) return true;
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    let inputs: string[] = [];
+    try {
+      inputs = this.resolveInputs(
+        run,
+        (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [],
+        iterationId,
+      ).flatMap((input) => (input.artifactVersionId ? [input.artifactVersionId] : []));
+    } catch {
+      // A missing input fails the step when it starts, as without a breakpoint.
+    }
+    const requested = this.requestApproval(
+      run,
+      'breakpoint',
+      inputs.length
+        ? [...new Set(inputs)]
+        : [run.pendingCriteriaVersionId ?? run.criteriaVersionId],
+      undefined,
+      undefined,
+      undefined,
+      nodeId,
+    );
+    if ((await requested.decision) === 'approve') {
+      await this.boundary(run);
+      return WORKING.has(run.projection.status);
+    }
+    const approval = run.projection.approvals[requested.approvalId];
+    if (approval?.status === 'pending' && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+      // The run was cancelled under it: the approval closes with it.
+      this.commit(run, [
+        {
+          type: 'approval.resolved',
+          payload: {
+            approvalId: requested.approvalId,
+            decision: 'reject',
+            actor: RUNTIME.id,
+            subjectVersionIds: approval.subjectVersionIds,
+            reason: 'cancelled',
+          },
+        },
+      ]);
+    else if (
+      approval?.status === 'rejected' &&
+      WORKING.has(run.projection.status) &&
+      !run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)
+    )
+      this.submit({
+        schemaVersion: '0.1',
+        runId: run.runId,
+        commandId: `breakpoint_${requested.approvalId}`,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason: 'breakpoint_rejected' },
+      });
+    return false;
+  }
+
+  /** A run's breakpoints: scheduled Agents and Decisions of its definition only. */
+  private breakpointError(definition: CorralDefinition, nodeIds: readonly string[]) {
+    for (const id of nodeIds) {
+      const node = definition.nodes.find((n) => n.id === id);
+      if (
+        !node ||
+        !(node.type === 'decision' || (node.type === 'agent' && node.invocation === 'scheduled'))
+      )
+        return `${id} is not a scheduled Agent or Decision of this team`;
+    }
+    return null;
+  }
+
+  private setBreakpoints(
+    run: LiveRun,
+    command: SetBreakpointsCommand,
+    payloadHash: string,
+  ): Receipt {
+    const nodeIds = [...new Set(command.payload.nodeIds)];
+    const error = this.breakpointError(run.snapshot.definition, nodeIds);
+    if (error)
+      return this.refuseControl(command, payloadHash, { code: 'TARGET_NOT_FOUND', message: error });
+    const same = canonicalJson(nodeIds) === canonicalJson(run.projection.breakpoints);
+    return this.controlReceipt(
+      run,
+      command,
+      payloadHash,
+      same ? [] : [{ type: 'breakpoints.changed', payload: { nodeIds } }],
+      'applied',
+      'immediate',
+    );
+  }
+
+  /** A stopped branch's step waits on nothing: its open approvals end as cancelled. */
+  private withdrawApprovals(run: LiveRun, step: string) {
+    for (const approvalId of run.stepApprovals.get(step) ?? []) {
+      const resume = run.approvals.get(approvalId);
+      if (!resume || run.projection.approvals[approvalId]?.status !== 'pending') continue;
+      run.approvals.delete(approvalId);
+      const waiting =
+        run.approvals.size > 0 ||
+        run.userInputs.size > 0 ||
+        run.extensionUi.size > 0 ||
+        Object.values(run.projection.tasks).some((t) => t.status === 'blocked');
+      this.commit(run, [
+        {
+          type: 'approval.resolved',
+          payload: {
+            approvalId,
+            decision: 'reject',
+            actor: RUNTIME.id,
+            subjectVersionIds: run.projection.approvals[approvalId]?.subjectVersionIds ?? [],
+            reason: 'cancelled',
+          },
+        },
+        ...(run.projection.status === 'awaiting_user' && !waiting
+          ? [runState('awaiting_user', 'running', 'approval_resolved')]
+          : []),
+      ]);
+      resume('reject');
+    }
+    run.stepApprovals.delete(step);
   }
 
   private async requestToolApproval(
@@ -5504,6 +6396,7 @@ export class Coordinator {
     run: LiveRun,
     loopId: string,
     rounds: number,
+    reason: LoopStop,
   ): Promise<'continue' | 'stop'> {
     const recipe = run.recipes.get(loopId)?.recipe;
     if (recipe && rounds >= recipeAttempts(recipe)) {
@@ -5514,37 +6407,66 @@ export class Coordinator {
       );
       throw new Error('review recipe stopped');
     }
-    if (rounds >= this.policy.maxLoopIterations) {
-      run.capStop = 'hard_cap';
-      this.commit(run, [
-        {
-          type: 'limit.reached',
-          payload: {
-            limitKind: 'loop_iterations',
-            used: rounds,
-            reserved: 0,
-            max: this.policy.maxLoopIterations,
-          },
-        },
-      ]);
-      return 'stop';
-    }
     const members = run.plan.loops[loopId]?.members ?? [];
     const round = run.rounds.get(loopId)?.iterationId;
-    const latest = members.flatMap((m) => this.submittedOutputOf(run, m, round));
-    const requested = this.requestApproval(run, 'loop_cap', latest);
+    const latest = members.flatMap((m) =>
+      this.submittedOutputOf(run, m, round ? (at) => this.sameRound(run, at, round) : undefined),
+    );
+    const requested = this.requestApproval(
+      run,
+      'loop_cap',
+      latest,
+      undefined,
+      reason,
+      undefined,
+      loopId,
+    );
     if ((await requested.decision) === 'approve') {
       await this.boundary(run);
       return 'continue';
     }
-    run.capStop = 'declined';
     return 'stop';
+  }
+
+  /** Whether a Loop round below its cap must stop instead of repeating: it resubmitted the previous round's work. */
+  private loopStopOf(run: LiveRun, loopId: string): LoopStop | null {
+    const loop = run.plan.loops[loopId];
+    const entry = run.loopEntries.get(loopId);
+    const round = run.rounds.get(loopId)?.iterationId;
+    if (!loop || !entry || !round) return null;
+    const { projection } = run;
+    const thisRound = new Set<string>([round]);
+    const under = (iterationId: string | null, roots: Set<string>): boolean => {
+      for (let id = iterationId; id; id = projection.iterations[id]?.parentIterationId ?? null)
+        if (roots.has(id)) return true;
+      return false;
+    };
+    if (loop.stallDetection) {
+      // The work this round submitted; review results are judgments of it, not work.
+      const work = Object.values(projection.executions)
+        .filter(
+          (execution) => !execution.parentExecutionId && under(execution.iterationId, thisRound),
+        )
+        .flatMap((execution) => {
+          const task = projection.tasks[execution.taskId];
+          if (!task || task.contract === 'review') return [];
+          return task.submittedArtifactVersionIds.flatMap(
+            (id) => projection.artifacts[id]?.contentHash ?? [],
+          );
+        })
+        .sort();
+      const previous = entry.previousWork;
+      entry.previousWork = work;
+      if (work.length > 0 && previous && JSON.stringify(previous) === JSON.stringify(work))
+        return 'stalled';
+    }
+    return null;
   }
 
   /** The person's answer to a pending approval: once, for the exact subject. */
   private resolveApproval(command: ResolveApprovalCommand, payloadHash: string): Receipt {
     const { runId } = command;
-    const { approvalId, decision, subjectVersionId } = command.payload;
+    const { approvalId, decision, subjectVersionId, routeId } = command.payload;
     const run = this.live.get(runId);
     const projection = this.projectionOf(runId);
     const approval = projection?.approvals[approvalId];
@@ -5608,6 +6530,17 @@ export class Coordinator {
         message: `approval ${approvalId} is for ${approval.subjectVersionIds[0]}, not ${subjectVersionId}`,
       });
     }
+    // A route approval is approved by naming one of its routes; nothing else names a route.
+    const picksRoute = approval.kind === 'route' && decision === 'approve';
+    if (
+      picksRoute ? !approval.routes?.some((route) => route.id === routeId) : routeId !== undefined
+    )
+      return refuse({
+        code: 'SCHEMA_INVALID',
+        message: picksRoute
+          ? `approve ${approvalId} by naming one of its routes`
+          : `approval ${approvalId} takes no route`,
+      });
     this.commit(
       run,
       [
@@ -5620,6 +6553,7 @@ export class Coordinator {
             decision,
             actor: USER.id,
             subjectVersionIds: approval.subjectVersionIds,
+            ...(picksRoute && routeId ? { routeId } : {}),
           },
         },
         ...(['paused', 'pausing'].includes(run.projection.status)
@@ -5668,7 +6602,7 @@ export class Coordinator {
     const definition = run.snapshot.definition;
     return members.flatMap((memberId) => {
       const node = definition.nodes.find((n) => n.id === memberId);
-      const bindings = node && 'inputBindings' in node ? node.inputBindings : [];
+      const bindings = (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [];
       return bindings.flatMap((b) =>
         b.kind === 'previous_iteration_output' && b.sourceNodeId
           ? this.submittedOutputOf(run, b.sourceNodeId, previous)
@@ -5678,8 +6612,7 @@ export class Coordinator {
   }
 
   private loopOf(run: LiveRun, nodeId: string): string | null {
-    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
-    return node && 'loopId' in node && node.loopId ? node.loopId : null;
+    return run.plan.steps[nodeId]?.loopId ?? null;
   }
 
   private openRoundOf(run: LiveRun, nodeId: string): string | null {
@@ -6158,7 +7091,7 @@ export class Coordinator {
       !run.stop.aborted &&
       !run.cancelRequested.has(executionId) &&
       !run.closingExecutions.has(executionId) &&
-      run.projection.status === 'running' &&
+      WORKING.has(run.projection.status) &&
       run.projection.tasks[input.taskId]?.activeExecutionId === executionId &&
       (run.projection.workPlans?.[key]?.revision ?? 0) === update.expectedRevision &&
       update.expectedRevision < 1000 &&
@@ -6427,7 +7360,7 @@ export class Coordinator {
             : [];
         }),
         artifactReads: run.projection.artifactReads[executionId] ?? [],
-        taskBrief: taskBriefForModel(input.taskBrief) ?? null,
+        taskBrief: input.taskBrief ?? null,
         item: input.item ?? null,
         targetArtifactVersionId:
           input.role.outputContract === 'review'
@@ -6468,7 +7401,7 @@ export class Coordinator {
       const status = run.projection.executions[executionId]?.status;
       if (
         status !== 'active' ||
-        run.projection.status !== 'running' ||
+        !WORKING.has(run.projection.status) ||
         run.cancelRequested.has(executionId) ||
         run.closingExecutions.has(executionId) ||
         run.projection.tasks[input.taskId]?.activeExecutionId !== executionId ||
@@ -6554,7 +7487,7 @@ export class Coordinator {
       }
       do {
         await this.boundary(run, executionId);
-      } while (run.projection.status !== 'running');
+      } while (!WORKING.has(run.projection.status));
       requireActive();
       const toolCallId = this.ids.next('tool_call');
       const permission = permissionDecision(proposal);
@@ -6631,7 +7564,6 @@ export class Coordinator {
                 payload: {
                   limitKind: refusal.limit.kind,
                   used: refusal.limit.used,
-                  reserved: refusal.limit.reserved ?? 0,
                   max: refusal.limit.max,
                 },
               } satisfies EventDraft,
@@ -6684,7 +7616,6 @@ export class Coordinator {
           ? {
               ...proposal.args,
               imageProfile: run.snapshot.imageProfiles?.[input.role.id],
-              reservedCostUsd: run.snapshot.imageProfiles?.[input.role.id]?.maxCostUsdPerCall,
             }
           : proposal.args,
       );
@@ -6724,7 +7655,7 @@ export class Coordinator {
         };
       do {
         await this.boundary(run, executionId);
-      } while (run.projection.status !== 'running');
+      } while (!WORKING.has(run.projection.status));
       requireActive();
       const call = authorized.get(toolCallId);
       if (call && descriptors.get(call.proposal.name)?.source.startsWith('extension:'))
@@ -6779,7 +7710,7 @@ export class Coordinator {
           };
         do {
           await this.boundary(run, executionId);
-        } while (run.projection.status !== 'running');
+        } while (!WORKING.has(run.projection.status));
         requireActive();
         if (
           parentRefusal(call.proposal) ||
@@ -6804,7 +7735,7 @@ export class Coordinator {
             kind: 'tool',
             scope: executionId,
             epoch: input.attemptNo,
-            reservationId: null,
+            modelCallId: null,
           },
         },
         { type: 'tool.started', executionId, payload: { executionId, toolCallId, effectId } },
@@ -7144,7 +8075,7 @@ export class Coordinator {
                     throw new Error('tool permission was not granted');
                   do {
                     await this.boundary(run, executionId);
-                  } while (run.projection.status !== 'running');
+                  } while (!WORKING.has(run.projection.status));
                   requireActive();
                   if (
                     parentRefusal(call.proposal) ||
@@ -7179,7 +8110,7 @@ export class Coordinator {
                       kind: 'tool',
                       scope: executionId,
                       epoch: input.attemptNo,
-                      reservationId: null,
+                      modelCallId: null,
                     },
                   },
                   {
@@ -7499,40 +8430,43 @@ export class Coordinator {
           }
           do {
             await this.boundary(run, executionId);
-          } while (run.projection.status !== 'running');
+          } while (!WORKING.has(run.projection.status));
           requireActive();
-          const view: ModelGateView = {
-            projection: run.projection,
-            limits: run.limits,
-            input,
-            ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
-          };
-          this.recipeAllowance(run, executionId);
+          const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
           const request = runGates(this.gates['model.request'], view);
           if (request.kind === 'refuse') this.refuseModelRequest(run, request);
           if (request.kind === 'require_approval') {
-            this.commit(run, [
-              {
-                type: 'limit.reached',
-                payload: {
-                  limitKind: request.limit.kind,
-                  used: request.limit.used,
-                  reserved: request.limit.reserved ?? 0,
-                  max: request.limit.max,
+            // A limit belongs to the run, not to one branch: every worker that reaches it
+            // waits on the same intervention.
+            if (!run.limitApproval) {
+              this.commit(run, [
+                {
+                  type: 'limit.reached',
+                  payload: {
+                    limitKind: request.limit.kind,
+                    used: request.limit.used,
+                    max: request.limit.max,
+                  },
                 },
-              },
-            ]);
-            const requested = this.requestApproval(run, 'user_action', [run.criteriaVersionId]);
+              ]);
+              const shared = this.requestApproval(run, 'user_action', [
+                run.criteriaVersionId,
+              ]).decision;
+              run.limitApproval = shared;
+              void shared.then(() => {
+                if (run.limitApproval === shared) run.limitApproval = null;
+              });
+            }
+            const decision = run.limitApproval;
             run.boundaries.add(executionId);
             try {
-              if ((await requested.decision) !== 'approve')
-                throw new Error(`${request.limit.kind} stopped`);
+              if ((await decision) !== 'approve') throw new Error(`${request.limit.kind} stopped`);
             } finally {
               run.boundaries.delete(executionId);
             }
             do {
               await this.boundary(run, executionId);
-            } while (run.projection.status !== 'running');
+            } while (!WORKING.has(run.projection.status));
             requireActive();
           }
           if (
@@ -7594,8 +8528,9 @@ export class Coordinator {
                 return () => listeners.delete(fn);
               },
             };
-            const exhausted = run.reasoningCalls >= run.reasoningMaxCalls;
-            if (!exhausted) run.reasoningCalls++;
+            const policy = reasoningPolicyOf(run.snapshot.reasoningApply);
+            const exhausted = policy === 'judged' && run.reasoningCalls >= run.reasoningMaxCalls;
+            if (policy === 'judged' && !exhausted) run.reasoningCalls++;
             run.boundaries.add(executionId);
             try {
               reasoning = await automaticReasoning(
@@ -7609,19 +8544,21 @@ export class Coordinator {
                     ? { inputHash: hashOf(privateInput), kind: privateInput.kind }
                     : {}),
                 },
+                policy,
                 run.reasoningProvider,
                 input.model.reasoning?.levels ?? ['low', 'medium', 'high', 'xhigh'],
                 cancellation,
                 this.timers,
                 exhausted,
+                this.externalConsult(run, executionId, input.attemptNo),
               );
             } finally {
               run.boundaries.delete(executionId);
             }
-            const paused = run.projection.status !== 'running';
+            const paused = !WORKING.has(run.projection.status);
             do {
               await this.boundary(run, executionId);
-            } while (run.projection.status !== 'running');
+            } while (!WORKING.has(run.projection.status));
             requireActive();
             if (paused || fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
           }
@@ -7632,7 +8569,7 @@ export class Coordinator {
           try {
             do {
               await this.boundary(run, executionId);
-            } while (run.projection.status !== 'running');
+            } while (!WORKING.has(run.projection.status));
             requireActive();
             if (auto && fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
             if (
@@ -7645,67 +8582,9 @@ export class Coordinator {
             this.releaseSlot(run);
             throw error;
           }
-          let recipeRemaining: number;
-          try {
-            recipeRemaining = this.recipeAllowance(run, executionId);
-          } catch (error) {
-            this.releaseSlot(run);
-            throw error;
-          }
-          const limits = run.limits;
-          const admit = runGates(this.gates['model.admit'], {
-            projection: run.projection,
-            limits,
-            input,
-            ...(run.usageLimits ? { usageLimits: run.usageLimits } : {}),
-          });
-          if (admit.kind !== 'allow') {
-            this.releaseSlot(run);
-            this.refuseModelRequest(
-              run,
-              admit.kind === 'refuse'
-                ? admit
-                : {
-                    kind: 'refuse',
-                    code: 'CAPABILITY_DENIED',
-                    message: 'admission cannot wait for approval after a slot is held',
-                  },
-            );
-          }
-          // The reservation itself is the Coordinator's: even without a budget gate, a request the
-          // budget cannot cover is not admitted.
-          const admitted = run.usageLimits
-            ? {
-                ok: true as const,
-                maxOutputTokens:
-                  input.model.maxOutputTokens ??
-                  run.snapshot.definition.limits.maxOutputTokensPerCall,
-              }
-            : admitModelRequest(run.projection.budget, {
-                ...limits,
-                maxOutputTokensPerCall: Math.min(
-                  limits.maxOutputTokensPerCall,
-                  input.model.maxOutputTokens ??
-                    run.snapshot.definition.limits.maxOutputTokensPerCall,
-                ),
-              });
-          if (!admitted.ok) {
-            this.releaseSlot(run);
-            this.commit(run, [
-              {
-                type: 'limit.reached',
-                payload: {
-                  limitKind: admitted.limitKind,
-                  used: admitted.used,
-                  reserved: admitted.reserved,
-                  max: admitted.max,
-                },
-              },
-            ]);
-            throw new Error(`LIMIT_REACHED: ${admitted.limitKind}`);
-          }
+          // Corral sets no output cap of its own: the model's maximum, or the fallback estimate.
+          const maxOutputTokens = input.model.maxOutputTokens ?? FALLBACK_OUTPUT_TOKENS;
           const modelCallId = this.ids.next('model_call');
-          admitted.maxOutputTokens = Math.min(admitted.maxOutputTokens, recipeRemaining);
           const contextSnapshotId = this.ids.next('context_snapshot');
           const effectId = this.ids.next('effect');
           run.slots.held.set(modelCallId, executionId);
@@ -7734,16 +8613,6 @@ export class Coordinator {
                   } satisfies EventDraft,
                 ]
               : []),
-            {
-              type: 'budget.reserved',
-              executionId,
-              payload: {
-                reservationId: modelCallId,
-                modelCallId,
-                scope: executionId,
-                amount: { outputTokens: admitted.maxOutputTokens, modelCalls: 1 },
-              },
-            },
             ...directiveIds.map(
               (directiveId): EventDraft => ({
                 type: 'directive.attached',
@@ -7782,38 +8651,17 @@ export class Coordinator {
                 kind: 'model_request',
                 scope: executionId,
                 epoch: input.attemptNo,
-                reservationId: modelCallId,
+                modelCallId,
               },
             },
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
           this.modelTransports.set(modelCallId, { run, input, observe: host.observe, queueWaitMs });
-          if (run.snapshot.definition.executionPolicy?.budget?.modelTimeoutMs !== undefined)
-            run.requestDeadlines.set(
-              modelCallId,
-              this.timers.after(run.limits.modelTimeoutMs, () => {
-                if (
-                  run.projection.effects[effectId]?.status !== 'admitted' ||
-                  TERMINAL_RUN_STATUSES.has(run.projection.status)
-                )
-                  return;
-                this.submit({
-                  schemaVersion: '0.1',
-                  runId: run.runId,
-                  commandId: `timeout_${modelCallId}`,
-                  type: 'cancel',
-                  payload: {
-                    scope: { kind: 'execution', executionId },
-                    reason: 'model_request_timeout',
-                  },
-                });
-              }),
-            );
           return {
             modelCallId,
             contextSnapshotId,
             profile: input.modelProfile,
-            maxOutputTokens: admitted.maxOutputTokens,
+            maxOutputTokens,
             directives: queued,
             ...(this.parentQuestions(run, input).length
               ? { parentQuestions: this.parentQuestions(run, input) }
@@ -7871,21 +8719,14 @@ export class Coordinator {
         this.modelTransports.delete(observation.modelCallId);
         const call = run.projection.modelCalls[observation.modelCallId];
         if (!call || call.executionId !== executionId) throw new Error('unknown model call');
-        run.requestDeadlines.get(observation.modelCallId)?.();
-        run.requestDeadlines.delete(observation.modelCallId);
         if (run.slots.held.delete(observation.modelCallId)) this.releaseSlot(run);
         const effectId =
           Object.values(run.projection.effects).find(
             (effect) =>
               effect.kind === 'model_request' &&
               effect.scope === executionId &&
-              effect.reservationId === observation.modelCallId,
+              effect.modelCallId === observation.modelCallId,
           )?.effectId ?? null;
-        const budget = settlementFor(
-          run.projection.budget,
-          observation.modelCallId,
-          observation.usage.outputTokens,
-        );
         const late =
           call.finished ||
           run.cancelRequested.has(executionId) ||
@@ -7910,9 +8751,7 @@ export class Coordinator {
             ? ('reported' as const)
             : ('unknown' as const),
         };
-        const drafts: EventDraft[] = budget
-          ? [{ type: 'budget.settled', executionId, payload: budget }]
-          : [];
+        const drafts: EventDraft[] = [];
         if (late) {
           const addsUsage =
             call.usage === null ||
@@ -7948,7 +8787,7 @@ export class Coordinator {
             payload: { effectId, outcome: late ? 'unknown' : 'succeeded' },
           });
         const warningRef =
-          !late && run.usageLimits && run.projection.progress.turns === NO_PROGRESS_TURNS - 1
+          !late && run.projection.progress.turns === NO_PROGRESS_TURNS - 1
             ? `notice_${observation.modelCallId}`
             : null;
         const warning =
@@ -8080,6 +8919,9 @@ export class Coordinator {
       callables: run.plan.callables[input.nodeId] ?? { delegate: [], question: [] },
       externalTools: Boolean(this.tools),
       fileTools: this.files?.available(run.runId) ?? false,
+      ...(this.isCheckExecution(run, input) && run.snapshot.checks
+        ? { checkSelection: run.snapshot.checks }
+        : {}),
       harnessRead: Boolean(this.harnesses?.readSkill),
       responderOf: (questionId) => {
         const question = run.questions.get(questionId);
@@ -8102,7 +8944,6 @@ export class Coordinator {
           payload: {
             limitKind: refusal.limit.kind,
             used: refusal.limit.used,
-            reserved: refusal.limit.reserved ?? 0,
             max: refusal.limit.max,
           },
         },
@@ -8977,34 +9818,8 @@ export class Coordinator {
     } catch {
       return refuse('image reference is unavailable or exceeds image input limits');
     }
-    const admitted = admitImageRequest(run.projection.budget, run.limits, profile);
-    if (!admitted.ok) return refuse('image generation call/cost limit reached');
-    const reservationId = tool.effectId;
-    // Admission is durable before any awaited operation. Unknown attempts retain their cost bound.
-    this.commit(run, [
-      {
-        type: 'budget.reserved',
-        executionId: input.executionId,
-        payload: {
-          reservationId,
-          modelCallId: null,
-          scope: input.executionId,
-          amount: {
-            outputTokens: 0,
-            modelCalls: 1,
-            image: {
-              profileId: profile.profileId,
-              costMicros: admitted.costMicros,
-            },
-          },
-        },
-      },
-      ...tool.opening.map((draft) =>
-        draft.type === 'effect.admitted'
-          ? { ...draft, payload: { ...draft.payload, reservationId } }
-          : draft,
-      ),
-    ]);
+    // Admission is durable before any awaited operation.
+    this.commit(run, tool.opening);
     const listeners = run.cancelListeners.get(input.executionId) ?? new Set<() => void>();
     run.cancelListeners.set(input.executionId, listeners);
     let timedOut = false,
@@ -9012,6 +9827,21 @@ export class Coordinator {
     let dispatched = false,
       actualCostMicros: number | null = null;
     let imageUsage: ImageGenerationResult['usage'] | undefined;
+    const imageRecord = (
+      costMicros: number | null,
+      usage: ImageGenerationResult['usage'] | undefined,
+    ): UsageRecordView => {
+      const count = (value: number | null | undefined) =>
+        typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+      return {
+        usageId: tool.effectId,
+        kind: 'image',
+        profileId: profile.profileId,
+        inputTokens: count(usage?.inputTokens),
+        outputTokens: count(usage?.outputTokens),
+        costMicros,
+      };
+    };
     const cancellation: ToolCancellation = {
       get aborted() {
         return (
@@ -9052,7 +9882,6 @@ export class Coordinator {
         imageArgs,
         profile,
         cancellation,
-        admitted.costMicros / 1_000_000,
         referenceImages,
       );
       if (
@@ -9068,7 +9897,6 @@ export class Coordinator {
       const text = canonicalJson({
         media,
         profileId: profile.profileId,
-        reservedCostUsd: profile.maxCostUsdPerCall,
         costUsd: result.costUsd,
         usage: result.usage,
       });
@@ -9076,15 +9904,9 @@ export class Coordinator {
         run,
         [
           {
-            type: 'budget.settled',
+            type: 'usage.recorded',
             executionId: input.executionId,
-            payload: settlementFor(
-              run.projection.budget,
-              reservationId,
-              0,
-              actualCostMicros,
-              imageUsage,
-            )!,
+            payload: imageRecord(actualCostMicros, imageUsage),
           },
           {
             type: 'artifact.version_created',
@@ -9117,17 +9939,14 @@ export class Coordinator {
           error !== null &&
           'outcome' in error &&
           error.outcome === 'not_started');
-      const settlement = settlementFor(
-        run.projection.budget,
-        reservationId,
-        0,
-        knownNotStarted ? 0 : actualCostMicros,
-        imageUsage,
-      );
-      if (settlement)
-        this.commit(run, [
-          { type: 'budget.settled', executionId: input.executionId, payload: settlement },
-        ]);
+      // A call that never started spent nothing; any other may have been billed.
+      if (!knownNotStarted) {
+        const record = imageRecord(actualCostMicros, imageUsage);
+        if (usageRecordChanges(run.projection.usage, record))
+          this.commit(run, [
+            { type: 'usage.recorded', executionId: input.executionId, payload: record },
+          ]);
+      }
       if (run.projection.effects[tool.effectId]?.status === 'admitted')
         this.commit(run, [
           {
@@ -9287,7 +10106,7 @@ export class Coordinator {
         cancelTimer = this.timers.after(plan.timeoutMs + 120000, timeout);
         if (plan.mode === 'service') {
           await this.stoppingServices.get(run);
-          if (cancellation.aborted || run.projection.status !== 'running')
+          if (cancellation.aborted || !WORKING.has(run.projection.status))
             throw new ToolRefusal('TARGET_TERMINAL', 'service launch cancelled');
           this.serviceRuns.add(run);
         }
@@ -9295,7 +10114,9 @@ export class Coordinator {
         result = CommandReport.parse(await files.runCommand(command, plan, approved, cancellation));
       } else if (proposal.name === 'run_check' || proposal.name === 'lsp_query') {
         const files = this.files,
-          selection = input.harness?.projectTools;
+          selection =
+            input.harness?.projectTools ??
+            (this.isCheckExecution(run, input) ? run.snapshot.checks : undefined);
         if (!files || !selection)
           throw new ToolRefusal('CAPABILITY_DENIED', 'project tools unavailable');
         const owner = {
@@ -9352,7 +10173,7 @@ export class Coordinator {
           if (!this.files) throw new ToolRefusal('CAPABILITY_DENIED', 'worktree unavailable');
           result = await this.files.execute(
             {
-              name: 'read_file',
+              name: 'read',
               args: { path },
               runId: run.runId,
               executionId,

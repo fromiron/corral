@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Identifier } from './ids.ts';
 
 export const ModelRequestOwner = z.strictObject({
-  kind: z.enum(['execution', 'chooser', 'draft', 'voice', 'image', 'evaluation']),
+  kind: z.enum(['execution', 'chooser', 'draft', 'voice', 'image', 'evaluation', 'judge']),
   id: z.string().min(1).max(256),
   runId: Identifier.optional(),
   sessionId: Identifier.optional(),
@@ -22,6 +22,7 @@ export const ModelRequestIntent = z.strictObject({
     'draft',
     'voice',
     'image',
+    'reasoning_effort',
   ]),
   revision: z.int().nonnegative(),
 });

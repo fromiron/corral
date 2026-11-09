@@ -1,13 +1,6 @@
 import { DEFAULT_LIMITS } from '@corral/contracts';
-import {
-  FakeClock,
-  linearCorral,
-  ScriptedAgentAdapter,
-  SequentialIdFactory,
-} from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import {
-  Coordinator,
   installationPolicy,
   limitViolations,
   parseWorkspaceConfig,
@@ -20,15 +13,32 @@ describe('workspace config and installation policy', () => {
     expect(config.ok).toBe(true);
     if (!config.ok) return;
     expect(installationPolicy(config.config)).toEqual(SPEC_HARD_CAPS);
-    expect(limitViolations(DEFAULT_LIMITS, 2, SPEC_HARD_CAPS)).toEqual([]);
+    expect(limitViolations(DEFAULT_LIMITS, SPEC_HARD_CAPS)).toEqual([]);
+  });
+
+  it('accepts the automatic reasoning policy and leaves it optional', () => {
+    const decisions = (policy?: string) => ({
+      schemaVersion: '0.1',
+      decisions: {
+        reasoning_effort: { mode: 'off', providers: ['local-model'], ...(policy && { policy }) },
+      },
+    });
+    expect(parseWorkspaceConfig(decisions()).ok).toBe(true);
+    expect(parseWorkspaceConfig(decisions('medium')).ok).toBe(true);
+    expect(parseWorkspaceConfig(decisions('judged')).ok).toBe(true);
+    expect(parseWorkspaceConfig(decisions('high')).ok).toBe(false);
   });
 
   it('lets an installation lower a cap but never raise one past the spec', () => {
-    const lowered = parseWorkspaceConfig({ schemaVersion: '0.1', hardCaps: { maxModelCalls: 20 } });
-    expect(lowered.ok && installationPolicy(lowered.config).maxModelCalls).toBe(20);
-    const raised = parseWorkspaceConfig({ schemaVersion: '0.1', hardCaps: { maxModelCalls: 101 } });
+    const lowered = parseWorkspaceConfig({ schemaVersion: '0.1', hardCaps: { maxSpawns: 20 } });
+    expect(lowered.ok && installationPolicy(lowered.config).maxSpawns).toBe(20);
+    const raised = parseWorkspaceConfig({ schemaVersion: '0.1', hardCaps: { maxSpawns: 33 } });
     expect(raised.ok).toBe(false);
-    if (!raised.ok) expect(raised.errors.join(' ')).toContain('hardCaps.maxModelCalls');
+    if (!raised.ok) expect(raised.errors.join(' ')).toContain('hardCaps.maxSpawns');
+    // Usage has no cap to lower.
+    expect(parseWorkspaceConfig({ schemaVersion: '0.1', hardCaps: { maxModelCalls: 20 } }).ok).toBe(
+      false,
+    );
   });
 
   it('refuses unknown keys and any credential in the config file', () => {
@@ -106,27 +116,11 @@ describe('workspace config and installation policy', () => {
   });
 
   it('names every definition limit above the installation caps', () => {
-    const policy = { ...SPEC_HARD_CAPS, maxModelCalls: 20, maxLoopIterations: 1 };
-    expect(limitViolations(DEFAULT_LIMITS, 2, policy)).toEqual([
-      'maxModelCalls 40 is above this installation’s cap of 20',
-      'Loop rounds 2 is above this installation’s cap of 1',
+    const policy = { ...SPEC_HARD_CAPS, maxQuestions: 4 };
+    expect(limitViolations(DEFAULT_LIMITS, policy)).toEqual([
+      'maxQuestions 6 is above this installation’s cap of 4',
     ]);
-  });
-
-  it('ignores legacy installation usage caps for a run with no explicit budget', () => {
-    const coordinator = new Coordinator({
-      clock: new FakeClock(),
-      ids: new SequentialIdFactory(),
-      agents: new ScriptedAgentAdapter({ turns: 1 }),
-      policy: { ...SPEC_HARD_CAPS, maxModelCalls: 20 },
-    });
-    const { runId, receipt } = coordinator.startRun({
-      schemaVersion: '0.1',
-      commandId: 'cmd_start',
-      definition: linearCorral(['writer']),
-      mode: 'mock',
-    });
-    expect(runId).not.toBeNull();
-    expect(receipt.error).toBeUndefined();
+    // A spawn limit above the cap is not a violation: the run uses the cap.
+    expect(limitViolations(DEFAULT_LIMITS, { ...SPEC_HARD_CAPS, maxSpawns: 10 })).toEqual([]);
   });
 });

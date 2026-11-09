@@ -1,5 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, test } from '@playwright/test';
+import { startTestRun } from './workbench.ts';
 
 test('an unsent instruction stays bound to its original execution', async ({ page }) => {
   // The reviewer must still be running when the run is paused: a wide window for slow,
@@ -11,8 +12,7 @@ test('an unsent instruction stays bound to its original execution', async ({ pag
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(linearCorral(['writer', 'reviewer']))),
   });
-  await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   const panel = page.getByRole('region', { name: 'Reins', exact: true });
   const input = page.getByLabel('Instruction', { exact: true });
   await expect(panel.locator('dd').first()).toContainText('writer');

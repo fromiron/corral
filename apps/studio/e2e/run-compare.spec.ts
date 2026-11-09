@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { editorSettings, startTestRun } from './workbench.ts';
 
 // Roadmap 16: two runs of a Corral side by side, picked from the workspace's run list.
 
@@ -16,10 +17,11 @@ test('compares runs with readable narrow figures and accessible identities', asy
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   for (const brief of ['Compare two pens.', 'Compare three pens.']) {
-    await page.getByRole('tab', { name: 'Design', exact: true }).click();
-    await page.getByLabel('Run brief').fill(brief);
-    await page.getByRole('tab', { name: 'Test run', exact: true }).click();
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    const settings = editorSettings(page);
+    if (!(await settings.getByRole('heading', { name: 'Limits and criteria' }).isVisible()))
+      await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+    await settings.getByRole('textbox', { name: 'Brief', exact: true }).fill(brief);
+    await startTestRun(page);
     await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   }
   // In-app navigation (in the browser runtime, runs last until a reload), after saving the

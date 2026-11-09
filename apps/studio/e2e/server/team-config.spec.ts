@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { editorSettings, requestBox, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function call(page: Page, path: string, body?: unknown, method = 'POST') {
@@ -72,7 +72,6 @@ test('a saved-team conversation keeps its team name and revision after later edi
   definition.name = 'Saved writing team';
   const saved = await call(page, '/corrals', {
     definition,
-    layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
   });
   const record = saved.record;
   const made = await call(page, '/sessions', {
@@ -107,7 +106,6 @@ test('a saved-team conversation keeps its team name and revision after later edi
         },
         body: JSON.stringify({
           definition: { ...record.definition, name: 'Renamed after the run' },
-          layout: { nodes: record.layout.nodes, viewport: record.layout.viewport },
         }),
       });
       if (!response.ok) throw new Error(`rename failed: ${response.status}`);
@@ -131,7 +129,6 @@ test.describe('saved team roles', () => {
     definition.roles[0]!.modelProfile = 'missing-profile';
     const saved = await call(page, '/corrals', {
       definition,
-      layout: { nodes: { writer: { x: 0, y: 0 } }, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     const made = await call(page, '/sessions', {
       projectId: 'default',
@@ -145,14 +142,13 @@ test.describe('saved team roles', () => {
         .getByRole('button', { name: 'Actions for Role refresh', exact: true })
         .click();
       await page.getByRole('menuitem', { name: 'Open team design', exact: true }).click();
-      await page.locator('.react-flow__node[data-id="writer"]').click();
-      await page
-        .locator('[data-inspector-node="writer"]')
+      await teamNode(page, 'writer').click();
+      await editorSettings(page)
         .getByRole('textbox', { name: 'Name', exact: true })
         .first()
         .fill(`Writer r${revision}`);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
-      await expect(page.getByTestId('revisions')).toContainText(`Team version ${revision}`);
+      await expect(page.getByTestId('revisions')).toContainText(`Version ${revision}`);
       await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
       await expect(page.getByRole('banner')).toContainText(`· r${revision}`);
       await expect(page.getByTestId('models-not-ready')).toContainText(

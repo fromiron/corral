@@ -14,6 +14,11 @@ it.each(['en', 'ko'] as const)(
     const projection = emptyProjection('run_process');
     projection.status = 'failed';
     projection.executionOrder = ['lead'];
+    projection.executions.lead = {
+      executionId: 'lead',
+      nodeId: 'lead',
+      status: 'failed',
+    } as (typeof projection.executions)[string];
     projection.artifacts.artv_report = {
       artifactVersionId: 'artv_report',
       artifactId: 'report',
@@ -61,12 +66,13 @@ it.each(['en', 'ko'] as const)(
         />
       </IntlProvider>,
     );
-    expect(container.textContent).toContain(
-      locale === 'en'
-        ? 'Read · Security report · v2 · failed'
-        : '읽기 · Security report · 버전 2 · 실패',
+    // The row names the tool and describes its exact target; arguments stay in its details.
+    const text = container.textContent ?? '';
+    expect(text).toContain(locale === 'en' ? 'Read' : '읽기');
+    expect(text).toContain(
+      locale === 'en' ? 'Security report · v2 · failed' : 'Security report · 버전 2 · 실패',
     );
-    expect(container.textContent).not.toContain('artv_report');
-    expect(container.textContent).toContain('artv_missing');
+    expect(text).not.toContain(locale === 'en' ? 'artv_report · failed' : 'artv_report · 실패');
+    expect(text).toContain(locale === 'en' ? 'artv_missing · failed' : 'artv_missing · 실패');
   },
 );

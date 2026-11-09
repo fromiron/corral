@@ -1,0 +1,50 @@
+diff --git a/dist/extensions/codemode/execute.js b/dist/extensions/codemode/execute.js
+index 5f6f61d..4fcde41 100644
+--- a/dist/extensions/codemode/execute.js
++++ b/dist/extensions/codemode/execute.js
+@@ -519,6 +519,7 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
+             memoryLimitBytes: CODEMODE_MEMORY_LIMIT_BYTES,
+             wasm: loadQuickJSWasm(getQuickJSWasmPath()),
+             workerUrl: getCodemodeWorkerSpecifier(),
++            onWorkerStarted: (exited) => options.onWorkerStarted?.(toolCallId, exited),
+             acquireWorker: () => {
+                 if (!reserved)
+                     throw new Error("The script already settled");
+diff --git a/dist/extensions/codemode/index.d.ts b/dist/extensions/codemode/index.d.ts
+index 7de9c24..6d9423a 100644
+--- a/dist/extensions/codemode/index.d.ts
++++ b/dist/extensions/codemode/index.d.ts
+@@ -8,6 +8,8 @@
+ import type { ExtensionFactory } from "../../core/extensions/types.ts";
+ import type { CodemodeMode } from "../../core/settings-manager.ts";
+ export interface CodemodeExtensionOptions {
++    /** Host lifecycle observation; resolves only after the actual worker exits. */
++    onWorkerStarted?: (toolCallId: string, exited: Promise<void>) => void;
+     /** Overrides the `codemode.mode` setting. */
+     mode?: CodemodeMode;
+     /** Overrides the `codemode.inlineBudget` setting. */
+diff --git a/dist/extensions/codemode/index.js b/dist/extensions/codemode/index.js
+index 5c7cf3c..27e2d02 100644
+--- a/dist/extensions/codemode/index.js
++++ b/dist/extensions/codemode/index.js
+@@ -20,6 +20,7 @@ export function createCodemodeExtension(options = {}) {
+             ...createCodemodeToolDefinition({
+                 appendEntry: (customType, data) => pi.appendEntry(customType, data),
+                 models: options.models ?? true,
++                onWorkerStarted: options.onWorkerStarted,
+                 getToolNamespace: (name) => pi.getAllTools().find((tool) => tool.name === name)?.namespace,
+                 getToolGuidelines: () => new Map(pi.getAllTools().map((tool) => [tool.name, tool.promptGuidelines ?? []])),
+                 getMode: () => options.mode ?? readMode(pi),
+diff --git a/dist/extensions/codemode/tool.d.ts b/dist/extensions/codemode/tool.d.ts
+index 961a48e..2ece115 100644
+--- a/dist/extensions/codemode/tool.d.ts
++++ b/dist/extensions/codemode/tool.d.ts
+@@ -37,6 +37,8 @@ export interface CodemodeStoreEntryData {
+ /** The part of the model registry that scripts reach through `models`. */
+ export type CodemodeModelRuntime = Pick<ModelRegistry, "getModelsOfType" | "getAvailableOfType" | "getModelOfType" | "classify" | "generateImages">;
+ export interface CodemodeToolOptions {
++    /** Host lifecycle observation; resolves only after the actual worker exits. */
++    onWorkerStarted?: (toolCallId: string, exited: Promise<void>) => void;
+     /** Namespace of a tool, for `searchTools()` ranking and its `namespace` filter. */
+     getToolNamespace?: (toolName: string) => ToolNamespace | undefined;
+     /** Prompt guidelines of every tool, by tool name, shown with declarations by `describeTool()` and `ALL_TOOLS`. */

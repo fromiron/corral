@@ -14,6 +14,7 @@ import {
 import {
   applyEvent,
   canonicalJson,
+  canReadArtifactBody,
   emptyProjection,
   type RunProjection,
   type RuntimeSnapshot,
@@ -31,6 +32,8 @@ export interface RunSessionState {
   definition: CorralDefinition | null;
   definitionError: string | null;
   projection: RunProjection | null;
+  /** Initial snapshot sequence to read before mounting graphs; null while fetching, undefined when ready. */
+  initialLoadSeq: number | null | undefined;
   /** Every committed event of the run, in order (Timeline). */
   events: RunEvent[];
   /**
@@ -61,6 +64,8 @@ export interface RunSessionState {
     startFrom?: StartFrom,
     harnessOverrides?: HarnessOverrides,
     roleOverrides?: RoleRunOverrides,
+    /** Steps this run pauses before; for this run only. */
+    breakpoints?: readonly string[],
   ): Promise<void>;
   /** Follows an existing run, such as after a reload or from a link. */
   open(runId: string): Promise<void>;
@@ -68,7 +73,12 @@ export interface RunSessionState {
   loadArtifact(artifactVersionId: string, options?: { reload?: boolean }): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
   /** Approves or rejects a pending approval, for the exact subject the person was shown. */
-  resolveApproval(approvalId: string, decision: 'approve' | 'reject'): Promise<Receipt>;
+  /** `routeId` names the route a person picks when approving a `route` approval. */
+  resolveApproval(
+    approvalId: string,
+    decision: 'approve' | 'reject',
+    routeId?: string,
+  ): Promise<Receipt>;
   refreshReceipt(commandId: string): Promise<void>;
   dispose(): void;
 }
@@ -145,11 +155,13 @@ export function createRunSession(
       const restored = recovery?.events(runId) ?? [];
       set({
         projection: restored.reduce(applyEvent, emptyProjection(runId)),
+        initialLoadSeq: typeof transport.getSnapshot === 'function' ? null : undefined,
         events: restored,
         streams: {},
       });
       let pending: RunEvent[] = [];
       let scheduled = false;
+      let replayFailed = false;
       const flush = () => {
         scheduled = false;
         const batch = pending;
@@ -157,7 +169,31 @@ export function createRunSession(
         if (generation !== version) return;
         let projection = get().projection ?? emptyProjection(runId);
         for (const event of batch) projection = applyEvent(projection, event);
-        set({ projection, events: [...get().events, ...batch], streamError: null });
+        const artifactTexts = Object.fromEntries(
+          Object.entries(get().artifactTexts).filter(([id]) => canReadArtifactBody(projection, id)),
+        );
+        const outputId = projection.output?.artifactVersionIds[0];
+        const streams = Object.fromEntries(
+          Object.entries(get().streams).filter(([id]) => {
+            // An interrupted reply stays as partial output; a confirmed one follows its body.
+            const ref = projection.modelCalls[id]?.responseRef;
+            return !ref || canReadArtifactBody(projection, ref);
+          }),
+        );
+        const initialLoadSeq = get().initialLoadSeq;
+        set({
+          projection,
+          initialLoadSeq:
+            typeof initialLoadSeq === 'number' && projection.lastSeq >= initialLoadSeq
+              ? undefined
+              : initialLoadSeq,
+          artifactTexts,
+          streams,
+          outputText:
+            outputId && canReadArtifactBody(projection, outputId) ? get().outputText : null,
+          events: [...get().events, ...batch],
+          streamError: null,
+        });
         recovery?.committed(runId, get().events);
         for (const event of batch) {
           if (event.type === 'model.finished' && event.payload.responseRef) {
@@ -198,6 +234,7 @@ export function createRunSession(
         if (restoringPrefix) return;
         const batch = frames;
         frames = [];
+        // Arrival already fenced frames after the run ended; these were received before it.
         if (generation !== version) return;
         const streams = { ...get().streams };
         for (const frame of batch) {
@@ -255,7 +292,10 @@ export function createRunSession(
           }
         },
         onError: (error) => {
-          if (generation === version) set({ streamError: String(error) });
+          if (generation === version) {
+            replayFailed = true;
+            set({ streamError: String(error), initialLoadSeq: undefined });
+          }
         },
       });
       // Subscribe first, then restore the saved prefix. Buffer frames while reading so
@@ -265,8 +305,15 @@ export function createRunSession(
           const snapshot = await transport.getSnapshot(runId);
           if (generation !== version) return;
           applyPartialSnapshot(snapshot, version);
+          set({
+            initialLoadSeq:
+              replayFailed || (get().projection?.lastSeq ?? 0) >= snapshot.seq
+                ? undefined
+                : snapshot.seq,
+          });
         } catch (error) {
-          if (generation === version) set({ streamError: String(error) });
+          if (generation === version)
+            set({ streamError: String(error), initialLoadSeq: undefined });
         } finally {
           restoringPrefix = false;
           flushFrames();
@@ -293,6 +340,7 @@ export function createRunSession(
         definition: null,
         definitionError: null,
         projection: null,
+        initialLoadSeq: undefined,
         events: [],
         streams: {},
         artifactTexts: {},
@@ -308,10 +356,11 @@ export function createRunSession(
 
     const loadOutput = async (runId: string, versionIds: string[], version: number) => {
       const [first] = versionIds;
-      if (!first) return;
+      if (!first || !canReadArtifactBody(get().projection, first)) return;
       try {
         const outputText = await transport.getArtifactText(runId, first);
-        if (generation === version) set({ outputText });
+        if (generation === version && canReadArtifactBody(get().projection, first))
+          set({ outputText });
       } catch (error) {
         if (generation === version) set({ streamError: String(error) });
       }
@@ -324,8 +373,14 @@ export function createRunSession(
       version: number,
     ) => {
       try {
+        if (!canReadArtifactBody(get().projection, responseRef)) return;
         const text = await transport.getArtifactText(runId, responseRef);
-        if (text === null || generation !== version) return;
+        if (
+          text === null ||
+          generation !== version ||
+          !canReadArtifactBody(get().projection, responseRef)
+        )
+          return;
         set({
           streams: {
             ...get().streams,
@@ -442,6 +497,7 @@ export function createRunSession(
       definition: null,
       definitionError: null,
       projection: null,
+      initialLoadSeq: undefined,
       events: [],
       streams: {},
       artifactTexts: {},
@@ -454,7 +510,15 @@ export function createRunSession(
       commandError: null,
       unconfirmedCommands: {},
 
-      async start(definition, saved, mode = 'mock', startFrom, harnessOverrides, roleOverrides) {
+      async start(
+        definition,
+        saved,
+        mode = 'mock',
+        startFrom,
+        harnessOverrides,
+        roleOverrides,
+        breakpoints,
+      ) {
         reset();
         const version = generation;
         const commandId = newCommandId();
@@ -462,6 +526,7 @@ export function createRunSession(
           ...(startFrom ? { startFrom } : {}),
           ...(harnessOverrides && Object.keys(harnessOverrides).length ? { harnessOverrides } : {}),
           ...(roleOverrides && Object.keys(roleOverrides).length ? { roleOverrides } : {}),
+          ...(breakpoints?.length ? { breakpoints: [...breakpoints] } : {}),
         };
         try {
           const { runId, receipt } = await transport.startRun(
@@ -480,17 +545,24 @@ export function createRunSession(
           await follow(runId, version);
           await refreshDefinition(runId, version);
         } catch (error) {
-          if (generation === version) set({ streamError: String(error) });
+          if (generation === version)
+            set({ streamError: String(error), initialLoadSeq: undefined });
         }
       },
 
       async loadArtifact(artifactVersionId, options) {
         const runId = get().runId;
         const version = generation;
-        if (!runId || (!options?.reload && artifactVersionId in get().artifactTexts)) return;
+        if (!runId || !canReadArtifactBody(get().projection, artifactVersionId)) {
+          const artifactTexts = { ...get().artifactTexts };
+          delete artifactTexts[artifactVersionId];
+          set({ artifactTexts });
+          return;
+        }
+        if (!options?.reload && artifactVersionId in get().artifactTexts) return;
         const text = await transport.getArtifactText(runId, artifactVersionId);
         if (generation === version) {
-          if (text !== null) {
+          if (text !== null && canReadArtifactBody(get().projection, artifactVersionId)) {
             set({ artifactTexts: { ...get().artifactTexts, [artifactVersionId]: text } });
           } else if (options?.reload) {
             const artifactTexts = { ...get().artifactTexts };
@@ -510,7 +582,18 @@ export function createRunSession(
           generation++;
           unsubscribe?.();
           unsubscribe = null;
-          set({ definition: null, definitionError: null, streamError: null, missingRunId: null });
+          // Receipts survive reconnect; body ownership must be read from the host again.
+          set({
+            definition: null,
+            definitionError: null,
+            streamError: null,
+            missingRunId: null,
+            artifactTexts: {},
+            outputText: null,
+            streams: {},
+            projection: null,
+            initialLoadSeq: undefined,
+          });
         } else reset();
         // The requested identity owns loading, missing and failed states too. Keeping it
         // here lets consumers display this request's error without accepting a prior run's.
@@ -528,7 +611,8 @@ export function createRunSession(
             await follow(runId, version);
             await recoverCommands(runId, version);
           } catch (error) {
-            if (generation === version) set({ streamError: String(error) });
+            if (generation === version)
+              set({ streamError: String(error), initialLoadSeq: undefined });
           }
         })();
         opening = { runId, generation: version, promise };
@@ -571,13 +655,18 @@ export function createRunSession(
         });
       },
 
-      async resolveApproval(approvalId, decision) {
+      async resolveApproval(approvalId, decision, routeId) {
         const approval = get().projection?.approvals[approvalId];
         if (!approval) throw new Error('no such approval');
         return get().sendCommand({
           type: 'resolve_approval',
           expectedControlRevision: get().projection?.controlRevision ?? 0,
-          payload: { approvalId, decision, subjectVersionId: approval.subjectVersionIds[0] ?? '' },
+          payload: {
+            approvalId,
+            decision,
+            subjectVersionId: approval.subjectVersionIds[0] ?? '',
+            ...(routeId ? { routeId } : {}),
+          },
         });
       },
 

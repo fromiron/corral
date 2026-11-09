@@ -105,7 +105,6 @@ test('reviews immutable LSP changes and applies them explicitly to the session c
         await call(`/sessions/${sessionId}/worktree`, {});
         const saved = await call('/corrals', {
           definition,
-          layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
         });
         const started = await call('/runs', {
           schemaVersion: '0.1',

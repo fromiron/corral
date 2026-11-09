@@ -7,6 +7,7 @@ import {
   type SessionEntry,
   type WorkSession,
 } from '@corral/core';
+import { createRunSession } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -57,7 +58,7 @@ vi.mock('../workbench/useModels.ts', () => ({
 vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
 vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
   ComposerDock: () => null,
-  ComposerPlan: () => null,
+  ComposerPlan: () => <div data-testid="composer-plan-fixture">Work plan</div>,
 }));
 vi.mock('../workbench/widgets/ComposerStats.tsx', () => ({ ComposerStats: () => null }));
 vi.mock('../workbench/ImageAttachments.tsx', () => ({
@@ -111,7 +112,6 @@ const team: CorralSummary = {
   projectId: 'project',
   name: 'Team',
   definitionRevision: 1,
-  layoutRevision: 1,
   nodeCount: 3,
   updatedAt: '2026-10-21T00:00:00Z',
 };
@@ -141,6 +141,8 @@ async function mount(
   initialQueue: SessionEntry[] = [],
   runs: RunSummary[] = [],
   selectedRunId: string | null = null,
+  mode: 'server' | 'browser' = 'server',
+  runControlsOwnConfirmation = false,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
@@ -152,8 +154,9 @@ async function mount(
     if (animations) Object.defineProperty(Element.prototype, 'getAnimations', animations);
     else Reflect.deleteProperty(Element.prototype, 'getAnimations');
   });
-  vi.stubGlobal('matchMedia', () => ({
+  vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
+    media: query,
     addEventListener() {},
     removeEventListener() {},
   }));
@@ -205,7 +208,13 @@ async function mount(
         artifacts: { result: { name: 'Result', version: 1 } },
       },
     })),
-    getRunDefinition: vi.fn(async () => ({ nodes: [{ id: 'writer', label: 'Writer' }] })),
+    getRunDefinition: vi.fn(async () => {
+      const definition = linearCorral(['writer']);
+      return {
+        ...definition,
+        nodes: definition.nodes.map((node) => ({ ...node, label: 'Writer' })),
+      };
+    }),
   };
   const startExplain = vi.fn();
   // a Corral session's turn starts the conversation lead with the Corral as its team.
@@ -214,11 +223,20 @@ async function mount(
     receipt: { error: null },
     autoRoute: null,
   }));
+  const runSessions = new Map<string, ReturnType<typeof createRunSession>>();
   fixture.services = {
     repository,
     transport,
+    runFor: (runId: string) => {
+      const existing = runSessions.get(runId);
+      if (existing) return existing;
+      const created = createRunSession(transport as never);
+      runSessions.set(runId, created);
+      return created;
+    },
+    retainRun: () => () => {},
     startAuto,
-    mode: 'server',
+    mode,
     live: false,
     workspaceId: 'host',
     workspaces: null,
@@ -233,6 +251,7 @@ async function mount(
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
           <Composer
+            runControlsOwnConfirmation={runControlsOwnConfirmation}
             session={session}
             team={team}
             corrals={[team]}
@@ -263,6 +282,14 @@ async function mount(
   };
   return { container, session, repository, transport, startAuto, startExplain, render, click };
 }
+
+it('exposes the demo model picker as simulation without pretending a model is connected', async () => {
+  const f = await mount('demo_picker', null, [], [], null, 'browser');
+  await f.click(messages.Sessions.autoModel);
+  expect(document.body.textContent).toContain(messages.Composer.modelPicker.demoEmpty);
+  expect(document.querySelector('[role="option"]')).toBeNull();
+  expect(document.querySelector('[role="switch"]')).toBeNull();
+});
 
 it('queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
   const sessionId = 'queue_capture';
@@ -383,6 +410,64 @@ it('an explain draft with captured context requires an explicit follow-up choice
   );
 });
 
+it('leaves whole-run stop to the top bar while composing a queued next request in the single input', async () => {
+  const sessionId = 'stop_while_typing';
+  writeComposerDraft(sessionId, {
+    text: 'After this, summarize the result',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const ownRun = { ...active, sessionId };
+  const f = await mount(sessionId, ownRun, [], [ownRun], ownRun.runId);
+  expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
+  expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
+    'After this, summarize the result',
+  );
+  // The live run's Cancel sits once in the top bar's run controls (DockRunControls), so the
+  // composer does not repeat it beside the draft.
+  const stops = [...f.container.querySelectorAll('button')].filter((button) =>
+    button.textContent?.includes(messages.Reins.cancelRun),
+  );
+  expect(stops).toHaveLength(0);
+  expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+});
+
+it('leaves a pending whole-run confirmation to the visible run controls without opening a second dialog', async () => {
+  const sessionId = 'one_cancel_confirmation';
+  const ownRun = { ...active, sessionId };
+  const key = `corral:cancel-confirmation:${ownRun.runId}`;
+  window.sessionStorage.setItem(key, 'pending');
+  try {
+    const f = await mount(sessionId, ownRun, [], [ownRun], ownRun.runId, 'server', true);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(window.sessionStorage.getItem(key)).toBe('pending');
+    expect(f.transport.sendCommand).not.toHaveBeenCalled();
+    expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
+  } finally {
+    window.sessionStorage.removeItem(key);
+  }
+});
+
+it('offers project references in the unified add menu instead of a second toolbar trigger', async () => {
+  const f = await mount('unified_add', null);
+  expect(
+    f.container.querySelector(`button[aria-label="${messages.Composer.addReference}"]`),
+  ).toBeNull();
+  await f.click(messages.Composer.attachmentActions);
+  let reference: HTMLElement | undefined;
+  await vi.waitFor(() => {
+    reference = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) =>
+      item.textContent?.includes(messages.Composer.addReference),
+    );
+    expect(reference).toBeDefined();
+  });
+  await act(async () => reference?.click());
+  expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('@');
+  expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
+});
+
 it('removes a whole-file token without damaging its range or longer paths', async () => {
   const sessionId = 'exact_file_reference';
   writeComposerDraft(sessionId, {
@@ -493,7 +578,48 @@ it('names the selected run and role for an instruction', async () => {
     'second',
   );
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
+    'Send to: next run in this session · queue',
+  );
+  await f.click(messages.Sessions.intentLabel);
+  const instruction = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (option) => option.textContent?.includes(messages.Sessions.intentShort.steer),
+  );
+  expect(instruction).toBeDefined();
+  await act(async () => instruction?.click());
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
     'Send to: Run #2 · Writer · #1 · instruction',
+  );
+});
+
+it('keeps one plan and the same draft input when explicitly switching from queue to instruction', async () => {
+  const sessionId = 'compact_instruction';
+  writeComposerDraft(sessionId, {
+    text: 'Keep this request',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(sessionId, { ...active, sessionId });
+  const input = f.container.querySelector('textarea');
+  expect(input).not.toBeNull();
+  input?.focus();
+  input?.setSelectionRange(3, 8);
+  await f.click(messages.Sessions.intentLabel);
+  const instruction = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (option) => option.textContent?.includes(messages.Sessions.intentShort.steer),
+  );
+  expect(instruction).toBeDefined();
+  await act(async () => instruction?.click());
+  expect(f.container.querySelector('textarea')).toBe(input);
+  expect(input?.value).toBe('Keep this request');
+  expect([input?.selectionStart, input?.selectionEnd]).toEqual([3, 8]);
+  expect(f.container.querySelectorAll('[data-testid="composer-plan-fixture"]')).toHaveLength(1);
+  expect(f.container.querySelector('[data-slot="agent-steering-activity"]')).toBeNull();
+  expect(f.container.textContent).not.toContain(messages.Reins.noHistory);
+  expect(f.container.textContent).not.toContain(messages.Reins.deliveredNote);
+  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toContain(
+    'Writer · #1 · instruction',
   );
 });
 

@@ -1,0 +1,176 @@
+{
+  "baselineSha256": "f00fe0e7d9d6074413288b6cd04cb006478db9fec3414dbc1d893000524eeb3e",
+  "candidateSha256": "18f0e527fe8185dd6d43acd52520c00ae52194f30611d5a8c15e5796f56e682b",
+  "originalSamplesSha256": "2f3cea1d2ffac043ec8f886c6e57b30db35b5c73a52f6d4fa5ea0400ad5bd5f2",
+  "addedSamplesSha256": "89f7c960a02be51fe446156cb240b54d67b6ab45184c1e72a151f5664ba1a8bd",
+  "embedding": {
+    "model": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb",
+    "device": "cpu",
+    "dims": 768,
+    "preprocessing": "effort-text-v1"
+  },
+  "testIdsSha256": "6fd61dfb55e85956e7d56b748e4327895d6006cf34902b17d18f036664e71a94",
+  "results": [
+    {
+      "name": "기존 전체 테스트",
+      "baseline": {
+        "n": 2182,
+        "accuracy": 0.5229147571035747,
+        "macroF1": 0.5192737443756754,
+        "levelError": 0.6104491292392301,
+        "underestimated": 0.21769019248395968,
+        "coverage": 0.9170485792850596,
+        "coveredAccuracy": 0.5397301349325337,
+        "fallbackLevelError": 0.6076993583868011,
+        "confusion": [
+          [383, 81, 11, 17],
+          [164, 333, 193, 97],
+          [34, 82, 180, 167],
+          [25, 65, 105, 245]
+        ]
+      },
+      "candidate": {
+        "n": 2182,
+        "accuracy": 0.5302474793767186,
+        "macroF1": 0.5265651070686053,
+        "levelError": 0.5921173235563703,
+        "underestimated": 0.22639780018331807,
+        "coverage": 0.997250229147571,
+        "coveredAccuracy": 0.53125,
+        "fallbackLevelError": 0.5907424381301558,
+        "confusion": [[386, 91, 9, 6], [162, 347, 171, 107], [36, 89, 191, 147], [21, 61, 125, 233]]
+      },
+      "accuracyDelta95": [-1.0511882998171846, 2.477064220183486]
+    },
+    {
+      "name": "기존 코딩 테스트",
+      "baseline": {
+        "n": 1260,
+        "accuracy": 0.44126984126984126,
+        "macroF1": 0.45389368541469255,
+        "levelError": 0.7015873015873015,
+        "underestimated": 0.2396825396825397,
+        "coverage": 0.9349206349206349,
+        "coveredAccuracy": 0.4473684210526316,
+        "fallbackLevelError": 0.6976190476190476,
+        "confusion": [[72, 44, 2, 5], [63, 163, 166, 76], [12, 73, 149, 109], [12, 56, 86, 172]]
+      },
+      "candidate": {
+        "n": 1260,
+        "accuracy": 0.4492063492063492,
+        "macroF1": 0.4619193662294925,
+        "levelError": 0.6880952380952381,
+        "underestimated": 0.24682539682539684,
+        "coverage": 0.9968253968253968,
+        "coveredAccuracy": 0.4498407643312102,
+        "fallbackLevelError": 0.6865079365079365,
+        "confusion": [[70, 50, 1, 2], [60, 176, 146, 86], [8, 84, 153, 98], [9, 56, 94, 167]]
+      },
+      "accuracyDelta95": [-1.804757998359311, 3.3442088091353996]
+    },
+    {
+      "name": "SWE-bench Verified",
+      "baseline": {
+        "n": 500,
+        "accuracy": 0.456,
+        "macroF1": 0.3240260544608371,
+        "levelError": 0.6,
+        "underestimated": 0.132,
+        "coverage": 0.97,
+        "coveredAccuracy": 0.46804123711340206,
+        "fallbackLevelError": 0.596,
+        "confusion": [[0, 0, 0, 0], [0, 26, 143, 25], [0, 30, 193, 38], [0, 3, 33, 9]]
+      },
+      "candidate": {
+        "n": 500,
+        "accuracy": 0.466,
+        "macroF1": 0.3758564296214886,
+        "levelError": 0.602,
+        "underestimated": 0.166,
+        "coverage": 1,
+        "coveredAccuracy": 0.466,
+        "fallbackLevelError": 0.602,
+        "confusion": [[0, 0, 0, 0], [0, 48, 119, 27], [0, 51, 172, 38], [0, 7, 25, 13]]
+      },
+      "accuracyDelta95": [-2.4, 4.8]
+    },
+    {
+      "name": "작성한 코딩 시나리오",
+      "baseline": {
+        "n": 48,
+        "accuracy": 0.4583333333333333,
+        "macroF1": 0.42920404876926616,
+        "levelError": 0.6875,
+        "underestimated": 0.25,
+        "coverage": 0.7916666666666666,
+        "coveredAccuracy": 0.5526315789473685,
+        "fallbackLevelError": 0.6666666666666666,
+        "confusion": [[8, 2, 1, 1], [2, 6, 4, 0], [1, 5, 0, 6], [0, 3, 1, 8]]
+      },
+      "candidate": {
+        "n": 48,
+        "accuracy": 0.5833333333333334,
+        "macroF1": 0.5539316239316239,
+        "levelError": 0.4791666666666667,
+        "underestimated": 0.16666666666666666,
+        "coverage": 1,
+        "coveredAccuracy": 0.5833333333333334,
+        "fallbackLevelError": 0.4791666666666667,
+        "confusion": [[9, 0, 3, 0], [4, 2, 6, 0], [0, 4, 5, 3], [0, 0, 0, 12]]
+      },
+      "accuracyDelta95": [-10.416666666666666, 35.416666666666664]
+    },
+    {
+      "name": "작성한 코딩 요청",
+      "baseline": {
+        "n": 24,
+        "accuracy": 0.5,
+        "macroF1": 0.46062271062271065,
+        "levelError": 0.625,
+        "underestimated": 0.20833333333333334,
+        "coverage": 0.8333333333333334,
+        "coveredAccuracy": 0.55,
+        "fallbackLevelError": 0.625,
+        "confusion": [[4, 1, 1, 0], [1, 3, 2, 0], [1, 2, 0, 3], [0, 1, 0, 5]]
+      },
+      "candidate": {
+        "n": 24,
+        "accuracy": 0.625,
+        "macroF1": 0.5940170940170941,
+        "levelError": 0.4166666666666667,
+        "underestimated": 0.16666666666666666,
+        "coverage": 1,
+        "coveredAccuracy": 0.625,
+        "fallbackLevelError": 0.4166666666666667,
+        "confusion": [[5, 0, 1, 0], [2, 1, 3, 0], [0, 2, 3, 1], [0, 0, 0, 6]]
+      },
+      "accuracyDelta95": [-8.333333333333334, 33.333333333333336]
+    },
+    {
+      "name": "작성한 실행 단계",
+      "baseline": {
+        "n": 24,
+        "accuracy": 0.4166666666666667,
+        "macroF1": 0.3972027972027973,
+        "levelError": 0.75,
+        "underestimated": 0.2916666666666667,
+        "coverage": 0.75,
+        "coveredAccuracy": 0.5555555555555556,
+        "fallbackLevelError": 0.7083333333333334,
+        "confusion": [[4, 1, 0, 1], [1, 3, 2, 0], [0, 3, 0, 3], [0, 2, 1, 3]]
+      },
+      "candidate": {
+        "n": 24,
+        "accuracy": 0.5416666666666666,
+        "macroF1": 0.5134310134310134,
+        "levelError": 0.5416666666666666,
+        "underestimated": 0.16666666666666666,
+        "coverage": 1,
+        "coveredAccuracy": 0.5416666666666666,
+        "fallbackLevelError": 0.5416666666666666,
+        "confusion": [[4, 0, 2, 0], [2, 1, 3, 0], [0, 2, 2, 2], [0, 0, 0, 6]]
+      },
+      "accuracyDelta95": [-12.5, 41.666666666666664]
+    }
+  ]
+}

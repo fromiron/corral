@@ -23,8 +23,20 @@ const TEMPLATE = ['architect', 'builder', 'tester'] as const;
 interface Draft {
   key: string;
   name: string | null;
+  aliases: string;
   prompt: string;
   modelProfile: string;
+}
+
+/** Comma-separated callings, without repeats or the participant's own name. */
+function parseAliases(text: string, name: string) {
+  const unique = new Map<string, string>();
+  for (const alias of text.split(/[,，、]/)) {
+    const value = alias.trim();
+    const key = value.toLowerCase();
+    if (value && key !== name.trim().toLowerCase() && !unique.has(key)) unique.set(key, value);
+  }
+  return [...unique.values()];
 }
 
 /** opens a group chat; nothing runs until the person sends a message. */
@@ -69,6 +81,7 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
     TEMPLATE.map((id, index) => ({
       key: id,
       name: null,
+      aliases: '',
       prompt: '',
       modelProfile: pick(index),
     })),
@@ -115,12 +128,16 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
     if (saving || !ready) return;
     const meeting: MeetingConfig = {
       version: 1,
-      participants: participants.map((item, index) => ({
-        participantId: `p${index + 1}`,
-        name: item.name.trim(),
-        prompt: item.prompt.trim(),
-        modelProfile: item.modelProfile,
-      })),
+      participants: participants.map((item, index) => {
+        const aliases = parseAliases(item.aliases, item.name);
+        return {
+          participantId: `p${index + 1}`,
+          name: item.name.trim(),
+          ...(aliases.length ? { aliases } : {}),
+          prompt: item.prompt.trim(),
+          modelProfile: item.modelProfile,
+        };
+      }),
       secretary: { modelProfile: secretary },
     };
     setSaving(true);
@@ -165,6 +182,9 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
           </label>
           <fieldset className="flex flex-col gap-3">
             <legend className="mb-1 font-medium">{t('participants')}</legend>
+            <p id={`${formId}-aliases`} className="text-muted-foreground">
+              {t('participantAliasesHint')}
+            </p>
             <div>
               <Button
                 type="button"
@@ -223,6 +243,15 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
                   ) : null}
                 </div>
                 <label className="flex flex-col gap-1">
+                  {t('participantAliases', { number: index + 1 })}
+                  <Input
+                    value={item.aliases}
+                    maxLength={340}
+                    aria-describedby={`${formId}-aliases`}
+                    onChange={(event) => change(item.key, { aliases: event.target.value })}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
                   {t('participantRole', { number: index + 1 })}
                   <Textarea
                     size="sm"
@@ -246,6 +275,7 @@ function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose()
                       {
                         key: `extra_${globalThis.crypto.randomUUID()}`,
                         name: null,
+                        aliases: '',
                         prompt: '',
                         modelProfile: pick(current.length),
                       },

@@ -85,3 +85,19 @@ export function readPartialOutputs(store: RunStore, runId: string, projection: R
   }
   return Object.keys(outputs).length ? outputs : undefined;
 }
+
+/** Stored partial-output references of unconfirmed calls; they are not artifacts and outlive body release. */
+export function partialOutputRefs(store: RunStore, runId: string, projection: RunProjection) {
+  const refs: string[] = [];
+  for (const call of Object.values(projection.modelCalls)) {
+    if (call.responseRef) continue;
+    for (let next = 0; next < MAX_CHUNKS; next++) {
+      const ref = chunkRef(call.modelCallId, next);
+      if (store.getArtifactText(runId, ref) === null) break;
+      refs.push(ref);
+    }
+    if (store.getArtifactText(runId, stopRef(call.modelCallId)) !== null)
+      refs.push(stopRef(call.modelCallId));
+  }
+  return refs;
+}

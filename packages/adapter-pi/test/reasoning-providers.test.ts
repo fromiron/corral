@@ -1,5 +1,5 @@
 import type { EffectiveHarnessSnapshot, ReasoningResolution } from '@corral/contracts';
-import { Coordinator, InProcessTransport, waitForProjection } from '@corral/core';
+import { Coordinator, InProcessTransport, usageTotals, waitForProjection } from '@corral/core';
 import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { getSupportedThinkingLevels, type Model, normalizeContext } from '@earendil-works/pi-ai';
@@ -213,9 +213,7 @@ it
         'Bearer fixture-deepseek-key',
         'Bearer fixture-deepseek-key',
       ]);
-      expect(final.budget.modelCalls).toBe(2);
-      expect(final.budget.spent).toBe(4);
-      expect(final.budget.unknownOutstanding).toBe(0);
+      expect(usageTotals(final)).toMatchObject({ requests: 2, outputTokens: 4, unknown: 0 });
       expect(
         await transport.getArtifactText(started.runId!, final.output!.artifactVersionIds[0]!),
       ).toBe('DeepSeek fixture result');
