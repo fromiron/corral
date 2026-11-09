@@ -49,6 +49,15 @@ export interface CallSnapshot {
   relations: { kind: 'compare'; members: string[] }[];
   missingRequest: boolean;
   imageOnly: boolean;
+  /** A required source the Coordinator could not read: no judgment without it. */
+  missingRequired?: boolean;
+}
+
+/** A version a parent question attached; `text` is null when this request may not read it. */
+export interface QuestionAttachment {
+  questionId: string;
+  artifactVersionId: string;
+  text: string | null;
 }
 
 export interface FrameMeter {
@@ -89,6 +98,7 @@ export function callSnapshot(
   fixed: {
     directives: readonly { directiveId: string; text: string }[];
     questions: readonly ParentQuestionMessage[];
+    attachments?: readonly QuestionAttachment[];
   },
 ): CallSnapshot {
   const sources: FrameSource[] = [];
@@ -120,6 +130,21 @@ export function callSnapshot(
       required: true,
       group: null,
     });
+  // A question's attached versions are required evidence, kept whole (features/effort-routing.md).
+  let missingRequired = false;
+  for (const attachment of fixed.attachments ?? []) {
+    if (attachment.text === null) {
+      missingRequired = true;
+      continue;
+    }
+    add({
+      id: `attachment:${attachment.questionId}:${attachment.artifactVersionId}`,
+      label: `version ${attachment.artifactVersionId} attached to question ${attachment.questionId}`,
+      text: attachment.text,
+      required: true,
+      group: null,
+    });
+  }
   const replies = input?.earlierReplies ?? [];
   for (const [index, reply] of replies.entries())
     add({
@@ -169,6 +194,7 @@ export function callSnapshot(
     relations: [],
     missingRequest: request === null,
     imageOnly: request === null && (input?.requestImages ?? 0) > 0,
+    missingRequired,
   };
 }
 
@@ -237,6 +263,7 @@ export async function packFrame(
   });
   if (snapshot.imageOnly) return insufficient('unsupported-modality');
   if (snapshot.missingRequest) return insufficient('missing-request');
+  if (snapshot.missingRequired) return insufficient('required-source-missing');
   const byId = new Map(snapshot.sources.map((source) => [source.id, source]));
   const compared = new Set<string>();
   for (const relation of snapshot.relations) {

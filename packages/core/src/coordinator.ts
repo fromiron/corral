@@ -8304,6 +8304,7 @@ export class Coordinator {
           // Parent questions are fixed before the judgment: the request carries exactly the
           // ones the worker's context lacks, and the judgment reads all of them.
           const questions = this.parentQuestions(run, input);
+          const readable = this.readable(run, input);
           const present = new Set(preparation?.snapshot?.presentQuestionIds ?? []);
           const appended = questions.filter((question) => !present.has(question.questionId));
           const queuedIds = () =>
@@ -8374,6 +8375,16 @@ export class Coordinator {
                 text: run.projection.directives[directiveId]?.text ?? '',
               })),
               questions,
+              // What this request may not read stays null: the judgment then falls back.
+              attachments: questions.flatMap((question) =>
+                question.artifactRefs.map((artifactVersionId) => ({
+                  questionId: question.questionId,
+                  artifactVersionId,
+                  text: readable.has(artifactVersionId)
+                    ? this.store.getArtifactText(run.runId, artifactVersionId)
+                    : null,
+                })),
+              ),
             }),
             contextHash: record?.contextHash ?? null,
             retryOf:

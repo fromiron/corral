@@ -815,4 +815,117 @@ describe('parent questions are fixed before the judgment (P05)', () => {
     await checks[0];
     expect(local.requests).toHaveLength(2);
   });
+
+  it('#201: the judgment reads the versions the question attaches', async () => {
+    const clock = new FakeClock();
+    const local = new FakeRoutingBackend({ kind: 'local' });
+    const definition = linearCorral(['parent']);
+    definition.roles[0]!.reasoning = { mode: 'auto' };
+    definition.roles[0]!.allowedCollaborationTools.push('spawn_subagents', 'await_tasks', 'reply');
+    definition.roles.push({
+      ...definition.roles[0]!,
+      id: 'child_role',
+      name: 'Child',
+      reasoning: { mode: 'fixed', level: 'low' },
+      allowedCollaborationTools: ['ask', 'submit_result'],
+      allowedWorkTools: ['write_artifact'],
+    });
+    definition.nodes.push({
+      id: 'child',
+      type: 'agent',
+      label: 'Child',
+      roleId: 'child_role',
+      invocation: 'callable',
+      inputBindings: [],
+      outputName: 'text',
+    });
+    definition.capabilityLinks.push({
+      id: 'delegate_child',
+      kind: 'delegate',
+      sourceNodeId: 'parent',
+      targetNodeId: 'child',
+      parentQuestions: true,
+    });
+    const checks: Promise<void>[] = [];
+    const coordinator = new Coordinator({
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      policy: SPEC_HARD_CAPS,
+      effortRouting: { settings: () => LOCAL, backend: () => local },
+      models: {
+        resolve: (profile) => ({
+          ok: true,
+          snapshot: {
+            profile,
+            provider: 'openai-codex',
+            modelId: 'gpt-6-luna',
+            auth: 'oauth',
+            reasoning: { levels: ['low', 'medium', 'high', 'xhigh'], providerDefault: true },
+          },
+        }),
+      },
+      agents: {
+        async start(input, host) {
+          let settle!: (value: AgentSettlement) => void;
+          const done = new Promise<AgentSettlement>((resolve) => {
+            settle = resolve;
+          });
+          if (input.nodeId === 'child') {
+            void (async () => {
+              const written = await host.invokeTool({
+                name: 'write_artifact',
+                args: { text: 'export function parse() { return attachedBody; }' },
+              });
+              if (!written.ok) throw new Error(written.error.message);
+              await host.invokeTool({
+                name: 'ask',
+                args: {
+                  targetNodeId: 'parent',
+                  body: 'Which file owns the parser?',
+                  artifactRefs: [written.result.artifactVersionId],
+                },
+              });
+            })();
+          } else {
+            checks.push(
+              (async () => {
+                const batch = await host.invokeTool({
+                  name: 'spawn_subagents',
+                  args: { tasks: [{ targetNodeId: 'child', brief: 'look' }] },
+                });
+                if (!batch.ok) throw new Error(batch.error.message);
+                for (let i = 0; i < 5; i++) {
+                  const awaited = await host.invokeTool({
+                    name: 'await_tasks',
+                    args: { taskIds: batch.result.taskIds },
+                  });
+                  if (awaited.ok && (awaited.result.parentQuestions as unknown[])?.length) break;
+                }
+                const first = await host.prepareModelRequest(record(1), {
+                  snapshot: snapshot('Split the work.'),
+                });
+                expect(local.requests[0]!.state).toContain('attachedBody');
+                settle({ outcome: 'cancelled' });
+              })(),
+            );
+          }
+          return {
+            cancel: async () => settle({ outcome: 'cancelled' }),
+            waitForSettlement: () => done,
+          };
+        },
+      },
+    });
+    const start = coordinator.startRun({
+      schemaVersion: '0.1',
+      commandId: 'start',
+      mode: 'live',
+      definition,
+    });
+    if (!start.runId) throw new Error(JSON.stringify(start.receipt.error));
+    for (let i = 0; i < 50 && checks.length === 0; i++) await drain();
+    await checks[0];
+    expect(local.requests).toHaveLength(1);
+  });
 });

@@ -56,6 +56,48 @@ async function pack(snapshot: CallSnapshot, meter: FrameMeter = bytesMeter()) {
 }
 
 describe('the call snapshot and frame', () => {
+  const asking = {
+    questionId: 'q_1',
+    senderExecutionId: 'exe_child',
+    body: 'Which implementation is correct?',
+    artifactRefs: ['art_a', 'art_b'],
+    deadline: '2026-11-09T00:00:00.000Z',
+  };
+
+  it('#201: the versions a parent question attaches are required sources', async () => {
+    const snapshot = callSnapshot(input({ request: { text: 'Review the two implementations.' } }), {
+      directives: [],
+      questions: [asking],
+      attachments: [
+        { questionId: 'q_1', artifactVersionId: 'art_a', text: 'function a() {}' },
+        { questionId: 'q_1', artifactVersionId: 'art_b', text: 'function b() {}' },
+      ],
+    });
+    const attached = snapshot.sources.filter((source) => source.id.startsWith('attachment:'));
+    expect(attached.map((source) => [source.required, source.text])).toEqual([
+      [true, 'function a() {}'],
+      [true, 'function b() {}'],
+    ]);
+    const frame = await pack(snapshot);
+    expect(frame.state).toContain('function a() {}');
+    expect(frame.state).toContain('function b() {}');
+  });
+
+  it('#201: an attached version Corral cannot read is not judged without it', async () => {
+    const snapshot = callSnapshot(input(), {
+      directives: [],
+      questions: [asking],
+      attachments: [
+        { questionId: 'q_1', artifactVersionId: 'art_a', text: 'function a() {}' },
+        { questionId: 'q_1', artifactVersionId: 'art_b', text: null },
+      ],
+    });
+    expect(await packFrame(snapshot, bytesMeter(), question, never)).toMatchObject({
+      kind: 'insufficient',
+      reason: 'required-source-missing',
+    });
+  });
+
   it('P02: keeps every tool call of the step and records what it left out', async () => {
     const calls = [1, 2, 3, 4, 5].map((n) => call(`c${n}`, `${'log line\n'.repeat(60)}end ${n}`));
     const frame = await pack(
