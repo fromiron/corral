@@ -956,7 +956,45 @@
     "toolPolicyRevision": "Policy revision {revision}"
   },
   "Inbox": {
-    "title": "Needs you"
+    "title": "Needs you",
+    "back": "Back",
+    "groups": {
+      "response": "Response needed",
+      "review": "Review",
+      "waiting": "Waiting & stopped"
+    },
+    "kind": {
+      "decision": "Response needed",
+      "uncertain_write": "File writes with unknown outcome",
+      "uncertain_terminal": "Terminal exit needs checking",
+      "unreviewed": "Unreviewed file writes",
+      "check_failed": "Check failed",
+      "lsp_proposal": "Language server proposals",
+      "integration": "Applying did not finish cleanly",
+      "queued": "Queued request",
+      "recipe_stopped": "Review stopped: {reason}"
+    },
+    "open": {
+      "run": "Open run",
+      "review": "Open changes",
+      "session": "Open session",
+      "terminal": "Open terminal"
+    },
+    "close": "Close",
+    "backToList": "Back to list",
+    "handled": "This item was handled.",
+    "empty": "Nothing needs you",
+    "emptyText": "Approvals, questions and changes to review gather here.",
+    "noSelection": "Nothing selected",
+    "noSelectionText": "Select an item to open it here.",
+    "loadFailed": "Couldn't load {project}.",
+    "retry": "Try again",
+    "projectsFailed": "Couldn't load projects.",
+    "runLoading": "Opening the run…",
+    "runFailed": "Couldn't open this run.",
+    "runMissing": "This run is no longer available.",
+    "nothingWaiting": "Nothing waits on this run now.",
+    "projectSummary": "{count, plural, one {# item needs you} other {# items need you}}"
   },
   "Usage": {
     "heading": "Usage",
@@ -1990,23 +2028,9 @@
     },
     "revert": "Revert",
     "revertNote": "Only files still as applied are reverted.",
-    "inboxHeading": "Pending actions",
-    "inbox": {
-      "decision": "A run waits for your decision",
-      "queued": "Queued next task: {detail}",
-      "uncertain_write": "File writes with unknown outcome",
-      "integration": "Applying did not finish cleanly ({detail})",
-      "check_failed": "Latest check failed: {detail}",
-      "unreviewed": "{detail} file writes since “Mark working copy as read” (separate from approval)",
-      "recipe_stopped": "Review stopped: {detail}",
-      "lsp_proposal": "Language server proposals awaiting review ({detail})",
-      "uncertain_terminal": "Terminal termination needs confirmation"
-    },
-    "open": "Open",
     "retrySend": "Check the same request",
     "sendUnconfirmed": "The request or its record could not be confirmed. Check the same request before sending another.",
     "modelsUnavailable": "Model connection information is not available yet. Check model settings before sending.",
-    "inboxScope": "Pending actions in this project’s unarchived sessions. A session can have several actions; this is not a count of failed sessions.",
     "confirmRevert": "Revert applied files",
     "confirmRevertNote": "Revert these files in the original folder. Files changed outside Corral since applying are kept. A checkpoint is saved before reverting.",
     "cancelRevert": "Cancel",

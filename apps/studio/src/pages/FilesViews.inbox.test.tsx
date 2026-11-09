@@ -13,14 +13,21 @@ vi.mock('../services.tsx', () => ({ useServices: () => ({ workspaces }) }));
 vi.mock('@tanstack/react-router', async (original) => ({
   ...(await original<typeof import('@tanstack/react-router')>()),
   Link: ({
-    params,
+    to,
     search,
     children,
+    ...rest
   }: {
-    params: { sessionId: string };
-    search: Record<string, string>;
+    to: string;
+    search?: Record<string, string>;
     children: React.ReactNode;
-  }) => <a href={`/sessions/${params.sessionId}?${new URLSearchParams(search)}`}>{children}</a>,
+  }) => (
+    <a href={search ? `${to}?${new URLSearchParams(search)}` : to} {...rest}>
+      {children}
+    </a>
+  ),
+  useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
+    select({ location: { href: '/projects/project' } }),
 }));
 
 const disposals: (() => Promise<void>)[] = [];
@@ -31,10 +38,10 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('shows a terminal-only pending action, publishes its state, and links to its exact controls without a command', async () => {
+it('sums up every pending item of the project in one line that opens Needs you', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  const item: InboxItemView = {
+  const terminal: InboxItemView = {
     kind: 'uncertain_terminal',
     sessionId: 'session',
     sessionTitle: 'Terminal only',
@@ -42,7 +49,14 @@ it('shows a terminal-only pending action, publishes its state, and links to its 
     runId: null,
     detail: null,
   };
-  fixture.inbox.mockResolvedValue([item]);
+  const queued: InboxItemView = {
+    kind: 'queued',
+    sessionId: 'session',
+    sessionTitle: 'Terminal only',
+    runId: null,
+    detail: 'Private request body',
+  };
+  fixture.inbox.mockResolvedValue([terminal, queued]);
   const onItems = vi.fn();
   const container = document.createElement('div');
   const root = createRoot(container);
@@ -56,16 +70,24 @@ it('shows a terminal-only pending action, publishes its state, and links to its 
       </IntlProvider>,
     ),
   );
-  expect(container.textContent).toContain('Terminal termination needs confirmation');
+  // The project count is every inbox item, as the workspace header counts them.
+  expect(container.textContent).toBe('2 items need you');
+  expect(container.querySelectorAll('a')).toHaveLength(1);
   expect(container.querySelector('a')?.getAttribute('href')).toBe(
-    '/sessions/session?panel=terminal&terminal=pty_exact',
+    '/inbox?returnTo=%2Fprojects%2Fproject',
   );
-  expect(onItems).toHaveBeenLastCalledWith([item]);
+  expect(container.textContent).not.toContain('Private request body');
+  expect(onItems).toHaveBeenLastCalledWith([terminal, queued]);
   expect(fixture.commands).not.toHaveBeenCalled();
+  fixture.inbox.mockResolvedValue([terminal]);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(container.textContent).toBe('1 item needs you');
   fixture.inbox.mockResolvedValue([]);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });
-  expect(container.querySelector('section')).toBeNull();
+  expect(container.querySelector('a')).toBeNull();
   expect(onItems).toHaveBeenLastCalledWith([]);
 });

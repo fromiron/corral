@@ -2,6 +2,7 @@ export { type DiffLine, diffLines } from './artifacts/diff.ts';
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
+export { CommandReceipts } from './components/CommandReceipts.tsx';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {

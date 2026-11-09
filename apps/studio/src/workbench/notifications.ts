@@ -23,6 +23,50 @@ export function inboxNotificationTargets(
   });
 }
 
+/**
+ * The exact screen an inbox item opens: its run's response area, the session's review, its queue
+ * or the terminal's own controls. Desktop notifications and Needs you share it.
+ */
+export type InboxDestination =
+  | {
+      to: '/sessions/$sessionId';
+      params: { sessionId: string };
+      search: { panel?: 'run' | 'terminal'; view?: 'run'; run?: string; terminal?: string };
+    }
+  | { to: '/sessions/$sessionId/review'; params: { sessionId: string }; search: object };
+
+export function inboxDestination(target: NotificationTarget): InboxDestination | null {
+  const params = { sessionId: target.sessionId };
+  if (target.kind === 'uncertain_terminal')
+    return target.terminalId && target.runId === null
+      ? {
+          to: '/sessions/$sessionId',
+          params,
+          search: { panel: 'terminal', terminal: target.terminalId },
+        }
+      : null;
+  if ((target.kind === 'decision' || target.kind === 'recipe_stopped') && target.runId)
+    return {
+      to: '/sessions/$sessionId',
+      params,
+      search: { panel: 'run', view: 'run', run: target.runId },
+    };
+  return target.kind === 'queued'
+    ? { to: '/sessions/$sessionId', params, search: {} }
+    : { to: '/sessions/$sessionId/review', params, search: {} };
+}
+
+export function destinationHref(destination: InboxDestination): string {
+  const path = destination.to.replace(
+    '$sessionId',
+    encodeURIComponent(destination.params.sessionId),
+  );
+  const query = Object.entries(destination.search)
+    .map(([name, value]) => `${name}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return query ? `${path}?${query}` : path;
+}
+
 /** Re-read the originating session's inbox: an old notification grants no action. */
 export async function notificationDestination(
   target: NotificationTarget,
@@ -35,12 +79,6 @@ export async function notificationDestination(
   if (!session || session.archivedAt) return null;
   const items = await source.inbox(session.projectId);
   if (!items.some((item) => key(item) === key(target))) return null;
-  const sessionPath = `/sessions/${encodeURIComponent(target.sessionId)}`;
-  if (target.kind === 'uncertain_terminal')
-    return target.terminalId && target.runId === null
-      ? `${sessionPath}?panel=terminal&terminal=${encodeURIComponent(target.terminalId)}`
-      : null;
-  if ((target.kind === 'decision' || target.kind === 'recipe_stopped') && target.runId)
-    return `${sessionPath}?panel=run&view=run&run=${encodeURIComponent(target.runId)}`;
-  return target.kind === 'queued' ? sessionPath : `${sessionPath}/review`;
+  const destination = inboxDestination(target);
+  return destination ? destinationHref(destination) : null;
 }

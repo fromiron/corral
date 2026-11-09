@@ -63,9 +63,11 @@ test('pins a review recipe in the Loop editor and explains its stop in the Run a
   await expect(page.getByTestId('run-status').first()).toContainText('Failed');
   await expect(page.getByTestId('recipe-status')).toContainText('Generation attempt limit reached');
   await expect(page.getByTestId('recipe-status')).toContainText('Revise');
-  await page.goto(`${corral.server.url}/`);
+  await page.goto(`${corral.server.url}/inbox`);
   await expect(
-    page.getByText('Review stopped: Generation attempt limit reached', { exact: false }),
+    page
+      .getByRole('list', { name: 'Waiting & stopped', exact: true })
+      .getByText('Review stopped: Generation attempt limit reached', { exact: false }),
   ).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

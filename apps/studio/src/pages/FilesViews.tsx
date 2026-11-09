@@ -5,14 +5,15 @@ import type {
   WorktreeView,
 } from '@corral/client';
 import { Button, Input, Switch, Textarea } from '@corral/react/design-kit';
-import { Link } from '@tanstack/react-router';
+import { ArrowRight } from '@corral/react/icons';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { useSettingsNavigation, workHref } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
@@ -401,7 +402,10 @@ export function WorkingCopyPanel({
   );
 }
 
-/** What needs a person in this project; it empties as things are handled. */
+/**
+ * How many things wait on a person in this project, as one line into Needs you. The count is
+ * every inbox item of the project's unarchived sessions; it empties as they are handled.
+ */
 export function InboxSection({
   projectId,
   onItems,
@@ -409,9 +413,9 @@ export function InboxSection({
   projectId: string;
   onItems?: (items: InboxItemView[]) => void;
 }) {
-  const t = useTranslations('Review');
-  const tr = useTranslations('Recipe');
+  const t = useTranslations('Inbox');
   const { workspaces } = useServices();
+  const returnTo = workHref(useRouterState({ select: (state) => state.location.href }));
   const [items, setItems] = useState<InboxItemView[]>([]);
   useEffect(() => {
     setItems([]);
@@ -435,72 +439,16 @@ export function InboxSection({
     };
   }, [workspaces, projectId, onItems]);
   if (items.length === 0) return null;
+  // The items themselves are listed and answered in Needs you, which can lead back here.
   return (
-    <section
-      aria-labelledby="inbox-heading"
-      className="flex flex-col gap-2 rounded-md border border-warning p-3"
+    <Button
+      variant="ghost"
+      size="compact"
+      className="self-start"
+      render={<Link to="/inbox" search={returnTo ? { returnTo } : {}} />}
     >
-      <h2 id="inbox-heading" className="text-sm font-semibold">
-        {t('inboxHeading')} ({items.length})
-      </h2>
-      <p className="text-xs text-muted-foreground">{t('inboxScope')}</p>
-      <ul className="flex flex-col gap-1 text-sm">
-        {items.map((item, index) => (
-          <li
-            // biome-ignore lint/suspicious/noArrayIndexKey: items repeat per session and kind
-            key={`${item.kind}-${item.sessionId}-${index}`}
-            className="flex flex-wrap items-center justify-between gap-2"
-          >
-            <span>
-              <span className="font-medium">{item.sessionTitle}</span> ·{' '}
-              {t(`inbox.${item.kind}`, {
-                detail:
-                  item.kind === 'recipe_stopped'
-                    ? tr(`reasons.${item.detail}`)
-                    : (item.detail ?? ''),
-              })}
-            </span>
-            {item.kind === 'uncertain_terminal' && item.terminalId ? (
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: item.sessionId }}
-                search={{ panel: 'terminal', terminal: item.terminalId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            ) : item.kind === 'recipe_stopped' && item.runId ? (
-              <Link to="/runs/$runId" params={{ runId: item.runId }} className="text-xs underline">
-                {t('open')}
-              </Link>
-            ) : item.kind === 'decision' && item.runId ? (
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: item.sessionId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            ) : item.kind === 'queued' ? (
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: item.sessionId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            ) : (
-              <Link
-                to="/sessions/$sessionId/review"
-                params={{ sessionId: item.sessionId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
+      {t('projectSummary', { count: items.length })}
+      <ArrowRight aria-hidden />
+    </Button>
   );
 }

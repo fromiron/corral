@@ -128,10 +128,9 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   const panel = page.getByTestId('terminal-panel');
   await expect(panel).toBeVisible();
   await sidebar.getByRole('link', { name: 'Unvisited terminal project', exact: true }).click();
-  const inbox = page.getByRole('region', { name: 'Pending actions (1)', exact: true });
-  await expect(inbox).toContainText(
-    'Observed terminal owner · Terminal termination needs confirmation',
-  );
+  // The project counts the item; Needs you lists it (docs/specs/features/inbox.md).
+  const summary = page.getByRole('link', { name: '1 item needs you', exact: true });
+  await expect(summary).toBeVisible();
   await page.getByRole('combobox', { name: 'Session status', exact: true }).click();
   await page.getByRole('option', { name: 'Needs attention', exact: true }).click();
   const sessionRow = page
@@ -140,11 +139,19 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await expect(sessionRow).toBeVisible();
   await expect(sessionRow).toContainText('Terminal needs attention');
   await expect(sessionRow).toHaveAttribute('href', terminalPath);
-  await expect(inbox.getByRole('link', { name: 'Open', exact: true })).toHaveAttribute(
-    'href',
-    terminalPath,
-  );
-  await inbox.getByRole('link', { name: 'Open', exact: true }).click();
+  await summary.click();
+  await page
+    .getByRole('list', { name: 'Response needed', exact: true })
+    .getByRole('button', {
+      name: 'Observed terminal owner · Terminal exit needs checking · Unvisited terminal project',
+      exact: true,
+    })
+    .click();
+  const open = page
+    .getByRole('region', { name: 'Observed terminal owner', exact: true })
+    .getByRole('link', { name: 'Open terminal', exact: true });
+  await expect(open).toHaveAttribute('href', terminalPath);
+  await open.click();
   await expect(page).toHaveURL(`${corral.server.url}${terminalPath}`);
   await expect(panel).toBeVisible();
   terminal = { ...terminal, state: 'running' };

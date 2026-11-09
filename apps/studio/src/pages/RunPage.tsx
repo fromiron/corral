@@ -13,7 +13,6 @@ import {
 } from '@corral/core';
 import {
   AgentStatusText,
-  ApprovalPanel,
   ArtifactViewer,
   ExecutionTranscript,
   ExecutionTree,
@@ -79,6 +78,7 @@ import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunPlanStrip } from '../workbench/RunActivity.tsx';
 import { breakpointSteps } from '../workbench/RunBreakpoints.tsx';
+import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
 import { RunResultVersions } from '../workbench/RunResultVersions.tsx';
 import { ExecutionContext, RunStatusCards } from '../workbench/RunStatusCards.tsx';
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
@@ -714,20 +714,11 @@ function RunWorkspace({
             </div>
             <div hidden={panel !== 'approval'}>
               {pending > 0 ? (
-                <section data-testid="run-needs-you" aria-label={m('needsYou')}>
-                  <div
-                    ref={response}
-                    data-run-response={projection?.runId}
-                    tabIndex={-1}
-                    className="outline-none"
-                  >
-                    <ApprovalPanel
-                      session={session}
-                      showPlan={false}
-                      onOpenArtifact={openArtifact}
-                    />
-                  </div>
-                </section>
+                <RunResponseArea
+                  session={session}
+                  focusRef={response}
+                  onOpenArtifact={openArtifact}
+                />
               ) : null}
             </div>
             <div hidden={panel === 'approval'}>

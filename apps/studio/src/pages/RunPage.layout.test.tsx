@@ -14,6 +14,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
@@ -33,6 +34,11 @@ vi.mock('@corral/core', async (original) => {
 });
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ runRoute: {} }));
+// The real response area, observed: Needs you renders the same component.
+vi.mock('../workbench/RunResponseArea.tsx', async (original) => {
+  const module = await original<typeof import('../workbench/RunResponseArea.tsx')>();
+  return { ...module, RunResponseArea: vi.fn(module.RunResponseArea) };
+});
 vi.mock('../workbench/RunStatusCards.tsx', () => ({
   ExecutionContext: () => null,
   RunStatusCards: () => (
@@ -1240,6 +1246,21 @@ it('the right panel shows what needs the person only while something waits', asy
   expect(idlePanel?.hidden).toBe(false);
   expect(idlePanel?.querySelector('[data-testid="run-needs-you"]')).toBeNull();
   expect(idlePanel?.textContent).not.toContain('Nothing needs you');
+});
+
+it('answers through the shared run response area, leaving receipts to the run header', async () => {
+  fixture.pending = 1;
+  const area = vi.mocked(RunResponseArea);
+  area.mockClear();
+  const { container, run } = await mount('inline_team', null);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]')?.click(),
+  );
+  expect(area.mock.calls.some(([props]) => props.session === run)).toBe(true);
+  expect(area.mock.calls.every(([props]) => !props.receipts)).toBe(true);
+  expect(
+    container.querySelector('[data-testid="run-side"] [data-testid="run-needs-you"]'),
+  ).not.toBeNull();
 });
 
 it('pending decisions stay reachable and replace the inspector rather than stacking with details', async () => {
