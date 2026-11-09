@@ -17,7 +17,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 - Dialog's `left` position anchors the workbench navigation drawer without the centered popup's half-width/height translation; the caller owns its width and height.
 - [components/blocks](components/blocks) holds the source's finished compositions: QueuedStack (source `components/queued-stack.tsx`) and the page chrome (PathBar, Page, SectionLabel and EmptyState) extracted from the sample screens' `components/screens/chrome.tsx`.
 
-`tokens.css` remains a verbatim copy of `design_kit/styles/tokens.css`, SHA-256 `c227a3aad1d7e861ea6993e4f39d8acfcb10cde3a15bd710fda840fa68febcfd`. Only this CSS snapshot skips formatting. Corral semantic and contrast adjustments live in [theme.css](../theme.css).
+`tokens.css` is a copy of `design_kit/styles/tokens.css` (source SHA-256 `c227a3aad1d7e861ea6993e4f39d8acfcb10cde3a15bd710fda840fa68febcfd`) with two local divergences: its theme selectors read `.light:not(.react-flow)` and `.dark:not(.react-flow)`, so React Flow's OS-selected classes leave the graph on the app theme (a comment says so), and it adds `--fs-field-touch: 16px`. Local SHA-256 `15440699de1d25d21603abb035bd0c9d2630f2b1876d8a5aae0924278abe0d04`. Only this CSS snapshot skips formatting. Corral semantic and contrast adjustments live in [theme.css](../theme.css).
 
 ## Source adaptations
 
@@ -56,7 +56,9 @@ Tooltip explicitly provides its popup role and trigger description linkage while
 - SidebarWorkspaceHeader reuses `WorkspaceTile` from `workspace-tile.tsx` (re-exported, not copied) and takes localized `labels` for the menu, the switcher and, when given, the peeking trigger.
 - The page chrome keeps PathBar, Page, SectionLabel and EmptyState; the sample screens' Composer, model and approval sample data and screen action types are left out. PathBar takes a localized breadcrumb label.
 - AgentStatusPill draws its progress bar only when there are steps. `announce={false}` drops its own polite live region for a host that already announces the run. Localized `labels` cover the paused activity, the toggle name, the announcement, the panel and its run controls. Approve and Deny already render only with their callbacks.
+- AgentStatusPill takes `onActivate` for a pill that navigates: a press calls it instead of folding out the panel, so the button has no `aria-expanded`, `aria-controls`, chevron or panel (and so no panel run controls), and its default name ends "Open run." instead of the show/hide wording. Its visuals are otherwise unchanged.
 - QueuedStack drags to reorder only with `onQueueChange`; without it the cards show no grab cursor, keep touch scrolling and never lift. Edit and remove are unchanged. `renderActions(item)` adds host controls before them, inside a wrapper that keeps their presses from dragging, expanding or editing the card. Localized `labels` cover its tooltips, names and counts.
+- QueuedStack fans out while keyboard focus is inside it, as it does under the pointer, and the card holding focus comes to the front. A card's actions show on hover or focus within the card; otherwise they stay in the tab order, invisible over the card's end, so the text still gets the full width.
 - AgentCheckpoints no longer moves its head on a rewind: `onRewind` only asks the host, and the head comes from `head` or the last checkpoint, so the uncontrolled `defaultHead` is removed. Without `onRewind`, Rewind, its Enter key and the hover swap are absent. Localized `labels` cover row names, chips and counts.
 - AgentRoutines already omits New routine (create from a sentence), Run now/Stop, the pause switch and the schedule editor without their callbacks. It adds localized `labels`, including schedule wording (default `describeSchedule`, still exported in English), run days, frequencies, weekdays and announcements. Type assertions mark the proven active and newest runs, and narrow lint explanations cover static report keys, the row's pointer shortcut and the schedule re-seed.
 - ThinkingIndicator and InputCopy take localized `labels`. InputCopy reserves the width of its longest word and hides its decorative result glyphs. ThinkingIndicator's word index wraps when a host gives fewer words.
@@ -85,10 +87,10 @@ Source hashes cover original complete files. The workspace-header hash identifie
 
 | Original kit file | Local file | Source SHA-256 | Local SHA-256 |
 | --- | --- | --- | --- |
-| `components/agent/agent-lanes.tsx` | `components/agent/agent-lanes.tsx` | `1fbc52d64a08481961e4e622d2587946489f36d88e9f8e742a29976989bcfd11` | `abb3377167879f12c2c3fcea169410c00846d0a2bb62d5d91275b0e148c8b6c0` |
-| `components/agent/plan-vs-actual.tsx` | `components/agent/plan-vs-actual.tsx` | `f28381dbb228320d029e19d838d034982f92a69d9f92767d7f452efebfdc9be7` | `c7b897f7697cafd259ef7745fa2a0e92a69a31d79a24df59542a323bd09b437a` |
+| `components/agent/agent-lanes.tsx` | `components/agent/agent-lanes.tsx` | `0f256ec0fb2d352280178e083a2e2166c51ec728b81b83ee7a39424498f03268` | `b4b4ced19c257e20c7c96b70c251b53deba9f3cdf5cc51148588bed0d4b02c6a` |
+| `components/agent/plan-vs-actual.tsx` | `components/agent/plan-vs-actual.tsx` | `f28381dbb228320d029e19d838d034982f92a69d9f92767d7f452efebfdc9be7` | `1bb90a28bfeaf4f2474aa4a54d4d54984eae2c8758fb5bd07dffcef48c9bc89a` |
 | `components/agent/agent-primitives.tsx` | `components/agent/agent-primitives.tsx` | `2ac474190585bb5e2ca71fe510113d52ad0fea86c54f1790dbfe3764ebe480cd` | `2e87ec121cb9c9a2c274e550279d90bae59546da5685d26a79d8b6d0b6d9262b` |
-| `components/agent/agent-tree.tsx` | `components/agent/agent-tree.tsx` | `b8f3d09ff2f99e360a6c7f2f7bcc346b6ce7a880744050805e04dd4cd69af4af` | `43b2e7120b1acfc294496461c678a9a88029b7050b39f5cacaba2932e948f192` |
+| `components/agent/agent-tree.tsx` | `components/agent/agent-tree.tsx` | `1cab378179899798795418d337f374c0b03932159dbc312b6849819e9aeb63d7` | `796e15b331b583a3ab47b4f5bffb789f9a597a834241a041a4e90567c460d110` |
 | `components/sidebar-app/search-field.tsx` | `components/sidebar-app/search-field.tsx` | `c261fce992cfc8641ca28f5397c9ab63e3f28322d52c01c3bf2559fb6fff9f29` | `0ef8a8eeab34687e095c8630154696cd4b3481074a40058f60455be6ac7a22fa` |
 | `components/sidebar-app/workspace-header.tsx` | `components/sidebar-app/workspace-tile.tsx` | `e7c3c4577040cdc64e918c44501aa6580020ef793fc5f022c4f17c63bd48091b` | `043736f783133a69eb4aca94ea98ecbdc71bf59c6b7a8af1d9603b26c6a4bb9a` |
 | `components/ui/accordion.tsx` | `components/ui/accordion.tsx` | `28690991b74c84976a1201faada86cc5fa0d9c995d91cee5a2ddcb91589fd427` | `0f29cbfe850db6e2297663cd0bae3fc146f71f81274b3589f708ef256bfda4e1` |
@@ -116,6 +118,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/table.tsx` | `components/ui/table.tsx` | `0d9426933db7f73c5e7e6579532f1abe1668430892f5b604a24dd34c7b254c51` | `5b63c7b9f9eee8115475558e81aa80ccc0432c826f15bc186e4a61d8fe43b8ab` |
 | `components/ui/tabs.tsx` | `components/ui/tabs.tsx` | `03bb6312d0bf95d4f2a9d6441da73c997714562f2c435e77cb51f9a23a381418` | `f311464ec7ab1cb6da0db7c462330fafabcb7ae6559974342644ef3d505be462` |
 | `components/ui/tabs-subtle.tsx` | `components/ui/tabs-subtle.tsx` | `33b690831bb70016cffa08dcd413b1437904e7653e414490563955b0b13a1811` | `8021809eff7993c656c15f669e947d9644223afacf724afc46343e8295127052` |
+| `components/ui/command-menu.tsx` | `components/ui/command-menu.tsx` | `f005cbc158b0cc6a78f64c0a17b5dbee60dc01a54147fc68797865c27aceee3f` | `eb86e9b97ba6e68f65664bf063c54248bb5b69d051c50e35e7de4ab57320e0a9` |
 | `components/ui/thinking-steps.tsx` | `components/ui/thinking-steps.tsx` | `8ffe24780dcbfdfa2aa408fb93f50393ff90300f84ec4c4fdac2f53d6f2dfc8d` | `df1fc89a2883924decca6755c565f1546015bde20d45ec2c5b621c5a64369015` |
 | `components/ui/tooltip.tsx` | `components/ui/tooltip.tsx` | `ea1e26286b1230db898fef838ef14b8fd4572f84ef50e97bdd481000d57eb21e` | `7b21778ef451ce4c031d259319c78dcc8f6981f8ee6678b4f1d68e7e1573519e` |
 | `lib/agent-format.ts` | `lib/agent-format.ts` | `87c560a22ee5e18c201eecdc7c7b423f77b38e7d0fb36cd052551e7e9a6f7824` | `201321cc0ba88a97ca3b31284b172e738d5a3b3df8d412bcd5070724fe872bc2` |
@@ -139,13 +142,13 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `hooks/use-merge-split.tsx` | `hooks/use-merge-split.tsx` | `8682fb689788cd01694d1470c18a3397589e12d1916c73d8d87365883cf23e7b` | `2acbdfb68ce8e91205f1a04fca42fbe617752f296643f69d65833b830796a9e8` |
 | `hooks/use-touch-primary.tsx` | `hooks/use-touch-primary.tsx` | `b8083bab321fa67a285d35a6ed5f0e5cb68eef706c7d33f0c992dad5e3945e4e` | `e523fdcf4062422735c93f727e9cd89417cf08313cf35a727702e1dd4e1339f1` |
 | `hooks/use-now.ts` | `hooks/use-now.ts` | `90d99f3382c55ba79277be776e3cb55a37d745e7daf699f663fb5fb4f40737c6` | `9eefdc52d4b7b3955726631276547b1bbb04157416b172a1d7552d248eaab199` |
-| `components/agent/agent-status-pill.tsx` | `components/agent/agent-status-pill.tsx` | `32dd041d46ad43d7c482e61f399082db519c3b02c6a7ef48bd475096aa18977b` | `38d78393c2e6caa3f28253a648b5398063e982ee783fb384c88e825bd12d3f1f` |
+| `components/agent/agent-status-pill.tsx` | `components/agent/agent-status-pill.tsx` | `32dd041d46ad43d7c482e61f399082db519c3b02c6a7ef48bd475096aa18977b` | `6bf9ba8d4313f6a0cfeb42b794d7744defeae38e5fe7641683765fbe0bb4f1a6` |
 | `components/agent/agent-checkpoints.tsx` | `components/agent/agent-checkpoints.tsx` | `87cd5ace9b53dcf4f6db8cdb6220880d144901317ba768558d030e7e71a88ccd` | `0fe0ad01242c7b8d43ad5883da2649bb125257e134089ff8acfa1853c2634131` |
 | `components/agent/agent-routines.tsx` | `components/agent/agent-routines.tsx` | `99cb13715444a7b149bf6b9653e82e801d8520cd259a3add72af014918e8eab5` | `fb741e1853d1e823aa6b5e38c879b4ffd451bb800b2f4435839e613bdb241550` |
 | `components/agent/agent-tasks.tsx` | `components/agent/agent-tasks.tsx` | `195aa5006ad2ae41fc76971b1889bd86f3d21b21ec1e7feac4f93e05dfc090f7` | `11b3f50f9ec27f2a54c506be865f3daa1a033d944cb46de1b5660a39a87fa8f6` |
 | `components/agent/diff-review.tsx` | `components/agent/diff-review.tsx` | `6af455a2fa4b6af53b66e2c5236107f4274e7ba085381c1eeadf76ac57d62474` | `5f2c567930f5062aad1ad8550917904c44a8b320b90cac3d954e247f76c83c5b` |
 | `components/agent/agent-findings.tsx` | `components/agent/agent-findings.tsx` | `28a88a110d45974a2a8439e0900e8923f228c79fdd2c496eed6dfab06e016ac1` | `80bb7142e356649508375403fbe23e6b6f173f1b42b69ae55b0e7800bfd60e2a` |
-| `components/queued-stack.tsx` | `components/blocks/queued-stack.tsx` | `e76b718c2c262c06cf08d2c5ccf6570c926e005f4f9a4a1e98c6dd107d6dbe29` | `c0219e8f89d624372548b1b0bc11a17480924aa0effc30960bcf05136c401afd` |
+| `components/queued-stack.tsx` | `components/blocks/queued-stack.tsx` | `e76b718c2c262c06cf08d2c5ccf6570c926e005f4f9a4a1e98c6dd107d6dbe29` | `3e0b2c493c1011eab16e1e45d4b99132dd4f153fd263ede1c23256b4b88f7cfd` |
 | `components/screens/chrome.tsx` (page chrome extraction) | `components/blocks/page-chrome.tsx` | `8935dc87a817fd8197330ae899ca2d1218e39867b12ab81877c900a2fb020a0c` | `dac99b4add4aa1955d5cdd85167a37c04cab96625c58fe4876d1568fb2a76082` |
 | `components/sidebar-app/workspace-header.tsx` | `components/sidebar-app/workspace-header.tsx` | `e7c3c4577040cdc64e918c44501aa6580020ef793fc5f022c4f17c63bd48091b` | `3bdafa9994690087f7ad6d4eb0e8c17bac9c96b7e962a28ea28e0e34d19f432f` |
 | `components/ui/input-copy.tsx` | `components/ui/input-copy.tsx` | `8392eda98dd24b34469b6ab254fc028a79945c57895dbd0bc100416cd777eb8f` | `8f4561011ac98b0f20bb43177f56b42496d55940f6ed57b2656bb2c8261a25fb` |
@@ -161,12 +164,12 @@ Source hashes cover original complete files. The workspace-header hash identifie
 
 | `components/agent/model-picker.tsx` | `components/agent/model-picker.tsx` | `900d1a0c043838c3da8f96de73e1ecccd871fbf96f4b1b0b7d981582e355d1de` | `264b1d6f2d66f996eb3bb0954a2aaee750c5228d9062812fc9208e3505af191d` |
 
-| `components/agent/tool-call-card.tsx` | `components/agent/tool-call-card.tsx` | `d4977b1f860a939ff10d71f4b8b1cb68b574a25b427c87e19820fd966cf42d16` | `e746b066db8b8843bfd7771740e098de9e804c703e9607d7c6520a26924ddbb1` |
+| `components/agent/tool-call-card.tsx` | `components/agent/tool-call-card.tsx` | `4b9be6cdd990ed12d285e87979c11b247b40957d84ec3b80e662226483f60a19` | `41d804a6d48d8fe3865b18b8f2d1b3ba2cf511ffc2eccce8f6418c5770d716ec` |
 
 | `components/ui/input-message.tsx` | `components/ui/input-message.tsx` | `a3d34f34dd98919b828244324e53167978bd63f3aad727e1eb2f85f01a59d15b` | `8edf002d32fde1efebafd2b869cf7686100115e4259b34306e02e152c25f11c1` |
 
 | `components/ui/file-thumbnail.tsx` | `components/ui/file-thumbnail.tsx` | `6c59cb759becc33e6f318cc31e3c533fb02b96ab79fc3bbc035e4f35c1a2be74` | `b553ae97fca9b6079b83e6ff985f2dfb6293c3386ca4f3b133ed558e4657c672` |
 
-| `components/agent/agent-graph.tsx` (node extraction) | `components/agent/agent-graph.tsx` | `0bfc711fc88994be6f14fa51780fe67b6cf8e6bc753bfa7b93c46776d882c496` | `744df1887ac1f88a643794879f69c3de6908bf81031f4a709f841bdec0ac44c7` |
+| `components/agent/agent-graph.tsx` (node extraction) | `components/agent/agent-graph.tsx` | `53d908b6317854e5df3bd8f1b49f3f7539167b95a6247f25d4bf7368dc2004b6` | `4655e4b3e0e9db9a378ff932d3d889b356ff339d3ef24b6807bebeea87453934` |
 
 The supplied kit has no source license or notice file; no license has been inferred. Existing dependency licenses and notices remain in place. [DESIGN.md](../../../../DESIGN.md) owns the active design rules and adoption mappings. Future kit updates refresh these fingerprints and run the affected integration checks.

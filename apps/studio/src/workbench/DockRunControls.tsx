@@ -99,6 +99,8 @@ export function DockRunControls({
           <Tooltip content={target ?? t('activeRun')}>
             <AgentStatusPill
               data-testid="dock-open-active-run"
+              // In a narrow bar the pill gives up its words first.
+              className="min-w-0"
               size="compact"
               name={t('activeRun')}
               logo={Bot}
@@ -109,12 +111,9 @@ export function DockRunControls({
               endedAt={projection.endedAt ? Date.parse(projection.endedAt) : undefined}
               // The composer's region announces the run; the pill stays silent.
               announce={false}
-              // The pill navigates: its fold-out step panel stays closed, and no steps,
-              // progress or inline approval are passed.
-              open={false}
-              onOpenChange={(next) => {
-                if (next) onOpen(runId);
-              }}
+              // The pill navigates, with no fold-out panel; no steps, progress or inline
+              // approval are passed.
+              onActivate={() => onOpen(runId)}
               labels={{
                 paused: (value) => value,
                 toggle: ({ elapsed }) => accessibleName(elapsed),
@@ -142,7 +141,9 @@ export function DockRunControls({
           {t('runDisconnected')}
         </span>
       ) : null}
-      <RunActions session={session} compact />
+      <div className="shrink-0">
+        <RunActions session={session} compact narrowIcons />
+      </div>
     </section>
   );
 }

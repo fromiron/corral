@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react';
-import { fontWeights } from '../design-kit/lib/font-weight.ts';
-import { useSize } from '../design-kit/lib/size-context.tsx';
-import { cn } from '../design-kit/lib/utils.ts';
+import { cn, fontWeights, useSize } from '../design-kit/index.ts';
 
 /**
  * The current item of a path, drawn as the kit PathBar draws its last crumb. Corral's top bar

@@ -28,7 +28,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(projectId?: string) {
+async function mount(projectId?: string) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
@@ -39,28 +39,34 @@ async function render(projectId?: string) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () =>
-    root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <SettingsNavigationContext.Provider
-          value={{
-            projects: [],
-            ...(projectId ? { projectId } : {}),
-            returnTo: '/projects',
-            search: {},
-            link: (section) => ({ to: `/settings/${section}`, search: {}, resetScroll: false }),
-          }}
-        >
-          <DiagnosticsSettingsPage />
-        </SettingsNavigationContext.Provider>
-      </IntlProvider>,
-    ),
-  );
+  const show = (id?: string) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <SettingsNavigationContext.Provider
+            value={{
+              projects: [],
+              ...(id ? { projectId: id } : {}),
+              returnTo: '/projects',
+              search: {},
+              link: (section) => ({ to: `/settings/${section}`, search: {}, resetScroll: false }),
+            }}
+          >
+            <DiagnosticsSettingsPage />
+          </SettingsNavigationContext.Provider>
+        </IntlProvider>,
+      ),
+    );
+  await show(projectId);
   cleanups.push(async () => {
     await act(async () => root.unmount());
     container.remove();
   });
-  return container;
+  return { container, show };
+}
+
+async function render(projectId?: string) {
+  return (await mount(projectId)).container;
 }
 
 const row = (container: HTMLElement, id: string) =>
@@ -175,4 +181,59 @@ it('copies a summary without the folder path, a key or a login link', async () =
   for (const secret of ['/home/', 'secret-code', 'auth.example', 'model.bin'])
     expect(text).not.toContain(secret);
   expect(container.textContent).toContain('Diagnostics copied');
+});
+
+const missingFolderA = {
+  bindingId: 'binding-a',
+  projectId: 'a',
+  path: '/srv/project-a',
+  isGit: true,
+  trusted: true,
+  verifyCommands: [],
+  status: null,
+  missing: true,
+};
+
+/** Each project's binding answers only when the test resolves it. */
+function heldBindings() {
+  const pending = new Map<string, (binding: unknown) => void>();
+  fixture.services = {
+    mode: 'server',
+    live: false,
+    models: null,
+    harnesses: null,
+    workspaces: {
+      binding: (projectId: string) =>
+        new Promise((resolve) => {
+          pending.set(projectId, resolve);
+        }),
+    } as unknown as WorkspacesClient,
+  };
+  return (projectId: string, binding: unknown) =>
+    act(async () => pending.get(projectId)?.(binding));
+}
+
+it("shows the new settings project's folder when the previous project's answer arrives last", async () => {
+  const answer = heldBindings();
+  const { container, show } = await mount('a');
+  const folder = () => row(container, 'folder')?.textContent ?? '';
+  await show('b');
+  expect(folder()).toContain('Checking');
+  await answer('b', null);
+  expect(folder()).toContain('Not linked');
+  await answer('a', missingFolderA);
+  expect(folder()).toContain('Not linked');
+  expect(folder()).not.toContain('project-a');
+  expect(folder()).not.toContain('Folder missing');
+});
+
+it("does not keep showing the previous project's folder while the new one is checked", async () => {
+  const answer = heldBindings();
+  const { container, show } = await mount('a');
+  const folder = () => row(container, 'folder')?.textContent ?? '';
+  await answer('a', missingFolderA);
+  expect(folder()).toContain('project-a');
+  await show('b');
+  expect(folder()).toContain('Checking');
+  expect(folder()).not.toContain('project-a');
 });

@@ -100,4 +100,26 @@ describe('run controls', () => {
     expect(screen.queryByRole('button', { name: 'Confirm whole run cancellation' })).toBeNull();
     expect(sendCommand).not.toHaveBeenCalled();
   });
+
+  it('keeps Pause and Cancel named by their words when a narrow bar shows only their icons', () => {
+    const session = createRunSession({} as never);
+    session.setState({
+      runId: 'run_controls',
+      projection: { ...emptyProjection('run_controls'), status: 'running' },
+      sendCommand: vi.fn(async () => ({ status: 'queued' }) as never),
+    });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <RunActions session={session} compact narrowIcons />
+      </IntlProvider>,
+    );
+    for (const name of ['Pause run', 'Cancel whole run']) {
+      const button = screen.getByRole('button', { name });
+      // Below the sm breakpoint the icon shows and the words leave the layout, not the name.
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.querySelector('[data-run-action-label]')?.className).toContain(
+        'max-sm:sr-only',
+      );
+    }
+  });
 });

@@ -75,6 +75,7 @@ function fixture(live = true): ChatWidgetModel {
       failedEffects: 0,
       unclearEffects: 0,
     }),
+    questionNotice: null,
     activity: {
       ...activityLine({
         runStatus: projection.status,

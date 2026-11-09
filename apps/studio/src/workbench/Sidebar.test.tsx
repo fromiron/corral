@@ -14,6 +14,9 @@ const fixture = vi.hoisted(() => ({
   pathname: '/projects/alpha',
   scrollToIndex: vi.fn<(index: number) => void>(),
   virtualCount: 0,
+  navigate: vi.fn(),
+  services: { repository: {}, mode: 'demo', live: false } as Record<string, unknown>,
+  profiles: [] as { available: boolean }[] | null,
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
@@ -28,7 +31,7 @@ vi.mock('@tanstack/react-router', () => ({
   }) => (
     <a {...props} href={to.replace(/\$(\w+)/g, (_match, key: string) => params?.[key] ?? key)} />
   ),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => fixture.navigate,
   useRouter: () => ({ invalidate: vi.fn(async () => {}) }),
   useRouterState: ({
     select,
@@ -37,7 +40,7 @@ vi.mock('@tanstack/react-router', () => ({
   }) => select({ location: { pathname: fixture.pathname, href: fixture.pathname } }),
 }));
 vi.mock('../services.tsx', () => ({
-  useServices: () => ({ repository: {}, mode: 'demo', live: false }),
+  useServices: () => fixture.services,
 }));
 vi.mock('../desktop.tsx', () => ({ desktop: null }));
 vi.mock('../shortcutBindings.ts', async (original) => ({
@@ -50,7 +53,7 @@ vi.mock('../pages/Workbench.tsx', () => ({
 vi.mock('./navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
-vi.mock('./useModels.ts', () => ({ useModelProfiles: () => [] }));
+vi.mock('./useModels.ts', () => ({ useModelProfiles: () => fixture.profiles }));
 
 interface VirtualOptions {
   count: number;
@@ -139,6 +142,9 @@ const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {
   fixture.collapsed = {};
   fixture.pathname = '/projects/alpha';
+  fixture.navigate.mockClear();
+  fixture.services = { repository: {}, mode: 'demo', live: false };
+  fixture.profiles = [];
   fixture.virtualCount = 0;
   fixture.scrollToIndex.mockClear();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -420,4 +426,61 @@ it('starts a meeting in a project from its row menu', async () => {
   } finally {
     window.removeEventListener('corral:new-meeting', listen);
   }
+});
+
+/** The header's Corral menu button. */
+function corralMenu(container: HTMLElement) {
+  const button = container.querySelector<HTMLElement>(
+    '[data-sidebar="header"] [data-sidebar="menu-button"]',
+  );
+  if (!button) throw new Error('Missing the Corral menu');
+  return button;
+}
+
+it.each([
+  ['a demo', { mode: 'browser', live: false }, [], 'Demo · simulated'],
+  ['a simulated local server', { mode: 'server', live: false }, [], 'Local · simulated'],
+  ['a live server without a model', { mode: 'server', live: true }, [], 'No model connected'],
+  [
+    'a live server with a model',
+    { mode: 'server', live: true },
+    [{ available: true }],
+    'Connected',
+  ],
+] as const)(
+  'names the connection state of %s in the header',
+  async (_name, services, profiles, state) => {
+    fixture.services = { repository: {}, ...services };
+    fixture.profiles = [...profiles];
+    const container = await mount();
+    const menu = corralMenu(container);
+    expect(menu.textContent).toContain('Corral');
+    expect(menu.textContent).toContain(state);
+    expect(menu.getAttribute('aria-label')).toContain(state);
+    // The footer card stays for every state that cannot reach a model.
+    const card = container.querySelector('[data-testid="sidebar-status"]');
+    if (state === 'Connected') expect(card).toBeNull();
+    else expect(card).not.toBeNull();
+  },
+);
+
+it('opens the projects page at its new-project form from the Corral menu', async () => {
+  const container = await mount();
+  await act(async () => corralMenu(container).click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const create = items.find((item) => item.textContent?.includes(messages.Shell.newProject));
+  const all = items.find((item) => item.textContent?.includes(messages.Shell.allProjects));
+  expect(create).toBeDefined();
+  await act(async () => create?.click());
+  expect(fixture.navigate).toHaveBeenLastCalledWith({ to: '/projects', hash: 'new-project' });
+  await act(async () => corralMenu(container).click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  await act(async () =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+      .find((item) => item.textContent?.includes(messages.Shell.allProjects))
+      ?.click(),
+  );
+  expect(all).toBeDefined();
+  expect(fixture.navigate).toHaveBeenLastCalledWith({ to: '/projects' });
 });

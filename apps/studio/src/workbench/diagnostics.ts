@@ -57,12 +57,15 @@ export interface DiagnosticRow {
   action?: DiagnosticAction;
 }
 
-const RELEASE = /^\d{1,4}\.\d{1,4}\.\d{1,6}(?:[-+][0-9A-Za-z.+-]{1,64})?$/;
-/** A release version as reported, a development build, or nothing that is not a version. */
+const RELEASE = /^(\d{1,4}\.\d{1,4}\.\d{1,6})(?:[-+]\S{1,256})?$/;
+/**
+ * A release's major.minor.patch, a development build, or nothing that is not a version. A
+ * pre-release or build suffix is dropped: it is free text that could carry a secret.
+ */
 export function displayVersion(version: string | null): 'development' | string | null {
   if (!version) return null;
   if (version === '0.0.0') return 'development';
-  return RELEASE.test(version) ? version : null;
+  return RELEASE.exec(version)?.[1] ?? null;
 }
 
 /** A part that is not checked yet, not checked here, or only simulated. */

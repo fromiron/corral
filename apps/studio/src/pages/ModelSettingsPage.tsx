@@ -1,5 +1,5 @@
 import type { ModelProfileView, ProviderAuthView } from '@corral/client';
-import { Button, Input, TabsSubtle, TabsSubtleItem } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, TabsSubtle, TabsSubtleItem } from '@corral/react/design-kit';
 import { type FormEvent, type ReactNode, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -46,7 +46,11 @@ export function ModelSettingsPage() {
         aria-labelledby="providers-heading"
         className="flex flex-col gap-2 outline-none"
       >
-        <h3 id="providers-heading" className="text-sm font-semibold">
+        <h3
+          id="providers-heading"
+          className="text-subtitle"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
           {t('providers')}
         </h3>
         {providers.map((provider) => (
@@ -113,7 +117,9 @@ export function ModelSettingsPage() {
     <ModelSettingsRefresh value={refresh}>
       <SettingsLayout active="models">
         <main className="settings-content">
-          <h2 className="text-2xl font-semibold">{t('heading')}</h2>
+          <h2 className="text-2xl" style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('heading')}
+          </h2>
           {error ? (
             <p role="alert" className="text-danger">
               {t('loadFailed')}{' '}
@@ -229,7 +235,7 @@ function ProviderCard({
       data-testid={`provider-${provider.providerId}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-medium">{provider.name}</h4>
+        <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{provider.name}</h4>
         <div className="flex items-center gap-2 text-xs">
           {(provider.method === 'oauth' && !borrowed) || ownKey ? (
             <Button
@@ -435,7 +441,11 @@ function ProfilesTable({
   const tokens = (count: number | null) => (count === null ? t('unknown') : t('tokens', { count }));
   return (
     <section aria-labelledby="profiles-heading" className="flex flex-col gap-2">
-      <h3 id="profiles-heading" className="text-sm font-semibold">
+      <h3
+        id="profiles-heading"
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('profiles')}
       </h3>
       <ul className="flex flex-col gap-3">

@@ -159,27 +159,6 @@
     max-height: 18dvh;
   }
 }
-/*
- * The kit QueuedStack shows a card's Start now, Edit and Remove only under the pointer and takes
- * them out of layout otherwise, which leaves keyboard users without them. Keep them in the tab
- * order, invisible and over the end of the card until it is hovered or holds focus, and bring a
- * focused card in front of the pile.
- */
-[data-corral-queue] .group\/qm > .hidden {
-  display: flex;
-  position: absolute;
-  inset-block: 0;
-  right: 0.25rem;
-  opacity: 0;
-}
-[data-corral-queue] .group\/qm:is(:hover, :focus-within) > .hidden {
-  position: static;
-  opacity: 1;
-}
-[data-corral-queue] .group\/qm:focus-within {
-  /* biome-ignore lint/complexity/noImportantStyles: the kit card sets its pile order as an inline style. */
-  z-index: 300 !important;
-}
 .chat-turn {
   margin-bottom: 32px;
 }
@@ -189,6 +168,39 @@
   }
   .app-topbar {
     padding: 0 12px;
+  }
+}
+/*
+ * At phone width the bar wraps: the menu, path and search keep the first row, then the page's
+ * views and its actions follow, the actions on a row of their own when they do not fit beside
+ * the views. There the run's pill gives up its words before Pause and Cancel lose their place.
+ */
+@media (max-width: 639px) {
+  .app-topbar:has(> .app-topbar-views:not(:empty), > .app-topbar-actions:not(:empty)) {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--workspace-topbar-height);
+    padding-block: 6px;
+    row-gap: 6px;
+  }
+  .app-topbar:has(> .app-topbar-views:not(:empty), > .app-topbar-actions:not(:empty))::after {
+    content: "";
+    order: 1;
+    flex-basis: 100%;
+  }
+  .app-topbar > nav {
+    flex: 1 1 0;
+  }
+  .app-topbar-views,
+  .app-topbar-actions {
+    order: 2;
+  }
+  .app-topbar-views {
+    margin-left: 0;
+  }
+  .app-topbar-actions {
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 }
 @media (max-width: 640px) {

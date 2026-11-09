@@ -6,6 +6,7 @@ import {
   type ProcessRow,
   ReasoningSummary,
   type RunSessionState,
+  type TurnProcess as TurnProcessModel,
   turnSummary,
 } from '@corral/react';
 import {
@@ -65,12 +66,15 @@ function Sources({ sources }: { sources: ProcessRow['sources'] }) {
 export function TurnProcess({
   events,
   projection,
+  process: given,
   label,
   open,
   onOpenChange,
 }: {
   events: readonly RunEvent[];
   projection: RunProjection;
+  /** The process the host already built from these events, so it is not built twice. */
+  process?: TurnProcessModel;
   streams: RunSessionState['streams'];
   label: (nodeId: string) => string;
   open: boolean;
@@ -80,8 +84,8 @@ export function TurnProcess({
   const ts = useTranslations('Status');
   const tt = useTranslations('Transcript');
   const process = useMemo(
-    () => buildTurnProcess(events, projection, {}, label),
-    [events, projection, label],
+    () => given ?? buildTurnProcess(events, projection, {}, label),
+    [given, events, projection, label],
   );
   const summary = events.length ? process : { ...process, ...turnSummary(projection) };
   const seconds = useElapsed(summary.startedAt, summary.endedAt, summary.active);

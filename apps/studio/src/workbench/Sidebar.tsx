@@ -3,6 +3,7 @@ import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@co
 import { SidebarStatusCard, StatusDot } from '@corral/react';
 import {
   Button,
+  fontWeights,
   Sidebar as KitSidebar,
   Menu,
   MenuItem,
@@ -424,8 +425,17 @@ export const Sidebar = memo(function Sidebar({
     }
   };
 
-  // The footer card appears only while requests cannot reach a real model.
+  // One reading of whether requests reach a real model: the header names it, and the footer
+  // card explains it while they cannot.
   const blocked = mode === 'server' && live;
+  const connection =
+    mode !== 'server'
+      ? studio('demoShort')
+      : !live
+        ? studio('serverShort')
+        : connected
+          ? shell('connected')
+          : shell('noModel');
   const statusCard =
     blocked && connected ? null : (
       <SidebarStatusCard
@@ -435,13 +445,7 @@ export const Sidebar = memo(function Sidebar({
             <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-warning" />
           ) : null
         }
-        title={
-          mode === 'server'
-            ? live
-              ? shell('noModel')
-              : studio('serverShort')
-            : studio('demoShort')
-        }
+        title={connection}
         action={
           live && !connected ? (
             <Button
@@ -474,11 +478,32 @@ export const Sidebar = memo(function Sidebar({
         <div className="flex min-w-0 items-center gap-1">
           <div className="min-w-0 flex-1">
             <SidebarWorkspaceHeader
-              name="Corral"
-              tile={<WorkspaceTile>c</WorkspaceTile>}
+              name={
+                <>
+                  Corral
+                  <span
+                    data-testid="sidebar-connection"
+                    className="text-muted-foreground"
+                    style={{ fontVariationSettings: fontWeights.normal }}
+                  >
+                    {' · '}
+                    {connection}
+                  </span>
+                </>
+              }
+              tile={
+                <span className="relative flex">
+                  <WorkspaceTile>c</WorkspaceTile>
+                  <span
+                    className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar ${
+                      blocked ? (connected ? 'bg-success' : 'bg-warning') : 'bg-muted-foreground'
+                    }`}
+                  />
+                </span>
+              }
               labels={{
                 menu: shell('workspace'),
-                switchWorkspace: shell('workspaceMenu'),
+                switchWorkspace: shell('workspaceMenuState', { state: connection }),
                 toggleSidebar: tw('expandSidebar'),
               }}
               menu={
@@ -486,8 +511,11 @@ export const Sidebar = memo(function Sidebar({
                   <MenuItem index={0} onClick={() => void navigate({ to: '/projects' })}>
                     {shell('allProjects')}
                   </MenuItem>
-                  {/* Projects opens with its new-project form first. */}
-                  <MenuItem index={1} onClick={() => void navigate({ to: '/projects' })}>
+                  {/* The projects page focuses its new-project form for this hash. */}
+                  <MenuItem
+                    index={1}
+                    onClick={() => void navigate({ to: '/projects', hash: 'new-project' })}
+                  >
                     {shell('newProject')}
                   </MenuItem>
                 </>

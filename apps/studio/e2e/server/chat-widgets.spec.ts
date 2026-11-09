@@ -170,7 +170,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     ).toHaveAttribute('aria-description', /^From next request · /);
     await send(page, 'Review and update the chat layout in several steps.');
     const plan = page.getByTestId('composer-work-plan');
-    const toggle = plan.getByRole('button', { name: /Work plan/ });
+    const toggle = page.getByTestId('work-plan-toggle');
     await expect(toggle).toContainText('0/7 done');
     const pills = page.getByTestId('composer-status-pills');
     await expect(pills).toBeVisible();
@@ -416,8 +416,7 @@ test('inspecting the current result preserves the draft while a newer result rep
   ]);
   try {
     await send(page, 'Update the layout with a new result.');
-    const plan = page.getByTestId('composer-work-plan');
-    const toggle = plan.getByRole('button', { name: /Work plan/ });
+    const toggle = page.getByTestId('work-plan-toggle');
     await expect(toggle).toContainText('0/7 done');
     const activeRunId = current(corral).runId;
     expect(activeRunId).not.toBe(earlierRunId);
@@ -502,7 +501,7 @@ test('a finished checklist does not finish its run, and only automatic disclosur
     await session(page, corral);
     await send(page, 'Complete the checklist and then submit its result.');
     const plan = page.getByTestId('composer-work-plan');
-    const toggle = plan.getByRole('button', { name: /Work plan/ });
+    const toggle = page.getByTestId('work-plan-toggle');
     await expect(toggle).toContainText('0/7 done');
     completePlan.release();
     await expect(toggle).toContainText('7/7');

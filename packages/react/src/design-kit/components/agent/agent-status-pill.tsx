@@ -77,6 +77,8 @@ interface AgentStatusPillToggleInfo {
   elapsed?: number;
   open: boolean;
   panelTitle: string;
+  /** The pill navigates (`onActivate`) instead of folding out its panel. */
+  navigates: boolean;
 }
 
 interface AgentStatusPillLabels {
@@ -104,7 +106,7 @@ interface AgentStatusPillLabels {
 
 const defaultLabels: AgentStatusPillLabels = {
   paused: (label) => `Paused · ${label}`,
-  toggle: ({ state, label, detail, elapsed, open, panelTitle }) => {
+  toggle: ({ state, label, detail, elapsed, open, panelTitle, navigates }) => {
     const stateWord =
       state === 'paused'
         ? `Paused, ${label}`
@@ -115,7 +117,7 @@ const defaultLabels: AgentStatusPillLabels = {
             : detail
               ? `${label}, ${detail}`
               : label;
-    return `${stateWord}.${elapsed !== undefined ? ` Elapsed ${formatSpokenDuration(elapsed)}.` : ''} ${open ? 'Hide' : 'Show'} ${panelTitle.toLowerCase()} details.`;
+    return `${stateWord}.${elapsed !== undefined ? ` Elapsed ${formatSpokenDuration(elapsed)}.` : ''} ${navigates ? 'Open run.' : `${open ? 'Hide' : 'Show'} ${panelTitle.toLowerCase()} details.`}`;
   },
   announcement: ({ state, label, choices }) =>
     state === 'paused'
@@ -171,6 +173,11 @@ interface AgentStatusPillProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chi
   onStop?: () => void;
   /** Panel link to the full run view. */
   onOpenRun?: () => void;
+  /**
+   * Makes the pill a navigation button: a press calls this instead of folding out the panel, so
+   * it has no disclosure state, chevron or panel (and no panel run controls).
+   */
+  onActivate?: () => void;
   /** Panel expanded (controlled). Escape closes it. */
   open?: boolean;
   defaultOpen?: boolean;
@@ -292,6 +299,7 @@ const AgentStatusPillInner = forwardRef<HTMLDivElement, Omit<AgentStatusPillProp
       onResume,
       onStop,
       onOpenRun,
+      onActivate,
       open: openProp,
       defaultOpen = false,
       onOpenChange,
@@ -313,7 +321,9 @@ const AgentStatusPillInner = forwardRef<HTMLDivElement, Omit<AgentStatusPillProp
     const panelRef = useRef<HTMLDivElement>(null);
     const compact = size.variant === 'compact';
 
-    const [open, setOpen] = useControllable(openProp, defaultOpen, onOpenChange);
+    const navigates = onActivate !== undefined;
+    const [openState, setOpen] = useControllable(openProp, defaultOpen, onOpenChange);
+    const open = !navigates && openState;
 
     // ── Clock: one session timer, frozen by `endedAt` (pause or finish).
     const ticking = startedAt !== undefined && endedAt === undefined;
@@ -360,6 +370,7 @@ const AgentStatusPillInner = forwardRef<HTMLDivElement, Omit<AgentStatusPillProp
       elapsed,
       open,
       panelTitle,
+      navigates,
     });
     const choices = showApproval
       ? [onDeny && denyLabel, onApprove && approveLabel].filter((c): c is string => !!c)
@@ -412,10 +423,10 @@ const AgentStatusPillInner = forwardRef<HTMLDivElement, Omit<AgentStatusPillProp
               transition={spring.moderate}
               type="button"
               data-pill-toggle=""
-              aria-expanded={open}
-              aria-controls={panelId}
+              aria-expanded={navigates ? undefined : open}
+              aria-controls={navigates ? undefined : panelId}
               aria-label={toggleName}
-              onClick={() => setOpen(!open)}
+              onClick={() => (onActivate ? onActivate() : setOpen(!open))}
               className={cn(
                 'relative flex min-w-0 grow cursor-pointer items-center gap-2 bg-transparent text-left whitespace-nowrap',
                 focusRing,
@@ -489,19 +500,26 @@ const AgentStatusPillInner = forwardRef<HTMLDivElement, Omit<AgentStatusPillProp
               )}
 
               {/* Disclosure cue: revealed on hover / focus (always on touch) so it adds no resting weight. */}
-              <motion.span
-                layout="position"
-                transition={spring.moderate}
-                aria-hidden
-                className={cn(
-                  '-ml-1 grid shrink-0 place-items-center transition-[opacity,color] duration-160',
-                  open
-                    ? 'text-foreground opacity-100'
-                    : 'text-muted-foreground opacity-0 group-hover/pill:opacity-100 group-focus-within/pill:opacity-100 [@media(hover:none)]:opacity-100',
-                )}
-              >
-                <DisclosureChevron open={open} size={compact ? 12 : 13} className="text-current" />
-              </motion.span>
+              {!navigates && (
+                <motion.span
+                  layout="position"
+                  transition={spring.moderate}
+                  aria-hidden
+                  data-pill-chevron=""
+                  className={cn(
+                    '-ml-1 grid shrink-0 place-items-center transition-[opacity,color] duration-160',
+                    open
+                      ? 'text-foreground opacity-100'
+                      : 'text-muted-foreground opacity-0 group-hover/pill:opacity-100 group-focus-within/pill:opacity-100 [@media(hover:none)]:opacity-100',
+                  )}
+                >
+                  <DisclosureChevron
+                    open={open}
+                    size={compact ? 12 : 13}
+                    className="text-current"
+                  />
+                </motion.span>
+              )}
             </motion.button>
 
             <AnimatePresence mode="popLayout" initial={false}>
@@ -547,111 +565,114 @@ const AgentStatusPillInner = forwardRef<HTMLDivElement, Omit<AgentStatusPillProp
           </motion.div>
         </SurfaceProvider>
 
-        <Collapse open={open} id={panelId} hideWhenClosed className="w-full">
-          {/* Side and bottom room so the fold's clip doesn't shave the card's shadow. */}
-          <div ref={panelRef} className="flex justify-center px-1 pt-3 pb-2">
-            <AgentCard
-              role="region"
-              aria-label={labels.panel(name, panelTitle)}
-              className={cn(
-                'grid w-[min(100%,420px)] gap-2.5',
-                compact ? 'px-3 pt-2.5 pb-3' : 'px-3.5 pt-3 pb-3.5',
-              )}
-            >
-              <div className="flex items-baseline justify-between gap-2.5">
-                <span
-                  className={cn(size.type.caption, 'text-muted-foreground')}
-                  style={{ fontVariationSettings: fontWeights.semibold }}
-                >
-                  {panelTitle}
-                </span>
-                <span className={cn(size.type.caption, 'tabular-nums text-muted-foreground')}>
-                  {steps.length ? labels.stepCount(doneCount, steps.length) : labels.noSteps}
-                </span>
-              </div>
-
-              {/* Progress only from steps: without them there is nothing to measure. */}
-              {steps.length > 0 && (
-                <div
-                  role="progressbar"
-                  aria-label={labels.progress(panelTitle)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={pct}
-                  aria-valuetext={labels.progressValue(doneCount, steps.length)}
-                  className="relative h-1 overflow-hidden rounded-full bg-active"
-                >
-                  <motion.span
-                    className="absolute inset-0 origin-left overflow-hidden rounded-full transition-colors duration-240"
-                    style={{ backgroundColor: barColor[state] }}
-                    initial={false}
-                    animate={{ scaleX: pct / 100 }}
-                    transition={spring.moderate}
+        {/* A navigating pill has no panel to fold out. */}
+        {!navigates && (
+          <Collapse open={open} id={panelId} hideWhenClosed className="w-full">
+            {/* Side and bottom room so the fold's clip doesn't shave the card's shadow. */}
+            <div ref={panelRef} className="flex justify-center px-1 pt-3 pb-2">
+              <AgentCard
+                role="region"
+                aria-label={labels.panel(name, panelTitle)}
+                className={cn(
+                  'grid w-[min(100%,420px)] gap-2.5',
+                  compact ? 'px-3 pt-2.5 pb-3' : 'px-3.5 pt-3 pb-3.5',
+                )}
+              >
+                <div className="flex items-baseline justify-between gap-2.5">
+                  <span
+                    className={cn(size.type.caption, 'text-muted-foreground')}
+                    style={{ fontVariationSettings: fontWeights.semibold }}
                   >
-                    {state === 'running' && <span className="sheen block size-full" />}
-                  </motion.span>
+                    {panelTitle}
+                  </span>
+                  <span className={cn(size.type.caption, 'tabular-nums text-muted-foreground')}>
+                    {steps.length ? labels.stepCount(doneCount, steps.length) : labels.noSteps}
+                  </span>
                 </div>
-              )}
 
-              {steps.length > 0 && (
-                <ol className="grid gap-0.5">
-                  {steps.map((step) => (
-                    <motion.li
-                      key={step.id}
-                      data-state={step.state}
-                      aria-current={step.state === 'active' ? 'step' : undefined}
-                      className={cn(
-                        size.type.body,
-                        'grid min-h-[26px] grid-cols-[18px_minmax(0,1fr)] items-center gap-2',
-                        stepTone[step.state],
-                      )}
-                      style={step.state === 'waiting' ? { color: 'var(--warning)' } : undefined}
-                      initial={{ opacity: 0, y: reduce ? 0 : -4 }}
-                      animate={{ opacity: 1, y: 0 }}
+                {/* Progress only from steps: without them there is nothing to measure. */}
+                {steps.length > 0 && (
+                  <div
+                    role="progressbar"
+                    aria-label={labels.progress(panelTitle)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={pct}
+                    aria-valuetext={labels.progressValue(doneCount, steps.length)}
+                    className="relative h-1 overflow-hidden rounded-full bg-active"
+                  >
+                    <motion.span
+                      className="absolute inset-0 origin-left overflow-hidden rounded-full transition-colors duration-240"
+                      style={{ backgroundColor: barColor[state] }}
+                      initial={false}
+                      animate={{ scaleX: pct / 100 }}
                       transition={spring.moderate}
                     >
-                      <StepIcon state={step.state} paused={state === 'paused'} />
-                      <span className="truncate">{step.label}</span>
-                    </motion.li>
-                  ))}
-                </ol>
-              )}
+                      {state === 'running' && <span className="sheen block size-full" />}
+                    </motion.span>
+                  </div>
+                )}
 
-              {(showPause || showStop || onOpenRun) && (
-                <div className="flex flex-wrap justify-end gap-2 pt-0.5">
-                  {showPause && (
-                    <Button
-                      size="compact"
-                      variant="tertiary"
-                      leadingIcon={state === 'paused' ? icons.play : icons.pause}
-                      onClick={state === 'paused' ? onResume : onPause}
-                    >
-                      {state === 'paused' ? labels.resume : labels.pause}
-                    </Button>
-                  )}
-                  {showStop && (
-                    <Button
-                      size="compact"
-                      variant="tertiary"
-                      leadingIcon={icons.stop}
-                      onClick={() => {
-                        onStop?.();
-                        returnFocus();
-                      }}
-                    >
-                      {labels.stop}
-                    </Button>
-                  )}
-                  {onOpenRun && (
-                    <Button size="compact" variant="ghost" onClick={onOpenRun}>
-                      {labels.openRun}
-                    </Button>
-                  )}
-                </div>
-              )}
-            </AgentCard>
-          </div>
-        </Collapse>
+                {steps.length > 0 && (
+                  <ol className="grid gap-0.5">
+                    {steps.map((step) => (
+                      <motion.li
+                        key={step.id}
+                        data-state={step.state}
+                        aria-current={step.state === 'active' ? 'step' : undefined}
+                        className={cn(
+                          size.type.body,
+                          'grid min-h-[26px] grid-cols-[18px_minmax(0,1fr)] items-center gap-2',
+                          stepTone[step.state],
+                        )}
+                        style={step.state === 'waiting' ? { color: 'var(--warning)' } : undefined}
+                        initial={{ opacity: 0, y: reduce ? 0 : -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={spring.moderate}
+                      >
+                        <StepIcon state={step.state} paused={state === 'paused'} />
+                        <span className="truncate">{step.label}</span>
+                      </motion.li>
+                    ))}
+                  </ol>
+                )}
+
+                {(showPause || showStop || onOpenRun) && (
+                  <div className="flex flex-wrap justify-end gap-2 pt-0.5">
+                    {showPause && (
+                      <Button
+                        size="compact"
+                        variant="tertiary"
+                        leadingIcon={state === 'paused' ? icons.play : icons.pause}
+                        onClick={state === 'paused' ? onResume : onPause}
+                      >
+                        {state === 'paused' ? labels.resume : labels.pause}
+                      </Button>
+                    )}
+                    {showStop && (
+                      <Button
+                        size="compact"
+                        variant="tertiary"
+                        leadingIcon={icons.stop}
+                        onClick={() => {
+                          onStop?.();
+                          returnFocus();
+                        }}
+                      >
+                        {labels.stop}
+                      </Button>
+                    )}
+                    {onOpenRun && (
+                      <Button size="compact" variant="ghost" onClick={onOpenRun}>
+                        {labels.openRun}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </AgentCard>
+            </div>
+          </Collapse>
+        )}
 
         {announce && (
           <span className="sr-only" role="status" aria-live="polite">

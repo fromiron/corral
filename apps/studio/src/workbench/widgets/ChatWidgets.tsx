@@ -10,6 +10,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  fontWeights,
   Popover,
   PopoverPopup,
   PopoverTitle,
@@ -162,9 +163,15 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
             {t(measured ? 'estimatedInput' : 'contextPending')}
           </p>
           {context.tokens != null ? (
-            <p className="mt-1 text-lg font-medium tabular-nums">
+            <p
+              className="mt-1 text-lg tabular-nums"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
               {number(context.tokens)}
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+              <span
+                className="ml-1.5 text-xs text-muted-foreground"
+                style={{ fontVariationSettings: fontWeights.normal }}
+              >
                 {context.windowTokens
                   ? `/ ${number(context.windowTokens)} ${t('tokens')}`
                   : t('tokens')}
@@ -532,8 +539,10 @@ export function ComposerDock({
     run?.live && run.plan.runStatus === 'running' && !run.action.visible
       ? (run.tools.find((row) => row.tone === 'running')?.name ?? null)
       : null;
+  // Waiting questions alone name the first one, as the conversation's notice does.
   const actionLabel = run
-    ? actionCopy(run.action)
+    ? (run.action.summary === 'question' && run.questionNotice) ||
+      actionCopy(run.action)
         .map((key) => (key === 'actionMixed' ? t(key, { count: run.action.count }) : t(key)))
         .join(' · ')
     : '';
@@ -611,7 +620,7 @@ export function ComposerDock({
             <ChevronDown
               size={12}
               aria-hidden="true"
-              className={`shrink-0 transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+              className={`shrink-0 transition-[rotate] duration-160 ease-[var(--ease-out-soft)] motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
             />
           </Button>
         ) : null}
@@ -768,7 +777,12 @@ export function ComposerPlan({
             >
               <WorkPlanStatusIcon status={item.status} label={t(item.status)} />
               <span
-                className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted-foreground' : item.status === 'in_progress' ? 'font-medium' : ''}`}
+                className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted-foreground' : ''}`}
+                style={
+                  item.status === 'in_progress'
+                    ? { fontVariationSettings: fontWeights.semibold }
+                    : undefined
+                }
               >
                 {item.title}
               </span>
@@ -849,9 +863,9 @@ export function ComposerPlan({
           >
             <ChevronDown
               size={14}
-              className={`shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
+              className={`shrink-0 text-muted-foreground transition-[rotate] duration-160 ease-[var(--ease-out-soft)] motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
             />
-            <span className="font-medium">{t('planHeading')}</span>
+            <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('planHeading')}</span>
             {selection && model.plan.multiple ? (
               <span className="min-w-0 truncate text-muted-foreground">
                 {selection.key === 'team' ? t('teamPlan') : selection.label}

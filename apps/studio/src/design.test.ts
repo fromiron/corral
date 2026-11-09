@@ -166,7 +166,7 @@ describe('design guard (Workbench polish P0)', () => {
   it('builds text fields and toggles from the kit, never a native input with local styling', () => {
     // The request composer and the command palette own their editing surface and caret behavior;
     // schema question choices keep native fieldset, name/value and option descriptions (DESIGN.md).
-    const own = /(ComposerInput|RequestInput|CommandPalette|InteractionPanel)\.tsx$/;
+    const own = /(ComposerInput|CommandPalette|InteractionPanel)\.tsx$/;
     const found = [...text].flatMap(([path, body]) =>
       own.test(path) || path.includes('design-kit')
         ? []

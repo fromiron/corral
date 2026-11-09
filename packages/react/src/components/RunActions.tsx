@@ -1,23 +1,61 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, Popover, PopoverPopup, PopoverTrigger } from '../design-kit/index.ts';
+import { Pause, Play, Square } from '../design-kit/icons.ts';
+import { Button, Popover, PopoverPopup, PopoverTrigger, Tooltip } from '../design-kit/index.ts';
 import { useCancelConfirmation } from '../run/cancel-confirmation.ts';
 import type { RunSessionStore, SessionCommand } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
+
+/** Below Tailwind's sm breakpoint, where a narrow bar shows the controls as icons. */
+const NARROW = '(max-width: 639.98px)';
+
+function useNarrow(enabled: boolean) {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    if (!enabled || typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia(NARROW);
+    const update = () => setNarrow(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, [enabled]);
+  return enabled && narrow;
+}
 
 /** Whole-run Pause/Resume and Cancel. `compact` drops the explanations (the Run page header). */
 export function RunActions({
   session,
   compact = false,
   showCancel = true,
+  narrowIcons = false,
 }: {
   session: RunSessionStore;
   compact?: boolean;
   /** A composer with its existing stop control only needs Pause/Resume and receipts here. */
   showCancel?: boolean;
+  /**
+   * Below the sm breakpoint, Pause/Resume and Cancel show only their icons; their words stay
+   * their accessible names and become their tooltips.
+   */
+  narrowIcons?: boolean;
 }) {
   const t = useTranslations('Reins');
+  const narrow = useNarrow(narrowIcons);
+  /** A control's words; in a narrow bar its icon stands in and the words stay its name. */
+  const label = (icon: ReactNode, words: string) =>
+    narrowIcons ? (
+      <>
+        {icon}
+        <span data-run-action-label="" className="max-sm:sr-only">
+          {words}
+        </span>
+      </>
+    ) : (
+      words
+    );
+  const iconOnly = narrowIcons ? 'max-sm:w-7 max-sm:px-0' : undefined;
   const projection = useStore(session, (s) => s.projection);
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
   const shownRun = projection?.runId ?? null;
@@ -75,12 +113,14 @@ export function RunActions({
     <Button
       variant="ghost-destructive"
       size="compact"
+      className={iconOnly}
       disabled={pending || projection.status === 'cancelling'}
       onClick={() => setConfirmCancel(true)}
     >
-      {t('cancelRun')}
+      {label(<Square aria-hidden="true" className="sm:hidden" />, t('cancelRun'))}
     </Button>
   );
+  const pauseWords = projection.status === 'paused' ? t('resume') : t('pause');
   return (
     <section
       aria-label={t('runControls')}
@@ -94,25 +134,40 @@ export function RunActions({
       )}
       {!terminal ? (
         <div className="flex flex-wrap gap-1">
-          <Button
-            variant="tertiary"
-            size="compact"
-            disabled={
-              pending || projection.status === 'pausing' || projection.status === 'cancelling'
-            }
-            onClick={() =>
-              send({
-                type: projection.status === 'paused' ? 'resume' : 'pause',
-                payload: { scope: 'run' },
-              })
-            }
-          >
-            {projection.status === 'paused' ? t('resume') : t('pause')}
-          </Button>
+          <Tooltip content={pauseWords} forceOpen={narrow ? undefined : false}>
+            <Button
+              variant="tertiary"
+              size="compact"
+              className={iconOnly}
+              disabled={
+                pending || projection.status === 'pausing' || projection.status === 'cancelling'
+              }
+              onClick={() =>
+                send({
+                  type: projection.status === 'paused' ? 'resume' : 'pause',
+                  payload: { scope: 'run' },
+                })
+              }
+            >
+              {label(
+                projection.status === 'paused' ? (
+                  <Play aria-hidden="true" className="sm:hidden" />
+                ) : (
+                  <Pause aria-hidden="true" className="sm:hidden" />
+                ),
+                pauseWords,
+              )}
+            </Button>
+          </Tooltip>
           {showCancel && compact ? (
             // In a one-line bar the confirmation opens beside the button instead of growing the bar.
             <Popover open={confirming} onOpenChange={setConfirmCancel}>
-              <PopoverTrigger render={cancelButton} />
+              <Tooltip
+                content={t('cancelRun')}
+                forceOpen={narrow && !confirming ? undefined : false}
+              >
+                <PopoverTrigger render={cancelButton} />
+              </Tooltip>
               <PopoverPopup align="end" side="bottom" width="sm" aria-label={t('cancelRun')}>
                 {confirmation}
               </PopoverPopup>

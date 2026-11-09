@@ -120,8 +120,13 @@ it('controls outside hidden panes retain and open the active run, not the histor
   expect(pill?.getAttribute('aria-label')).toContain('Summarize the report');
   await act(async () => pill?.click());
   expect(view.onOpen).toHaveBeenCalledWith('active-run');
-  // Opening is navigation: the kit's fold-out step panel never opens.
-  expect(pill?.getAttribute('aria-expanded')).toBe('false');
+  // Opening is navigation: the pill is a plain button with no disclosure state, chevron or panel.
+  expect(pill?.hasAttribute('aria-expanded')).toBe(false);
+  expect(pill?.hasAttribute('aria-controls')).toBe(false);
+  expect(pill?.querySelector('[data-pill-chevron]')).toBeNull();
+  expect(
+    view.container.querySelector('[data-testid="dock-open-active-run"] [role="region"]'),
+  ).toBeNull();
   await cleanup.splice(0)[0]?.();
   expect(view.release).toHaveBeenCalledOnce();
 });

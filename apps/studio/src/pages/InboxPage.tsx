@@ -1,3 +1,4 @@
+import { fontWeights } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 import { workHref } from '../workbench/navigation.ts';
 
@@ -16,7 +17,9 @@ export function InboxPage() {
   const t = useTranslations('Inbox');
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6">
-      <h2 className="text-title font-semibold">{t('title')}</h2>
+      <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h2>
     </main>
   );
 }

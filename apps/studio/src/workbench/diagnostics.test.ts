@@ -1,6 +1,11 @@
 import type { LocalAiView, ModelProfileView, ProviderAuthView } from '@corral/client';
 import { describe, expect, it } from 'vitest';
-import { type DiagnosticsReport, diagnosticRows, diagnosticsSummary } from './diagnostics.ts';
+import {
+  type DiagnosticsReport,
+  diagnosticRows,
+  diagnosticsSummary,
+  displayVersion,
+} from './diagnostics.ts';
 
 const provider = (patch: Partial<ProviderAuthView> = {}): ProviderAuthView => ({
   providerId: 'openai',
@@ -137,6 +142,19 @@ describe('diagnostics summary', () => {
     expect(summary).not.toContain('merger');
     expect(summary).toContain('development build');
     expect(summary).toContain('missing');
+  });
+
+  it('names only the release number when the version carries a suffix', () => {
+    for (const version of ['1.4.0+sk-live-1234567890abcdef', '1.4.0-ghp_abc']) {
+      const summary = diagnosticsSummary({
+        ...leaky,
+        runtime: { mode: 'server', version, live: true },
+      });
+      expect(summary).toContain('version 1.4.0');
+      for (const secret of ['sk-live', '1234567890abcdef', 'ghp_', '1.4.0+', '1.4.0-'])
+        expect(summary).not.toContain(secret);
+      expect(displayVersion(version)).toBe('1.4.0');
+    }
   });
 
   it('says a part needs the local server in the browser demo', () => {

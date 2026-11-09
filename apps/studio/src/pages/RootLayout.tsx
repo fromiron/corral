@@ -364,8 +364,14 @@ function RootFrame() {
                   }
                   crumbs={setCrumbsSlot}
                 />
-                <div ref={setViewsSlot} className="ml-auto flex shrink-0 items-center" />
-                <div ref={setSlot} className="flex shrink-0 items-center gap-1" />
+                <div
+                  ref={setViewsSlot}
+                  className="app-topbar-views ml-auto flex shrink-0 items-center"
+                />
+                <div
+                  ref={setSlot}
+                  className="app-topbar-actions flex min-w-0 shrink-0 items-center gap-1"
+                />
                 <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
                   <Button
                     variant="ghost"

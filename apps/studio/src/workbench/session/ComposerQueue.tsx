@@ -72,7 +72,6 @@ export function ComposerQueue({
   return (
     <section
       aria-label={t('queueHeading')}
-      data-corral-queue=""
       className="mx-auto mb-2 flex w-full max-w-(--chat-content-max-width) flex-col gap-1"
     >
       <div className="flex justify-end px-1">

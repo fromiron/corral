@@ -210,6 +210,56 @@ it('leaves a live run that needs the person to the notice, and keeps one status 
   expect(links[0]?.textContent).toContain(messages.Status.succeeded);
 });
 
+it("names the waiting question in the notice and links to its run's response area", async () => {
+  const view = await mount(
+    model(
+      {
+        action: { ...noAction, visible: true, needsUser: true, count: 2, summary: 'question' },
+        questionNotice: 'Question: Which layout should I keep? · 2 waiting',
+      } as Partial<ChatWidgetModel>,
+      { runStatus: 'awaiting_user' },
+    ),
+  );
+  const banner = view.container.querySelector('[data-testid="action-required"]');
+  expect(banner?.textContent).toContain('Question: Which layout should I keep? · 2 waiting');
+  expect(banner?.textContent).not.toContain(messages.Widgets.actionQuestion);
+  expect(banner?.querySelector('a')?.textContent).toBe(messages.Widgets.actionOpen);
+  // No inline answer: the notice only leads to the run.
+  expect(banner?.querySelectorAll('input, textarea, select, form')).toHaveLength(0);
+  // An approval waiting beside it keeps the generic wording.
+  await view.update(
+    model(
+      {
+        action: { ...noAction, visible: true, needsUser: true, count: 2, summary: 'mixed' },
+        questionNotice: 'Question: Which layout should I keep?',
+      } as Partial<ChatWidgetModel>,
+      { runStatus: 'awaiting_user' },
+    ),
+  );
+  expect(
+    view.container.querySelector('[data-testid="action-required"]')?.textContent,
+  ).not.toContain('Which layout');
+});
+
+it('keeps the notice for a live waiting run while another result is open', async () => {
+  // The line leaves a live run's state to the top bar's pill; the notice still shows its need
+  // while the person reads another result.
+  const view = await mount(
+    model(
+      {
+        results: [{ id: 'artv_earlier', label: 'Earlier report v1' }],
+        action: { ...noAction, visible: true, needsUser: true, count: 1, summary: 'question' },
+        questionNotice: 'Question: Keep the measured context?',
+      } as Partial<ChatWidgetModel>,
+      { runStatus: 'awaiting_user' },
+    ),
+  );
+  expect(view.line()?.textContent).not.toContain(messages.Status.awaiting_user);
+  const banner = view.container.querySelector('[data-testid="action-required"]');
+  expect(banner?.textContent).toContain('Question: Keep the measured context?');
+  expect(banner?.querySelector('a')).not.toBeNull();
+});
+
 it('keeps the lead and note without a run', async () => {
   const view = await mount(model({ runId: null } as Partial<ChatWidgetModel>));
   expect(view.line()?.querySelector('[data-testid="lead"]')).not.toBeNull();

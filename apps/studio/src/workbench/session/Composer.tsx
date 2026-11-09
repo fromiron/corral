@@ -1705,10 +1705,13 @@ export function Composer({
               onValueChange={(value) => {
                 const choice = String(value);
                 if (choice === 'manage')
+                  // The library's teams for this project, coming back to this session.
                   void navigate({
-                    to: '/projects/$projectId',
-                    params: { projectId: session.projectId },
-                    hash: 'corrals',
+                    to: '/library/teams',
+                    search: {
+                      project: session.projectId,
+                      returnTo: router.state.location.href,
+                    },
                   });
                 else if (choice.startsWith('corral:')) void updateTeam(choice.slice(7));
                 else {
@@ -1731,7 +1734,7 @@ export function Composer({
                   hint: tc('teamCorralHint'),
                   group: tc('teamCorralGroup'),
                 })),
-                // Creating or editing a Corral happens on the project page.
+                // Creating or editing a Corral happens in the library.
                 { value: 'manage', label: tc('manageCorrals'), group: tc('teamCorralGroup') },
               ]}
             />

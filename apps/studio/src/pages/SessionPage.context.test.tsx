@@ -21,6 +21,8 @@ import { Composer } from './SessionPage.tsx';
 const fixture = vi.hoisted(() => ({
   services: {},
   invalidate: vi.fn(async () => {}),
+  navigate: vi.fn(),
+  href: '/sessions/session?panel=files',
   profiles: null as import('../workbench/useModels.ts').ProfileInfo[] | null,
   roles: [] as { profileId: string; name: string }[],
   materialsRequest: vi.fn(
@@ -34,8 +36,11 @@ vi.mock('../projects-api.ts', () => ({
 vi.mock('../router.tsx', () => ({ sessionRoute: {}, runRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#session">{children}</a>,
-  useNavigate: () => () => {},
-  useRouter: () => ({ invalidate: fixture.invalidate }),
+  useNavigate: () => fixture.navigate,
+  useRouter: () => ({
+    invalidate: fixture.invalidate,
+    state: { location: { href: fixture.href } },
+  }),
 }));
 vi.mock('../commandRegistry.ts', () => ({
   useRegisterCommands() {},
@@ -1117,4 +1122,19 @@ it('keeps the send intent visible while idle', async () => {
   const f = await mount(sessionId, null, [], [finished]);
   const line = f.container.querySelector('[data-testid="composer-status-pills"]');
   expect(line?.textContent).toContain(messages.Sessions.intentShort.next);
+});
+
+it("the team picker's Create or manage opens the library's teams for this project and comes back", async () => {
+  fixture.href = '/sessions/manage_teams?panel=files';
+  const f = await mount('manage_teams', null);
+  await f.click(messages.Composer.teamLabel);
+  const manage = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) =>
+    option.textContent?.includes(messages.Composer.manageCorrals),
+  );
+  expect(manage).toBeDefined();
+  await act(async () => manage?.click());
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/library/teams',
+    search: { project: 'project', returnTo: '/sessions/manage_teams?panel=files' },
+  });
 });

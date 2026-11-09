@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { QueuedStack } from '../src/design-kit/components/blocks/queued-stack.tsx';
 import type { QueuedMessage } from '../src/design-kit/components/ui/input-message.tsx';
@@ -89,6 +89,47 @@ describe('QueuedStack order', () => {
     expect(onStart).toHaveBeenCalledWith(queue[1]);
     expect(onQueueChange).not.toHaveBeenCalled();
     expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('fans out while focus is inside and brings the focused card to the front', () => {
+    const many: QueuedMessage[] = ['One', 'Two', 'Three', 'Four'].map((text) => ({
+      id: text.toLowerCase(),
+      text,
+      files: [],
+    }));
+    render(
+      <>
+        <button type="button">Before</button>
+        <QueuedStack
+          queue={many}
+          // Reorderable, so the grab cursor shows when the stack is fanned out.
+          onQueueChange={vi.fn()}
+          onEdit={vi.fn()}
+          onRemove={vi.fn()}
+          bottom={0}
+          renderActions={(item) => <button type="button">Start {item.text} now</button>}
+        />
+      </>,
+    );
+    expect(card('Four').style.cursor).toBe('default');
+    for (const item of many)
+      for (const name of [
+        `Start ${item.text} now`,
+        `Edit queued message: ${item.text}`,
+        `Remove queued message: ${item.text}`,
+      ]) {
+        const button = screen.getByRole('button', { name });
+        act(() => button.focus());
+        expect(button).toHaveFocus();
+        // Every card shows, the hidden ones past the peek included.
+        for (const other of many) expect(card(other.text).style.cursor).toBe('grab');
+        const layers = many
+          .filter((other) => other !== item)
+          .map((other) => Number(card(other.text).style.zIndex));
+        expect(Number(card(item.text).style.zIndex)).toBeGreaterThan(Math.max(...layers));
+      }
+    act(() => screen.getByRole('button', { name: 'Before' }).focus());
+    expect(card('Four').style.cursor).toBe('default');
   });
 
   it('takes localized names', () => {

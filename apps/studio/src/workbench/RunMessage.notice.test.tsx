@@ -189,6 +189,61 @@ it('shows a thinking indicator where the answer will appear until observed outpu
   expect(container.textContent).toContain('First words');
 });
 
+it('drops the thinking indicator once the turn shows a tool step', async () => {
+  const projection = emptyProjection('run_chat');
+  projection.status = 'running';
+  projection.executionOrder = ['lead'];
+  projection.executions.lead = { ...execution('lead'), status: 'active' };
+  fixture.store = sessionStore({ runId: 'run_chat', projection });
+  const container = await show();
+  const pending = () => container.querySelector('[data-testid="reply-pending"]');
+  expect(pending()).not.toBeNull();
+  // A step the turn's process lists means work was observed: the indicator gives way to it.
+  await act(async () =>
+    fixture.store?.setState({
+      events: [
+        {
+          type: 'tool.requested',
+          actor: { kind: 'agent', id: 'lead' },
+          payload: {
+            executionId: 'lead',
+            toolCallId: 'call_read',
+            name: 'read_file',
+            validatedArgs: { path: 'README.md' },
+          },
+        },
+      ] as unknown as RunEvent[],
+    }),
+  );
+  expect(pending()).toBeNull();
+});
+
+it('keeps the thinking indicator for a step the turn does not list', async () => {
+  const projection = emptyProjection('run_chat');
+  projection.status = 'running';
+  projection.executionOrder = ['lead'];
+  projection.executions.lead = { ...execution('lead'), status: 'active' };
+  // A runtime-owned call is not a step of the turn's process.
+  fixture.store = sessionStore({
+    runId: 'run_chat',
+    projection,
+    events: [
+      {
+        type: 'tool.requested',
+        actor: { kind: 'runtime', id: 'runtime' },
+        payload: {
+          executionId: 'lead',
+          toolCallId: 'call_runtime',
+          name: 'read_file',
+          validatedArgs: { path: 'README.md' },
+        },
+      },
+    ] as unknown as RunEvent[],
+  });
+  const container = await show();
+  expect(container.querySelector('[data-testid="reply-pending"]')).not.toBeNull();
+});
+
 it.each(['paused', 'awaiting_user', 'succeeded'] as const)(
   'shows no thinking indicator for a %s run',
   async (status) => {

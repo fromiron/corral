@@ -4,12 +4,15 @@ import { StatusBadge } from '@corral/react';
 import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { projectName } from '../projects.ts';
 import { schedulesApi } from '../schedules-api.ts';
 import { useServices } from '../services.tsx';
 import { watchRefresh } from '../workbench/refresh.ts';
 import { scheduleHistoryStatus } from '../workbench/scheduledRuns.ts';
+
+/** Sunday first, as the rule's weekday numbers count them. */
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 function scheduleDraft(schedule: Schedule): ScheduleDraft {
   const {
@@ -27,10 +30,8 @@ function scheduleDraft(schedule: Schedule): ScheduleDraft {
 /** Server-owned schedules; no renderer timer dispatches work. */
 export function ScheduledPage() {
   const { repository, models, mode, live, transport } = useServices();
-  const ko = useLocale().startsWith('ko');
   const t = useTranslations('Schedules');
   const tp = useTranslations('Projects');
-  const text = (en: string, kr: string) => (ko ? kr : en);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -159,36 +160,15 @@ export function ScheduledPage() {
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-5 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">{text('Schedules', '예약 실행')}</h2>
+        <h2 className="text-xl font-semibold">{t('title')}</h2>
         <Button disabled={mode !== 'server' || !sessions.length || busy} onClick={create}>
-          {text('New schedule', '새 예약')}
+          {t('new')}
         </Button>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {text(
-          'Runs while this server is open. Missed times and overlapping runs are skipped and recorded. A repeated daylight-saving time runs once, at its earlier instant; nonexistent times are skipped.',
-          '서버가 켜져 있을 때 실행합니다. 놓친 시각과 이전 실행 중의 예약은 건너뛰고 기록합니다. 일광 절약 시간으로 시각이 반복되면 첫 시각에 한 번 실행하며, 존재하지 않는 시각은 건너뜁니다.',
-        )}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        {text(
-          'Requests use the normal Auto team, its model, and your selected permission mode. Approval requests wait in the session. Disabling or deleting a schedule does not cancel an already started run.',
-          '일반 Auto 팀과 해당 모델, 선택한 권한 모드를 사용합니다. 승인이 필요하면 세션에서 기다립니다. 예약 비활성화·삭제는 이미 시작한 실행을 취소하지 않습니다.',
-        )}
-      </p>
-      {mode !== 'server' ? (
-        <p>
-          {text('Schedules require the local server.', '예약은 로컬 서버에서 사용할 수 있습니다.')}
-        </p>
-      ) : null}
-      {loaded && !sessions.length ? (
-        <p>
-          {text(
-            'Create an Auto session in a project first.',
-            '프로젝트에서 Auto 세션을 먼저 만들어 주세요.',
-          )}
-        </p>
-      ) : null}
+      <p className="text-sm text-muted-foreground">{t('whenRuns')}</p>
+      <p className="text-sm text-muted-foreground">{t('howRuns')}</p>
+      {mode !== 'server' ? <p>{t('serverOnly')}</p> : null}
+      {loaded && !sessions.length ? <p>{t('needsSession')}</p> : null}
       {readError ? (
         <p role="alert" className="text-sm text-danger">
           {readError}
@@ -211,11 +191,9 @@ export function ScheduledPage() {
               <span className="flex min-w-0 flex-col">
                 <span className="truncate font-medium">{schedule.title}</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {schedule.enabled ? text('Enabled', '활성') : text('Disabled', '비활성')}
+                  {schedule.enabled ? t('enabled') : t('disabled')}
                   {' · '}
-                  {schedule.nextAt
-                    ? new Date(schedule.nextAt).toLocaleString()
-                    : text('No upcoming run', '다음 실행 없음')}
+                  {schedule.nextAt ? new Date(schedule.nextAt).toLocaleString() : t('noUpcoming')}
                 </span>
               </span>
             </Button>
@@ -224,7 +202,7 @@ export function ScheduledPage() {
               size="compact"
               render={<Link to="/sessions/$sessionId" params={{ sessionId: schedule.sessionId }} />}
             >
-              {text('Session', '세션')}
+              {t('session')}
             </Button>
           </li>
         ))}
@@ -233,10 +211,10 @@ export function ScheduledPage() {
         <form
           onSubmit={submit}
           className="flex flex-col gap-4 border-t border-line pt-4"
-          aria-label={text('Schedule settings', '예약 설정')}
+          aria-label={t('settings')}
         >
           <label htmlFor={`${ids}-title`} className={labelClass}>
-            {text('Title', '이름')}
+            {t('name')}
             <Input
               id={`${ids}-title`}
               required
@@ -247,9 +225,9 @@ export function ScheduledPage() {
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className={labelClass}>
-              <span aria-hidden="true">{text('Project', '프로젝트')}</span>
+              <span aria-hidden="true">{t('project')}</span>
               <Select
-                label={text('Project', '프로젝트')}
+                label={t('project')}
                 value={draft.projectId}
                 onValueChange={(projectId) => {
                   const session = sessions.find((s) => s.projectId === projectId);
@@ -271,9 +249,9 @@ export function ScheduledPage() {
               />
             </div>
             <div className={labelClass}>
-              <span aria-hidden="true">{text('Session', '세션')}</span>
+              <span aria-hidden="true">{t('session')}</span>
               <Select
-                label={text('Session', '세션')}
+                label={t('session')}
                 value={draft.sessionId}
                 onValueChange={(sessionId) => {
                   const session = sessions.find((s) => s.sessionId === sessionId);
@@ -291,7 +269,7 @@ export function ScheduledPage() {
             </div>
           </div>
           <label htmlFor={`${ids}-request`} className={labelClass}>
-            {text('Request', '요청')}
+            {t('request')}
             <Textarea
               id={`${ids}-request`}
               required
@@ -305,9 +283,9 @@ export function ScheduledPage() {
           </label>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className={labelClass}>
-              <span aria-hidden="true">{text('Repeat', '반복')}</span>
+              <span aria-hidden="true">{t('repeat')}</span>
               <Select
-                label={text('Repeat', '반복')}
+                label={t('repeat')}
                 value={draft.rule.kind}
                 onValueChange={(kind) =>
                   setDraft({
@@ -321,16 +299,14 @@ export function ScheduledPage() {
                   })
                 }
                 options={[
-                  { value: 'once', label: text('Once', '한 번') },
-                  { value: 'daily', label: text('Daily', '매일') },
-                  { value: 'weekly', label: text('Weekly', '매주') },
+                  { value: 'once', label: t('once') },
+                  { value: 'daily', label: t('daily') },
+                  { value: 'weekly', label: t('weekly') },
                 ]}
               />
             </div>
             <label htmlFor={`${ids}-time`} className={labelClass}>
-              {draft.rule.kind === 'once'
-                ? text('UTC date and time', 'UTC 날짜와 시각')
-                : text('Local time', '현지 시각')}
+              {draft.rule.kind === 'once' ? t('utcTime') : t('localTime')}
               <Input
                 id={`${ids}-time`}
                 required
@@ -350,7 +326,7 @@ export function ScheduledPage() {
               />
             </label>
             <label htmlFor={`${ids}-zone`} className={labelClass}>
-              {text('Time zone', '시간대')}
+              {t('timeZone')}
               <Input
                 id={`${ids}-zone`}
                 required
@@ -361,14 +337,9 @@ export function ScheduledPage() {
           </div>
           {draft.rule.kind === 'weekly' ? (
             <fieldset className="flex flex-col gap-1.5">
-              <legend className="mb-1.5 text-caption text-muted-foreground">
-                {text('Days', '요일')}
-              </legend>
+              <legend className="mb-1.5 text-caption text-muted-foreground">{t('days')}</legend>
               <div className="flex flex-wrap gap-1">
-                {(ko
-                  ? ['일', '월', '화', '수', '목', '금', '토']
-                  : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-                ).map((day, index) => {
+                {WEEKDAYS.map((day) => t(`weekday.${day}`)).map((day, index) => {
                   const on = draft.rule.kind === 'weekly' && draft.rule.weekdays.includes(index);
                   return (
                     <Button
@@ -398,9 +369,9 @@ export function ScheduledPage() {
           ) : null}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className={labelClass}>
-              <span aria-hidden="true">{text('Model profile', '모델 프로필')}</span>
+              <span aria-hidden="true">{t('modelProfile')}</span>
               <Select
-                label={text('Model profile', '모델 프로필')}
+                label={t('modelProfile')}
                 value={draft.request.choice.modelProfile}
                 onValueChange={(modelProfile) =>
                   setDraft({
@@ -414,47 +385,47 @@ export function ScheduledPage() {
               />
             </div>
             <div className={labelClass}>
-              <span aria-hidden="true">{text('Execution', '실행 방식')}</span>
+              <span aria-hidden="true">{t('execution')}</span>
               <Select
-                label={text('Execution', '실행 방식')}
+                label={t('execution')}
                 value={draft.request.mode}
                 onValueChange={(value) =>
                   setDraft({ ...draft, request: { ...draft.request, mode: value } })
                 }
                 options={[
-                  { value: 'mock' as const, label: text('Simulation', '시뮬레이션') },
+                  { value: 'mock' as const, label: t('simulation') },
                   {
                     value: 'live' as const,
-                    label: text('Connected model', '연결된 모델'),
+                    label: t('connectedModel'),
                     disabled: !live,
                   },
                 ]}
               />
             </div>
             <div className={labelClass}>
-              <span aria-hidden="true">{text('Permissions', '권한')}</span>
+              <span aria-hidden="true">{t('permissions')}</span>
               <Select
-                label={text('Permissions', '권한')}
+                label={t('permissions')}
                 value={draft.request.permissionMode}
                 onValueChange={(permissionMode) =>
                   setDraft({ ...draft, request: { ...draft.request, permissionMode } })
                 }
                 options={[
-                  { value: 'ask' as const, label: 'Ask' },
-                  { value: 'accept_edits' as const, label: 'Accept edits' },
-                  { value: 'auto' as const, label: 'Auto' },
+                  { value: 'ask' as const, label: t('permission.ask') },
+                  { value: 'accept_edits' as const, label: t('permission.accept_edits') },
+                  { value: 'auto' as const, label: t('permission.auto') },
                 ]}
               />
             </div>
           </div>
           <Switch
-            label={text('Enable scheduled runs', '예약 실행 활성화')}
+            label={t('enable')}
             checked={draft.enabled}
             onToggle={() => setDraft({ ...draft, enabled: !draft.enabled })}
           />
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} type="submit">
-              {text('Save schedule', '예약 저장')}
+              {t('save')}
             </Button>
             <Button
               variant="ghost"
@@ -464,7 +435,7 @@ export function ScheduledPage() {
                 setSelected(null);
               }}
             >
-              {text('Close', '닫기')}
+              {t('close')}
             </Button>
             {selected ? (
               <>
@@ -490,7 +461,7 @@ export function ScheduledPage() {
                     });
                   }}
                 >
-                  {text('Run now', '지금 실행')}
+                  {t('runNow')}
                 </Button>
                 <Button
                   variant="ghost"
@@ -504,7 +475,7 @@ export function ScheduledPage() {
                     })
                   }
                 >
-                  {text('Delete schedule', '예약 삭제')}
+                  {t('delete')}
                 </Button>
               </>
             ) : null}
@@ -514,22 +485,12 @@ export function ScheduledPage() {
               {t(savedEnabled ? 'savedEnabled' : 'savedDisabled')}
             </p>
           ) : null}
-          {dirty ? (
-            <p className="text-xs text-muted-foreground">
-              {text(
-                'Save changes before running this schedule.',
-                '지금 실행하려면 변경 사항을 먼저 저장하세요.',
-              )}
-            </p>
-          ) : null}
+          {dirty ? <p className="text-xs text-muted-foreground">{t('saveFirst')}</p> : null}
         </form>
       ) : null}
       {selected && history.length ? (
-        <section
-          aria-label={text('Run history', '실행 기록')}
-          className="border-t border-line pt-4"
-        >
-          <h3 className="mb-2 font-medium">{text('Run history', '실행 기록')}</h3>
+        <section aria-label={t('history')} className="border-t border-line pt-4">
+          <h3 className="mb-2 font-medium">{t('history')}</h3>
           <ul className="divide-y divide-line">
             {history.map((entry) => (
               <li key={entry.id} className="py-2 text-sm">
@@ -562,7 +523,7 @@ export function ScheduledPage() {
                       />
                     }
                   >
-                    {text('Open run / respond', '실행 열기 / 응답')}
+                    {t('openRunRespond')}
                   </Button>
                 ) : null}
               </li>

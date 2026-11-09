@@ -22,6 +22,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../../pages/Workbench.tsx';
 import { useModelPrices } from '../../prices.ts';
 import { useServices } from '../../services.tsx';
+import { useQuestionNotice } from '../questionNotice.ts';
 import { readRunView } from '../readRunView.ts';
 import { contextCalls } from './contextCalls.ts';
 import {
@@ -75,6 +76,8 @@ export interface ChatWidgetModel {
   /** The list-price estimate, or why there is none; null before the run is read. */
   cost: RunCostEstimate | null;
   action: ReturnType<typeof actionRequired>;
+  /** The waiting questions' notice (first title, count from two), once the first is read. */
+  questionNotice: string | null;
   failedExecutionId: string | null;
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
@@ -95,6 +98,7 @@ export interface ChatWidgetModel {
 }
 
 const ChatWidgetContext = createContext<ChatWidgetModel | null>(null);
+const NO_TEXTS: Readonly<Record<string, string>> = {};
 
 export function useChatWidget() {
   return useContext(ChatWidgetContext);
@@ -382,6 +386,11 @@ function useChatWidgetState(
   );
   const interactions =
     runOpen && projection ? pendingInteractions(view?.events ?? [], projection) : [];
+  const questionNotice = useQuestionNotice(
+    interactions.flatMap((item) => (item.kind === 'approval' ? [] : [item])),
+    view?.artifactTexts ?? NO_TEXTS,
+    loadPlan,
+  );
   const action = actionRequired({
     pendingApprovals: interactions.filter((item) => item.kind === 'approval').length,
     pendingQuestions: interactions.filter((item) => item.kind !== 'approval').length,
@@ -529,6 +538,7 @@ function useChatWidgetState(
     usage: usageSummary(projection),
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
+    questionNotice,
     failedExecutionId:
       projection?.toolCalls[tools.find((row) => row.tone === 'failed')?.id ?? '']?.executionId ??
       null,

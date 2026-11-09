@@ -20,9 +20,10 @@ import type { QueuedMessage } from '../ui/input-message.tsx';
 import { Tooltip } from '../ui/tooltip.tsx';
 
 // -----------------------------------------------------------------------------
-// Messages queued above an InputMessage. Hover (tap on touch) fans the cards
-// out. While fanned, drag reorders them (only with `onQueueChange`), × removes
-// one, and the pencil or a double-click sends that card back into the composer.
+// Messages queued above an InputMessage. Hover (tap on touch, or focus inside)
+// fans the cards out. While fanned, drag reorders them (only with
+// `onQueueChange`), × removes one, and the pencil or a double-click sends that
+// card back into the composer.
 // -----------------------------------------------------------------------------
 
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -131,6 +132,8 @@ export function QueuedStack({
   // ─── Drag-to-reorder (expanded only). Window listeners so release works anywhere.
   const stackRef = useRef<HTMLDivElement>(null);
   const [stackHovered, setStackHovered] = useState(false);
+  // Keyboard focus fans the stack out too, and lifts the card that holds it.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [pointerDownId, setPointerDownId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragY, setDragY] = useState(0);
@@ -153,8 +156,9 @@ export function QueuedStack({
   // An emptied stack unpins, so the next fill starts collapsed.
   if (queue.length === 0 && tapExpanded) setTapExpanded(false);
 
+  const focusedInQueue = focusedId !== null && queue.some((item) => item.id === focusedId);
   const stackExpanded =
-    stackHovered || pointerDownId !== null || draggingId !== null || tapExpanded;
+    stackHovered || focusedInQueue || pointerDownId !== null || draggingId !== null || tapExpanded;
   const slotY = (i: number) => -i * (cardH + STACK_GAP);
 
   // ─── Enqueue feedback: past the peek cap a new card is invisible, so recoil
@@ -317,6 +321,15 @@ export function QueuedStack({
                       setDragY(slotY(i));
                       setPointerDownId(item.id);
                     }}
+                    onFocus={() => setFocusedId(item.id)}
+                    onBlur={(e) => {
+                      if (
+                        e.relatedTarget instanceof Node &&
+                        e.currentTarget.contains(e.relatedTarget)
+                      )
+                        return;
+                      setFocusedId((current) => (current === item.id ? null : current));
+                    }}
                     initial={{ opacity: 0, y: 14, scale: 0.96 }}
                     animate={target}
                     exit={{
@@ -328,7 +341,7 @@ export function QueuedStack({
                     style={{
                       height: cardH,
                       transformOrigin: 'bottom center',
-                      zIndex: isDragging ? 200 : 100 - i,
+                      zIndex: isDragging ? 200 : focusedId === item.id ? 150 : 100 - i,
                       cursor: stackExpanded && reorderable ? 'grab' : 'default',
                       // Touch-drag reorders instead of scrolling the page.
                       touchAction: stackExpanded && reorderable ? 'none' : undefined,
@@ -365,11 +378,15 @@ export function QueuedStack({
                     <span className="pointer-events-none min-w-0 flex-1 truncate">
                       {item.text || labels.attachments(item.files.length)}
                     </span>
-                    {/* Edit and remove: shown on hover (always on touch), out
-                        of layout otherwise so the text gets the full width. */}
+                    {/* Edit and remove: shown on hover or focus (always on
+                        touch). Otherwise they stay in the tab order but
+                        invisible over the card's end, so the text gets the
+                        full width. */}
                     <div
-                      className={`shrink-0 items-center gap-1 ${
-                        isTouch ? 'flex' : 'hidden group-hover/qm:flex'
+                      className={`flex shrink-0 items-center gap-1 ${
+                        isTouch
+                          ? ''
+                          : `absolute inset-y-0 ${compactStep ? 'right-1' : 'right-1.5'} opacity-0 group-hover/qm:static group-hover/qm:opacity-100 group-focus-within/qm:static group-focus-within/qm:opacity-100`
                       }`}
                     >
                       {renderActions && (

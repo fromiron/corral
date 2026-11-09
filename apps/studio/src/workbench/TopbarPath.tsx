@@ -2,6 +2,7 @@ import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { PathCrumb } from '@corral/react';
 import {
   Button,
+  fontWeights,
   Menu,
   MenuItem,
   MenuPopup,
@@ -76,7 +77,7 @@ export function TopbarPath({
       {pageTitle && !outside ? (
         <>
           {known ? (
-            <span aria-hidden="true" className="text-muted-foreground/50">
+            <span aria-hidden="true" className="text-muted-foreground">
               /
             </span>
           ) : null}
@@ -90,7 +91,9 @@ export function TopbarPath({
               onOpen={onOpenSession}
             />
           ) : (
-            <h2 className="truncate font-medium">{pageTitle}</h2>
+            <h2 className="truncate" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {pageTitle}
+            </h2>
           )}
         </>
       ) : null}
@@ -120,11 +123,11 @@ function ProjectSwitcher({
             variant="ghost"
             size="compact"
             aria-label={n('switchProject')}
-            className="min-w-0 max-w-52 gap-1 px-2 font-medium"
+            className="min-w-0 max-w-52 gap-1 px-2"
           />
         }
       >
-        <span className="truncate">
+        <span className="truncate" style={{ fontVariationSettings: fontWeights.semibold }}>
           {chosen ? projectName(chosen, t('defaultName')) : t('allProjects')}
         </span>
         <ChevronDown className="size-3.5 text-muted-foreground" />

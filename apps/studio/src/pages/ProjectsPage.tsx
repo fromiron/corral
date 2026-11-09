@@ -8,11 +8,12 @@ import {
   CardGroup,
   CardHeader,
   CardTitle,
+  fontWeights,
   InputField,
   InputGroup,
 } from '@corral/react/design-kit';
-import { Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../projects.ts';
@@ -37,6 +38,14 @@ export function ProjectsPage() {
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  // New project (the sidebar's Corral menu) opens here at the form, ready to type its name.
+  const hash = useRouterState({ select: (state) => state.location.hash });
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (hash !== 'new-project') return;
+    form.current?.scrollIntoView({ block: 'nearest' });
+    form.current?.querySelector('input')?.focus();
+  }, [hash]);
   const archivedCount = projects.filter((p) => p.archivedAt).length;
   const shown = projects.filter((p) => showArchived || !p.archivedAt);
 
@@ -66,10 +75,18 @@ export function ProjectsPage() {
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
-      <h2 className="text-title font-semibold">{t('heading')}</h2>
+      <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('heading')}
+      </h2>
       <p className="text-body text-muted-foreground">{t('intro')}</p>
       {mode === 'server' && workspaces ? <GitCloneFolder onSelect={setFolder} /> : null}
-      <form onSubmit={create} aria-label={t('new')} className="flex flex-col gap-3">
+      <form
+        ref={form}
+        id="new-project"
+        onSubmit={create}
+        aria-label={t('new')}
+        className="flex flex-col gap-3"
+      >
         <InputGroup className="w-full">
           <InputField
             index={0}
@@ -196,7 +213,8 @@ export function ProjectsPage() {
                   <Link
                     to="/projects/$projectId"
                     params={{ projectId: project.projectId }}
-                    className="font-medium underline-offset-4 hover:underline"
+                    className="underline-offset-4 hover:underline"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
                   >
                     {label}
                   </Link>

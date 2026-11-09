@@ -1,14 +1,9 @@
 import type { ReactNode } from 'react';
-import { Elevated } from '../design-kit/lib/elevated.tsx';
-import { fontWeights } from '../design-kit/lib/font-weight.ts';
-import { useShape } from '../design-kit/lib/shape-context.tsx';
-import { useSize } from '../design-kit/lib/size-context.tsx';
-import { cn } from '../design-kit/lib/utils.ts';
+import { cn, Elevated, fontWeights, useShape, useSize } from '../design-kit/index.ts';
 
 /**
  * The kit shell's footer card (components/screens/shell.tsx): one raised surface with a short
- * title, a line of body text and an optional action. Elevated is not part of the kit's public
- * index, so the card composes it here rather than at the call site.
+ * title, a line of body text and an optional action.
  */
 export function SidebarStatusCard({
   title,

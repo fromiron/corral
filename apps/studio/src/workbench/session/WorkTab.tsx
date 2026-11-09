@@ -1,5 +1,5 @@
 import type { CorralSummary, RunSummary, WorkSession } from '@corral/core';
-import { Button, cn, useSize } from '@corral/react/design-kit';
+import { Button, cn, fontWeights, useSize } from '@corral/react/design-kit';
 import { FolderOpen } from '@corral/react/icons';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
@@ -14,9 +14,6 @@ import type { SessionSearch } from '../panels/routes.ts';
 import { WorkFolderNotice } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
-
-/** The kit's display weight (its `fontWeights.bold`, which the kit entry does not export). */
-const DISPLAY_WEIGHT = "'wght' 700, 'opsz' 25";
 
 /** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
 export function WorkTab({
@@ -140,7 +137,7 @@ export function WorkTab({
             <div className="flex flex-col items-center gap-3 pb-4 text-center">
               <h2
                 className={cn(size.type.display, 'm-0 text-foreground')}
-                style={{ fontVariationSettings: DISPLAY_WEIGHT }}
+                style={{ fontVariationSettings: fontWeights.bold }}
               >
                 {td('homeTitle')}
               </h2>

@@ -6,7 +6,7 @@ import type {
 } from '@corral/client';
 import { Button, Input, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
@@ -46,24 +46,41 @@ const formatChecks = (checks: VerifyCommand[]) =>
     .map((c) => `${c.name} = ${c.argv.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`)
     .join('\n');
 
+/**
+ * The project's linked folder: undefined while it is read, null when there is none. An answer
+ * counts only for the project it was asked for and only if no later read started, so switching
+ * projects never shows the previous project's folder.
+ */
 export function useBinding(projectId: string | null) {
   const { workspaces } = useServices();
-  const [binding, setBinding] = useState<WorkspaceBindingView | null | undefined>(undefined);
+  const [read, setRead] = useState<{
+    projectId: string | null;
+    binding: WorkspaceBindingView | null;
+  } | null>(null);
+  const latest = useRef(0);
   const reload = useCallback(async () => {
-    if (!workspaces || !projectId) return setBinding(null);
-    try {
-      setBinding(await workspaces.binding(projectId));
-    } catch {
-      setBinding(null);
+    const request = ++latest.current;
+    let binding: WorkspaceBindingView | null = null;
+    if (workspaces && projectId) {
+      try {
+        binding = await workspaces.binding(projectId);
+      } catch {
+        binding = null;
+      }
     }
+    if (request === latest.current) setRead({ projectId, binding });
   }, [workspaces, projectId]);
   useEffect(() => {
     void reload();
     // Linking, unlinking or trusting elsewhere (settings overlay) changes what this shows.
     const changed = () => void reload();
     window.addEventListener(WORKSPACE_CHANGED, changed);
-    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+    return () => {
+      window.removeEventListener(WORKSPACE_CHANGED, changed);
+      latest.current += 1;
+    };
   }, [reload]);
+  const binding = read && read.projectId === projectId ? read.binding : undefined;
   return { binding, reload };
 }
 
