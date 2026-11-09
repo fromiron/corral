@@ -222,6 +222,51 @@ it('an edited decision and its unanswered adoption survive a remount of the reco
   expect(third.container.querySelector('textarea[name="goal"]')).toBeNull();
 });
 
+it('a half-typed withdrawal reason survives a remount until it is withdrawn or cancelled', async () => {
+  const decided = { ...view, decisions: [decision] } as MeetingView;
+  const reasonBox = (container: HTMLElement) =>
+    container.querySelector<HTMLTextAreaElement>('textarea:not([name])');
+  const first = await mount(decided);
+  await act(async () => first.button('withdraw').click());
+  const reason = reasonBox(first.container);
+  if (!reason) throw new Error('The withdrawal form is missing');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+      reason,
+      'Scope chan',
+    );
+    reason.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  for (const unmount of cleanup.splice(0)) await unmount();
+  const second = await mount(decided);
+  expect(reasonBox(second.container)?.value).toBe('Scope chan');
+  // Cancelling discards it for good.
+  await act(async () => second.button('cancel').click());
+  expect(reasonBox(second.container)).toBeNull();
+  for (const unmount of cleanup.splice(0)) await unmount();
+  const third = await mount(decided);
+  expect(reasonBox(third.container)).toBeNull();
+  // A confirmed withdrawal does too.
+  await act(async () => third.button('withdraw').click());
+  const again = reasonBox(third.container);
+  if (!again) throw new Error('The withdrawal form is missing');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+      again,
+      'Scope changed',
+    );
+    again.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => third.button('confirmWithdraw').click());
+  expect(third.withdraw).toHaveBeenCalledWith(
+    'meeting',
+    expect.objectContaining({ versionId: 'v1', reason: 'Scope changed' }),
+  );
+  for (const unmount of cleanup.splice(0)) await unmount();
+  const fourth = await mount(decided);
+  expect(reasonBox(fourth.container)).toBeNull();
+});
+
 it('revisions name the replaced version and withdrawal requires a human reason', async () => {
   const f = await mount({ ...view, decisions: [decision] } as MeetingView);
   await act(async () => f.button('revise').click());

@@ -26,24 +26,28 @@ type Draft = {
   content: MeetingDecisionContent;
   supersedesVersionId?: string;
 };
+type Withdrawal = { versionId: string; reason: string };
 interface DecisionEdit {
   draft: Draft | null;
+  withdrawal: Withdrawal | null;
   /** The command that saves this exact body, reused when its response was lost. */
   command: { key: string; id: string } | null;
 }
 
 /**
- * Each meeting's decision being edited, by meeting ID, for the life of this page. The records
- * remount when the narrow drawer closes or the window crosses 1024px; the draft and its pending
- * command stay here until it is adopted, cancelled or replaced by another edit.
+ * Each meeting's decision draft or withdrawal reason being typed, by meeting ID, for the life of
+ * this page. The records remount when the narrow drawer closes or the window crosses 1024px; the
+ * text and its pending command stay here until it is saved, cancelled or replaced by another edit.
  */
 export const meetingDecisionEdits = createStore<Record<string, DecisionEdit>>(() => ({}));
-const noEdit: DecisionEdit = { draft: null, command: null };
+const noEdit: DecisionEdit = { draft: null, withdrawal: null, command: null };
 function changeEdit(sessionId: string, change: Partial<DecisionEdit>) {
   meetingDecisionEdits.setState((all) => {
     const next = { ...(all[sessionId] ?? noEdit), ...change };
     const { [sessionId]: _previous, ...others } = all;
-    return next.draft || next.command ? { ...others, [sessionId]: next } : others;
+    return next.draft || next.withdrawal || next.command
+      ? { ...others, [sessionId]: next }
+      : others;
   }, true);
 }
 
@@ -63,7 +67,8 @@ export function MeetingDecisions({
   const sessionId = session.sessionId;
   const draft = useStore(meetingDecisionEdits, (all) => all[sessionId]?.draft ?? null);
   const setDraft = (next: Draft | null) => changeEdit(sessionId, { draft: next });
-  const [withdrawal, setWithdrawal] = useState<{ versionId: string; reason: string } | null>(null);
+  const withdrawal = useStore(meetingDecisionEdits, (all) => all[sessionId]?.withdrawal ?? null);
+  const setWithdrawal = (next: Withdrawal | null) => changeEdit(sessionId, { withdrawal: next });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const nameOf = (id: string) =>
@@ -102,8 +107,7 @@ export function MeetingDecisions({
         setError(result.message);
         return;
       }
-      changeEdit(sessionId, { draft: null, command: null });
-      setWithdrawal(null);
+      changeEdit(sessionId, { draft: null, withdrawal: null, command: null });
       await onChange();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
