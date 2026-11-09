@@ -11,7 +11,7 @@ import {
 } from '@corral/react/design-kit';
 import { Users } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useId, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectsChanged } from '../projects.ts';
 import { useServices } from '../services.tsx';
@@ -53,6 +53,29 @@ export function StartMeeting({ projectId }: { projectId: string }) {
       {open ? <NewMeetingDialog projectId={projectId} onClose={() => setOpen(false)} /> : null}
     </div>
   );
+}
+
+export const NEW_MEETING = 'corral:new-meeting';
+
+/** Opens the same new-meeting dialog as the project page, from the sidebar or the palette. */
+export function openNewMeeting(projectId: string) {
+  window.dispatchEvent(new CustomEvent<string>(NEW_MEETING, { detail: projectId }));
+}
+
+/** Hosts the dialog `openNewMeeting` asks for, once for the whole frame. */
+export function NewMeetingHost() {
+  const [projectId, setProjectId] = useState<string | null>(null);
+  useEffect(() => {
+    const open = (event: Event) => {
+      const target = (event as CustomEvent<string>).detail;
+      if (typeof target === 'string' && target) setProjectId(target);
+    };
+    window.addEventListener(NEW_MEETING, open);
+    return () => window.removeEventListener(NEW_MEETING, open);
+  }, []);
+  return projectId ? (
+    <NewMeetingDialog key={projectId} projectId={projectId} onClose={() => setProjectId(null)} />
+  ) : null;
 }
 
 function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose(): void }) {

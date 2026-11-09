@@ -92,7 +92,24 @@
     "retry": "다시 시도"
   },
   "Shell": {
-    "title": "탐색"
+    "title": "탐색",
+    "workspace": "작업 공간",
+    "workspaceMenu": "Corral 메뉴",
+    "allProjects": "모든 프로젝트",
+    "newProject": "새 프로젝트",
+    "search": "검색…",
+    "searchSessions": "세션 찾기",
+    "newConversation": "새 대화",
+    "needsYou": "확인 필요",
+    "needsYouCount": "{count}건 대기 중",
+    "library": "라이브러리",
+    "automation": "자동화",
+    "featurePreviews": "기능 미리보기",
+    "newMeeting": "새 회의",
+    "projectActions": "{name} 프로젝트 메뉴",
+    "noModel": "연결된 모델 없음",
+    "noModelBody": "모델을 연결하기 전까지 실제 요청은 차단됩니다.",
+    "simulatedBody": "에이전트는 시뮬레이션이며 모델로 아무것도 보내지 않습니다."
   },
   "Canvas": {
     "ports": {
@@ -1132,7 +1149,7 @@
   "CommandPalette": {
     "label": "명령 팔레트",
     "search": "명령 검색",
-    "placeholder": "명령·창·설정·팀·실행 또는 이 프로젝트의 세션 찾기…",
+    "placeholder": "명령·창·설정·팀·실행 또는 세션 찾기…",
     "results": "명령",
     "none": "맞는 명령이 없습니다.",
     "openCorral": "팀 열기: {name}",
@@ -1159,7 +1176,18 @@
       "projects": "프로젝트",
       "sessions": "세션 열기"
     },
-    "draftTeam": "목표에서 팀 초안 만들기"
+    "draftTeam": "목표에서 팀 초안 만들기",
+    "sessionSearch": "세션 찾기",
+    "sessionPlaceholder": "제목이나 목적으로 세션 찾기…",
+    "scope": "세션 찾을 범위",
+    "allProjects": "모든 프로젝트",
+    "searchText": "메시지와 결과에서 “{query}” 검색",
+    "searchTextEmpty": "메시지와 결과 검색",
+    "needsYou": "확인 필요",
+    "library": "라이브러리",
+    "automation": "자동화",
+    "featurePreviews": "기능 미리보기",
+    "newMeeting": "{name}에서 새 회의"
   },
   "QuickOpen": {
     "title": "빠른 열기"

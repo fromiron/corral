@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import type { ProjectSummary, WorkSession } from '@corral/core';
+import type { InboxItemView } from '@corral/client';
+import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { SidebarProvider } from '@corral/react/design-kit';
 import { act, type ComponentProps, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -120,7 +121,8 @@ const sessions: WorkSession[] = Array.from({ length: 500 }, (_, index) => ({
   archivedAt: null,
   entries: [],
 }));
-const model: ComponentProps<typeof Sidebar>['model'] = {
+type Model = ComponentProps<typeof Sidebar>['model'];
+const model: Model = {
   projects: [project('alpha', 'Alpha'), project('beta', 'Beta')],
   sessions,
   corrals: [],
@@ -165,7 +167,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount() {
+async function mount(overrides: Partial<Model> = {}) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -177,7 +179,7 @@ async function mount() {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <SidebarProvider persist={false} shortcut={null} mobileBreakpoint={0}>
-          <Sidebar model={model} />
+          <Sidebar model={{ ...model, ...overrides }} />
         </SidebarProvider>
       </IntlProvider>,
     );
@@ -187,15 +189,6 @@ async function mount() {
 
 function conversationLinks(container: HTMLElement) {
   return [...container.querySelectorAll<HTMLAnchorElement>('a[href^="/sessions/"]')];
-}
-
-async function filter(container: HTMLElement, text: string) {
-  const input = container.querySelector<HTMLInputElement>('input[type="search"]');
-  if (!input) throw new Error('Missing conversation filter');
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, text);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
 }
 
 it('keeps 500 conversations virtualized under their project and puts pinned conversations first', async () => {
@@ -265,18 +258,166 @@ it('keeps list navigation away from conversation actions and opens their menu wi
   expect(document.activeElement?.getAttribute('href')).not.toBe('/sessions/session_0');
 });
 
-it('temporarily reveals a collapsed project for an objective match and restores its collapse on clear', async () => {
-  fixture.collapsed = { alpha: true };
+const run = (sessionId: string, status: RunSummary['status'], startedAt: string): RunSummary => ({
+  runId: `${sessionId}:${startedAt}`,
+  sessionId,
+  projectId: 'alpha',
+  corralId: 'team',
+  status,
+  startedAt,
+});
+const attention = (kind: InboxItemView['kind'], sessionId: string): InboxItemView => ({
+  kind,
+  sessionId,
+  sessionTitle: sessionId,
+  runId: null,
+  detail: null,
+  ...(kind === 'uncertain_terminal' ? { terminalId: `${sessionId}_pty` } : {}),
+});
+
+/** Text a person reads: the kit draws each label twice, once hidden to reserve its bold width. */
+function visibleText(element: Element | null | undefined) {
+  if (!element) return undefined;
+  const copy = element.cloneNode(true) as Element;
+  for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+  return copy.textContent?.trim();
+}
+
+function primaryMenu(container: HTMLElement) {
+  const menus = [...container.querySelectorAll<HTMLElement>('[data-sidebar="content"] ul')];
+  const primary = menus.find((menu) => menu.querySelector('a[href="/inbox"]'));
+  if (!primary) throw new Error('Missing primary menu');
+  return primary;
+}
+
+it('shows exactly the four primary entries without a group name, and drops the old rows', async () => {
   const container = await mount();
-  expect(container.querySelector('a[href="/sessions/session_250"]')).toBeNull();
-  const toggle = () => container.querySelector('[aria-label="Toggle Alpha sessions"]');
-  expect(toggle()?.getAttribute('aria-expanded')).toBe('false');
-  await filter(container, 'Objective needle');
-  expect(container.querySelector('a[href="/sessions/session_250"]')).not.toBeNull();
-  expect(toggle()?.getAttribute('aria-expanded')).toBe('true');
-  expect(container.querySelector('a[href="/projects/beta"]')).toBeNull();
-  await filter(container, '');
-  expect(container.querySelector('a[href="/sessions/session_250"]')).toBeNull();
-  expect(toggle()?.getAttribute('aria-expanded')).toBe('false');
-  expect(container.querySelector('a[href="/projects/beta"]')).not.toBeNull();
+  const primary = primaryMenu(container);
+  const rows = [...primary.querySelectorAll<HTMLElement>(':scope > [data-sidebar="menu-item"]')];
+  expect(rows.map((row) => visibleText(row.querySelector('a')))).toEqual([
+    'New conversation',
+    'Needs you',
+    'Library',
+    'Automation',
+  ]);
+  expect(rows.map((row) => row.querySelector('a')?.getAttribute('href'))).toEqual([
+    '/projects/alpha',
+    '/inbox',
+    '/library/teams',
+    '/schedules',
+  ]);
+  expect(
+    primary.closest('[data-sidebar="group"]')?.querySelector('[data-sidebar="group-label"]'),
+  ).toBeNull();
+  const sidebar = container.querySelector('[data-testid="app-sidebar"]');
+  for (const removed of ['Pending actions', 'Schedules', 'All projects', 'New project'])
+    expect(sidebar?.textContent).not.toContain(removed);
+});
+
+it('counts a waiting run and a terminal to check in the Needs you badge, not queued or unreviewed items', async () => {
+  const container = await mount({
+    runs: [
+      run('session_0', 'awaiting_user', '2026-11-01T00:00:00Z'),
+      run('session_1', 'running', '2026-11-01T00:00:00Z'),
+    ],
+    terminalAttention: [
+      attention('uncertain_terminal', 'session_499'),
+      attention('queued', 'session_2'),
+      attention('unreviewed', 'session_3'),
+    ],
+    // The current project's inbox also holds a queued request and an unreviewed file.
+    inbox: 4,
+  });
+  const needsYou = container.querySelector<HTMLAnchorElement>('a[href="/inbox"]');
+  expect(visibleText(needsYou)).toBe('Needs you');
+  const badge = needsYou
+    ?.closest('[data-sidebar="menu-item"]')
+    ?.querySelector('[data-sidebar="menu-badge"]');
+  expect(badge?.textContent).toBe('2');
+});
+
+it('keeps Needs you without a number when nothing waits', async () => {
+  const container = await mount({ inbox: 3 });
+  const needsYou = container.querySelector<HTMLAnchorElement>('a[href="/inbox"]');
+  expect(needsYou).not.toBeNull();
+  expect(
+    needsYou?.closest('[data-sidebar="menu-item"]')?.querySelector('[data-sidebar="menu-badge"]'),
+  ).toBeNull();
+});
+
+it('marks the primary entry for the path active', async () => {
+  fixture.pathname = '/library/resources';
+  const container = await mount();
+  expect(container.querySelector('a[href="/library/teams"]')?.getAttribute('aria-current')).toBe(
+    'page',
+  );
+  expect(container.querySelector('a[href="/inbox"]')?.getAttribute('aria-current')).toBeNull();
+});
+
+it('opens the palette in session search from the read-only field, carrying the typed character', async () => {
+  const container = await mount();
+  const requests: unknown[] = [];
+  const listen = (event: Event) => requests.push((event as CustomEvent).detail);
+  window.addEventListener('corral:open-palette', listen);
+  try {
+    const field = container.querySelector<HTMLInputElement>(
+      '[data-testid="session-search-field"] input',
+    );
+    if (!field) throw new Error('Missing search field');
+    expect(field.readOnly).toBe(true);
+    await act(async () => field.click());
+    await act(async () => {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    });
+    expect(requests).toEqual([
+      { mode: 'sessions', query: '' },
+      { mode: 'sessions', query: 'm' },
+      { mode: 'sessions', query: '' },
+    ]);
+  } finally {
+    window.removeEventListener('corral:open-palette', listen);
+  }
+});
+
+it('marks a meeting with its own icon and keeps the active row menu visible', async () => {
+  fixture.pathname = '/sessions/session_0';
+  const meeting = {
+    ...(sessions[1] as WorkSession),
+    meeting: { config: { version: 1, participants: [], secretary: { modelProfile: 'm' } } },
+  } as unknown as WorkSession;
+  const container = await mount({
+    sessions: sessions.map((session) => (session.sessionId === 'session_1' ? meeting : session)),
+  });
+  const icon = (id: string) =>
+    container.querySelector(`a[href="/sessions/${id}"] svg`)?.getAttribute('class') ?? '';
+  expect(icon('session_1')).not.toBe(icon('session_0'));
+  const action = (title: string) =>
+    container.querySelector(`button[aria-label="Actions for ${title}"]`);
+  expect(action('Conversation 0')?.hasAttribute('data-show-on-hover')).toBe(false);
+  expect(action('Pinned conversation')?.hasAttribute('data-show-on-hover')).toBe(true);
+});
+
+it('starts a meeting in a project from its row menu', async () => {
+  const container = await mount();
+  const requests: unknown[] = [];
+  const listen = (event: Event) => requests.push((event as CustomEvent).detail);
+  window.addEventListener('corral:new-meeting', listen);
+  try {
+    const trigger = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Alpha project menu"]',
+    );
+    if (!trigger) throw new Error('Missing project actions');
+    await act(async () => trigger.click());
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (row) => visibleText(row) === 'New meeting',
+    );
+    if (!item) throw new Error('Missing New meeting');
+    await act(async () => item.click());
+    expect(requests).toEqual(['alpha']);
+  } finally {
+    window.removeEventListener('corral:new-meeting', listen);
+  }
 });

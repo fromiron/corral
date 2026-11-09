@@ -104,6 +104,19 @@ export function useRegisteredCommands(): AppCommand[] {
   );
 }
 
+/** How the palette opens: every command, or session search with a query already typed. */
+export interface PaletteRequest {
+  mode?: 'commands' | 'sessions';
+  query?: string;
+}
+
+export const OPEN_PALETTE = 'corral:open-palette';
+
+/** Opens the ⌘K palette from anywhere, such as the sidebar's search field. */
+export function openPalette(request: PaletteRequest = {}) {
+  window.dispatchEvent(new CustomEvent<PaletteRequest>(OPEN_PALETTE, { detail: request }));
+}
+
 /** Runs the registered command for a shortcut; false when none is registered or it is off. */
 export function runShortcut(id: ShortcutId, digit?: number): boolean {
   if (typeof document !== 'undefined' && settingsInteractionBlocked()) return false;

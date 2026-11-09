@@ -92,7 +92,24 @@
     "retry": "Try again"
   },
   "Shell": {
-    "title": "Navigation"
+    "title": "Navigation",
+    "workspace": "Workspace",
+    "workspaceMenu": "Corral menu",
+    "allProjects": "All projects",
+    "newProject": "New project",
+    "search": "Search…",
+    "searchSessions": "Search sessions",
+    "newConversation": "New conversation",
+    "needsYou": "Needs you",
+    "needsYouCount": "{count, plural, one {# waits for you} other {# wait for you}}",
+    "library": "Library",
+    "automation": "Automation",
+    "featurePreviews": "Feature previews",
+    "newMeeting": "New meeting",
+    "projectActions": "{name} project menu",
+    "noModel": "No model connected",
+    "noModelBody": "Live requests are blocked until you connect one.",
+    "simulatedBody": "Agents are simulated. Nothing is sent to a model."
   },
   "Canvas": {
     "ports": {
@@ -1132,7 +1149,7 @@
   "CommandPalette": {
     "label": "Command palette",
     "search": "Search commands",
-    "placeholder": "Find commands, panes, settings, teams, executions or this project’s sessions…",
+    "placeholder": "Find commands, panes, settings, teams, executions or sessions…",
     "results": "Commands",
     "none": "No matching commands.",
     "openCorral": "Open team: {name}",
@@ -1159,7 +1176,18 @@
       "projects": "Projects",
       "sessions": "Open a session"
     },
-    "draftTeam": "Draft a team from a goal"
+    "draftTeam": "Draft a team from a goal",
+    "sessionSearch": "Search sessions",
+    "sessionPlaceholder": "Find a session by title or purpose…",
+    "scope": "Find sessions in",
+    "allProjects": "All projects",
+    "searchText": "Search messages and results for “{query}”",
+    "searchTextEmpty": "Search messages and results",
+    "needsYou": "Needs you",
+    "library": "Library",
+    "automation": "Automation",
+    "featurePreviews": "Feature previews",
+    "newMeeting": "New meeting in {name}"
   },
   "QuickOpen": {
     "title": "Quick open"

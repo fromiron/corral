@@ -1,8 +1,9 @@
-import type { RunSummary } from '@corral/core';
+import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { Button, Kbd } from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useId,
@@ -15,6 +16,8 @@ import { useStore } from 'zustand';
 import {
   type AppCommand,
   harnessCommands,
+  OPEN_PALETTE,
+  type PaletteRequest,
   runShortcut,
   useRegisterCommands,
   useRegisteredCommands,
@@ -38,6 +41,7 @@ import {
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
+import { openNewMeeting } from './workbench/NewMeeting.tsx';
 import {
   SETTINGS_GROUPS,
   settingsInteractionBlocked,
@@ -47,6 +51,7 @@ import { usePreferences } from './workbench/preferences.ts';
 import { loadRunIdentities, runIdentity, runIdentityText } from './workbench/runIdentity.ts';
 import { SessionSearchDialog } from './workbench/SessionSearchDialog.tsx';
 import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
+import { bySidebarOrder } from './workbench/sessionOrder.ts';
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
 function typing(event: globalThis.KeyboardEvent): boolean {
@@ -58,40 +63,62 @@ function typing(event: globalThis.KeyboardEvent): boolean {
   );
 }
 
+/** Where session search looks: the sidebar's own lists, so the palette reads nothing twice. */
+interface SessionSource {
+  sessions?: readonly WorkSession[];
+  projects?: readonly ProjectSummary[];
+  /** The project of the open screen; undefined outside any project. */
+  projectId?: string | undefined;
+}
+const NO_SESSIONS: readonly WorkSession[] = [];
+const NO_PROJECTS: readonly ProjectSummary[] = [];
+
 /**
  * ⌘K / Ctrl+K command palette and ? shortcut help for the whole Studio (roadmap UX-A5).
  * Modal, keyboard first, IME safe; focus returns where it was on close.
  */
-export function CommandLayer() {
+export function CommandLayer({
+  sessions,
+  projects,
+  projectId,
+  fallbackFocus,
+}: SessionSource & {
+  /** Where focus returns when the opener has gone, as the narrow sidebar's field does. */
+  fallbackFocus?: RefObject<HTMLElement | null>;
+} = {}) {
   const bindings = useShortcutBindings();
-  const [palette, setPalette] = useState(false);
+  const [palette, setPalette] = useState<PaletteRequest | null>(null);
   const [help, setHelp] = useState(false);
   const [sessionSearch, setSessionSearch] = useState<string | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
-  const open = useCallback((which: 'palette' | 'help') => {
+  const open = useCallback((which: 'palette' | 'help', request: PaletteRequest = {}) => {
     returnTo.current = document.activeElement as HTMLElement | null;
-    if (which === 'palette') setPalette(true);
+    if (which === 'palette') setPalette(request);
     else setHelp(true);
   }, []);
-  const close = useCallback(() => {
-    setPalette(false);
-    setHelp(false);
+  const restoreFocus = useCallback(() => {
     const target = returnTo.current;
-    queueMicrotask(() => target?.focus());
-  }, []);
+    queueMicrotask(() => (target?.isConnected ? target : fallbackFocus?.current)?.focus());
+  }, [fallbackFocus]);
+  const close = useCallback(() => {
+    setPalette(null);
+    setHelp(false);
+    restoreFocus();
+  }, [restoreFocus]);
   useEffect(() => {
-    const show = () => {
-      if (!settingsInteractionBlocked()) open('palette');
+    const show = (event: Event) => {
+      if (!settingsInteractionBlocked())
+        open('palette', (event as CustomEvent<PaletteRequest | null>).detail ?? {});
     };
     const search = (event: Event) => {
       if (settingsInteractionBlocked()) return;
-      setPalette(false);
+      setPalette(null);
       setSessionSearch((event as CustomEvent<string>).detail ?? '');
     };
     window.addEventListener('corral:search-sessions', search);
-    window.addEventListener('corral:open-palette', show);
+    window.addEventListener(OPEN_PALETTE, show);
     return () => {
-      window.removeEventListener('corral:open-palette', show);
+      window.removeEventListener(OPEN_PALETTE, show);
       window.removeEventListener('corral:search-sessions', search);
     };
   }, [open]);
@@ -167,9 +194,14 @@ export function CommandLayer() {
     <>
       {palette ? (
         <Palette
+          mode={palette.mode}
+          initialQuery={palette.query}
+          sessions={sessions}
+          projects={projects}
+          projectId={projectId}
           onClose={close}
           onHelp={() => {
-            setPalette(false);
+            setPalette(null);
             setHelp(true);
           }}
         />
@@ -180,7 +212,7 @@ export function CommandLayer() {
         onOpenChange={(open) => {
           if (!open) {
             setSessionSearch(null);
-            queueMicrotask(() => returnTo.current?.focus());
+            restoreFocus();
           }
         }}
       />
@@ -321,7 +353,24 @@ export function Modal({
   );
 }
 
-function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) {
+/**
+ * The palette itself. `sessions` mode lists only sessions, as the sidebar's search field asks;
+ * either mode can widen session search from the open project to all projects.
+ */
+export function Palette({
+  onClose,
+  onHelp,
+  mode = 'commands',
+  initialQuery = '',
+  sessions = NO_SESSIONS,
+  projects = NO_PROJECTS,
+  projectId,
+}: SessionSource & {
+  onClose: () => void;
+  onHelp: () => void;
+  mode?: PaletteRequest['mode'];
+  initialQuery?: string | undefined;
+}) {
   const navigation = useSettingsNavigation();
   const t = useTranslations('CommandPalette');
   const tw = useTranslations('Workspace');
@@ -332,7 +381,12 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
   const format = useFormatter();
   const navigate = useNavigate();
   const services = useServices();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
+  // Inside a project, session search starts there; anywhere else it starts on all projects.
+  const here = projectId ?? currentProject();
+  const hereProject = projects.find((project) => project.projectId === here);
+  const [scope, setScope] = useState<'project' | 'all'>(projectId ? 'project' : 'all');
+  const searchAll = scope === 'all' || !hereProject;
   const [active, setActive] = useState(0);
   const [dynamic, setDynamic] = useState<AppCommand[]>([]);
   const [runDetails, setRunDetails] = useState<Record<string, RunSummary>>({});
@@ -349,40 +403,20 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       services.repository.listProjects(),
       services.repository.listSessions(currentProject()),
     ]).then(
-      async ([corrals, runs, projects, sessions]) => {
+      async ([corrals, runs, allProjects, projectSessions]) => {
         const shownRuns = runs.slice(0, 20);
         const identities = await loadRunIdentities(
           shownRuns,
           runs,
-          sessions,
+          projectSessions,
           (id) => services.transport.getRunDefinition(id),
           false,
         );
         if (!live) return;
         setRunDetails(Object.fromEntries(shownRuns.map((run) => [`run:${run.runId}`, run])));
         setDynamic([
-          ...sessions
-            .filter((x) => !x.archivedAt)
-            .sort(
-              (a, b) =>
-                Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
-            )
-            .map(
-              (x): AppCommand => ({
-                id: `session:${x.sessionId}`,
-                title: x.title,
-                group: t('groups.sessions'),
-                keywords: [x.objective],
-                run: () =>
-                  navigate({
-                    to: '/sessions/$sessionId',
-                    params: { sessionId: x.sessionId },
-                    search: { compose: true },
-                  }),
-              }),
-            ),
           // switch to any active project but the current one.
-          ...projects
+          ...allProjects
             .filter((p) => !p.archivedAt && p.projectId !== currentProject())
             .map(
               (p): AppCommand => ({
@@ -408,7 +442,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
               id: `run:${r.runId}`,
               title: ti('open', {
                 name: runIdentityText(
-                  identities[r.runId] ?? runIdentity(r, runs, sessions, null, false),
+                  identities[r.runId] ?? runIdentity(r, runs, projectSessions, null, false),
                   ti('unnamed'),
                   (number) => ti('number', { number }),
                 ),
@@ -427,7 +461,42 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     };
   }, [services, navigate, t, tp, ti]);
 
+  // Session search matches titles and purposes (keywords) in the chosen scope.
+  const names = useMemo(
+    () => new Map(projects.map((p) => [p.projectId, projectName(p, tp('defaultName'))])),
+    [projects, tp],
+  );
+  const sessionCommands = useMemo(
+    () =>
+      sessions
+        .filter((x) => !x.archivedAt && (searchAll || x.projectId === here))
+        .toSorted(bySidebarOrder)
+        .map(
+          (x): AppCommand => ({
+            id: `session:${x.sessionId}`,
+            title: x.title,
+            group: t('groups.sessions'),
+            keywords: [x.objective],
+            run: () =>
+              navigate({
+                to: '/sessions/$sessionId',
+                params: { sessionId: x.sessionId },
+                search: { compose: true },
+              }),
+          }),
+        ),
+    [sessions, searchAll, here, t, navigate],
+  );
+  const sessionProjects = useMemo(
+    () =>
+      searchAll
+        ? new Map(sessions.map((x) => [`session:${x.sessionId}`, names.get(x.projectId)]))
+        : new Map<string, string | undefined>(),
+    [searchAll, sessions, names],
+  );
+
   const commands = useMemo<AppCommand[]>(() => {
+    if (mode === 'sessions') return sessionCommands;
     const fromTemplate = WORKSPACE_TEMPLATES.map(
       (id): AppCommand => ({
         id: `template:${id}`,
@@ -449,6 +518,17 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         },
       }),
     );
+    const meeting: AppCommand[] = hereProject
+      ? [
+          {
+            id: 'create:meeting',
+            title: t('newMeeting', { name: projectName(hereProject, tp('defaultName')) }),
+            group: t('groups.create'),
+            keywords: ['meeting', '회의'],
+            run: () => openNewMeeting(hereProject.projectId),
+          },
+        ]
+      : [];
     const draftTeam: AppCommand = {
       id: 'create:team-draft',
       title: t('draftTeam'),
@@ -457,6 +537,34 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       run: () => navigate({ to: '/', search: { draft: true } }),
     };
     const go: AppCommand[] = [
+      {
+        id: 'go:inbox',
+        title: t('needsYou'),
+        group: t('groups.go'),
+        keywords: ['inbox', 'pending', '확인'],
+        run: () => navigate({ to: '/inbox' }),
+      },
+      {
+        id: 'go:library',
+        title: t('library'),
+        group: t('groups.go'),
+        keywords: ['teams', 'templates', 'resources', '팀'],
+        run: () => navigate({ to: '/library/teams' }),
+      },
+      {
+        id: 'go:schedules',
+        title: t('automation'),
+        group: t('groups.go'),
+        keywords: ['schedules', 'scheduled', '예약'],
+        run: () => navigate({ to: '/schedules' }),
+      },
+      {
+        id: 'go:preview',
+        title: t('featurePreviews'),
+        group: t('groups.go'),
+        keywords: ['preview', 'sample', '미리보기'],
+        run: () => navigate({ to: '/preview' }),
+      },
       {
         id: 'go:corrals',
         title: t('goCorrals'),
@@ -493,15 +601,45 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
     const help = registered.find((c) => c.id === 'help:shortcuts');
     return [
       ...registered.filter((c) => c.id !== 'help:shortcuts'),
+      ...sessionCommands,
       ...dynamic,
       ...go,
+      ...meeting,
       draftTeam,
       ...fromTemplate,
       ...(help ? [{ ...help, run: onHelp }] : []),
     ];
-  }, [dynamic, registered, services, navigate, t, tw, tp, onHelp, navigation.link]);
+  }, [
+    mode,
+    sessionCommands,
+    hereProject,
+    dynamic,
+    registered,
+    services,
+    navigate,
+    t,
+    tw,
+    tp,
+    onHelp,
+    navigation.link,
+  ]);
 
-  const ranked = rankCommands(query, commands) as AppCommand[];
+  // Message and result text is the server's search. It takes the same words, so it always
+  // closes the list rather than competing in the ranking.
+  const textSearch: AppCommand[] =
+    services.mode === 'server'
+      ? [
+          {
+            id: 'search:text',
+            title: query.trim() ? t('searchText', { query: query.trim() }) : t('searchTextEmpty'),
+            group: ts('title'),
+            run: () => {
+              window.dispatchEvent(new CustomEvent('corral:search-sessions', { detail: query }));
+            },
+          },
+        ]
+      : [];
+  const ranked = [...(rankCommands(query, commands) as AppCommand[]), ...textSearch];
   // One heading per group, in the order the groups first appear in the ranking.
   const grouped = new Map<string, AppCommand[]>();
   for (const command of ranked)
@@ -509,6 +647,12 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
   const shown = [...grouped.values()].flat();
   const current = Math.min(active, Math.max(0, shown.length - 1));
   const selectedRun = runDetails[shown[current]?.id ?? ''];
+  const chooseScope = (next: 'project' | 'all') => {
+    setScope(next);
+    setActive(0);
+    // The list follows the field's keys, so the field keeps focus after a click.
+    inputRef.current?.focus();
+  };
   const runCommand = async (command: AppCommand | undefined) => {
     if (!command || command.disabled) return;
     onClose();
@@ -536,13 +680,13 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
       <input
         ref={inputRef}
         role="combobox"
-        aria-label={t('search')}
+        aria-label={mode === 'sessions' ? t('sessionSearch') : t('search')}
         aria-expanded="true"
         aria-controls={listId}
         aria-activedescendant={shown[current] ? `${listId}-${current}` : undefined}
         aria-autocomplete="list"
         value={query}
-        placeholder={t('placeholder')}
+        placeholder={mode === 'sessions' ? t('sessionPlaceholder') : t('placeholder')}
         onChange={(event) => {
           setQuery(event.target.value);
           setActive(0);
@@ -550,20 +694,29 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
         onKeyDown={onKeyDown}
         className="w-full rounded-t-lg border-b border-line bg-transparent px-3 py-2.5 text-sm outline-none"
       />
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-caption text-muted-foreground">
-        <p>{ts('paletteScope')}</p>
-        {services.mode === 'server' ? (
+      <fieldset
+        aria-label={t('scope')}
+        className="flex min-w-0 flex-wrap items-center gap-1 px-2 py-1.5"
+      >
+        {hereProject ? (
           <Button
-            variant="ghost"
+            variant={searchAll ? 'ghost' : 'secondary'}
             size="compact"
-            onClick={() =>
-              window.dispatchEvent(new CustomEvent('corral:search-sessions', { detail: query }))
-            }
+            aria-pressed={!searchAll}
+            onClick={() => chooseScope('project')}
           >
-            {ts('searchBody')}
+            {projectName(hereProject, tp('defaultName'))}
           </Button>
         ) : null}
-      </div>
+        <Button
+          variant={searchAll ? 'secondary' : 'ghost'}
+          size="compact"
+          aria-pressed={searchAll}
+          onClick={() => chooseScope('all')}
+        >
+          {t('allProjects')}
+        </Button>
+      </fieldset>
       <div
         id={listId}
         role="listbox"
@@ -580,6 +733,7 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
             {list.map((command) => {
               const index = shown.indexOf(command);
               const run = runDetails[command.id];
+              const where = sessionProjects.get(command.id);
               return (
                 <div
                   key={command.id}
@@ -600,6 +754,11 @@ function Palette({ onClose, onHelp }: { onClose: () => void; onHelp: () => void 
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{command.title}</span>
+                    {where ? (
+                      <span className="block truncate text-caption text-muted-foreground">
+                        {where}
+                      </span>
+                    ) : null}
                     {run ? (
                       <span className="block text-xs text-muted-foreground">
                         {status(run.status)} ·{' '}

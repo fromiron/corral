@@ -3,19 +3,26 @@ import { StatusDot } from '@corral/react';
 import {
   Button,
   Menu,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSeparator,
   MenuTrigger,
 } from '@corral/react/design-kit';
 import { ChevronDown } from '@corral/react/icons';
 import { useTranslations } from 'use-intl';
+import { useRegisteredCommands } from '../commandRegistry.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
 
 // Each segment of the top bar's path is the menu for its level (project / session / run), so
 // moving between siblings needs neither the sidebar nor a second row of controls.
 
 const crumb = 'min-w-0 max-w-64 gap-1 px-2 font-medium';
+
+// The open page registers its own session actions with their revision checks
+// (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those.
+const SESSION_ACTIONS = ['session:rename', 'session:pin', 'session:archive'];
 
 function latestRun(runs: readonly RunSummary[], sessionId: string) {
   let latest: RunSummary | undefined;
@@ -45,6 +52,10 @@ export function SessionMenu({
   const siblings = sessions
     .filter((session) => session.projectId === projectId && !session.archivedAt)
     .sort(bySidebarOrder);
+  const registered = useRegisteredCommands();
+  const actions = SESSION_ACTIONS.flatMap(
+    (id) => registered.find((command) => command.id === id) ?? [],
+  );
   return (
     <h2 className="flex min-w-0">
       <Menu>
@@ -53,6 +64,16 @@ export function SessionMenu({
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         </MenuTrigger>
         <MenuPopup align="start" aria-label={n('switchSession')} className="max-w-96 min-w-64">
+          {actions.map((command) => (
+            <MenuItem
+              key={command.id}
+              disabled={command.disabled}
+              onClick={() => void command.run()}
+            >
+              {command.title}
+            </MenuItem>
+          ))}
+          {actions.length ? <MenuSeparator /> : null}
           <MenuRadioGroup value={sessionId} onValueChange={(value) => onOpen(String(value))}>
             {siblings.map((session) => {
               const run = latestRun(runs, session.sessionId);

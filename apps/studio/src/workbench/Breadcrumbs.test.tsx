@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { setCommands } from '../commandRegistry.ts';
 import { RunMenu, SessionMenu } from './Breadcrumbs.tsx';
 
 Element.prototype.getAnimations ??= () => [];
@@ -55,6 +56,13 @@ const session = (id: string, updatedAt: string, extra: Partial<WorkSession> = {}
   }) as unknown as WorkSession;
 const run = (runId: string, sessionId: string, status: string, startedAt: string) =>
   ({ runId, sessionId, status, startedAt }) as unknown as RunSummary;
+
+/** Text a person reads: the kit draws each label twice, once hidden to reserve its bold width. */
+function visibleText(element: Element) {
+  const copy = element.cloneNode(true) as Element;
+  for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+  return copy.textContent?.trim();
+}
 
 async function open(trigger: HTMLElement | null | undefined) {
   expect(trigger).toBeTruthy();
@@ -121,4 +129,73 @@ it('lists the session runs newest first by number and status and selects one', a
   expect(items[1]?.getAttribute('aria-checked')).toBe('true');
   await act(async () => items[0]?.click());
   expect(onSelect).toHaveBeenCalledWith('second');
+});
+
+it('puts this session’s rename, pin and archive above the session list and runs the page’s own actions', async () => {
+  const rename = vi.fn();
+  const pin = vi.fn();
+  const archive = vi.fn();
+  // The session page registers these with its revision checks (session/SessionActions.tsx).
+  setCommands('session', [
+    { id: 'session:rename', title: 'Rename session', group: 'Session', run: rename },
+    { id: 'session:pin', title: 'Pin session', group: 'Session', run: pin },
+    { id: 'session:archive', title: 'Archive session', group: 'Session', run: archive },
+    { id: 'session:review', title: 'Open the review screen', group: 'Session', run: vi.fn() },
+  ]);
+  try {
+    const container = await render(
+      <SessionMenu
+        sessions={[
+          session('current', '2026-11-03T00:00:00Z'),
+          session('old', '2026-11-01T00:00:00Z'),
+        ]}
+        runs={[]}
+        projectId="alpha"
+        sessionId="current"
+        title="Session current"
+        onOpen={vi.fn()}
+      />,
+    );
+    await act(async () => container.querySelector<HTMLElement>('h2 button')?.click());
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]'),
+    ];
+    expect(rows.map((row) => `${row.getAttribute('role')}:${visibleText(row)}`)).toEqual([
+      'menuitem:Rename session',
+      'menuitem:Pin session',
+      'menuitem:Archive session',
+      expect.stringMatching(/^menuitemradio:Session current/),
+      expect.stringMatching(/^menuitemradio:Session old/),
+    ]);
+    await act(async () => rows[1]?.click());
+    expect(pin).toHaveBeenCalledTimes(1);
+    expect(rename).not.toHaveBeenCalled();
+    expect(archive).not.toHaveBeenCalled();
+  } finally {
+    setCommands('session', null);
+  }
+});
+
+it('shows only the actions the open page offers, as for a meeting', async () => {
+  setCommands('session', [
+    { id: 'session:archive', title: 'Archive session', group: 'Session', run: vi.fn() },
+  ]);
+  try {
+    const container = await render(
+      <SessionMenu
+        sessions={[session('current', '2026-11-03T00:00:00Z')]}
+        runs={[]}
+        projectId="alpha"
+        sessionId="current"
+        title="Session current"
+        onOpen={vi.fn()}
+      />,
+    );
+    await act(async () => container.querySelector<HTMLElement>('h2 button')?.click());
+    expect(
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(visibleText),
+    ).toEqual(['Archive session']);
+  } finally {
+    setCommands('session', null);
+  }
 });
