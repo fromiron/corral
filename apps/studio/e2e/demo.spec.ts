@@ -197,12 +197,12 @@ test('the guide can pause at round 2 so a visitor has time to steer at normal sp
   // The guide pauses through the normal run command, and points Reins at the round 2 Writer.
   await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 20_000 });
   await expect(arm).toHaveCount(0);
-  const reins = page.getByRole('region', { name: 'Reins', exact: true });
+  const reins = page.getByRole('region', { name: /^Give instruction/ });
   const writers = cardsOf(page, 'Writer');
   const round2 = await writers.filter({ hasText: 'Round 2' }).getAttribute('data-execution-id');
   await expect(reins).toContainText(`execution ${round2}`);
-  await page.getByLabel('Instruction').fill('Lead with the cost difference.');
-  await page.getByLabel('Instruction').press('Enter');
+  await page.getByLabel('Instruction', { exact: true }).fill('Lead with the cost difference.');
+  await page.getByLabel('Instruction', { exact: true }).press('Enter');
   await page.getByRole('button', { name: 'Resume run', exact: true }).click();
   await expect(step(page, 'steer')).toHaveAttribute('data-state', 'done', { timeout: 15_000 });
   await approve(page, 'Your decision');

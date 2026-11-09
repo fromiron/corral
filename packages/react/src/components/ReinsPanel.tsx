@@ -16,8 +16,9 @@ export interface SteerTarget {
 }
 
 /**
- * Reins for one execution. The header always says who receives the instruction,
- * when it takes effect and how far it reaches. Directive badges change only on committed events.
+ * Steering one execution, a part of Reins that the screen names by its action. The header always
+ * says who receives the instruction, when it takes effect and how far it reaches. Directive badges
+ * change only on committed events.
  */
 export function ReinsPanel({
   session,
@@ -202,12 +203,11 @@ export function ReinsPanel({
   return (
     <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3">
       <h2 id={`${inputId}-heading`} className="text-sm font-semibold">
-        {t('heading')}
+        {t('heading')} · <span>{target.nodeLabel}</span>
       </h2>
       {compact ? (
         <>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-            <span className="font-medium">{target.nodeLabel}</span>
             <span>
               {projection?.executionOrder.includes(target.executionId)
                 ? t('executionNumber', {

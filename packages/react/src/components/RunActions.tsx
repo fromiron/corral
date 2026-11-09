@@ -29,7 +29,7 @@ export function RunActions({
   if (!projection) return null;
   // A finished run in the page header has no controls: only its receipts, if any.
   if (compact && terminal) {
-    return <CommandReceipts session={session} target={`run:${projection.runId}`} />;
+    return <CommandReceipts session={session} target={`run:${projection.runId}`} openOnly />;
   }
   const send = (command: SessionCommand) => {
     void session
@@ -123,7 +123,7 @@ export function RunActions({
         </div>
       ) : null}
       {!compact && confirming ? confirmation : null}
-      <CommandReceipts session={session} target={`run:${projection.runId}`} />
+      <CommandReceipts session={session} target={`run:${projection.runId}`} openOnly />
     </section>
   );
 }

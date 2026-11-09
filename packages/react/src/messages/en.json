@@ -350,7 +350,7 @@
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
-    "heading": "Reins",
+    "heading": "Give instruction",
     "noTarget": "Start a run and choose an execution to steer.",
     "target": "Target",
     "delivery": "Delivery",
@@ -4696,6 +4696,7 @@
     },
     "activity": "Activity",
     "needsYou": "Needs your input",
+    "respond": "{count, plural, =1 {Respond} other {Respond · #}}",
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",
     "results": "Results",

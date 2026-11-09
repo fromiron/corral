@@ -80,7 +80,7 @@ test.describe('slow replies', () => {
     await corral.open('/');
     await agentToOutput(page);
     await startTestRun(page);
-    const box = page.getByLabel('Instruction');
+    const box = page.getByLabel('Instruction', { exact: true });
     await box.fill('Use primary sources only.');
     await box.press('Enter');
     const instruction = page.getByRole('listitem').filter({ hasText: 'Use primary sources only.' });
