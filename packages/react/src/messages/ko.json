@@ -2639,9 +2639,9 @@
     },
     "tally": {
       "heading": "추론 판정",
-      "judged": "판정한 요청 {count}개",
-      "applied": "적용한 추천 {count}개",
-      "fallbacks": "이유별 대체"
+      "judged": "판정한 요청",
+      "applied": "적용한 추천",
+      "fallback": "대체"
     }
   },
   "LocalAi": {

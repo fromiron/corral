@@ -1,6 +1,6 @@
 import type { ReasoningResolution, RouteRecord } from '@corral/contracts';
 import { emptyProjection, type ModelCallView } from '@corral/core';
-import { render } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { expect, it } from 'vitest';
 import { RoutingTally } from '../src/components/RoutingTally.tsx';
@@ -80,12 +80,15 @@ it('counts the run’s judged requests and its fallbacks by reason', () => {
       <RoutingTally projection={projection} />
     </IntlProvider>,
   );
-  const text = container.textContent ?? '';
-  expect(text).toContain('4 requests judged');
-  expect(text).toContain('1 recommendation applied');
-  expect([...container.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
-    'Timed out: 2',
-    'Busy: 1',
+  const tally = within(container).getByRole('region', { name: 'Reasoning judgment' });
+  // The same label/value rows as the usage card beside it.
+  expect(
+    [...tally.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextSibling?.textContent]),
+  ).toEqual([
+    ['Judged requests', '4'],
+    ['Recommendations applied', '1'],
+    ['Fallback · Timed out', '2'],
+    ['Fallback · Busy', '1'],
   ]);
 });
 

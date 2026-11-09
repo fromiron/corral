@@ -2639,9 +2639,9 @@
     },
     "tally": {
       "heading": "Reasoning judgment",
-      "judged": "{count, plural, one {# request judged} other {# requests judged}}",
-      "applied": "{count, plural, one {# recommendation applied} other {# recommendations applied}}",
-      "fallbacks": "Fallbacks by reason"
+      "judged": "Judged requests",
+      "applied": "Recommendations applied",
+      "fallback": "Fallback"
     }
   },
   "LocalAi": {

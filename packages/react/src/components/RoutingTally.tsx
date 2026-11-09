@@ -2,6 +2,7 @@ import type { RoutingFallbackReason } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
+import { KitCard, KitCardContent, KitCardHeader, KitCardTitle } from '../design-kit/index.ts';
 
 /** A run's judged requests, how many took the recommendation, and its fallbacks by reason. */
 export function RoutingTally({ projection }: { projection: RunProjection }) {
@@ -20,25 +21,36 @@ export function RoutingTally({ projection }: { projection: RunProjection }) {
   }
   const byCount = [...fallbacks].sort((a, b) => b[1] - a[1]);
   return (
-    <section aria-labelledby={heading} className="flex flex-col gap-1 text-sm">
-      <h3 id={heading} className="font-semibold">
-        {t('tally.heading')}
-      </h3>
-      <p>
-        {t('tally.judged', { count: judged.length })} · {t('tally.applied', { count: applied })}
-      </p>
-      {byCount.length ? (
-        <>
-          <h4 className="text-xs text-muted-foreground">{t('tally.fallbacks')}</h4>
-          <ul className="flex flex-col gap-0.5 text-xs">
-            {byCount.map(([reason, count]) => (
-              <li key={reason}>
-                {t(`route.reason.${reason}`)}: {count}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-    </section>
+    <KitCard role="region" aria-labelledby={heading}>
+      <KitCardHeader>
+        <h3 id={heading}>
+          <KitCardTitle>{t('tally.heading')}</KitCardTitle>
+        </h3>
+      </KitCardHeader>
+      <KitCardContent>
+        <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
+          <dt>{t('tally.judged')}</dt>
+          <dd>{judged.length}</dd>
+          <dt>{t('tally.applied')}</dt>
+          <dd>{applied}</dd>
+          {byCount.map(([reason, count]) => (
+            <Row
+              key={reason}
+              label={`${t('tally.fallback')} · ${t(`route.reason.${reason}`)}`}
+              value={count}
+            />
+          ))}
+        </dl>
+      </KitCardContent>
+    </KitCard>
+  );
+}
+
+function Row({ label, value }: { label: string; value: number }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </>
   );
 }

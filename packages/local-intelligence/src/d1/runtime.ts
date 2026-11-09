@@ -187,6 +187,9 @@ export class D1Runtime {
       if (this.starting?.done === done) this.starting = null;
     });
     this.starting = { threads, done };
+    // Starting covers the wait for an old child's exit, so a reply sent now already says so.
+    this.state = 'starting';
+    this.error = null;
     return done;
   }
 

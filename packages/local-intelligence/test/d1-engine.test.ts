@@ -156,6 +156,18 @@ describe('the Local runtime', () => {
     await s.fake.children[0]!.exited;
   });
 
+  it('says starting as soon as it is asked to prepare, so a reply already shows it', async () => {
+    const s = setup();
+    s.engine.prepare(2);
+    expect(s.engine.status()).toMatchObject({ runtime: 'starting', error: null });
+    await until(() => s.engine.status().runtime === 'ready');
+    // Other threads end the old child first; the wait for that exit is part of starting.
+    s.engine.prepare(4);
+    expect(s.engine.status().runtime).toBe('starting');
+    await until(() => s.engine.status().runtime === 'ready');
+    expect(s.engine.status().threads).toBe(4);
+  });
+
   it('is not ready for the first request, which starts it; a later one is judged', async () => {
     const s = setup();
     expect(s.backend().admit()).toEqual({ ok: false, reason: 'not-ready' });

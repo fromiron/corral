@@ -60,6 +60,38 @@ describe('ReasoningSummary', () => {
     expect(line.textContent).toBe('Local · CPU · Recommended low → applied low · 420ms');
   });
 
+  it('shows measured times as whole milliseconds', async () => {
+    const line = summary({
+      reasoning: {
+        preparationId: 'prep_ms',
+        requested: { mode: 'auto' },
+        resolved: 'low',
+        source: 'router',
+        route: route({
+          timing: {
+            deadlineMs: 5000,
+            packMs: 32.048,
+            countMs: 30.753,
+            engineMs: 3593.063,
+            callerWaitMs: 3625.153,
+          },
+        }),
+      },
+      reasoningSettled: {
+        basis: 'native-response-complete',
+        physicalOccupiedMs: 3624.906,
+        lateResult: false,
+        lateSelected: null,
+      },
+    });
+    expect(line.textContent).toBe('Local · CPU · Recommended low → applied low · 3,625ms');
+    await act(async () => line.click());
+    const text = (await screen.findByRole('dialog')).textContent ?? '';
+    expect(text).not.toMatch(/\d\.\d/);
+    expect(text).toContain('3,625ms');
+    expect(text).toContain('3,593ms');
+  });
+
   it('a timeout says what went instead and never reads as an applied recommendation', () => {
     const call: Call = {
       reasoning: {

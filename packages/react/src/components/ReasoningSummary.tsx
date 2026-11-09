@@ -62,7 +62,9 @@ function RouteSummary({
   const t = useTranslations('Reasoning');
   const td = useTranslations('DecisionApis');
   const format = useFormatter();
-  const ms = (value: number) => t('route.ms', { ms: format.number(value) });
+  // Timings are measured with sub-millisecond precision; people read whole milliseconds.
+  const whole = (value: number) => format.number(Math.round(value));
+  const ms = (value: number) => t('route.ms', { ms: whole(value) });
   const applied = resolution.resolved ?? t('provider_default');
   const apiId = DECISION_APIS.find((id) => route.engineIdentity?.startsWith(`${id}/`));
   const device = route.device?.actual?.toUpperCase() ?? null;
@@ -109,8 +111,8 @@ function RouteSummary({
   const times = [
     timing.callerWaitMs !== null
       ? t('route.waited', {
-          wait: format.number(timing.callerWaitMs),
-          deadline: format.number(timing.deadlineMs),
+          wait: whole(timing.callerWaitMs),
+          deadline: whole(timing.deadlineMs),
         })
       : null,
     timing.engineMs !== null ? t('route.engineTime', { time: ms(timing.engineMs) }) : null,
