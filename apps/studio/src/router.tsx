@@ -98,7 +98,9 @@ export const libraryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/library',
   validateSearch: validateLibrarySearch,
-  component: () => <LibraryPage />,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: '/library/teams', search, replace: true });
+  },
 });
 export const libraryTeamsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -138,6 +140,21 @@ export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
   validateSearch: draftSearch,
+  // Teams live in the library now: the old Teams link and "draft a team" land there, replacing.
+  beforeLoad: ({ location, params, search }) => {
+    if (location.hash.replace(/^#/, '') === 'corrals')
+      throw redirect({
+        to: '/library/teams',
+        search: { project: params.projectId, ...validateSettingsOverlay({ ...search }) },
+        replace: true,
+      });
+    if (search.draft)
+      throw redirect({
+        to: '/library/templates',
+        search: { project: params.projectId, draft: true },
+        replace: true,
+      });
+  },
   loader: async ({ context, params }) => {
     const [projects, allCorrals, allRuns] = await Promise.all([
       context.services.repository.listProjects(),

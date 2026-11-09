@@ -1,4 +1,4 @@
-import type { InboxItemView } from '@corral/client';
+import type { InboxItemView, WorkspaceBindingView, WorktreeView } from '@corral/client';
 import {
   type CorralSummary,
   DEFAULT_PROJECT_ID,
@@ -6,43 +6,50 @@ import {
   type RunSummary,
   type WorkSession,
 } from '@corral/core';
-import { emptyDraft, importDefinition } from '@corral/react';
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
   Button,
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+  EmptyState,
   InputField,
   InputGroup,
-  KitButton,
-  KitCardTitle,
+  KitBadge,
   Menu,
   MenuItem,
   MenuPopup,
   MenuSeparator,
   MenuTrigger,
+  Page,
+  SectionLabel,
   Select,
+  TabItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TabPanel,
+  Tabs,
+  TabsList,
   Textarea,
-  Tooltip,
 } from '@corral/react/design-kit';
-import { Ellipsis } from '@corral/react/icons';
+import { ChevronDown, Ellipsis, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
-import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
-import { TemplateCopyDialog } from '../TemplateCopyDialog.tsx';
-import { createFromTemplate, WORKSPACE_TEMPLATES, type WorkspaceTemplateId } from '../templates.ts';
-import { StartMeeting } from '../workbench/NewMeeting.tsx';
+import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { NewMeetingDialog } from '../workbench/NewMeeting.tsx';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { newSessionDraftKey } from '../workbench/newSessionDraft.ts';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { RunList } from '../workbench/RunList.tsx';
@@ -53,28 +60,28 @@ import {
   uncertainSessionTerminal,
 } from '../workbench/sessionList.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
-import { InboxSection, WorkFolderSection } from './FilesViews.tsx';
+import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
+import { InboxSection } from './FilesViews.tsx';
 import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
-/** Fired by a template card to choose that team in the new-session box. */
-const START_WITH_TEMPLATE = 'corral:start-with-template';
+// A project's workspace (docs/specs/workbench.md#전역-셸과-화면-틀): the kit page frame with the
+// project's name, folder state, pending count and actions, then Sessions · Runs · Environment ·
+// Instructions & memory. Teams live in the library.
 
 export function WorkspacePage() {
   const t = useTranslations('Workspace');
-  const ago = useSessionAge();
-  const { project, projects, corrals, runs, sessions } = workspaceRoute.useLoaderData();
+  const tp = useTranslations('Projects');
+  const tm = useTranslations('Meetings');
+  const { project, corrals, runs, sessions } = workspaceRoute.useLoaderData();
   const projectId = project.projectId;
   const archived = project.archivedAt !== null;
   useEffect(() => setCurrentProject(projectId), [projectId]);
-  const { repository, persistent, mode } = useServices();
-  const router = useRouter();
   const navigate = useNavigate();
+  const href = useRouterState({ select: (state) => state.location.href });
   const [errors, setErrors] = useState<string[]>([]);
-  const [inboxItems, setInboxItems] = useState<InboxItemView[]>([]);
-  const importInput = useRef<HTMLInputElement>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const [copyTemplate, setCopyTemplate] = useState<WorkspaceTemplateId | null>(null);
+  const inboxItems = useProjectInbox(projectId);
+  const folder = useFolder(projectId);
   // Roadmap 16: two runs picked for comparison, oldest choice dropped past two.
   const [picked, setPicked] = useState<string[]>([]);
   const tc = useTranslations('Compare');
@@ -84,235 +91,21 @@ export function WorkspacePage() {
         ? [...picked.filter((id) => id !== runId), runId].slice(-2)
         : picked.filter((id) => id !== runId),
     );
-  const { draft, newSession } = workspaceRoute.useSearch();
-  const [drafting, setDrafting] = useState(Boolean(draft));
-  const closeDraft = () => {
-    setDrafting(false);
-    if (draft)
-      void navigate({
-        to: '/projects/$projectId',
-        params: { projectId },
-        search: {},
-        replace: true,
-      });
-  };
-
-  const openNew = async () => {
-    const draft = emptyDraft('untitled', t('newName'));
-    const result = await repository.save({
-      definition: draft.definition,
-      expectedDefinitionRevision: null,
-      projectId,
-    });
-    if (!result.ok) return setErrors([result.message]);
-    await navigate({ to: '/corrals/$corralId/edit', params: { corralId: result.record.corralId } });
-  };
-
-  const onImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return setErrors(['Choose a definition file (.corral.json).']);
-    const imported = importDefinition(await file.text());
-    if (!imported.ok) return setErrors(imported.errors);
-    const result = await repository.save({
-      definition: imported.draft.definition,
-      expectedDefinitionRevision: null,
-      projectId,
-    });
-    if (!result.ok) return setErrors([result.message]);
-    await navigate({ to: '/corrals/$corralId/edit', params: { corralId: result.record.corralId } });
-  };
-
-  const duplicate = async (corralId: string, name: string) => {
-    const result = await repository.duplicate(corralId, t('duplicateName', { name }));
-    if (!result.ok) return setErrors([result.message]);
-    await router.invalidate();
-  };
-
-  const move = async (corralId: string, to: string) => {
-    const result = await repository.moveCorral(corralId, to);
-    if (!result.ok) return setErrors([result.message]);
-    await router.invalidate();
-  };
-
-  const remove = async (corralId: string) => {
-    await repository.remove(corralId);
-    setConfirming(null);
-    await router.invalidate();
-  };
-
-  const teamsPanel = (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="corrals" className="text-base font-semibold">
-          {t('heading')}
-        </h2>
-        <div className={`flex items-center gap-2 ${archived ? 'hidden' : ''}`}>
-          <Tooltip content={t('importHint')} className="max-w-xs">
-            <Button
-              variant="tertiary"
-              onClick={() => importInput.current?.click()}
-              aria-description={t('importHint')}
-            >
-              {t('import')}
-            </Button>
-          </Tooltip>
-          <input
-            ref={importInput}
-            type="file"
-            accept=".json,application/json"
-            onChange={onImport}
-            aria-label={t('import')}
-            aria-description={t('importHint')}
-            tabIndex={-1}
-            className="hidden"
-          />
-          <Button variant="tertiary" onClick={() => setDrafting(true)}>
-            {t('draftFromGoal')}
-          </Button>
-          <Button onClick={openNew}>{t('new')}</Button>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {mode === 'server'
-          ? t('storedOnServer')
-          : persistent
-            ? t('storedLocally')
-            : t('notPersistent')}
-      </p>
-      {corrals.length === 0 ? (
-        <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line p-4">
-          <p className="text-sm font-medium">{t('empty')}</p>
-          <p className="text-sm text-muted-foreground">{t('emptyHint')}</p>
-        </div>
-      ) : (
-        <ul className="flex flex-col" aria-label={t('heading')}>
-          {corrals.map((corral) => (
-            <li
-              key={corral.corralId}
-              className="flex flex-wrap items-center justify-between gap-2 border-b border-line/50 py-2.5 last:border-b-0"
-            >
-              <div className="flex min-w-0 flex-col">
-                <Link
-                  to="/corrals/$corralId/edit"
-                  params={{ corralId: corral.corralId }}
-                  className="font-medium hover:underline"
-                >
-                  {corral.name}
-                </Link>
-                <span className="text-xs text-muted-foreground">
-                  {t('revisions', {
-                    definition: corral.definitionRevision,
-                    nodes: corral.nodeCount,
-                  })}{' '}
-                  ·{' '}
-                  {t('updated', {
-                    time: ago(corral.updatedAt),
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-xs">
-                <MoveCorral
-                  name={corral.name}
-                  current={projectId}
-                  projects={projects}
-                  onMove={(to) => void move(corral.corralId, to)}
-                />
-                <Button
-                  variant="ghost"
-                  size="compact"
-                  onClick={() => duplicate(corral.corralId, corral.name)}
-                >
-                  {t('duplicate')}
-                </Button>
-                {confirming === corral.corralId ? (
-                  <>
-                    <Button
-                      variant="destructive-outline"
-                      size="compact"
-                      onClick={() => remove(corral.corralId)}
-                    >
-                      {t('confirmDelete')}
-                    </Button>
-                    <Button variant="ghost" size="compact" onClick={() => setConfirming(null)}>
-                      {t('cancel')}
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="ghost-destructive"
-                    size="compact"
-                    onClick={() => setConfirming(corral.corralId)}
-                  >
-                    {t('delete')}
-                  </Button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <section
-        aria-labelledby="templates-heading"
-        hidden={archived}
-        className="flex flex-col gap-2"
-      >
-        <h3 id="templates-heading" className="text-ui font-semibold">
-          {t('templatesHeading')}
-        </h3>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {WORKSPACE_TEMPLATES.map((id) => (
-            <article key={id} aria-labelledby={`template-${id}`}>
-              <Card className="h-full">
-                <CardHeader>
-                  <h4 id={`template-${id}`}>
-                    <KitCardTitle>{t(`template.${id}.name`)}</KitCardTitle>
-                  </h4>
-                  <CardDescription>{t(`template.${id}.body`)}</CardDescription>
-                </CardHeader>
-                <CardFooter className="mt-auto">
-                  {id === 'blank' ? null : (
-                    <Button
-                      onClick={() =>
-                        window.dispatchEvent(new CustomEvent(START_WITH_TEMPLATE, { detail: id }))
-                      }
-                    >
-                      {t('startWithTemplate')}
-                    </Button>
-                  )}
-                  <Button variant="tertiary" onClick={() => setCopyTemplate(id)}>
-                    {t('useTemplate')}
-                  </Button>
-                </CardFooter>
-              </Card>
-            </article>
-          ))}
-        </div>
-      </section>
-      {copyTemplate ? (
-        <TemplateCopyDialog
-          template={copyTemplate}
-          projectId={projectId}
-          corrals={corrals}
-          onClose={() => setCopyTemplate(null)}
-          onSaved={async (corralId) => {
-            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
-          }}
-        />
-      ) : null}
-    </div>
-  );
+  const { newSession } = workspaceRoute.useSearch();
+  const [meeting, setMeeting] = useState(false);
+  const shown = projectName(project, tp('defaultName'));
 
   const runsPanel = (
     <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <h2 id="runs-heading" className="text-base font-semibold">
+        <h2 id="runs-heading" className="sr-only">
           {t('runsHeading')}
         </h2>
         {picked.length === 2 ? (
           <Button
             variant="tertiary"
             size="compact"
+            className="ml-auto"
             onClick={() =>
               void navigate({ to: '/compare', search: { a: picked[0], b: picked[1] } })
             }
@@ -322,7 +115,7 @@ export function WorkspacePage() {
         ) : null}
       </div>
       {runs.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('runsEmpty')}</p>
+        <p className="text-body text-muted-foreground">{t('runsEmpty')}</p>
       ) : (
         <RunList runs={runs} sessions={sessions} picked={picked} onPick={pick} />
       )}
@@ -332,153 +125,223 @@ export function WorkspacePage() {
   return (
     <WorkbenchLayout
       main={
-        <main className="min-h-0 flex-1 overflow-auto">
-          <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 pt-10 pb-12">
-            <ProjectHeader project={project} onError={(message) => setErrors([message])} />
-            {archived ? null : (
-              <>
-                <StartSession
-                  key={`${projectId}:${newSession ? 'new' : 'start'}`}
-                  focus={Boolean(newSession)}
-                  projectId={projectId}
-                  corrals={corrals}
-                />
-                <StartMeeting projectId={projectId} />
-                <GettingStarted runs={runs.length} projectId={projectId} />
-              </>
-            )}
-            <InboxSection projectId={projectId} onItems={setInboxItems} />
-            {errors.length > 0 ? (
-              <div
-                role="alert"
-                className="rounded-lg border border-danger/50 p-3 text-sm text-danger"
-              >
-                <p>{t('importFailed')}</p>
-                <ul className="list-disc pl-5">
-                  {errors.map((error) => (
-                    <li key={error}>{error}</li>
-                  ))}
-                </ul>
+        <main className="flex min-h-0 flex-1 flex-col">
+          <Page
+            title={shown}
+            {...(project.description ? { description: project.description } : {})}
+            toolbar={
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <ProjectMenu project={project} onError={(message) => setErrors([message])} />
+                    {archived ? (
+                      <KitBadge variant="dot" size="compact" color="gray">
+                        {tp('archived')}
+                      </KitBadge>
+                    ) : null}
+                    <FolderBadge folder={folder} />
+                    {inboxItems.length > 0 ? (
+                      <Button variant="ghost" size="compact" render={<Link to="/inbox" />}>
+                        {t('pending', { count: inboxItems.length })}
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {archived ? null : (
+                      <>
+                        <NewConversation
+                          key={`${projectId}:${newSession ? 'new' : 'start'}`}
+                          focus={Boolean(newSession)}
+                          projectId={projectId}
+                          corrals={corrals}
+                        />
+                        <Button variant="secondary" onClick={() => setMeeting(true)}>
+                          <Users aria-hidden />
+                          {tm('new')}
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      variant="ghost"
+                      render={
+                        <Link
+                          to="/preview/$feature"
+                          params={{ feature: 'task-board' }}
+                          search={{ returnTo: href }}
+                        />
+                      }
+                    >
+                      {t('taskBoardPreview')}
+                    </Button>
+                  </div>
+                </div>
+                {project.archivedAt ? (
+                  <p role="note" className="text-body text-warning">
+                    {tp('archivedNote')}
+                  </p>
+                ) : null}
+                {errors.length > 0 ? (
+                  <div role="alert" className="text-body text-destructive">
+                    {errors.map((error) => (
+                      <p key={error}>{error}</p>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            }
+          >
             <ProjectTabs
-              sessions={<SessionList sessions={sessions} runs={runs} attention={inboxItems} />}
-              teams={teamsPanel}
-              folder={<WorkFolderSection projectId={projectId} />}
-              materials={<ProjectMaterials key={projectId} projectId={projectId} />}
-              runs={runsPanel}
-              counts={{
-                sessions: sessions.filter((x) => !x.archivedAt).length,
-                teams: corrals.length,
-                runs: runs.length,
-              }}
               projectId={projectId}
+              counts={{ sessions: sessions.filter((x) => !x.archivedAt).length, runs: runs.length }}
+              sessions={
+                <div className="flex flex-col gap-4">
+                  {archived ? null : <GettingStarted runs={runs.length} projectId={projectId} />}
+                  <InboxSection projectId={projectId} />
+                  <SessionList sessions={sessions} runs={runs} attention={inboxItems} />
+                </div>
+              }
+              runs={runsPanel}
+              environment={
+                <EnvironmentPanel projectId={projectId} folder={folder} sessions={sessions} />
+              }
+              materials={<ProjectMaterials key={projectId} projectId={projectId} />}
             />
-            {drafting ? <TeamDraftDialog onClose={closeDraft} projectId={projectId} /> : null}
-          </div>
+            {meeting ? (
+              <NewMeetingDialog projectId={projectId} onClose={() => setMeeting(false)} />
+            ) : null}
+          </Page>
         </main>
       }
     />
   );
 }
 
-type ProjectTab = 'sessions' | 'teams' | 'folder' | 'materials' | 'runs';
+/** The project's pending items, as the Sessions tab's pending actions count them. */
+function useProjectInbox(projectId: string) {
+  const { workspaces } = useServices();
+  const [items, setItems] = useState<InboxItemView[]>([]);
+  useEffect(() => {
+    setItems([]);
+    if (!workspaces) return;
+    let live = true;
+    const load = () =>
+      workspaces.inbox(projectId).then(
+        (list) => {
+          if (live) setItems(list);
+        },
+        () => {},
+      );
+    void load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [workspaces, projectId]);
+  return items;
+}
 
-/** The project's lists and settings, one at a time; the choice is remembered per project. */
-function ProjectTabs({
-  sessions,
-  teams,
-  folder,
-  materials,
-  runs,
-  counts,
-  projectId,
-}: {
-  sessions: React.ReactNode;
-  teams: React.ReactNode;
-  folder: React.ReactNode;
-  materials: React.ReactNode;
-  runs: React.ReactNode;
-  counts: { sessions: number; teams: number; runs: number };
-  projectId: string;
-}) {
-  const t = useTranslations('Projects');
-  const location = useRouterState({ select: (s) => s.location.hash });
-  const navigate = useNavigate({ from: '/projects/$projectId' });
-  const tabs: ProjectTab[] = ['sessions', 'teams', 'folder', 'materials', 'runs'];
-  const [saved, setTab] = useRemembered<ProjectTab | null>(`corral:project-tab:${projectId}`, null);
-  // A saved tab or an explicit library link is an intentional choice. First visits start
-  // with conversations; designing a Corral is never a prerequisite for sending a request.
-  const tab: ProjectTab =
-    location === 'corrals'
-      ? 'teams'
-      : location === 'runs'
-        ? 'runs'
-        : saved && tabs.includes(saved)
-          ? saved
-          : 'sessions';
-  const chooseTab = (value: ProjectTab) => {
-    setTab(value);
-    if (location === 'corrals' || location === 'runs')
-      void navigate({ hash: '', search: (search) => search, replace: true });
-  };
-  const refs = useRef<Partial<Record<ProjectTab, HTMLButtonElement | null>>>({});
-  const count = (value: ProjectTab) =>
-    value === 'folder' || value === 'materials'
-      ? null
-      : counts[value as 'sessions' | 'teams' | 'runs'];
+type Folder =
+  | { state: 'loading' }
+  | { state: 'none' }
+  | { state: 'failed' }
+  | { state: 'ready'; binding: WorkspaceBindingView };
+
+/** The linked source folder; a failed read is "unknown", never "no folder". */
+function useFolder(projectId: string): Folder {
+  const { workspaces } = useServices();
+  const [folder, setFolder] = useState<Folder>({ state: 'loading' });
+  const reload = useCallback(async () => {
+    if (!workspaces) return setFolder({ state: 'none' });
+    try {
+      const binding = await workspaces.binding(projectId);
+      setFolder(binding ? { state: 'ready', binding } : { state: 'none' });
+    } catch {
+      setFolder({ state: 'failed' });
+    }
+  }, [workspaces, projectId]);
+  useEffect(() => {
+    void reload();
+    // Linking, unlinking or trusting in the settings dialog changes what this shows.
+    const changed = () => void reload();
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, [reload]);
+  return folder;
+}
+
+function folderState(folder: Folder) {
+  if (folder.state !== 'ready') return folder.state === 'failed' ? 'unknown' : folder.state;
+  return folder.binding.missing ? 'missing' : !folder.binding.trusted ? 'untrusted' : 'ready';
+}
+
+const FOLDER_TONE = {
+  loading: 'gray',
+  none: 'gray',
+  unknown: 'gray',
+  missing: 'red',
+  untrusted: 'amber',
+  ready: 'green',
+} as const;
+
+function FolderBadge({ folder }: { folder: Folder }) {
+  const t = useTranslations('Workspace.folder');
+  if (folder.state === 'loading') return null;
+  const state = folderState(folder);
   return (
-    <div className="flex flex-col gap-4">
-      <div role="tablist" aria-label={t('sections')} className="flex flex-wrap gap-1">
-        {tabs.map((value, index) => (
-          <KitButton
-            key={value}
-            variant="ghost"
-            size="compact"
-            active={tab === value}
-            ref={(el) => {
-              refs.current[value] = el;
-            }}
-            type="button"
-            role="tab"
-            id={`project-tab-${value}`}
-            aria-selected={tab === value}
-            aria-controls={`project-panel-${value}`}
-            tabIndex={tab === value ? 0 : -1}
-            onClick={() => chooseTab(value)}
-            onKeyDown={(event) => {
-              const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-              if (!step) return;
-              event.preventDefault();
-              const next = tabs[(index + step + tabs.length) % tabs.length] as ProjectTab;
-              chooseTab(next);
-              refs.current[next]?.focus();
-            }}
-          >
-            {t(`tab.${value}`)}
-            {count(value) ? (
-              <span className="ml-1.5 text-caption text-muted-foreground">{count(value)}</span>
-            ) : null}
-          </KitButton>
-        ))}
-      </div>
-      <div role="tabpanel" id={`project-panel-${tab}`} aria-labelledby={`project-tab-${tab}`}>
-        {tab === 'sessions'
-          ? sessions
-          : tab === 'teams'
-            ? teams
-            : tab === 'folder'
-              ? folder
-              : tab === 'materials'
-                ? materials
-                : runs}
-      </div>
-    </div>
+    <KitBadge variant="dot" size="compact" color={FOLDER_TONE[state]}>
+      {t(state)}
+    </KitBadge>
   );
 }
 
-/** The project's name and description, rename and archive. */
-function ProjectHeader({
+type ProjectTab = 'sessions' | 'runs' | 'environment' | 'materials';
+const TABS: ProjectTab[] = ['sessions', 'runs', 'environment', 'materials'];
+
+/** The project's lists, one at a time; the choice is remembered per project. */
+function ProjectTabs({
+  projectId,
+  counts,
+  ...panels
+}: Record<ProjectTab, React.ReactNode> & {
+  projectId: string;
+  counts: { sessions: number; runs: number };
+}) {
+  const t = useTranslations('Projects');
+  const hash = useRouterState({ select: (s) => s.location.hash });
+  const navigate = useNavigate({ from: '/projects/$projectId' });
+  const [saved, setTab] = useRemembered<ProjectTab | null>(`corral:project-tab:${projectId}`, null);
+  // A saved tab or an explicit runs link is an intentional choice. First visits start with
+  // conversations; designing a Corral is never a prerequisite for sending a request.
+  const tab: ProjectTab =
+    hash === 'runs' ? 'runs' : saved && TABS.includes(saved) ? saved : 'sessions';
+  const chooseTab = (value: ProjectTab) => {
+    setTab(value);
+    if (hash === 'runs') void navigate({ hash: '', search: (search) => search, replace: true });
+  };
+  const label = (value: ProjectTab) => {
+    const name = t(`tab.${value}`);
+    const count = value === 'sessions' || value === 'runs' ? counts[value] : 0;
+    return count ? `${name} ${count}` : name;
+  };
+  return (
+    <Tabs
+      value={tab}
+      onValueChange={(value) => chooseTab(value as ProjectTab)}
+      className="flex flex-col gap-4"
+    >
+      <TabsList aria-label={t('sections')}>
+        {TABS.map((value) => (
+          <TabItem key={value} value={value} label={label(value)} />
+        ))}
+      </TabsList>
+      <TabPanel value={tab}>{panels[tab]}</TabPanel>
+    </Tabs>
+  );
+}
+
+/** Name, rename, archive or restore, and the way to all projects. */
+function ProjectMenu({
   project,
   onError,
 }: {
@@ -509,128 +372,83 @@ function ProjectHeader({
   };
 
   return (
-    <section aria-labelledby="project-heading" className="flex flex-col gap-1">
-      {editing ? (
-        <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-          <InputGroup className="w-full flex-1 sm:flex-row">
-            <InputField
-              index={0}
-              label={t('nameLabel')}
-              id="project-name"
-              value={name}
-              onChange={setName}
-              maxLength={80}
-              required
-              className="min-w-0 sm:w-48"
+    <>
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={t('actions', { name: shown })}
             />
-            <InputField
-              index={1}
-              label={t('descriptionLabel')}
-              id="project-description"
-              value={description}
-              onChange={setDescription}
-              maxLength={500}
-              className="min-w-0 flex-1"
-            />
-          </InputGroup>
-          <Button type="submit">{t('save')}</Button>
-          <Button variant="ghost" onClick={() => setEditing(false)}>
-            {t('cancel')}
-          </Button>
-        </form>
-      ) : (
-        <div className="flex items-center gap-2">
-          <h2
-            id="project-heading"
-            className="min-w-0 truncate text-2xl font-semibold tracking-tight"
+          }
+        >
+          <Ellipsis />
+        </MenuTrigger>
+        <MenuPopup align="start">
+          <MenuItem
+            onClick={() => {
+              setName(shown);
+              setDescription(project.description);
+              setEditing(true);
+            }}
           >
-            {shown}
-          </h2>
-          {project.archivedAt ? (
-            <span className="rounded-full bg-subtle px-2 py-0.5 text-xs text-muted-foreground">
-              {t('archived')}
-            </span>
-          ) : null}
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-compact"
-                  aria-label={t('actions', { name: shown })}
+            {t('rename')}
+          </MenuItem>
+          {project.projectId === DEFAULT_PROJECT_ID ? null : (
+            <MenuItem onClick={() => void update({ archived: !project.archivedAt })}>
+              {project.archivedAt ? t('restore') : t('archive')}
+            </MenuItem>
+          )}
+          <MenuSeparator />
+          <MenuItem render={<Link to="/projects" />}>{t('allProjects')}</MenuItem>
+        </MenuPopup>
+      </Menu>
+      <Dialog open={editing} onOpenChange={(open) => !open && setEditing(false)}>
+        <DialogPopup>
+          <form onSubmit={submit}>
+            <DialogHeader>
+              <DialogTitle>{t('rename')}</DialogTitle>
+            </DialogHeader>
+            <DialogPanel>
+              <InputGroup className="w-full">
+                <InputField
+                  index={0}
+                  label={t('nameLabel')}
+                  id="project-name"
+                  value={name}
+                  onChange={setName}
+                  maxLength={80}
+                  required
                 />
-              }
-            >
-              <Ellipsis />
-            </MenuTrigger>
-            <MenuPopup align="start">
-              <MenuItem
-                onClick={() => {
-                  setName(shown);
-                  setDescription(project.description);
-                  setEditing(true);
-                }}
-              >
-                {t('rename')}
-              </MenuItem>
-              {project.projectId === DEFAULT_PROJECT_ID ? null : (
-                <MenuItem onClick={() => void update({ archived: !project.archivedAt })}>
-                  {project.archivedAt ? t('restore') : t('archive')}
-                </MenuItem>
-              )}
-              <MenuSeparator />
-              <MenuItem render={<Link to="/projects" />}>{t('allProjects')}</MenuItem>
-            </MenuPopup>
-          </Menu>
-        </div>
-      )}
-      {project.description && !editing ? (
-        <p className="text-sm text-muted-foreground">{project.description}</p>
-      ) : null}
-      {project.archivedAt ? (
-        <p role="note" className="text-sm text-warning">
-          {t('archivedNote')}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-/** Moves a Corral to another active project; its finished runs stay here. */
-function MoveCorral({
-  name,
-  current,
-  projects,
-  onMove,
-}: {
-  name: string;
-  current: string;
-  projects: ProjectSummary[];
-  onMove: (projectId: string) => void;
-}) {
-  const t = useTranslations('Projects');
-  const targets = projects.filter((p) => p.projectId !== current && !p.archivedAt);
-  if (targets.length === 0) return null;
-  return (
-    <Select
-      label={t('moveTo', { name })}
-      value=""
-      variant="ghost"
-      size="xs"
-      onValueChange={(value) => value && onMove(value)}
-      options={[
-        { value: '', label: t('moveChoose') },
-        ...targets.map((p) => ({ value: p.projectId, label: projectName(p, t('defaultName')) })),
-      ]}
-    />
+                <InputField
+                  index={1}
+                  label={t('descriptionLabel')}
+                  id="project-description"
+                  value={description}
+                  onChange={setDescription}
+                  maxLength={500}
+                />
+              </InputGroup>
+            </DialogPanel>
+            <DialogFooter>
+              <Button variant="tertiary" onClick={() => setEditing(false)}>
+                {t('cancel')}
+              </Button>
+              <Button type="submit">{t('save')}</Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+    </>
   );
 }
 
 /**
- * Start a conversation directly. Optional details preserve the previous draft and selected
- * Corral; the purpose becomes an editable first request and nothing runs until it is sent.
+ * Starts a conversation at once. Its menu opens the name, purpose and team first; those details
+ * are remembered for the project and nothing runs until the first request is sent.
  */
-function StartSession({
+function NewConversation({
   focus,
   projectId,
   corrals,
@@ -646,12 +464,11 @@ function StartSession({
   const { sendKey } = usePreferences();
   const navigate = useNavigate();
   const router = useRouter();
-  const box = useRef<HTMLTextAreaElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
   const creating = useRef(false);
   const active = useRef(true);
   const automatic = useRef(false);
-  const [draft, saveDraft] = useRemembered(`corral:new-session:v1:${projectId}`, {
+  const [draft, saveDraft] = useRemembered(newSessionDraftKey(projectId), {
     title: '',
     objective: '',
     corralId: '',
@@ -661,8 +478,7 @@ function StartSession({
   draftRef.current = draft;
   const objective = typeof draft?.objective === 'string' ? draft.objective : '';
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
-  const detailsSummary = title || [...objective.trim()].slice(0, 80).join('');
-  const [detailsOpen, setDetailsOpen] = useState(Boolean(title || objective || corralId));
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // UX-09: a suggested team (a template) can be chosen here; it is made when the session starts,
@@ -674,28 +490,13 @@ function StartSession({
   const chooseTeam = (available: CorralSummary[]) =>
     available.some((c) => c.corralId === corralId) || isSuggested(corralId) ? corralId : '';
   const team = chooseTeam(corrals);
-  const selectedTeamName = isSuggested(team)
-    ? tw(`template.${team.slice(9) as (typeof suggested)[number]}.name`)
-    : corrals.find((corral) => corral.corralId === team)?.name;
+  const hasDetails = Boolean(title || objective || corralId);
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
     };
   }, []);
-  // "Start a session with this team" on a template card picks it here.
-  useEffect(() => {
-    const pick = (event: Event) => {
-      if (creating.current) return;
-      const id = (event as CustomEvent<string>).detail;
-      saveDraft({ title, objective, corralId: `template:${id}` });
-      setDetailsOpen(true);
-      startButton.current?.scrollIntoView({ block: 'center' });
-      startButton.current?.focus();
-    };
-    window.addEventListener(START_WITH_TEMPLATE, pick);
-    return () => window.removeEventListener(START_WITH_TEMPLATE, pick);
-  });
 
   const create = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -743,129 +544,293 @@ function StartSession({
     }
   };
 
+  // Saved details are never sent silently: with them, starting shows them first.
+  const start = () => {
+    if (hasDetails) setDetailsOpen(true);
+    else void create();
+  };
+
   // The explicit new-session link opens the composer once; it never starts a Run.
   // biome-ignore lint/correctness/useExhaustiveDependencies: later form edits must not create another session
   useEffect(() => {
     if (!focus || automatic.current) return;
     automatic.current = true;
-    if (title || objective || corralId) {
-      setDetailsOpen(true);
-      startButton.current?.focus();
-      return;
-    }
-    void create();
+    start();
   }, [focus]);
 
   return (
-    <form onSubmit={create} aria-label={t('new')}>
-      <Card>
-        <CardHeader>
-          <h2>
-            <KitCardTitle>{tw('chatHeading')}</KitCardTitle>
-          </h2>
-          <CardDescription>{tw('chatHint')}</CardDescription>
-          <CardAction>
-            <Button ref={startButton} type="submit" disabled={saving}>
-              {tw('startChat')}
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          {detailsSummary ? (
-            <p id={`new-session-summary-${projectId}`} className="sr-only">
-              {t('savedDetails')} · {detailsSummary}
-            </p>
-          ) : null}
-          <Accordion
-            value={detailsOpen ? 'details' : ''}
-            onValueChange={(value: string) => setDetailsOpen(value === 'details')}
-            className="w-full"
+    <>
+      <div className="flex items-center gap-1">
+        <Button disabled={saving} onClick={start}>
+          {tw('newConversation')}
+        </Button>
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                variant="secondary"
+                size="icon"
+                disabled={saving}
+                aria-label={tw('newConversationMenu')}
+              />
+            }
           >
-            <AccordionItem value="details" highlight="trigger">
-              <AccordionTrigger
-                aria-label={n('sessionDetails')}
-                aria-describedby={detailsSummary ? `new-session-summary-${projectId}` : undefined}
-              >
-                <span>{n('sessionDetails')}</span>
-                {title || objective ? (
-                  <span className="ml-2 min-w-0 truncate text-foreground">
-                    {t('savedDetails')}
-                    {detailsSummary ? ` · ${detailsSummary}` : ''}
-                  </span>
-                ) : null}
-                {selectedTeamName ? (
-                  <span className="ml-2 text-foreground">{selectedTeamName}</span>
-                ) : null}
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="flex flex-col gap-3">
-                  <p className="text-caption text-muted-foreground">{tw('optionalCorralsHint')}</p>
-                  <Select
-                    variant="chip"
+            <ChevronDown />
+          </MenuTrigger>
+          <MenuPopup align="end">
+            <MenuItem onClick={() => setDetailsOpen(true)}>{tw('detailsFirst')}</MenuItem>
+          </MenuPopup>
+        </Menu>
+      </div>
+      {error && !detailsOpen ? (
+        <p role="alert" className="basis-full text-body text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <Dialog
+        open={detailsOpen}
+        onOpenChange={(open) => {
+          if (!open && !saving) setDetailsOpen(false);
+        }}
+      >
+        <DialogPopup initialFocus={startButton} className="w-[min(95vw,560px)]">
+          <form onSubmit={create} aria-label={t('new')}>
+            <DialogHeader>
+              <DialogTitle>{tw('newConversation')}</DialogTitle>
+              <DialogDescription>{n('optionalPurposeHint')}</DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <div className="flex flex-col gap-3">
+                <Select
+                  variant="chip"
+                  disabled={saving}
+                  label={t('teamLabel')}
+                  value={team}
+                  onValueChange={(value) => {
+                    if (!creating.current) saveDraft({ title, objective, corralId: value });
+                  }}
+                  options={[
+                    { value: '', label: t('autoTeam') },
+                    ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
+                    ...suggested.map((id) => ({
+                      value: `template:${id}`,
+                      label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
+                      hint: tw(`template.${id}.body`),
+                    })),
+                  ]}
+                />
+                <InputGroup className="w-full">
+                  <InputField
+                    index={0}
+                    label={n('sessionName')}
+                    id={`new-session-title-${projectId}`}
                     disabled={saving}
-                    label={t('teamLabel')}
-                    value={team}
-                    onValueChange={(value) => {
-                      if (!creating.current) saveDraft({ title, objective, corralId: value });
-                    }}
-                    options={[
-                      { value: '', label: t('autoTeam') },
-                      ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
-                      ...suggested.map((id) => ({
-                        value: `template:${id}`,
-                        label: tw('suggestedTeam', { name: tw(`template.${id}.name`) }),
-                        hint: tw(`template.${id}.body`),
-                      })),
-                    ]}
+                    value={title}
+                    onChange={(value) => saveDraft({ title: value, objective, corralId })}
                   />
-                  <InputGroup className="w-full">
-                    <InputField
-                      index={0}
-                      label={n('sessionName')}
-                      id={`new-session-title-${projectId}`}
-                      disabled={saving}
-                      value={title}
-                      onChange={(value) => saveDraft({ title: value, objective, corralId })}
-                    />
-                  </InputGroup>
-                  <label
-                    htmlFor={`new-session-objective-${projectId}`}
-                    className="flex flex-col gap-1 text-caption text-muted-foreground"
-                  >
-                    <span className="pl-2.5">{t('objectiveLabel')}</span>
-                    <Textarea
-                      id={`new-session-objective-${projectId}`}
-                      ref={box}
-                      disabled={saving}
-                      aria-label={t('objectiveLabel')}
-                      placeholder={t('objectivePlaceholder')}
-                      value={objective}
-                      rows={3}
-                      onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
-                      onKeyDown={(e) => {
-                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                        if (isSendKey(e, sendKey)) {
-                          e.preventDefault();
-                          void create();
-                        }
-                      }}
-                    />
-                  </label>
-                  <p className="text-caption text-muted-foreground">{n('optionalPurposeHint')}</p>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
-        {error ? (
-          <CardFooter>
-            <p role="alert" className="text-body text-destructive">
-              {error}
-            </p>
-          </CardFooter>
-        ) : null}
-      </Card>
-    </form>
+                </InputGroup>
+                <label
+                  htmlFor={`new-session-objective-${projectId}`}
+                  className="flex flex-col gap-1 text-caption text-muted-foreground"
+                >
+                  <span className="pl-2.5">{t('objectiveLabel')}</span>
+                  <Textarea
+                    id={`new-session-objective-${projectId}`}
+                    disabled={saving}
+                    aria-label={t('objectiveLabel')}
+                    placeholder={t('objectivePlaceholder')}
+                    value={objective}
+                    rows={3}
+                    onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
+                    onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                      if (isSendKey(e, sendKey)) {
+                        e.preventDefault();
+                        void create();
+                      }
+                    }}
+                  />
+                </label>
+                {error ? (
+                  <p role="alert" className="text-body text-destructive">
+                    {error}
+                  </p>
+                ) : null}
+              </div>
+            </DialogPanel>
+            <DialogFooter>
+              <Button ref={startButton} type="submit" disabled={saving}>
+                {tw('startChat')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+    </>
+  );
+}
+
+type Copy =
+  | { state: 'none' }
+  | { state: 'unknown' }
+  | {
+      state: 'copy';
+      worktree: WorktreeView;
+      git: { branch: string | null; changed: number } | null;
+    };
+
+/** Each active session's working copy and its Git state; what cannot be read stays unknown. */
+function useWorkingCopies(sessions: WorkSession[]) {
+  const { workspaces } = useServices();
+  const [copies, setCopies] = useState<Map<string, Copy> | null>(null);
+  const ids = sessions
+    .filter((session) => !session.archivedAt)
+    .map((session) => session.sessionId)
+    .join('\n');
+  useEffect(() => {
+    if (!workspaces) return setCopies(new Map());
+    let live = true;
+    setCopies(null);
+    const read = async (sessionId: string): Promise<Copy> => {
+      const worktree = await workspaces.worktree(sessionId).catch(() => undefined);
+      if (worktree === undefined) return { state: 'unknown' };
+      if (!worktree) return { state: 'none' };
+      if (worktree.missing) return { state: 'copy', worktree, git: null };
+      const status = await workspaces
+        .gitStatus({ kind: 'session', id: sessionId })
+        .catch(() => null);
+      return {
+        state: 'copy',
+        worktree,
+        git: status ? { branch: status.head.branch, changed: status.entries.length } : null,
+      };
+    };
+    void (async () => {
+      const queue = ids ? ids.split('\n') : [];
+      const found = new Map<string, Copy>();
+      // A few at a time: a project can hold hundreds of sessions.
+      await Promise.all(
+        Array.from({ length: Math.min(4, queue.length) }, async () => {
+          for (let id = queue.shift(); id !== undefined; id = queue.shift())
+            found.set(id, await read(id));
+        }),
+      );
+      if (live) setCopies(found);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [workspaces, ids]);
+  return copies;
+}
+
+/** The source folder, and each session's working copy (path, branch, uncommitted, session). */
+function EnvironmentPanel({
+  projectId,
+  folder,
+  sessions,
+}: {
+  projectId: string;
+  folder: Folder;
+  sessions: WorkSession[];
+}) {
+  const t = useTranslations('Workspace.environment');
+  const tf = useTranslations('Workspace.folder');
+  const navigation = useSettingsNavigation();
+  const copies = useWorkingCopies(sessions);
+  const noInfo = t('noInfo');
+  const binding = folder.state === 'ready' ? folder.binding : null;
+  const rows = sessions.flatMap((session) => {
+    const copy = copies?.get(session.sessionId);
+    return copy && copy.state !== 'none' ? [{ session, copy }] : [];
+  });
+  return (
+    <div className="flex flex-col gap-8">
+      <section aria-label={t('folder')} className="flex flex-col gap-3">
+        <SectionLabel>{t('folder')}</SectionLabel>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            {folder.state === 'loading' ? (
+              <p role="status" className="text-body text-muted-foreground">
+                {tf('loading')}
+              </p>
+            ) : (
+              <FolderBadge folder={folder} />
+            )}
+            {binding ? (
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-body">
+                <dt className="text-muted-foreground">{t('path')}</dt>
+                <dd className="break-all font-mono text-foreground">{binding.path}</dd>
+                <dt className="text-muted-foreground">{t('branch')}</dt>
+                <dd className="text-foreground">{binding.status?.branch ?? noInfo}</dd>
+                <dt className="text-muted-foreground">{t('changes')}</dt>
+                <dd className="text-foreground">
+                  {binding.status ? t('changed', { count: binding.status.changed }) : noInfo}
+                </dd>
+              </dl>
+            ) : null}
+          </div>
+          <Button
+            variant="tertiary"
+            size="compact"
+            render={<Link {...navigation.link('workspace', projectId)} />}
+          >
+            {tf('settings')}
+          </Button>
+        </div>
+      </section>
+      <section aria-label={t('copies')} className="flex flex-col gap-3">
+        <SectionLabel {...(copies ? { count: rows.length } : {})}>{t('copies')}</SectionLabel>
+        {copies === null ? (
+          <p role="status" className="text-body text-muted-foreground">
+            {t('loading')}
+          </p>
+        ) : rows.length === 0 ? (
+          <EmptyState title={t('noCopies')} text={t('noCopiesText')} />
+        ) : (
+          <Table aria-label={t('copies')}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('session')}</TableHead>
+                <TableHead>{t('path')}</TableHead>
+                <TableHead>{t('branch')}</TableHead>
+                <TableHead>{t('changes')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(({ session, copy }, index) => (
+                <TableRow key={session.sessionId} index={index}>
+                  <TableCell>
+                    <Link
+                      to="/sessions/$sessionId"
+                      params={{ sessionId: session.sessionId }}
+                      className="rounded-sm text-foreground hover:underline outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    >
+                      {session.title}
+                    </Link>
+                    {copy.state === 'copy' && copy.worktree.missing ? (
+                      <KitBadge variant="dot" size="compact" color="red" className="ml-2">
+                        {t('copyMissing')}
+                      </KitBadge>
+                    ) : null}
+                  </TableCell>
+                  {/* No API reports a copy's location; it is not guessed. */}
+                  <TableCell>{noInfo}</TableCell>
+                  <TableCell>
+                    {copy.state === 'copy' && copy.git?.branch ? copy.git.branch : noInfo}
+                  </TableCell>
+                  <TableCell>
+                    {copy.state === 'copy' && copy.git
+                      ? t('changed', { count: copy.git.changed })
+                      : noInfo}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -921,11 +886,11 @@ function SessionList({
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
   return (
     <section aria-labelledby="sessions-heading" className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="sessions-heading" className="sr-only">
-          {t('heading')}
-        </h2>
-        {sessions.length > 0 ? (
+      <h2 id="sessions-heading" className="sr-only">
+        {t('heading')}
+      </h2>
+      {sessions.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
           <InputGroup className="max-w-64">
             <InputField
               index={0}
@@ -937,29 +902,33 @@ function SessionList({
               onChange={setQuery}
             />
           </InputGroup>
-        ) : null}
-      </div>
-      {sessions.length > 0 ? (
-        <Select
-          label={t('statusFilter')}
-          variant="chip"
-          value={stateFilter}
-          onValueChange={setStateFilter}
-          options={['all', 'running', 'attention', 'completed', 'cancelled', 'ready', 'empty'].map(
-            (value) => ({
+          <Select
+            label={t('statusFilter')}
+            variant="chip"
+            value={stateFilter}
+            onValueChange={setStateFilter}
+            options={[
+              'all',
+              'running',
+              'attention',
+              'completed',
+              'cancelled',
+              'ready',
+              'empty',
+            ].map((value) => ({
               value,
               label: t(`listState.${value}`),
-            }),
-          )}
-        />
+            }))}
+          />
+        </div>
       ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-destructive">
           {error}
         </p>
       ) : null}
       {sessions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <p className="text-body text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul aria-label={t('heading')} className="flex flex-col">
           {shown.map((x) => {
@@ -971,10 +940,10 @@ function SessionList({
                   to="/sessions/$sessionId"
                   params={{ sessionId: x.sessionId }}
                   search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
-                  className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-subtle"
+                  className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-hover outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
-                  <span className="min-w-0 truncate text-sm font-medium">{x.title}</span>
-                  <span className="min-w-0 text-right text-xs text-muted-foreground">
+                  <span className="min-w-0 truncate text-body text-foreground">{x.title}</span>
+                  <span className="min-w-0 text-right text-caption text-muted-foreground">
                     {[
                       x.pinned ? t('pinned') : null,
                       x.archivedAt ? t('archived') : null,

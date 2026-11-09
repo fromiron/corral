@@ -1,21 +1,288 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import type { HarnessEntryView, PackageView, ProjectToolConfigRevision } from '@corral/contracts';
+import { type CorralRepository, createKeyValueCorralRepository } from '@corral/core';
+import { emptyDraft } from '@corral/react';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+  useRouterState,
+} from '@tanstack/react-router';
+import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { LIBRARY_VIEWS, LibraryPage, validateLibrarySearch } from './LibraryPage.tsx';
+import { setCurrentProject } from '../projects.ts';
+import { SettingsNavigationContext } from '../workbench/navigation.ts';
+import {
+  LIBRARY_VIEWS,
+  LibraryPage,
+  type LibraryView,
+  validateLibrarySearch,
+} from './LibraryPage.tsx';
+import { ResourceTable } from './LibraryResources.tsx';
+
+const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
+vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
-it('keeps a project filter and an in-app return address', () => {
+function memoryRepository(): CorralRepository {
+  const values = new Map<string, string>();
+  let id = 0;
+  let project = 0;
+  let session = 0;
+  return createKeyValueCorralRepository(
+    {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => void values.set(key, value),
+      removeItem: (key) => void values.delete(key),
+    },
+    {
+      clock: { nowIso: () => '2026-11-10T00:00:00.000Z', monotonicMs: () => 0 },
+      newCorralId: () => `corral_${++id}`,
+      newProjectId: () => `project_${++project}`,
+      newSessionId: () => `session_${++session}`,
+    },
+  );
+}
+
+async function team(repository: CorralRepository, name: string, projectId: string) {
+  const draft = emptyDraft('untitled', name);
+  const result = await repository.save({
+    definition: draft.definition,
+    expectedDefinitionRevision: null,
+    projectId,
+  });
+  if (!result.ok) throw new Error(result.message);
+  return result.record.corralId;
+}
+
+/** Root layout's overlay link: the same work address with the settings dialog search added. */
+function SettingsBridge({ children }: { children: ReactNode }) {
+  const location = useRouterState({ select: (state) => state.location });
+  return (
+    <SettingsNavigationContext.Provider
+      value={{
+        projects: [],
+        returnTo: location.href,
+        search: {},
+        link: (section, projectId) => ({
+          to: location.pathname,
+          search: { ...location.search, settings: section, settingsProject: projectId },
+          resetScroll: false,
+        }),
+      }}
+    >
+      {children}
+    </SettingsNavigationContext.Provider>
+  );
+}
+
+async function render(url: string, children?: ReactNode) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const root = createRootRoute({
+    component: () => (
+      <SettingsBridge>
+        <Outlet />
+      </SettingsBridge>
+    ),
+  });
+  const stub = (path: string) =>
+    createRoute({
+      getParentRoute: () => root,
+      path,
+      component: () => <p data-testid="elsewhere">{path}</p>,
+    });
+  const views = LIBRARY_VIEWS.map((view: LibraryView) =>
+    createRoute({
+      getParentRoute: () => root,
+      path: `/library/${view}`,
+      component: () => children ?? <LibraryPage view={view} />,
+    }),
+  );
+  const router = createRouter({
+    routeTree: root.addChildren([
+      ...views,
+      stub('/corrals/$corralId/edit'),
+      stub('/sessions/$sessionId'),
+      stub('/projects/$projectId'),
+    ]),
+    history: createMemoryHistory({ initialEntries: [url] }),
+  });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const reactRoot = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => reactRoot.unmount());
+    container.remove();
+  });
+  await act(async () => {
+    reactRoot.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RouterProvider router={router} />
+      </IntlProvider>,
+    );
+    await router.load();
+  });
+  await settle();
+  return { container, router };
+}
+
+async function settle() {
+  for (let i = 0; i < 5; i++)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+}
+
+const byText = (container: HTMLElement, selector: string, text: string | RegExp) =>
+  [...container.querySelectorAll<HTMLElement>(selector)].find((element) =>
+    typeof text === 'string'
+      ? element.textContent?.trim() === text
+      : text.test(element.textContent ?? ''),
+  );
+
+const groupOf = (container: HTMLElement, group: string) =>
+  container.querySelector<HTMLElement>(`[data-resource-group="${group}"]`);
+
+const resource = {
+  license: null,
+  packagePath: null,
+  extensions: [] as string[],
+  skills: [] as { name: string; description: string; entry: string }[],
+  createdAt: '2026-11-10T00:00:00.000Z',
+  trustedAt: '2026-11-10T00:00:00.000Z',
+};
+const hash = (n: number) => `sha256:${String(n).repeat(64)}`;
+
+function entry(
+  kind: 'skill' | 'extension',
+  name: string,
+  sourceLabel: string,
+  n: number,
+): HarnessEntryView {
+  return {
+    resourceHash: hash(n),
+    entry: kind === 'skill' ? 'skills/SKILL.md' : 'extensions/hook.ts',
+    kind,
+    name,
+    description: '',
+    managementRevision: 1,
+    archivedAt: null,
+    successor: null,
+    profiles: [],
+    resource: {
+      ...resource,
+      hash: hash(n),
+      name: 'corral-managed-resource',
+      version: '1.0.0',
+      sourceKind: 'local',
+      sourceLabel,
+      fileCount: 2,
+    },
+  };
+}
+
+function packageView(
+  name: string,
+  n: number,
+  change: Partial<PackageView['resource']> = {},
+): PackageView {
+  return {
+    managementRevision: 1,
+    status: 'enabled',
+    updatedAt: null,
+    manifest: null,
+    profiles: [],
+    resource: {
+      ...resource,
+      hash: hash(n),
+      name,
+      version: '1.2.3',
+      sourceKind: 'npm',
+      sourceLabel: `npm:${name}@1.2.3`,
+      files: [],
+      ...change,
+    },
+  };
+}
+
+const mcp: ProjectToolConfigRevision = {
+  projectId: 'alpha',
+  revision: 3,
+  hash: hash(9),
+  checks: [],
+  lspServers: [],
+  mcpServers: [
+    {
+      id: 'mcp_local',
+      name: 'Local tools',
+      transport: 'stdio',
+      argv: ['/usr/local/bin/tool-server', '--token=abc123'],
+    },
+    {
+      id: 'mcp_remote',
+      name: 'Remote search',
+      transport: 'http',
+      url: 'https://search.example/mcp?token=abc123',
+      enabled: false,
+    },
+  ],
+} as unknown as ProjectToolConfigRevision;
+
+function harnesses(overrides: Record<string, unknown> = {}) {
+  return {
+    entries: vi.fn(async () => [
+      entry('skill', 'Code review', 'Created in Corral', 1),
+      entry('extension', 'Notify on finish', 'Created in Corral', 2),
+      entry('extension', 'lint-hook.ts', '/home/me/private/lint-pack', 3),
+    ]),
+    packages: vi.fn(async () => [
+      packageView('lint-pack', 3, {
+        sourceLabel: '/home/me/private/lint-pack',
+        sourceKind: 'local',
+      }),
+      packageView('writing-skill', 4, {
+        skills: [{ name: 'writing', description: '', entry: 'SKILL.md' }],
+      }),
+    ]),
+    projectTools: vi.fn(async () => mcp),
+    ...overrides,
+  };
+}
+
+let repository: CorralRepository;
+beforeEach(async () => {
+  repository = memoryRepository();
+  await repository.createProject({ name: 'Alpha' });
+  await repository.createProject({ name: 'Beta' });
+  fixture.services = {
+    mode: 'server',
+    persistent: true,
+    repository,
+    harnesses: harnesses(),
+    workspaces: null,
+  };
+});
+
+it('keeps a project filter, a draft request and an in-app return address', () => {
   expect(
     validateLibrarySearch({ project: 'project_a', returnTo: '/sessions/session_a#draft' }),
   ).toEqual({ project: 'project_a', returnTo: '/sessions/session_a#draft' });
+  expect(validateLibrarySearch({ project: 'project_a', draft: '1' })).toEqual({
+    project: 'project_a',
+    draft: true,
+  });
   for (const search of [
     { project: '' },
     { project: 'x'.repeat(257) },
@@ -23,26 +290,171 @@ it('keeps a project filter and an in-app return address', () => {
     { returnTo: 'https://example.org' },
     { returnTo: '//example.org' },
     { returnTo: '/settings/skills' },
+    { draft: 'yes' },
   ])
     expect(validateLibrarySearch(search)).toEqual({});
 });
 
-it.each([undefined, ...LIBRARY_VIEWS])('names the %s view from its own messages', async (view) => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  const container = document.createElement('div');
-  document.body.append(container);
-  const root = createRoot(container);
-  disposals.push(async () => {
-    await act(async () => root.unmount());
-    container.remove();
-  });
-  await act(async () =>
-    root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <LibraryPage view={view} />
-      </IntlProvider>,
-    ),
+it.each(LIBRARY_VIEWS)('frames the %s view with the library title and its tab', async (view) => {
+  const { container } = await render(`/library/${view}?project=project_1`);
+  expect(container.querySelector('h1')?.textContent).toBe('Library');
+  expect(container.querySelector('[data-library-view]')?.getAttribute('data-library-view')).toBe(
+    view,
   );
-  expect(container.querySelector('h2')?.textContent).toBe('Library');
-  expect(container.querySelector('main')?.dataset.libraryView).toBe(view);
+  const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
+  const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
+  expect(tabs.map(name)).toEqual(['Teams', 'Templates', 'Resources']);
+  expect(
+    name(tabs.find((tab) => tab.getAttribute('aria-selected') === 'true') as HTMLElement),
+  ).toBe(view[0]?.toUpperCase() + view.slice(1));
+});
+
+it("lists the filtered project's teams and makes a new team in it with the existing editor flow", async () => {
+  await team(repository, 'Alpha reviewers', 'project_1');
+  await team(repository, 'Beta writers', 'project_2');
+  const { container, router } = await render('/library/teams?project=project_1');
+  expect(container.textContent).toContain('Alpha reviewers');
+  expect(container.textContent).not.toContain('Beta writers');
+  const create = byText(container, 'button', 'New team');
+  expect(create).toBeTruthy();
+  await act(async () => create?.click());
+  await settle();
+  expect(router.state.location.pathname).toMatch(/^\/corrals\/corral_\d+\/edit$/);
+  const made = (await repository.list()).find((item) => item.corralId === 'corral_3');
+  expect(made?.projectId).toBe('project_1');
+});
+
+it('uses the last opened project without a filter and offers a project filter', async () => {
+  await team(repository, 'Alpha reviewers', 'project_1');
+  await team(repository, 'Beta writers', 'project_2');
+  setCurrentProject('project_2');
+  const { container } = await render('/library/teams');
+  expect(container.textContent).toContain('Beta writers');
+  expect(container.textContent).not.toContain('Alpha reviewers');
+  expect(
+    container.querySelector('[role="combobox"][aria-label="Project"], [aria-label="Project"]'),
+  ).toBeTruthy();
+});
+
+it('opens a team detail with a conversation, the editor and a duplicate', async () => {
+  const id = await team(repository, 'Alpha reviewers', 'project_1');
+  const { container, router } = await render('/library/teams?project=project_1');
+  const name = byText(container, 'button', 'Alpha reviewers');
+  await act(async () => name?.click());
+  const detail = container.querySelector<HTMLElement>('[aria-label="Team details"]');
+  expect(detail).toBeTruthy();
+  expect(detail?.querySelector(`a[href="/corrals/${id}/edit"]`)?.textContent).toBe('Edit');
+  const duplicate = byText(detail as HTMLElement, 'button', 'Duplicate');
+  await act(async () => duplicate?.click());
+  await settle();
+  expect((await repository.list()).map((item) => item.name)).toContain('Alpha reviewers copy');
+  // The copy is shown next; the original is one click away.
+  expect(container.querySelector('[aria-label="Team details"] h2')?.textContent).toContain(
+    'Alpha reviewers copy',
+  );
+  await act(async () => byText(container, 'button', 'Alpha reviewers')?.click());
+  const start = byText(container, 'button', 'New conversation with this team');
+  await act(async () => start?.click());
+  await settle();
+  expect(router.state.location.pathname).toMatch(/^\/sessions\/session_1$/);
+  expect((await repository.getSession('session_1'))?.corralId).toBe(id);
+});
+
+it('adds the settings dialog to the current library address from Manage', async () => {
+  const { container, router } = await render(
+    '/library/resources?project=project_1&returnTo=%2Fsessions%2Fsession_a',
+  );
+  const manage = container.querySelector<HTMLAnchorElement>('a[aria-label="Manage Local tools"]');
+  expect(manage).toBeTruthy();
+  await act(async () => manage?.click());
+  await settle();
+  expect(router.state.location.pathname).toBe('/library/resources');
+  expect(router.state.location.search).toMatchObject({
+    project: 'project_1',
+    returnTo: '/sessions/session_a',
+    settings: 'mcp',
+    settingsProject: 'project_1',
+  });
+  const skill = container.querySelector<HTMLAnchorElement>('a[aria-label="Manage Code review"]');
+  expect(new URL(skill?.href ?? '', 'http://x').searchParams.get('settings')).toBe('skills');
+  const hook = container.querySelector<HTMLAnchorElement>(
+    'a[aria-label="Manage Notify on finish"]',
+  );
+  expect(new URL(hook?.href ?? '', 'http://x').searchParams.get('settings')).toBe('hooks');
+});
+
+it('shows a failed group with its failure and a retry while the other groups stay', async () => {
+  const packages = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue([packageView('lint-pack', 3)]);
+  fixture.services = { ...fixture.services, harnesses: harnesses({ packages }) };
+  const { container } = await render('/library/resources?project=project_1');
+  const group = groupOf(container, 'packages') as HTMLElement;
+  expect(group.textContent).toContain('Could not load Packages.');
+  expect(group.textContent).not.toContain('None');
+  expect(group.querySelector('[role="alert"]')).toBeTruthy();
+  expect(groupOf(container, 'skills')?.textContent).toContain('Code review');
+  expect(groupOf(container, 'mcp')?.textContent).toContain('Local tools');
+  const retry = byText(group, 'button', 'Try again');
+  await act(async () => retry?.click());
+  await settle();
+  expect(packages).toHaveBeenCalledTimes(2);
+  expect(groupOf(container, 'packages')?.textContent).toContain('lint-pack');
+  expect(groupOf(container, 'packages')?.textContent).not.toContain('Could not load');
+});
+
+it('shows a refused package with its limit reason and the next step', async () => {
+  const { container } = await render(
+    '/library/resources',
+    <ResourceTable
+      group="packages"
+      projectId="project_1"
+      rows={[
+        {
+          key: 'refused',
+          name: 'huge-pack',
+          scope: 'personal',
+          state: 'refused',
+          issue: 'package_limit',
+        },
+      ]}
+    />,
+  );
+  expect(container.textContent).toContain('Not installed');
+  expect(container.textContent).toContain(
+    'Install refused: the package is over the size or file-count limit.',
+  );
+  expect(container.textContent).toContain(
+    'Leave out files it does not need or split the package, then review it again.',
+  );
+});
+
+it('says when a package with a root SKILL.md was read as one Skill', async () => {
+  const { container } = await render('/library/resources?project=project_1');
+  const packages = groupOf(container, 'packages') as HTMLElement;
+  const row = [...packages.querySelectorAll('tr')].find((tr) =>
+    tr.textContent?.includes('writing-skill'),
+  );
+  expect(row?.textContent).toContain('read as one Skill');
+  expect(row?.textContent).toContain('move SKILL.md into a skills folder');
+});
+
+it('shows server-only groups as available with the local server in the browser demo', async () => {
+  fixture.services = { ...fixture.services, mode: 'browser', harnesses: null };
+  const { container } = await render('/library/resources');
+  for (const group of ['skills', 'hooks', 'extensions', 'packages', 'mcp']) {
+    const section = groupOf(container, group);
+    expect(section?.textContent).toContain('Available with the local server');
+    expect(section?.textContent).not.toContain('None');
+    expect(section?.querySelector('[role="alert"]')).toBeNull();
+  }
+});
+
+it('never shows local paths or tokens in resource rows', async () => {
+  const { container } = await render('/library/resources?project=project_1');
+  const text = container.textContent ?? '';
+  expect(text).toContain('lint-pack');
+  expect(text).toContain('Remote search');
+  expect(text).not.toMatch(/\/home\/|\/usr\/|token|abc123|npm:/);
 });

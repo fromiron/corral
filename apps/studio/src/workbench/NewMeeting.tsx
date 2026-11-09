@@ -78,7 +78,7 @@ export function NewMeetingHost() {
   ) : null;
 }
 
-function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose(): void }) {
+export function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose(): void }) {
   const t = useTranslations('Meetings');
   const { repository, mode, live } = useServices();
   const navigate = useNavigate();

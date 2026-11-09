@@ -111,7 +111,7 @@ export function GettingStarted({ runs, projectId }: { runs: number; projectId: s
       </ol>
       <p className="text-xs text-muted-foreground">
         {t('optionalCorral')}{' '}
-        <Link to="/projects/$projectId" params={{ projectId }} hash="corrals" className="underline">
+        <Link to="/library/teams" search={{ project: projectId }} className="underline">
           {t('customizeCorral')}
         </Link>
       </p>

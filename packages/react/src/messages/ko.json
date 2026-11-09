@@ -537,7 +537,35 @@
     "chatHeading": "대화로 시작하세요",
     "chatHint": "궁금한 점이나 할 일을 알려주세요. 모델은 대화창에서 고를 수 있습니다.",
     "startChat": "대화 시작",
-    "optionalCorralsHint": "Corral은 선택 사항입니다. 역할과 협업 방식을 직접 정하고 싶을 때 사용하세요."
+    "optionalCorralsHint": "Corral은 선택 사항입니다. 역할과 협업 방식을 직접 정하고 싶을 때 사용하세요.",
+    "newConversation": "새 대화",
+    "newConversationMenu": "새 대화 시작 방법 더 보기",
+    "detailsFirst": "이름·목적·팀 먼저 정하기…",
+    "taskBoardPreview": "작업 보드 미리보기",
+    "pending": "처리할 항목 {count}개",
+    "folder": {
+      "loading": "폴더 확인 중…",
+      "none": "연결된 폴더 없음",
+      "missing": "폴더를 찾을 수 없음",
+      "untrusted": "신뢰하지 않은 폴더",
+      "ready": "폴더 연결됨",
+      "unknown": "폴더 상태를 확인할 수 없음",
+      "settings": "폴더 설정"
+    },
+    "environment": {
+      "folder": "원본 폴더",
+      "copies": "작업 사본",
+      "path": "경로",
+      "branch": "브랜치",
+      "changes": "미커밋 변경",
+      "session": "세션",
+      "noInfo": "정보 없음",
+      "changed": "{count, plural, =0 {없음} other {파일 #개}}",
+      "copyMissing": "사본 없어짐",
+      "noCopies": "작업 사본 없음",
+      "noCopiesText": "파일을 바꾸는 작업을 하면 세션이 만듭니다.",
+      "loading": "불러오는 중…"
+    }
   },
   "Editor": {
     "name": "팀 이름",
@@ -1502,7 +1530,8 @@
       "teams": "팀",
       "folder": "프로젝트 폴더",
       "materials": "지침·메모리",
-      "runs": "실행"
+      "runs": "실행",
+      "environment": "환경"
     },
     "actions": "{name} 작업"
   },
@@ -2961,7 +2990,88 @@
     "internalSkillName": "내부 스킬 이름"
   },
   "Library": {
-    "title": "라이브러리"
+    "title": "라이브러리",
+    "views": "라이브러리 보기",
+    "view": {
+      "teams": "팀",
+      "templates": "템플릿",
+      "resources": "리소스"
+    },
+    "project": "프로젝트",
+    "back": "돌아가기",
+    "loadFailed": "라이브러리를 불러오지 못했습니다.",
+    "retry": "다시 시도",
+    "teams": {
+      "list": "저장한 팀",
+      "name": "이름",
+      "version": "버전",
+      "updated": "저장",
+      "detail": "팀 상세",
+      "newConversation": "이 팀으로 새 대화",
+      "edit": "편집"
+    },
+    "resources": {
+      "group": {
+        "skills": "Skill",
+        "hooks": "Hook",
+        "extensions": "확장",
+        "packages": "패키지",
+        "mcp": "MCP 서버"
+      },
+      "name": "이름",
+      "scope": "범위",
+      "status": "상태",
+      "cause": "원인과 다음 행동",
+      "actions": "동작",
+      "scopes": {
+        "personal": "개인",
+        "project": "프로젝트"
+      },
+      "states": {
+        "ready": "사용 가능",
+        "untrusted": "신뢰 필요",
+        "archived": "보관됨",
+        "enabled": "사용",
+        "disabled": "사용 안 함",
+        "removed": "제거됨",
+        "refused": "설치 안 됨",
+        "failed": "실패"
+      },
+      "trustNext": "사용하기 전에 검토하고 신뢰하세요.",
+      "manage": "관리",
+      "manageNamed": "{name} 관리",
+      "loading": "불러오는 중…",
+      "loadFailed": "{group} 목록을 불러오지 못했습니다.",
+      "retry": "다시 시도",
+      "localOnly": "로컬 서버에서 사용",
+      "none": "없음",
+      "issue": {
+        "package_limit": {
+          "cause": "설치 거부: 패키지가 크기 또는 파일 수 한도를 넘었습니다.",
+          "next": "필요 없는 파일을 빼거나 패키지를 나눈 뒤 다시 검토하세요."
+        },
+        "root_skill": {
+          "cause": "패키지 루트에 SKILL.md가 있어 패키지 전체를 Skill 하나로 읽었고, 확장은 불러오지 않았습니다.",
+          "next": "확장을 쓰려면 SKILL.md를 하위 Skill 폴더로 옮기고 패키지를 다시 설치하세요."
+        },
+        "extension_load_failed": {
+          "cause": "실행을 시작할 때 확장을 불러오지 못했습니다.",
+          "next": "설정에서 확장의 신뢰와 버전을 확인한 뒤 다시 실행하세요."
+        },
+        "resource_invalid": {
+          "cause": "리소스 내용이 올바르지 않습니다.",
+          "next": "리소스를 다시 검토하거나 사본을 편집하세요."
+        },
+        "policy_denied": {
+          "cause": "작업 방식의 정책이 이 리소스를 허용하지 않습니다.",
+          "next": "작업 방식의 정책을 바꾸거나 이 리소스를 빼세요."
+        },
+        "sdk_start_failed": {
+          "cause": "이 리소스로 에이전트 런타임을 시작하지 못했습니다.",
+          "next": "진단을 확인한 뒤 다시 실행하세요."
+        }
+      }
+    }
   },
   "Navigation": {
     "app": "앱",

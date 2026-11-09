@@ -537,7 +537,35 @@
     "chatHeading": "Start a conversation",
     "chatHint": "Ask a question or describe a task. Choose a model in the chat.",
     "startChat": "Start chat",
-    "optionalCorralsHint": "A custom Corral is optional. Use one when you want to define roles and how they work together."
+    "optionalCorralsHint": "A custom Corral is optional. Use one when you want to define roles and how they work together.",
+    "newConversation": "New conversation",
+    "newConversationMenu": "More ways to start a conversation",
+    "detailsFirst": "Set name, purpose and team first…",
+    "taskBoardPreview": "Task board preview",
+    "pending": "{count, plural, one {# pending} other {# pending}}",
+    "folder": {
+      "loading": "Checking the folder…",
+      "none": "No folder linked",
+      "missing": "Folder missing",
+      "untrusted": "Folder not trusted",
+      "ready": "Folder linked",
+      "unknown": "Folder status unavailable",
+      "settings": "Folder settings"
+    },
+    "environment": {
+      "folder": "Source folder",
+      "copies": "Working copies",
+      "path": "Path",
+      "branch": "Branch",
+      "changes": "Uncommitted changes",
+      "session": "Session",
+      "noInfo": "No information",
+      "changed": "{count, plural, =0 {None} one {# file} other {# files}}",
+      "copyMissing": "Copy missing",
+      "noCopies": "No working copies",
+      "noCopiesText": "A session makes one when its work changes files.",
+      "loading": "Loading…"
+    }
   },
   "Editor": {
     "name": "Team name",
@@ -1502,7 +1530,8 @@
       "teams": "Teams",
       "folder": "Project folder",
       "materials": "Instructions & memory",
-      "runs": "Runs"
+      "runs": "Runs",
+      "environment": "Environment"
     },
     "actions": "Actions for {name}"
   },
@@ -2961,7 +2990,88 @@
     "internalSkillName": "Internal skill name"
   },
   "Library": {
-    "title": "Library"
+    "title": "Library",
+    "views": "Library views",
+    "view": {
+      "teams": "Teams",
+      "templates": "Templates",
+      "resources": "Resources"
+    },
+    "project": "Project",
+    "back": "Back",
+    "loadFailed": "Could not load the library.",
+    "retry": "Try again",
+    "teams": {
+      "list": "Saved teams",
+      "name": "Name",
+      "version": "Version",
+      "updated": "Saved",
+      "detail": "Team details",
+      "newConversation": "New conversation with this team",
+      "edit": "Edit"
+    },
+    "resources": {
+      "group": {
+        "skills": "Skills",
+        "hooks": "Hooks",
+        "extensions": "Extensions",
+        "packages": "Packages",
+        "mcp": "MCP servers"
+      },
+      "name": "Name",
+      "scope": "Scope",
+      "status": "Status",
+      "cause": "Cause and next step",
+      "actions": "Actions",
+      "scopes": {
+        "personal": "Personal",
+        "project": "Project"
+      },
+      "states": {
+        "ready": "Ready",
+        "untrusted": "Needs trust",
+        "archived": "Archived",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "removed": "Removed",
+        "refused": "Not installed",
+        "failed": "Failed"
+      },
+      "trustNext": "Review it and trust it before use.",
+      "manage": "Manage",
+      "manageNamed": "Manage {name}",
+      "loading": "Loading…",
+      "loadFailed": "Could not load {group}.",
+      "retry": "Try again",
+      "localOnly": "Available with the local server",
+      "none": "None",
+      "issue": {
+        "package_limit": {
+          "cause": "Install refused: the package is over the size or file-count limit.",
+          "next": "Leave out files it does not need or split the package, then review it again."
+        },
+        "root_skill": {
+          "cause": "SKILL.md sits at the package root, so the whole package was read as one Skill and its extensions were not loaded.",
+          "next": "To load its extensions, move SKILL.md into a skills folder and install the package again."
+        },
+        "extension_load_failed": {
+          "cause": "An extension failed to load when a run started.",
+          "next": "Check the extension’s trust and version in settings, then run again."
+        },
+        "resource_invalid": {
+          "cause": "The resource’s content is not valid.",
+          "next": "Review the resource again, or edit a copy."
+        },
+        "policy_denied": {
+          "cause": "The work style’s policy does not allow this resource.",
+          "next": "Change the work style’s policy, or remove the resource from it."
+        },
+        "sdk_start_failed": {
+          "cause": "The agent runtime could not start with this resource.",
+          "next": "Check Diagnostics, then run again."
+        }
+      }
+    }
   },
   "Navigation": {
     "app": "App",

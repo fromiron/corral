@@ -1,11 +1,29 @@
 import { expect, type Page } from '@playwright/test';
 
 // Shared user-facing steps: start a chat directly, or explicitly choose a saved Corral.
-// The team for the next turn is chosen from the composer's team chip.
+// The team for the next turn is chosen from the composer's team chip. Teams and templates live
+// in the library (/library/teams, /library/templates).
+
+/** Opens the library's Teams view: for the named project, else the project opened last. */
+export async function openLibraryTeams(page: Page, projectName?: string) {
+  await page.goto(new URL('/library/teams', page.url()).href);
+  await expect(page.getByRole('tab', { name: 'Teams', exact: true, selected: true })).toBeVisible();
+  const filter = page.getByRole('combobox', { name: 'Project', exact: true });
+  if (projectName && (await filter.isVisible())) {
+    await filter.click();
+    await page.getByRole('option', { name: projectName, exact: true }).click();
+  }
+}
+
+/** In the library's Teams view: makes an empty team and opens it in the editor. */
+export async function newTeam(page: Page) {
+  await page.getByRole('button', { name: 'New team', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+}
 
 /** On a project page: makes a Corral from a template and comes back to the project. */
 export async function teamFromTemplate(page: Page, name = 'Single agent') {
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await page.goto(new URL('/library/templates', page.url()).href);
   await page
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
@@ -15,13 +33,14 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
-  await expect(page.getByRole('button', { name: 'Start chat', exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('button', { name: 'New conversation', exact: true })).toBeVisible();
 }
 
 /** On a project page: starts a session with this purpose and its first team. */
 export async function startSession(page: Page, purpose: string) {
-  if (!(await page.getByRole('textbox', { name: 'Purpose' }).isVisible()))
-    await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
+  await page.getByRole('button', { name: 'More ways to start a conversation' }).click();
+  await page.getByRole('menuitem', { name: /^Set name, purpose and team first/ }).click();
   await page.getByRole('textbox', { name: 'Purpose' }).fill(purpose);
   // without a choice a session starts in auto mode; this helper keeps the first team.
   await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
