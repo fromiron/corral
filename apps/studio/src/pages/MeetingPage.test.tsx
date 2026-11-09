@@ -66,6 +66,7 @@ const { MeetingPage } = await import('./MeetingPage.tsx');
 const { preferences } = await import('../workbench/preferences.ts');
 const { TopbarSlotContext } = await import('../workbench/TopbarSlot.tsx');
 const { registeredCommands } = await import('../commandRegistry.ts');
+const { meetingDecisionEdits } = await import('../workbench/MeetingDecisions.tsx');
 
 const config = {
   version: 1 as const,
@@ -168,6 +169,7 @@ afterEach(async () => {
   preferences.setState({ chatDensity: 'basic', sendKey: 'enter' });
   liveAnswer.current = {};
   localStorage.clear();
+  meetingDecisionEdits.setState({}, true);
 });
 
 async function mount(
@@ -176,12 +178,16 @@ async function mount(
   { narrow = false }: { narrow?: boolean } = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  // Under 1024px the records open as a drawer over the conversation.
+  // Under 1024px the records open as a drawer over the conversation; `resize` crosses it.
+  const screen = { narrow };
+  const listeners = new Set<() => void>();
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === '(max-width: 1023px)' ? narrow : false,
+    get matches() {
+      return query === '(max-width: 1023px)' ? screen.narrow : false;
+    },
     media: query,
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
   }));
   vi.stubGlobal(
     'ResizeObserver',
@@ -262,6 +268,11 @@ async function mount(
     button,
     box,
     type,
+    resize: (next: { narrow: boolean }) =>
+      act(async () => {
+        screen.narrow = next.narrow;
+        for (const listener of listeners) listener();
+      }),
     hide: () => act(async () => root.render(null)),
     show: () =>
       act(async () => {
@@ -963,6 +974,54 @@ it('on a narrow screen the records open as a drawer over the conversation and re
   expect(timeline()?.hidden).toBe(false);
   expect(conversation.scrollTop).toBe(420);
   expect(f.box.value).toBe('Draft under the drawer');
+});
+
+const decisionGoal = () =>
+  records()?.querySelector<HTMLTextAreaElement>('textarea[name="goal"]') ?? null;
+
+it('a decision being edited in the narrow drawer survives closing and reopening it', async () => {
+  const f = await mount(view({ minutes: [minutesWithCandidate] }), {}, { narrow: true });
+  await act(async () => f.button('records')?.click());
+  await act(async () => f.button('editCandidate')?.click());
+  await fill(must(decisionGoal(), 'the decision goal'), 'Ship after the drawer closes');
+  await act(async () => f.button('closeRecords')?.click());
+  await act(async () => vi.waitFor(() => expect(records()).toBeNull()));
+  await act(async () => f.button('records')?.click());
+  expect(decisionGoal()?.value).toBe('Ship after the drawer closes');
+  // Another meeting does not see it.
+  await f.hide();
+  const other = await mount(
+    view({ sessionId: 'another_meeting', minutes: [minutesWithCandidate] }),
+    {},
+    { narrow: true },
+  );
+  await act(async () => other.button('records')?.click());
+  expect(decisionGoal()).toBeNull();
+});
+
+it('a decision being edited survives the window crossing 1024px both ways', async () => {
+  const f = await mount(view({ minutes: [minutesWithCandidate] }));
+  await act(async () => f.button('records')?.click());
+  await act(async () => f.button('editCandidate')?.click());
+  await fill(must(decisionGoal(), 'the decision goal'), 'Ship on any screen');
+  await f.resize({ narrow: true });
+  expect(records()).toBeNull();
+  await act(async () => f.button('records')?.click());
+  expect(document.body.querySelector('[role="dialog"]')?.contains(records())).toBe(true);
+  expect(decisionGoal()?.value).toBe('Ship on any screen');
+  await fill(must(decisionGoal(), 'the decision goal'), 'Ship on any screen, checked');
+  await f.resize({ narrow: false });
+  await act(async () =>
+    vi.waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeNull()),
+  );
+  expect(records()?.tagName).toBe('ASIDE');
+  expect(decisionGoal()?.value).toBe('Ship on any screen, checked');
+  // Cancelling is what discards it.
+  await act(async () => f.button('cancel')?.click());
+  expect(decisionGoal()).toBeNull();
+  await f.hide();
+  await f.show();
+  expect(decisionGoal()).toBeNull();
 });
 
 it('clicking a participant puts an @mention at the caret without sending', async () => {

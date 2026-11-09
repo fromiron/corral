@@ -34,7 +34,7 @@ vi.mock('@corral/react/design-kit', () => ({
     </select>
   ),
 }));
-const { MeetingDecisions } = await import('./MeetingDecisions.tsx');
+const { MeetingDecisions, meetingDecisionEdits } = await import('./MeetingDecisions.tsx');
 const content = {
   goal: 'Ship safely',
   scope: ['web'],
@@ -99,6 +99,7 @@ const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const f of cleanup.splice(0)) await f();
   vi.restoreAllMocks();
+  meetingDecisionEdits.setState({}, true);
 });
 async function mount(current = view) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -181,6 +182,44 @@ it('a lost adoption response reuses the command ID', async () => {
   expect(f.container.querySelector('[role="alert"]')?.textContent).toContain('offline');
   await act(async () => f.button('adopt').click());
   expect(f.adopt.mock.calls[0]?.[1].commandId).toBe(f.adopt.mock.calls[1]?.[1].commandId);
+});
+
+it('an edited decision and its unanswered adoption survive a remount of the records', async () => {
+  let issued = 0;
+  const distinctIds = () =>
+    vi
+      .spyOn(crypto, 'randomUUID')
+      .mockImplementation(
+        () => `00000000-0000-4000-8000-${String(++issued).padStart(12, '0')}` as const,
+      );
+  const first = await mount();
+  distinctIds();
+  first.adopt.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => first.button('editCandidate').click());
+  const goal = first.container.querySelector<HTMLTextAreaElement>('textarea[name="goal"]');
+  if (!goal) throw new Error('The decision form is missing');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+      goal,
+      'Ship after review',
+    );
+    goal.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => first.button('adopt').click());
+  // The records close (the drawer, or the panel moving across the breakpoint) and reopen.
+  for (const unmount of cleanup.splice(0)) await unmount();
+  const second = await mount();
+  distinctIds();
+  expect(second.container.querySelector<HTMLTextAreaElement>('textarea[name="goal"]')?.value).toBe(
+    'Ship after review',
+  );
+  await act(async () => second.button('adopt').click());
+  expect(second.adopt.mock.calls[0]?.[1].commandId).toBe(first.adopt.mock.calls[0]?.[1].commandId);
+  expect(second.container.querySelector('textarea[name="goal"]')).toBeNull();
+  // Adopted, it is gone for good.
+  for (const unmount of cleanup.splice(0)) await unmount();
+  const third = await mount();
+  expect(third.container.querySelector('textarea[name="goal"]')).toBeNull();
 });
 
 it('revisions name the replaced version and withdrawal requires a human reason', async () => {

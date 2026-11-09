@@ -1,8 +1,10 @@
 import type { MeetingDecisionContent, MeetingView } from '@corral/contracts';
 import { activeMeetingDecision, type WorkSession } from '@corral/core';
 import { Button, Textarea } from '@corral/react/design-kit';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
+import { useStore } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { MeetingDiagnostics } from './MeetingDiagnostics.tsx';
@@ -24,6 +26,26 @@ type Draft = {
   content: MeetingDecisionContent;
   supersedesVersionId?: string;
 };
+interface DecisionEdit {
+  draft: Draft | null;
+  /** The command that saves this exact body, reused when its response was lost. */
+  command: { key: string; id: string } | null;
+}
+
+/**
+ * Each meeting's decision being edited, by meeting ID, for the life of this page. The records
+ * remount when the narrow drawer closes or the window crosses 1024px; the draft and its pending
+ * command stay here until it is adopted, cancelled or replaced by another edit.
+ */
+export const meetingDecisionEdits = createStore<Record<string, DecisionEdit>>(() => ({}));
+const noEdit: DecisionEdit = { draft: null, command: null };
+function changeEdit(sessionId: string, change: Partial<DecisionEdit>) {
+  meetingDecisionEdits.setState((all) => {
+    const next = { ...(all[sessionId] ?? noEdit), ...change };
+    const { [sessionId]: _previous, ...others } = all;
+    return next.draft || next.command ? { ...others, [sessionId]: next } : others;
+  }, true);
+}
 
 /** Candidates stay proposals until the person saves an immutable decision version. */
 export function MeetingDecisions({
@@ -38,11 +60,12 @@ export function MeetingDecisions({
   const t = useTranslations('MeetingsDecisions');
   const format = useFormatter();
   const { meetings } = useServices();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const sessionId = session.sessionId;
+  const draft = useStore(meetingDecisionEdits, (all) => all[sessionId]?.draft ?? null);
+  const setDraft = (next: Draft | null) => changeEdit(sessionId, { draft: next });
   const [withdrawal, setWithdrawal] = useState<{ versionId: string; reason: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const command = useRef<{ key: string; id: string } | null>(null);
   const nameOf = (id: string) =>
     view.config.participants.find((p) => p.participantId === id)?.name ?? id;
   const run = async (kind: 'adopt' | 'withdraw') => {
@@ -62,29 +85,24 @@ export function MeetingDecisions({
     const body = kind === 'adopt' ? cleanedDraft : withdrawal;
     if (!body || busy) return;
     const key = JSON.stringify([kind, body]);
-    if (command.current?.key !== key) command.current = { key, id: newCommandId() };
+    const pending = meetingDecisionEdits.getState()[sessionId]?.command;
+    const commandId = pending?.key === key ? pending.id : newCommandId();
+    changeEdit(sessionId, { command: { key, id: commandId } });
     setBusy(true);
     setError('');
     try {
       const result =
         kind === 'adopt' && cleanedDraft
-          ? await meetings.adopt(session.sessionId, {
-              ...cleanedDraft,
-              commandId: command.current.id,
-            })
+          ? await meetings.adopt(sessionId, { ...cleanedDraft, commandId })
           : withdrawal
-            ? await meetings.withdraw(session.sessionId, {
-                ...withdrawal,
-                commandId: command.current.id,
-              })
+            ? await meetings.withdraw(sessionId, { ...withdrawal, commandId })
             : null;
       if (!result) return;
       if (!result.ok) {
         setError(result.message);
         return;
       }
-      command.current = null;
-      setDraft(null);
+      changeEdit(sessionId, { draft: null, command: null });
       setWithdrawal(null);
       await onChange();
     } catch (failure) {
