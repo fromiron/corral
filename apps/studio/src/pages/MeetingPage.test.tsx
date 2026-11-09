@@ -31,16 +31,19 @@ vi.mock('../workbench/MeetingEvidence.tsx', () => ({
 }));
 vi.mock('../workbench/ChatView.tsx', () => ({
   ChatDensityMenu: () => null,
-  ChatView: ({ items, composer, header, children }: any) => (
+  // The real view hides its timeline while a long header (the widened records) is read.
+  ChatView: ({ items, composer, header, children, expandedHeader }: any) => (
     <div>
       {header}
-      {children}
-      {items.map((item: any) => (
-        <div key={item.id} data-chat-item={item.id}>
-          {item.content}
-        </div>
-      ))}
-      {composer}
+      <section data-testid="chat-timeline" hidden={expandedHeader}>
+        {children}
+        {items.map((item: any) => (
+          <div key={item.id} data-chat-item={item.id}>
+            {item.content}
+          </div>
+        ))}
+      </section>
+      <div data-testid="chat-composer">{composer}</div>
     </div>
   ),
 }));
@@ -61,6 +64,8 @@ vi.mock('@corral/react/design-kit', async (importOriginal) => ({
 
 const { MeetingPage } = await import('./MeetingPage.tsx');
 const { preferences } = await import('../workbench/preferences.ts');
+const { TopbarSlotContext } = await import('../workbench/TopbarSlot.tsx');
+const { registeredCommands } = await import('../commandRegistry.ts');
 
 const config = {
   version: 1 as const,
@@ -104,6 +109,57 @@ function view(change: Partial<MeetingView> = {}): MeetingView {
   };
 }
 
+/** The minutes, decisions and handoff: the side panel, or the drawer on a narrow screen. */
+const records = () => document.body.querySelector<HTMLElement>('[data-meeting-records]');
+const timeline = () => document.body.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+const participant = (id: string) =>
+  document.body.querySelector<HTMLElement>(
+    `[aria-label="participants"] [data-participant="${id}"]`,
+  );
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`Missing ${what}`);
+  return value;
+}
+const firstRound = () => must(view().rounds[0], 'the fixture round');
+/** Types into a field the way React hears it. */
+async function fill(field: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const prototype =
+    field instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+const minutesWithCandidate = {
+  minutesId: 'minutes_1',
+  roundId: 'round_1',
+  createdAt: 'x',
+  error: null,
+  document: {
+    issues: ['Whether to ship'],
+    claims: [],
+    agreements: [],
+    remainingDissent: [],
+    unverifiedFacts: [],
+    candidates: [
+      {
+        candidateId: 'ship',
+        content: {
+          goal: 'Ship the change',
+          scope: [],
+          excludedScope: [],
+          acceptanceCriteria: [],
+          remainingDissent: [],
+          evidence: [],
+          risks: [],
+          actions: [],
+          rejectedAlternatives: [],
+        },
+      },
+    ],
+  },
+};
+
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
@@ -114,8 +170,36 @@ afterEach(async () => {
   localStorage.clear();
 });
 
-async function mount(current: MeetingView, sessionChange: Partial<WorkSession> = {}) {
+async function mount(
+  current: MeetingView,
+  sessionChange: Partial<WorkSession> = {},
+  { narrow = false }: { narrow?: boolean } = {},
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  // Under 1024px the records open as a drawer over the conversation.
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(max-width: 1023px)' ? narrow : false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
+  Object.defineProperty(Element.prototype, 'getAnimations', {
+    configurable: true,
+    value: () => [],
+  });
+  cleanups.push(async () => {
+    if (animations) Object.defineProperty(Element.prototype, 'getAnimations', animations);
+    else Reflect.deleteProperty(Element.prototype, 'getAnimations');
+  });
   const meetings = {
     view: vi.fn(async () => current),
     send: vi.fn(async (_sessionId: string, _request: MeetingRoundRequest) => ({
@@ -136,9 +220,13 @@ async function mount(current: MeetingView, sessionChange: Partial<WorkSession> =
       updateSession: vi.fn(async () => ({ ok: true })),
     },
   };
+  // The page's toolbar portals into the top bar, which sits beside the page.
   const container = document.createElement('div');
+  const toolbar = document.createElement('div');
+  const page = document.createElement('div');
+  container.append(toolbar, page);
   document.body.append(container);
-  const root = createRoot(container);
+  const root = createRoot(page);
   cleanups.push(async () => {
     await act(async () => root.unmount());
     container.remove();
@@ -149,9 +237,18 @@ async function mount(current: MeetingView, sessionChange: Partial<WorkSession> =
     revision: 3,
     ...sessionChange,
   } as WorkSession;
-  await act(async () => root.render(<MeetingPage session={session} />));
+  const render = () =>
+    root.render(
+      <TopbarSlotContext.Provider value={{ actions: toolbar, views: null, crumbs: null }}>
+        <MeetingPage session={session} />
+      </TopbarSlotContext.Provider>,
+    );
+  await act(async () => render());
+  // Icon buttons (the kit's send arrow, the records toggle) are named by their label.
   const button = (text: string) =>
-    [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === text);
+    [...document.body.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === text || b.getAttribute('aria-label') === text,
+    );
   const box = container.querySelector('textarea')!;
   const type = async (text: string) =>
     act(async () => {
@@ -169,7 +266,7 @@ async function mount(current: MeetingView, sessionChange: Partial<WorkSession> =
     show: () =>
       act(async () => {
         services.current = { meetings, mode: 'browser', live: false };
-        root.render(<MeetingPage session={session} />);
+        render();
       }),
   };
 }
@@ -230,6 +327,7 @@ it('exposes individual chat messages without a work panel or round controls', as
   expect(items[1]?.textContent).toContain('p1 says yes');
   expect(items[2]?.textContent).toContain('provider unavailable');
   expect(f.container.querySelector('details[aria-label="records"]')).toBeNull();
+  expect(records()).toBeNull();
   expect(f.button('rebuttal')).toBeUndefined();
   expect(f.container.textContent).not.toContain('noLimits');
   expect(f.container.textContent).not.toContain('openRun');
@@ -559,11 +657,13 @@ it('parsed secretary minutes open the records panel instead of displaying their 
     raw,
   );
   expect(f.button('viewMinutes')).toBeDefined();
+  expect(records()).toBeNull();
   await act(async () => f.button('viewMinutes')?.click());
-  expect(f.container.querySelector<HTMLDetailsElement>('details[aria-label="records"]')?.open).toBe(
-    true,
-  );
-  expect(document.activeElement?.tagName).toBe('SUMMARY');
+  expect(records()?.hidden).toBe(false);
+  expect(records()?.textContent).toContain('Meeting issue');
+  // Focus moves to the records' heading, so the reader starts at the minutes.
+  expect(document.activeElement?.tagName).toBe('H2');
+  expect(records()?.contains(document.activeElement)).toBe(true);
 });
 
 it('an answer whose text was not kept says so instead of showing an empty card', async () => {
@@ -682,9 +782,12 @@ it('keeps only the latest minutes error visible outside the collapsed panel with
       ],
     }),
   );
+  // The records panel is closed; the failure and its recovery are still in view.
+  expect(records()).toBeNull();
   const alerts = [...f.container.querySelectorAll('[role="alert"]')];
   expect(alerts).toHaveLength(1);
   expect(alerts[0]?.closest('details')).toBeNull();
+  expect(alerts[0]?.closest('[data-testid="chat-composer"]')).not.toBeNull();
   expect(f.container.textContent).not.toContain('Old failure');
   expect(f.button('retrySummary')).toBeDefined();
   await act(async () => f.button('retrySummary')?.click());
@@ -730,7 +833,6 @@ it('uses the chosen send key and preserves IME confirmation keys', async () => {
 });
 
 it('restores an archived meeting from its notice or registered command without changing its draft', async () => {
-  const { registeredCommands } = await import('../commandRegistry.ts');
   const f = await mount(view({ revision: 9 }), { archivedAt: '2026-10-28T00:00:00Z' });
   await f.type('Archived draft');
   expect(f.container.textContent).toContain('archivedSending');
@@ -781,36 +883,205 @@ it('does not update an archived meeting that disappeared before the restore clic
   expect(f.container.textContent).toContain('notFound');
 });
 
-it('lets readers expand the records area without losing the message composer', async () => {
-  const f = await mount(
+it('widening the records hides the conversation but keeps the composer and a decision draft', async () => {
+  const f = await mount(view({ minutes: [minutesWithCandidate] }));
+  await f.type('A question for later');
+  await act(async () => f.button('records')?.click());
+  await act(async () => f.button('editCandidate')?.click());
+  const goal = () => records()?.querySelector<HTMLTextAreaElement>('textarea[name="goal"]');
+  const draftedGoal = must(goal(), 'the decision goal');
+  await fill(draftedGoal, 'Ship after one more check');
+  expect(f.button('expandRecords')?.getAttribute('aria-pressed')).toBe('false');
+  await act(async () => f.button('expandRecords')?.click());
+  expect(f.button('compactRecords')?.getAttribute('aria-pressed')).toBe('true');
+  expect(timeline()?.hidden).toBe(true);
+  expect(f.box.isConnected).toBe(true);
+  expect(f.box.value).toBe('A question for later');
+  expect(goal()).toBe(draftedGoal);
+  expect(goal()?.value).toBe('Ship after one more check');
+  await act(async () => f.button('compactRecords')?.click());
+  expect(timeline()?.hidden).toBe(false);
+  expect(goal()?.value).toBe('Ship after one more check');
+  expect(f.box.value).toBe('A question for later');
+});
+
+it('the records panel opens and closes from the toolbar, keeping the draft, and stays open per meeting', async () => {
+  const f = await mount(view({ minutes: [minutesWithCandidate] }));
+  await f.type('Unsent while reading');
+  await act(async () => f.button('@Builder')?.click());
+  const toggle = must(f.button('records'), 'the records toggle');
+  expect(toggle.closest('[data-testid="chat-composer"]')).toBeNull();
+  expect(toggle.getAttribute('aria-pressed')).toBe('false');
+  expect(records()).toBeNull();
+  await act(async () => toggle.click());
+  expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  expect(records()?.hidden).toBe(false);
+  // The panel sits beside the conversation; nothing is hidden and the composer is untouched.
+  expect(records()?.contains(f.box)).toBe(false);
+  expect(timeline()?.hidden).toBe(false);
+  expect(f.box.isConnected).toBe(true);
+  expect(f.box.value).toBe('Unsent while reading');
+  expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('true');
+  // Its open state belongs to this meeting.
+  await f.hide();
+  await f.show();
+  expect(records()?.hidden).toBe(false);
+  await f.hide();
+  const other = await mount(view({ sessionId: 'another_meeting' }));
+  expect(records()).toBeNull();
+  await other.hide();
+  await f.show();
+  await act(async () => f.button('closeRecords')?.click());
+  expect(records() === null || records()?.hidden).toBe(true);
+  expect(f.button('records')?.getAttribute('aria-pressed')).toBe('false');
+  expect(f.container.querySelector('textarea')?.value).toBe('Unsent while reading');
+});
+
+it('on a narrow screen the records open as a drawer over the conversation and return to its place', async () => {
+  // A panel left open on a wide screen does not cover a phone's conversation by itself.
+  localStorage.setItem('corral:meeting-records:v1:session_1', 'true');
+  const f = await mount(view({ minutes: [minutesWithCandidate] }), {}, { narrow: true });
+  expect(records()).toBeNull();
+  const conversation = must(timeline(), 'the conversation');
+  Object.defineProperty(conversation, 'scrollTop', {
+    configurable: true,
+    writable: true,
+    value: 0,
+  });
+  conversation.scrollTop = 420;
+  await f.type('Draft under the drawer');
+  await act(async () => f.button('records')?.click());
+  const drawer = document.body.querySelector('[role="dialog"]');
+  expect(drawer).not.toBeNull();
+  expect(drawer?.contains(records())).toBe(true);
+  // Narrow screens have no side to widen into.
+  expect(f.button('expandRecords')).toBeUndefined();
+  expect(timeline()).toBe(conversation);
+  await act(async () => f.button('closeRecords')?.click());
+  await act(async () => vi.waitFor(() => expect(records()).toBeNull()));
+  expect(timeline()).toBe(conversation);
+  expect(timeline()?.hidden).toBe(false);
+  expect(conversation.scrollTop).toBe(420);
+  expect(f.box.value).toBe('Draft under the drawer');
+});
+
+it('clicking a participant puts an @mention at the caret without sending', async () => {
+  const f = await mount(view());
+  await f.type('Ask now');
+  f.box.setSelectionRange(4, 4);
+  const builder = participant('p2')?.querySelector('button');
+  expect(builder).toBeTruthy();
+  await act(async () => builder?.click());
+  expect(f.box.value).toBe('Ask @Builder now');
+  expect(document.activeElement).toBe(f.box);
+  expect(f.box.selectionStart).toBe('Ask @Builder '.length);
+  expect(f.meetings.send).not.toHaveBeenCalled();
+  // A word right before the caret keeps its own space.
+  f.box.setSelectionRange(f.box.value.length, f.box.value.length);
+  await act(async () => participant('p1')?.querySelector('button')?.click());
+  expect(f.box.value).toBe('Ask @Builder now @Architect ');
+  expect(f.meetings.send).not.toHaveBeenCalled();
+});
+
+it('the participant row shows who is answering, waiting, failed or idle', async () => {
+  const idle = await mount(view());
+  expect(participant('p1')?.dataset.state).toBe('idle');
+  expect(participant('p2')?.dataset.state).toBe('failed');
+  expect(participant('p2')?.textContent).toContain('status.failed');
+  expect(participant('secretary')?.dataset.state).toBe('idle');
+  await idle.hide();
+  await mount(
     view({
-      minutes: [
+      rounds: [
         {
-          minutesId: 'm1',
-          roundId: 'round_1',
-          createdAt: 'x',
-          error: null,
-          document: {
-            issues: ['A long record'],
-            claims: [],
-            agreements: [],
-            remainingDissent: [],
-            unverifiedFacts: [],
-            candidates: [],
-          },
+          ...firstRound(),
+          active: true,
+          answers: [
+            answer('p1', 'running'),
+            { ...answer('p2', 'running'), status: 'waiting', runId: null, usage: null },
+          ],
         },
       ],
     }),
   );
-  const records = f.container.querySelector<HTMLDetailsElement>('details[aria-label="records"]')!;
-  records.open = true;
-  expect(f.button('expandRecords')?.getAttribute('aria-pressed')).toBe('false');
-  await act(async () => f.button('expandRecords')?.click());
-  expect(f.button('compactRecords')?.getAttribute('aria-pressed')).toBe('true');
-  expect(records.querySelector('.overflow-y-auto')).toBeNull();
-  expect(f.box.isConnected).toBe(true);
-  await act(async () => f.button('compactRecords')?.click());
-  expect(records.querySelector('.overflow-y-auto')).not.toBeNull();
+  expect(participant('p1')?.dataset.state).toBe('answering');
+  expect(participant('p1')?.textContent).toContain('status.running');
+  expect(participant('p2')?.dataset.state).toBe('waiting');
+  expect(participant('p2')?.textContent).toContain('status.waiting');
+});
+
+it('a participant who answers after a failure is no longer shown as failed', async () => {
+  await mount(
+    view({
+      rounds: [
+        { ...firstRound(), order: 0, answers: [{ ...answer('p2', 'failed'), order: 1 }] },
+        {
+          ...firstRound(),
+          roundId: 'round_2',
+          commandId: 'c2',
+          order: 2,
+          answers: [{ ...answer('p2', 'answered'), order: 3 }],
+        },
+      ],
+    }),
+  );
+  expect(participant('p2')?.dataset.state).toBe('idle');
+});
+
+it('Stop ends the answering and waiting turns through the meeting command while Send stays available', async () => {
+  const f = await mount(
+    view({
+      rounds: [
+        { ...firstRound(), active: true, answers: [answer('p1', 'running')] },
+        {
+          ...firstRound(),
+          roundId: 'round_2',
+          commandId: 'c2',
+          message: 'And the rollout?',
+          active: true,
+          answers: [{ ...answer('p2', 'running'), status: 'waiting', runId: null, usage: null }],
+        },
+      ],
+    }),
+  );
+  await f.type('One more thing');
+  expect(f.button('send')?.hasAttribute('disabled')).toBe(false);
+  await act(async () => f.button('stopRound')?.click());
+  expect(f.meetings.stop).toHaveBeenCalledExactlyOnceWith('session_1', 'round_1');
+  expect(f.meetings.send).not.toHaveBeenCalled();
+  expect(f.box.value).toBe('One more thing');
+});
+
+it('renames and pins a meeting with a revision read just before the change', async () => {
+  const f = await mount(view({ revision: 12 }));
+  const repository = services.current.repository as any;
+  const pin = registeredCommands().find((command) => command.id === 'session:pin');
+  expect(pin?.title).toBe('pin');
+  await act(async () => pin?.run());
+  expect(repository.getSession).toHaveBeenCalledWith('session_1');
+  expect(repository.updateSession).toHaveBeenLastCalledWith('session_1', {
+    pinned: true,
+    expectedRevision: 12,
+  });
+  const rename = registeredCommands().find((command) => command.id === 'session:rename');
+  expect(rename).toBeDefined();
+  await act(async () => rename?.run());
+  const title = must(
+    document.body.querySelector<HTMLInputElement>('input[aria-label="sessionTitle"]'),
+    'the rename field',
+  );
+  expect(title.value).toBe('Review');
+  await fill(title, 'Release review');
+  await act(async () => f.button('save')?.click());
+  expect(repository.updateSession).toHaveBeenLastCalledWith('session_1', {
+    title: 'Release review',
+    expectedRevision: 12,
+  });
+  // A rejected revision is reported, not retried.
+  repository.updateSession.mockResolvedValueOnce({ ok: false, message: 'changed elsewhere' });
+  await act(async () => pin?.run());
+  expect(repository.updateSession).toHaveBeenCalledTimes(3);
+  expect(f.container.textContent).toContain('changed elsewhere');
 });
 
 it('uses the shared recovery explanation for recorded provider failures', async () => {

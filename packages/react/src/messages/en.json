@@ -4694,7 +4694,9 @@
     "viewMinutes": "Review minutes and plan",
     "startDescription": "Discuss a question with several participants, then turn the conclusions into a plan.",
     "expandRecords": "Expand records",
-    "compactRecords": "Compact records"
+    "compactRecords": "Compact records",
+    "closeRecords": "Close records",
+    "mentionParticipant": "Add @{name} to the message"
   },
   "MeetingsDecisions": {
     "decisionLabel": "Decision v{number} · {goal}",

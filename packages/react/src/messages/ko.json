@@ -4694,7 +4694,9 @@
     "viewMinutes": "회의록과 플랜 검토",
     "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요.",
     "expandRecords": "기록 넓게 보기",
-    "compactRecords": "기록 접어 보기"
+    "compactRecords": "기록 좁게 보기",
+    "closeRecords": "기록 닫기",
+    "mentionParticipant": "메시지에 @{name} 넣기"
   },
   "MeetingsDecisions": {
     "decisionLabel": "결정 v{number} · {goal}",
