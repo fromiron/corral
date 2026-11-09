@@ -22,6 +22,7 @@ import {
 } from '../design-kit/index.ts';
 import { type CompareKey, compareRuns } from '../run/compare.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
+import { requestOpen } from '../run/transcript.ts';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
@@ -176,7 +177,10 @@ export function RunComparison({
                             call.modelCallId
                           }{' '}
                         </span>
-                        <ReasoningSummary call={call} />
+                        <ReasoningSummary
+                          call={call}
+                          open={requestOpen(run.projection, call.modelCallId)}
+                        />
                       </li>
                     ))}
                   </ul>

@@ -2565,6 +2565,7 @@
     "unrecorded": "Reasoning not recorded",
     "payload": "Payload verified",
     "unverified": "not yet verified",
+    "notVerified": "not verified",
     "omitted": "omitted",
     "level": {
       "off": "Off",

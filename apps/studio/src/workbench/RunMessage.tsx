@@ -12,6 +12,7 @@ import {
   ReviewSummary,
   RunActions,
   RunReason,
+  requestOpen,
   runResults,
   SafeMarkdown,
   StatusBadge,
@@ -237,7 +238,10 @@ export function RunMessage({
       </Link>
       <StatusBadge status={execution.status} />
       {execution.modelCallIds.at(-1) ? (
-        <ReasoningSummary call={projection.modelCalls[execution.modelCallIds.at(-1)!]!} />
+        <ReasoningSummary
+          call={projection.modelCalls[execution.modelCallIds.at(-1)!]!}
+          open={requestOpen(projection, execution.modelCallIds.at(-1)!)}
+        />
       ) : null}
       {execution.waitingOn ? (
         <span className="text-muted-foreground">
@@ -412,7 +416,12 @@ export function RunMessage({
                     >
                       <span className="flex flex-wrap items-center gap-2 text-xs">
                         <StatusBadge status={execution.status} />
-                        {call ? <ReasoningSummary call={projection.modelCalls[call]!} /> : null}
+                        {call ? (
+                          <ReasoningSummary
+                            call={projection.modelCalls[call]!}
+                            open={requestOpen(projection, call)}
+                          />
+                        ) : null}
                       </span>
                       <ThinkingStepDetails
                         summary={tt('label')}

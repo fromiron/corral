@@ -23,6 +23,7 @@ import {
 import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
+import { requestOpen } from '../run/transcript.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
@@ -598,7 +599,9 @@ function ExecutionDetail({
   if (!waiting && !execution.error && !live && (compact || !call)) return null;
   return (
     <>
-      {!compact && call ? <ReasoningSummary call={call} /> : null}
+      {!compact && call ? (
+        <ReasoningSummary call={call} open={requestOpen(projection, call.modelCallId)} />
+      ) : null}
       {waiting ? (
         <p className="text-muted-foreground" data-testid="waiting-on">
           {t(`waiting.${waiting.kind}`, { count: waiting.targetIds.length })}:{' '}

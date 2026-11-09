@@ -116,6 +116,54 @@ const requested = event(
   1,
 );
 
+const HASH = 'a'.repeat(64);
+// A Manual Local judgment on a request that ended without a payload record.
+const judged = event(
+  'model.request_prepared',
+  {
+    executionId: 'exec_lead',
+    modelCallId: 'call_1',
+    contextSnapshotId: 'context_1',
+    profile: 'model-a',
+    configRevision: 0,
+    directiveIds: [],
+    inputArtifactVersionIds: ['artv_brief'],
+    reasoning: {
+      preparationId: 'prep_story',
+      requested: { mode: 'auto' },
+      resolved: 'low',
+      source: 'router',
+      route: {
+        routeId: 'route_story',
+        engine: 'local',
+        application: 'active',
+        settingsRevision: HASH,
+        candidates: ['low', 'medium', 'high', 'xhigh'],
+        recommended: 'low',
+        probabilities: { low: 0.62, medium: 0.3, high: 0.08 },
+        probabilityMeaning: 'choice-distribution',
+        engineIdentity: 'd1-2b-q4km-llama-b12189-linux-x64-cpu#1',
+        questionVersion: 'effort-v1',
+        questionHash: HASH,
+        serializerVersion: 'd1-systemone-v1',
+        frame: {
+          kind: 'd1-exact',
+          hash: HASH,
+          stateUnits: 140,
+          inputUnits: 171,
+          included: 3,
+          omitted: 0,
+          truncated: 0,
+        },
+        timing: { deadlineMs: 5000, packMs: 3, countMs: 12, engineMs: 405, callerWaitMs: 420 },
+        device: { requested: 'cpu', actual: 'cpu', host: 'build-host', threads: 4 },
+        usage: { inputTokens: 171, billableUnits: null },
+      },
+    },
+  },
+  1,
+);
+
 const toolEvents: RunEvent[] = [
   requested,
   event(
@@ -206,6 +254,14 @@ function pausedProjection(): RunProjection {
   return value;
 }
 
+/** The run goes on; the judged request finished without a payload record. */
+function judgedProjection(): RunProjection {
+  const value = projection();
+  const call = value.modelCalls.call_1;
+  if (call) value.modelCalls.call_1 = { ...call, finished: true, responseRef: 'response_call_1' };
+  return value;
+}
+
 const ordinaryResponse = 'This is ordinary assistant output, not private reasoning.';
 async function waitForStepMotion(canvasElement: HTMLElement) {
   await waitFor(() => {
@@ -251,6 +307,22 @@ export const RunningFirstRequest: Story = {
     await userEvent.keyboard('{Enter}');
     await expect(details).toHaveAttribute('aria-expanded', 'true');
     await waitFor(() => expect(canvas.getByText('Reasoning not recorded')).toBeVisible());
+    await waitForStepMotion(canvasElement);
+  },
+};
+
+export const JudgedRequest: Story = {
+  args: { projection: judgedProjection(), events: [judged], streams: {} },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const line = await canvas.findByRole('button', {
+      name: 'Local · CPU · Recommended low → applied low · 420ms',
+    });
+    await waitFor(() => expect(line).toBeVisible());
+    await expect(canvas.queryByRole('button', { name: 'Request details' })).toBeNull();
+    await userEvent.click(line);
+    const detail = await within(document.body).findByRole('dialog');
+    await expect(detail).toHaveTextContent('Payload verifiednot verified');
     await waitForStepMotion(canvasElement);
   },
 };

@@ -13,8 +13,12 @@ type Call = Pick<ModelCallView, 'reasoning' | 'reasoningWire' | 'reasoningSettle
 
 const DECISION_APIS = ['jev', 'openai-decisions'] as const;
 
-/** One request's reasoning: the judgment line where one ran, else what was asked and sent. */
-export function ReasoningSummary({ call }: { call: Call }) {
+/**
+ * One request's reasoning: the judgment line where one ran, else what was asked and sent.
+ * `open` says whether the request can still record what it sent, so a missing record reads as
+ * pending rather than as never verified.
+ */
+export function ReasoningSummary({ call, open }: { call: Call; open: boolean }) {
   const t = useTranslations('Reasoning');
   const resolution = call.reasoning;
   if (!resolution) return <span className="text-muted-foreground">{t('unrecorded')}</span>;
@@ -29,7 +33,9 @@ export function ReasoningSummary({ call }: { call: Call }) {
       </span>
     );
   if (resolution.route)
-    return <RouteSummary call={call} resolution={resolution} route={resolution.route} />;
+    return (
+      <RouteSummary call={call} open={open} resolution={resolution} route={resolution.route} />
+    );
   const requested =
     resolution.requested.mode === 'fixed'
       ? resolution.requested.level
@@ -44,18 +50,25 @@ export function ReasoningSummary({ call }: { call: Call }) {
       {' · '}
       {t(`source.${resolution.source}`)}
       {' · '}
-      {t('payload')}:{' '}
-      {call.reasoningWire ? (call.reasoningWire.value ?? t('omitted')) : t('unverified')}
+      {t('payload')}: {sent(call, open, t)}
     </span>
   );
 }
 
+/** What the provider request carried, as recorded; never assumed from the resolution. */
+function sent(call: Call, open: boolean, t: ReturnType<typeof useTranslations<'Reasoning'>>) {
+  if (call.reasoningWire) return call.reasoningWire.value ?? t('omitted');
+  return open ? t('unverified') : t('notVerified');
+}
+
 function RouteSummary({
   call,
+  open,
   resolution,
   route,
 }: {
   call: Call;
+  open: boolean;
   resolution: ReasoningResolution;
   route: RouteRecord;
 }) {
@@ -167,10 +180,7 @@ function RouteSummary({
       ? [[t('route.occupied'), ms(settled.physicalOccupiedMs)] as [string, string]]
       : []),
     ...(input ? [[t('route.input'), input] as [string, string]] : []),
-    [
-      t('payload'),
-      call.reasoningWire ? (call.reasoningWire.value ?? t('omitted')) : t('unverified'),
-    ],
+    [t('payload'), sent(call, open, t)],
   ];
 
   return (
