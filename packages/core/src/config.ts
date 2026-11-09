@@ -1,4 +1,5 @@
 import {
+  EffortRoutingSettings,
   Identifier,
   ProfileContextOverrides,
   type RunLimits,
@@ -124,8 +125,15 @@ export const WorkspaceConfig = z.strictObject({
       resultRevision: z.string().regex(/^[a-f0-9]{64}$/),
     })
     .optional(),
+  /** Effort routing for automatic reasoning (features/effort-routing.md); absent means Off. */
+  decisions: z.strictObject({ effort_routing: EffortRoutingSettings }).optional(),
 });
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfig>;
+
+/** The workspace's effort routing; none saved means Off. */
+export function effortRoutingSettings(config: WorkspaceConfig): EffortRoutingSettings {
+  return config.decisions?.effort_routing ?? { mode: 'off' };
+}
 
 const CREDENTIAL_KEY = /key|token|secret|password|credential|auth/i;
 

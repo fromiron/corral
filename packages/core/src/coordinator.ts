@@ -27,6 +27,7 @@ import {
   type DecisionCancellation,
   type DecisionNode,
   EffectiveHarnessSnapshot,
+  EffortRoutingSettings,
   type EventPayload,
   ExtensionUiNotice,
   ExtensionUiRequest,
@@ -62,6 +63,7 @@ import {
   type Receipt,
   type RecipeStopReason,
   type RequestPermit,
+  RequestPreparation,
   type ResolveApprovalCommand,
   type ResolvedInput,
   ResumeRuntimeRequest,
@@ -131,6 +133,15 @@ import {
 } from './context-checkpoint.ts';
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
+import {
+  callSnapshot,
+  type EffortRoutingDeps,
+  prepareReasoning,
+  ROUTING_OFF,
+  routingRevision,
+  type Shadow,
+  type StoredRoute,
+} from './effort-routing/index.ts';
 import { carriedSources, forkPlan, forkSteps } from './fork.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
@@ -142,7 +153,7 @@ import {
   readPartialOutputs,
 } from './partial-output.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
-import { automaticReasoning, fixedReasoning, reasoningError } from './reasoning.ts';
+import { reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun, type RunPlan } from './run-plan.ts';
 import { type RunStats, runStats } from './run-stats.ts';
@@ -374,6 +385,8 @@ export interface CoordinatorDeps {
   timers?: Scheduler;
   /** Admission gates and observers. Defaults to today's checks, no observers. */
   admission?: AdmissionConfig;
+  /** Effort routing for automatic reasoning (features/effort-routing.md). Absent means Off. */
+  effortRouting?: EffortRoutingDeps;
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -689,6 +702,7 @@ export class Coordinator {
   private readonly modelAttempts: ModelAttemptStore | undefined;
   private readonly runner: GraphRunner;
   private readonly decisions: DecisionPolicy | undefined;
+  private readonly effortRouting: EffortRoutingDeps | undefined;
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly corrals: DefinitionSource | undefined;
@@ -731,6 +745,7 @@ export class Coordinator {
     this.modelAttempts = deps.modelAttempts;
     this.runner = deps.runner ?? new SequentialPlanRunner();
     this.decisions = deps.decisions;
+    this.effortRouting = deps.effortRouting;
     this.corrals = deps.corrals;
     this.sessionId = deps.sessionId ?? 'backend_local';
     this.policy = deps.policy ?? SPEC_HARD_CAPS;
@@ -7032,6 +7047,9 @@ export class Coordinator {
   ): AgentHost & { submitFinalAnswer(settlement: AgentSettlement): Promise<void> } {
     const { executionId, harness } = input;
     const agent: Actor = { kind: 'agent', id: executionId };
+    // The settled route of the last request, for an explicit transport retry of it only.
+    let lastRoute: { modelCallId: string; stored: StoredRoute } | null = null;
+    let pendingShadow: { modelCallId: string; shadow: Shadow } | null = null;
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
     let partialWriter: PartialOutputWriter | undefined;
@@ -8199,10 +8217,14 @@ export class Coordinator {
         protectedContextIssued = true;
         return protectedContext();
       },
-      prepareModelRequest: async (rawRecord?: ModelRequestRecord): Promise<RequestPermit> => {
+      prepareModelRequest: async (
+        rawRecord?: ModelRequestRecord,
+        rawPreparation?: RequestPreparation,
+      ): Promise<RequestPermit> => {
         if (preparing) throw new Error('request preparation already in progress');
         preparing = true;
         try {
+          const preparation = rawPreparation ? RequestPreparation.parse(rawPreparation) : undefined;
           if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
             throw new Error('harness not loaded');
           if (harness && harnessState === 'loaded' && !rawRecord)
@@ -8270,14 +8292,104 @@ export class Coordinator {
           )
             throw new Error('CONTEXT_STALE');
           const preparationId = this.ids.next('preparation');
-          const reasoning =
-            input.role.reasoning?.mode === 'auto'
-              ? automaticReasoning(
-                  record?.purpose === 'compaction',
-                  input.model.reasoning?.levels ?? [],
-                  preparationId,
-                )
-              : fixedReasoning(input.role.reasoning, preparationId);
+          // Parent questions are fixed before the judgment: the request carries exactly the
+          // ones the worker's context lacks, and the judgment reads all of them.
+          const questions = this.parentQuestions(run, input);
+          const present = new Set(preparation?.snapshot?.presentQuestionIds ?? []);
+          const appended = questions.filter((question) => !present.has(question.questionId));
+          const queuedIds = () =>
+            run.projection.directiveOrder.filter((id) => {
+              const directive = run.projection.directives[id];
+              return directive?.targetExecutionId === executionId && directive.status === 'queued';
+            });
+          const routingSettings = () => {
+            if (run.snapshot.mode !== 'live' || !this.effortRouting) return ROUTING_OFF;
+            const parsed = EffortRoutingSettings.safeParse(this.effortRouting.settings());
+            return parsed.success ? parsed.data : ROUTING_OFF;
+          };
+          const fingerprint = () =>
+            hashOf({
+              directives: queuedIds(),
+              artifacts: run.projection.artifactReads[executionId] ?? [],
+              revision: run.projection.executions[executionId]?.configRevision,
+              descriptors: [...descriptors.values()],
+              parentQuestions: this.parentQuestions(run, input),
+              settings: routingRevision(routingSettings()),
+            });
+          const settings = routingSettings();
+          // Only a request that waits for an engine can go stale while it waits.
+          const judged =
+            input.role.reasoning?.mode === 'auto' &&
+            record?.purpose !== 'compaction' &&
+            settings.mode === 'manual' &&
+            settings.application !== 'shadow';
+          const preparedAt = judged ? fingerprint() : '';
+          const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+          run.cancelListeners.set(executionId, listeners);
+          const cancellation: DecisionCancellation = {
+            get aborted() {
+              try {
+                requireOwned();
+                return false;
+              } catch {
+                return true;
+              }
+            },
+            onCancel(fn) {
+              listeners.add(fn);
+              if (this.aborted) fn();
+              return () => listeners.delete(fn);
+            },
+          };
+          const effortRouting = this.effortRouting;
+          const planned = prepareReasoning({
+            preparationId,
+            policy: input.role.reasoning,
+            compaction: record?.purpose === 'compaction',
+            model: input.model,
+            settings,
+            backend: (engine) => effortRouting?.backend(engine) ?? null,
+            snapshot: callSnapshot(preparation?.snapshot, {
+              directives: (record?.directiveIds ?? queuedIds()).map((directiveId) => ({
+                directiveId,
+                text: run.projection.directives[directiveId]?.text ?? '',
+              })),
+              questions,
+            }),
+            contextHash: record?.contextHash ?? null,
+            retryOf:
+              preparation?.retryOfModelCallId &&
+              lastRoute?.modelCallId === preparation.retryOfModelCallId
+                ? lastRoute.stored
+                : null,
+            routeId: () => this.ids.next('route'),
+            clock: this.clock,
+            timers: this.timers,
+            cancellation,
+          });
+          const awaited = judged && planned instanceof Promise;
+          let prepared: Awaited<typeof planned>;
+          if (planned instanceof Promise) {
+            run.boundaries.add(executionId);
+            try {
+              prepared = await planned;
+            } finally {
+              run.boundaries.delete(executionId);
+            }
+          } else prepared = planned;
+          if (prepared.kind === 'cancelled') {
+            requireActive();
+            throw new Error('request cancelled');
+          }
+          if (awaited) {
+            const paused = !WORKING.has(run.projection.status);
+            do {
+              await this.boundary(run, executionId);
+            } while (!WORKING.has(run.projection.status));
+            requireActive();
+            if (paused || fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
+          }
+          const reasoning = prepared.resolution;
           // Wait for a model slot; a waiting execution is not in a request and holds none.
           const queuedAt = this.clock.monotonicMs();
           await this.acquireModelSlot(run, input);
@@ -8287,6 +8399,7 @@ export class Coordinator {
               await this.boundary(run, executionId);
             } while (!WORKING.has(run.projection.status));
             requireActive();
+            if (awaited && fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
             if (
               protectedContextIssued &&
               record?.sections.find((section) => section.name === 'corral_state')?.hash !==
@@ -8371,6 +8484,17 @@ export class Coordinator {
             },
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
+          lastRoute = prepared.stored ? { modelCallId, stored: prepared.stored } : null;
+          pendingShadow = prepared.shadow ? { modelCallId, shadow: prepared.shadow } : null;
+          const routeId = reasoning?.route?.routeId;
+          if (prepared.settled && routeId)
+            void prepared.settled.then((facts) =>
+              this.recordRouting(run, executionId, {
+                type: 'reasoning.settled',
+                executionId,
+                payload: { executionId, routeId, ...facts },
+              }),
+            );
           this.modelTransports.set(modelCallId, { run, input, observe: host.observe, queueWaitMs });
           return {
             modelCallId,
@@ -8378,9 +8502,7 @@ export class Coordinator {
             profile: input.modelProfile,
             maxOutputTokens,
             directives: queued,
-            ...(this.parentQuestions(run, input).length
-              ? { parentQuestions: this.parentQuestions(run, input) }
-              : {}),
+            ...(appended.length ? { parentQuestions: appended } : {}),
             ...(reasoning ? { reasoning } : {}),
           };
         } finally {
@@ -8428,6 +8550,60 @@ export class Coordinator {
             payload: { effectId: lastCall.effectId, providerRequestId: null },
           });
         if (drafts.length) this.commit(run, drafts);
+        // Shadow judges only after the baseline request went out, and never changes it.
+        if (pendingShadow?.modelCallId === modelCallId) {
+          const { shadow } = pendingShadow;
+          pendingShadow = null;
+          const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+          run.cancelListeners.set(executionId, listeners);
+          const scope: DecisionCancellation = {
+            get aborted() {
+              try {
+                requireOwned();
+                return false;
+              } catch {
+                return true;
+              }
+            },
+            onCancel(fn) {
+              listeners.add(fn);
+              if (this.aborted) fn();
+              return () => listeners.delete(fn);
+            },
+          };
+          void shadow.observe(scope).then((outcome) => {
+            this.recordRouting(run, executionId, {
+              type: 'reasoning.observed',
+              executionId,
+              payload: {
+                executionId,
+                routeId: shadow.routeId,
+                modelCallId,
+                baseline: shadow.baseline,
+                selected: outcome.kind === 'selected' ? outcome.effort : null,
+                skipped: outcome.kind === 'cancelled' ? 'cancelled' : outcome.reason,
+                ...(outcome.insufficient ? { insufficient: outcome.insufficient } : {}),
+                probabilities: outcome.probabilities,
+                probabilityMeaning: outcome.probabilityMeaning,
+                engineIdentity: outcome.engineIdentity,
+                frame: outcome.frame,
+                timing: {
+                  packMs: outcome.timing.packMs,
+                  countMs: outcome.timing.countMs,
+                  engineMs: outcome.timing.engineMs,
+                },
+              },
+            });
+            if (outcome.settled)
+              void outcome.settled.then((facts) =>
+                this.recordRouting(run, executionId, {
+                  type: 'reasoning.settled',
+                  executionId,
+                  payload: { executionId, routeId: shadow.routeId, ...facts },
+                }),
+              );
+          });
+        }
       },
 
       observe: async (observation: AgentObservation) => {
@@ -9145,6 +9321,17 @@ export class Coordinator {
     )
       return undefined;
     return parent;
+  }
+
+  /** Engine facts that arrive after the request: recorded while the run is open, else dropped. */
+  private recordRouting(run: LiveRun, _executionId: string, draft: EventDraft) {
+    if (
+      this.live.get(run.runId) !== run ||
+      TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+      this.storageError
+    )
+      return;
+    this.commit(run, [draft]);
   }
 
   private parentQuestions(run: LiveRun, input: AgentStartInput): ParentQuestionMessage[] {

@@ -2576,9 +2576,13 @@
     },
     "source": {
       "fixed": "Manual",
-      "provider_default": "Provider default",
+      "provider-default": "Provider default",
       "off": "Judgment off",
-      "internal-policy": "Compaction policy"
+      "internal-policy": "Compaction policy",
+      "router": "Judged",
+      "single-level": "Only supported level",
+      "fallback": "Fallback",
+      "reused": "Reused on retry"
     }
   },
   "LocalAi": {

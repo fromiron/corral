@@ -564,6 +564,11 @@ class WorkerExecution {
                   ...(frame.contextUsage ? { contextUsage: frame.contextUsage } : {}),
                 })
               : frame.record,
+            {
+              ...(frame.logicalRequestId ? { logicalRequestId: frame.logicalRequestId } : {}),
+              ...(frame.retryOfModelCallId ? { retryOfModelCallId: frame.retryOfModelCallId } : {}),
+              ...(frame.snapshot ? { snapshot: frame.snapshot } : {}),
+            },
           );
           const apiKey = await this.options.credentials(this.input.model);
           this.send({

@@ -29,18 +29,6 @@ export const RoleRunOverride = z
 export const RoleRunOverrides = z.record(Identifier, RoleRunOverride);
 export type RoleRunOverrides = z.infer<typeof RoleRunOverrides>;
 
-/**
- * How one request's reasoning was settled (features/effort-routing.md). `off` is an automatic
- * request sent with the provider default because the effort mode is off; `internal-policy` is an
- * automatic compaction request, which keeps medium.
- */
-export const ReasoningResolution = z.strictObject({
-  requested: ReasoningPolicy,
-  resolved: ReasoningLevel.nullable(),
-  source: z.enum(['fixed', 'provider_default', 'off', 'internal-policy']),
-  preparationId: Identifier,
-});
-export type ReasoningResolution = z.infer<typeof ReasoningResolution>;
 export const ReasoningWire = z.strictObject({
   kind: z.enum(['effort', 'omitted']),
   value: z.string().max(64).nullable(),

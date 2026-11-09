@@ -2,6 +2,11 @@ import { z } from 'zod';
 import { AutoRoute } from './auto-team.ts';
 import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
+import {
+  ReasoningObservedPayload,
+  ReasoningResolution,
+  ReasoningSettledPayload,
+} from './effort-routing.ts';
 import { ErrorCode } from './errors.ts';
 import {
   CompactionReport,
@@ -16,7 +21,7 @@ import {
 import { Identifier, SchemaVersion } from './ids.ts';
 import { BinaryArtifact, ImageGenerationProfile } from './media-artifact.ts';
 import { MeetingRunOrigin } from './meeting.ts';
-import { ReasoningCapabilities, ReasoningResolution } from './reasoning.ts';
+import { ReasoningCapabilities } from './reasoning.ts';
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
 import { ResumedFrom, RuntimeCheckpointRecord } from './runtime-checkpoints.ts';
@@ -607,6 +612,8 @@ export const ModelRequestPrepared = event(
     inputArtifactVersionIds: Ids,
   }),
 );
+export const ReasoningSettled = event('reasoning.settled', ReasoningSettledPayload);
+export const ReasoningObserved = event('reasoning.observed', ReasoningObservedPayload);
 export const ModelFinished = event(
   'model.finished',
   z.strictObject({
@@ -830,6 +837,8 @@ export const RunEvent = z.discriminatedUnion('type', [
   ToolStarted,
   ToolFinished,
   ModelRequestPrepared,
+  ReasoningSettled,
+  ReasoningObserved,
   ModelFinished,
   ModelUsageReconciled,
   UsageRecorded,

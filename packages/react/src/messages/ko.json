@@ -2576,9 +2576,13 @@
     },
     "source": {
       "fixed": "수동",
-      "provider_default": "공급자 기본",
+      "provider-default": "공급자 기본",
       "off": "판정 꺼짐",
-      "internal-policy": "요약 정책"
+      "internal-policy": "요약 정책",
+      "router": "판정",
+      "single-level": "유일한 지원 수준",
+      "fallback": "대체",
+      "reused": "재시도에 재사용"
     }
   },
   "LocalAi": {

@@ -49,6 +49,7 @@ describe.skipIf(!enabled)('auto team live regression', () => {
     let stopEvents = () => {};
     const events: RunEvent[] = [];
     const reviewerInputs: boolean[] = [];
+    const reviewerRequests: boolean[] = [];
     const observations: Record<string, unknown> = {};
     const deadline = new AbortController();
     const diagnostics = () => {
@@ -151,9 +152,14 @@ describe.skipIf(!enabled)('auto team live regression', () => {
               );
             return real.start(input, {
               ...host,
-              prepareModelRequest(record) {
+              prepareModelRequest(record, preparation) {
                 admitRequest();
-                return host.prepareModelRequest(record);
+                // The worker's call snapshot is what the request context held for this call.
+                if (input.role.id === 'reviewer')
+                  reviewerRequests.push(
+                    preparation?.snapshot?.request?.text.includes(marker) ?? false,
+                  );
+                return host.prepareModelRequest(record, preparation);
               },
             });
           },
@@ -259,6 +265,8 @@ describe.skipIf(!enabled)('auto team live regression', () => {
       );
       expect(reviewerInputs.length).toBeGreaterThan(0);
       expect(reviewerInputs.every(Boolean)).toBe(true);
+      expect(reviewerRequests.length).toBeGreaterThan(0);
+      expect(reviewerRequests.every(Boolean)).toBe(true);
       const outputId = final.output?.artifactVersionIds[0];
       expect(outputId).toBeDefined();
       expect(server.coordinator.getArtifactText(runId, outputId ?? '')?.includes(marker)).toBe(
@@ -345,6 +353,7 @@ describe.skipIf(!enabled)('auto team live regression', () => {
             logicalRequests: calls,
             routeRequests: routeCalls,
             reviewerOriginalInput: reviewerInputs.length > 0 && reviewerInputs.every(Boolean),
+            reviewerModelContext: reviewerRequests.length > 0 && reviewerRequests.every(Boolean),
             limits: {
               logicalRequests: REQUEST_CAP,
               attemptTimeoutMs: ATTEMPT_TIMEOUT_MS,

@@ -48,6 +48,8 @@ import {
   ResourcePath,
   RestoreCheckpoint,
   ResumeRuntimeRequest,
+  type RoutingBackend,
+  type RoutingEngine,
   type RunEvent,
   RunInput,
   RunReferences,
@@ -163,6 +165,7 @@ import { createSubagentsVaultAdapter } from './vault/subagents.ts';
 import { registerVoiceRoutes } from './voice/routes.ts';
 import {
   configRevision,
+  currentEffortRouting,
   prepareWorkspace,
   readWorkspaceConfig,
   writeModelConfig,
@@ -185,6 +188,8 @@ export interface ServerOptions {
   localIntelligence?: LocalIntelligence;
   /** Decision APIs and their keys; live servers otherwise open them on their credentials. */
   decisionApis?: DecisionApis;
+  /** Effort routing engines; tests pass fakes. Without one, a chosen engine is unavailable. */
+  routingBackend?: (engine: RoutingEngine) => RoutingBackend | null;
   host?: string;
   /** 0 picks a free port. */
   port?: number;
@@ -622,6 +627,10 @@ async function createCorralServer(
     corrals,
     policy: workspace.policy,
     sessionId: backendSessionId,
+    effortRouting: {
+      settings: () => currentEffortRouting(workspace.root),
+      backend: (engine) => options.routingBackend?.(engine) ?? null,
+    },
   });
   registry?.configureRequests({
     store: modelAttempts,

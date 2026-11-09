@@ -106,7 +106,7 @@ describe('automatic reasoning with the effort mode off', () => {
       expect(permit.reasoning).toMatchObject(
         reasoning.mode === 'fixed'
           ? { resolved: 'high', source: 'fixed' }
-          : { resolved: null, source: 'provider_default' },
+          : { resolved: null, source: 'provider-default' },
       );
       s.done.open();
     }

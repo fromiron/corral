@@ -21,7 +21,7 @@ describe('reasoning records', () => {
 
   it('no longer reads the removed judge records', () => {
     const base = { requested: { mode: 'auto' }, resolved: 'high', preparationId: 'prep_1' };
-    for (const source of ['local-model', 'external-model', 'fallback', 'compaction'])
+    for (const source of ['local-model', 'external-model', 'provider_default', 'compaction'])
       expect(ReasoningResolution.safeParse({ ...base, source }).success).toBe(false);
     expect(
       ReasoningResolution.safeParse({ ...base, source: 'off', policyVersion: 'corral-effort-v4' })

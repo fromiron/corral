@@ -33,6 +33,15 @@ export {
   ToolTerminationUnconfirmed,
 } from './coordinator.ts';
 export { definitionHash } from './definition-hash.ts';
+export { SERIALIZER_VERSION } from './effort-routing/frame.ts';
+export {
+  type EffortRoutingDeps,
+  effortQuestion,
+  FRAME_LIMITS,
+  QUESTION_VERSION,
+  ROUTING_OFF,
+  routingRevision,
+} from './effort-routing/index.ts';
 export * from './evaluation.ts';
 export * from './fork.ts';
 export * from './fuzzy.ts';

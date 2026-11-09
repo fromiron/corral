@@ -1,4 +1,11 @@
 import type { AgentRole, InputBindingKind, ItemRef, TaskBrief } from './definition.ts';
+import type {
+  EffortLevel,
+  ReasoningResolution,
+  RequestPreparation,
+  RoutingFallbackReason,
+  SettledBasis,
+} from './effort-routing.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
 import type {
@@ -15,7 +22,6 @@ import type {
 } from './harness.ts';
 import type { MeetingRunOrigin } from './meeting.ts';
 import type { McpChallenge } from './project-tools.ts';
-import type { ReasoningResolution } from './reasoning.ts';
 import type {
   RuntimeCheckpointRecord,
   RuntimeCheckpointState,
@@ -49,7 +55,8 @@ export type IdKind =
   | 'question'
   | 'approval'
   | 'decision'
-  | 'preparation';
+  | 'preparation'
+  | 'route';
 
 export interface IdFactory {
   next(kind: IdKind): string;
@@ -148,7 +155,10 @@ export interface RequestPermit {
   maxOutputTokens: number;
   /** Directives fixed into this request's snapshot, in delivery order. */
   directives: DeliveredDirective[];
-  /** Open child questions addressed to this exact current execution. */
+  /**
+   * Open child questions for this execution that the request context does not hold yet. They
+   * were part of the routing input; the worker appends exactly these.
+   */
   parentQuestions?: ParentQuestionMessage[];
 }
 
@@ -194,7 +204,10 @@ export interface AgentHost {
   checkpointContext?(context: RuntimeContext): Promise<RuntimeCheckpointRecord | null>;
   protectedContext?(): ProtectedContext;
   reportCompaction?(report: CompactionReport): Promise<void>;
-  prepareModelRequest(record?: ModelRequestRecord): Promise<RequestPermit>;
+  prepareModelRequest(
+    record?: ModelRequestRecord,
+    preparation?: RequestPreparation,
+  ): Promise<RequestPermit>;
   /** SDK-only: unsupported hosts must refuse SDK execution. */
   reportHarness?(report: HarnessReport): Promise<void>;
   simulateHarness?(): Promise<void>;
@@ -238,6 +251,69 @@ export interface AgentHandle {
 
 export interface AgentAdapter {
   start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle>;
+}
+
+// Effort routing engines (features/effort-routing.md). The host owns the deadline and the
+// resolution; an engine only counts, judges once and reports when its work physically ended.
+
+/** The fixed question, with the criteria of the candidate levels only. */
+export interface EffortQuestion {
+  type: 'choice';
+  instructions: string;
+  criteria: Partial<Record<EffortLevel, string>>;
+}
+
+export interface RoutingBackend {
+  readonly kind: 'local' | 'api';
+  /** The engine a judgment would use now; a different one never reuses an earlier result. */
+  identity(): string | null;
+  /** Reserves the engine for one judgment without waiting; a refusal names the fallback reason. */
+  admit(): { ok: true; lease: RoutingLease } | { ok: false; reason: RoutingFallbackReason };
+}
+
+export interface RoutingLease {
+  /** The engine artifact and instance, or the API and its model. */
+  readonly identity: string;
+  readonly frame: 'd1-exact' | 'api-bounded';
+  readonly device: { actual: string | null; host: string | null; threads: number | null } | null;
+  /** Size of a state text in the frame's unit; Local counts with the model's tokenizer. */
+  countState(text: string, signal: DecisionCancellation): Promise<number>;
+  /** Size of the whole engine input for this state and question, in the same unit. */
+  countInput(
+    state: string,
+    question: EffortQuestion,
+    signal: DecisionCancellation,
+  ): Promise<number>;
+  /** Sends the judgment once. The lease ends when the flight settles. */
+  start(request: RouterRequest): RoutingFlight;
+  /** Ends a lease that never started a flight. */
+  release(): void;
+}
+
+export interface RouterRequest {
+  routeId: string;
+  state: string;
+  question: EffortQuestion;
+  candidates: EffortLevel[];
+  /** What is left of the host's deadline; engines never compare clocks across processes. */
+  remainingMs: number;
+  /** The counted engine input; Local refuses a response whose usage differs. */
+  inputUnits: number;
+}
+
+/** An engine answer before validation. */
+export interface RouterResponse {
+  choice: string;
+  probabilities?: Record<string, number>;
+  inputTokens: number | null;
+  billableUnits: number | null;
+}
+
+export interface RoutingFlight {
+  /** Rejects with an error whose `reason` names a fallback reason. Settles before `settled`. */
+  result: Promise<RouterResponse>;
+  /** The physical end: a complete native response, the owned child's exit, or a closed remote. */
+  settled: Promise<{ basis: SettledBasis; finishedAtMs: number }>;
 }
 
 /** Set when a pending answer is no longer wanted (timeout, cancelled execution, run ended). */

@@ -195,6 +195,16 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "reasoning.settled",
+    "requiredContent": "executionId,routeId,basis,physicalOccupiedMs,lateResult,lateSelected",
+    "status": "implemented"
+  },
+  {
+    "type": "reasoning.observed",
+    "requiredContent": "executionId,routeId,modelCallId,baseline,selected,skipped,probabilities,probabilityMeaning,engineIdentity,frame,timing",
+    "status": "implemented"
+  },
+  {
     "type": "model.finished",
     "requiredContent": "responseRef,rawUsage,normalizedUsage,certainty",
     "status": "payload_schema_to_implement"

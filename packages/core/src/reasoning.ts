@@ -20,35 +20,16 @@ export function reasoningError(
     : `reasoning ${policy.level} is not supported by this model`;
 }
 
+/** A fixed level or the provider default, as asked: never judged. */
 export function fixedReasoning(
   policy: ReasoningPolicy | undefined,
   preparationId: string,
 ): ReasoningResolution | undefined {
   if (!policy || policy.mode === 'auto') return undefined;
   return {
+    preparationId,
     requested: policy,
     resolved: policy.mode === 'fixed' ? policy.level : null,
-    source: policy.mode,
-    preparationId,
+    source: policy.mode === 'fixed' ? 'fixed' : 'provider-default',
   };
-}
-
-/**
- * An automatic request with the effort mode off (features/effort-routing.md): no judge, the
- * provider default. A compaction request keeps the internal medium policy where the model has it.
- */
-export function automaticReasoning(
-  compaction: boolean,
-  levels: readonly string[],
-  preparationId: string,
-): ReasoningResolution {
-  const requested = { mode: 'auto' } as const;
-  if (compaction)
-    return {
-      requested,
-      resolved: levels.includes('medium') ? 'medium' : null,
-      source: 'internal-policy',
-      preparationId,
-    };
-  return { requested, resolved: null, source: 'off', preparationId };
 }

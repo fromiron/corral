@@ -20,6 +20,7 @@ const PREFIX: Record<IdKind, string> = {
   question: 'q',
   approval: 'appr',
   preparation: 'prep',
+  route: 'route',
   decision: 'dec',
 };
 

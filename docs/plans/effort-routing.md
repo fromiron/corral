@@ -34,8 +34,8 @@
 | 단계 | 내용 | 상태 | 커밋 |
 |---|---|---|---|
 | 0 | 명세와 이 플랜 | 완료 | `0c55103e` |
-| 1 | v4·외부 판정·관측 모드 제거 | 완료 | |
-| 2 | 공통 계약·snapshot·resolver(fake backend) | 대기 | |
+| 1 | v4·외부 판정·관측 모드 제거 | 완료 | `736e579d` |
+| 2 | 공통 계약·snapshot·resolver(fake backend) | 완료 | |
 | 3 | 판정 API backend | 대기 | |
 | 4 | d1 로컬 런타임 | 대기 | |
 | 5 | 설정 UI·실행 기록 | 대기 | |
@@ -111,12 +111,18 @@
 
 ## 다음 단계
 
-2단계: 공통 계약·snapshot·resolver를 fake backend로. 먼저 1단계 커밋 hash를 진행표에 채운다.
+3단계: 판정 API backend. 먼저 2단계 커밋 hash를 진행표에 채운다.
+
+2단계에서 정한 구현 사항(3단계 이후가 기대는 것):
+
+- 엔진 경계는 `RoutingBackend.admit()` → lease(`countState`·`countInput`·`start`·`release`) → flight(`result`, `settled`)다. lease는 flight가 settle되거나 시작 전에 `release()`될 때 끝난다. 정본은 `packages/contracts/src/ports.ts`.
+- 서버는 `createServer`의 `routingBackend(engine)`로 엔진을 받는다. 아직 넘기는 엔진이 없어 Manual은 `unavailable`로 fallback한다.
+- 설정은 요청 준비마다 `.corral/config.json`을 읽는다(`currentEffortRouting`). 읽지 못하면 Off다.
+- 시뮬레이션 실행(mock)은 판정하지 않는다.
 
 ## 열린 문제
 
 - 메인 체크아웃의 미추적 v3 작업 파일(헬퍼 `effort.rs`, `packed-effort.test.ts`, `tools/local-intelligence/effort/` 아래 새 파일 등)은 1단계에서 지우는 v4 도구에 의존해 이 브랜치와 충돌한다.
 - b12189의 인증·Web UI 끄기 옵션과 `/tokenize`·`/v1/systemone` 응답 형식은 4단계에서 실제 바이너리로 확인한다. 인증을 지원하지 않으면 무인증으로 띄우지 않는다.
 - Linux x64 외 배포 대상 OS는 정하지 않았다.
-- `tests/live/auto-team.live.test.ts`는 1단계부터 리뷰어 요청 문맥에 원 요구가 들어갔는지 보지 않는다(판정 입력으로만 볼 수 있었다). 2단계의 call snapshot으로 다시 확인한다.
-- 메인 체크아웃의 개발용 `.corral/config.json`에 `decisions.reasoning_effort`가 남아 있으면 이 브랜치는 그 설정을 거절한다. 사용자 확인 뒤 지운다.
+- 설정 저장 라우트(GET/PUT `/effort-routing`)는 5단계 설정 화면과 함께 만든다. 그 전에는 `writeEffortRouting`으로만 쓴다.

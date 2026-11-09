@@ -20,6 +20,7 @@ import {
   normalizeContext,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai';
+import { callSnapshotInput } from './call-snapshot.ts';
 import type { Channel } from './channel.ts';
 import { inspectContext, reconcileContextUsage } from './context-usage.ts';
 import type { EndpointSpec } from './endpoint.ts';
@@ -47,7 +48,6 @@ import {
   assertProtectedPayload,
   checkpointContext,
   conversationMessages,
-  missingParentQuestions,
   requestRecord,
   resumedMessages,
   withProtectedContext,
@@ -421,6 +421,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           type: 'prepare_request',
           logicalRequestId,
           retryIndex,
+          // An explicit transport retry names the call it repeats; nothing else may reuse a result.
+          ...(retryIndex && permit ? { retryOfModelCallId: permit.modelCallId } : {}),
+          snapshot: callSnapshotInput(
+            preparedContext,
+            protectedSections.find((section) => section.name === 'corral_state')?.text,
+          ),
           record: requestRecord(
             preparedContext,
             retryIndex ? 'retry' : 'turn',
@@ -463,10 +469,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             { role: 'user', content: directiveText(missing), timestamp: Date.now() },
           ],
         };
-      const parentQuestions = missingParentQuestions(
-        reply.parentQuestions ?? [],
-        protectedSections,
-      );
+      // Exactly the questions the routing input held; the host left out those already present.
+      const parentQuestions = reply.parentQuestions ?? [];
       if (parentQuestions.length)
         preparedContext = {
           ...preparedContext,

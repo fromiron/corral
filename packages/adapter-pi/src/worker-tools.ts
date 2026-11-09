@@ -317,6 +317,14 @@ export function assignmentMetadata(metadata: string): string {
   return `${METADATA_HEADER}${metadata}\n\n`;
 }
 
+/** The assignment without that block: routing needs the task, not its bookkeeping. */
+export function withoutAssignmentMetadata(text: string): string {
+  const start = text.indexOf(METADATA_HEADER);
+  if (start < 0) return text;
+  const end = text.indexOf('\n\n', start + METADATA_HEADER.length);
+  return end < 0 ? text.slice(0, start) : text.slice(0, start) + text.slice(end + 2);
+}
+
 export function userPrompt(start: PromptStart): string {
   const round = start.round ? `This is round ${start.round} of a review loop.\n\n` : '';
   const target =

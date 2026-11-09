@@ -49,6 +49,7 @@ import {
   type ToolDefinition,
   type WriteToolInput,
 } from '@earendil-works/pi-coding-agent';
+import { callSnapshotInput } from './call-snapshot.ts';
 import type { Channel } from './channel.ts';
 import { inspectContext, reconcileContextUsage } from './context-usage.ts';
 import { extensionUi } from './extension-ui.ts';
@@ -73,7 +74,6 @@ import {
   assertProtectedPayload,
   checkpointContext,
   conversationMessages,
-  missingParentQuestions,
   requestRecord,
   resumedMessages,
   withProtectedContext,
@@ -308,6 +308,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         requestPurpose: ModelRequestRecord['purpose'],
         logicalRequestId: string,
         retryIndex: number,
+        attempts: { modelCallId?: string },
       ) => {
         const out = createAssistantMessageEventStream();
         const owned = cleanJson(context) as Context;
@@ -444,6 +445,18 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 type: 'prepare_request',
                 logicalRequestId,
                 retryIndex,
+                // An explicit transport retry names the call it repeats; nothing else reuses.
+                ...(retryIndex && attempts.modelCallId
+                  ? { retryOfModelCallId: attempts.modelCallId }
+                  : {}),
+                ...(requestPurpose === 'compaction'
+                  ? {}
+                  : {
+                      snapshot: callSnapshotInput(
+                        requestContext,
+                        protectedSections.find((section) => section.name === 'corral_state')?.text,
+                      ),
+                    }),
                 ...record,
               });
             };
@@ -455,10 +468,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             }
             if (permit.type !== 'permit' || cancelled || options?.signal?.aborted)
               throw new Error('request refused');
-            const parentQuestions = missingParentQuestions(
-              permit.parentQuestions ?? [],
-              protectedSections,
-            );
+            // Exactly the questions the routing input held; the host left out those present.
+            const parentQuestions = permit.parentQuestions ?? [];
             if ((requestPurpose === 'turn' || requestPurpose === 'retry') && parentQuestions.length)
               requestContext = {
                 ...requestContext,
@@ -477,6 +488,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               deferredSteers.delete(id);
             }
             modelCallId = permit.modelCallId;
+            attempts.modelCallId = modelCallId;
             if (requestPurpose === 'compaction') manualCompactionCalls?.push(modelCallId);
             await ack({ type: 'request_dispatched', modelCallId });
             if (cancelled || options?.signal?.aborted) throw new Error('cancelled before dispatch');
@@ -614,6 +626,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         streamSimple: (selected, context, options) => {
           const requestPurpose = nativeDepth ? 'extension' : purpose;
           const logicalRequestId = `request_${++logicalRequests}`;
+          const attempts: { modelCallId?: string } = {};
           const signal = options?.signal
             ? AbortSignal.any([options.signal, cancellation.signal])
             : cancellation.signal;
@@ -648,6 +661,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 requestPurpose === 'turn' && attempt ? 'retry' : requestPurpose,
                 logicalRequestId,
                 attempt,
+                attempts,
               ),
           });
         },
