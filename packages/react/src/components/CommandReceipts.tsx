@@ -1,3 +1,4 @@
+import type { ReceiptStatus } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button } from '../design-kit/index.ts';
@@ -5,14 +6,30 @@ import type { RunSessionStore } from '../run/session.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
+/** A command these receipts settled: its result already shows where the person acted. */
+const SETTLED = new Set<ReceiptStatus>(['applied', 'superseded', 'cancelled']);
+
 /** Receipt state comes from the command record, never the HTTP status or a local click. */
-export function CommandReceipts({ session, target }: { session: RunSessionStore; target: string }) {
+export function CommandReceipts({
+  session,
+  target,
+  openOnly = false,
+}: {
+  session: RunSessionStore;
+  target: string;
+  /** Leaves out settled receipts, keeping those still waiting and those that went wrong. */
+  openOnly?: boolean;
+}) {
   const t = useTranslations('Reins');
   const receipts = useStore(session, (s) => s.receipts);
   const error = useStore(session, (s) => s.commandError);
   const unknown = useStore(session, (s) => s.unconfirmedCommands);
   const pending = useStore(session, (s) => s.pendingCommandIds);
-  const matching = Object.values(receipts).filter((receipt) => receipt.target === target);
+  const matching = Object.values(receipts).filter(
+    (receipt) =>
+      receipt.target === target &&
+      (!openOnly || !SETTLED.has(receipt.status) || receipt.error !== undefined),
+  );
   return (
     <div className="flex flex-col gap-1 text-xs" aria-live="polite">
       {error ? (
