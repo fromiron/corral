@@ -2,7 +2,7 @@ import { SNAPSHOT_SOURCE_BYTES } from '@corral/contracts';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { describe, expect, it } from 'vitest';
 import { callSnapshotInput, snapshotText } from '../src/call-snapshot.ts';
-import { assignmentMetadata, directiveText } from '../src/worker-tools.ts';
+import { assignmentMetadata, directiveText, sdkDirectiveText } from '../src/worker-tools.ts';
 
 // features/effort-routing.md#판정-입력: what the worker reads from its settled request context.
 
@@ -51,6 +51,21 @@ describe('the call snapshot a worker sends', () => {
     expect(JSON.stringify(snapshot)).not.toContain('Keep the API.');
     expect(snapshot.previousAssistant).toBeNull();
     expect(snapshot.toolCalls).toEqual([]);
+  });
+
+  it('#200: an instruction the SDK worker delivered mid-step is not the task', () => {
+    const snapshot = callSnapshotInput({
+      messages: [
+        user('Fix the parser bug.'),
+        assistant('Running the tests first.', [{ id: 't1', name: 'bash', arguments: {} }]),
+        result('t1', '1 failing', true),
+        user(sdkDirectiveText({ directiveId: 'dir_1', text: 'Keep the public API.' })),
+      ],
+    });
+    expect(snapshot.request?.text).toBe('Fix the parser bug.');
+    expect(snapshot.previousAssistant?.text).toBe('Running the tests first.');
+    expect(snapshot.toolCalls.map((call) => call.toolCallId)).toEqual(['t1']);
+    expect(JSON.stringify(snapshot)).not.toContain('Keep the public API.');
   });
 
   it('keeps every tool call of the latest step with its own status (P02, P08)', () => {

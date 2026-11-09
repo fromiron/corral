@@ -63,6 +63,8 @@ async function setup(
     local?: FakeRoutingOptions;
     api?: FakeRoutingOptions;
     levels?: ('low' | 'medium' | 'high' | 'xhigh')[];
+    /** Holds every request at the model slot while it returns more than zero. */
+    retryAfterMs?: () => number;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -106,6 +108,7 @@ async function setup(
       },
     },
     models: {
+      ...(options.retryAfterMs ? { retryAfterMs: options.retryAfterMs } : {}),
       resolve: (profile) => ({
         ok: true,
         snapshot: {
@@ -629,6 +632,47 @@ describe('effort routing through request preparation', () => {
     await expect(pending).rejects.toThrow('REASONING_STALE');
   });
 
+  it('#198: Shadow asks no engine once the settings were turned Off before dispatch', async () => {
+    const s = await setup({ settings: { ...API, application: 'shadow' } });
+    const permit = await s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    s.settings.current = { mode: 'off' };
+    await s.host().modelRequestDispatched?.(permit.modelCallId);
+    await drain();
+    expect(s.api.requests).toHaveLength(0);
+    expect(s.events.some((e) => e.type === 'reasoning.observed')).toBe(false);
+    expect(
+      s.events.some((e) => e.type === 'effect.admitted' && e.payload.kind === 'decision'),
+    ).toBe(false);
+  });
+
+  it('#198: a Shadow observation that answers after the settings changed is discarded', async () => {
+    const s = await setup({
+      settings: { ...LOCAL, application: 'shadow' },
+      local: { answer: 'hold' },
+    });
+    const permit = await s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    await s.host().modelRequestDispatched?.(permit.modelCallId);
+    await drain();
+    expect(s.local.requests).toHaveLength(1);
+    s.settings.current = { mode: 'off' };
+    s.local.flights[0]!.respond();
+    s.local.flights[0]!.settle();
+    await drain();
+    expect(s.events.some((e) => e.type === 'reasoning.observed')).toBe(false);
+  });
+
+  it('#198: settings changed while a request waits for a model slot make it stale', async () => {
+    let wait = 1000;
+    const s = await setup({ settings: { mode: 'off' }, retryAfterMs: () => wait });
+    const pending = s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    await drain();
+    s.settings.current = LOCAL;
+    wait = 0;
+    s.clock.advance(1000);
+    await expect(pending).rejects.toThrow('REASONING_STALE');
+    expect(s.local.requests).toHaveLength(0);
+  });
+
   it('a pause waits for an open API call, and the paused request is prepared again', async () => {
     const s = await setup({ settings: API, api: { answer: 'hold' } });
     const pending = s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
@@ -770,5 +814,118 @@ describe('parent questions are fixed before the judgment (P05)', () => {
     for (let i = 0; i < 50 && checks.length === 0; i++) await drain();
     await checks[0];
     expect(local.requests).toHaveLength(2);
+  });
+
+  it('#201: the judgment reads the versions the question attaches', async () => {
+    const clock = new FakeClock();
+    const local = new FakeRoutingBackend({ kind: 'local' });
+    const definition = linearCorral(['parent']);
+    definition.roles[0]!.reasoning = { mode: 'auto' };
+    definition.roles[0]!.allowedCollaborationTools.push('spawn_subagents', 'await_tasks', 'reply');
+    definition.roles.push({
+      ...definition.roles[0]!,
+      id: 'child_role',
+      name: 'Child',
+      reasoning: { mode: 'fixed', level: 'low' },
+      allowedCollaborationTools: ['ask', 'submit_result'],
+      allowedWorkTools: ['write_artifact'],
+    });
+    definition.nodes.push({
+      id: 'child',
+      type: 'agent',
+      label: 'Child',
+      roleId: 'child_role',
+      invocation: 'callable',
+      inputBindings: [],
+      outputName: 'text',
+    });
+    definition.capabilityLinks.push({
+      id: 'delegate_child',
+      kind: 'delegate',
+      sourceNodeId: 'parent',
+      targetNodeId: 'child',
+      parentQuestions: true,
+    });
+    const checks: Promise<void>[] = [];
+    const coordinator = new Coordinator({
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      policy: SPEC_HARD_CAPS,
+      effortRouting: { settings: () => LOCAL, backend: () => local },
+      models: {
+        resolve: (profile) => ({
+          ok: true,
+          snapshot: {
+            profile,
+            provider: 'openai-codex',
+            modelId: 'gpt-6-luna',
+            auth: 'oauth',
+            reasoning: { levels: ['low', 'medium', 'high', 'xhigh'], providerDefault: true },
+          },
+        }),
+      },
+      agents: {
+        async start(input, host) {
+          let settle!: (value: AgentSettlement) => void;
+          const done = new Promise<AgentSettlement>((resolve) => {
+            settle = resolve;
+          });
+          if (input.nodeId === 'child') {
+            void (async () => {
+              const written = await host.invokeTool({
+                name: 'write_artifact',
+                args: { text: 'export function parse() { return attachedBody; }' },
+              });
+              if (!written.ok) throw new Error(written.error.message);
+              await host.invokeTool({
+                name: 'ask',
+                args: {
+                  targetNodeId: 'parent',
+                  body: 'Which file owns the parser?',
+                  artifactRefs: [written.result.artifactVersionId],
+                },
+              });
+            })();
+          } else {
+            checks.push(
+              (async () => {
+                const batch = await host.invokeTool({
+                  name: 'spawn_subagents',
+                  args: { tasks: [{ targetNodeId: 'child', brief: 'look' }] },
+                });
+                if (!batch.ok) throw new Error(batch.error.message);
+                for (let i = 0; i < 5; i++) {
+                  const awaited = await host.invokeTool({
+                    name: 'await_tasks',
+                    args: { taskIds: batch.result.taskIds },
+                  });
+                  if (awaited.ok && (awaited.result.parentQuestions as unknown[])?.length) break;
+                }
+                const first = await host.prepareModelRequest(record(1), {
+                  snapshot: snapshot('Split the work.'),
+                });
+                expect(local.requests[0]!.state).toContain('attachedBody');
+                settle({ outcome: 'cancelled' });
+              })(),
+            );
+          }
+          return {
+            cancel: async () => settle({ outcome: 'cancelled' }),
+            waitForSettlement: () => done,
+          };
+        },
+      },
+    });
+    const start = coordinator.startRun({
+      schemaVersion: '0.1',
+      commandId: 'start',
+      mode: 'live',
+      definition,
+    });
+    if (!start.runId) throw new Error(JSON.stringify(start.receipt.error));
+    for (let i = 0; i < 50 && checks.length === 0; i++) await drain();
+    await checks[0];
+    expect(local.requests).toHaveLength(1);
   });
 });

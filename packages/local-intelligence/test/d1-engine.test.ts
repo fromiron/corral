@@ -168,6 +168,19 @@ describe('the Local runtime', () => {
     expect(s.engine.status().threads).toBe(4);
   });
 
+  it('#199: stopping while a restart waits for the old child starts nothing new', async () => {
+    const s = setup({ ignoreTerm: true });
+    await ready(s, 2);
+    s.engine.prepare(4);
+    expect(s.engine.status().runtime).toBe('starting');
+    await s.engine.stop();
+    // The old child ignored SIGTERM; stop returns only after it is gone.
+    expect(s.fake.children[0]!.alive).toBe(false);
+    await new Promise((done) => setTimeout(done, 500));
+    expect(s.fake.commands).toHaveLength(1);
+    expect(s.engine.status().runtime).toBe('stopped');
+  });
+
   it('is not ready for the first request, which starts it; a later one is judged', async () => {
     const s = setup();
     expect(s.backend().admit()).toEqual({ ok: false, reason: 'not-ready' });

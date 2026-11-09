@@ -3871,7 +3871,17 @@ export class Coordinator {
   }
 
   private publish(run: LiveRun, projection: RunProjection) {
+    const before = run.projection;
     run.projection = projection;
+    // Waiters on an execution's end (a run's success after a Join stopped a branch) look again.
+    if (
+      Object.values(projection.executions).some(
+        (e) =>
+          TERMINAL_EXECUTION_STATUSES.has(e.status) &&
+          !TERMINAL_EXECUTION_STATUSES.has(before.executions[e.executionId]?.status ?? 'queued'),
+      )
+    )
+      this.wake(run);
     for (const subscriber of this.subscribers) {
       if (subscriber.runId === run.runId) {
         void Promise.resolve().then(() => this.pump(subscriber));
@@ -5621,6 +5631,27 @@ export class Coordinator {
         return;
       }
     }
+    // A branch a Join stopped may still be ending. Success waits for it, so the working copy is
+    // given back as confirmed, and an end Corral could not confirm is not a success.
+    const ending = () =>
+      Object.values(run.projection.executions).filter(
+        (e) => run.cancelRequested.has(e.executionId) && !TERMINAL_EXECUTION_STATUSES.has(e.status),
+      );
+    while (ending().length) {
+      await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
+      if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+    }
+    const unconfirmed = this.store
+      .readEvents(run.runId, 0)
+      .find(
+        (event) =>
+          event.type === 'execution.settled' && event.payload.terminationMode === 'unconfirmed',
+      );
+    if (unconfirmed) {
+      const nodeId = run.projection.executions[unconfirmed.executionId ?? '']?.nodeId ?? 'unknown';
+      this.failRun(run, `termination_unconfirmed: ${nodeId}`);
+      return;
+    }
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
       {
@@ -7056,7 +7087,9 @@ export class Coordinator {
     const agent: Actor = { kind: 'agent', id: executionId };
     // The settled route of the last request, for an explicit transport retry of it only.
     let lastRoute: { modelCallId: string; stored: StoredRoute } | null = null;
-    let pendingShadow: { modelCallId: string; shadow: Shadow } | null = null;
+    // `current` says whether the settings it was prepared under still hold.
+    let pendingShadow: { modelCallId: string; shadow: Shadow; current: () => boolean } | null =
+      null;
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
     let partialWriter: PartialOutputWriter | undefined;
@@ -8302,6 +8335,7 @@ export class Coordinator {
           // Parent questions are fixed before the judgment: the request carries exactly the
           // ones the worker's context lacks, and the judgment reads all of them.
           const questions = this.parentQuestions(run, input);
+          const readable = this.readable(run, input);
           const present = new Set(preparation?.snapshot?.presentQuestionIds ?? []);
           const appended = questions.filter((question) => !present.has(question.questionId));
           const queuedIds = () =>
@@ -8331,6 +8365,10 @@ export class Coordinator {
             settings.mode === 'manual' &&
             settings.application !== 'shadow';
           const preparedAt = judged ? fingerprint() : '';
+          // Any automatic request depends on the settings, also one that waited only for a slot.
+          const routed = input.role.reasoning?.mode === 'auto' && record?.purpose !== 'compaction';
+          const settingsAt = routingRevision(settings);
+          const settingsHold = () => routingRevision(routingSettings()) === settingsAt;
           const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
           run.cancelListeners.set(executionId, listeners);
           const cancellation: DecisionCancellation = {
@@ -8368,6 +8406,16 @@ export class Coordinator {
                 text: run.projection.directives[directiveId]?.text ?? '',
               })),
               questions,
+              // What this request may not read stays null: the judgment then falls back.
+              attachments: questions.flatMap((question) =>
+                question.artifactRefs.map((artifactVersionId) => ({
+                  questionId: question.questionId,
+                  artifactVersionId,
+                  text: readable.has(artifactVersionId)
+                    ? this.store.getArtifactText(run.runId, artifactVersionId)
+                    : null,
+                })),
+              ),
             }),
             contextHash: record?.contextHash ?? null,
             retryOf:
@@ -8412,7 +8460,8 @@ export class Coordinator {
               await this.boundary(run, executionId);
             } while (!WORKING.has(run.projection.status));
             requireActive();
-            if (awaited && fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
+            if ((awaited && fingerprint() !== preparedAt) || (routed && !settingsHold()))
+              throw new Error('REASONING_STALE');
             if (
               protectedContextIssued &&
               record?.sections.find((section) => section.name === 'corral_state')?.hash !==
@@ -8498,7 +8547,9 @@ export class Coordinator {
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
           lastRoute = prepared.stored ? { modelCallId, stored: prepared.stored } : null;
-          pendingShadow = prepared.shadow ? { modelCallId, shadow: prepared.shadow } : null;
+          pendingShadow = prepared.shadow
+            ? { modelCallId, shadow: prepared.shadow, current: settingsHold }
+            : null;
           const routeId = reasoning?.route?.routeId;
           if (prepared.settled && routeId)
             void prepared.settled.then((facts) =>
@@ -8564,8 +8615,12 @@ export class Coordinator {
           });
         if (drafts.length) this.commit(run, drafts);
         // Shadow judges only after the baseline request went out, and never changes it.
+        // Settings changed since the preparation (Off, another engine, a withdrawn consent) start
+        // no observation, and an observation that answers after such a change is dropped.
+        if (pendingShadow?.modelCallId === modelCallId && !pendingShadow.current())
+          pendingShadow = null;
         if (pendingShadow?.modelCallId === modelCallId) {
-          const { shadow } = pendingShadow;
+          const { shadow, current } = pendingShadow;
           pendingShadow = null;
           const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
           run.cancelListeners.set(executionId, listeners);
@@ -8585,6 +8640,7 @@ export class Coordinator {
             },
           };
           void shadow.observe(scope).then((outcome) => {
+            if (!current()) return;
             this.recordRouting(run, executionId, {
               type: 'reasoning.observed',
               executionId,

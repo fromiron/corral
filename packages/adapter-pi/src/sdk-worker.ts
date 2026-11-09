@@ -89,6 +89,7 @@ import {
   parentQuestionsText,
   promptSections,
   replyCompletesAssignment,
+  sdkDirectiveText,
   systemPrompt,
   TOOL_TEXT,
   textOf,
@@ -104,8 +105,7 @@ export interface SdkWorkerDeps extends WorkerDeps {
 type Reply = Exclude<SdkHostFrame, { type: 'start' | 'cancel' | 'directive' | 'compact' }>;
 const hashOf = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
 const cleanJson = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
-const directiveText = (d: DeliveredDirective) =>
-  `Corral instruction (${d.directiveId}):\n${d.text}`;
+const directiveText = (d: DeliveredDirective) => sdkDirectiveText(d);
 
 /** One explicit SDK session. Pi's session state never commits Corral domain state. */
 export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {

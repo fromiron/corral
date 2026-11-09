@@ -601,6 +601,7 @@
     "forkedFromLink": "{runId} 실행의 {step}",
     "pauseBefore": "이 단계 전에 멈춤",
     "forkHere": "여기서 다시 실행",
+    "steps": "단계",
     "forkFailed": "시작하지 못했습니다: {message}"
   },
   "Timeline": {

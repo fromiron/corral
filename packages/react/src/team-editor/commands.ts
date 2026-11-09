@@ -732,7 +732,23 @@ function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
   if (!incoming.length) return { ok: false, reason: 'noPredecessor' };
   const outgoing = edges.filter((e) => e.source === step.id && e.sourcePort === 'out');
   const copy = duplicateNode(draft, step.id);
-  const join = createStep(copy.draft, 'join', step.parentId ?? null);
+  // The copy keeps its role's tools, so it calls the same helpers the agent calls.
+  let linked = copy.draft;
+  for (const link of draft.definition.capabilityLinks) {
+    if (link.sourceNodeId !== step.id) continue;
+    const { id, counters } = nextId(linked, 'link');
+    linked = withDefinition(
+      { ...linked, counters },
+      {
+        ...linked.definition,
+        capabilityLinks: [
+          ...linked.definition.capabilityLinks,
+          { ...link, id, sourceNodeId: copy.nodeId },
+        ],
+      },
+    );
+  }
+  const join = createStep(linked, 'join', step.parentId ?? null);
   const gone = new Set(outgoing.map((e) => e.id));
   return {
     ok: true,

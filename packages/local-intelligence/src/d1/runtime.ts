@@ -156,6 +156,8 @@ export class D1Runtime {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private holds = 0;
   private serial = 0;
+  /** Bumped by every stop; a start begun before it never launches after it. */
+  private epoch = 0;
   private readonly options: D1RuntimeOptions;
 
   constructor(options: D1RuntimeOptions) {
@@ -180,9 +182,10 @@ export class D1Runtime {
   prepare(threads: number): Promise<void> {
     if (this.ready(threads)) return Promise.resolve();
     if (this.starting?.threads === threads) return this.starting.done;
+    const epoch = this.epoch;
     const done = (async () => {
-      await this.stop();
-      await this.launch(threads);
+      await this.halt();
+      if (this.epoch === epoch) await this.launch(threads, epoch);
     })().finally(() => {
       if (this.starting?.done === done) this.starting = null;
     });
@@ -193,8 +196,22 @@ export class D1Runtime {
     return done;
   }
 
-  /** Ends the owned child, if any, and waits for its exit. */
+  /**
+   * Ends the owned child and any start in progress, and waits for both: a start that was waiting
+   * for an old child's exit launches nothing afterwards.
+   */
   async stop(): Promise<void> {
+    this.epoch++;
+    const pending = this.starting?.done;
+    this.starting = null;
+    await this.halt();
+    await pending?.catch(() => {});
+    this.state = 'stopped';
+    this.error = null;
+  }
+
+  /** Ends the owned child, if any, and waits for its exit. */
+  private async halt(): Promise<void> {
     this.clearIdle();
     const instance = this.current;
     this.current = null;
@@ -248,7 +265,7 @@ export class D1Runtime {
     clearTimeout(kill);
   }
 
-  private async launch(threads: number): Promise<void> {
+  private async launch(threads: number, epoch: number): Promise<void> {
     const { dir, manifest } = this.options;
     const launch = this.options.launch ?? spawnD1;
     this.state = 'starting';
@@ -256,6 +273,8 @@ export class D1Runtime {
     let instance: D1Instance;
     try {
       const port = await freePort();
+      // A stop while the port was found means nothing is launched.
+      if (this.epoch !== epoch) return;
       const key = randomBytes(32).toString('hex');
       instance = {
         id: String(++this.serial),

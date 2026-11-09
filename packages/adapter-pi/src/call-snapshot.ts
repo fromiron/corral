@@ -7,12 +7,15 @@ import {
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { ToolResultMessage } from '@earendil-works/pi-ai';
 import { isCorralState } from './request-record.ts';
-import { withoutAssignmentMetadata } from './worker-tools.ts';
+import {
+  DIRECTIVE_PREFIX,
+  SDK_DIRECTIVE_PREFIX,
+  withoutAssignmentMetadata,
+} from './worker-tools.ts';
 
 // The routing view of one request (features/effort-routing.md#판정-입력), read once from the
 // context the worker settled: the latest messages and tool batch only, never the whole history.
 
-const DIRECTIVE_PREFIX = 'Instruction from the person supervising this run (';
 const QUESTIONS_PREFIX = 'Pending questions from delegated children';
 
 /** Ordinary text only. Hidden thinking and image data never leave the worker. */
@@ -66,7 +69,10 @@ export function snapshotText(text: string): SnapshotText {
 const isRequest = (message: AgentMessage) => {
   if (message.role !== 'user' || isCorralState(message)) return false;
   const text = textOf(message.content);
-  return !text.startsWith(DIRECTIVE_PREFIX) && !text.startsWith(QUESTIONS_PREFIX);
+  // Directives go to the judgment as their own source, from either worker's message form.
+  return ![DIRECTIVE_PREFIX, SDK_DIRECTIVE_PREFIX, QUESTIONS_PREFIX].some((prefix) =>
+    text.startsWith(prefix),
+  );
 };
 
 /** Question IDs in the Corral state the context already carries. */

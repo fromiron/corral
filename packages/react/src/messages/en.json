@@ -601,6 +601,7 @@
     "forkedFromLink": "{step} of run {runId}",
     "pauseBefore": "Pause before this step",
     "forkHere": "Run again from here",
+    "steps": "Steps",
     "forkFailed": "Could not start: {message}"
   },
   "Timeline": {

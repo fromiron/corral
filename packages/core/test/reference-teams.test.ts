@@ -189,6 +189,31 @@ describe('reference teams: expansion', () => {
     expect(node(run, 'Q')).toMatchObject({ inputBindings: from('T.A', 'work') });
   });
 
+  it('#189: keeps a callable member outside the Team and its capability link with it', () => {
+    const delegator = {
+      ...role('writer'),
+      allowedCollaborationTools: ['spawn_subagents', 'await_tasks', 'submit_result'],
+    };
+    const team = Definition.parse({
+      ...saved(),
+      roles: [delegator, role('helper')],
+      nodes: [
+        ...saved().nodes,
+        { ...agent('H', brief, 'helper'), invocation: 'callable', outputName: 'help' },
+      ],
+      capabilityLinks: [{ id: 'call', kind: 'delegate', sourceNodeId: 'W', targetNodeId: 'H' }],
+    });
+    const planned = plan(outer(), { y: team });
+    if (!planned.ok) throw new Error(JSON.stringify(planned.issues));
+    const run = planned.definition;
+    expect(node(run, 'T.W')).toMatchObject({ parentId: 'T' });
+    expect(node(run, 'T.H')).toMatchObject({ invocation: 'callable', roleId: 'T.helper' });
+    expect(node(run, 'T.H')).not.toHaveProperty('parentId');
+    expect(run.capabilityLinks).toEqual([
+      { id: 'T.call', kind: 'delegate', sourceNodeId: 'T.W', targetNodeId: 'T.H' },
+    ]);
+  });
+
   it('refuses a saved team whose review recipe pins other criteria', () => {
     const reviewed = Definition.parse({
       ...saved(),
