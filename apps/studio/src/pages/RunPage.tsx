@@ -15,13 +15,13 @@ import {
   AgentStatusText,
   ApprovalPanel,
   ArtifactViewer,
-  EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
   FailureNotice,
   primaryWorkPlan,
   QuestionsPanel,
   ReinsPanel,
+  RoutingTally,
   RunActions,
   RunCanvas,
   type RunFlowCheck,
@@ -35,6 +35,7 @@ import {
   TaskBoard,
   Timeline,
   UsageInspector,
+  useRoundInspection,
   useRunDisplay,
   useRunWorkPlan,
   useSteerTarget,
@@ -262,6 +263,8 @@ function RunWorkspace({
   const { previewUrl, workspaces } = useServices();
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
+  // The work flow's tree and decisions show the same inspected Loop rounds.
+  const rounds = useRoundInspection(projection, execution ?? null);
   const failedTools = execution
     ? Object.values(projection?.toolCalls ?? {}).filter(
         (call) =>
@@ -343,7 +346,13 @@ function RunWorkspace({
   const hasOutput = useStore(session, (s) => s.outputText !== null);
   const workPlan = useRunWorkPlan(session, primaryWorkPlan(projection?.workPlans));
   const plan = 'plan' in workPlan.status ? workPlan.status.plan : null;
-  const pending = projection ? pendingInteractions(events, projection).length : 0;
+  const interactions = projection ? pendingInteractions(events, projection) : [];
+  const pending = interactions.length;
+  const waitingKey = interactions
+    .map((item) =>
+      item.kind === 'approval' ? item.approval.approvalId : item.event.payload.requestId,
+    )
+    .join('|');
   const sideShown =
     !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || pending > 0);
   useEffect(() => {
@@ -367,6 +376,14 @@ function RunWorkspace({
   useEffect(() => {
     if (panel === 'approval' && pending === 0) setPanel('closed');
   }, [panel, pending]);
+  // A new question or approval opens Needs your input once, only into free space on a wide page.
+  const announced = useRef(new Set<string>());
+  useEffect(() => {
+    const fresh = waitingKey.split('|').filter((id) => id && !announced.current.has(id));
+    for (const id of fresh) announced.current.add(id);
+    if (fresh.length && wide && panel === 'closed' && !documentOpen && !steeringOpen)
+      setPanel('approval');
+  }, [waitingKey, wide, panel, documentOpen, steeringOpen]);
   const activeElement = () =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const rememberTrigger = (origin = activeElement()) => {
@@ -428,23 +445,16 @@ function RunWorkspace({
         session={session}
         definition={definition}
         request={request}
+        waiting={pending}
+        onRespond={() => {
+          rememberTrigger();
+          setSteeringOpen(false);
+          setSearch({ artifact: undefined, result: undefined, view: undefined });
+          setPanel('approval');
+          requestAnimationFrame(() => response.current?.focus({ preventScroll: true }));
+        }}
         trailing={
           <div className="flex flex-wrap items-center gap-2">
-            {pending > 0 ? (
-              <Button
-                variant="tertiary"
-                size="compact"
-                onClick={() => {
-                  rememberTrigger();
-                  setSteeringOpen(false);
-                  setSearch({ artifact: undefined, result: undefined, view: undefined });
-                  setPanel('approval');
-                  requestAnimationFrame(() => response.current?.focus({ preventScroll: true }));
-                }}
-              >
-                {m('needsYou')} · {pending}
-              </Button>
-            ) : null}
             <Button
               ref={detailsButton}
               variant="ghost"
@@ -559,6 +569,7 @@ function RunWorkspace({
                         session={session}
                         onSteer={chooseExecution}
                         selectedExecutionId={execution ?? null}
+                        rounds={rounds}
                         compact
                       />
                       <RunFlowDecisions
@@ -566,6 +577,7 @@ function RunWorkspace({
                         definition={definition}
                         checks={checks}
                         onOpenArtifact={openArtifact}
+                        selectedIterations={rounds.selected}
                       />
                     </div>
                   ),
@@ -792,12 +804,13 @@ function RunWorkspace({
                           <SettingsPatchPanel session={session} />
                         </AccordionContent>
                       </AccordionItem>
+                      <RunStepOptions session={session} definition={definition} />
                     </Accordion>
                     <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
                     <UsageInspector session={session} prices={prices} />
-                    <EffortJudgments session={session} />
+                    {projection ? <RoutingTally projection={projection} /> : null}
                   </TabPanel>
                 </Tabs>
               ) : null}
@@ -872,13 +885,20 @@ function RunHeader({
   definition,
   request,
   trailing,
+  waiting = 0,
+  onRespond,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
   request: string | null;
   trailing?: ReactNode;
+  /** Questions and approvals waiting for the person; the status becomes the way to them. */
+  waiting?: number;
+  onRespond?: () => void;
 }) {
   const t = useTranslations('RunPage');
+  const m = useTranslations('RunMonitor');
+  const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
   if (!projection) return null;
   return (
@@ -893,7 +913,19 @@ function RunHeader({
             {request ?? definition.name}
           </h2>
           <span aria-live="polite" data-testid="run-status">
-            <AgentStatusText kind="run" status={projection.status} />
+            {waiting > 0 && onRespond ? (
+              <Button
+                variant="warning-outline"
+                size="compact"
+                data-testid="run-respond"
+                onClick={onRespond}
+              >
+                {status.has(projection.status) ? status(projection.status) : projection.status} ·{' '}
+                {m('respond', { count: waiting })}
+              </Button>
+            ) : (
+              <AgentStatusText kind="run" status={projection.status} />
+            )}
           </span>
           <span className="text-caption text-muted-foreground tabular-nums">
             <RunElapsed
@@ -1167,15 +1199,11 @@ function ExecutionIdentity({
  * One step's run options: its breakpoint while the run goes on, and once the run has ended a new
  * run from this step with the team as it is saved now.
  */
-function NodeRunActions({
-  session,
-  definition,
-  nodeId,
-}: {
-  session: RunSessionStore;
-  definition: CorralDefinition;
-  nodeId: string;
-}) {
+/**
+ * The run options of a run's steps (docs/specs/features/fork-and-breakpoints.md): breakpoints on
+ * scheduled Agents and Decisions while it runs, a fork from a top-level step once it has ended.
+ */
+function useStepRunOptions(session: RunSessionStore, definition: CorralDefinition) {
   const t = useTranslations('RunPage');
   const { repository, transport, mode } = useServices();
   const navigate = useNavigate();
@@ -1187,25 +1215,34 @@ function NodeRunActions({
   }, [definition]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!projection) return null;
-  const ended = TERMINAL_RUN_STATUSES.has(projection.status);
-  const breakable =
-    !ended &&
-    projection.status !== 'cancelling' &&
-    breakpointSteps(definition.nodes).some((node) => node.id === nodeId);
-  const corralId = definition.sourceTeam?.corralId ?? projection.corralId;
+  const ended = !!projection && TERMINAL_RUN_STATUSES.has(projection.status);
+  const live = !!projection && !ended && projection.status !== 'cancelling';
+  const corralId = definition.sourceTeam?.corralId ?? projection?.corralId;
   // Until a later run of the session succeeds, the run keeps the step results a fork copies.
-  const forkable =
+  const resultsKept =
+    !!projection &&
+    stepResultIds(projection).every((id) => projection.artifacts[id]?.bodyAvailable !== false);
+  const breakpoints = projection?.breakpoints ?? [];
+  const breakable = (nodeId: string) =>
+    live && breakpointSteps(definition.nodes).some((node) => node.id === nodeId);
+  const forkable = (nodeId: string) =>
     ended &&
     savedTeam === true &&
     !!corralId &&
     !!plan &&
-    !('error' in forkSteps(definition, plan, nodeId)) &&
-    stepResultIds(projection).every((id) => projection.artifacts[id]?.bodyAvailable !== false);
-  if (!breakable && !forkable) return null;
-  const breakpoints = projection.breakpoints;
-  const fork = async () => {
-    if (!corralId) return;
+    resultsKept &&
+    !('error' in forkSteps(definition, plan, nodeId));
+  const toggle = (nodeId: string) =>
+    void session.getState().sendCommand({
+      type: 'set_breakpoints',
+      payload: {
+        nodeIds: breakpoints.includes(nodeId)
+          ? breakpoints.filter((id) => id !== nodeId)
+          : [...breakpoints, nodeId],
+      },
+    });
+  const fork = async (nodeId: string) => {
+    if (!corralId || !projection) return;
     setBusy(true);
     setError(null);
     try {
@@ -1232,23 +1269,32 @@ function NodeRunActions({
       setBusy(false);
     }
   };
+  return { breakable, forkable, breakpoints, toggle, fork, busy, error };
+}
+
+/** One step's run options, in its quick view. */
+function NodeRunActions({
+  session,
+  definition,
+  nodeId,
+}: {
+  session: RunSessionStore;
+  definition: CorralDefinition;
+  nodeId: string;
+}) {
+  const t = useTranslations('RunPage');
+  const options = useStepRunOptions(session, definition);
+  const breakable = options.breakable(nodeId);
+  const forkable = options.forkable(nodeId);
+  if (!breakable && !forkable) return null;
   return (
     <div className="flex flex-col gap-1 border-t border-line pt-2 text-caption">
       {breakable ? (
         <Switch
           size="compact"
           label={t('pauseBefore')}
-          checked={breakpoints.includes(nodeId)}
-          onToggle={() =>
-            void session.getState().sendCommand({
-              type: 'set_breakpoints',
-              payload: {
-                nodeIds: breakpoints.includes(nodeId)
-                  ? breakpoints.filter((id) => id !== nodeId)
-                  : [...breakpoints, nodeId],
-              },
-            })
-          }
+          checked={options.breakpoints.includes(nodeId)}
+          onToggle={() => options.toggle(nodeId)}
         />
       ) : null}
       {forkable ? (
@@ -1256,14 +1302,68 @@ function NodeRunActions({
           variant="secondary"
           size="compact"
           className="justify-start"
-          disabled={busy}
-          onClick={() => void fork()}
+          disabled={options.busy}
+          onClick={() => void options.fork(nodeId)}
         >
           {t('forkHere')}
         </Button>
       ) : null}
-      {error ? <p role="alert">{t('forkFailed', { message: error })}</p> : null}
+      {options.error ? <p role="alert">{t('forkFailed', { message: options.error })}</p> : null}
     </div>
+  );
+}
+
+/** Every step a run option applies to now, including steps the graph has not seen run. */
+function RunStepOptions({
+  session,
+  definition,
+}: {
+  session: RunSessionStore;
+  definition: CorralDefinition;
+}) {
+  const t = useTranslations('RunPage');
+  const options = useStepRunOptions(session, definition);
+  const steps = definition.nodes.filter(
+    (node) => options.breakable(node.id) || options.forkable(node.id),
+  );
+  if (!steps.length) return null;
+  return (
+    <AccordionItem value="steps">
+      <AccordionTrigger>{t('steps')}</AccordionTrigger>
+      <AccordionContent>
+        <ul className="flex flex-col gap-1 text-caption" data-testid="run-step-options">
+          {steps.map((step) => (
+            <li key={step.id} className="flex min-h-8 items-center justify-between gap-2">
+              {options.breakable(step.id) ? (
+                <Switch
+                  size="compact"
+                  label={step.label}
+                  checked={options.breakpoints.includes(step.id)}
+                  onToggle={() => options.toggle(step.id)}
+                />
+              ) : (
+                <>
+                  <span className="min-w-0 truncate">{step.label}</span>
+                  <Button
+                    variant="secondary"
+                    size="compact"
+                    disabled={options.busy}
+                    onClick={() => void options.fork(step.id)}
+                  >
+                    {t('forkHere')}
+                  </Button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+        {options.error ? (
+          <p role="alert" className="text-caption">
+            {t('forkFailed', { message: options.error })}
+          </p>
+        ) : null}
+      </AccordionContent>
+    </AccordionItem>
   );
 }
 

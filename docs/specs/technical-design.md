@@ -439,9 +439,9 @@ MVP 자료는 등록한 text/Markdown와 안전하게 추출한 HTML text다. PD
 
 ## 15. 확장 포트와 보류 기준
 
-`DecisionProvider`와 Decision 노드의 `DecisionPolicy`는 다른 계약이다. provider는 질문 종류·버전·privacy·timeout을 선언하고 Coordinator는 선언하지 않은 질문을 보내지 않는다. off/observe는 요청을 바꾸지 않는 관찰 경로이며 기존 계약을 유지한다.
+추론 판정 엔진(`RoutingBackend`)과 Decision 노드의 `DecisionPolicy`는 다른 계약이다. 판정 엔진은 추론 수준 질문 하나에만 답하고 Decision 노드의 분기를 고르지 않는다. Shadow 관찰은 요청을 바꾸지 않는다.
 
-역할별 요청 전 판정 적용과 로컬 판정 엔진은 [로컬 AI 기능 명세](features/local-intelligence.md)를 따른다.
+역할별 요청 전 판정 적용과 판정 엔진은 [추론 판정](features/effort-routing.md)을 따른다.
 
 `GraphRunner`와 `AgentAdapter`는 분리한다. LangGraph가 맡는 순회와 Pi가 맡는 모델/도구 세션을 변경해도 public command/event contract가 변하지 않게 한다. 다만 adapter 교체만으로 모든 프레임워크 내부를 관측할 수 있다고 약속하지 않는다.
 

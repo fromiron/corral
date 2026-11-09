@@ -49,6 +49,7 @@ import {
   type ToolDefinition,
   type WriteToolInput,
 } from '@earendil-works/pi-coding-agent';
+import { callSnapshotInput } from './call-snapshot.ts';
 import type { Channel } from './channel.ts';
 import { inspectContext, reconcileContextUsage } from './context-usage.ts';
 import { extensionUi } from './extension-ui.ts';
@@ -67,14 +68,12 @@ import {
   requestOutputCap,
   verifyReasoningWire,
 } from './reasoning.ts';
-import { requestReasoningInput } from './reasoning-input.ts';
 import { providerRequestFence } from './request-fence.ts';
 import {
   assertImagePayload,
   assertProtectedPayload,
   checkpointContext,
   conversationMessages,
-  missingParentQuestions,
   requestRecord,
   resumedMessages,
   withProtectedContext,
@@ -90,6 +89,7 @@ import {
   parentQuestionsText,
   promptSections,
   replyCompletesAssignment,
+  sdkDirectiveText,
   systemPrompt,
   TOOL_TEXT,
   textOf,
@@ -105,8 +105,7 @@ export interface SdkWorkerDeps extends WorkerDeps {
 type Reply = Exclude<SdkHostFrame, { type: 'start' | 'cancel' | 'directive' | 'compact' }>;
 const hashOf = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
 const cleanJson = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
-const directiveText = (d: DeliveredDirective) =>
-  `Corral instruction (${d.directiveId}):\n${d.text}`;
+const directiveText = (d: DeliveredDirective) => sdkDirectiveText(d);
 
 /** One explicit SDK session. Pi's session state never commits Corral domain state. */
 export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
@@ -309,6 +308,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         requestPurpose: ModelRequestRecord['purpose'],
         logicalRequestId: string,
         retryIndex: number,
+        attempts: { modelCallId?: string },
       ) => {
         const out = createAssistantMessageEventStream();
         const owned = cleanJson(context) as Context;
@@ -433,12 +433,6 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 method: measured.source === 'usage_anchor' ? 'usage-anchor-v2' : 'dsh-density-v2',
               };
               preparedDirectiveIds = record.directiveIds;
-              const assignment =
-                start.assignment.kind === 'delegated'
-                  ? start.assignment.brief
-                  : start.assignment.kind === 'question'
-                    ? start.assignment.body
-                    : '';
               if (requestPurpose === 'turn' || requestPurpose === 'retry') {
                 const saved = await call({
                   type: 'checkpoint_context',
@@ -451,13 +445,19 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 type: 'prepare_request',
                 logicalRequestId,
                 retryIndex,
+                // An explicit transport retry names the call it repeats; nothing else reuses.
+                ...(retryIndex && attempts.modelCallId
+                  ? { retryOfModelCallId: attempts.modelCallId }
+                  : {}),
+                ...(requestPurpose === 'compaction'
+                  ? {}
+                  : {
+                      snapshot: callSnapshotInput(
+                        requestContext,
+                        protectedSections.find((section) => section.name === 'corral_state')?.text,
+                      ),
+                    }),
                 ...record,
-                reasoningInput: requestReasoningInput(
-                  requestContext,
-                  requestPurpose,
-                  assignment,
-                  record.directiveIds,
-                ),
               });
             };
             let permit = await prepare();
@@ -468,10 +468,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             }
             if (permit.type !== 'permit' || cancelled || options?.signal?.aborted)
               throw new Error('request refused');
-            const parentQuestions = missingParentQuestions(
-              permit.parentQuestions ?? [],
-              protectedSections,
-            );
+            // Exactly the questions the routing input held; the host left out those present.
+            const parentQuestions = permit.parentQuestions ?? [];
             if ((requestPurpose === 'turn' || requestPurpose === 'retry') && parentQuestions.length)
               requestContext = {
                 ...requestContext,
@@ -490,6 +488,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               deferredSteers.delete(id);
             }
             modelCallId = permit.modelCallId;
+            attempts.modelCallId = modelCallId;
             if (requestPurpose === 'compaction') manualCompactionCalls?.push(modelCallId);
             await ack({ type: 'request_dispatched', modelCallId });
             if (cancelled || options?.signal?.aborted) throw new Error('cancelled before dispatch');
@@ -627,6 +626,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         streamSimple: (selected, context, options) => {
           const requestPurpose = nativeDepth ? 'extension' : purpose;
           const logicalRequestId = `request_${++logicalRequests}`;
+          const attempts: { modelCallId?: string } = {};
           const signal = options?.signal
             ? AbortSignal.any([options.signal, cancellation.signal])
             : cancellation.signal;
@@ -661,6 +661,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 requestPurpose === 'turn' && attempt ? 'retry' : requestPurpose,
                 logicalRequestId,
                 attempt,
+                attempts,
               ),
           });
         },

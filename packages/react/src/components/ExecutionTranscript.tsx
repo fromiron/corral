@@ -305,13 +305,6 @@ function Entry({
           {entry.directives.length > 0 ? (
             <Badge>{t('withInstructions', { count: entry.directives.length })}</Badge>
           ) : null}
-          {entry.effort.map((e) =>
-            e.answer ? (
-              <Badge key={e.provider}>
-                {t('effort', { level: e.answer, provider: e.provider })}
-              </Badge>
-            ) : null,
-          )}
         </p>
       );
     case 'reply': {

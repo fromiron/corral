@@ -152,11 +152,14 @@ describe.skipIf(!enabled)('auto team live regression', () => {
               );
             return real.start(input, {
               ...host,
-              prepareModelRequest(record, reasoningInput) {
+              prepareModelRequest(record, preparation) {
                 admitRequest();
+                // The worker's call snapshot is what the request context held for this call.
                 if (input.role.id === 'reviewer')
-                  reviewerRequests.push(reasoningInput?.request.includes(marker) ?? false);
-                return host.prepareModelRequest(record, reasoningInput);
+                  reviewerRequests.push(
+                    preparation?.snapshot?.request?.text.includes(marker) ?? false,
+                  );
+                return host.prepareModelRequest(record, preparation);
               },
             });
           },

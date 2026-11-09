@@ -150,7 +150,7 @@ test('live event counts keep event filters, selection and scroll in the primary 
   await page.setViewportSize({ width: 1600, height: 900 });
   const { runId } = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/runs/${runId}`);
-  await page.getByRole('button', { name: /^Needs your input/ }).click();
+  await page.getByTestId('run-respond').click();
   const approval = page.getByRole('button', { name: 'Continue with this version', exact: true });
   await expect(approval).toBeVisible();
   const monitor = page.getByTestId('run-monitor');
@@ -479,7 +479,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const action = page.getByTestId('dock-open-active-run');
   await expect(action).toContainText('response needed');
   await action.click();
-  await page.getByRole('button', { name: /^Needs your input/ }).click();
+  await page.getByTestId('run-respond').click();
   const response = page.locator('[data-run-response]');
   await expect(response).toBeFocused();
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);

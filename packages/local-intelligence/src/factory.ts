@@ -1,12 +1,8 @@
-// One local AI instance per server: the shared embedding engine with both models, and the effort
-// judge on the effort model.
-// The caller creates it once and closes it on shutdown; nothing starts until the first use.
-import { readFileSync } from 'node:fs';
+// One local AI instance per server: the embedding engine with the meeting model, for meeting
+// analysis. The caller creates it once and closes it on shutdown; nothing starts until the first
+// use.
 import { availableParallelism } from 'node:os';
 import { type Bundle, bundledManifest } from './bundle.ts';
-import { loadEffortClassifier } from './effort/classifier.ts';
-import { EFFORT_PREPROCESS_VERSION } from './effort/preprocess.ts';
-import { LocalEffortProvider } from './effort/provider.ts';
 import { type Device, type EngineState, LocalEmbeddingEngine } from './engine/engine.ts';
 import { builtHelperPath, type HelperLauncher, spawnHelper } from './engine/helper.ts';
 import { BundleInstaller, type InstallProgressView } from './installer.ts';
@@ -20,7 +16,6 @@ export interface LocalIntelligenceOptions {
   /** Reads CORRAL_LOCAL_AI_HELPER, the helper executable's path. */
   env?: NodeJS.ProcessEnv;
   bundle?: Bundle;
-  effortWeights?: unknown;
   launch?: HelperLauncher;
   /** Downloads for the settings panel's install. */
   fetchFn?: typeof fetch;
@@ -32,8 +27,8 @@ export interface LocalIntelligenceOptions {
 /** What the settings panel shows. */
 export interface LocalAiStatus {
   release: string;
-  /** Display names of the two models the bundle installs together. */
-  models: { meeting: string; effort: string };
+  /** Display name of the model the bundle installs. */
+  models: { meeting: string };
   state: EngineState | 'installing';
   /** The full download for this machine, or null when it has no runtime. */
   downloadBytes: number | null;
@@ -48,7 +43,6 @@ export interface LocalIntelligence {
   /** `<platform>-<arch>`, or null when the bundle has no runtime for this machine. */
   readonly target: string | null;
   readonly engine: LocalEmbeddingEngine;
-  readonly effort: LocalEffortProvider;
   readonly meeting: Pick<LocalMeetingSelector, 'select'>;
   status(): LocalAiStatus;
   /** Starts installing this release in the background unless it cannot or need not. */
@@ -59,22 +53,12 @@ export interface LocalIntelligence {
   close(): Promise<void>;
 }
 
-/** The trained effort classifier shipped with this package, for the bundled effort model. */
-export function bundledEffortWeights(): unknown {
-  return JSON.parse(readFileSync(new URL('../weights/effort-v4.json', import.meta.url), 'utf8'));
-}
-
 export function createLocalIntelligence(options: LocalIntelligenceOptions = {}): LocalIntelligence {
   const bundle = options.bundle ?? bundledManifest();
   const platform = options.platform ?? process.platform;
   const arch = options.arch ?? process.arch;
   const root = options.root ?? defaultLocalAiDir();
   const target = runtimeTarget(bundle, platform, arch);
-  const classifier = loadEffortClassifier(options.effortWeights ?? bundledEffortWeights(), {
-    dims: bundle.models.effort.dims,
-    baseModelSha256: bundle.models.effort.sha256,
-    preprocessVersion: EFFORT_PREPROCESS_VERSION,
-  });
   const helperPath =
     (options.env ?? process.env).CORRAL_LOCAL_AI_HELPER || builtHelperPath(platform);
   const engine = new LocalEmbeddingEngine({
@@ -86,7 +70,6 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
     device: options.device,
     threads: cpuThreads(arch, options.logicalCores ?? availableParallelism()),
   });
-  const effort = new LocalEffortProvider({ engine, classifier, release: bundle.release });
   let meetingSelector: LocalMeetingSelector | undefined;
   const meeting: LocalIntelligence['meeting'] = {
     async select(input) {
@@ -115,7 +98,7 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
     const current = engine.status();
     return {
       release: bundle.release,
-      models: { meeting: bundle.models.meeting.name, effort: bundle.models.effort.name },
+      models: { meeting: bundle.models.meeting.name },
       state: installing ? 'installing' : current.state,
       downloadBytes: installer.downloadBytes(),
       progress: installer.progress(),
@@ -127,7 +110,6 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
     bundle,
     target,
     engine,
-    effort,
     meeting,
     status,
     install: () => {

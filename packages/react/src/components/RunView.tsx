@@ -1,6 +1,6 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -214,6 +214,69 @@ function providerMark(provider: string | null | undefined): AgentMark | undefine
   return undefined;
 }
 
+/** The Loop rounds being inspected, shared by every view of one work flow. */
+export type RoundInspection = {
+  /** Inspected round per Loop node id; a Loop not listed follows its latest round. */
+  selected: Readonly<Record<string, string>>;
+  /** Inspects a round of a Loop, or follows its latest round again with `null`. */
+  choose: (loopId: string, iterationId: string | null) => void;
+};
+
+/**
+ * A newly selected execution reveals its round once; a round chosen afterwards stays through new
+ * events until another execution is selected, and nothing carries over to another Run.
+ */
+export function useRoundInspection(
+  projection: RunProjection | null | undefined,
+  selectedExecutionId: string | null,
+): RoundInspection {
+  const [inspected, setInspected] = useState<{
+    runId: string | null;
+    rounds: Record<string, { iterationId: string | null; selectedExecutionId: string | null }>;
+  }>({ runId: null, rounds: {} });
+  const selectedScope =
+    projection && selectedExecutionId
+      ? runFlowExecutionIterationId(projection, selectedExecutionId)
+      : null;
+  const selectedLoop = selectedScope ? projection?.iterations[selectedScope]?.loopNodeId : null;
+  const runId = projection?.runId ?? null;
+  useEffect(() => {
+    if (!runId || !selectedScope || !selectedLoop) return;
+    setInspected((previous) => ({
+      runId,
+      rounds: {
+        ...(previous.runId === runId ? previous.rounds : {}),
+        [selectedLoop]: { iterationId: selectedScope, selectedExecutionId },
+      },
+    }));
+  }, [runId, selectedScope, selectedLoop, selectedExecutionId]);
+  const selected = useMemo(() => {
+    const rounds: Record<string, string> = {};
+    const manual = inspected.runId === runId ? inspected.rounds : {};
+    for (const [loopId, choice] of Object.entries(manual))
+      if (choice.iterationId) rounds[loopId] = choice.iterationId;
+    if (
+      selectedScope &&
+      selectedLoop &&
+      manual[selectedLoop]?.selectedExecutionId !== selectedExecutionId
+    )
+      rounds[selectedLoop] = selectedScope;
+    return rounds;
+  }, [inspected, runId, selectedScope, selectedLoop, selectedExecutionId]);
+  const choose = useCallback(
+    (loopId: string, iterationId: string | null) =>
+      setInspected((previous) => ({
+        runId,
+        rounds: {
+          ...(previous.runId === runId ? previous.rounds : {}),
+          [loopId]: { iterationId, selectedExecutionId },
+        },
+      })),
+    [runId, selectedExecutionId],
+  );
+  return { selected, choose };
+}
+
 /**
  * The execution tree as the kit's card tree: the run at the root, each execution under the one
  * that started it. Each Loop has one group with only its inspected round's execution cards.
@@ -225,11 +288,14 @@ export function ExecutionTree({
   selectedExecutionId = null,
   compact = false,
   now,
+  rounds,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
   compact?: boolean;
+  /** The inspected rounds when other views of the work flow share them; otherwise its own. */
+  rounds?: RoundInspection;
   /** Fixed clock for a past view, ms. Omitted, open spans run to the present. */
   now?: number;
 }) {
@@ -238,31 +304,13 @@ export function ExecutionTree({
   const loopText = useTranslations('RunLoop');
   const outcomeText = useTranslations('Canvas.nodeStatus.loopOutcome');
   const LoopIcon = useIcon('rotate-ccw');
-  const [inspected, setInspected] = useState<{
-    runId: string | null;
-    rounds: Record<string, { iterationId: string | null; selectedExecutionId: string | null }>;
-  }>({ runId: null, rounds: {} });
   const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
   const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
   const streams = useRunDisplay(session, (s) => s.streams);
-  const selectedScope =
-    projection && selectedExecutionId
-      ? runFlowExecutionIterationId(projection, selectedExecutionId)
-      : null;
-  const selectedLoop = selectedScope ? projection?.iterations[selectedScope]?.loopNodeId : null;
-  const runId = projection?.runId;
-  useEffect(() => {
-    if (!runId || !selectedScope || !selectedLoop) return;
-    setInspected((previous) => ({
-      runId,
-      rounds: {
-        ...(previous.runId === runId ? previous.rounds : {}),
-        [selectedLoop]: { iterationId: selectedScope, selectedExecutionId },
-      },
-    }));
-  }, [runId, selectedScope, selectedLoop, selectedExecutionId]);
+  const own = useRoundInspection(projection, selectedExecutionId);
+  const { selected: selectedIterations, choose } = rounds ?? own;
   const intervals = useMemo(
     () => new Map(executionIntervals(events).map((row) => [row.executionId, row])),
     [events],
@@ -282,17 +330,6 @@ export function ExecutionTree({
     [tree],
   );
   if (!projection) return null;
-  const selectedIterations: Record<string, string> = {};
-  const manual = inspected.runId === projection.runId ? inspected.rounds : {};
-  for (const [loopId, choice] of Object.entries(manual)) {
-    if (choice.iterationId) selectedIterations[loopId] = choice.iterationId;
-  }
-  if (
-    selectedScope &&
-    selectedLoop &&
-    manual[selectedLoop]?.selectedExecutionId !== selectedExecutionId
-  )
-    selectedIterations[selectedLoop] = selectedScope;
   const loops = definition
     ? selectRunFlowIterations(projection, definition, selectedIterations, events)
     : [];
@@ -387,16 +424,7 @@ export function ExecutionTree({
                 label={loopText('iterationLabel', { name: loop.label })}
                 value={selectedIterations[loop.nodeId] ?? 'latest'}
                 onValueChange={(iterationId) =>
-                  setInspected((previous) => ({
-                    runId: projection.runId,
-                    rounds: {
-                      ...(previous.runId === projection.runId ? previous.rounds : {}),
-                      [loop.nodeId]: {
-                        iterationId: iterationId === 'latest' ? null : iterationId,
-                        selectedExecutionId,
-                      },
-                    },
-                  }))
+                  choose(loop.nodeId, iterationId === 'latest' ? null : iterationId)
                 }
                 size="xs"
                 options={[

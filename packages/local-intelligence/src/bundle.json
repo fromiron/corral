@@ -10,15 +10,6 @@
       "sha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb",
       "dims": 768,
       "maxInputTokens": 256
-    },
-    "effort": {
-      "name": "Corral Effort Judge 270M",
-      "file": "corral-effort-judge-270m-int8.litertlm",
-      "url": "https://huggingface.co/fromiron/corral-effort-judge-270m/resolve/c772d41e5ae7f5bdf6e31b381b8044a4211d5fd9/corral-effort-judge-270m-int8.litertlm",
-      "size": 305148992,
-      "sha256": "628e232e9949748b9f8e6b255bc09855a265d98893e2dc733f13fb1eb60c5314",
-      "dims": 768,
-      "maxInputTokens": 1024
     }
   },
   "runtime": {

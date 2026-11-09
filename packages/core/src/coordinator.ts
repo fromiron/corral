@@ -26,14 +26,12 @@ import {
   CreateRunRequest,
   type DecisionCancellation,
   type DecisionNode,
-  type DecisionProvider,
-  EFFORT_LEVELS,
   EffectiveHarnessSnapshot,
+  EffortRoutingSettings,
   type EventPayload,
   ExtensionUiNotice,
   ExtensionUiRequest,
   type ExtensionUiResult,
-  type ExternalEffortJudge,
   FILE_TOOLS,
   GenerateImageArgs,
   type HarnessBindingRef,
@@ -59,18 +57,19 @@ import {
   type PreviewToolName,
   ProtectedContext,
   ProviderPayloadRecord,
-  ReasoningInput,
   type ReasoningLevel,
   type ReasoningPolicy,
   type ReasoningResolution,
   type Receipt,
   type RecipeStopReason,
   type RequestPermit,
+  RequestPreparation,
   type ResolveApprovalCommand,
   type ResolvedInput,
   ResumeRuntimeRequest,
   ReviewArtifact,
   type ReviewRecipeRevision,
+  type RoutingBackend,
   RunCommand,
   RunCommandArgs,
   RunEvent,
@@ -133,15 +132,17 @@ import {
   decodeContextCheckpoint,
   encodeContextCheckpoint,
 } from './context-checkpoint.ts';
-import {
-  createDecisionHub,
-  DECISION_HARD_CAP,
-  type JudgmentConfig,
-  requestTiming,
-  resolveDecisionSettings,
-} from './decisions/index.ts';
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
+import {
+  callSnapshot,
+  type EffortRoutingDeps,
+  prepareReasoning,
+  ROUTING_OFF,
+  routingRevision,
+  type Shadow,
+  type StoredRoute,
+} from './effort-routing/index.ts';
 import { carriedSources, forkPlan, forkSteps } from './fork.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
@@ -153,13 +154,7 @@ import {
   readPartialOutputs,
 } from './partial-output.ts';
 import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
-import {
-  automaticReasoning,
-  type ExternalConsult,
-  fixedReasoning,
-  reasoningError,
-  reasoningPolicyOf,
-} from './reasoning.ts';
+import { reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun, type RunPlan } from './run-plan.ts';
 import { type RunStats, runStats } from './run-stats.ts';
@@ -391,10 +386,8 @@ export interface CoordinatorDeps {
   timers?: Scheduler;
   /** Admission gates and observers. Defaults to today's checks, no observers. */
   admission?: AdmissionConfig;
-  /** reasoning_effort judgment providers and workspace settings. Observe only. */
-  judgments?: JudgmentConfig;
-  /** Decision APIs; a live run asks the one it chose when the local judge abstains. */
-  externalJudges?: readonly ExternalEffortJudge[];
+  /** Effort routing for automatic reasoning (features/effort-routing.md). Absent means Off. */
+  effortRouting?: EffortRoutingDeps;
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -527,11 +520,8 @@ interface LiveRun {
   uiNoticeCount: number;
   /** The inputs each execution was started with: what a reviewer actually reviewed. */
   inputsByExecution: Map<string, ResolvedInput[]>;
-  /** What each execution was started with, for judgments of its requests. */
+  /** What each execution was started with. */
   startInputs: Map<string, AgentStartInput>;
-  reasoningCalls: number;
-  reasoningProvider: DecisionProvider | undefined;
-  reasoningMaxCalls: number;
   /** Why a Loop stopped at its cap: the person declined, or the hard cap was reached. */
   limits: RunLimits;
   criteriaVersionId: string;
@@ -713,10 +703,9 @@ export class Coordinator {
   private readonly modelAttempts: ModelAttemptStore | undefined;
   private readonly runner: GraphRunner;
   private readonly decisions: DecisionPolicy | undefined;
+  private readonly effortRouting: EffortRoutingDeps | undefined;
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
-  private readonly judgments: JudgmentConfig | undefined;
-  private readonly externalJudges: readonly ExternalEffortJudge[];
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -757,6 +746,7 @@ export class Coordinator {
     this.modelAttempts = deps.modelAttempts;
     this.runner = deps.runner ?? new SequentialPlanRunner();
     this.decisions = deps.decisions;
+    this.effortRouting = deps.effortRouting;
     this.corrals = deps.corrals;
     this.sessionId = deps.sessionId ?? 'backend_local';
     this.policy = deps.policy ?? SPEC_HARD_CAPS;
@@ -770,28 +760,7 @@ export class Coordinator {
     this.harnesses = deps.harnesses;
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
-    this.judgments = deps.judgments;
-    this.externalJudges = deps.externalJudges ?? [];
-    this.observers = [
-      ...(deps.admission?.observers ?? []),
-      ...(deps.judgments
-        ? [
-            createDecisionHub({
-              providers: deps.judgments.providers,
-              reserveCall: (runId, limit) => {
-                const run = this.live.get(runId);
-                const used = run?.reasoningCalls ?? limit;
-                const allowed = Boolean(run && used < limit);
-                if (run && allowed) run.reasoningCalls++;
-                return { used, allowed };
-              },
-              settingsOf: (runId) => this.live.get(runId)?.projection.decisionSettings ?? null,
-              startInputOf: (runId, executionId) =>
-                this.live.get(runId)?.startInputs.get(executionId) ?? null,
-            }),
-          ]
-        : []),
-    ];
+    this.observers = deps.admission?.observers ?? [];
     this.recover();
   }
 
@@ -1800,11 +1769,7 @@ export class Coordinator {
       }
     }
     for (const role of planned.definition.roles) {
-      const error = reasoningError(
-        role.reasoning,
-        models[role.modelProfile]!,
-        this.judgments?.settings.reasoning_effort.apply === true,
-      );
+      const error = reasoningError(role.reasoning, models[role.modelProfile]!);
       if (error) return refuse({ code: 'CAPABILITY_DENIED', message: `${role.id}: ${error}` });
     }
 
@@ -2051,27 +2016,6 @@ export class Coordinator {
       ...(Object.keys(imageProfiles).length ? { imageProfiles } : {}),
       ...('autoRoute' in request && request.autoRoute ? { autoRoute: request.autoRoute } : {}),
       ...('meeting' in request && request.meeting ? { meeting: request.meeting } : {}),
-      ...(this.judgments?.settings.reasoning_effort.apply
-        ? {
-            reasoningApply: {
-              enabled: true,
-              policy: this.judgments.settings.reasoning_effort.policy ?? 'judged',
-              provider: 'local-model' as const,
-              version:
-                this.judgments.providers.find(
-                  (p) => p.id === 'local-model' && p.privacy === 'local',
-                )?.version ?? null,
-              maxCalls: Math.min(
-                DECISION_HARD_CAP,
-                this.judgments.settings.reasoning_effort.maxCalls ?? DECISION_HARD_CAP,
-              ),
-              ...(this.judgments.settings.reasoning_effort.allowExternal &&
-              this.judgments.settings.reasoning_effort.external
-                ? { external: { ...this.judgments.settings.reasoning_effort.external } }
-                : {}),
-            },
-          }
-        : {}),
       startedAt: this.clock.nowIso(),
     };
     const run: LiveRun = {
@@ -2100,14 +2044,6 @@ export class Coordinator {
       uiNoticeCount: 0,
       inputsByExecution: new Map(),
       startInputs: new Map(),
-      reasoningCalls: 0,
-      reasoningProvider: this.judgments?.providers.find(
-        (p) => p.id === 'local-model' && p.privacy === 'local',
-      ),
-      reasoningMaxCalls: Math.min(
-        DECISION_HARD_CAP,
-        this.judgments?.settings.reasoning_effort.maxCalls ?? DECISION_HARD_CAP,
-      ),
       loopEntries: new Map(),
       stoppedSteps: new Set(),
       stepApprovals: new Map(),
@@ -2145,7 +2081,6 @@ export class Coordinator {
           ...(snapshot.harnesses ? { harnesses: snapshot.harnesses } : {}),
           ...(snapshot.checks ? { checks: snapshot.checks } : {}),
           ...(snapshot.imageProfiles ? { imageProfiles: snapshot.imageProfiles } : {}),
-          ...(snapshot.reasoningApply ? { reasoningApply: snapshot.reasoningApply } : {}),
           ...(request.startFrom ? { startedFrom: request.startFrom } : {}),
           ...(forkFrom && carried
             ? {
@@ -2163,11 +2098,6 @@ export class Coordinator {
           ...(snapshot.meeting ? { meeting: snapshot.meeting } : {}),
           ...(snapshot.resumedFrom ? { resumedFrom: snapshot.resumedFrom } : {}),
           ...(snapshot.branchedFrom ? { branchedFrom: snapshot.branchedFrom } : {}),
-          ...(this.judgments
-            ? {
-                decisions: resolveDecisionSettings(this.judgments, { mode: request.mode }),
-              }
-            : {}),
         },
       },
       ...(breakpoints.length
@@ -3017,11 +2947,7 @@ export class Coordinator {
         after.modelSnapshot = patchedModel;
       } else patchedModel = current?.model ?? run.snapshot.models[role.modelProfile];
       if (!patchedModel) return refuse('CAPABILITY_DENIED', 'the pinned model is unavailable');
-      const error = reasoningError(
-        after.reasoning as ReasoningPolicy | undefined,
-        patchedModel,
-        run.snapshot.reasoningApply?.enabled === true,
-      );
+      const error = reasoningError(after.reasoning as ReasoningPolicy | undefined, patchedModel);
       if (error) return refuse('CAPABILITY_DENIED', error);
     } else if (change.kind === 'loop_limit') {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
@@ -3585,11 +3511,7 @@ export class Coordinator {
             code: 'CAPABILITY_DENIED',
             message: 'choosing reasoning per request needs a model with a medium level',
           };
-    const error = reasoningError(
-      reasoning,
-      resolution.snapshot,
-      this.judgments?.settings.reasoning_effort.apply === true,
-    );
+    const error = reasoningError(reasoning, resolution.snapshot);
     return error ? { code: 'CAPABILITY_DENIED', message: error } : null;
   }
 
@@ -3702,7 +3624,28 @@ export class Coordinator {
   }
 
   getConversationTurn(runId: string): StoredConversationTurn | null {
+    if (this.store.getRun(runId)?.snapshot.meeting) return null;
     return this.store.getConversationTurn(runId);
+  }
+
+  /** A meeting answer kept apart from its artifact bodies, so release does not erase it. */
+  getMeetingAnswer(runId: string): string | null {
+    if (!this.store.getRun(runId)?.snapshot.meeting) return null;
+    return this.store.getConversationTurn(runId)?.answer ?? null;
+  }
+
+  private meetingConversationTurn(run: StoredRun): StoredConversationTurn {
+    const texts = (run.projection.output?.artifactVersionIds ?? [])
+      .filter((id) => !run.projection.artifacts[id]?.media)
+      .map((id) => this.store.getArtifactText(run.runId, id))
+      .filter((text): text is string => text !== null);
+    return {
+      runId: run.runId,
+      request: '',
+      answer: texts.length ? texts.join('\n\n') : null,
+      status: run.projection.status,
+      artifactVersionId: null,
+    };
   }
 
   private primaryConversationTurn(run: StoredRun): StoredConversationTurn {
@@ -3741,10 +3684,15 @@ export class Coordinator {
       )
       .map((summary) => this.store.getRun(summary.runId)!)
       .filter((run) => canReleaseArtifactBodies(run.projection));
-    // Capture ordinary conversation before any source/final body is released.
+    // Capture conversation and meeting answers before any source/final body is released.
     for (const run of candidates)
-      if (!run.snapshot.meeting && !this.store.getConversationTurn(run.runId))
-        this.store.putConversationTurn(run.runId, this.primaryConversationTurn(run));
+      if (!this.store.getConversationTurn(run.runId))
+        this.store.putConversationTurn(
+          run.runId,
+          run.snapshot.meeting
+            ? this.meetingConversationTurn(run)
+            : this.primaryConversationTurn(run),
+        );
     const changes: { runId: string; events: RunEvent[]; projection: RunProjection }[] = [];
     for (const run of candidates) {
       const latest = run.sessionId
@@ -3926,120 +3874,13 @@ export class Coordinator {
     return events;
   }
 
-  /**
-   * The decision API one request may ask: only in live runs that chose it at start, while its
-   * key is configured. Each call is one decision effect, settled once.
-   */
-  private externalConsult(
-    run: LiveRun,
-    executionId: string,
-    attemptNo: number,
-  ): ExternalConsult | undefined {
-    const wanted = run.snapshot.reasoningApply?.external;
-    const judge = wanted && this.externalJudges.find((j) => j.provider === wanted.provider);
-    if (run.snapshot.mode !== 'live' || !wanted || !judge || judge.available() !== true)
-      return undefined;
-    return {
-      now: () => this.clock.monotonicMs(),
-      ask: async (input, cancellation) => {
-        const effectId = this.ids.next('effect');
-        this.commit(run, [
-          {
-            type: 'effect.admitted',
-            executionId,
-            payload: {
-              effectId,
-              kind: 'decision',
-              scope: executionId,
-              epoch: attemptNo,
-              modelCallId: null,
-            },
-          },
-        ]);
-        const settle = (outcome: EventPayload<'effect.settled'>['outcome']) => {
-          if (
-            this.live.get(run.runId) === run &&
-            !TERMINAL_RUN_STATUSES.has(run.projection.status) &&
-            run.projection.effects[effectId]?.status === 'admitted'
-          )
-            this.commit(run, [
-              { type: 'effect.settled', executionId, payload: { effectId, outcome } },
-            ]);
-        };
-        const off = cancellation.onCancel(() => settle('cancelled'));
-        try {
-          const answer = await judge.judge(
-            input,
-            { model: wanted.model, owner: { runId: run.runId, executionId, effectId, attemptNo } },
-            cancellation,
-          );
-          settle(EFFORT_LEVELS.some((level) => level === answer.answer) ? 'succeeded' : 'failed');
-          return answer;
-        } catch (error) {
-          settle(cancellation.aborted ? 'cancelled' : 'failed');
-          throw error;
-        } finally {
-          off();
-        }
-      },
-    };
-  }
-
-  /** What observers may do: record decision facts while the run is open. */
+  /** What observers may read while the run is open. */
   private observerContext(run: LiveRun): ObserverContext {
     const open = () =>
       this.live.get(run.runId) === run && !TERMINAL_RUN_STATUSES.has(run.projection.status);
     return {
       runId: run.runId,
       isOpen: open,
-      record: (drafts) => {
-        if (!open() || this.storageError) return false;
-        // An ended worker cannot collect a judgment. Its admitted provider effect still closes.
-        drafts = drafts.filter(
-          (draft) =>
-            !draft.executionId ||
-            !run.closingExecutions.has(draft.executionId) ||
-            draft.type === 'effect.settled',
-        );
-        if (!drafts.length) return false;
-        const allowed = new Set([
-          'decision.requested',
-          'decision.observed',
-          'decision.failed',
-          'limit.reached',
-          'effect.admitted',
-          'effect.settled',
-        ]);
-        // Only decision effects: an observer can never admit model or tool work.
-        if (
-          drafts.some(
-            (d) =>
-              d.type === 'effect.admitted' && (d.payload as { kind?: unknown }).kind !== 'decision',
-          )
-        )
-          return false;
-        if (drafts.some((d) => !allowed.has(d.type))) return false;
-        const timed = drafts.map((d) =>
-          d.type === 'decision.observed'
-            ? {
-                ...d,
-                payload: {
-                  ...d.payload,
-                  ...requestTiming(
-                    run.projection,
-                    String((d.payload.subject as { modelCallId: string }).modelCallId),
-                  ),
-                },
-              }
-            : d,
-        );
-        try {
-          this.commit(run, timed as unknown as EventDraft[]);
-          return true;
-        } catch {
-          return false;
-        }
-      },
       onCancel: (executionId, fn) => {
         const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
         run.cancelListeners.set(executionId, listeners);
@@ -4051,14 +3892,22 @@ export class Coordinator {
       },
       after: (ms, fn) => this.timers.after(ms, fn),
       monotonicMs: () => this.clock.monotonicMs(),
-      nextId: () => this.ids.next('decision'),
-      nextEffectId: () => this.ids.next('effect'),
       status: () => run.projection.status,
     };
   }
 
   private publish(run: LiveRun, projection: RunProjection) {
+    const before = run.projection;
     run.projection = projection;
+    // Waiters on an execution's end (a run's success after a Join stopped a branch) look again.
+    if (
+      Object.values(projection.executions).some(
+        (e) =>
+          TERMINAL_EXECUTION_STATUSES.has(e.status) &&
+          !TERMINAL_EXECUTION_STATUSES.has(before.executions[e.executionId]?.status ?? 'queued'),
+      )
+    )
+      this.wake(run);
     for (const subscriber of this.subscribers) {
       if (subscriber.runId === run.runId) {
         void Promise.resolve().then(() => this.pump(subscriber));
@@ -5458,13 +5307,19 @@ export class Coordinator {
       { type: 'effect.settled', executionId: input.executionId, payload: { effectId, outcome } },
     );
     for (const effect of Object.values(run.projection.effects)) {
-      // A model request still open when its agent stopped may or may not have been billed.
-      if (
-        (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) ||
-        effect.scope !== input.executionId
-      )
+      if (effect.scope !== input.executionId || effect.status !== 'admitted') continue;
+      // An open judgment call was closed when the execution ended: Corral's stop, with no
+      // claim about the remote.
+      if (effect.kind === 'decision') {
+        drafts.push({
+          type: 'effect.settled',
+          executionId: input.executionId,
+          payload: { effectId: effect.effectId, outcome: 'cancelled' },
+        });
         continue;
-      if (effect.status !== 'admitted') continue;
+      }
+      // A model request still open when its agent stopped may or may not have been billed.
+      if (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) continue;
       drafts.push({
         type: 'effect.settled',
         executionId: input.executionId,
@@ -5801,6 +5656,27 @@ export class Coordinator {
         this.stopRecipe(run, loopId, problem, candidate.artifactVersionId);
         return;
       }
+    }
+    // A branch a Join stopped may still be ending. Success waits for it, so the working copy is
+    // given back as confirmed, and an end Corral could not confirm is not a success.
+    const ending = () =>
+      Object.values(run.projection.executions).filter(
+        (e) => run.cancelRequested.has(e.executionId) && !TERMINAL_EXECUTION_STATUSES.has(e.status),
+      );
+    while (ending().length) {
+      await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
+      if (run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+    }
+    const unconfirmed = this.store
+      .readEvents(run.runId, 0)
+      .find(
+        (event) =>
+          event.type === 'execution.settled' && event.payload.terminationMode === 'unconfirmed',
+      );
+    if (unconfirmed) {
+      const nodeId = run.projection.executions[unconfirmed.executionId ?? '']?.nodeId ?? 'unknown';
+      this.failRun(run, `termination_unconfirmed: ${nodeId}`);
+      return;
     }
     // The output and the run's success are one fact: readers never see one without the other.
     this.commit(run, [
@@ -7235,6 +7111,11 @@ export class Coordinator {
   ): AgentHost & { submitFinalAnswer(settlement: AgentSettlement): Promise<void> } {
     const { executionId, harness } = input;
     const agent: Actor = { kind: 'agent', id: executionId };
+    // The settled route of the last request, for an explicit transport retry of it only.
+    let lastRoute: { modelCallId: string; stored: StoredRoute } | null = null;
+    // `current` says whether the settings it was prepared under still hold.
+    let pendingShadow: { modelCallId: string; shadow: Shadow; current: () => boolean } | null =
+      null;
     let lastCall: { modelCallId: string; contextSnapshotId: string; effectId: string } | null =
       null;
     let partialWriter: PartialOutputWriter | undefined;
@@ -8404,11 +8285,12 @@ export class Coordinator {
       },
       prepareModelRequest: async (
         rawRecord?: ModelRequestRecord,
-        rawReasoning?: ReasoningInput,
+        rawPreparation?: RequestPreparation,
       ): Promise<RequestPermit> => {
         if (preparing) throw new Error('request preparation already in progress');
         preparing = true;
         try {
+          const preparation = rawPreparation ? RequestPreparation.parse(rawPreparation) : undefined;
           if (harness && harnessState !== 'loaded' && harnessState !== 'simulated')
             throw new Error('harness not loaded');
           if (harness && harnessState === 'loaded' && !rawRecord)
@@ -8475,86 +8357,118 @@ export class Coordinator {
               protectedContext().hash
           )
             throw new Error('CONTEXT_STALE');
-          const privateInput = rawReasoning ? ReasoningInput.parse(rawReasoning) : undefined;
+          const preparationId = this.ids.next('preparation');
+          // Parent questions are fixed before the judgment: the request carries exactly the
+          // ones the worker's context lacks, and the judgment reads all of them.
+          const questions = this.parentQuestions(run, input);
+          const readable = this.readable(run, input);
+          const present = new Set(preparation?.snapshot?.presentQuestionIds ?? []);
+          const appended = questions.filter((question) => !present.has(question.questionId));
           const queuedIds = () =>
             run.projection.directiveOrder.filter((id) => {
-              const d = run.projection.directives[id];
-              return d?.targetExecutionId === executionId && d.status === 'queued';
+              const directive = run.projection.directives[id];
+              return directive?.targetExecutionId === executionId && directive.status === 'queued';
             });
+          const routingSettings = () => {
+            if (run.snapshot.mode !== 'live' || !this.effortRouting) return ROUTING_OFF;
+            const parsed = EffortRoutingSettings.safeParse(this.effortRouting.settings());
+            return parsed.success ? parsed.data : ROUTING_OFF;
+          };
           const fingerprint = () =>
             hashOf({
               directives: queuedIds(),
               artifacts: run.projection.artifactReads[executionId] ?? [],
               revision: run.projection.executions[executionId]?.configRevision,
               descriptors: [...descriptors.values()],
-              model: input.model,
-              policy: input.role.reasoning ?? null,
               parentQuestions: this.parentQuestions(run, input),
+              settings: routingRevision(routingSettings()),
             });
-          for (const id of privateInput?.directiveIds ?? []) {
-            const directive = run.projection.directives[id];
-            if (
-              !directive ||
-              directive.targetExecutionId !== executionId ||
-              !['queued', 'attached_to_request', 'delivered'].includes(directive.status)
-            )
-              throw new Error('unknown directive in reasoning input');
-          }
-          const preparedAt = fingerprint();
-          const auto = input.role.reasoning?.mode === 'auto';
-          if (
-            auto &&
-            privateInput &&
-            queuedIds().some((id) => !privateInput.directiveIds.includes(id))
-          )
-            throw new Error('REASONING_STALE');
-          const preparationId = this.ids.next('preparation');
-          let reasoning = fixedReasoning(input.role.reasoning, preparationId);
-          if (auto) {
-            const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
-            run.cancelListeners.set(executionId, listeners);
-            const cancellation: DecisionCancellation = {
-              get aborted() {
-                try {
-                  requireOwned();
-                  return false;
-                } catch {
-                  return true;
-                }
-              },
-              onCancel(fn) {
-                listeners.add(fn);
-                if (this.aborted) fn();
-                return () => listeners.delete(fn);
-              },
-            };
-            const policy = reasoningPolicyOf(run.snapshot.reasoningApply);
-            const exhausted = policy === 'judged' && run.reasoningCalls >= run.reasoningMaxCalls;
-            if (policy === 'judged' && !exhausted) run.reasoningCalls++;
+          const settings = routingSettings();
+          // Only a request that waits for an engine can go stale while it waits.
+          const judged =
+            input.role.reasoning?.mode === 'auto' &&
+            record?.purpose !== 'compaction' &&
+            settings.mode === 'manual' &&
+            settings.application !== 'shadow';
+          const preparedAt = judged ? fingerprint() : '';
+          // Any automatic request depends on the settings, also one that waited only for a slot.
+          const routed = input.role.reasoning?.mode === 'auto' && record?.purpose !== 'compaction';
+          const settingsAt = routingRevision(settings);
+          const settingsHold = () => routingRevision(routingSettings()) === settingsAt;
+          const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+          run.cancelListeners.set(executionId, listeners);
+          const cancellation: DecisionCancellation = {
+            get aborted() {
+              try {
+                requireOwned();
+                return false;
+              } catch {
+                return true;
+              }
+            },
+            onCancel(fn) {
+              listeners.add(fn);
+              if (this.aborted) fn();
+              return () => listeners.delete(fn);
+            },
+          };
+          const effortRouting = this.effortRouting;
+          const planned = prepareReasoning({
+            preparationId,
+            policy: input.role.reasoning,
+            compaction: record?.purpose === 'compaction',
+            model: input.model,
+            settings,
+            backend: (engine) =>
+              this.recordedEngine(
+                run,
+                executionId,
+                input.attemptNo,
+                effortRouting?.backend(engine) ?? null,
+              ),
+            snapshot: callSnapshot(preparation?.snapshot, {
+              directives: (record?.directiveIds ?? queuedIds()).map((directiveId) => ({
+                directiveId,
+                text: run.projection.directives[directiveId]?.text ?? '',
+              })),
+              questions,
+              // What this request may not read stays null: the judgment then falls back.
+              attachments: questions.flatMap((question) =>
+                question.artifactRefs.map((artifactVersionId) => ({
+                  questionId: question.questionId,
+                  artifactVersionId,
+                  text: readable.has(artifactVersionId)
+                    ? this.store.getArtifactText(run.runId, artifactVersionId)
+                    : null,
+                })),
+              ),
+            }),
+            contextHash: record?.contextHash ?? null,
+            retryOf:
+              preparation?.retryOfModelCallId &&
+              lastRoute?.modelCallId === preparation.retryOfModelCallId
+                ? lastRoute.stored
+                : null,
+            routeId: () => this.ids.next('route'),
+            clock: this.clock,
+            timers: this.timers,
+            cancellation,
+          });
+          const awaited = judged && planned instanceof Promise;
+          let prepared: Awaited<typeof planned>;
+          if (planned instanceof Promise) {
             run.boundaries.add(executionId);
             try {
-              reasoning = await automaticReasoning(
-                privateInput,
-                {
-                  requested: { mode: 'auto' },
-                  resolved: 'medium',
-                  source: 'fallback',
-                  preparationId,
-                  ...(privateInput
-                    ? { inputHash: hashOf(privateInput), kind: privateInput.kind }
-                    : {}),
-                },
-                policy,
-                run.reasoningProvider,
-                input.model.reasoning?.levels ?? ['low', 'medium', 'high', 'xhigh'],
-                cancellation,
-                this.timers,
-                exhausted,
-                this.externalConsult(run, executionId, input.attemptNo),
-              );
+              prepared = await planned;
             } finally {
               run.boundaries.delete(executionId);
             }
+          } else prepared = planned;
+          if (prepared.kind === 'cancelled') {
+            requireActive();
+            throw new Error('request cancelled');
+          }
+          if (awaited) {
             const paused = !WORKING.has(run.projection.status);
             do {
               await this.boundary(run, executionId);
@@ -8562,6 +8476,7 @@ export class Coordinator {
             requireActive();
             if (paused || fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
           }
+          const reasoning = prepared.resolution;
           // Wait for a model slot; a waiting execution is not in a request and holds none.
           const queuedAt = this.clock.monotonicMs();
           await this.acquireModelSlot(run, input);
@@ -8571,7 +8486,8 @@ export class Coordinator {
               await this.boundary(run, executionId);
             } while (!WORKING.has(run.projection.status));
             requireActive();
-            if (auto && fingerprint() !== preparedAt) throw new Error('REASONING_STALE');
+            if ((awaited && fingerprint() !== preparedAt) || (routed && !settingsHold()))
+              throw new Error('REASONING_STALE');
             if (
               protectedContextIssued &&
               record?.sections.find((section) => section.name === 'corral_state')?.hash !==
@@ -8656,6 +8572,19 @@ export class Coordinator {
             },
           ]);
           lastCall = { modelCallId, contextSnapshotId, effectId };
+          lastRoute = prepared.stored ? { modelCallId, stored: prepared.stored } : null;
+          pendingShadow = prepared.shadow
+            ? { modelCallId, shadow: prepared.shadow, current: settingsHold }
+            : null;
+          const routeId = reasoning?.route?.routeId;
+          if (prepared.settled && routeId)
+            void prepared.settled.then((facts) =>
+              this.recordRouting(run, executionId, {
+                type: 'reasoning.settled',
+                executionId,
+                payload: { executionId, routeId, ...facts },
+              }),
+            );
           this.modelTransports.set(modelCallId, { run, input, observe: host.observe, queueWaitMs });
           return {
             modelCallId,
@@ -8663,9 +8592,7 @@ export class Coordinator {
             profile: input.modelProfile,
             maxOutputTokens,
             directives: queued,
-            ...(this.parentQuestions(run, input).length
-              ? { parentQuestions: this.parentQuestions(run, input) }
-              : {}),
+            ...(appended.length ? { parentQuestions: appended } : {}),
             ...(reasoning ? { reasoning } : {}),
           };
         } finally {
@@ -8713,6 +8640,65 @@ export class Coordinator {
             payload: { effectId: lastCall.effectId, providerRequestId: null },
           });
         if (drafts.length) this.commit(run, drafts);
+        // Shadow judges only after the baseline request went out, and never changes it.
+        // Settings changed since the preparation (Off, another engine, a withdrawn consent) start
+        // no observation, and an observation that answers after such a change is dropped.
+        if (pendingShadow?.modelCallId === modelCallId && !pendingShadow.current())
+          pendingShadow = null;
+        if (pendingShadow?.modelCallId === modelCallId) {
+          const { shadow, current } = pendingShadow;
+          pendingShadow = null;
+          const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+          run.cancelListeners.set(executionId, listeners);
+          const scope: DecisionCancellation = {
+            get aborted() {
+              try {
+                requireOwned();
+                return false;
+              } catch {
+                return true;
+              }
+            },
+            onCancel(fn) {
+              listeners.add(fn);
+              if (this.aborted) fn();
+              return () => listeners.delete(fn);
+            },
+          };
+          void shadow.observe(scope).then((outcome) => {
+            if (!current()) return;
+            this.recordRouting(run, executionId, {
+              type: 'reasoning.observed',
+              executionId,
+              payload: {
+                executionId,
+                routeId: shadow.routeId,
+                modelCallId,
+                baseline: shadow.baseline,
+                selected: outcome.kind === 'selected' ? outcome.effort : null,
+                skipped: outcome.kind === 'cancelled' ? 'cancelled' : outcome.reason,
+                ...(outcome.insufficient ? { insufficient: outcome.insufficient } : {}),
+                probabilities: outcome.probabilities,
+                probabilityMeaning: outcome.probabilityMeaning,
+                engineIdentity: outcome.engineIdentity,
+                frame: outcome.frame,
+                timing: {
+                  packMs: outcome.timing.packMs,
+                  countMs: outcome.timing.countMs,
+                  engineMs: outcome.timing.engineMs,
+                },
+              },
+            });
+            if (outcome.settled)
+              void outcome.settled.then((facts) =>
+                this.recordRouting(run, executionId, {
+                  type: 'reasoning.settled',
+                  executionId,
+                  payload: { executionId, routeId: shadow.routeId, ...facts },
+                }),
+              );
+          });
+        }
       },
 
       observe: async (observation: AgentObservation) => {
@@ -9430,6 +9416,95 @@ export class Coordinator {
     )
       return undefined;
     return parent;
+  }
+
+  /** Engine facts that arrive after the request: recorded while the run is open, else dropped. */
+  private recordRouting(run: LiveRun, _executionId: string, draft: EventDraft): boolean {
+    if (
+      this.live.get(run.runId) !== run ||
+      TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+      this.storageError
+    )
+      return false;
+    this.commit(run, [draft]);
+    return true;
+  }
+
+  /**
+   * An API judgment is one decision effect of the execution (features/decision-apis.md#기록):
+   * admitted when the call goes out, settled once at its physical end. Local inference is not.
+   */
+  private recordedEngine(
+    run: LiveRun,
+    executionId: string,
+    attemptNo: number,
+    backend: RoutingBackend | null,
+  ): RoutingBackend | null {
+    if (backend?.kind !== 'api') return backend;
+    return {
+      kind: backend.kind,
+      identity: () => backend.identity(),
+      admit: () => {
+        const admission = backend.admit();
+        if (!admission.ok) return admission;
+        const { lease } = admission;
+        return {
+          ok: true,
+          lease: {
+            identity: lease.identity,
+            frame: lease.frame,
+            device: lease.device,
+            countState: (text, signal) => lease.countState(text, signal),
+            countInput: (state, question, signal) => lease.countInput(state, question, signal),
+            release: () => lease.release(),
+            start: (request) => {
+              const effectId = this.ids.next('effect');
+              const admitted = this.recordRouting(run, executionId, {
+                type: 'effect.admitted',
+                executionId,
+                payload: {
+                  effectId,
+                  kind: 'decision',
+                  scope: executionId,
+                  epoch: attemptNo,
+                  modelCallId: null,
+                },
+              });
+              if (!admitted) {
+                lease.release();
+                const result = Promise.reject(
+                  Object.assign(new Error('the run ended'), { reason: 'unavailable' }),
+                );
+                const end = () => ({
+                  basis: 'remote-transport-closed' as const,
+                  finishedAtMs: this.clock.monotonicMs(),
+                });
+                return { result, settled: result.then(end, end) };
+              }
+              const flight = lease.start({
+                ...request,
+                owner: { runId: run.runId, executionId, attemptNo, effectId },
+              });
+              // Closing the connection is Corral's stop, not a known remote outcome.
+              const outcome = flight.result.then(
+                () => 'succeeded' as const,
+                () => (request.signal.aborted ? ('cancelled' as const) : ('failed' as const)),
+              );
+              void flight.settled.then(async () => {
+                const settled = await outcome;
+                if (run.projection.effects[effectId]?.status === 'admitted')
+                  this.recordRouting(run, executionId, {
+                    type: 'effect.settled',
+                    executionId,
+                    payload: { effectId, outcome: settled },
+                  });
+              });
+              return flight;
+            },
+          },
+        };
+      },
+    };
   }
 
   private parentQuestions(run: LiveRun, input: AgentStartInput): ParentQuestionMessage[] {

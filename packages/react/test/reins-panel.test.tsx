@@ -205,6 +205,31 @@ describe('ReinsPanel', () => {
     expect(steer).not.toHaveBeenCalled();
   });
 
+  // docs/specs/product-contract.md: screens name the action and its target, never "Reins".
+  it.each([false, true])('titles the panel by its action and target (compact %s)', (compact) => {
+    const { container } = render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel
+          session={fakeSession()}
+          target={{ executionId: 'exec_writer', nodeLabel: 'Writer', finished: false }}
+          compact={compact}
+        />
+      </IntlProvider>,
+    );
+    expect(screen.getByRole('region', { name: 'Give instruction · Writer' })).toBeInTheDocument();
+    expect(container.textContent).not.toContain('Reins');
+  });
+
+  it('titles the panel by its action when nothing is chosen yet', () => {
+    const { container } = render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel session={fakeSession()} target={null} />
+      </IntlProvider>,
+    );
+    expect(screen.getByRole('region', { name: 'Give instruction' })).toBeInTheDocument();
+    expect(container.textContent).not.toContain('Reins');
+  });
+
   it('explains what to do when there is nothing to steer', () => {
     render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">

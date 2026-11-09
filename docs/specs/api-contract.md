@@ -6,13 +6,13 @@
 
 산출물 기록의 목적은 생성자·소비자·결정 근거·결과의 관계와 시점을 보여주는 것이다. 버전 메타데이터와 관계 이벤트는 유지하지만 과거 본문 복원·재사용을 위한 아카이브는 제공하지 않는다.
 
-실행 중에는 실행·승인·취소 정리에 필요한 본문을 유지한다. Run이 종료되고 모든 실행과 effect가 정리된 뒤 최종 결과와 단계 결과만 유지하며 나머지 중간 산출물과 내부 실행 본문을 해제한다. 단계 결과는 노드마다 마지막으로 완료 제출한 버전과 [포크](features/fork-and-breakpoints.md#포크)가 복사해 온 버전이다. 같은 세션에서 더 최근에 시작한 Run이 성공적인 최종 결과를 확정하면 앞선 Run의 최종 본문과 단계 결과도 해제한다. 실패한 새 Run은 앞선 최종 결과를 대체하지 않는다. 세션이 없는 Run은 자신의 최종 결과를 유지한다. 바이너리 산출물에도 같은 규칙을 적용한다. 회의는 참여자별 최신 최종 답변과 다음 발언에 필요한 최신 실행 컨텍스트 하나 및 그 의존 본문만 유지한다. 참여자의 새 답변이 확정되면 앞선 컨텍스트는 해제하며, 이 운영 컨텍스트를 산출물 조회·export로 제공하지 않는다.
+실행 중에는 실행·승인·취소 정리에 필요한 본문을 유지한다. Run이 종료되고 모든 실행과 effect가 정리된 뒤 최종 결과와 단계 결과만 유지하며 나머지 중간 산출물과 내부 실행 본문을 해제한다. 단계 결과는 노드마다 마지막으로 완료 제출한 버전과 [포크](features/fork-and-breakpoints.md#포크)가 복사해 온 버전이다. 같은 세션에서 더 최근에 시작한 Run이 성공적인 최종 결과를 확정하면 앞선 Run의 최종 본문과 단계 결과도 해제한다. 실패한 새 Run은 앞선 최종 결과를 대체하지 않는다. 세션이 없는 Run은 자신의 최종 결과를 유지한다. 바이너리 산출물에도 같은 규칙을 적용한다. 회의는 참여자별 최신 최종 답변과 다음 발언에 필요한 최신 실행 컨텍스트 하나 및 그 의존 본문만 유지한다. 참여자의 새 답변이 확정되면 앞선 컨텍스트는 해제하며, 이 운영 컨텍스트를 산출물 조회·export로 제공하지 않는다. 회의 기록은 산출물 보관과 분리한다. 종료된 회의 Run마다 본문을 해제하기 전에 그 답변 텍스트 하나를 회의 기록으로 저장하고, 앞선 답변의 산출물 본문이 해제된 뒤에도 회의 화면은 이 저장한 답변을 보여 준다. 참여자에게 보낸 라운드 지시는 저장하지 않는다.
 
 본문 해제는 불변 본문 수정의 예외가 아니라 명시적인 수명 종료이며, 해제된 ID는 다시 저장할 수 없다. `artifact.content_released` 이벤트는 해제된 산출물 ID와 사유를 기록하며 메타데이터·hash·생성/전달 관계를 삭제하지 않는다. 본문 조회·복사·export는 해제된 본문을 반환하지 않고, 클라이언트는 이전에 캐시한 본문도 표시하지 않는다. 본문에서 파생된 전문 검색 행도 같은 트랜잭션에서 폐기하며, 다음 검색은 현재 조회 가능한 결과와 일반 대화만 다시 색인한다. 이전 버전의 검색 복사본은 스키마 갱신 시 비우고 원본 일반 대화 항목은 유지한다. 현재 실행의 유효한 입력·승인 대상과 현재 최종 결과는 계속 조회할 수 있다.
 
 일반 대화의 연속성은 산출물 보관과 분리한다. 종료된 일반 Run마다 원래 요청과 대표 답변 한 개만 대화 차례로 저장한다. 모든 산출물·버전·모델 응답을 대화로 복사하지 않는다. 후속 대화는 이 요청·답변을 기존 크기 제한 안에서 사용하며 산출물 본문 복구 수단으로 노출하지 않는다.
 
-본문을 복사한 파생 검색 인덱스도 같은 수명을 따른다. 본문 검색에 동의한 경우 현재 열람 가능한 결과와 일반 대화의 요청·대표 답변을 검색하며, 해제된 산출물·내부 응답을 검색 발췌로 보관하거나 재색인하지 않는다. 메타데이터 검색과 일반 세션 메시지는 유지한다.
+본문을 복사한 파생 검색 인덱스도 같은 수명을 따른다. 본문 검색에 동의한 경우 현재 열람 가능한 결과와 일반 대화의 요청·대표 답변, 회의 기록의 답변을 검색하며, 해제된 산출물·내부 응답을 검색 발췌로 보관하거나 재색인하지 않는다. 메타데이터 검색과 일반 세션 메시지는 유지한다.
 
 ## 1. 명령과 조회
 
@@ -195,14 +195,23 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 | DELETE /model-auth/:provider/login | — | 진행 중 로그인 취소 |
 | DELETE /model-auth/:provider | — | 로그아웃. 저장한 자격 증명 삭제 |
 
-로컬 AI 설치. 설치 규칙은 [로컬 AI](features/local-intelligence.md)가 정한다. 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED`다.
+로컬 AI 설치. 설치 규칙은 [로컬 AI](features/local-intelligence.md)가 정한다. 로컬 AI가 없는 서버도 GET /local-ai에는 번들의 release·모델 이름과 state `unsupported`를 돌려주고, 설치와 취소는 403 `CAPABILITY_DENIED`다.
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /local-ai | — | release, models(`{meeting, effort}`: 번들이 함께 설치하는 회의 분석 모델과 추론 판정 모델의 표시 이름), state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), external(`{provider, model, policy, judgeAbstains, revision}`: 작업공간이 고른 판정 API id와 모델, 고르지 않았으면 provider·model이 null. policy는 자동 추론 정책 `medium`·`judged`. judgeAbstains는 로컬 판정기가 판정을 보류할 수 있는지이며, false면 판정 API를 부르지 않는다) |
+| GET /local-ai | — | release, models(`{meeting}`: 번들이 설치하는 회의 분석 모델의 표시 이름), state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null) |
 | POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
 | DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다 |
-| PUT /local-ai/external-judge | `{provider, revision}` | 작업공간의 외부 판정에 쓸 판정 API id, 사용 안 함은 null. 모르는 id는 400, 설정 revision이 다르면 409. 응답은 GET /local-ai와 같다 |
+
+추론 판정. 설정·엔진·설치 규칙은 [추론 판정](features/effort-routing.md), 판정 API의 키와 요청 형식은 [판정 API](features/decision-apis.md)가 정한다. 실제 모델이 없는 서버는 403 `CAPABILITY_DENIED`다.
+
+| Method/path | 요청 | 응답·효과 |
+|---|---|---|
+| GET /effort-routing | — | settings(`decisions.effort_routing`, 없으면 `{mode:'off'}`), revision, local(`{model, host, supported, reason, install, runtime, downloadBytes, progress, error, device:{requested, active}, threads, defaultThreads}`: threads는 실행 중인 instance의 스레드 수, defaultThreads는 서버 CPU에서 정한 새 Local 설정의 기본값, install은 `absent`·`downloading`·`verifying`·`installed`·`install-error`, runtime은 `stopped`·`starting`·`ready`·`packing`·`inferring`·`draining`·`error`, 쓸 수 없는 환경은 supported false와 이유), apis(판정 API마다 `{id, keyConfigured, noticeRevision, verified}`). 키·로컬 경로는 담지 않는다 |
+| PUT /effort-routing | `{settings, revision}` | 설정 저장. 형식 오류, 키가 없는 판정 API, 현재 고지와 다른 동의 revision, 이 컴퓨터에서 쓸 수 없는 Local은 400 `SCHEMA_INVALID`, revision이 다르면 409 `REVISION_CONFLICT`. 다운로드는 시작하지 않는다. 설치된 Local을 저장하면 준비를 시작하고, Off나 판정 API를 저장하면 Corral이 시작한 Local 프로세스를 끝낸다. 응답은 GET /effort-routing과 같다 |
+| POST /effort-routing/local/install | — | 202. Local 모델·런타임 설치를 시작한다. 진행 중이면 같은 설치, 이미 설치됐으면 그대로다. 설치가 끝나고 설정이 Manual + Local이면 준비를 시작한다. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED`. 응답은 GET /effort-routing과 같다 |
+| DELETE /effort-routing/local/install | — | 진행 중인 설치를 취소하고 부분 파일을 지운다. 이미 설치된 버전은 그대로다. 응답은 GET /effort-routing과 같다 |
+| POST /effort-routing/local/start | — | 202. 설치된 Local을 다시 준비한다(오류 뒤 다시 준비). 설정이 Manual + Local이 아니거나 설치되지 않았으면 400 `SCHEMA_INVALID`. 응답은 GET /effort-routing과 같다 |
 | GET /decision-apis | — | [판정 API](features/decision-apis.md) 목록: `{id, provider, model, keyConfigured}`. 키 값은 담지 않는다 |
 | PUT /decision-apis/:id/api-key | `{key}` | 판정 API 키 저장. 응답은 GET /decision-apis와 같다. 모르는 id는 404, 실제 모델이 없는 서버는 403 `CAPABILITY_DENIED` |
 | DELETE /decision-apis/:id/api-key | — | 판정 API 키 삭제. 응답은 GET /decision-apis와 같다 |
@@ -305,7 +314,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `tool.blocked` | toolCallId,reason |
 | `tool.started` | effectId,toolCallId |
 | `tool.finished` | resultRef,error |
-| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: requested,resolved,source,judged,ladder,policyVersion,judgeVersion,fallback,escalated). 자동 추론 규칙과 fallback 이유는 [로컬 AI](features/local-intelligence.md)가 정한다. 이전 정책으로 저장된 실행 기록은 읽기만 한다 |
+| `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: 그 요청의 추론 판정 기록. 필드와 규칙은 [추론 판정](features/effort-routing.md#기록)이 정한다) |
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `usage.recorded` | usageId,kind(`auto_route`·`image`),profileId,inputTokens,outputTokens,costMicros. Run의 모델 호출 밖에서 쓴 사용량(팀 선택 호출, 이미지 생성)을 호출마다 기록한다. 모르는 값은 null이며 0으로 두지 않는다. 나중에 확인된 값은 같은 usageId로 null이던 값만 채운다. 시작하지 않은 이미지 호출은 기록하지 않는다 |
@@ -314,11 +323,10 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `cancel.confirmed` | scope,settlementRefs |
 | `observation.late` | originalEvent,whyIgnored |
 | `output.finalized` | artifactVersionIds,approvalId |
-| `decision.requested` | decisionId,questionKind,questionVersion,provider@version,privacy,subject(runId,executionId,attemptNo,modelCallId,contextSnapshotId),inputHash. |
-| `decision.observed` | decisionId,answer,probabilities,evidenceLevel,latencyMs,readyBeforeDispatch,afterRequestFinished. 관찰 전용이며 요청에 적용되지 않음. `readyBeforeDispatch`·`afterRequestFinished`는 기록 시점에 commit된 Run에서 Coordinator가 채운다 |
-| `decision.failed` | decisionId,reason(`timeout`·`invalid_response`·`provider_error`·`unavailable`·`cancelled`),latencyMs |
+| `reasoning.settled` | routeId,basis(`native-response-complete`·`owned-child-exit`·`remote-transport-closed`),physicalOccupiedMs,lateResult,lateSelected(선택, 기록 전용). 판정의 물리 종료이며 이미 적용한 값을 바꾸지 않음 |
+| `reasoning.observed` | routeId,modelCallId,baseline,selected 또는 skipped,probabilities,probabilityMeaning,timing. Shadow 관찰 전용이며 요청에 적용되지 않음 |
 
-판정(decision) 관련으로 바뀐 기존 payload: `effect.admitted.kind`에 `decision`(외부 provider만), `limit.reached.limitKind`에 `decision_calls`, `run.started.decisions`(선택: 모드·provider snapshot·maxCalls). runtime에 판정 설정이 없으면 `decisions` 필드가 없다(브라우저 데모·기존 Run). 서버는 항상 기록하며 기본값은 `off`다.
+추론 판정 관련 기존 payload: `effect.admitted.kind`의 `decision`은 판정 API 호출에만 쓴다.
 
 구현에서 정한 검토·승인 규칙:
 

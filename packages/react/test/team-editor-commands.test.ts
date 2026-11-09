@@ -1,6 +1,6 @@
 import { compileDefinition } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import { type EditorDraft, emptyDraft } from '../src/editor/model.ts';
+import { connectCapability, type EditorDraft, emptyDraft } from '../src/editor/model.ts';
 import {
   applyPattern,
   connectPorts,
@@ -342,6 +342,30 @@ describe('team editor commands: patterns on the selection', () => {
     );
     const codes = compileDefinition(draft.definition).diagnostics.map((d) => d.code);
     expect(codes).not.toContain('PARALLEL_MERGE_NEEDS_JOIN');
+  });
+
+  it('#194: the parallel copy calls the same helpers as the agent it copies', () => {
+    let { draft, nodeId: helper } = ok(placeStep(chain(3), 'agent', { kind: 'empty' }));
+    draft = patchNode(draft, helper, { invocation: 'callable' });
+    for (const kind of ['delegate', 'question'] as const) {
+      const linked = connectCapability(draft, 'agent_2', helper, kind);
+      if (!linked.ok) throw new Error(linked.reason);
+      draft = linked.draft;
+    }
+    const split = ok(applyPattern(draft, 'parallel', ['agent_2'])).draft;
+    const copy = split.definition.nodes.find(
+      (n) => n.type === 'agent' && !['agent_1', 'agent_2', 'agent_3', helper].includes(n.id),
+    );
+    const calls = (source: string | undefined) =>
+      split.definition.capabilityLinks
+        .filter((l) => l.sourceNodeId === source)
+        .map((l) => `${l.kind}>${l.targetNodeId}`)
+        .sort();
+    expect(calls(copy?.id)).toEqual([`delegate>${helper}`, `question>${helper}`]);
+    expect(calls('agent_2')).toEqual([`delegate>${helper}`, `question>${helper}`]);
+    expect(split.definition.capabilityLinks).toHaveLength(4);
+    expect(new Set(split.definition.capabilityLinks.map((l) => l.id)).size).toBe(4);
+    expect(codes(split)).toEqual(codes(draft));
   });
 
   it('refuses to split a step nothing leads to, or more than one step', () => {

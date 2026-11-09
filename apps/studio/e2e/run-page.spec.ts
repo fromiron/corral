@@ -267,16 +267,3 @@ test('the Run graph cannot be edited: dragging and Delete change nothing', async
   await page.keyboard.press('Backspace');
   await expect(graph(page).locator('[data-agent-id]')).toHaveCount(5);
 });
-
-test('the Usage tab lists each request’s effort judgment as observe only', async ({ page }) => {
-  await finishedTeamRun(page);
-  await page.getByRole('button', { name: 'Run info', exact: true }).click();
-  await page.getByTestId('run-monitor').getByRole('tab', { name: 'Usage', exact: true }).click();
-  const judgments = page.getByRole('region', { name: 'Effort judgments' });
-  await expect(judgments).toContainText('Observe only. Not applied to any request.');
-  await expect(judgments.locator('[data-testid^="judgment-call_"]').first()).toContainText(
-    'local-heuristic@1',
-  );
-  // The demo's rule baseline is labelled as a rule, not a model probability.
-  await expect(judgments).toContainText('(rule)');
-});

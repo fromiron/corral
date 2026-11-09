@@ -51,9 +51,11 @@ function expandOne(
       binding.sourceNodeId ? { ...binding, sourceNodeId: name(binding.sourceNodeId) } : binding,
     ];
   };
-  const placed = (node: { parentId?: string | undefined }) => ({
-    parentId: node.parentId ? name(node.parentId) : team.id,
-  });
+  // A callable member runs only when called and stays outside every box, as in the saved team.
+  const placed = (node: CorralNode) =>
+    node.type === 'agent' && node.invocation === 'callable'
+      ? {}
+      : { parentId: node.parentId ? name(node.parentId) : team.id };
 
   const members: CorralNode[] = [];
   for (const node of saved.nodes) {
@@ -71,7 +73,8 @@ function expandOne(
         });
       continue;
     }
-    const base = { ...node, id: name(node.id), ...placed(node) };
+    const { parentId: _parent, ...unplaced } = node;
+    const base = { ...unplaced, id: name(node.id), ...placed(node) };
     switch (base.type) {
       case 'agent':
         members.push({

@@ -29,100 +29,12 @@ export const RoleRunOverride = z
 export const RoleRunOverrides = z.record(Identifier, RoleRunOverride);
 export type RoleRunOverrides = z.infer<typeof RoleRunOverrides>;
 
-/** Private IPC only. Never store the input in public events. */
-export const ReasoningInput = z.strictObject({
-  kind: z.enum(['turn', 'step', 'compaction']),
-  request: z.string().max(24000),
-  prevRequest: z.string().max(1200),
-  prev: z.string().max(2000),
-  step: z.int().min(0).max(10000),
-  plan: z.string().max(600),
-  calls: z
-    .array(
-      z.strictObject({
-        name: z.string().max(128),
-        args: z.string().max(320),
-        result: z.string().max(6006),
-        status: z.enum(['completed', 'failed', 'pending']).optional(),
-      }),
-    )
-    .max(3),
-  directiveIds: z.array(Identifier).max(256),
-});
-export type ReasoningInput = z.infer<typeof ReasoningInput>;
-export const ReasoningResolution = z.strictObject({
-  requested: ReasoningPolicy,
-  resolved: ReasoningLevel.nullable(),
-  source: z.enum([
-    'fixed',
-    'provider_default',
-    'local-model',
-    'external-model',
-    'fallback',
-    'compaction',
-  ]),
-  preparationId: Identifier,
-  inputHash: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/)
-    .optional(),
-  kind: z.enum(['turn', 'step', 'compaction']).optional(),
-  judgeVersion: z.string().max(200).optional(),
-  judged: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
-  ladder: z
-    .array(z.enum(['low', 'medium', 'high', 'xhigh']))
-    .max(4)
-    .optional(),
-  /** Earlier policy versions remain readable as recorded. v3 is medium, v4 the judged policy. */
-  policyVersion: z
-    .enum([
-      'mixdog-relative-v1',
-      'corral-effort-v1',
-      'corral-effort-v2',
-      'corral-effort-v3',
-      'corral-effort-v4',
-    ])
-    .optional(),
-  fallback: z
-    .enum([
-      'unavailable',
-      'timeout',
-      'provider_error',
-      'invalid_response',
-      'limit',
-      'missing_input',
-      'abstained',
-      'policy',
-    ])
-    .optional(),
-  /** Set when the external judge was asked, whatever it answered. */
-  escalated: z.literal(true).optional(),
-});
-export type ReasoningResolution = z.infer<typeof ReasoningResolution>;
 export const ReasoningWire = z.strictObject({
   kind: z.enum(['effort', 'omitted']),
   value: z.string().max(64).nullable(),
 });
 export type ReasoningWire = z.infer<typeof ReasoningWire>;
 
-/** Decision-only APIs Corral can ask when the local judge abstains (features/decision-apis.md). */
+/** Decision-only APIs (features/decision-apis.md). */
 export const DecisionApiId = z.enum(['jev', 'openai-decisions']);
 export type DecisionApiId = z.infer<typeof DecisionApiId>;
-
-/** medium asks no judge; judged keeps the local judge and its external check. */
-export const AutomaticReasoningPolicy = z.enum(['medium', 'judged']);
-export type AutomaticReasoningPolicy = z.infer<typeof AutomaticReasoningPolicy>;
-
-export const ReasoningApplySettings = z.strictObject({
-  enabled: z.boolean(),
-  /** Fixed when the run starts; a run recorded without it keeps judging. */
-  policy: AutomaticReasoningPolicy.optional(),
-  maxCalls: z.int().min(0).max(100),
-  provider: z.literal('local-model'),
-  version: z.string().max(200).nullable(),
-  /** The external judge asked when the local judge abstains; fixed when the run starts. */
-  external: z
-    .strictObject({ provider: DecisionApiId, model: z.string().min(1).max(100) })
-    .optional(),
-});
-export type ReasoningApplySettings = z.infer<typeof ReasoningApplySettings>;

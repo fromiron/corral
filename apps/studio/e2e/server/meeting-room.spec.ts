@@ -249,6 +249,14 @@ test.describe('general chat', () => {
     await expect(
       conversation.getByRole('article', { name: 'Participant 2', exact: true }).last(),
     ).toContainText('I would switch to a light vegetable soup.');
+    // Answering again releases the earlier answer bodies; the meeting still reads them.
+    await page.reload();
+    await expect(
+      conversation.getByRole('article', { name: 'Participant 1', exact: true }).first(),
+    ).toContainText('I would have kimchi stew.');
+    await expect(
+      conversation.getByRole('article', { name: 'Participant 2', exact: true }).first(),
+    ).toContainText('I would have potato soup.');
     await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
     await expect(conversation.getByRole('article', { name: 'Secretary', exact: true })).toHaveCount(
       0,

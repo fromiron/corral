@@ -32,14 +32,16 @@ export {
   ToolRefusal,
   ToolTerminationUnconfirmed,
 } from './coordinator.ts';
-export { LocalHeuristicProvider } from './decisions/heuristic.ts';
-export {
-  createDecisionHub,
-  effortInput,
-  type JudgmentConfig,
-  resolveDecisionSettings,
-} from './decisions/index.ts';
 export { definitionHash } from './definition-hash.ts';
+export { SERIALIZER_VERSION } from './effort-routing/frame.ts';
+export {
+  type EffortRoutingDeps,
+  effortQuestion,
+  FRAME_LIMITS,
+  QUESTION_VERSION,
+  ROUTING_OFF,
+  routingRevision,
+} from './effort-routing/index.ts';
 export * from './evaluation.ts';
 export * from './fork.ts';
 export * from './fuzzy.ts';
@@ -71,7 +73,7 @@ export {
 export type { PartialOutput, RuntimeSnapshot } from './partial-output.ts';
 export * from './profile-context.ts';
 export * from './projection.ts';
-export { fixedReasoning, reasoningPolicyOf } from './reasoning.ts';
+export { fixedReasoning } from './reasoning.ts';
 export * from './repository/index.ts';
 export { reviewCriteriaHash } from './review-recipe.ts';
 export * from './run-plan.ts';

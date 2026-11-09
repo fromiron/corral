@@ -122,34 +122,14 @@ export interface ObserverView {
   event: RunEvent;
 }
 
-/** Events an observer may commit, fenced by the Coordinator. */
-export type ObserverDraft = {
-  type:
-    | 'decision.requested'
-    | 'decision.observed'
-    | 'decision.failed'
-    | 'limit.reached'
-    | 'effect.admitted'
-    | 'effect.settled';
-  executionId?: string;
-  payload: Record<string, unknown>;
-};
-
-/**
- * What the Coordinator lends an observer. Writes go through `record`, which refuses anything
- * but decision facts and commits nothing once the run has ended.
- */
+/** What the Coordinator lends an observer. An observer reads; it never commits run facts. */
 export interface ObserverContext {
   runId: string;
-  /** Commits the drafts if the run is still open; false when they were dropped. */
-  record(drafts: ObserverDraft[]): boolean;
   isOpen(): boolean;
   /** Calls `fn` when the execution's cancel is requested (or already was). */
   onCancel(executionId: string, fn: () => void): () => void;
   after(ms: number, fn: () => void): () => void;
   monotonicMs(): number;
-  nextId(): string;
-  nextEffectId(): string;
   /** The run's status as committed right now. */
   status(): string;
 }

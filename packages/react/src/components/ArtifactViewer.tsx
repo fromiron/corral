@@ -62,6 +62,7 @@ export function ArtifactViewer({
     projection &&
       (definition?.input.images?.some((image) => image.imageId === shownId) ||
         projection.currentCriteriaVersionId === shownId ||
+        projection.forkedFrom?.carried.some((step) => step.artifactVersionIds.includes(shownId)) ||
         Object.values(projection.artifacts).some((value) => value.criteriaVersionId === shownId) ||
         Object.values(projection.executions).some((value) => value.criteriaVersionId === shownId) ||
         Object.values(projection.reviews).some(

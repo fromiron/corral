@@ -169,12 +169,6 @@
     </main>
     <footer><div class="actions" id="actions"></div></footer>
     <script>
-      const LEVELS = [
-        ['low', '바로 답하거나 한두 단계로 끝남'],
-        ['medium', '몇 단계 추론이나 작은 변경'],
-        ['high', '여러 단계를 계획하고 검증'],
-        ['xhigh', '깊은 탐색이나 긴 추론'],
-      ];
       const content = document.getElementById('content');
       const actions = document.getElementById('actions');
       let current = null;
@@ -226,30 +220,6 @@
         await send('/api/undo', {});
         await load();
       };
-
-      function showEffort(item) {
-        const step = item.stage === 'step';
-        content.append(
-          node('h1', step ? '이 실행 단계에 필요한 추론 수준' : '이 요청에 필요한 추론 수준'),
-          node('p', '제대로 처리할 수 있는 가장 낮은 수준을 고르세요.', 'hint'),
-          block('요청', item.request),
-        );
-        if (item.plan) content.append(block('직전 계획', item.plan));
-        for (const call of item.calls) {
-          const area = node('section', undefined, 'call');
-          area.append(
-            node('h2', `도구 호출: ${call.name}`),
-            node('pre', call.args),
-            node('h2', '결과'),
-            node('pre', call.result),
-          );
-          content.append(area);
-        }
-        if (item.prevRequest) content.append(block('이전 요청', item.prevRequest, false));
-        if (item.prev) content.append(block('이전 답변', item.prev, false));
-        LEVELS.forEach(([level, note], n) => button(String(n + 1), level, note, () => save(level)));
-        button('0', '판단 불가', '맥락이 부족함', () => save('unsure'));
-      }
 
       function showMeeting(item) {
         content.append(
@@ -307,8 +277,6 @@
         current = state.item;
         if (!current) {
           content.append(node('h1', '라벨링을 모두 마쳤습니다.'));
-        } else if (current.kind === 'effort') {
-          showEffort(current);
         } else {
           showMeeting(current);
         }

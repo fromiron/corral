@@ -143,7 +143,7 @@ export interface CliIO {
 }
 
 const usage =
-  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> [--judgments] | inspect --archive <file> | export <run-id> [--redact | --private] | local-ai install|status [--data-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
+  'corral dev [--demo] | validate <file> | run <file> [--input <brief>] [--watch] [--demo] | inspect <run-id> | inspect --archive <file> | export <run-id> [--redact | --private] | local-ai install|status [--data-dir <dir>] | exec <file|auto> [--model-profile <id>] [--effort <level>] [--input <brief>] [--answers <file>] [--demo] [--json] | eval <suite.json> [--demo] [--out <file>] | eval <coding-suite.json> --hashline-binary <fixture-driver> [--out <file>]';
 
 export async function runCli(args: string[], io: CliIO): Promise<number> {
   let server: import('@corral/server').CorralServer | undefined;
@@ -166,7 +166,6 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
         private: { type: 'boolean', default: false },
         archive: { type: 'string' },
         'data-dir': { type: 'string' },
-        judgments: { type: 'boolean', default: false },
         json: { type: 'boolean', default: false },
         out: { type: 'string' },
         'hashline-binary': { type: 'string' },
@@ -399,11 +398,7 @@ export async function runCli(args: string[], io: CliIO): Promise<number> {
           io.write('No such run.');
           return 1;
         }
-        io.write(
-          values.judgments
-            ? judgmentReport(run.projection)
-            : JSON.stringify(run.projection, null, 2),
-        );
+        io.write(JSON.stringify(run.projection, null, 2));
       }
       return 0;
     } finally {
@@ -486,58 +481,6 @@ async function localAi(action: string | undefined, dataDir: string | undefined, 
   });
   io.write(`${bundle.release} installed.`);
   return 0;
-}
-
-/** `inspect --judgments`: each request's effort judgments side by side. */
-export function judgmentReport(projection: RunProjection): string {
-  const settings = projection.decisionSettings?.reasoning_effort;
-  const applied = Object.values(projection.modelCalls ?? {}).filter((call) => call.reasoning);
-  if (!settings && !applied.length) return `Run ${projection.runId} recorded no judgment settings.`;
-  const lines = [
-    `Effort judgments for ${projection.runId} (${settings?.mode === 'observe' ? 'observe only, not applied' : 'off'})`,
-  ];
-  for (const p of settings?.providers.filter((p) => !p.available) ?? [])
-    lines.push(`  ${p.id}: ${p.reason ?? 'unavailable'}`);
-  const calls = projection.executionOrder.flatMap((id) =>
-    (projection.executions[id]?.modelCallIds ?? []).map((call) => ({
-      call,
-      node: projection.executions[id]?.nodeId ?? id,
-    })),
-  );
-  const decisions = Object.values(projection.decisions ?? {});
-  for (const { call, node } of calls) {
-    for (const d of decisions.filter((x) => x.modelCallId === call)) {
-      const result =
-        d.status === 'observed'
-          ? `${d.answer}${d.evidenceLevel === 'rule' ? ' (rule)' : ''}${
-              d.probabilities
-                ? ` [${(['low', 'medium', 'high', 'xhigh'] as const)
-                    .map((l) => `${l} ${Math.round((d.probabilities?.[l] ?? 0) * 100)}%`)
-                    .join(', ')}]`
-                : ''
-            }`
-          : d.status === 'failed'
-            ? `failed: ${d.reason}`
-            : d.status === 'not_collected'
-              ? 'not collected (the run ended first)'
-              : 'pending';
-      lines.push(
-        `${call} ${node} ${d.provider} ${result}${d.latencyMs === null ? '' : ` ${d.latencyMs} ms`}`,
-      );
-    }
-  }
-  if (decisions.length === 0 && !applied.length) lines.push('No requests were judged.');
-  if (applied.length) {
-    lines.push('Applied reasoning (separate from observe-only judgments):');
-    for (const call of applied) {
-      const r = call.reasoning!;
-      const requested = r.requested.mode === 'fixed' ? r.requested.level : r.requested.mode;
-      lines.push(
-        `${call.modelCallId} ${projection.executions[call.executionId]?.nodeId ?? call.executionId} ${requested} -> ${r.resolved ?? 'provider_default'} [${r.source}${r.fallback ? `: ${r.fallback}` : ''}] wire=${call.reasoningWire ? (call.reasoningWire.value ?? 'omitted') : 'unverified'}${r.judgeVersion ? ` ${r.judgeVersion}` : ''}`,
-      );
-    }
-  }
-  return lines.join('\n');
 }
 
 /** The local server without Studio: nothing is built or served (exec, eval). */

@@ -268,7 +268,7 @@ test('live plans, context, manual collapse and an answer use the primary session
       .getByTestId('action-required')
       .getByText('Go to the request', { exact: true })
       .click();
-    await page.getByRole('button', { name: /^Needs your input/ }).click();
+    await page.getByTestId('run-respond').click();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
@@ -382,7 +382,7 @@ test.describe('serialized provider context', () => {
     await expect(inspector).toBeHidden();
     await closeOverview(page);
     await page.getByTestId('action-required').getByRole('link').click();
-    await page.getByRole('button', { name: /^Needs your input/ }).click();
+    await page.getByTestId('run-respond').click();
     const question = page.getByRole('form', { name: 'Waiting for your answer' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();

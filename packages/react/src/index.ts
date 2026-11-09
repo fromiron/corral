@@ -3,7 +3,6 @@ export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
-export { EffortJudgments } from './components/EffortJudgments.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {
   ExecutionToolGroup,
@@ -18,6 +17,7 @@ export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningSummary } from './components/ReasoningSummary.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
+export { RoutingTally } from './components/RoutingTally.tsx';
 export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';
 export { type ComparedRun, RunComparison } from './components/RunComparison.tsx';
@@ -30,7 +30,13 @@ export {
 } from './components/RunFlowView.tsx';
 export { isHtmlDocument, ResultReader, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
-export { ExecutionTree, RunOutput, RunView } from './components/RunView.tsx';
+export {
+  ExecutionTree,
+  type RoundInspection,
+  RunOutput,
+  RunView,
+  useRoundInspection,
+} from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
 export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
 export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';

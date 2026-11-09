@@ -76,7 +76,7 @@ function forked(
 }
 
 /** Agents named in `held` wait at their gate before replying (a cancelled one then stops). */
-function runtime(held: Record<string, Gate>, decisions?: DecisionPolicy) {
+function runtime(held: Record<string, Gate>, decisions?: DecisionPolicy, released?: boolean[]) {
   const clock = new FakeClock();
   return new InProcessTransport(
     new Coordinator({
@@ -84,6 +84,20 @@ function runtime(held: Record<string, Gate>, decisions?: DecisionPolicy) {
       ids: new SequentialIdFactory(),
       timers: clock,
       ...(decisions ? { decisions } : {}),
+      // Records how the run gave back its working copy: confirmed ended, or not.
+      ...(released
+        ? {
+            files: {
+              available: () => false,
+              execute: async () => {
+                throw new Error('no file tools in this test');
+              },
+              releaseRun: (_runId: string, confirmed: boolean) => {
+                released.push(confirmed);
+              },
+            },
+          }
+        : {}),
       agents: new ScriptedAgentAdapter({
         turns: 1,
         appendNotes: false,
@@ -153,6 +167,26 @@ describe('parallel branches', () => {
     expect(joins(events)[0]).toMatchObject({ policy: 'any', cancelledNodeIds: ['b'] });
     // A stopped branch is not a task the person must restart.
     expect(Object.values(final.tasks).some((t) => t.status === 'blocked')).toBe(false);
+  });
+
+  it('#188: an any Join run succeeds only once the stopped branch has ended', async () => {
+    const b = new Gate();
+    const released: boolean[] = [];
+    const transport = runtime({ b }, undefined, released);
+    const { runId } = await run(transport, forked('any'));
+    await waitForProjection(transport, runId, (p) =>
+      executions(p, 'm').some((e) => e.status === 'succeeded'),
+    );
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    const waiting = await waitForProjection(transport, runId, () => true);
+    expect(live(waiting, 'b')).toBe(true);
+    expect(waiting.status).toBe('running');
+    expect(released).toEqual([]);
+    b.open();
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(executions(final, 'b').map((e) => e.status)).toEqual(['cancelled']);
+    expect(released).toEqual([true]);
   });
 
   it('withdraws an approval the stopped branch was waiting on', async () => {
@@ -359,5 +393,22 @@ describe('parallel structure', () => {
     expect(errors(definition)).toContainEqual(
       expect.objectContaining({ code: 'JOIN_PARTIAL', nodeId: 'j' }),
     );
+  });
+
+  it('#190: accepts a Join of branches one of which already joined its own fan-out', () => {
+    const inner: CorralNode = { id: 'k', type: 'join', label: 'k', policy: 'all' };
+    const definition = forked('all', {
+      nodes: [agent('b', 'p'), agent('b1', 'b'), agent('b2', 'b'), inner],
+      edges: [
+        edge('p', 'out', 'b'),
+        edge('b', 'out', 'b1'),
+        edge('b', 'out', 'b2'),
+        edge('b1', 'out', 'k'),
+        edge('b2', 'out', 'k'),
+        edge('k', 'out', 'j'),
+      ],
+    });
+    expect(errors(definition)).toEqual([]);
+    expect(planRun(definition).ok).toBe(true);
   });
 });

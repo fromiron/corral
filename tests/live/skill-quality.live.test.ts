@@ -144,7 +144,7 @@ it.skipIf(process.env.CORRAL_SKILL_LIVE !== '1')(
             correct,
             activationPassed,
             modelCalls,
-            unknownTokens,
+            unknownCalls,
             definitionHash,
             harnessHashes,
             modelHashes,
@@ -155,7 +155,7 @@ it.skipIf(process.env.CORRAL_SKILL_LIVE !== '1')(
             correct,
             activationPassed,
             modelCalls,
-            unknownTokens,
+            unknownCalls,
             definitionHash,
             harnessHashes,
             modelHashes,
@@ -167,7 +167,7 @@ it.skipIf(process.env.CORRAL_SKILL_LIVE !== '1')(
       expect(evaluation.results).toHaveLength(4);
       expect(
         evaluation.results.every(
-          (row) => row.status === 'succeeded' && row.correct && row.unknownTokens === 0,
+          (row) => row.status === 'succeeded' && row.correct && row.unknownCalls === 0,
         ),
       ).toBe(true);
       expect(

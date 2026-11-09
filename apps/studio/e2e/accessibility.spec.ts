@@ -86,7 +86,7 @@ test('keyboard alone adds, deletes, undoes, selects, connects, wraps and steers 
   await activate(page, panel.getByRole('button', { name: 'Run', exact: true }));
   await activate(page, page.getByRole('button', { name: 'Pause run', exact: true }));
   await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 10_000 });
-  await tabTo(page, page.getByLabel('Instruction'));
+  await tabTo(page, page.getByLabel('Instruction', { exact: true }));
   await page.keyboard.insertText('Keyboard instructions reach the next request.');
   await page.keyboard.press('Enter');
   await activate(page, page.getByRole('button', { name: 'Resume run', exact: true }));
@@ -107,7 +107,7 @@ for (const instruction of ['일차 자료만 사용하고 확인하지 못한 �
       .click();
     await page.getByRole('button', { name: 'Pause run', exact: true }).click();
     await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 10_000 });
-    const input = page.getByLabel('Instruction');
+    const input = page.getByLabel('Instruction', { exact: true });
     await input.fill(instruction);
     await input.dispatchEvent('compositionstart', { data: '' });
     await input.dispatchEvent('compositionupdate', { data: instruction });

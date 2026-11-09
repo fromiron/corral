@@ -244,7 +244,7 @@ export function ChatView({
     >
       {header ? (
         <div
-          className={`px-5 pt-3 has-[>div:empty]:hidden ${expandedHeader ? 'min-h-0 flex-1 overflow-y-auto' : 'shrink-0'}`}
+          className={`px-5 pt-3 has-[>div:empty]:hidden ${expandedHeader ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-1/2 min-h-0 shrink overflow-y-auto'}`}
         >
           <div className="mx-auto w-full max-w-(--chat-content-max-width)">{header}</div>
         </div>

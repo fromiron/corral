@@ -3,11 +3,10 @@
 import { appendFileSync, chmodSync, existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
-import { EFFORT_LEVELS } from '../../../packages/contracts/src/index.ts';
 import type { GoldItem } from './sample.ts';
 import { assertPrivateDirectory } from './store.ts';
 
-type Label = string | { participantIds: string[] } | null;
+type Label = 'ambiguous' | { participantIds: string[] } | null;
 interface Entry {
   id: string;
   label: Label;
@@ -19,10 +18,6 @@ const POLICY =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'";
 
 export function itemText(item: GoldItem) {
-  if (item.kind === 'effort') {
-    const { kind: stage, request, prevRequest, prev, plan, calls } = item.input;
-    return { id: item.id, kind: item.kind, stage, request, prevRequest, prev, plan, calls };
-  }
   const { message, participants, history } = item.input;
   return {
     id: item.id,
@@ -42,8 +37,6 @@ export function itemText(item: GoldItem) {
 }
 
 function validLabel(item: GoldItem, label: unknown): label is Label {
-  if (item.kind === 'effort')
-    return label === 'unsure' || (EFFORT_LEVELS as readonly unknown[]).includes(label);
   if (label === 'ambiguous') return true;
   const ids = (label as { participantIds?: unknown })?.participantIds;
   const known = item.input.participants.map((p) => p.participantId);
@@ -76,7 +69,7 @@ export function labelServer(
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line) as GoldItem)
-    .filter((item) => item.kind === 'effort' || !item.chosen);
+    .filter((item) => !item.chosen);
   const byId = new Map(items.map((item) => [item.id, item]));
   const path = join(dir, 'labels.jsonl');
   const log: Entry[] = existsSync(path)

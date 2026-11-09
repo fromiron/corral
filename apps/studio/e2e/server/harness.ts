@@ -67,7 +67,8 @@ async function serve(
   if (!existsSync(join(STUDIO, 'index.html'))) {
     throw new Error('Studio is not built: run `pnpm build` before the server E2E tests.');
   }
-  if (fake) {
+  // Only the first start lays the fake models; a restart keeps what the test saved since.
+  if (fake && !existsSync(join(workspace, '.corral', 'config.json'))) {
     mkdirSync(join(workspace, '.corral'), { recursive: true });
     writeFileSync(
       join(workspace, '.corral', 'config.json'),

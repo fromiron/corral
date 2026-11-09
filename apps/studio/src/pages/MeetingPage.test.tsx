@@ -566,6 +566,17 @@ it('parsed secretary minutes open the records panel instead of displaying their 
   expect(document.activeElement?.tagName).toBe('SUMMARY');
 });
 
+it('an answer whose text was not kept says so instead of showing an empty card', async () => {
+  const f = await mount(
+    view({
+      rounds: [{ ...view().rounds[0]!, answers: [{ ...answer('p1', 'answered'), text: '' }] }],
+    }),
+  );
+  expect(f.container.querySelector('article[aria-label="Architect"]')?.textContent).toContain(
+    'answerNotKept',
+  );
+});
+
 it('an unparsed secretary answer stays available for recovery', async () => {
   const f = await mount(
     view({

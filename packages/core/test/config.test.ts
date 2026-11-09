@@ -1,6 +1,7 @@
 import { DEFAULT_LIMITS } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  effortRoutingSettings,
   installationPolicy,
   limitViolations,
   parseWorkspaceConfig,
@@ -16,17 +17,42 @@ describe('workspace config and installation policy', () => {
     expect(limitViolations(DEFAULT_LIMITS, SPEC_HARD_CAPS)).toEqual([]);
   });
 
-  it('accepts the automatic reasoning policy and leaves it optional', () => {
-    const decisions = (policy?: string) => ({
+  it('no longer accepts the removed judge settings', () => {
+    expect(
+      parseWorkspaceConfig({
+        schemaVersion: '0.1',
+        decisions: { reasoning_effort: { mode: 'off', providers: ['local-model'] } },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('reads effort routing settings, Off when none are saved', () => {
+    const empty = parseWorkspaceConfig({ schemaVersion: '0.1' });
+    expect(empty.ok && effortRoutingSettings(empty.config)).toEqual({ mode: 'off' });
+    const engine = { kind: 'local', device: { kind: 'cpu', threads: 4 }, callerTimeoutMs: 5000 };
+    const manual = {
+      mode: 'manual',
+      engine,
+      fallback: { kind: 'fixed', effort: 'medium' },
+    };
+    const saved = parseWorkspaceConfig({
       schemaVersion: '0.1',
-      decisions: {
-        reasoning_effort: { mode: 'off', providers: ['local-model'], ...(policy && { policy }) },
-      },
+      decisions: { effort_routing: manual },
     });
-    expect(parseWorkspaceConfig(decisions()).ok).toBe(true);
-    expect(parseWorkspaceConfig(decisions('medium')).ok).toBe(true);
-    expect(parseWorkspaceConfig(decisions('judged')).ok).toBe(true);
-    expect(parseWorkspaceConfig(decisions('high')).ok).toBe(false);
+    expect(saved.ok && effortRoutingSettings(saved.config)).toEqual(manual);
+    for (const callerTimeoutMs of [99, 10_001, 500.5])
+      expect(
+        parseWorkspaceConfig({
+          schemaVersion: '0.1',
+          decisions: { effort_routing: { ...manual, engine: { ...engine, callerTimeoutMs } } },
+        }).ok,
+      ).toBe(false);
+    expect(
+      parseWorkspaceConfig({
+        schemaVersion: '0.1',
+        decisions: { effort_routing: { ...manual, fallback: { kind: 'fixed', effort: 'max' } } },
+      }).ok,
+    ).toBe(false);
   });
 
   it('lets an installation lower a cap but never raise one past the spec', () => {

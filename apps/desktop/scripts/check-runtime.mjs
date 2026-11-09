@@ -39,14 +39,9 @@ const Database = storageRequire('better-sqlite3');
 const database = new Database(':memory:');
 assert.equal(database.prepare('SELECT 1 AS value').get().value, 1);
 database.close();
-// The local AI ships its pinned download manifest and effort weights; both must load as built.
+// The local AI ships its pinned download manifest; it must load as built.
 const local = await import(pathToFileURL(resolved('@corral/local-intelligence')).href);
-const bundle = local.bundledManifest();
-local.loadEffortClassifier(local.bundledEffortWeights(), {
-  dims: bundle.models.effort.dims,
-  baseModelSha256: bundle.models.effort.sha256,
-  preprocessVersion: local.EFFORT_PREPROCESS_VERSION,
-});
+local.bundledManifest();
 // The helper must run on this OS/arch: it parses its arguments and tries to load the runtime
 // library, which the user installs later, so a missing one is the expected protocol error.
 const helper = local.builtHelperPath();
@@ -57,14 +52,10 @@ const helperRun = spawnSync(
   [
     '--lib',
     join(server, 'no-local-ai-library'),
-    '--meeting-model',
+    '--model',
     join(server, 'no-model'),
-    '--meeting-max-input',
+    '--max-input',
     '256',
-    '--effort-model',
-    join(server, 'no-model'),
-    '--effort-max-input',
-    '1024',
     '--backend',
     'cpu',
     '--threads',
@@ -174,5 +165,5 @@ for (const [entry, start, protocol] of [
   });
 }
 console.log(
-  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/PTY bindings, local AI manifest, weights and helper start, both Pi worker handshakes${process.platform === 'linux' ? ', PTY shell input/101x37 resize/exit' : ''}.`,
+  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/PTY bindings, local AI manifest and helper start, both Pi worker handshakes${process.platform === 'linux' ? ', PTY shell input/101x37 resize/exit' : ''}.`,
 );

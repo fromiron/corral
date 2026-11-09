@@ -1,9 +1,8 @@
-import { expect, test } from './harness.ts';
+import type { Page } from '@playwright/test';
+import { expect, type Harness, test } from './harness.ts';
 
-test('expanded meeting records stay scrollable with the composer reachable on a narrow screen', async ({
-  page,
-  corral,
-}) => {
+/** A meeting whose records hold 40 long minutes points, open on a 390 × 844 screen. */
+async function openLongRecords(page: Page, corral: Harness) {
   await corral.open('/');
   const id = await page.evaluate(async () => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -33,6 +32,28 @@ test('expanded meeting records stay scrollable with the composer reachable on a 
       response,
       json: {
         ...view,
+        rounds: [
+          {
+            roundId: 'reading_round',
+            commandId: 'reading_command',
+            kind: 'all',
+            message: 'Shall we ship?',
+            basedOnRoundId: null,
+            rebuttalNo: null,
+            participantIds: ['p1', 'p2'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            stoppedAt: null,
+            active: false,
+            answers: ['p1', 'p2'].map((participantId) => ({
+              participantId,
+              runId: null,
+              status: 'answered',
+              text: `${participantId} agrees.`,
+              detail: null,
+              usage: null,
+            })),
+          },
+        ],
         minutes: [
           {
             minutesId: 'reading_minutes',
@@ -59,6 +80,13 @@ test('expanded meeting records stay scrollable with the composer reachable on a 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${corral.server.url}/sessions/${id}`);
   await page.getByText('Minutes, plan and handoff', { exact: true }).click();
+}
+
+test('expanded meeting records stay scrollable with the composer reachable on a narrow screen', async ({
+  page,
+  corral,
+}) => {
+  await openLongRecords(page, corral);
   await page.getByRole('button', { name: 'Expand records', exact: true }).click();
   await expect(page.getByTestId('chat-timeline')).toBeHidden();
   const composer = page.getByTestId('chat-composer');
@@ -67,5 +95,25 @@ test('expanded meeting records stay scrollable with the composer reachable on a 
   await page.screenshot({ path: test.info().outputPath('meeting-records-expanded.png') });
   await page.getByRole('button', { name: 'Compact records', exact: true }).click();
   await expect(page.getByTestId('chat-timeline')).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+test('compact meeting records leave the send button reachable on a narrow screen', async ({
+  page,
+  corral,
+}) => {
+  await openLongRecords(page, corral);
+  await expect(page.getByRole('button', { name: 'Expand records', exact: true })).toBeVisible();
+  await page
+    .getByTestId('chat-composer')
+    .getByRole('textbox')
+    .first()
+    .fill('A draft to send\nwith a second line\nand a third\nand a fourth');
+  const send = page.getByTestId('chat-composer').getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeEnabled();
+  await expect(page.getByTestId('chat-composer')).toBeInViewport({ ratio: 1 });
+  await expect(send).toBeInViewport({ ratio: 1 });
+  await send.click({ trial: true });
+  await page.screenshot({ path: test.info().outputPath('meeting-records-compact.png') });
   expect(corral.errors).toEqual([]);
 });

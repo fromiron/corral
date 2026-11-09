@@ -1,15 +1,11 @@
-import type { DecisionCancellation } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import { bundledManifest } from '../src/bundle.ts';
-import { requestInput } from '../src/effort/preprocess.ts';
-import { bundledEffortWeights, createLocalIntelligence } from '../src/factory.ts';
+import { createLocalIntelligence } from '../src/factory.ts';
 import { fakeLauncher, flush, markInstalled } from './fake-helper.ts';
-import { tempDir, testBundle, testWeights as weights } from './helpers.ts';
-
-const never: DecisionCancellation = { aborted: false, onCancel: () => () => {} };
+import { tempDir, testBundle } from './helpers.ts';
 
 describe('local intelligence factory', () => {
-  it('wires the engine and the effort judge for this machine and starts nothing until used', async () => {
+  it('wires the meeting engine for this machine and starts nothing until used', async () => {
     const root = tempDir();
     const bundle = testBundle();
     markInstalled(root, bundle);
@@ -17,7 +13,6 @@ describe('local intelligence factory', () => {
     const li = createLocalIntelligence({
       root,
       bundle,
-      effortWeights: weights(),
       launch: launcher.launch,
       env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
       platform: 'linux',
@@ -25,67 +20,46 @@ describe('local intelligence factory', () => {
       logicalCores: 8,
     });
     expect(li.target).toBe('linux-x64');
-    expect(li.effort).toMatchObject({ id: 'local-model', version: 'test-release-1+test-weights' });
-    expect(li.effort.available()).toBe(true);
+    expect(li.engine.available()).toBe(true);
+    expect(li).not.toHaveProperty('effort');
     expect(launcher.helpers).toHaveLength(0);
 
-    const judged = li.effort.decideRequest(requestInput('rename a variable'), never);
+    const embedded = li.engine.embed({
+      texts: ['hi'],
+      task: 'classification',
+      overflow: 'truncate',
+    });
     await flush();
     const helper = launcher.last();
     expect(helper.command.executable).toBe('/opt/helper');
     const args = helper.command.args;
     expect(args[args.indexOf('--threads') + 1]).toBe('4');
+    expect(args).not.toContain('--effort-model');
     helper.ready();
     await flush();
     helper.answer();
-    await expect(judged).resolves.toMatchObject({ answer: 'medium', abstain: false });
+    await expect(embedded).resolves.toHaveLength(1);
 
     await li.close();
     expect(helper.killed).toBe(true);
   });
 
-  it('reports a machine without a runtime as unsupported and refuses weights for another model', () => {
-    const launcher = fakeLauncher();
+  it('reports a machine without a runtime as unsupported', () => {
     const li = createLocalIntelligence({
       root: tempDir(),
       bundle: testBundle(),
-      effortWeights: weights(),
-      launch: launcher.launch,
+      launch: fakeLauncher().launch,
       env: {},
       platform: 'darwin',
       arch: 'x64',
     });
     expect(li.target).toBeNull();
     expect(li.engine.status().state).toBe('unsupported');
-    expect(li.effort.available()).toMatch(/no runtime for this platform/);
-    expect(() =>
-      createLocalIntelligence({
-        root: tempDir(),
-        bundle: testBundle(),
-        effortWeights: weights('0'.repeat(64)),
-        env: {},
-      }),
-    ).toThrow(/another base model/);
-    // Weights trained for the meeting model are refused too: the judge runs on the effort model.
-    expect(() =>
-      createLocalIntelligence({
-        root: tempDir(),
-        bundle: testBundle(),
-        effortWeights: weights(testBundle().models.meeting.sha256),
-        env: {},
-      }),
-    ).toThrow(/another base model/);
+    expect(li.engine.available()).toMatch(/no runtime for this platform/);
   });
 
-  it('ships effort weights trained for the bundled effort model', () => {
+  it('ships a bundle with the meeting model only', () => {
     const li = createLocalIntelligence({ root: tempDir(), env: {}, launch: fakeLauncher().launch });
-    expect(li.effort.version).toBe(`${bundledManifest().release}+effort-v4`);
-    expect(bundledEffortWeights()).toMatchObject({
-      schemaVersion: 3,
-      dims: bundledManifest().models.effort.dims,
-      baseModelSha256: bundledManifest().models.effort.sha256,
-      preprocessVersion: 'effort-text-v2',
-      open: { raiseAt: 0.55 },
-    });
+    expect(li.status().models).toEqual({ meeting: bundledManifest().models.meeting.name });
   });
 });

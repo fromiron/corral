@@ -53,7 +53,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 | Run | `CorralRun` | 특정 정의 버전과 입력으로 시작한 실행 한 번 |
 | Agent execution | `ExecutionInstance` | 특정 역할의 실제 실행 시도. 노드와 1:N |
 | Task | `Task` | 목표·담당·완료 기준을 가진 업무. 실행 시도와 구분 |
-| **Reins** | `ReinsPanel` | 선택한 실행/노드/Run의 제어 패널 이름 |
+| **Reins** | `ReinsPanel` 외 여러 조작 | 실행 중 사람의 개입과 그 상태 표시 전체. 범위는 [헌법](constitution.md)의 Reins, 상태 단어는 [Reins 기능 명세](features/reins.md)가 정한다. `ReinsPanel`은 그 일부를 담은 컴포넌트 이름일 뿐이다 |
 | **Steer** | `SteeringDirective` | 새로운 지시를 앞으로의 모델 요청에 전달하는 조작 |
 | Run settings change | `RunPatch` | 해당 Run의 미래 실행에만 적용되는 설정 변경 |
 | Approval | `ApprovalRequest` | 특정 작업·버전·변경 제안에 대한 사람의 결정 |
@@ -62,7 +62,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 | Timeline | `RunEvent` | 실행·메시지·개입의 시간순 기록 |
 | Collaboration | `CollaborationMessage` | 질문·답변·제출의 업무상 교환 |
 
-`Wrangle`는 소개 문구의 동사로만 사용한다. UI에는 `Steer`, `Pause`, `Resume`, `Cancel`, `Change settings`, `Approve`, `Reject`처럼 행동이 분명한 라벨을 쓴다. `Reins mode`처럼 별도의 숨은 조작 모드를 만들지 않는다. `Trough`·`Hitching Post`는 문서/DB/API의 정식 이름으로 채택하지 않는다.
+`Wrangle`는 소개 문구의 동사로만 사용한다. UI에는 `Steer`, `Pause`, `Resume`, `Cancel`, `Change settings`, `Approve`, `Reject`처럼 행동이 분명한 라벨을 쓴다. `Reins`도 화면의 제목이나 라벨로 쓰지 않고, 조작과 그 대상을 쓴다. `Reins mode`처럼 별도의 숨은 조작 모드를 만들지 않는다. `Trough`·`Hitching Post`는 문서/DB/API의 정식 이름으로 채택하지 않는다.
 
 **패키지와 CLI:** 모노레포 내부에서 `@corral/core`, `@corral/react` 등을 사용한다. npm scope, `corral` 실행 파일명, 도메인·상표의 독점 사용 가능 여부는 확인하지 않았다. 내부 패키지는 `private: true`로 시작하며 공개 발행 직전에 충돌을 확인한다. 이 문서는 이름을 확보했다는 의미가 아니다.
 
@@ -92,7 +92,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 일반 명령·service와 Hashline은 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
-기본 대화의 자동 팀 선택과 수동·자동 추론의 요청 적용은 현재 계약이다. Ultra는 제거됐다. 초기의 자동 라우팅·추론 적용 제외 문구로 이 범위를 되돌리지 않는다. 일반 off/observe와 apply 계약은 각각 유지한다.
+기본 대화의 자동 팀 선택과 수동·자동 추론의 요청 적용은 현재 계약이다. Ultra는 제거됐다. 초기의 자동 라우팅·추론 적용 제외 문구로 이 범위를 되돌리지 않는다. 자동 추론의 판정·적용 계약은 [추론 판정](features/effort-routing.md)이 정한다.
 
 코딩 도구·Skill·MCP·LSP는 [하네스 계약](harness-contract.md)을 따른다. 검색·문서 읽기·산출물 쓰기라는 초기 도구 분류가 현재 전체 도구 목록은 아니다.
 
@@ -297,9 +297,9 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 | 모델/문서 도구 timeout | 없음 / 30초 | 연결·취소 정리 정책은 별도 |
 | 산출물/입력 문서 | 버전당 UTF-8 1 MiB | workspace 총량 제한 별도 |
 | 무진전 | 6회 관측 후 경고 | 새로운 파일 범위·도구 근거·산출물·검토 진전으로 갱신. 횟수만으로 종료하지 않음 |
-| 추론 강도 판정 | 로컬 판정은 모델 슬롯 미사용 | 관리형 모델을 호출하는 평가는 공통 admission을 거치고 사용량을 기록 |
-| 판정 적용 대기 | 로컬·외부 판정 합계 3초 | 자동 추론 요청은 초과하면 medium으로 나가고 fallback 이유를 `timeout`으로 남김 |
-| 판정 timeout | local 1초 / external 3초 | 초과는 판정 실패로 기록하고 요청에는 영향 없음 |
+| 추론 판정 | Local 판정은 모델 슬롯 미사용, 판정 API 호출은 판정 효과 승인·정산 | 엔진은 사용자가 고른 하나이며 다른 엔진으로 넘기지 않음 |
+| 판정 대기 | Local CPU 5초 / 판정 API 3초(설정 범위 100–10,000ms) | 초과하면 그 요청은 fallback 대상(기본은 공급자 기본값)으로 나가고 이유를 `timeout`으로 남김 |
+| Local 판정 물리 상한 | 추론 시작부터 120초 | 만료되면 소유 프로세스를 끝내고 실제 종료 뒤 슬롯을 반환 |
 
 사용량은 요청이 끝나면 그 요청에 기록한다. 취소 후 늦은 usage는 원래 요청에만 기록하며 작업·산출물을 되살리지 않는다. 메타데이터 미상 모델의 출력 fallback 4,096은 추정 규격임을 구분한다. 사용량 미상, 가격 미상, 보고된 0, 명시적 무료 단가, 구독 사용량을 구분한다. 금액은 출처 있는 단가 스냅샷으로만 추정하며 공급자 청구서라고 부르지 않는다. 자세한 요청·컨텍스트·복구 계약은 [LLM runtime](llm-runtime.md)을 따른다.
 
@@ -360,7 +360,7 @@ CLI의 현재 명령·옵션은 [구현](../../packages/cli/src/index.ts)과 [ex
 
 ## 13. 확장 범위의 위치
 
-DecisionProvider 관찰과 추론 적용은 구현돼 있고, 모델 연결은 [모델 안내](../guides/models.md)를 따른다. 초기 v0.2/v0.3 이름으로 새 일정이나 완료 상태를 추정하지 않는다.
+추론 판정은 [추론 판정](features/effort-routing.md), 모델 연결은 [모델 안내](../guides/models.md)를 따른다. 초기 v0.2/v0.3 이름으로 새 일정이나 완료 상태를 추정하지 않는다.
 
 ### 리소스 관리 확장
 

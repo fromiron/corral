@@ -1,11 +1,11 @@
-import type {
-  DecisionPrivacy,
-  DecisionQuestionKind,
-  DecisionSubject,
-  EffortFeatures,
-  EffortLevel,
-} from './decisions.ts';
 import type { AgentRole, InputBindingKind, ItemRef, TaskBrief } from './definition.ts';
+import type {
+  EffortLevel,
+  ReasoningResolution,
+  RequestPreparation,
+  RoutingFallbackReason,
+  SettledBasis,
+} from './effort-routing.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
 import type {
@@ -22,7 +22,6 @@ import type {
 } from './harness.ts';
 import type { MeetingRunOrigin } from './meeting.ts';
 import type { McpChallenge } from './project-tools.ts';
-import type { DecisionApiId, ReasoningInput, ReasoningResolution } from './reasoning.ts';
 import type {
   RuntimeCheckpointRecord,
   RuntimeCheckpointState,
@@ -56,7 +55,8 @@ export type IdKind =
   | 'question'
   | 'approval'
   | 'decision'
-  | 'preparation';
+  | 'preparation'
+  | 'route';
 
 export interface IdFactory {
   next(kind: IdKind): string;
@@ -155,7 +155,10 @@ export interface RequestPermit {
   maxOutputTokens: number;
   /** Directives fixed into this request's snapshot, in delivery order. */
   directives: DeliveredDirective[];
-  /** Open child questions addressed to this exact current execution. */
+  /**
+   * Open child questions for this execution that the request context does not hold yet. They
+   * were part of the routing input; the worker appends exactly these.
+   */
   parentQuestions?: ParentQuestionMessage[];
 }
 
@@ -203,7 +206,7 @@ export interface AgentHost {
   reportCompaction?(report: CompactionReport): Promise<void>;
   prepareModelRequest(
     record?: ModelRequestRecord,
-    reasoningInput?: ReasoningInput,
+    preparation?: RequestPreparation,
   ): Promise<RequestPermit>;
   /** SDK-only: unsupported hosts must refuse SDK execution. */
   reportHarness?(report: HarnessReport): Promise<void>;
@@ -250,61 +253,87 @@ export interface AgentAdapter {
   start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle>;
 }
 
-// ── decision providers ───────────────────────────────────
+// Effort routing engines (features/effort-routing.md). The host owns the deadline and the
+// resolution; an engine only counts, judges once and reports when its work physically ended.
 
-/** The question a provider gets for one model request. The excerpt never reaches events. */
+/** The fixed question, with the criteria of the candidate levels only. */
 export interface EffortQuestion {
-  questionKind: 'reasoning_effort';
-  questionVersion: 1;
-  candidates: readonly EffortLevel[];
-  subject: DecisionSubject & { runId: string };
-  input: {
-    features: EffortFeatures;
-    /** Brief, assignment, question and delivered directives, at most 1,500 characters. */
-    excerpt: string;
-  };
+  type: 'choice';
+  instructions: string;
+  criteria: Partial<Record<EffortLevel, string>>;
 }
 
-/**
- * Answers decision questions. Declares what it answers; the Coordinator never sends anything
- * else. `decide` returns the raw answer, which the Coordinator validates (DecisionAnswer).
- */
-export interface DecisionProvider {
-  id: string;
-  version: string;
-  privacy: DecisionPrivacy;
-  timeoutMs: number;
-  questions: readonly { kind: DecisionQuestionKind; version: number }[];
-  /** True, or why it cannot answer right now (not installed, unsupported platform, …). */
-  available(): true | string;
-  decide(question: EffortQuestion, cancellation: DecisionCancellation): Promise<unknown>;
-  /** Local apply path; a complete turn/tool-step input, not the observer excerpt. */
-  decideRequest?(input: ReasoningInput, cancellation: DecisionCancellation): Promise<unknown>;
+export interface RoutingBackend {
+  readonly kind: 'local' | 'api';
+  /** The engine a judgment would use now; a different one never reuses an earlier result. */
+  identity(): string | null;
+  /** Reserves the engine for one judgment without waiting; a refusal names the fallback reason. */
+  admit(): { ok: true; lease: RoutingLease } | { ok: false; reason: RoutingFallbackReason };
 }
 
-/** Set when the judgment is no longer wanted (timeout, cancelled execution, run ended). */
+export interface RoutingLease {
+  /** The engine artifact and instance, or the API and its model. */
+  readonly identity: string;
+  readonly frame: 'd1-exact' | 'api-bounded';
+  readonly device: { actual: string | null; host: string | null; threads: number | null } | null;
+  /** Size of a state text in the frame's unit; Local counts with the model's tokenizer. */
+  countState(text: string, signal: DecisionCancellation): Promise<number>;
+  /** Size of the whole engine input for this state and question, in the same unit. */
+  countInput(
+    state: string,
+    question: EffortQuestion,
+    signal: DecisionCancellation,
+  ): Promise<number>;
+  /** Sends the judgment once. The lease ends when the flight settles. */
+  start(request: RouterRequest): RoutingFlight;
+  /** Ends a lease that never started a flight. */
+  release(): void;
+}
+
+export interface RouterRequest {
+  routeId: string;
+  state: string;
+  question: EffortQuestion;
+  candidates: EffortLevel[];
+  /** What is left of the host's deadline; engines never compare clocks across processes. */
+  remainingMs: number;
+  /** The counted engine input; Local refuses a response whose usage differs. */
+  inputUnits: number;
+  /**
+   * Set when the host stops waiting (deadline, cancellation). An API closes its connection; that
+   * does not mean the remote stopped. Local inference runs to its physical end.
+   */
+  signal: DecisionCancellation;
+  /** The run effect an API call belongs to; its call record names it. Set by the host. */
+  owner?: RouterOwner;
+}
+
+export interface RouterOwner {
+  runId: string;
+  executionId: string;
+  attemptNo: number;
+  effectId: string;
+}
+
+/** An engine answer before validation. */
+export interface RouterResponse {
+  choice: string;
+  probabilities?: Record<string, number>;
+  inputTokens: number | null;
+  billableUnits: number | null;
+}
+
+export interface RoutingFlight {
+  /** Rejects with an error whose `reason` names a fallback reason. Settles before `settled`. */
+  result: Promise<RouterResponse>;
+  /** The physical end: a complete native response, the owned child's exit, or a closed remote. */
+  settled: Promise<{ basis: SettledBasis; finishedAtMs: number }>;
+}
+
+/** Set when a pending answer is no longer wanted (timeout, cancelled execution, run ended). */
 export interface DecisionCancellation {
   readonly aborted: boolean;
   onCancel(fn: () => void): () => void;
-}
-
-/**
- * A decision API asked once when the local judge abstains, in live runs that chose it.
- * A failure rejects with an Error whose `cause` is `provider_error`, `timeout`,
- * `invalid_response` or `unavailable`; messages carry neither the key nor the request text.
- */
-export interface ExternalEffortJudge {
-  readonly provider: DecisionApiId;
-  /** True, or why it cannot be asked (no key). Read without I/O. */
-  available(): true | string;
-  judge(
-    input: ReasoningInput,
-    request: {
-      model: string;
-      owner: { runId: string; executionId: string; effectId: string; attemptNo: number };
-    },
-    cancellation: DecisionCancellation,
-  ): Promise<{ answer: string; model: string }>;
 }
 
 import type { ImageInput } from './attachments.ts';

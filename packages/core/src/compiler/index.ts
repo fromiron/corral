@@ -899,10 +899,13 @@ function checkParallel(
   const context = new Map<string, Branches>();
   const carried = new Map<string, Branches>();
   for (const v of ordered) {
-    const here = context.get(v) ?? new Map<string, Set<number>>();
+    // A fan-out whose branches have all met again is closed and is not carried any further.
+    const here = [...(context.get(v) ?? [])].filter(
+      ([port, indexes]) => indexes.size < (fanOut.get(port) ?? 0),
+    );
     const seenPerPort = new Map<string, number>();
     for (const { to, edge } of adjacency.get(v) ?? []) {
-      const branches: Branches = new Map([...here].map(([k, s]) => [k, new Set(s)]));
+      const branches: Branches = new Map(here.map(([k, s]) => [k, new Set(s)]));
       if (edge) {
         const port = `${edge.source}\u0000${edge.sourcePort}`;
         const index = seenPerPort.get(port) ?? 0;

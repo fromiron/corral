@@ -21,7 +21,7 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
-async function render(onChanged = () => {}) {
+async function render() {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const container = document.createElement('div');
   document.body.append(container);
@@ -29,7 +29,7 @@ async function render(onChanged = () => {}) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages}>
-        <DecisionApiSettings onChanged={onChanged} />
+        <DecisionApiSettings />
       </IntlProvider>,
     ),
   );
@@ -71,8 +71,7 @@ it('saves a key once, shows only that one is stored, and removes it', async () =
       deleteDecisionApiKey,
     },
   };
-  const onChanged = vi.fn();
-  const container = await render(onChanged);
+  const container = await render();
   const openai = row(container, 'openai-decisions');
   const input = openai?.querySelector<HTMLInputElement>('input[type="password"]');
   expect(input).toBeTruthy();
@@ -83,7 +82,6 @@ it('saves a key once, shows only that one is stored, and removes it', async () =
   });
   await act(async () => button(openai, 'Save key')?.click());
   expect(setDecisionApiKey).toHaveBeenCalledWith('openai-decisions', KEY);
-  expect(onChanged).toHaveBeenCalledTimes(1);
   expect(row(container, 'openai-decisions')?.querySelector('[role="status"]')?.textContent).toBe(
     'Key saved',
   );
@@ -91,7 +89,6 @@ it('saves a key once, shows only that one is stored, and removes it', async () =
 
   await act(async () => button(row(container, 'openai-decisions'), 'Remove key')?.click());
   expect(deleteDecisionApiKey).toHaveBeenCalledWith('openai-decisions');
-  expect(onChanged).toHaveBeenCalledTimes(2);
   expect(
     row(container, 'openai-decisions')?.querySelector<HTMLInputElement>('input[type="password"]')
       ?.value,

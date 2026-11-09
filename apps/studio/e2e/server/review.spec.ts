@@ -25,7 +25,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   const waiting = page.getByTestId('run-needs-you');
   const needsYou = async () => {
     if (!(await waiting.isVisible()))
-      await page.getByRole('button', { name: /^Needs your input · \d+$/ }).click();
+      await page.getByTestId('run-respond').click();
     return waiting;
   };
   const card = (await needsYou()).locator('[data-testid^="approval-"]');
@@ -56,7 +56,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
     .locator('[data-testid^="approval-"]')
     .getByRole('button', { name: 'Continue with this version' })
     .click();
-  await expect(page.getByRole('button', { name: /^Needs your input · \d+$/ })).toBeVisible();
+  await expect(page.getByTestId('run-respond')).toBeVisible();
   const final = (await needsYou())
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: 'Final output' });
