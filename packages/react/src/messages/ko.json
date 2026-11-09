@@ -4468,6 +4468,7 @@
     "evidenceHint": "선택한 자료만 전달합니다. 링크 내용을 자동으로 읽지 않습니다.",
     "evidenceLoading": "결과 불러오는 중…",
     "records": "회의록 · 플랜 · 작업 인계",
+    "answerNotKept": "이 답변의 본문은 보관되지 않았습니다.",
     "minutesReady": "비서가 회의록과 플랜을 정리했습니다.",
     "viewMinutes": "회의록과 플랜 검토",
     "startDescription": "여러 참가자와 질문을 논의하고 결론을 작업 계획으로 정리하세요.",

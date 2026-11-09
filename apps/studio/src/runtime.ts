@@ -86,6 +86,7 @@ export function createDemoRuntime(): {
     getSnapshot: (...args) => request('getSnapshot', ...args),
     getArtifactText: (...args) => request('getArtifactText', ...args),
     getConversationTurn: (...args) => request('getConversationTurn', ...args),
+    getMeetingAnswer: (...args) => request('getMeetingAnswer', ...args),
     listRuns: () => request('listRuns'),
     getRunDefinition: (...args) => request('getRunDefinition', ...args),
     getRunStats: (...args) => request('getRunStats', ...args),

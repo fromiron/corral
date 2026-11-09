@@ -419,6 +419,8 @@ function AnswerCard({
         </div>
       ) : answer.text ? (
         <SafeMarkdown text={answer.text} />
+      ) : answer.status === 'answered' ? (
+        <p className="text-sm text-muted-foreground">{t('answerNotKept')}</p>
       ) : answer.status === 'running' && answer.runId && answer.participantId !== SECRETARY_ID ? (
         <StreamingAnswer runId={answer.runId} />
       ) : null}

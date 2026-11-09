@@ -3624,7 +3624,28 @@ export class Coordinator {
   }
 
   getConversationTurn(runId: string): StoredConversationTurn | null {
+    if (this.store.getRun(runId)?.snapshot.meeting) return null;
     return this.store.getConversationTurn(runId);
+  }
+
+  /** A meeting answer kept apart from its artifact bodies, so release does not erase it. */
+  getMeetingAnswer(runId: string): string | null {
+    if (!this.store.getRun(runId)?.snapshot.meeting) return null;
+    return this.store.getConversationTurn(runId)?.answer ?? null;
+  }
+
+  private meetingConversationTurn(run: StoredRun): StoredConversationTurn {
+    const texts = (run.projection.output?.artifactVersionIds ?? [])
+      .filter((id) => !run.projection.artifacts[id]?.media)
+      .map((id) => this.store.getArtifactText(run.runId, id))
+      .filter((text): text is string => text !== null);
+    return {
+      runId: run.runId,
+      request: '',
+      answer: texts.length ? texts.join('\n\n') : null,
+      status: run.projection.status,
+      artifactVersionId: null,
+    };
   }
 
   private primaryConversationTurn(run: StoredRun): StoredConversationTurn {
@@ -3663,10 +3684,15 @@ export class Coordinator {
       )
       .map((summary) => this.store.getRun(summary.runId)!)
       .filter((run) => canReleaseArtifactBodies(run.projection));
-    // Capture ordinary conversation before any source/final body is released.
+    // Capture conversation and meeting answers before any source/final body is released.
     for (const run of candidates)
-      if (!run.snapshot.meeting && !this.store.getConversationTurn(run.runId))
-        this.store.putConversationTurn(run.runId, this.primaryConversationTurn(run));
+      if (!this.store.getConversationTurn(run.runId))
+        this.store.putConversationTurn(
+          run.runId,
+          run.snapshot.meeting
+            ? this.meetingConversationTurn(run)
+            : this.primaryConversationTurn(run),
+        );
     const changes: { runId: string; events: RunEvent[]; projection: RunProjection }[] = [];
     for (const run of candidates) {
       const latest = run.sessionId
