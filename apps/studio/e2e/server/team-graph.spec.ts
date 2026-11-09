@@ -74,7 +74,7 @@ function branchesOf(coordinator: Pick<Coordinator, 'getSnapshot'>, runId: string
 
 /** What the run waits on, opened from the run header once something waits. */
 async function needsYou(page: Page) {
-  await page.getByRole('button', { name: /^Needs your input · \d+$/ }).click();
+  await page.getByTestId('run-respond').click();
   return page.getByTestId('run-needs-you');
 }
 
