@@ -193,7 +193,7 @@ fallback 이유: `unavailable`, `not-ready`, `busy`, `timeout`, `invalid-respons
 - Manual + Local이 저장돼 있고 설치가 끝났으면 비동기로 준비한다. 첫 요청에서 다운로드나 cold load를 기다리지 않는다. 준비되지 않았거나(멈춤·시작 중·다른 스레드 수) 준비 중이면 `not-ready`로 fallback하고, 멈춰 있거나 스레드 수가 다르면 그 요청이 준비를 시작한다. 설치되지 않았거나 설치 중이거나 `error`이면 `unavailable`이다. 시작은 30초 안에 ready가 돼야 하며 아니면 오류다. ready는 health 응답, 키 없는 요청의 거절, 고정 모델의 크기·파라미터 수와 decisions 출력을 확인한 뒤다.
 - 활성 판정·패킹·draining 없이 5분이 지나면 내린다(`stopped`). 그 뒤 첫 요청은 `not-ready`로 fallback하고 준비를 다시 시작한다.
 - 예상하지 않은 종료나 watchdog 종료 뒤에는 `error`이며 자동으로 다시 시작하지 않는다. 설정의 다시 준비나 Local 재활성화로 시작한다. 정상 요청마다 새 프로세스를 띄우지 않는다.
-- Off 전환, 앱 종료, 장치 변경에서는 새 판정을 막고 Corral이 시작한 프로세스만 끝낸다. 이름으로 다른 `llama-server`를 찾아 끝내지 않는다. 장치를 바꾸면 이전 instance의 실제 종료 뒤에 새 instance를 시작한다. 엔진·장치를 몰래 바꾸지 않는다.
+- Off 전환, 앱 종료, 장치 변경에서는 새 판정을 막고 Corral이 시작한 프로세스만 끝낸다. 진행 중인 시작(이전 instance의 종료를 기다리는 재시작 포함)은 그 뒤 새 프로세스를 띄우지 않으며, 중지는 소유한 child가 실제로 끝날 때까지 기다린다. 이름으로 다른 `llama-server`를 찾아 끝내지 않는다. 장치를 바꾸면 이전 instance의 실제 종료 뒤에 새 instance를 시작한다. 엔진·장치를 몰래 바꾸지 않는다.
 
 ### 대기·취소·물리 슬롯
 
