@@ -17,13 +17,18 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {}, replays: 0, pending: 0 }));
+const fixture = vi.hoisted(() => ({ services: {}, replays: 0, pending: 0, batch: 'a' }));
 vi.mock('@corral/core', async (original) => {
   const module = await original<typeof import('@corral/core')>();
   return {
     ...module,
     // How many questions or approvals wait for the person; the record itself is not needed here.
-    pendingInteractions: () => Array.from({ length: fixture.pending }, () => ({})),
+    // `batch` names the waiting items, so a test can tell a new one from the same one.
+    pendingInteractions: () =>
+      Array.from({ length: fixture.pending }, (_, i) => ({
+        kind: 'approval',
+        approval: { approvalId: `${fixture.batch}_${i}` },
+      })),
   };
 });
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
@@ -130,6 +135,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   fixture.pending = 0;
+  fixture.batch = 'a';
 });
 
 async function mount(
@@ -304,9 +310,12 @@ it.each(['Run info', 'Needs your input'] as const)(
   async (label) => {
     if (label === 'Needs your input') fixture.pending = 1;
     const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
-    const control = [...container.querySelectorAll('button')].find((button) =>
-      button.textContent?.startsWith(label),
-    );
+    const control =
+      label === 'Run info'
+        ? [...container.querySelectorAll('button')].find((button) =>
+            button.textContent?.startsWith(label),
+          )
+        : container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]');
     expect(control).toBeDefined();
     await act(async () => control?.click());
     const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
@@ -798,9 +807,7 @@ it('does not reopen a completed approval panel when a later decision appears', a
   const { container, run } = await mount('inline_team', null, {});
   const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
   await act(async () =>
-    [...container.querySelectorAll('button')]
-      .find((button) => button.textContent?.includes('Needs your input'))
-      ?.click(),
+    container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]')?.click(),
   );
   expect(side?.hidden).toBe(false);
   const updatePending = async (pending: number) => {
@@ -1234,9 +1241,7 @@ it('pending decisions stay reachable and replace the inspector rather than stack
   const panel = () => container.querySelector<HTMLElement>('[data-testid="run-side"]');
   expect(panel()?.hidden).toBe(true);
   await act(async () =>
-    [...container.querySelectorAll('button')]
-      .find((el) => el.textContent?.includes('Needs your input'))
-      ?.click(),
+    container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]')?.click(),
   );
   expect(panel()?.hidden).toBe(false);
   expect(panel()?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
@@ -1561,4 +1566,81 @@ it('pauses a live run before a Decision or a step that has not started yet', asy
     type: 'set_breakpoints',
     payload: { nodeIds: ['reviewer', 'gate'] },
   });
+});
+
+// docs/specs/features/execution-monitor.md: the waiting status is the way in, and opens once.
+async function waitFor(run: RunSessionStore, pending: number, batch = 'a') {
+  fixture.pending = pending;
+  fixture.batch = batch;
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        status: pending ? 'awaiting_user' : 'running',
+        endedAt: null,
+        lastSeq: projection.lastSeq + 1,
+      },
+    }),
+  );
+}
+const side = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="run-side"]');
+
+it('turns the waiting status into the one way to respond', async () => {
+  const { container, run } = await mount('inline_team', null, {});
+  await waitFor(run, 2);
+  const status = container.querySelector('[data-testid="run-status"]');
+  const respond = status?.querySelector<HTMLButtonElement>('[data-testid="run-respond"]');
+  expect(respond?.textContent).toContain('2');
+  const header = container.querySelector('[data-testid="run-header"]');
+  expect(
+    [...(header?.querySelectorAll('button') ?? [])].filter((b) =>
+      b.textContent?.includes('Needs your input'),
+    ),
+  ).toEqual([]);
+  expect(side(container)?.hidden).toBe(true);
+  await act(async () => respond?.click());
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  await waitFor(run, 0);
+  expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
+});
+
+it('opens Needs your input once when a new decision arrives and the side is free', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  const focused = document.activeElement;
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('h2')?.textContent).toBe('Needs your input');
+  expect(document.activeElement).toBe(focused);
+  // Closed by the person: the same decision does not bring it back.
+  await act(async () =>
+    side(container)?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')?.click(),
+  );
+  expect(side(container)?.hidden).toBe(true);
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+  // Another decision does.
+  await waitFor(run, 1, 'b');
+  expect(side(container)?.hidden).toBe(false);
+});
+
+it('does not take over Run info or a narrow page for a new decision', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const wide = await mount('inline_team', null, {});
+  await act(async () =>
+    [...wide.container.querySelectorAll('button')]
+      .find((el) => el.textContent === 'Run info')
+      ?.click(),
+  );
+  await waitFor(wide.run, 1);
+  expect(side(wide.container)?.querySelector('h2')?.textContent).toBe('Run info');
+
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+  const narrow = await mount('inline_team', null, {});
+  await waitFor(narrow.run, 1);
+  expect(side(narrow.container)?.hidden).toBe(true);
 });

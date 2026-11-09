@@ -346,7 +346,13 @@ function RunWorkspace({
   const hasOutput = useStore(session, (s) => s.outputText !== null);
   const workPlan = useRunWorkPlan(session, primaryWorkPlan(projection?.workPlans));
   const plan = 'plan' in workPlan.status ? workPlan.status.plan : null;
-  const pending = projection ? pendingInteractions(events, projection).length : 0;
+  const interactions = projection ? pendingInteractions(events, projection) : [];
+  const pending = interactions.length;
+  const waitingKey = interactions
+    .map((item) =>
+      item.kind === 'approval' ? item.approval.approvalId : item.event.payload.requestId,
+    )
+    .join('|');
   const sideShown =
     !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || pending > 0);
   useEffect(() => {
@@ -370,6 +376,14 @@ function RunWorkspace({
   useEffect(() => {
     if (panel === 'approval' && pending === 0) setPanel('closed');
   }, [panel, pending]);
+  // A new question or approval opens Needs your input once, only into free space on a wide page.
+  const announced = useRef(new Set<string>());
+  useEffect(() => {
+    const fresh = waitingKey.split('|').filter((id) => id && !announced.current.has(id));
+    for (const id of fresh) announced.current.add(id);
+    if (fresh.length && wide && panel === 'closed' && !documentOpen && !steeringOpen)
+      setPanel('approval');
+  }, [waitingKey, wide, panel, documentOpen, steeringOpen]);
   const activeElement = () =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const rememberTrigger = (origin = activeElement()) => {
@@ -431,23 +445,16 @@ function RunWorkspace({
         session={session}
         definition={definition}
         request={request}
+        waiting={pending}
+        onRespond={() => {
+          rememberTrigger();
+          setSteeringOpen(false);
+          setSearch({ artifact: undefined, result: undefined, view: undefined });
+          setPanel('approval');
+          requestAnimationFrame(() => response.current?.focus({ preventScroll: true }));
+        }}
         trailing={
           <div className="flex flex-wrap items-center gap-2">
-            {pending > 0 ? (
-              <Button
-                variant="tertiary"
-                size="compact"
-                onClick={() => {
-                  rememberTrigger();
-                  setSteeringOpen(false);
-                  setSearch({ artifact: undefined, result: undefined, view: undefined });
-                  setPanel('approval');
-                  requestAnimationFrame(() => response.current?.focus({ preventScroll: true }));
-                }}
-              >
-                {m('needsYou')} · {pending}
-              </Button>
-            ) : null}
             <Button
               ref={detailsButton}
               variant="ghost"
@@ -878,13 +885,20 @@ function RunHeader({
   definition,
   request,
   trailing,
+  waiting = 0,
+  onRespond,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
   request: string | null;
   trailing?: ReactNode;
+  /** Questions and approvals waiting for the person; the status becomes the way to them. */
+  waiting?: number;
+  onRespond?: () => void;
 }) {
   const t = useTranslations('RunPage');
+  const m = useTranslations('RunMonitor');
+  const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
   if (!projection) return null;
   return (
@@ -899,7 +913,19 @@ function RunHeader({
             {request ?? definition.name}
           </h2>
           <span aria-live="polite" data-testid="run-status">
-            <AgentStatusText kind="run" status={projection.status} />
+            {waiting > 0 && onRespond ? (
+              <Button
+                variant="warning-outline"
+                size="compact"
+                data-testid="run-respond"
+                onClick={onRespond}
+              >
+                {status.has(projection.status) ? status(projection.status) : projection.status} ·{' '}
+                {m('respond', { count: waiting })}
+              </Button>
+            ) : (
+              <AgentStatusText kind="run" status={projection.status} />
+            )}
           </span>
           <span className="text-caption text-muted-foreground tabular-nums">
             <RunElapsed
