@@ -4,23 +4,18 @@ import {
   type DecisionApiId,
   type DecisionCancellation,
   EFFORT_LEVELS,
-  type ExternalEffortJudge,
   type ModelAttempt,
   type ModelAttemptStore,
-  type ReasoningInput,
   type UsageRecordV2,
 } from '@corral/contracts';
-import { effortText } from '@corral/local-intelligence';
 import type { CredentialStore } from '@earendil-works/pi-ai';
 import { z } from 'zod';
 
-// Decision-only APIs asked when automatic reasoning's local judge abstains
-// (docs/specs/features/decision-apis.md). Each sees only the judge text the local judge read and
-// the level criteria. Keys live in the user's credential store under their own names, apart from
-// model sign-ins, and are never returned, logged or put in an error or attempt record.
+// Decision-only APIs (docs/specs/features/decision-apis.md). Each sees only the state text it is
+// given and the level criteria. Keys live in the user's credential store under their own names,
+// apart from model sign-ins, and are never returned, logged or put in an error or attempt record.
 
 const MAX_RESPONSE = 64 * 1024;
-const MAX_TEXT_CODE_POINTS = 4_096;
 const INSTRUCTIONS =
   'Choose how much reasoning effort an AI coding agent should spend on the request in the input. ' +
   'Judge how hard the request is, not how long it is.';
@@ -32,15 +27,6 @@ const CRITERIA = {
   xhigh:
     'Hard, open-ended problems: system design, subtle concurrency or correctness issues, or deep analysis.',
 } satisfies Record<(typeof EFFORT_LEVELS)[number], string>;
-
-/** The judge text's first code points; like the local judge, it keeps the start. */
-function judgeText(input: ReasoningInput): string {
-  const text = effortText(input);
-  let end = 0;
-  for (let n = 0; n < MAX_TEXT_CODE_POINTS && end < text.length; n++)
-    end += text.codePointAt(end)! > 0xffff ? 2 : 1;
-  return text.slice(0, end);
-}
 
 const count = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
@@ -183,7 +169,13 @@ interface Shared {
   now: () => string;
 }
 
-class DecisionApiJudge implements ExternalEffortJudge {
+/** One call: the model to ask and the run effect its attempt record belongs to. */
+export interface DecisionApiRequest {
+  model: string;
+  owner: { runId: string; executionId: string; effectId: string; attemptNo: number };
+}
+
+export class DecisionApiJudge {
   readonly provider: DecisionApiId;
   private readonly spec: DecisionApiSpec;
   private readonly shared: Shared;
@@ -205,15 +197,15 @@ class DecisionApiJudge implements ExternalEffortJudge {
   }
 
   async judge(
-    input: ReasoningInput,
-    request: Parameters<ExternalEffortJudge['judge']>[1],
+    state: string,
+    request: DecisionApiRequest,
     cancellation: DecisionCancellation,
   ): Promise<{ answer: string; model: string }> {
     const { attempts, fetchFn, now } = this.shared;
     const key = await readKey(this.shared.credentials, this.spec.id);
     if (!key) throw failure(this.noKey, 'unavailable');
     if (cancellation.aborted) throw failure('the judgment was cancelled', 'cancelled');
-    const body = this.spec.body(judgeText(input), request.model);
+    const body = this.spec.body(state, request.model);
     const { owner } = request;
     const attempt: ModelAttempt = {
       version: 2,
@@ -357,7 +349,7 @@ export class DecisionApis {
     this.entries = entries;
   }
 
-  judges(): readonly ExternalEffortJudge[] {
+  judges(): readonly DecisionApiJudge[] {
     return this.entries;
   }
   list(): DecisionApiView[] {

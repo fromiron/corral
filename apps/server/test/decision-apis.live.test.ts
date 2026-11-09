@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DecisionCancellation, ModelAttempt, ReasoningInput } from '@corral/contracts';
+import type { DecisionCancellation, ModelAttempt } from '@corral/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DecisionApis } from '../src/decision-apis.ts';
 import { FileCredentialStore } from '../src/models/credential-store.ts';
@@ -12,16 +12,7 @@ const dirs: string[] = [];
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
-const input: ReasoningInput = {
-  kind: 'turn',
-  request: 'Rename the variable `cnt` to `count` in utils.ts',
-  prevRequest: '',
-  prev: '',
-  step: 0,
-  plan: '',
-  calls: [],
-  directiveIds: [],
-};
+const input = 'request: Rename the variable `cnt` to `count` in utils.ts';
 const owner = { runId: 'run_1', executionId: 'exec_1', effectId: 'effect_1', attemptNo: 1 };
 const never: DecisionCancellation = { aborted: false, onCancel: () => () => {} };
 

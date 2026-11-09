@@ -1,8 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DecisionCancellation, ModelAttempt, ReasoningInput } from '@corral/contracts';
-import { effortText } from '@corral/local-intelligence';
+import type { DecisionCancellation, ModelAttempt } from '@corral/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DecisionApis } from '../src/decision-apis.ts';
 import { FileCredentialStore } from '../src/models/credential-store.ts';
@@ -14,16 +13,7 @@ afterEach(() => {
 
 const KEY = 'decision-secret-key-0123456789';
 const MODEL_KEY = 'model-secret-key-9876543210';
-const input: ReasoningInput = {
-  kind: 'turn',
-  request: '## brief\n\nDesign a distributed task queue',
-  prevRequest: '',
-  prev: '',
-  step: 0,
-  plan: '',
-  calls: [],
-  directiveIds: [],
-};
+const input = 'request: Design a distributed task queue';
 const owner = { runId: 'run_1', executionId: 'exec_1', effectId: 'effect_1', attemptNo: 1 };
 const never: DecisionCancellation = { aborted: false, onCancel: () => () => {} };
 const jevAnswer = (choice: string, extra: Record<string, unknown> = {}) =>
@@ -112,19 +102,7 @@ describe('decision APIs', () => {
     ).toMatchObject({ keyConfigured: false });
   });
 
-  it('sends at most the first 4,096 code points of the judge text', async () => {
-    const t = await apisWith(() => new Response(jevAnswer('low'), { status: 200 }));
-    await t.apis.setKey('jev', KEY);
-    // Astral characters count once each and are never split.
-    const long = { ...input, request: '😀'.repeat(3_000) + 'x'.repeat(3_000) };
-    await judgeOf(t.apis, 'jev').judge(long, { model: 'jev-latest', owner }, never);
-    const { state } = JSON.parse(String(t.sent[0]?.init.body)) as { state: string };
-    expect(Array.from(state)).toHaveLength(4_096);
-    expect(effortText(long).startsWith(state)).toBe(true);
-    expect(state.endsWith('😀') || state.endsWith('x')).toBe(true);
-  });
-
-  it('asks Jev with the judge text and an effort choice, and records the attempt', async () => {
+  it('asks Jev with the state text and an effort choice, and records the attempt', async () => {
     const t = await apisWith(() => new Response(jevAnswer('xhigh'), { status: 200 }));
     await t.apis.setKey('jev', KEY);
     const result = await judgeOf(t.apis, 'jev').judge(input, { model: 'jev-latest', owner }, never);
@@ -137,7 +115,7 @@ describe('decision APIs', () => {
     const body = JSON.parse(String(init.body));
     expect(body).toMatchObject({
       model: 'jev-latest',
-      state: effortText(input),
+      state: input,
       questions: { effort: { type: 'choice' } },
     });
     expect(Object.keys(body.questions.effort.criteria)).toEqual(['low', 'medium', 'high', 'xhigh']);
@@ -191,7 +169,7 @@ describe('decision APIs', () => {
     const body = JSON.parse(String(init.body));
     expect(body).toMatchObject({
       model: 'gpt-6-luna',
-      input: effortText(input),
+      input: input,
       questions: [{ type: 'choice', name: 'effort' }],
     });
     expect(Object.keys(body)).toEqual(['model', 'input', 'questions']);
@@ -224,8 +202,7 @@ describe('decision APIs', () => {
     const cases = [
       {
         id: 'jev' as const,
-        response: () =>
-          new Response(`{"detail":"bad key ${KEY} for ${input.request}"}`, { status: 401 }),
+        response: () => new Response(`{"detail":"bad key ${KEY} for ${input}"}`, { status: 401 }),
         cause: 'provider_error',
       },
       {

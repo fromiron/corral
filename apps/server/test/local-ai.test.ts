@@ -108,13 +108,11 @@ it.skipIf(!target)(
         status: 200,
         body: {
           release: bundle.release,
-          models: { meeting: bundle.models.meeting.name, effort: bundle.models.effort.name },
+          models: { meeting: bundle.models.meeting.name },
           state: 'missing',
-          downloadBytes: bundle.models.meeting.size + bundle.models.effort.size + runtimeSize,
+          downloadBytes: bundle.models.meeting.size + runtimeSize,
           progress: null,
           error: null,
-          // The shipped judge never abstains, so the external judge is never asked.
-          external: expect.objectContaining({ provider: null, judgeAbstains: false }),
         },
       });
       expect(await call('/local-ai/install', 'POST')).toMatchObject({
@@ -180,19 +178,15 @@ it('refuses to install where local AI cannot run, and a server without it says s
   }
 });
 
-it('connects decision APIs by key and lets the workspace choose one, never returning the key', async () => {
+it('connects decision APIs by key, never returning the key', async () => {
   const KEY = 'decision-secret-key-0123456789';
   const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
   const keyDir = mkdtempSync(join(tmpdir(), 'corral-local-ai-keys-'));
   dirs.push(dataRoot, keyDir);
-  const { server, call, root } = await serve(
+  const { server, call } = await serve(
     createLocalIntelligence({ root: dataRoot, env: {}, launch: neverReady }),
     await DecisionApis.open({ credentials: new FileCredentialStore(keyDir) }),
   );
-  const config = () =>
-    JSON.parse(readFileSync(join(root, 'workspace', '.corral', 'config.json'), 'utf8')) as {
-      decisions?: { reasoning_effort: Record<string, unknown> };
-    };
   try {
     expect(await call('/decision-apis')).toEqual({
       status: 200,
@@ -217,55 +211,12 @@ it('connects decision APIs by key and lets the workspace choose one, never retur
       status: 404,
     });
 
-    const first = await call('/local-ai');
-    expect(first.body.external).toEqual({
-      provider: null,
-      model: null,
-      policy: 'judged',
-      judgeAbstains: false,
-      revision: expect.any(String),
+    expect(JSON.stringify((await call('/local-ai')).body)).not.toContain(KEY);
+    // The removed judge settings have no route.
+    expect(await call('/local-ai/external-judge', 'PUT', { provider: null })).toMatchObject({
+      status: 404,
     });
-    expect(JSON.stringify(first.body)).not.toContain(KEY);
-    const { revision } = first.body.external as { revision: string };
-    expect(
-      await call('/local-ai/external-judge', 'PUT', {
-        provider: 'openai-decisions',
-        revision: 'stale',
-      }),
-    ).toMatchObject({ status: 409 });
-    expect(
-      await call('/local-ai/external-judge', 'PUT', { provider: 'bogus', revision }),
-    ).toMatchObject({ status: 400 });
-    expect(config().decisions).toBeUndefined();
-    const chosen = await call('/local-ai/external-judge', 'PUT', {
-      provider: 'openai-decisions',
-      revision,
-    });
-    expect(chosen).toMatchObject({
-      status: 200,
-      body: { external: { provider: 'openai-decisions', model: 'gpt-6-luna' } },
-    });
-    expect(config().decisions?.reasoning_effort).toMatchObject({
-      allowExternal: true,
-      external: { provider: 'openai-decisions', model: 'gpt-6-luna' },
-    });
-
-    // Turning automatic reasoning on keeps the chosen decision API.
-    const reasoning = await call('/models/reasoning');
-    await call('/models/reasoning', 'PUT', { apply: true, revision: reasoning.body.revision });
-    expect(config().decisions?.reasoning_effort).toMatchObject({
-      apply: true,
-      allowExternal: true,
-      external: { provider: 'openai-decisions' },
-    });
-
-    const off = await call('/local-ai/external-judge', 'PUT', {
-      provider: null,
-      revision: ((await call('/local-ai')).body.external as { revision: string }).revision,
-    });
-    expect(off).toMatchObject({ status: 200, body: { external: { provider: null } } });
-    expect(config().decisions?.reasoning_effort).toMatchObject({ allowExternal: false });
-    expect(config().decisions?.reasoning_effort.external).toBeUndefined();
+    expect(await call('/models/reasoning')).toMatchObject({ status: 404 });
 
     expect(await call('/decision-apis/openai-decisions/api-key', 'DELETE')).toMatchObject({
       status: 200,
@@ -299,37 +250,18 @@ it('stores no decision API key on a server without real models', async () => {
   }
 });
 
-it.skipIf(!target).each([
-  ['medium', 'medium', false],
-  ['judged', 'judged', true],
-  ['judged', undefined, true],
-])(
-  'the %s policy decides whether apply needs the judge loaded',
-  async (policy, configured, loads) => {
+it.skipIf(!target)(
+  'local AI status sees a bundle installed while the server runs; nothing starts the helper',
+  async () => {
     const root = mkdtempSync(join(tmpdir(), 'corral-local-ai-'));
     dirs.push(root);
     const workspace = join(root, 'workspace');
     mkdirSync(join(workspace, '.corral'), { recursive: true });
     writeFileSync(
       join(workspace, '.corral', 'config.json'),
-      JSON.stringify({
-        schemaVersion: '0.1',
-        decisions: {
-          reasoning_effort: {
-            mode: 'off',
-            providers: ['local-model'],
-            apply: true,
-            ...(configured ? { policy: configured } : {}),
-          },
-        },
-      }),
+      JSON.stringify({ schemaVersion: '0.1' }),
     );
     const dataRoot = join(root, 'local-ai');
-    mkdirSync(bundleDir(dataRoot, bundle), { recursive: true });
-    writeFileSync(
-      join(bundleDir(dataRoot, bundle), 'install.json'),
-      JSON.stringify({ release: bundle.release, target }),
-    );
     launches.length = 0;
     const localIntelligence = createLocalIntelligence({
       root: dataRoot,
@@ -352,81 +284,24 @@ it.skipIf(!target).each([
         body: JSON.stringify({ token }),
       });
       const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-      const read = async (path: string) =>
-        (await fetch(`${server.url}/api/v1${path}`, {
-          headers: { origin: server.url, cookie },
-        }).then((response) => response.json())) as {
-          policy?: string;
-          external?: { policy: string };
-        };
-      expect(await read('/models/reasoning')).toMatchObject({ policy });
-      expect(await read('/local-ai')).toMatchObject({ external: { policy } });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(launches.length > 0).toBe(loads);
-    } finally {
-      await server.close();
-      launches.length = 0;
-    }
-  },
-);
-
-it.skipIf(!target)(
-  'reasoning settings see a bundle installed while the server runs, and stopping closes the engine',
-  async () => {
-    const root = mkdtempSync(join(tmpdir(), 'corral-local-ai-'));
-    dirs.push(root);
-    const workspace = join(root, 'workspace');
-    mkdirSync(join(workspace, '.corral'), { recursive: true });
-    writeFileSync(
-      join(workspace, '.corral', 'config.json'),
-      JSON.stringify({ schemaVersion: '0.1' }),
-    );
-    const dataRoot = join(root, 'local-ai');
-    const localIntelligence = createLocalIntelligence({
-      root: dataRoot,
-      env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
-      launch: neverReady,
-    });
-    const token = 'test-bootstrap-token-0123456789abcdef';
-    const server = await startCorralServer({
-      workspace,
-      port: 0,
-      bootstrapToken: token,
-      worktreeRoot: join(root, 'worktrees'),
-      agents: new ScriptedAgentAdapter({ turns: 1 }),
-      localIntelligence,
-    });
-    try {
-      const login = await fetch(`${server.url}/api/v1/session`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', origin: server.url },
-        body: JSON.stringify({ token }),
-      });
-      const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-      const settings = async () =>
+      const status = async () =>
         (await (
-          await fetch(`${server.url}/api/v1/models/reasoning`, {
-            headers: { origin: server.url, cookie },
-          })
-        ).json()) as { available: boolean; version: string | null; reason: string | null };
+          await fetch(`${server.url}/api/v1/local-ai`, { headers: { origin: server.url, cookie } })
+        ).json()) as { state: string };
 
-      expect(await settings()).toMatchObject({ available: false });
-      expect((await settings()).reason).toContain('corral local-ai install');
-
+      expect(await status()).toMatchObject({ state: 'missing' });
       mkdirSync(bundleDir(dataRoot, bundle), { recursive: true });
       writeFileSync(
         join(bundleDir(dataRoot, bundle), 'install.json'),
         JSON.stringify({ release: bundle.release, target }),
       );
-      expect(await settings()).toMatchObject({
-        available: true,
-        version: `${bundle.release}+effort-v4`,
-        reason: null,
-      });
+      expect(await status()).toMatchObject({ state: 'idle' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
       expect(launches).toEqual([]);
     } finally {
       await server.close();
+      launches.length = 0;
     }
-    expect(localIntelligence.effort.available()).toMatch(/closed/);
+    expect(localIntelligence.engine.available()).toMatch(/closed/);
   },
 );

@@ -10,7 +10,6 @@ import type {
   OutputContract,
   ReasoningResolution,
   ReasoningWire,
-  RunDecisionSettings,
   RunEvent,
   RunLimits,
   RunStatus,
@@ -118,27 +117,6 @@ export interface ToolCallView {
   reason: string | null;
   errorCode?: import('@corral/contracts').ErrorCode;
   resultRef?: string | null;
-}
-
-/** One reasoning_effort judgment of one request. Observed, never applied. */
-export interface DecisionView {
-  decisionId: string;
-  provider: string;
-  privacy: 'local' | 'external';
-  executionId: string;
-  modelCallId: string;
-  /**
-   * `not_collected`: the run ended before the provider answered (#22). Derived from the run's
-   * terminal state; no event is written after the end, and no answer is made up.
-   */
-  status: 'requested' | 'observed' | 'failed' | 'not_collected';
-  answer: 'low' | 'medium' | 'high' | 'xhigh' | null;
-  probabilities: { low: number; medium: number; high: number; xhigh: number } | null;
-  evidenceLevel: 'model_probability' | 'rule' | 'none' | null;
-  reason: string | null;
-  latencyMs: number | null;
-  readyBeforeDispatch: boolean | null;
-  afterRequestFinished: boolean | null;
 }
 
 export interface EffectView {
@@ -275,10 +253,6 @@ export interface RunProjection {
   /** Set when a backend restart ended the run (RUN-007). */
   interruptedBy: string | null;
   output: { nodeId: string; artifactVersionIds: string[] } | null;
-  /** Judgment settings fixed at run start; null when the runtime had none. */
-  decisionSettings: RunDecisionSettings | null;
-  /** reasoning_effort judgments by decisionId, in commit order. */
-  decisions: Record<string, DecisionView>;
   /** Actual workflow routes, not reasoning-effort observations; absent in older snapshots. */
   workflowBranches?: Record<string, WorkflowBranchView>;
 }
@@ -329,14 +303,12 @@ export function emptyProjection(runId: string): RunProjection {
     loopIterations: {},
     interruptedBy: null,
     output: null,
-    decisionSettings: null,
     startedFrom: null,
     forkedFrom: null,
     breakpoints: [],
     modelProfiles: {},
     startedAt: null,
     endedAt: null,
-    decisions: {},
     workflowBranches: {},
   };
 }
@@ -372,7 +344,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         modelProfiles: Object.fromEntries(event.payload.modelProfiles.map((m) => [m.profile, m])),
         limits: event.payload.limits,
         currentCriteriaVersionId: event.payload.criteriaVersionId ?? null,
-        decisionSettings: event.payload.decisions ?? null,
       };
     case 'run.state_changed': {
       const { to, reasonCode } = event.payload;
@@ -382,16 +353,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         statusReason: reasonCode,
         ...(TERMINAL_RUN_STATUSES.has(to) && p.endedAt === null
           ? { endedAt: event.recordedAt }
-          : {}),
-        ...(TERMINAL_RUN_STATUSES.has(to) && p.decisions
-          ? {
-              decisions: Object.fromEntries(
-                Object.entries(p.decisions).map(([id, d]) => [
-                  id,
-                  d.status === 'requested' ? { ...d, status: 'not_collected' as const } : d,
-                ]),
-              ),
-            }
           : {}),
       };
       if (to === 'pausing' && p.userPauseStartedAt === null) {
@@ -910,62 +871,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'cancel.confirmed':
     case 'observation.late':
       return p;
-    case 'decision.requested': {
-      const { decisionId, provider, privacy, subject } = event.payload;
-      const view: DecisionView = {
-        decisionId,
-        provider,
-        privacy,
-        executionId: subject.executionId,
-        modelCallId: subject.modelCallId,
-        status: 'requested',
-        answer: null,
-        probabilities: null,
-        evidenceLevel: null,
-        reason: null,
-        latencyMs: null,
-        readyBeforeDispatch: null,
-        afterRequestFinished: null,
-      };
-      return { ...p, decisions: { ...(p.decisions ?? {}), [decisionId]: view } };
-    }
-    case 'decision.observed': {
-      const current = p.decisions?.[event.payload.decisionId];
-      if (!current) return p;
-      const o = event.payload;
-      return {
-        ...p,
-        decisions: {
-          ...p.decisions,
-          [o.decisionId]: {
-            ...current,
-            status: 'observed',
-            answer: o.answer,
-            probabilities: o.probabilities,
-            evidenceLevel: o.evidenceLevel,
-            latencyMs: o.latencyMs,
-            readyBeforeDispatch: o.readyBeforeDispatch,
-            afterRequestFinished: o.afterRequestFinished,
-          },
-        },
-      };
-    }
-    case 'decision.failed': {
-      const current = p.decisions?.[event.payload.decisionId];
-      if (!current) return p;
-      return {
-        ...p,
-        decisions: {
-          ...p.decisions,
-          [event.payload.decisionId]: {
-            ...current,
-            status: 'failed',
-            reason: event.payload.reason,
-            latencyMs: event.payload.latencyMs,
-          },
-        },
-      };
-    }
     default:
       // A stored log can hold event types this version no longer records (e.g. `budget.*`).
       return p;

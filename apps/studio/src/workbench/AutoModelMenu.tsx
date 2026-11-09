@@ -61,7 +61,8 @@ export function AutoModelMenu({
       value: 'auto',
       label: tq('auto'),
       shortLabel: tc('modelPicker.policyAuto'),
-      disabled: !profile?.reasoningCapabilities?.levels.includes('medium'),
+      // Automatic falls back to the provider default, so it needs a verified one.
+      disabled: !profile?.reasoningCapabilities?.providerDefault,
     },
     {
       value: 'route',

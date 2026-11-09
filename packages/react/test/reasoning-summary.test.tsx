@@ -16,79 +16,45 @@ const summary = (call: Call, locale: 'en' | 'ko' = 'en') => {
 };
 
 describe('ReasoningSummary', () => {
-  it('says a medium request came from the medium policy, not a failed judge', () => {
-    const medium = summary({
+  it('says an automatic request with judgment off went out on the provider default', () => {
+    const off = summary({
       reasoning: {
         requested: { mode: 'auto' },
-        resolved: 'medium',
-        source: 'fallback',
-        fallback: 'policy',
-        policyVersion: 'corral-effort-v3',
+        resolved: null,
+        source: 'off',
         preparationId: 'prep_1',
       },
-      reasoningWire: { kind: 'effort', value: 'medium' },
+      reasoningWire: { kind: 'effort', value: null },
     });
-    expect(medium.textContent).toContain('Medium policy');
-    expect(medium.textContent).not.toContain('Judge');
-  });
-
-  it('names a local model judgment and an abstained one', () => {
-    const judged = summary({
-      reasoning: {
-        requested: { mode: 'auto' },
-        resolved: 'high',
-        source: 'local-model',
-        judged: 'high',
-        policyVersion: 'corral-effort-v1',
-        judgeVersion: 'corral-local-ai-1+effort-v1',
-        preparationId: 'prep_1',
-      },
-      reasoningWire: { kind: 'effort', value: 'high' },
-    });
-    expect(judged.textContent).toContain('Local model applied');
-    expect(judged.textContent).not.toContain('ONNX');
-    const abstained = summary({
-      reasoning: {
-        requested: { mode: 'auto' },
-        resolved: 'medium',
-        source: 'fallback',
-        fallback: 'abstained',
-        preparationId: 'prep_2',
-      },
-      reasoningWire: { kind: 'effort', value: 'medium' },
-    });
-    expect(abstained.textContent).toContain('Judge not confident');
+    expect(off.textContent).toContain('Automatic → Provider default');
+    expect(off.textContent).toContain('Judgment off');
+    expect(off.getAttribute('title')).toBe('prep_1');
     expect(
       summary(
         {
           reasoning: {
             requested: { mode: 'auto' },
-            resolved: 'medium',
-            source: 'fallback',
-            fallback: 'abstained',
-            preparationId: 'prep_3',
+            resolved: null,
+            source: 'off',
+            preparationId: 'prep_2',
           },
         },
         'ko',
       ).textContent,
-    ).toContain('판정 보류');
+    ).toContain('판정 꺼짐');
   });
 
-  it('still shows a run judged by the removed judge model', () => {
-    const old = summary({
+  it('names a compaction request kept at medium by the internal policy', () => {
+    const compaction = summary({
       reasoning: {
         requested: { mode: 'auto' },
-        resolved: 'high',
-        source: 'local-model',
-        judged: 'xhigh',
-        policyVersion: 'mixdog-relative-v1',
-        judgeVersion: 'effort-judge-v6',
-        preparationId: 'prep_4',
+        resolved: 'medium',
+        source: 'internal-policy',
+        preparationId: 'prep_3',
       },
-      reasoningWire: { kind: 'effort', value: 'high' },
+      reasoningWire: { kind: 'effort', value: 'medium' },
     });
-    expect(old.textContent).toContain('Local model applied');
-    expect(old.textContent).toContain('xhigh → high');
-    expect(old.getAttribute('title')).toContain('effort-judge-v6');
+    expect(compaction.textContent).toContain('Automatic → medium');
+    expect(compaction.textContent).toContain('Compaction policy');
   });
 });

@@ -1,4 +1,4 @@
-// Installs a local AI bundle: both models and the LiteRT-LM library for one target. Every
+// Installs a local AI bundle: the meeting model and the LiteRT-LM library for one target. Every
 // file is streamed to a partial file with its exact size and sha256 checked, then renamed into
 // place, so a broken or interrupted download never replaces a working file. The release stamp
 // is written last; until then the folder reads as not installed. Each release gets its own
@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { open, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { type Bundle, bundledManifest, MODEL_ROLES, validBundle } from './bundle.ts';
+import { type Bundle, bundledManifest, validBundle } from './bundle.ts';
 import { extractZipMember } from './zip.ts';
 
 export type InstallState = 'current' | 'stale' | 'missing' | 'unsupported';
@@ -146,10 +146,9 @@ export async function installBundle(root: string, options: InstallOptions): Prom
     unstamped = true;
   };
   try {
-    for (const role of MODEL_ROLES) {
-      const pinned = bundle.models[role];
-      const model = join(dir, pinned.file);
-      if (await matches(model, pinned)) continue;
+    const pinned = bundle.models.meeting;
+    const model = join(dir, pinned.file);
+    if (!(await matches(model, pinned))) {
       const partial = `${model}.part`;
       partials.push(partial);
       await download(pinned.url, partial, pinned, pinned.file, options);

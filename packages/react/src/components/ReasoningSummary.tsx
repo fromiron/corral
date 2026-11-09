@@ -17,19 +17,11 @@ export function ReasoningSummary({
     <span
       data-testid="reasoning-summary"
       className="text-xs text-muted-foreground"
-      title={[resolution.preparationId, resolution.judgeVersion, resolution.inputHash]
-        .filter(Boolean)
-        .join(' · ')}
+      title={resolution.preparationId}
     >
       {t('label')}: {requested} → {resolution.resolved ?? t('provider_default')}
       {' · '}
       {t(`source.${resolution.source}`)}
-      {resolution.judged && resolution.judged !== resolution.resolved
-        ? ` (${resolution.judged} → ${resolution.resolved})`
-        : ''}
-      {resolution.kind ? ` · ${t(`kind.${resolution.kind}`)}` : ''}
-      {resolution.fallback ? ` (${t(`fallback.${resolution.fallback}`)})` : ''}
-      {resolution.escalated && resolution.source !== 'external-model' ? ` · ${t('escalated')}` : ''}
       {' · '}
       {t('payload')}:{' '}
       {call.reasoningWire ? (call.reasoningWire.value ?? t('omitted')) : t('unverified')}

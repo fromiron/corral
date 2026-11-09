@@ -16,7 +16,6 @@ import {
   CorralDefinitionDraft,
   CreateRunRequest,
   canonicalJson,
-  type DecisionProvider,
   DevelopmentStart,
   DocumentCommand,
   type ErrorCode,
@@ -72,8 +71,6 @@ import {
   exportRunArchive,
   InProcessTransport,
   type InstallationPolicy,
-  judgmentSettings,
-  LocalHeuristicProvider,
   MeetingDecisionsService,
   type MeetingResult,
   MeetingService,
@@ -81,7 +78,6 @@ import {
   type ProjectResult,
   parseWorkspaceConfig,
   planRun,
-  reasoningApplyPolicy,
   type SaveResult,
   SessionEntryAuto,
   type SessionResult,
@@ -169,9 +165,7 @@ import {
   configRevision,
   prepareWorkspace,
   readWorkspaceConfig,
-  writeExternalJudge,
   writeModelConfig,
-  writeReasoningApply,
 } from './workspace.ts';
 import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
@@ -187,9 +181,7 @@ function defaultWorktreeRoot(env: NodeJS.ProcessEnv = process.env): string {
 }
 export interface ServerOptions {
   workspace: string;
-  /** Judgment providers beyond the built-in local-heuristic@1 and the local AI judge. */
-  decisionProviders?: DecisionProvider[];
-  /** The local AI engine and its `local-model` effort judge; the server closes it on shutdown. */
+  /** The local AI engine for meeting analysis; the server closes it on shutdown. */
   localIntelligence?: LocalIntelligence;
   /** Decision APIs and their keys; live servers otherwise open them on their credentials. */
   decisionApis?: DecisionApis;
@@ -466,26 +458,6 @@ async function createCorralServer(
     );
     await registry.refreshStatus();
   }
-  const decisionProviders = [
-    new LocalHeuristicProvider(),
-    ...(local ? [local.effort] : []),
-    ...(options.decisionProviders ?? []),
-  ];
-  // A configured, installed provider loads ahead of the first judgment (the local model takes
-  // a few seconds to load). A failed load only makes its judgments fail; the server keeps going.
-  const observed = judgmentSettings(workspace.config).reasoning_effort;
-  for (const id of new Set([
-    ...(observed.mode === 'observe' ? observed.providers : []),
-    ...(workspace.config.decisions?.reasoning_effort.apply &&
-    reasoningApplyPolicy(workspace.config) === 'judged'
-      ? ['local-model']
-      : []),
-  ])) {
-    const provider = decisionProviders.find((p) => p.id === id) as
-      | (DecisionProvider & { warmUp?: () => Promise<unknown> })
-      | undefined;
-    if (provider?.available() === true) void provider.warmUp?.().catch(() => {});
-  }
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // linked folders, session worktrees and the file broker.
@@ -582,10 +554,6 @@ async function createCorralServer(
   });
   resources.defer(() => harnesses.dispose());
 
-  const judgmentConfig = {
-    providers: decisionProviders,
-    settings: judgmentSettings(workspace.config),
-  };
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
   const decisionApis =
@@ -654,8 +622,6 @@ async function createCorralServer(
     corrals,
     policy: workspace.policy,
     sessionId: backendSessionId,
-    judgments: judgmentConfig,
-    ...(decisionApis ? { externalJudges: decisionApis.judges() } : {}),
   });
   registry?.configureRequests({
     store: modelAttempts,
@@ -1131,101 +1097,21 @@ async function createCorralServer(
     return registry.authView();
   });
 
-  const reasoningSettings = () => {
-    // A bundle installed while the server runs counts from the next settings read.
-    local?.engine.refreshInstall();
-    const provider = decisionProviders.find((p) => p.id === 'local-model' && p.privacy === 'local');
-    const availability = provider?.available() ?? 'this server has no local AI';
-    return {
-      apply: workspace.config.decisions?.reasoning_effort.apply === true,
-      policy: reasoningApplyPolicy(workspace.config),
-      available: availability === true,
-      version: provider?.version ?? null,
-      reason: availability === true ? null : `Local AI is unavailable: ${availability}`,
-      revision: configRevision(workspace.root),
-    };
-  };
-  app.get('/api/v1/models/reasoning', async () => reasoningSettings());
-  app.put('/api/v1/models/reasoning', async (request, reply) => {
-    const parsed = z
-      .strictObject({ apply: z.boolean(), revision: z.string().min(1) })
-      .safeParse(request.body);
-    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'invalid reasoning setting');
-    const changed = writeReasoningApply(workspace.root, parsed.data.apply, parsed.data.revision);
-    if (!changed.ok)
-      return reply
-        .code(409)
-        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
-    workspace.config = changed.config;
-    workspace.configRevision = changed.revision;
-    registry?.setConfigRevision(changed.revision);
-    judgmentConfig.settings = judgmentSettings(changed.config);
-    if (parsed.data.apply && reasoningApplyPolicy(changed.config) === 'judged') {
-      const provider = decisionProviders.find((p) => p.id === 'local-model');
-      if (
-        provider?.available() === true &&
-        'warmUp' in provider &&
-        typeof provider.warmUp === 'function'
-      )
-        void provider.warmUp().catch(() => {});
-    }
-    return reasoningSettings();
-  });
-
   // ── local AI (settings panel) ─────────────────────────────────────
   const noLocalAi = (reply: FastifyReply) =>
     fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
-  const localAiView = (local: LocalIntelligence, status = local.status()) => {
-    const wanted = workspace.config.decisions?.reasoning_effort;
-    const chosen = wanted?.allowExternal ? wanted.external : undefined;
-    return {
-      ...status,
-      external: {
-        provider: chosen?.provider ?? null,
-        model: chosen?.model ?? null,
-        policy: reasoningApplyPolicy(workspace.config),
-        judgeAbstains: local.effort.abstains,
-        revision: configRevision(workspace.root),
-      },
-    };
-  };
   app.get('/api/v1/local-ai', async (_request, reply) =>
-    local ? localAiView(local) : noLocalAi(reply),
+    local ? local.status() : noLocalAi(reply),
   );
   app.post('/api/v1/local-ai/install', async (_request, reply) => {
     if (!local) return noLocalAi(reply);
     if (local.status().state === 'unsupported')
       return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
-    return reply.code(202).send(localAiView(local, local.install()));
+    return reply.code(202).send(local.install());
   });
   app.delete('/api/v1/local-ai/install', async (_request, reply) =>
-    local ? localAiView(local, await local.cancelInstall()) : noLocalAi(reply),
+    local ? await local.cancelInstall() : noLocalAi(reply),
   );
-  app.put('/api/v1/local-ai/external-judge', async (request, reply) => {
-    if (!local) return noLocalAi(reply);
-    const parsed = z
-      .strictObject({ provider: z.string().min(1).max(64).nullable(), revision: z.string().min(1) })
-      .safeParse(request.body);
-    const chosen =
-      parsed.success && parsed.data.provider ? decisionApiModel(parsed.data.provider) : null;
-    if (!parsed.success || (parsed.data.provider && !chosen))
-      return fail(reply, 'SCHEMA_INVALID', 'invalid external judge setting');
-    const changed = writeExternalJudge(
-      workspace.root,
-      chosen ? { provider: chosen.id, model: chosen.model } : null,
-      parsed.data.revision,
-    );
-    if (!changed.ok)
-      return reply
-        .code(409)
-        .send({ error: { code: 'SCHEMA_INVALID', message: 'config changed; reload settings' } });
-    workspace.config = changed.config;
-    workspace.configRevision = changed.revision;
-    registry?.setConfigRevision(changed.revision);
-    judgmentConfig.settings = judgmentSettings(changed.config);
-    return localAiView(local);
-  });
-
   // ── decision APIs (features/decision-apis.md) ─────────────────────
   type DecisionApiParams = { Params: { id: string } };
   const listDecisionApis = () => decisionApis?.list() ?? decisionApiList();

@@ -1400,20 +1400,11 @@ export interface ProviderAuthView {
   permissionsOk: boolean;
 }
 
-export interface ReasoningSettings {
-  apply: boolean;
-  policy: 'medium' | 'judged';
-  available: boolean;
-  version: string | null;
-  reason: string | null;
-  revision: string;
-}
-
 /** GET /local-ai: the local AI bundle for the settings panel's install. */
 export interface LocalAiView {
   release: string;
-  /** Display names of the two models the bundle installs together. */
-  models: { meeting: string; effort: string };
+  /** Display name of the meeting analysis model the bundle installs. */
+  models: { meeting: string };
   state:
     | 'unsupported'
     | 'missing'
@@ -1426,16 +1417,6 @@ export interface LocalAiView {
   downloadBytes: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
-  /** The decision API the workspace asks when the local judge is unsure; null when none. */
-  external: {
-    provider: DecisionApiView['id'] | null;
-    model: string | null;
-    /** The automatic reasoning policy; medium never asks the decision API. */
-    policy: ReasoningSettings['policy'];
-    /** Whether the local judge can abstain; one that never does never asks the decision API. */
-    judgeAbstains: boolean;
-    revision: string;
-  };
 }
 
 /** GET /decision-apis: judge-only APIs and whether a key is stored, never the key. */
@@ -1532,15 +1513,6 @@ export class ModelsApi {
     return this.http.json(`/model-attempts?${search}`, { signal });
   }
 
-  reasoning(): Promise<ReasoningSettings> {
-    return this.http.json('/models/reasoning');
-  }
-  setReasoning(apply: boolean, revision: string): Promise<ReasoningSettings> {
-    return this.http.json('/models/reasoning', {
-      method: 'PUT',
-      body: JSON.stringify({ apply, revision }),
-    });
-  }
   localAi(): Promise<LocalAiView> {
     return this.http.json('/local-ai');
   }
@@ -1549,12 +1521,6 @@ export class ModelsApi {
   }
   cancelLocalAiInstall(): Promise<LocalAiView> {
     return this.http.json('/local-ai/install', { method: 'DELETE' });
-  }
-  setExternalJudge(provider: DecisionApiView['id'] | null, revision: string): Promise<LocalAiView> {
-    return this.http.json('/local-ai/external-judge', {
-      method: 'PUT',
-      body: JSON.stringify({ provider, revision }),
-    });
   }
   decisionApis(): Promise<DecisionApiView[]> {
     return this.http.json('/decision-apis');

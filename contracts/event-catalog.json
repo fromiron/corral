@@ -245,21 +245,6 @@
     "status": "implemented"
   },
   {
-    "type": "decision.requested",
-    "requiredContent": "decisionId,questionKind,questionVersion,provider,subject,privacy,inputHash,features",
-    "status": "payload_schema_to_implement"
-  },
-  {
-    "type": "decision.observed",
-    "requiredContent": "decisionId,answer,probabilities,evidenceLevel,latencyMs,readyBeforeDispatch,afterRequestFinished",
-    "status": "payload_schema_to_implement"
-  },
-  {
-    "type": "decision.failed",
-    "requiredContent": "decisionId,reason,latencyMs",
-    "status": "payload_schema_to_implement"
-  },
-  {
     "type": "harness.loaded",
     "requiredContent": "snapshotHash,tools,diagnostics (no paths or bodies)",
     "status": "payload_schema_to_implement"

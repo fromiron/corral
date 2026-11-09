@@ -16,17 +16,13 @@ describe('workspace config and installation policy', () => {
     expect(limitViolations(DEFAULT_LIMITS, SPEC_HARD_CAPS)).toEqual([]);
   });
 
-  it('accepts the automatic reasoning policy and leaves it optional', () => {
-    const decisions = (policy?: string) => ({
-      schemaVersion: '0.1',
-      decisions: {
-        reasoning_effort: { mode: 'off', providers: ['local-model'], ...(policy && { policy }) },
-      },
-    });
-    expect(parseWorkspaceConfig(decisions()).ok).toBe(true);
-    expect(parseWorkspaceConfig(decisions('medium')).ok).toBe(true);
-    expect(parseWorkspaceConfig(decisions('judged')).ok).toBe(true);
-    expect(parseWorkspaceConfig(decisions('high')).ok).toBe(false);
+  it('no longer accepts the removed judge settings', () => {
+    expect(
+      parseWorkspaceConfig({
+        schemaVersion: '0.1',
+        decisions: { reasoning_effort: { mode: 'off', providers: ['local-model'] } },
+      }).ok,
+    ).toBe(false);
   });
 
   it('lets an installation lower a cap but never raise one past the spec', () => {

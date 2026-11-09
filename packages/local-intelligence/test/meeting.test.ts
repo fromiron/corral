@@ -1,7 +1,11 @@
 import type { MeetingSelectionInput } from '@corral/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { EffortEngine } from '../src/effort/provider.ts';
-import { closestParticipant, LocalMeetingSelector, meetingTexts } from '../src/meeting/selector.ts';
+import {
+  closestParticipant,
+  LocalMeetingSelector,
+  type MeetingEngine,
+  meetingTexts,
+} from '../src/meeting/selector.ts';
 
 afterEach(() => vi.useRealTimers());
 
@@ -24,12 +28,7 @@ function engine(vectors: Record<string, number[]>, fallback = [0, 0, 1]) {
   const embed = vi.fn(async ({ texts }: { texts: string[] }) => [
     Float32Array.from(vectors[texts[0]!] ?? fallback),
   ]);
-  return {
-    embed,
-    available: () => true,
-    isReady: () => true,
-    warmUp: async () => {},
-  } as unknown as EffortEngine & { embed: typeof embed };
+  return { embed, available: () => true } as unknown as MeetingEngine & { embed: typeof embed };
 }
 
 describe('meeting selector', () => {
@@ -168,8 +167,6 @@ describe('meeting selector', () => {
     const selector = new LocalMeetingSelector(
       {
         available: () => true,
-        isReady: () => true,
-        warmUp: async () => {},
         embed: (_request, cancellation) =>
           new Promise((_resolve, reject) => {
             cancellation!.onCancel(() => {
@@ -189,7 +186,7 @@ describe('meeting selector', () => {
   it('does not start the engine if local AI is unavailable', async () => {
     const embed = vi.fn();
     const selector = new LocalMeetingSelector(
-      { available: () => 'not installed', isReady: () => false, warmUp: async () => {}, embed },
+      { available: () => 'not installed', embed },
       'release',
     );
     await expect(selector.select(input)).resolves.toBeNull();

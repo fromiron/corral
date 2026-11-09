@@ -33,8 +33,8 @@
 
 | 단계 | 내용 | 상태 | 커밋 |
 |---|---|---|---|
-| 0 | 명세와 이 플랜 | 완료 | |
-| 1 | v4·외부 판정·관측 모드 제거 | 대기 | |
+| 0 | 명세와 이 플랜 | 완료 | `0c55103e` |
+| 1 | v4·외부 판정·관측 모드 제거 | 완료 | |
 | 2 | 공통 계약·snapshot·resolver(fake backend) | 대기 | |
 | 3 | 판정 API backend | 대기 | |
 | 4 | d1 로컬 런타임 | 대기 | |
@@ -55,12 +55,12 @@
 
 `auto`를 임시로 Off와 같게(provider default, 판정 0회) 만든다.
 
-- `packages/local-intelligence`: `src/effort/*`, `weights/effort-v4.json`, 번들 manifest의 effort 모델(새 release), `helper/src/main.rs`의 effort 모델 로드, `factory.ts`의 effort 항목. 회의 분석은 유지.
+- `packages/local-intelligence`: `src/effort/*`, `weights/`, 번들 manifest의 effort 모델, `helper/src/main.rs`의 effort 모델 로드, `factory.ts`의 effort 항목. 회의 분석은 유지. 릴리스 id `corral-local-ai-2`는 그대로 두어 설치된 번들을 다시 받지 않는다. 이미 받은 effort 모델 파일은 설치 폴더에 남는다.
 - `packages/core`: `reasoning.ts`의 `automaticReasoning`·`ExternalConsult`·`reasoningPolicyOf`, 판정 횟수 상한, `decisions/`(observe·heuristic), `coordinator.ts` 연결부.
 - `packages/contracts`: `ReasoningApplySettings`, `AutomaticReasoningPolicy`, `ReasoningInput`, 관측용 `DecisionProvider`·`EffortQuestion`·`RunDecisionSettings`, `decision.*` 이벤트, `ReasoningResolution`의 옛 정책 버전·`escalated`·`abstained`.
 - 설정·서버: `decisions.reasoning_effort`, `/api/v1/models/reasoning`, `/api/v1/local-ai/external-judge`. `apps/server/src/decision-apis.ts`의 키 저장과 두 어댑터는 3단계용으로 유지.
 - UI: 자동 추론 스위치, `LocalAiPanel`의 외부 판정 섹션, `EffortJudgments`와 `RunPage` 사용처, `demo.worker.ts`.
-- 도구: v4 학습·평가용 `tools/local-intelligence/effort/`와 `verify-live.ts`의 effort 부분.
+- 도구: v4 학습·평가용 `tools/local-intelligence/effort/`, 학습용 Python 의존성 기록, `verify-live.ts`와 `gold/`의 effort 부분.
 - 테스트: v4 전용 테스트 삭제. 반례: `auto` 요청이 판정·다운로드 0회로 provider default로 나간다.
 
 ### 2. 공통 계약·snapshot·resolver
@@ -111,10 +111,12 @@
 
 ## 다음 단계
 
-1단계: v4·외부 판정·관측 모드 제거. 0단계 커밋 hash를 진행표에 채운다.
+2단계: 공통 계약·snapshot·resolver를 fake backend로. 먼저 1단계 커밋 hash를 진행표에 채운다.
 
 ## 열린 문제
 
 - 메인 체크아웃의 미추적 v3 작업 파일(헬퍼 `effort.rs`, `packed-effort.test.ts`, `tools/local-intelligence/effort/` 아래 새 파일 등)은 1단계에서 지우는 v4 도구에 의존해 이 브랜치와 충돌한다.
 - b12189의 인증·Web UI 끄기 옵션과 `/tokenize`·`/v1/systemone` 응답 형식은 4단계에서 실제 바이너리로 확인한다. 인증을 지원하지 않으면 무인증으로 띄우지 않는다.
 - Linux x64 외 배포 대상 OS는 정하지 않았다.
+- `tests/live/auto-team.live.test.ts`는 1단계부터 리뷰어 요청 문맥에 원 요구가 들어갔는지 보지 않는다(판정 입력으로만 볼 수 있었다). 2단계의 call snapshot으로 다시 확인한다.
+- 메인 체크아웃의 개발용 `.corral/config.json`에 `decisions.reasoning_effort`가 남아 있으면 이 브랜치는 그 설정을 거절한다. 사용자 확인 뒤 지운다.

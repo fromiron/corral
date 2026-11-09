@@ -15,7 +15,6 @@ import {
   AgentStatusText,
   ApprovalPanel,
   ArtifactViewer,
-  EffortJudgments,
   ExecutionTranscript,
   ExecutionTree,
   FailureNotice,
@@ -797,7 +796,6 @@ function RunWorkspace({
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3">
                     <UsageInspector session={session} prices={prices} />
-                    <EffortJudgments session={session} />
                   </TabPanel>
                 </Tabs>
               ) : null}

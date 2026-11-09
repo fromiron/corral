@@ -68,7 +68,7 @@ describe('role reasoning', () => {
       reasoning: { requested: { mode: 'fixed', level: 'high' }, resolved: 'high', source: 'fixed' },
     });
   });
-  it('refuses auto without explicit workspace apply', () => {
+  it('runs auto on the verified provider default with the effort mode off', async () => {
     const s = setup();
     const team = definition();
     Object.assign(team.roles[0]!, { reasoning: { mode: 'auto' } });
@@ -78,8 +78,11 @@ describe('role reasoning', () => {
       mode: 'live',
       definition: team,
     });
-    expect(result.runId).toBeNull();
-    expect(result.receipt.error?.message).toContain('apply');
+    if (!result.runId) throw new Error(result.receipt.error?.message);
+    await waitForProjection(s.transport, result.runId, (p) => p.status === 'succeeded');
+    expect(s.permits[0]).toMatchObject({
+      reasoning: { requested: { mode: 'auto' }, resolved: null, source: 'off' },
+    });
   });
 });
 

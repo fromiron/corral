@@ -1,10 +1,3 @@
-import type {
-  DecisionPrivacy,
-  DecisionQuestionKind,
-  DecisionSubject,
-  EffortFeatures,
-  EffortLevel,
-} from './decisions.ts';
 import type { AgentRole, InputBindingKind, ItemRef, TaskBrief } from './definition.ts';
 import type { CommandError } from './errors.ts';
 import type { ModelProfileSnapshot } from './events.ts';
@@ -22,7 +15,7 @@ import type {
 } from './harness.ts';
 import type { MeetingRunOrigin } from './meeting.ts';
 import type { McpChallenge } from './project-tools.ts';
-import type { DecisionApiId, ReasoningInput, ReasoningResolution } from './reasoning.ts';
+import type { ReasoningResolution } from './reasoning.ts';
 import type {
   RuntimeCheckpointRecord,
   RuntimeCheckpointState,
@@ -201,10 +194,7 @@ export interface AgentHost {
   checkpointContext?(context: RuntimeContext): Promise<RuntimeCheckpointRecord | null>;
   protectedContext?(): ProtectedContext;
   reportCompaction?(report: CompactionReport): Promise<void>;
-  prepareModelRequest(
-    record?: ModelRequestRecord,
-    reasoningInput?: ReasoningInput,
-  ): Promise<RequestPermit>;
+  prepareModelRequest(record?: ModelRequestRecord): Promise<RequestPermit>;
   /** SDK-only: unsupported hosts must refuse SDK execution. */
   reportHarness?(report: HarnessReport): Promise<void>;
   simulateHarness?(): Promise<void>;
@@ -250,61 +240,10 @@ export interface AgentAdapter {
   start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle>;
 }
 
-// ── decision providers ───────────────────────────────────
-
-/** The question a provider gets for one model request. The excerpt never reaches events. */
-export interface EffortQuestion {
-  questionKind: 'reasoning_effort';
-  questionVersion: 1;
-  candidates: readonly EffortLevel[];
-  subject: DecisionSubject & { runId: string };
-  input: {
-    features: EffortFeatures;
-    /** Brief, assignment, question and delivered directives, at most 1,500 characters. */
-    excerpt: string;
-  };
-}
-
-/**
- * Answers decision questions. Declares what it answers; the Coordinator never sends anything
- * else. `decide` returns the raw answer, which the Coordinator validates (DecisionAnswer).
- */
-export interface DecisionProvider {
-  id: string;
-  version: string;
-  privacy: DecisionPrivacy;
-  timeoutMs: number;
-  questions: readonly { kind: DecisionQuestionKind; version: number }[];
-  /** True, or why it cannot answer right now (not installed, unsupported platform, …). */
-  available(): true | string;
-  decide(question: EffortQuestion, cancellation: DecisionCancellation): Promise<unknown>;
-  /** Local apply path; a complete turn/tool-step input, not the observer excerpt. */
-  decideRequest?(input: ReasoningInput, cancellation: DecisionCancellation): Promise<unknown>;
-}
-
-/** Set when the judgment is no longer wanted (timeout, cancelled execution, run ended). */
+/** Set when a pending answer is no longer wanted (timeout, cancelled execution, run ended). */
 export interface DecisionCancellation {
   readonly aborted: boolean;
   onCancel(fn: () => void): () => void;
-}
-
-/**
- * A decision API asked once when the local judge abstains, in live runs that chose it.
- * A failure rejects with an Error whose `cause` is `provider_error`, `timeout`,
- * `invalid_response` or `unavailable`; messages carry neither the key nor the request text.
- */
-export interface ExternalEffortJudge {
-  readonly provider: DecisionApiId;
-  /** True, or why it cannot be asked (no key). Read without I/O. */
-  available(): true | string;
-  judge(
-    input: ReasoningInput,
-    request: {
-      model: string;
-      owner: { runId: string; executionId: string; effectId: string; attemptNo: number };
-    },
-    cancellation: DecisionCancellation,
-  ): Promise<{ answer: string; model: string }>;
 }
 
 import type { ImageInput } from './attachments.ts';

@@ -1,5 +1,4 @@
 export { FakeClock } from './clock.ts';
-export * from './decision-provider.ts';
 export { collaborationCorral, linearCorral } from './fixtures.ts';
 export { Gate } from './gate.ts';
 export { SequentialIdFactory } from './ids.ts';

@@ -70,8 +70,6 @@ export interface ExecResult {
     payloadBytes: number | null;
     procedureAdherence: null;
   };
-  /** reasoning_effort judgments by provider: answer → count (observe only). */
-  judgments: Record<string, Record<string, number>>;
 }
 
 let commands = 0;
@@ -289,7 +287,6 @@ export async function executeOnce(
   const texts = await Promise.all(
     (projection.output?.artifactVersionIds ?? []).map((id) => transport.getArtifactText(runId, id)),
   );
-  const judgments: ExecResult['judgments'] = {};
   const recipeNode = definition.nodes.find((node) => node.type === 'loop' && node.reviewRecipe);
   const candidates =
     recipeNode?.type === 'loop' && recipeNode.reviewRecipe
@@ -324,12 +321,6 @@ export async function executeOnce(
   const candidateTexts = await Promise.all(
     candidateIds.map((id) => transport.getArtifactText(runId, id)),
   );
-  for (const d of Object.values(projection.decisions ?? {})) {
-    const byAnswer = judgments[d.provider] ?? {};
-    const key = d.status === 'observed' ? (d.answer ?? 'unknown') : d.status;
-    byAnswer[key] = (byAnswer[key] ?? 0) + 1;
-    judgments[d.provider] = byAnswer;
-  }
   const usage = usageTotals(projection);
   return {
     runId,
@@ -384,7 +375,6 @@ export async function executeOnce(
       payloadBytes: metricsFailed || !payloads ? null : payloadBytes,
       procedureAdherence: null,
     },
-    judgments,
   };
 }
 

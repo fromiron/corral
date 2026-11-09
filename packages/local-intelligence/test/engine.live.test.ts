@@ -52,7 +52,6 @@ describe.skipIf(!live)('local embedding engine with the real model', () => {
             texts: [text],
             task: 'classification',
             overflow: 'truncate',
-            priority: 'effort',
           }),
         );
       expect(launches()).toBe(1);
@@ -68,7 +67,6 @@ describe.skipIf(!live)('local embedding engine with the real model', () => {
         texts: ['long meeting answer '.repeat(400)],
         task: 'clustering',
         overflow: 'chunk_average',
-        priority: 'meeting',
       });
       expect(long[0]).toHaveLength(768);
       expect(instance.status()).toMatchObject({ state: 'ready', actualDevice: 'cpu' });
@@ -93,7 +91,6 @@ describe.skipIf(!live)('local embedding engine with the real model', () => {
         texts: ['x '.repeat(3000)],
         task: 'clustering',
         overflow: 'chunk_average',
-        priority: 'meeting',
       },
       signal,
     );
@@ -103,7 +100,6 @@ describe.skipIf(!live)('local embedding engine with the real model', () => {
       texts: ['request: run the tests'],
       task: 'classification',
       overflow: 'truncate',
-      priority: 'effort',
     });
     expect(next[0]).toHaveLength(768);
     const started = performance.now();
@@ -114,7 +110,6 @@ describe.skipIf(!live)('local embedding engine with the real model', () => {
         texts: ['x'],
         task: 'classification',
         overflow: 'truncate',
-        priority: 'effort',
       }),
     ).rejects.toThrow(/closed/);
   }, 60_000);

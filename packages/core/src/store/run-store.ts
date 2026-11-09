@@ -9,7 +9,6 @@ import type {
   MeetingRunOrigin,
   ModelProfileSnapshot,
   PermissionMode,
-  ReasoningApplySettings,
   Receipt,
   ResumedFrom,
   RunEvent,
@@ -42,7 +41,6 @@ export interface RunSnapshot {
   harnesses?: Record<string, EffectiveHarnessSnapshot>;
   /** The session project's checks the run's check Decisions run; absent when it has none. */
   checks?: NonNullable<EffectiveHarnessSnapshot['projectTools']>;
-  reasoningApply?: ReasoningApplySettings;
   /** The auto choice the definition came from; absent for chosen teams. */
   autoRoute?: AutoRoute;
   /** the meeting answer this Run is. */

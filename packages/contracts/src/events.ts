@@ -1,16 +1,6 @@
 import { z } from 'zod';
 import { AutoRoute } from './auto-team.ts';
 import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
-import {
-  DecisionFailureReason,
-  DecisionPrivacy,
-  DecisionQuestionKind,
-  DecisionSubject,
-  EffortFeatures,
-  EffortLevel,
-  EvidenceLevel,
-  RunDecisionSettings,
-} from './decisions.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
 import { ErrorCode } from './errors.ts';
 import {
@@ -26,7 +16,7 @@ import {
 import { Identifier, SchemaVersion } from './ids.ts';
 import { BinaryArtifact, ImageGenerationProfile } from './media-artifact.ts';
 import { MeetingRunOrigin } from './meeting.ts';
-import { ReasoningApplySettings, ReasoningCapabilities, ReasoningResolution } from './reasoning.ts';
+import { ReasoningCapabilities, ReasoningResolution } from './reasoning.ts';
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
 import { ResumedFrom, RuntimeCheckpointRecord } from './runtime-checkpoints.ts';
@@ -113,9 +103,6 @@ export const RunStarted = event(
     branchedFrom: BranchedFrom.optional(),
     limits: RunLimits,
     criteriaVersionId: Identifier.optional(),
-    /** Judgment settings fixed for the run. Absent when the runtime has none. */
-    decisions: RunDecisionSettings.optional(),
-    reasoningApply: ReasoningApplySettings.optional(),
     /** The earlier version whose text this run's brief starts from. */
     startedFrom: StartFrom.optional(),
     /** The finished run and step this run forked from, and the results copied from it. */
@@ -411,7 +398,6 @@ export const ApprovalResolved = event(
     routeId: Identifier.optional(),
   }),
 );
-/** A workflow routing fact, separate from observe-only reasoning-effort judgments. */
 /** A Join let one path continue; `any` names the steps of the branches it stopped. */
 export const WorkflowJoined = event(
   'workflow.joined',
@@ -654,14 +640,7 @@ export const UsageRecorded = event(
 export const LimitReached = event(
   'limit.reached',
   z.strictObject({
-    limitKind: z.enum([
-      'spawns',
-      'questions',
-      'depth',
-      'loop_iterations',
-      'no_progress',
-      'decision_calls',
-    ]),
+    limitKind: z.enum(['spawns', 'questions', 'depth', 'loop_iterations', 'no_progress']),
     used: Count,
     max: Count,
   }),
@@ -673,48 +652,6 @@ export const ObservationLate = event(
     originalRef: Identifier.nullable(),
     whyIgnored: z.string().min(1),
   }),
-);
-
-// ── decisions (observe only) ─────────────────────────────────────────
-const decisionHead = {
-  decisionId: Identifier,
-  questionKind: DecisionQuestionKind,
-  questionVersion: z.int().min(1),
-  provider: z.string().min(1),
-  subject: DecisionSubject,
-};
-export const DecisionRequested = event(
-  'decision.requested',
-  z.strictObject({
-    ...decisionHead,
-    privacy: DecisionPrivacy,
-    inputHash: Sha256Hex,
-    features: EffortFeatures,
-  }),
-);
-export const DecisionObserved = event(
-  'decision.observed',
-  z.strictObject({
-    ...decisionHead,
-    answer: EffortLevel,
-    probabilities: z
-      .strictObject({
-        low: z.number(),
-        medium: z.number(),
-        high: z.number(),
-        xhigh: z.number(),
-      })
-      .nullable(),
-    evidenceLevel: EvidenceLevel,
-    latencyMs: Count,
-    /** The judgment was ready before the request it is about was sent. */
-    readyBeforeDispatch: z.boolean(),
-    afterRequestFinished: z.boolean(),
-  }),
-);
-export const DecisionFailed = event(
-  'decision.failed',
-  z.strictObject({ ...decisionHead, reason: DecisionFailureReason, latencyMs: Count }),
 );
 
 export const HarnessLoaded = event('harness.loaded', HarnessReport.options[0].omit({ ok: true }));
@@ -903,9 +840,6 @@ export const RunEvent = z.discriminatedUnion('type', [
   OutputFinalized,
   WorkflowBranchSelected,
   WorkflowJoined,
-  DecisionRequested,
-  DecisionObserved,
-  DecisionFailed,
 ]);
 export type RunEvent = z.infer<typeof RunEvent>;
 export type RunEventType = RunEvent['type'];

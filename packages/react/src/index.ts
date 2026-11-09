@@ -3,7 +3,6 @@ export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
-export { EffortJudgments } from './components/EffortJudgments.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {
   ExecutionToolGroup,

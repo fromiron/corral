@@ -564,7 +564,6 @@ class WorkerExecution {
                   ...(frame.contextUsage ? { contextUsage: frame.contextUsage } : {}),
                 })
               : frame.record,
-            frame.reasoningInput,
           );
           const apiKey = await this.options.credentials(this.input.model);
           this.send({

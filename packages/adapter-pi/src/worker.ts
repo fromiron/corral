@@ -41,7 +41,6 @@ import {
   requestOutputCap,
   verifyReasoningWire,
 } from './reasoning.ts';
-import { requestReasoningInput } from './reasoning-input.ts';
 import { providerRequestFence } from './request-fence.ts';
 import {
   assertImagePayload,
@@ -270,12 +269,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
               { role: 'user', content: directiveText(missing), timestamp: Date.now() },
             ],
           };
-        const assignment =
-          start.assignment.kind === 'delegated'
-            ? start.assignment.brief
-            : start.assignment.kind === 'question'
-              ? start.assignment.body
-              : '';
         const saved = await call({
           type: 'checkpoint_context',
           value: checkpointContext(preparedContext, 'pi-core'),
@@ -330,7 +323,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                       logicalRequestId: summaryRequestId,
                       retryIndex,
                       record,
-                      reasoningInput: requestReasoningInput(summary, 'compaction', '', []),
                     });
                     if (grant.type !== 'permit' || cancelled) throw new Error('compaction refused');
                     summaryCalls.push(grant.modelCallId);
@@ -440,9 +432,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             protectedSections,
             { usage: measuredContext.usage },
           ),
-          reasoningInput: requestReasoningInput(preparedContext, 'turn', assignment, [
-            ...directives.keys(),
-          ]),
         });
       };
       let reply = await prepare();

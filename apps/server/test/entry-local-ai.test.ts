@@ -11,12 +11,11 @@ import {
   legacyJudgeDir,
   runtimeTarget,
 } from '@corral/local-intelligence';
-import { linearCorral } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 
-// Issue #21: the server's own entry point (`pnpm serve`) registers the local AI effort judge like
-// the CLI does. A stamp file stands in for an installed bundle and a script that never becomes
-// ready stands in for the helper: nothing is downloaded and no model runs.
+// Issue #21: the server's own entry point (`pnpm serve`) offers local AI like the CLI does. A stamp
+// file stands in for an installed bundle and a script that never becomes ready stands in for the
+// helper: nothing is downloaded and no model runs.
 
 const MAIN = join(import.meta.dirname, '..', 'src', 'main.ts');
 const children: ChildProcess[] = [];
@@ -65,12 +64,7 @@ async function serve(dataHome: string, helper?: string) {
   mkdirSync(join(workspace, '.corral'));
   writeFileSync(
     join(workspace, '.corral', 'config.json'),
-    JSON.stringify({
-      schemaVersion: '0.1',
-      decisions: {
-        reasoning_effort: { mode: 'observe', providers: ['local-heuristic', 'local-model'] },
-      },
-    }),
+    JSON.stringify({ schemaVersion: '0.1' }),
   );
   const child = spawn(
     process.execPath,
@@ -103,47 +97,21 @@ async function serve(dataHome: string, helper?: string) {
   return { origin, headers };
 }
 
-async function decisionProviders(dataHome: string, helper?: string) {
+async function localAiState(dataHome: string, helper?: string) {
   const { origin, headers } = await serve(dataHome, helper);
-  const saved = await fetch(`${origin}/api/v1/corrals`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      definition: linearCorral(['writer']),
-    }),
-  });
-  const { corralId } = ((await saved.json()) as { record: { corralId: string } }).record;
-  const run = await fetch(`${origin}/api/v1/runs`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      schemaVersion: '0.1',
-      commandId: 'cmd_entry',
-      corralId,
-      definitionRevision: 1,
-      mode: 'mock',
-    }),
-  });
-  const { runId } = (await run.json()) as { runId: string };
-  const snapshot = (await (
-    await fetch(`${origin}/api/v1/runs/${runId}/snapshot`, { headers })
-  ).json()) as {
-    projection: {
-      decisionSettings: {
-        reasoning_effort: { providers: { id: string; available: boolean; version: string }[] };
-      };
-    };
+  const status = (await (await fetch(`${origin}/api/v1/local-ai`, { headers })).json()) as {
+    state: string;
+    models: Record<string, string>;
   };
-  const decisions = snapshot.projection.decisionSettings;
-  return decisions.reasoning_effort.providers;
+  return status;
 }
 
 const bundle = bundledManifest();
 const target = runtimeTarget(bundle, process.platform, process.arch);
 
-describe('the server entry point registers the local AI effort judge (#21)', () => {
+describe('the server entry point offers local AI (#21)', () => {
   it.skipIf(!target || process.platform === 'win32')(
-    'an installed bundle is available to `pnpm serve`, with its release and classifier',
+    'an installed bundle is available to `pnpm serve`',
     async () => {
       const dataHome = temp();
       const root = defaultLocalAiDir(dataBase(modelEnv(dataHome), process.platform, dataHome));
@@ -152,11 +120,13 @@ describe('the server entry point registers the local AI effort judge (#21)', () 
         join(bundleDir(root, bundle), 'install.json'),
         JSON.stringify({ release: bundle.release, target }),
       );
-      const providers = await decisionProviders(dataHome, idleHelper(dataHome));
-      expect(providers.find((p) => p.id === 'local-model')).toMatchObject({
-        available: true,
-        version: `${bundle.release}+effort-v4`,
-      });
+      expect(await localAiState(dataHome, idleHelper(dataHome))).toEqual(
+        expect.objectContaining({
+          release: bundle.release,
+          state: 'idle',
+          models: { meeting: bundle.models.meeting.name },
+        }),
+      );
     },
     30_000,
   );
@@ -172,8 +142,7 @@ describe('the server entry point registers the local AI effort judge (#21)', () 
   }, 30_000);
 
   it('without an installed bundle it is plainly unavailable, and the server still runs', async () => {
-    const providers = await decisionProviders(temp());
-    expect(providers.find((p) => p.id === 'local-model')).toMatchObject({ available: false });
-    expect(providers.find((p) => p.id === 'local-heuristic')).toMatchObject({ available: true });
+    // `unsupported` where this machine has no runtime or the helper is not built.
+    expect(['missing', 'unsupported']).toContain((await localAiState(temp())).state);
   }, 30_000);
 });

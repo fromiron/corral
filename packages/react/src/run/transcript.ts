@@ -28,7 +28,6 @@ export type TranscriptEntry =
       modelCallId: string;
       no: number;
       directives: { directiveId: string; text: string }[];
-      effort: { provider: string; answer: string | null; status: string }[];
     }
   | {
       kind: 'reply';
@@ -117,9 +116,6 @@ export function buildTranscript(
             directiveId: id,
             text: projection.directives[id]?.text ?? '',
           })),
-          effort: Object.values(projection.decisions ?? {})
-            .filter((d) => d.modelCallId === call)
-            .map((d) => ({ provider: d.provider, answer: d.answer, status: d.status })),
         });
         // The reply follows its request, streaming until model.finished brings the final text.
         const stream = streams[call];

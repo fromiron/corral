@@ -360,7 +360,7 @@ CLI의 현재 명령·옵션은 [구현](../../packages/cli/src/index.ts)과 [ex
 
 ## 13. 확장 범위의 위치
 
-DecisionProvider 관찰과 추론 적용은 구현돼 있고, 모델 연결은 [모델 안내](../guides/models.md)를 따른다. 초기 v0.2/v0.3 이름으로 새 일정이나 완료 상태를 추정하지 않는다.
+추론 판정은 [추론 판정](features/effort-routing.md), 모델 연결은 [모델 안내](../guides/models.md)를 따른다. 초기 v0.2/v0.3 이름으로 새 일정이나 완료 상태를 추정하지 않는다.
 
 ### 리소스 관리 확장
 

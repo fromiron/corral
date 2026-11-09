@@ -67,7 +67,6 @@ import {
   requestOutputCap,
   verifyReasoningWire,
 } from './reasoning.ts';
-import { requestReasoningInput } from './reasoning-input.ts';
 import { providerRequestFence } from './request-fence.ts';
 import {
   assertImagePayload,
@@ -433,12 +432,6 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 method: measured.source === 'usage_anchor' ? 'usage-anchor-v2' : 'dsh-density-v2',
               };
               preparedDirectiveIds = record.directiveIds;
-              const assignment =
-                start.assignment.kind === 'delegated'
-                  ? start.assignment.brief
-                  : start.assignment.kind === 'question'
-                    ? start.assignment.body
-                    : '';
               if (requestPurpose === 'turn' || requestPurpose === 'retry') {
                 const saved = await call({
                   type: 'checkpoint_context',
@@ -452,12 +445,6 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 logicalRequestId,
                 retryIndex,
                 ...record,
-                reasoningInput: requestReasoningInput(
-                  requestContext,
-                  requestPurpose,
-                  assignment,
-                  record.directiveIds,
-                ),
               });
             };
             let permit = await prepare();

@@ -17,7 +17,6 @@ import {
   ProtectedContext,
   ProviderPayloadRecord,
   ReasoningCapabilities,
-  ReasoningInput,
   ReasoningResolution,
   RegisteredMcpServer,
   ResourcePath,
@@ -77,7 +76,6 @@ export const WorkerFrame = z.discriminatedUnion('type', [
     record: ModelRequestRecord.optional(),
     logicalRequestId: Identifier.optional(),
     retryIndex: z.int().min(0).max(2).optional(),
-    reasoningInput: ReasoningInput.optional(),
   }),
   z.strictObject({
     type: z.literal('request_record'),
@@ -373,7 +371,6 @@ export const SdkWorkerFrame = z.union([
     ...ModelRequestRecord.shape,
     logicalRequestId: Identifier.optional(),
     retryIndex: z.int().min(0).max(2).optional(),
-    reasoningInput: ReasoningInput.optional(),
   }),
   z.strictObject({
     type: z.literal('request_dispatched'),

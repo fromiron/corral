@@ -1,13 +1,12 @@
-// One embedding engine per server: a resident helper process that holds both models and serves
-// one request at a time. Effort judgments run on the effort model and go ahead of meeting
-// batches, which run on the meeting model. A caller that stops waiting only drops its
+// One embedding engine per server: a resident helper process that holds the meeting model and
+// serves one request at a time, in arrival order. A caller that stops waiting only drops its
 // result; the slot is freed when the helper actually answers, so two computations never overlap.
 // Device changes and shutdown refuse waiting work and end the helper process.
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DecisionCancellation, Scheduler } from '@corral/contracts';
-import { type Bundle, bundledManifest, type ModelRole } from '../bundle.ts';
+import { type Bundle, bundledManifest } from '../bundle.ts';
 import { bundleDir, type InstallState, installState } from '../install.ts';
 import { type HelperLauncher, type HelperProcess, spawnHelper } from './helper.ts';
 
@@ -36,15 +35,7 @@ export interface EmbedRequest {
   task: EmbedTask;
   /** `truncate` keeps the first tokens; `chunk_average` covers long text in averaged chunks. */
   overflow: 'truncate' | 'chunk_average';
-  /** The asking feature: it sets the queue order and the model the texts run on. */
-  priority: 'effort' | 'meeting';
 }
-
-/** Each feature has its own model; a request never runs on the other feature's model. */
-const MODEL_OF: Record<EmbedRequest['priority'], ModelRole> = {
-  effort: 'effort',
-  meeting: 'meeting',
-};
 
 export interface EngineStatus {
   state: EngineState;
@@ -70,14 +61,13 @@ export interface EngineOptions {
   timers?: Scheduler;
 }
 
-const QUEUE_LIMIT = { effort: 3, meeting: 16 } as const;
+const QUEUE_LIMIT = 16;
 const READY_TIMEOUT_MS = 60_000;
 const COOLDOWN_MS = 60_000;
 const CACHE_ENTRIES = 512;
 
 interface Job {
   request: EmbedRequest;
-  priority: EmbedRequest['priority'];
   settled: boolean;
   resolve(vectors: Float32Array[]): void;
   reject(error: Error): void;
@@ -184,14 +174,12 @@ export class LocalEmbeddingEngine {
     const known = keys.map((key) => this.cached(key));
     const missing = texts.filter((_, index) => !known[index]);
     if (missing.length === 0) return Promise.resolve(known as Float32Array[]);
-    const sameQueue = this.waiting.filter((job) => job.priority === request.priority).length;
-    if (sameQueue >= QUEUE_LIMIT[request.priority])
+    if (this.waiting.length >= QUEUE_LIMIT)
       return Promise.reject(new Error('the local AI queue is full'));
     return new Promise<Float32Array[]>((resolve, reject) => {
       let off = () => {};
       const job: Job = {
         request: { ...request, texts: missing },
-        priority: request.priority,
         settled: false,
         resolve: (vectors) => {
           if (job.settled) return;
@@ -257,7 +245,7 @@ export class LocalEmbeddingEngine {
   }
 
   private cacheKey(request: EmbedRequest, text: string) {
-    const model = this.bundle.models[MODEL_OF[request.priority]];
+    const model = this.bundle.models.meeting;
     return createHash('sha256')
       .update(
         [this.bundle.release, model.sha256, request.task, request.overflow, model.dims, text].join(
@@ -322,20 +310,16 @@ export class LocalEmbeddingEngine {
     const runtime = this.bundle.runtime.targets[this.options.target!]!;
     // LiteRT-LM refuses a cache folder that does not exist.
     mkdirSync(join(dir, 'cache'), { recursive: true });
-    const { meeting, effort } = this.bundle.models;
+    const model = this.bundle.models.meeting;
     const helper = (this.options.launch ?? spawnHelper)({
       executable: this.options.helperPath!,
       args: [
         '--lib',
         join(dir, runtime.library),
-        '--meeting-model',
-        join(dir, meeting.file),
-        '--meeting-max-input',
-        String(meeting.maxInputTokens),
-        '--effort-model',
-        join(dir, effort.file),
-        '--effort-max-input',
-        String(effort.maxInputTokens),
+        '--model',
+        join(dir, model.file),
+        '--max-input',
+        String(model.maxInputTokens),
         '--backend',
         backend,
         '--threads',
@@ -407,9 +391,7 @@ export class LocalEmbeddingEngine {
       if (message.type === 'error') job.reject(new Error(message.message));
       else if (
         message.embeddings.length !== job.request.texts.length ||
-        message.embeddings.some(
-          (vector) => vector.length !== this.bundle.models[MODEL_OF[job.priority]].dims,
-        )
+        message.embeddings.some((vector) => vector.length !== this.bundle.models.meeting.dims)
       )
         job.reject(new Error('the local AI helper returned an unexpected embedding shape'));
       else job.resolve(message.embeddings.map((vector) => Float32Array.from(vector)));
@@ -427,9 +409,7 @@ export class LocalEmbeddingEngine {
 
   private pump() {
     if (!this.helper || this.running !== 'ready' || this.active) return;
-    let index = this.waiting.findIndex((job) => job.priority === 'effort');
-    if (index < 0) index = 0;
-    const job = this.waiting.splice(index, 1)[0];
+    const job = this.waiting.shift();
     if (!job) return;
     if (job.settled) {
       this.pump();
@@ -441,10 +421,9 @@ export class LocalEmbeddingEngine {
       this.helper.write(
         JSON.stringify({
           id: this.activeId,
-          model: MODEL_OF[job.priority],
           texts: job.request.texts,
           overflow: job.request.overflow,
-          dim: this.bundle.models[MODEL_OF[job.priority]].dims,
+          dim: this.bundle.models.meeting.dims,
         }),
       );
     } catch (error) {
