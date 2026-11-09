@@ -7,10 +7,10 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import ko from '../src/messages/ko.json' with { type: 'json' };
 
 type Call = Parameters<typeof ReasoningSummary>[0]['call'];
-const summary = (call: Call, locale: 'en' | 'ko' = 'en') => {
+const summary = (call: Call, locale: 'en' | 'ko' = 'en', open = true) => {
   const { container } = render(
     <IntlProvider locale={locale} messages={locale === 'en' ? messages : ko} timeZone="UTC">
-      <ReasoningSummary call={call} />
+      <ReasoningSummary call={call} open={open} />
     </IntlProvider>,
   );
   return within(container).getByTestId('reasoning-summary');
@@ -211,5 +211,39 @@ describe('ReasoningSummary', () => {
     });
     expect(compaction.textContent).toContain('Automatic → medium');
     expect(compaction.textContent).toContain('Compaction policy');
+  });
+
+  it('a request without a payload record is not yet verified while open, and not verified once it ends', async () => {
+    const fixed: Call = {
+      reasoning: {
+        preparationId: 'prep_8',
+        requested: { mode: 'fixed', level: 'high' },
+        resolved: 'high',
+        source: 'fixed',
+      },
+    };
+    expect(summary(fixed, 'ko', true).textContent).toContain('요청 확인: 아직 확인 안 됨');
+    const ended = summary(fixed, 'ko', false).textContent;
+    expect(ended).toContain('요청 확인: 확인 안 됨');
+    expect(ended).not.toContain('아직');
+    expect(summary(fixed, 'en', false).textContent).toContain('Payload verified: not verified');
+
+    const judged = summary(
+      {
+        reasoning: {
+          preparationId: 'prep_9',
+          requested: { mode: 'auto' },
+          resolved: 'low',
+          source: 'router',
+          route: route(),
+        },
+      },
+      'ko',
+      false,
+    );
+    await act(async () => judged.click());
+    const detail = (await screen.findByRole('dialog')).textContent ?? '';
+    expect(detail).toContain('요청 확인확인 안 됨');
+    expect(detail).not.toContain('아직');
   });
 });

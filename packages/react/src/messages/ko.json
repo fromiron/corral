@@ -2565,6 +2565,7 @@
     "unrecorded": "추론 설정 미기록",
     "payload": "요청 확인",
     "unverified": "아직 확인 안 됨",
+    "notVerified": "확인 안 됨",
     "omitted": "생략",
     "level": {
       "off": "끄기",

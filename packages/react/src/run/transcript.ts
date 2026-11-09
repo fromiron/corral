@@ -2,6 +2,7 @@ import {
   type ReasoningResolution,
   type ReasoningWire,
   type RunEvent,
+  TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import { canReadArtifactBody, type ReasoningSettledView, type RunProjection } from '@corral/core';
@@ -28,6 +29,8 @@ export type TranscriptEntry =
       seq: number;
       modelCallId: string;
       no: number;
+      /** The request can still record what it sent; see `requestOpen`. */
+      open: boolean;
       directives: { directiveId: string; text: string }[];
     }
   | {
@@ -65,6 +68,23 @@ export type TranscriptEntry =
     }
   | { kind: 'version'; seq: number; artifactVersionId: string; name: string; version: number }
   | { kind: 'settled'; seq: number; outcome: string; error: string | null };
+
+/**
+ * A request can still record its payload only while it is its execution's latest unfinished
+ * call and neither the execution nor the run has ended; the Coordinator refuses any other.
+ */
+export function requestOpen(projection: RunProjection, modelCallId: string): boolean {
+  const call = projection.modelCalls[modelCallId];
+  const execution = call ? projection.executions[call.executionId] : undefined;
+  return (
+    !!call &&
+    !call.finished &&
+    !!execution &&
+    execution.modelCallIds.at(-1) === modelCallId &&
+    !TERMINAL_EXECUTION_STATUSES.has(execution.status) &&
+    !TERMINAL_RUN_STATUSES.has(projection.status)
+  );
+}
 
 export function buildTranscript(
   events: readonly RunEvent[],
@@ -115,6 +135,7 @@ export function buildTranscript(
           seq: event.runSeq,
           modelCallId: call,
           no: ++requests,
+          open: requestOpen(projection, call),
           directives: event.payload.directiveIds.map((id) => ({
             directiveId: id,
             text: projection.directives[id]?.text ?? '',

@@ -185,6 +185,39 @@ describe('buildTurnProcess', () => {
     expect(process.endedAt).toBe(at(9));
   });
 
+  it('a request stays open only while it can still record what it sent', () => {
+    seq = 0;
+    const events = [
+      event('run.started', {}, 0),
+      event('model.request_prepared', { executionId: 'lead', modelCallId: 'c1' }, 1),
+      event('model.request_prepared', { executionId: 'lead', modelCallId: 'c2' }, 2),
+      event('model.request_prepared', { executionId: 'lead', modelCallId: 'c3' }, 3),
+    ];
+    const calls = {
+      c1: { modelCallId: 'c1', executionId: 'lead', finished: true },
+      // A retry replaced c2 without it finishing; only the latest request records a payload.
+      c2: { modelCallId: 'c2', executionId: 'lead', finished: false },
+      c3: { modelCallId: 'c3', executionId: 'lead', finished: false },
+    } as unknown as RunProjection['modelCalls'];
+    const running = projection('running', [['lead', 'assistant', 'active']]);
+    running.modelCalls = calls;
+    running.executions.lead!.modelCallIds = ['c1', 'c2', 'c3'];
+    expect(buildTurnProcess(events, running, {}, (id) => id).rows).toMatchObject([
+      { kind: 'model', id: 'c1', open: false },
+      { kind: 'model', id: 'c2', open: false },
+      { kind: 'model', id: 'c3', open: true },
+    ]);
+    // A cancelled execution sends nothing more, so its unfinished request has ended too.
+    const cancelled = projection('cancelled', [['lead', 'assistant', 'cancelled']]);
+    cancelled.modelCalls = calls;
+    cancelled.executions.lead!.modelCallIds = ['c1', 'c2', 'c3'];
+    expect(buildTurnProcess(events, cancelled, {}, (id) => id).rows).toMatchObject([
+      { kind: 'model', id: 'c1', open: false },
+      { kind: 'model', id: 'c2', open: false },
+      { kind: 'model', id: 'c3', open: false },
+    ]);
+  });
+
   it('an answer-only turn keeps request metadata, and other agents are one row each', () => {
     seq = 0;
     const answerOnly = buildTurnProcess(

@@ -171,10 +171,18 @@ export function TurnProcess({
                 isLast={last}
                 className="turn-process-row"
               >
+                {row.call.reasoning?.route ? (
+                  // Aligns the button's text with the description, like ThinkingStepDetails.
+                  <div className="-ml-3 self-start">
+                    <ReasoningSummary call={row.call} open={row.open} />
+                  </div>
+                ) : null}
                 <Sources sources={row.sources} />
-                <ThinkingStepDetails summary={t('requestDetails')}>
-                  <ReasoningSummary call={row.call} />
-                </ThinkingStepDetails>
+                {row.call.reasoning?.route ? null : (
+                  <ThinkingStepDetails summary={t('requestDetails')}>
+                    <ReasoningSummary call={row.call} open={row.open} />
+                  </ThinkingStepDetails>
+                )}
               </ThinkingStep>
             );
           if (row.kind === 'tool')

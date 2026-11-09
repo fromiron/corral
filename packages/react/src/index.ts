@@ -109,7 +109,12 @@ export {
   type SessionCommand,
 } from './run/session.ts';
 export { useSteerTarget } from './run/steer-target.ts';
-export { buildTranscript, executionToolEntries, type TranscriptEntry } from './run/transcript.ts';
+export {
+  buildTranscript,
+  executionToolEntries,
+  requestOpen,
+  type TranscriptEntry,
+} from './run/transcript.ts';
 export {
   buildTurnProcess,
   type ProcessRow,

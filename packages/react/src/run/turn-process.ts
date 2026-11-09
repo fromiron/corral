@@ -31,6 +31,8 @@ export type ProcessRow =
       model: string | null;
       phase: ModelProcessPhase;
       state: string;
+      /** The request can still record what it sent. */
+      open: boolean;
       call: Pick<ModelCallView, 'reasoning' | 'reasoningWire' | 'reasoningSettled'>;
     })
   | (ProcessState &
@@ -168,6 +170,7 @@ export function buildTurnProcess(
               ? (projection.executions[lead]?.status ?? projection.status)
               : projection.status,
           active: phase === 'preparing' || phase === 'generating',
+          open: entry.open,
           model: profile ? (projection.modelProfiles[profile]?.modelId ?? profile) : null,
           call: {
             ...(entry.reasoning ? { reasoning: entry.reasoning } : {}),

@@ -301,7 +301,7 @@ function Entry({
       return (
         <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
           <span>{t('request', { no: entry.no })}</span>
-          <ReasoningSummary call={entry} />
+          <ReasoningSummary call={entry} open={entry.open} />
           {entry.directives.length > 0 ? (
             <Badge>{t('withInstructions', { count: entry.directives.length })}</Badge>
           ) : null}
