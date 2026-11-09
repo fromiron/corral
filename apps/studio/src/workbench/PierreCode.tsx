@@ -1,11 +1,14 @@
 import type { ReviewCommentView } from '@corral/client';
-import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
-import type { CodeViewItem, FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
-import { CodeView, WorkerPoolContextProvider } from '@pierre/diffs/react';
+import { Button, Input, Select } from '@corral/react/design-kit';
+import type { CodeViewItem, FileDiffMetadata, Hunk, SelectedLineRange } from '@pierre/diffs';
+import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, type RefObject, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { type HunkNavigation, HunkNavigator } from './HunkNavigator.tsx';
 import { usePreferences } from './preferences.ts';
+import { CommentBody, ReviewCommentForm } from './ReviewCommentForm.tsx';
+import { prefersReducedMotion } from './reviewNavigation.ts';
 import { reviewSelection } from './reviewSelection.ts';
 
 // Public Pierre API only.
@@ -74,6 +77,16 @@ export type NewComment = Pick<
   'side' | 'startLine' | 'endLine' | 'quote' | 'body'
 >;
 
+/** A hunk header as Git writes it, with the enclosing function when the diff names one. */
+const hunkLabel = (hunk: Hunk) =>
+  [
+    hunk.hunkSpecs ??
+      `@@ -${hunk.deletionStart},${hunk.deletionCount} +${hunk.additionStart},${hunk.additionCount} @@`,
+    hunk.hunkContext,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
 export function DiffCode({
   diff,
   before,
@@ -81,6 +94,7 @@ export function DiffCode({
   layout,
   comments,
   onComment,
+  navigation,
 }: {
   diff: FileDiffMetadata;
   before: string;
@@ -88,20 +102,21 @@ export function DiffCode({
   layout: 'unified' | 'split';
   comments: ReviewCommentView[];
   onComment?: (comment: NewComment) => Promise<void>;
+  /** Filled with this diff's change navigation while it is shown. */
+  navigation?: RefObject<HunkNavigation | null> | undefined;
 }) {
   const t = useTranslations('Review');
-  const tf = useTranslations('Files');
   const td = useTranslations('Desktop');
+  const tf = useTranslations('Files');
   const { theme } = usePreferences();
+  const viewer = useRef<CodeViewHandle<ReviewCommentView, undefined>>(null);
+  const hunks = useMemo(() => diff.hunks.map((hunk) => ({ label: hunkLabel(hunk) })), [diff]);
   const [range, setRange] = useState<SelectedLineRange>({
     start: 1,
     end: 1,
     side: after ? 'additions' : 'deletions',
   });
   const [open, setOpen] = useState(false);
-  const [body, setBody] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const anchor = reviewSelection(range, before, after);
   const annotations = useMemo(
     () =>
@@ -121,13 +136,24 @@ export function DiffCode({
   );
   const choose = (selection: SelectedLineRange) => {
     setRange(selection);
-    if (reviewSelection(selection, before, after)) {
-      setOpen(true);
-      setError(null);
-    }
+    if (reviewSelection(selection, before, after)) setOpen(true);
+  };
+  const revealHunk = (index: number) => {
+    const hunk = diff.hunks[index];
+    if (!hunk) return;
+    const added = hunk.additionCount > 0;
+    viewer.current?.scrollTo({
+      type: 'line',
+      id: 'comparison',
+      lineNumber: added ? hunk.additionStart : hunk.deletionStart,
+      side: added ? 'additions' : 'deletions',
+      align: 'start',
+      behavior: prefersReducedMotion() ? 'instant' : 'smooth',
+    });
   };
   return (
     <div className="space-y-2" data-testid="pierre-diff">
+      <HunkNavigator hunks={hunks} onReveal={revealHunk} navigation={navigation} />
       {onComment ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Select
@@ -171,55 +197,18 @@ export function DiffCode({
         </div>
       ) : null}
       {open && anchor && onComment ? (
-        <form
-          className="space-y-2 rounded-lg fill-group p-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (busy || !body.trim()) return;
-            setBusy(true);
-            setError(null);
-            void onComment({ ...anchor, body })
-              .then(
-                () => {
-                  setOpen(false);
-                  setBody('');
-                },
-                (failure: unknown) =>
-                  setError(failure instanceof Error ? failure.message : String(failure)),
-              )
-              .finally(() => setBusy(false));
+        <ReviewCommentForm
+          anchor={anchor}
+          onSubmit={async (comment) => {
+            await onComment(comment);
+            setOpen(false);
           }}
-        >
-          <p className="text-xs text-muted-foreground">
-            {anchor.side === 'before' ? tf('before') : tf('after')} · {anchor.startLine}–
-            {anchor.endLine}
-          </p>
-          <Textarea
-            ref={(node) => node?.focus()}
-            aria-label={t('commentLine', { line: anchor.startLine })}
-            placeholder={t('commentPlaceholder')}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={2}
-            className="w-full"
-          />
-          <div className="flex gap-2">
-            <Button type="submit" size="compact" disabled={busy || !body.trim()}>
-              {t('addComment')}
-            </Button>
-            <Button type="button" size="compact" variant="ghost" onClick={() => setOpen(false)}>
-              {t('cancel')}
-            </Button>
-          </div>
-          {error ? (
-            <p role="alert" className="text-xs text-danger">
-              {error}
-            </p>
-          ) : null}
-        </form>
+          onCancel={() => setOpen(false)}
+        />
       ) : null}
       <CodeFrame>
         <CodeView
+          ref={viewer}
           className="max-h-[min(65vh,600px)] min-h-24 overflow-auto rounded fill-group"
           style={{ fontSize: 12, lineHeight: '20px' }}
           items={items}
@@ -265,7 +254,7 @@ export function DiffCode({
               data-testid="inline-comment"
               className="border-l-2 border-primary bg-raised px-3 py-2 font-sans text-xs"
             >
-              {metadata.body}{' '}
+              <CommentBody body={metadata.body} />{' '}
               <span className="text-muted-foreground">· {t(`commentState.${metadata.state}`)}</span>
             </p>
           )}

@@ -1992,7 +1992,29 @@
     "inboxScope": "이 프로젝트에서 보관되지 않은 세션의 처리할 항목이에요. 한 세션에 여러 항목이 있을 수 있으며, 실패한 세션 수와는 달라요.",
     "confirmRevert": "반영한 파일 되돌리기",
     "confirmRevertNote": "원본 폴더의 다음 파일을 되돌립니다. 반영 후 Corral 외부에서 변경한 파일은 그대로 보존합니다. 되돌리기 전에 체크포인트를 저장합니다.",
-    "cancelRevert": "취소"
+    "cancelRevert": "취소",
+    "tabReview": "검토",
+    "changesViews": "변경 보기",
+    "prPreview": "PR 검토 미리보기",
+    "selectedRun": "선택한 실행",
+    "previousFile": "이전 파일",
+    "nextFile": "다음 파일",
+    "previousChange": "이전 변경 조각",
+    "nextChange": "다음 변경 조각",
+    "changeCount": "{count, plural, =0 {변경 조각 없음} other {변경 조각 #개}}",
+    "changePosition": "변경 조각 {index}/{count}",
+    "kindLabel": "의견 종류",
+    "kindComment": "의견",
+    "kindDelete": "삭제 제안",
+    "kindReplace": "대체 제안",
+    "kinds": {
+      "delete": "삭제 제안",
+      "replace": "대체 제안"
+    },
+    "replaceWith": "바꿀 내용",
+    "suggestionNote": "이유 (선택)",
+    "commentTooLong": "의견이 너무 깁니다. 메모나 선택한 줄을 줄이세요.",
+    "rangeChanged": "범위 내용이 바뀜"
   },
   "Workbench": {
     "reviewFeedback": "변경 검토 · 수정 요청",
@@ -3219,7 +3241,16 @@
     "restoreOriginal": "원본 폴더 복구",
     "requestUnavailable": "원래 요청을 찾을 수 없음",
     "unchanged": "이전 체크포인트 이후 변경 없음",
-    "alreadyMatches": "이미 이 체크포인트와 같은 상태입니다. 복원할 변경이 없습니다."
+    "alreadyMatches": "이미 이 체크포인트와 같은 상태입니다. 복원할 변경이 없습니다.",
+    "tab": "체크포인트",
+    "kept": "보존됨",
+    "unchangedShort": "변화 없음",
+    "empty": "아직 체크포인트가 없습니다",
+    "lane": {
+      "count": "{count, plural, other {체크포인트 #개}}",
+      "current": "{label}, 최신",
+      "rewindHint": "{label}, Enter로 복원 미리보기"
+    }
   },
   "RunStatus": {
     "environment": "환경",
@@ -4366,7 +4397,10 @@
     "sequenceConflicted": "충돌로 통합이 멈췄습니다. 작업 파일을 편집하고 저장한 뒤 스테이징하고 계속하세요."
   },
   "Checks": {
-    "title": "검사"
+    "title": "검사",
+    "current": "현재 기준",
+    "output": "출력",
+    "draftFix": "수정 요청 작성"
   },
   "Materials": {
     "heading": "지침·메모리",

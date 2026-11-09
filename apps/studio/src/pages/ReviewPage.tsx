@@ -8,11 +8,9 @@ import type {
   IntegrationResultView,
   ReviewCommentView,
   ReviewDecisionView,
-  VerificationResultView,
-  WorkspaceBindingView,
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
-import { createTextAttachment, type RunSummary, type WorkSession } from '@corral/core';
+import type { RunSummary, WorkSession } from '@corral/core';
 import {
   Button,
   Dialog,
@@ -23,10 +21,20 @@ import {
   Select,
   Switch,
 } from '@corral/react/design-kit';
-import { Check, Eye } from '@corral/react/icons';
+import { ArrowDown, ArrowUp, Check, Eye } from '@corral/react/icons';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  type RefObject,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
 import { createPendingSessionCommands } from '../pendingCommands.ts';
 import { reviewRoute } from '../router.tsx';
@@ -38,20 +46,26 @@ import {
   autoReasoningUnsupported,
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
-import {
-  type AttachmentCapture,
-  appendComposerAttachment,
-  beginAttachmentCapture,
-} from '../workbench/context/bridge.ts';
+import { Checks } from '../workbench/ChecksView.tsx';
+import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import {
   integrationDisplayState,
   uniqueFileOperations,
 } from '../workbench/fileReviewPresentation.ts';
 import { HunkActions } from '../workbench/HunkActions.tsx';
+import type { HunkNavigation } from '../workbench/HunkNavigator.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { ReviewSearch } from '../workbench/panels/routes.ts';
+import { CommentBody } from '../workbench/ReviewCommentForm.tsx';
+import { rangeChanged, sideText } from '../workbench/reviewComments.ts';
 import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
+import {
+  REVIEW_MOVE_KEYS,
+  reveal,
+  reviewMoveFor,
+  stepIndex,
+} from '../workbench/reviewNavigation.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import { useBinding } from './FilesViews.tsx';
@@ -95,6 +109,8 @@ export function ReviewContent({
   embedded = false,
   onPrepareCopy,
   onSessionChange,
+  rangeSlot,
+  showChecks = true,
 }: {
   session: WorkSession;
   search: ReviewSearch;
@@ -102,8 +118,14 @@ export function ReviewContent({
   embedded?: boolean;
   onPrepareCopy?: () => void;
   onSessionChange?: () => void | Promise<void>;
+  /** Where the host's header shows the compare range; in this view's own header without one. */
+  rangeSlot?: HTMLElement | null;
+  /** False where checks have their own view beside this one. */
+  showChecks?: boolean;
 }) {
   const t = useTranslations('Files');
+  const tr = useTranslations('Review');
+  const tw = useTranslations('Workbench');
   const ts = useTranslations('Sessions');
   const tc = useTranslations('Context');
   const reviewedHint = useId();
@@ -147,6 +169,8 @@ export function ReviewContent({
   const [error, setError] = useState<string | null>(null);
   // UX-05: a session without a working copy has nothing to compare; that is not a failure.
   const [noCopy, setNoCopy] = useState(false);
+  // "Since last read" exists once the copy has been marked read.
+  const [copyRead, setCopyRead] = useState<{ sessionId: string; read: boolean } | null>(null);
   // Runs and comments are held with the session they were read for: a late answer for the
   // session just left never lands here, and its drafts or active run never drive this one.
   const [loadedRuns, setRuns] = useState<{ sessionId: string; runs: RunSummary[] }>({
@@ -216,8 +240,10 @@ export function ReviewContent({
       scope: scopeKey.split(':')[0],
       runId: scopeKey.split(':')[1],
     });
+    const sessionId = session.sessionId;
     void (async () => {
-      const copy = await workspaces.worktree(session.sessionId).catch(() => null);
+      const copy = await workspaces.worktree(sessionId).catch(() => null);
+      if (live) setCopyRead({ sessionId, read: Boolean(copy?.reviewed) });
       if (!copy || copy.missing) return live && setNoCopy(true);
       const result = await workspaces.changes(session.sessionId, chosen);
       if (live) setChanges(result);
@@ -240,6 +266,81 @@ export function ReviewContent({
       file: undefined,
     });
   };
+  // Run #N counts this session's runs in start order, as the run controls do.
+  const numbered = runs.toReversed().sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const runNumber = (runId: string) => numbered.findIndex((run) => run.runId === runId) + 1;
+  const sinceRead = copyRead?.sessionId === session.sessionId && copyRead.read;
+  const ranges = [
+    { value: 'session', label: t('scopes.session') },
+    ...(sinceRead || scope.kind === 'review'
+      ? [{ value: 'review', label: t('scopes.review') }]
+      : []),
+    // A run from the address that the list has not shown yet stays chosen, without its raw id.
+    ...(scope.kind === 'run' && !runNumber(scope.runId)
+      ? [{ value: scopeKey, label: tr('selectedRun') }]
+      : []),
+    ...numbered.toReversed().map((r) => ({
+      value: `run:${r.runId}`,
+      label: tw('runNumber', { number: runNumber(r.runId) }),
+    })),
+  ];
+  const range = (
+    <>
+      {/* The options name what they compare; the label stays for assistive technology. */}
+      <Select
+        variant="chip"
+        label={t('scope')}
+        value={scopeKey}
+        onValueChange={setScope}
+        options={ranges}
+      />
+      {changes?.from && changes.to ? (
+        <span
+          className="font-mono text-caption text-muted-foreground"
+          title={`${changes.from} → ${changes.to}`}
+        >
+          {t('compareRange', { from: changes.from.slice(0, 8), to: changes.to.slice(0, 8) })}
+        </span>
+      ) : null}
+    </>
+  );
+
+  // Next/previous file follows the list as shown (its filters and folded group); the brace keys
+  // do the same from anywhere in this view, and the bracket keys move between changes.
+  const fileNav = useRef<HTMLElement>(null);
+  const hunkNav = useRef<HunkNavigation | null>(null);
+  const order = changes ? reviewOrder(changes.files) : [];
+  const position = selected ? order.indexOf(selected) : -1;
+  const moveFile = (direction: 1 | -1) => {
+    const rows = [
+      ...(fileNav.current?.querySelectorAll<HTMLButtonElement>('button[data-review-file]') ?? []),
+    ].filter((row) => !row.closest('details:not([open])'));
+    const paths = rows.map((row) => row.dataset.reviewFile ?? '');
+    const at = selected ? paths.indexOf(selected) : -1;
+    const next = stepIndex(at < 0 ? null : at, paths.length, direction);
+    if (next === null) return false;
+    choose(paths[next] as string);
+    rows[next]?.focus();
+    reveal(rows[next]);
+    return true;
+  };
+  const moves = useRef(moveFile);
+  moves.current = moveFile;
+  const [root, setRoot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!root) return;
+    const onKey = (event: KeyboardEvent) => {
+      const move = reviewMoveFor(event);
+      if (!move) return;
+      const done =
+        move === 'nextChange' || move === 'previousChange'
+          ? (hunkNav.current?.move(move === 'nextChange' ? 1 : -1) ?? false)
+          : moves.current(move === 'nextFile' ? 1 : -1);
+      if (done) event.preventDefault();
+    };
+    root.addEventListener('keydown', onKey);
+    return () => root.removeEventListener('keydown', onKey);
+  }, [root]);
   const Container = embedded ? 'div' : 'main';
 
   return (
@@ -250,7 +351,7 @@ export function ReviewContent({
         sessionId: session.sessionId,
       })}
       main={
-        <Container className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+        <Container ref={setRoot} className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
             {!embedded ? (
               <>
@@ -264,36 +365,38 @@ export function ReviewContent({
                 <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
               </>
             ) : null}
-            {/* The options name what they compare; the label stays for assistive technology. */}
-            <Select
-              variant="chip"
-              label={t('scope')}
-              value={scopeKey}
-              onValueChange={setScope}
-              options={[
-                { value: 'session', label: t('scopes.session') },
-                { value: 'review', label: t('scopes.review') },
-                ...[...runs].reverse().map((r) => ({
-                  value: `run:${r.runId}`,
-                  label: t('scopes.run', { runId: r.runId }),
-                })),
-              ]}
-            />
-            {changes?.from && changes.to ? (
-              <span
-                className="font-mono text-xs text-muted-foreground"
-                title={`${changes.from} → ${changes.to}`}
-              >
-                {t('compareRange', { from: changes.from.slice(0, 8), to: changes.to.slice(0, 8) })}
-              </span>
-            ) : null}
+            {rangeSlot ? createPortal(range, rangeSlot) : range}
             {changes ? (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-caption text-muted-foreground">
                 {scope.kind === 'review'
                   ? t('newChanges', { count: changes.files.length })
                   : t('files', { count: changes.files.length })}
               </span>
             ) : null}
+            <span className="flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label={tr('previousFile')}
+                title={`${tr('previousFile')} (${REVIEW_MOVE_KEYS.previousFile})`}
+                aria-keyshortcuts={REVIEW_MOVE_KEYS.previousFile}
+                disabled={order.length === 0 || position === 0}
+                onClick={() => moveFile(-1)}
+              >
+                <ArrowUp aria-hidden />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label={tr('nextFile')}
+                title={`${tr('nextFile')} (${REVIEW_MOVE_KEYS.nextFile})`}
+                aria-keyshortcuts={REVIEW_MOVE_KEYS.nextFile}
+                disabled={order.length === 0 || position === order.length - 1}
+                onClick={() => moveFile(1)}
+              >
+                <ArrowDown aria-hidden />
+              </Button>
+            </span>
             <Button
               variant="tertiary"
               size="compact"
@@ -367,6 +470,7 @@ export function ReviewContent({
           ) : null}
           <div className={`${noCopy || error ? 'hidden' : 'grid'} review-layout min-h-0 flex-1`}>
             <nav
+              ref={fileNav}
               aria-label={t('reviewHeading')}
               className="review-files min-w-0 overflow-auto border-line p-2"
             >
@@ -396,6 +500,7 @@ export function ReviewContent({
                     reviewed,
                     changes.files.find((f) => f.path === selected),
                   )}
+                  navigation={hunkNav}
                   comments={comments.filter(
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
                   )}
@@ -476,13 +581,15 @@ export function ReviewContent({
                   active={runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
                 />
               ) : null}
-              <Checks
-                sessionId={session.sessionId}
-                projectId={session.projectId}
-                binding={binding ?? null}
-                changed={version}
-                onAttach={onAttach}
-              />
+              {showChecks ? (
+                <Checks
+                  sessionId={session.sessionId}
+                  projectId={session.projectId}
+                  binding={binding ?? null}
+                  changed={version}
+                  onAttach={onAttach}
+                />
+              ) : null}
               <Operations sessionId={session.sessionId} />
             </aside>
           </div>
@@ -491,9 +598,6 @@ export function ReviewContent({
     />
   );
 }
-
-const sideText = (side: FileSideView) =>
-  side.kind === 'text' ? side.text : side.kind === 'absent' ? '' : null;
 
 type NewComment = Pick<ReviewCommentView, 'side' | 'startLine' | 'endLine' | 'quote' | 'body'>;
 
@@ -512,6 +616,7 @@ export function FileDiff({
   mark,
   comments = [],
   onComment,
+  navigation,
 }: {
   path: string;
   /** Changes whenever what to load changes. */
@@ -521,6 +626,8 @@ export function FileDiff({
   comments?: ReviewCommentView[];
   /** Absent where comments do not apply (the linked folder's Git state). */
   onComment?: (comment: NewComment) => Promise<void>;
+  /** Takes the shown diff's next/previous change moves (keyboard navigation). */
+  navigation?: RefObject<HunkNavigation | null> | undefined;
 }) {
   const t = useTranslations('Files');
   const [sides, setSides] = useState<{ before: FileSideView; after: FileSideView } | null>(null);
@@ -656,6 +763,7 @@ export function FileDiff({
             after={after ?? ''}
             layout={layout}
             comments={comments}
+            navigation={navigation}
             {...(onComment ? { onComment } : {})}
           />
         </Suspense>
@@ -664,239 +772,7 @@ export function FileDiff({
   );
 }
 
-export function Checks({
-  sessionId,
-  projectId,
-  binding,
-  changed,
-  onAttach,
-}: {
-  sessionId: string;
-  projectId?: string;
-  binding: WorkspaceBindingView | null;
-  changed: number;
-  onAttach?(attachment: TextAttachment, capture: AttachmentCapture): void | Promise<void>;
-}) {
-  const t = useTranslations('Files');
-  const tc = useTranslations('Context');
-  const { workspaces, mode, workspaceId } = useServices();
-  const source = useMemo(
-    () => ({ workspaces, workspaceId, projectId, sessionId }),
-    [workspaces, workspaceId, projectId, sessionId],
-  );
-  const currentSource = useRef(source);
-  currentSource.current = source;
-  const mounted = useRef(false);
-  const readRevision = useRef(0);
-  const [loaded, setLoaded] = useState<{
-    source: typeof source;
-    results: VerificationResultView[];
-  }>({ source, results: [] });
-  const results = loaded.source === source ? loaded.results : [];
-  const [error, setError] = useState<string | null>(null);
-  const [attaching, setAttaching] = useState(false);
-  const [attached, setAttached] = useState<string | null>(null);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      readRevision.current += 1;
-    };
-  }, []);
-  const isCurrent = () => mounted.current && currentSource.current === source;
-  const checkAction = async (action: Promise<unknown>) => {
-    setError(null);
-    try {
-      await action;
-      if (isCurrent()) await reload();
-    } catch (error) {
-      if (isCurrent()) setError(error instanceof Error ? error.message : String(error));
-    }
-  };
-  const reload = useCallback(async () => {
-    if (!source.workspaces) return;
-    const revision = ++readRevision.current;
-    const value = await source.workspaces.verifications(source.sessionId).catch(() => []);
-    if (mounted.current && currentSource.current === source && readRevision.current === revision)
-      setLoaded({ source, results: value });
-  }, [source]);
-  useEffect(() => {
-    void changed;
-    void reload();
-  }, [reload, changed]);
-  const running = results.some((r) => r.state === 'running');
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => void reload(), 1000);
-    return () => clearInterval(timer);
-  }, [running, reload]);
-  const commands = binding?.verifyCommands ?? [];
-  const canAttach = (result: VerificationResultView) =>
-    Boolean(
-      onAttach &&
-        workspaceId &&
-        projectId &&
-        mode === 'server' &&
-        result.output &&
-        result.state !== 'running' &&
-        (!result.report ||
-          (result.report.sessionId === sessionId &&
-            result.report.verificationId === result.verificationId &&
-            result.report.state !== 'queued' &&
-            result.report.state !== 'running')),
-    );
-  const attach = async (result: VerificationResultView) => {
-    if (!canAttach(result) || !workspaceId || !projectId || !onAttach || attaching) return;
-    setAttaching(true);
-    setAttached(null);
-    setError(null);
-    try {
-      const capture = beginAttachmentCapture({ hostId: workspaceId, projectId, sessionId });
-      const report = result.report;
-      const attachment = createTextAttachment('check-output.txt', 'text/plain', result.output, {
-        kind: 'check',
-        hostId: workspaceId,
-        projectId,
-        sessionId,
-        verificationId: result.verificationId,
-        commandId: result.commandId,
-        tree: result.tree,
-        ...(report
-          ? {
-              fingerprint: report.fingerprint,
-              configRevision: report.configRevision,
-              outputHash: report.output.hash,
-              outputTruncated: report.output.truncated,
-            }
-          : {}),
-      });
-      await onAttach(attachment, capture);
-      if (isCurrent()) setAttached(result.verificationId);
-    } catch {
-      if (isCurrent()) setError(tc('attachFailed'));
-    } finally {
-      if (mounted.current) setAttaching(false);
-    }
-  };
-  return (
-    <section aria-labelledby="checks-heading" className="flex flex-col gap-2">
-      <h3 id="checks-heading" className="text-sm font-semibold">
-        {t('checksHeading')}
-      </h3>
-      {mode !== 'browser' && commands.length ? (
-        <p className="text-xs text-muted-foreground">{t('isolatedChecksNote')}</p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      ) : null}
-      {commands.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {mode === 'browser' ? t('checksServerOnly') : t('noChecks')}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap gap-1">
-        {commands.map((command) => (
-          <Button
-            variant="tertiary"
-            size="compact"
-            key={command.id}
-            type="button"
-            disabled={running}
-            onClick={() => workspaces && void checkAction(workspaces.verify(sessionId, command.id))}
-            className=""
-          >
-            {t('runCheck', { name: command.name })}
-          </Button>
-        ))}
-      </div>
-      <ul className="flex flex-col gap-1">
-        {results.map((r) => (
-          <li
-            key={r.verificationId}
-            className="rounded fill-group p-2 text-xs"
-            data-testid="check-result"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{r.name}</span>
-              <span
-                className={
-                  r.state === 'passed' ? 'text-success' : r.state === 'running' ? '' : 'text-danger'
-                }
-              >
-                {r.report ? t(`checkReportState.${r.report.state}`) : t(`checkState.${r.state}`)}
-              </span>
-              {r.report ? <span>{t(`checkVerdict.${r.report.verdict}`)}</span> : null}
-              {r.state === 'running' && r.report?.owner.kind === 'manual' ? (
-                <Button
-                  size="compact"
-                  variant="tertiary"
-                  onClick={() =>
-                    workspaces &&
-                    void checkAction(workspaces.cancelVerification(sessionId, r.verificationId))
-                  }
-                >
-                  {t('cancelCheck')}
-                </Button>
-              ) : null}
-              {r.endedAt ? (
-                <span className="text-muted-foreground">
-                  {t('checkMeta', { code: r.exitCode ?? '—', ms: r.durationMs ?? 0 })}
-                </span>
-              ) : null}
-              {r.timedOut ? <span className="text-danger">{t('timedOut')}</span> : null}
-              {r.stale ? <span className="text-warning">{t('stale')}</span> : null}
-              {r.configChanged && !r.stale ? (
-                <span className="text-warning">{t('configChanged')}</span>
-              ) : null}
-              {onAttach && workspaceId && projectId ? (
-                <Button
-                  size="compact"
-                  variant="tertiary"
-                  disabled={attaching || !canAttach(r)}
-                  onClick={() => void attach(r)}
-                >
-                  {t('attachCheckOutput')}
-                </Button>
-              ) : null}
-              {attached === r.verificationId ? <span role="status">{tc('attached')}</span> : null}
-            </div>
-            {r.report ? (
-              <details className="text-muted-foreground">
-                <summary>{t('checkEvidence')}</summary>
-                <p>
-                  {t('checkFingerprint', {
-                    revision: r.report.configRevision,
-                    hash: r.report.fingerprint.slice(0, 12),
-                    tree: r.tree.slice(0, 12),
-                  })}
-                </p>
-                <p>{t('checkRetention', { date: r.report.retainUntil })}</p>
-                {!r.report.cleanupConfirmed && r.report.endedAt ? (
-                  <p className="text-warning">{t('checkCleanupUnknown')}</p>
-                ) : null}
-                {r.report.targetUnchanged === false ? (
-                  <p className="text-warning">{t('checkTargetChanged')}</p>
-                ) : null}
-              </details>
-            ) : null}
-            {r.output ? (
-              <details>
-                <summary className="cursor-pointer text-muted-foreground">
-                  {r.argv.join(' ')}
-                </summary>
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">
-                  {r.output}
-                </pre>
-              </details>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
+export { Checks };
 
 function Operations({ sessionId }: { sessionId: string }) {
   const t = useTranslations('Files');
@@ -978,6 +854,59 @@ const pendingReviewCommands = createPendingSessionCommands(
   'review',
 );
 
+/** At most this many files are read to compare sent comments with the current comparison. */
+const MOVED_RANGE_FILES = 20;
+type SideTexts = { before: string | null; after: string | null };
+
+/**
+ * Sent comments whose pinned quote no longer matches the same lines in the current comparison.
+ * A comment sent on this exact comparison quotes these trees, so only earlier ones are read.
+ */
+function useMovedRanges(
+  sessionId: string,
+  current: ChangeSetView | null,
+  comments: ReviewCommentView[],
+) {
+  const { workspaces } = useServices();
+  const from = current?.from ?? null;
+  const to = current?.to ?? null;
+  const sent = comments.filter(
+    (c) => c.state === 'submitted' && from && to && (c.from !== from || c.to !== to),
+  );
+  const paths = [...new Set(sent.map((c) => c.path))].sort().slice(0, MOVED_RANGE_FILES);
+  const key = from && to && paths.length ? JSON.stringify([sessionId, from, to, paths]) : '';
+  const [read, setRead] = useState<{ key: string; sides: Map<string, SideTexts> }>({
+    key: '',
+    sides: new Map(),
+  });
+  useEffect(() => {
+    if (!key || !workspaces) return;
+    let live = true;
+    const [id, base, head, files] = JSON.parse(key) as [string, string, string, string[]];
+    void Promise.all(
+      files.map((path) =>
+        workspaces.fileVersions(id, base, head, path).then(
+          (versions) =>
+            [path, { before: sideText(versions.before), after: sideText(versions.after) }] as const,
+          () => null,
+        ),
+      ),
+    ).then((entries) => {
+      if (live) setRead({ key, sides: new Map(entries.filter((entry) => entry !== null)) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [key, workspaces]);
+  const sides = read.key === key ? read.sides : null;
+  return new Set(
+    sent.flatMap((c) => {
+      const text = sides?.get(c.path);
+      return text && rangeChanged(c, text) === true ? [c.commentId] : [];
+    }),
+  );
+}
+
 /** Draft comments go out together, to the running execution or as a new run. */
 export function CommentsPanel({
   session,
@@ -1038,6 +967,7 @@ export function CommentsPanel({
   const earlier = comments.filter(
     (c) => c.state !== 'draft' && (!current || c.from !== current.from || c.to !== current.to),
   );
+  const movedRanges = useMovedRanges(session.sessionId, current, comments);
   const steerTo = targets.find((x) => x.id === target);
   const choice = autoChoiceFor(session.auto, profiles);
   const mode = sessionRunMode(services.mode, services.live);
@@ -1138,7 +1068,7 @@ export function CommentsPanel({
                   <span className="font-mono">
                     {c.path}:{c.startLine}
                   </span>{' '}
-                  {c.body}
+                  <CommentBody body={c.body} />
                 </span>
                 <Button
                   variant="ghost"
@@ -1230,10 +1160,15 @@ export function CommentsPanel({
                     {c.path}:{c.startLine}
                   </span>{' '}
                   · {t(`commentState.${c.state}`)}
+                  {movedRanges.has(c.commentId) ? (
+                    <span className="text-warning"> · {t('rangeChanged')}</span>
+                  ) : null}
                   <blockquote className="border-l-2 border-line pl-1 font-mono text-muted-foreground">
                     {c.quote}
                   </blockquote>
-                  <p>{c.body}</p>
+                  <p>
+                    <CommentBody body={c.body} />
+                  </p>
                   {c.state === 'submitted' ? (
                     <div className="flex gap-1">
                       {(['addressed', 'obsolete'] as const).map((state) => (
@@ -1483,6 +1418,12 @@ export function DecisionPanel({
 /** Lock files and build output: folded by default, but deletions stay in view. */
 const GENERATED =
   /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Cargo\.lock|poetry\.lock|go\.sum|composer\.lock|Gemfile\.lock)$|(^|\/)(dist|build|generated|__generated__)\/|\.min\.(js|css)$/;
+const foldedFile = (file: FileChangeView) => GENERATED.test(file.path) && file.status !== 'deleted';
+
+/** The file list's order: ordinary files, then the folded generated ones. */
+function reviewOrder(files: FileChangeView[]) {
+  return [...files.filter((f) => !foldedFile(f)), ...files.filter(foldedFile)].map((f) => f.path);
+}
 
 function FileList({
   sessionId,
@@ -1520,13 +1461,14 @@ function FileList({
       (kind === 'all' || f.status === kind) &&
       (!unreviewedOnly || !reviewed.changeReviewed(f)),
   );
-  const folded = matches.filter((f) => GENERATED.test(f.path) && f.status !== 'deleted');
+  const folded = matches.filter(foldedFile);
   const main = matches.filter((f) => !folded.includes(f));
   const row = (file: FileChangeView) => (
     <li key={file.path}>
       <Button
         variant={selected === file.path ? 'secondary' : 'ghost'}
         aria-current={selected === file.path ? 'true' : undefined}
+        data-review-file={file.path}
         onClick={() => onChoose(file.path)}
         className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal py-1.5 text-left text-xs"
       >

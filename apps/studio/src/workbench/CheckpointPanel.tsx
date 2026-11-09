@@ -1,5 +1,12 @@
 import type { CheckpointRestore, CheckpointRestorePlan, FileCheckpoint } from '@corral/contracts';
-import { Button, Input, Switch } from '@corral/react/design-kit';
+import {
+  type AgentCheckpoint,
+  AgentCheckpoints,
+  Button,
+  fontWeights,
+  Input,
+  Switch,
+} from '@corral/react/design-kit';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
@@ -68,9 +75,53 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
   if (!workspaces) return null;
   if (mode === 'browser') return <p className="text-xs text-muted-foreground">{t('localOnly')}</p>;
   const unchanged = unchangedCheckpoints(items);
+  const visible = items.filter((item) => item.state !== 'expired');
+  // The preview plans a restore and shows what it would change; restoring is its own button.
+  const preview = (item: FileCheckpoint) =>
+    act(async () => {
+      if (!item.manifestHash) return;
+      const value = await workspaces.planCheckpointRestore(
+        sessionId,
+        item.checkpointId,
+        item.manifestHash,
+      );
+      if (mounted.current)
+        setPlan({
+          ...value,
+          operationId: `restore_${crypto.randomUUID().replaceAll('-', '')}`,
+        });
+    });
+  const title = (item: FileCheckpoint) =>
+    item.kind === 'manual' ? item.label : t(`kind.${item.kind}`);
+  // The kit lane runs oldest first, one lane per target; the API answers newest first.
+  const lanes = (['working_copy', 'original'] as const)
+    .map((target) => ({
+      target,
+      items: visible
+        .filter((item) => (item.target ?? 'working_copy') === target)
+        .toReversed()
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    }))
+    .filter((lane) => lane.target === 'working_copy' || lane.items.length > 0);
+  const laneItem = (item: FileCheckpoint): AgentCheckpoint => ({
+    id: item.checkpointId,
+    label: [
+      title(item),
+      item.pinned ? t('kept') : null,
+      unchanged.has(item.checkpointId) ? t('unchangedShort') : null,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    status: item.state === 'ready' ? 'done' : 'failed',
+    at: Date.parse(item.createdAt),
+  });
+  const rewind = (checkpointId: string) => {
+    const item = visible.find((value) => value.checkpointId === checkpointId);
+    if (item?.state === 'ready' && !busy) void preview(item);
+  };
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-2 border-t border-line pt-3 text-xs">
-      <h4 id={id} className="font-medium">
+    <section aria-labelledby={id} className="@container flex flex-col gap-2 text-xs">
+      <h4 id={id} className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('heading')}
       </h4>
       <p className="text-muted-foreground">{t('scope')}</p>
@@ -116,10 +167,32 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
         </Button>
       </div>
       <p className="text-muted-foreground">{t('retention')}</p>
-      <ul className="max-h-64 overflow-y-auto space-y-2">
-        {items
-          .filter((item) => item.state !== 'expired')
-          .map((item) => (
+      {/* The lane shows the timeline and asks for a restore preview; the rows beside it keep
+          what the lane cannot show: time, request, target, notes and Keep. */}
+      <div className="grid min-w-0 items-start gap-3 @2xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-2">
+          {lanes.map((lane) => (
+            <AgentCheckpoints
+              key={lane.target}
+              data-testid="checkpoint-lane"
+              className="rounded-lg fill-group"
+              title={t(lane.target === 'original' ? 'original' : 'workingCopy')}
+              checkpoints={lane.items.map(laneItem)}
+              startedAt={lane.items[0] ? Date.parse(lane.items[0].createdAt) : 0}
+              onRewind={rewind}
+              emptyLabel={t('empty')}
+              labels={{
+                count: (count) => t('lane.count', { count }),
+                current: (label) => t('lane.current', { label }),
+                rewindHint: (label) => t('lane.rewindHint', { label }),
+                failed: t('state.incomplete'),
+                rewind: t('preview'),
+              }}
+            />
+          ))}
+        </div>
+        <ul className="max-h-96 overflow-y-auto space-y-2">
+          {visible.map((item) => (
             <li
               key={item.checkpointId}
               data-testid="checkpoint-row"
@@ -160,27 +233,15 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
                   size="compact"
                   variant="ghost"
                   disabled={busy || item.state !== 'ready'}
-                  onClick={() =>
-                    void act(async () => {
-                      const value = await workspaces.planCheckpointRestore(
-                        sessionId,
-                        item.checkpointId,
-                        item.manifestHash!,
-                      );
-                      if (mounted.current)
-                        setPlan({
-                          ...value,
-                          operationId: `restore_${crypto.randomUUID().replaceAll('-', '')}`,
-                        });
-                    })
-                  }
+                  onClick={() => void preview(item)}
                 >
                   {t('preview')}
                 </Button>
               </div>
             </li>
           ))}
-      </ul>
+        </ul>
+      </div>
       {plan ? (
         <section aria-label={t('preview')} className="rounded fill-group p-2">
           <p className="font-medium">

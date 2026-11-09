@@ -256,8 +256,8 @@ function WorkSessionPage() {
         </div>
       );
     if (view === 'changes' || view === 'git') {
-      const auxiliary =
-        requestedView === 'checks' || requestedView === 'problems' ? requestedView : null;
+      // Checks are a sub-view of Changes; Problems still opens beside it.
+      const auxiliary = requestedView === 'problems' ? requestedView : null;
       return (
         <div key={session.sessionId} className="flex h-full min-h-0 flex-col">
           <div hidden={Boolean(auxiliary)} className="min-h-0 flex-1">
@@ -268,6 +268,7 @@ function WorkSessionPage() {
                   ? { scope: search.scope, runId: search.runId, file: search.file }
                   : undefined
               }
+              requestedView={requestedView === 'checks' ? 'checks' : undefined}
               onReviewChange={(review) =>
                 setSearch({
                   panel: 'changes',
@@ -277,6 +278,16 @@ function WorkSessionPage() {
                   file: review?.file,
                 })
               }
+              onViewChange={(next) =>
+                setSearch({
+                  panel: next === 'checks' ? 'checks' : 'changes',
+                  review: undefined,
+                  scope: undefined,
+                  runId: undefined,
+                  file: undefined,
+                })
+              }
+              onAttach={handleAttachment}
               onSessionChange={async () => {
                 refresh();
                 await router.invalidate();

@@ -1992,7 +1992,29 @@
     "inboxScope": "Pending actions in this project’s unarchived sessions. A session can have several actions; this is not a count of failed sessions.",
     "confirmRevert": "Revert applied files",
     "confirmRevertNote": "Revert these files in the original folder. Files changed outside Corral since applying are kept. A checkpoint is saved before reverting.",
-    "cancelRevert": "Cancel"
+    "cancelRevert": "Cancel",
+    "tabReview": "Review",
+    "changesViews": "Changes views",
+    "prPreview": "PR review preview",
+    "selectedRun": "Selected run",
+    "previousFile": "Previous file",
+    "nextFile": "Next file",
+    "previousChange": "Previous change",
+    "nextChange": "Next change",
+    "changeCount": "{count, plural, =0 {No changes} one {# change} other {# changes}}",
+    "changePosition": "Change {index} of {count}",
+    "kindLabel": "Comment kind",
+    "kindComment": "Comment",
+    "kindDelete": "Suggest deletion",
+    "kindReplace": "Suggest replacement",
+    "kinds": {
+      "delete": "Suggested deletion",
+      "replace": "Suggested replacement"
+    },
+    "replaceWith": "Replace with",
+    "suggestionNote": "Why (optional)",
+    "commentTooLong": "This comment is too long. Shorten the note or the selected lines.",
+    "rangeChanged": "Range changed"
   },
   "Workbench": {
     "reviewFeedback": "Review changes and request revisions",
@@ -3219,7 +3241,16 @@
     "restoreOriginal": "Restore original folder",
     "requestUnavailable": "Original request unavailable",
     "unchanged": "No changes since the previous checkpoint",
-    "alreadyMatches": "Already matches this checkpoint. There is nothing to restore."
+    "alreadyMatches": "Already matches this checkpoint. There is nothing to restore.",
+    "tab": "Checkpoints",
+    "kept": "Kept",
+    "unchangedShort": "No change",
+    "empty": "No checkpoints yet",
+    "lane": {
+      "count": "{count, plural, one {# checkpoint} other {# checkpoints}}",
+      "current": "{label}, latest",
+      "rewindHint": "{label}, press Enter to preview a restore"
+    }
   },
   "RunStatus": {
     "environment": "Environment",
@@ -4366,7 +4397,10 @@
     "sequenceConflicted": "Integration paused at conflicts. Edit and save the working files, stage them, then continue."
   },
   "Checks": {
-    "title": "Checks"
+    "title": "Checks",
+    "current": "Current",
+    "output": "Output",
+    "draftFix": "Draft a fix request"
   },
   "Materials": {
     "heading": "Instructions & memory",

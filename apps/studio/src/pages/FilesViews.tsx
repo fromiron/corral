@@ -10,7 +10,6 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
-import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
@@ -393,9 +392,6 @@ export function WorkingCopyPanel({
           </Button>
         </div>
       )}
-      {worktree && !worktree.missing ? (
-        <CheckpointPanel key={sessionId} sessionId={sessionId} />
-      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
