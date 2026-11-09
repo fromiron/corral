@@ -47,7 +47,5 @@ test('Manual with the Local engine survives a server restart and downloads nothi
   expect(['downloading', 'verifying']).not.toContain(stored.local.install);
   await section.screenshot({ path: test.info().outputPath('effort-routing.png') });
   expect(failed).toEqual([]);
-  // This server has no meeting-analysis engine, so the Local AI panel's GET /local-ai answers
-  // 403 and the browser logs a failed resource; every other error still fails the test.
-  expect(corral.errors.filter((error) => !error.startsWith('Failed to load resource'))).toEqual([]);
+  expect(corral.errors).toEqual([]);
 });

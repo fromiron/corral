@@ -195,7 +195,7 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 | DELETE /model-auth/:provider/login | — | 진행 중 로그인 취소 |
 | DELETE /model-auth/:provider | — | 로그아웃. 저장한 자격 증명 삭제 |
 
-로컬 AI 설치. 설치 규칙은 [로컬 AI](features/local-intelligence.md)가 정한다. 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED`다.
+로컬 AI 설치. 설치 규칙은 [로컬 AI](features/local-intelligence.md)가 정한다. 로컬 AI가 없는 서버도 GET /local-ai에는 번들의 release·모델 이름과 state `unsupported`를 돌려주고, 설치와 취소는 403 `CAPABILITY_DENIED`다.
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|

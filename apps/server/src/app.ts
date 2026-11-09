@@ -86,7 +86,13 @@ import {
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
-import { type D1Engine, d1Threads, type LocalIntelligence } from '@corral/local-intelligence';
+import {
+  bundledManifest,
+  type D1Engine,
+  d1Threads,
+  type LocalAiStatus,
+  type LocalIntelligence,
+} from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
   openDatabase,
@@ -1136,9 +1142,19 @@ async function createCorralServer(
   // ── local AI (settings panel) ─────────────────────────────────────
   const noLocalAi = (reply: FastifyReply) =>
     fail(reply, 'CAPABILITY_DENIED', 'this server has no local AI');
-  app.get('/api/v1/local-ai', async (_request, reply) =>
-    local ? local.status() : noLocalAi(reply),
-  );
+  // A server started without the engine reads like an environment that cannot run it.
+  const noLocalAiView = (): LocalAiStatus => {
+    const bundle = bundledManifest();
+    return {
+      release: bundle.release,
+      models: { meeting: bundle.models.meeting.name },
+      state: 'unsupported',
+      downloadBytes: null,
+      progress: null,
+      error: null,
+    };
+  };
+  app.get('/api/v1/local-ai', async () => (local ? local.status() : noLocalAiView()));
   app.post('/api/v1/local-ai/install', async (_request, reply) => {
     if (!local) return noLocalAi(reply);
     if (local.status().state === 'unsupported')

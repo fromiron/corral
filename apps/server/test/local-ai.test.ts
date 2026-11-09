@@ -140,7 +140,7 @@ it.skipIf(!target)(
   },
 );
 
-it('refuses to install where local AI cannot run, and a server without it says so', async () => {
+it('refuses to install where local AI cannot run, and a server without it reports it unsupported', async () => {
   const held = heldFetch();
   const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
   dirs.push(dataRoot);
@@ -167,12 +167,25 @@ it('refuses to install where local AI cannot run, and a server without it says s
   } finally {
     await unsupported.server.close();
   }
+  // A server started without the engine reads like an environment that cannot run it.
   const none = await serve(undefined);
   try {
-    expect(await none.call('/local-ai')).toMatchObject({
-      status: 403,
-      body: { error: { code: 'CAPABILITY_DENIED' } },
+    expect(await none.call('/local-ai')).toEqual({
+      status: 200,
+      body: {
+        release: bundle.release,
+        models: { meeting: bundle.models.meeting.name },
+        state: 'unsupported',
+        downloadBytes: null,
+        progress: null,
+        error: null,
+      },
     });
+    for (const method of ['POST', 'DELETE'])
+      expect(await none.call('/local-ai/install', method)).toMatchObject({
+        status: 403,
+        body: { error: { code: 'CAPABILITY_DENIED' } },
+      });
   } finally {
     await none.server.close();
   }
