@@ -250,9 +250,31 @@ describe('RunResults view', () => {
     const frame = await screen.findByTitle('Preview of page v1');
     expect(frame.getAttribute('sandbox')).toBe('');
     expect(frame.getAttribute('srcdoc')).toContain("default-src 'none'");
-    fireEvent.click(screen.getByRole('radio', { name: 'Source' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Source' }));
     expect(screen.getByTestId('result-body').querySelector('pre')?.textContent).toBe(html);
     expect(document.querySelector('script')).toBeNull();
+  });
+
+  it('switches Document and Source with one compact tab list that arrow keys move along', async () => {
+    wrap(<RunResults session={finalThree()} selectedId="v_a" onSelect={vi.fn()} />);
+    const formats = screen.getByRole('tablist', { name: 'Show as' });
+    expect(screen.queryByRole('radiogroup', { name: 'Show as' })).toBeNull();
+    const document_ = within(formats).getByRole('tab', { name: 'Document' });
+    expect(document_).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(screen.getByTestId('result-body')).toHaveTextContent('alpha body'));
+    document_.focus();
+    fireEvent.keyDown(document_, { key: 'ArrowRight' });
+    const source = within(formats).getByRole('tab', { name: 'Source' });
+    await waitFor(() => expect(source).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.getByTestId('result-body').querySelector('pre')?.textContent).toBe(texts.v_a);
+  });
+
+  it('leaves the run state to the run page it is embedded in, keeping review and submission', () => {
+    wrap(<RunResults session={finalThree()} selectedId="v_a" onSelect={vi.fn()} embedded />);
+    const states = screen.getByRole('list', { name: 'Result state' });
+    expect(states).not.toHaveTextContent('Run:');
+    expect(states).toHaveTextContent('Review: none');
+    expect(states).toHaveTextContent('Submitted');
   });
 
   it('uses the server preview address when the runtime has one', async () => {

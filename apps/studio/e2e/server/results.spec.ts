@@ -257,7 +257,7 @@ test.describe('an HTML result', () => {
     expect(await page.evaluate(() => (window as unknown as { seen: unknown[] }).seen)).toEqual([]);
 
     // The source is the text as written; Studio's own page runs none of it.
-    await page.getByRole('radio', { name: 'Source', exact: true }).click();
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
     await expect(page.getByTestId('result-body').locator('pre')).toContainText('<script>');
     expect(await page.evaluate(() => document.body.dataset.ran)).toBeUndefined();
     // The harness fails the test if the tracker image was requested.

@@ -724,6 +724,7 @@ function RunWorkspace({
                 <RunResults
                   session={session}
                   headed={false}
+                  embedded
                   selectedId={result ?? null}
                   onSelect={(id) => setSearch({ result: id })}
                   {...(previewUrl ? { previewUrl } : {})}

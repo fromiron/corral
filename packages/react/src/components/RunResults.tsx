@@ -2,7 +2,7 @@ import { canReadArtifactBody } from '@corral/core';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, RadioGroup, RadioItem } from '../design-kit/index.ts';
+import { Button, fontWeights, TabItem, TabPanel, Tabs, TabsList } from '../design-kit/index.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import { type ResultItem, runResults } from '../run/results.ts';
 import type { RunSessionStore } from '../run/session.ts';
@@ -36,11 +36,14 @@ export function RunResults({
   onSelect,
   previewUrl,
   headed = true,
+  embedded = false,
 }: {
   session: RunSessionStore;
   runNumber?: number;
   /** Name the list of final results; off where the surrounding section already names it. */
   headed?: boolean;
+  /** Read inside the run page, whose header already shows the run's state. */
+  embedded?: boolean;
   /** The chosen version (from the address); null opens the first final result. */
   selectedId: string | null;
   onSelect: (artifactVersionId: string) => void;
@@ -77,7 +80,7 @@ export function RunResults({
           className="flex max-h-40 shrink-0 flex-col gap-3 overflow-auto border-b border-line p-3 @3xl:max-h-none @3xl:w-72 @3xl:border-r @3xl:border-b-0"
         >
           {runNumber ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {tw('runNumber', { number: runNumber })}
             </p>
           ) : null}
@@ -105,10 +108,11 @@ export function RunResults({
             key={chosen.artifactVersionId}
             session={session}
             item={chosen}
+            embedded={embedded}
             {...(previewUrl ? { previewUrl } : {})}
           />
         ) : selectedId !== null ? (
-          <p role="alert" className="p-3 text-sm text-warning">
+          <p role="alert" className="p-3 text-body text-warning">
             {projection.artifacts[selectedId]
               ? t('unavailable')
               : targetText('resultMissing', { result: selectedId })}
@@ -130,7 +134,11 @@ function ResultSection({
   if (heading === null) return <ul className="flex flex-col gap-1">{children}</ul>;
   return (
     <section aria-labelledby={id} className="flex flex-col gap-1">
-      <h3 id={id} className="text-xs font-semibold text-muted-foreground">
+      <h3
+        id={id}
+        className="text-caption text-muted-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {heading}
       </h3>
       <ul className="flex flex-col gap-1">{children}</ul>
@@ -181,10 +189,10 @@ function ResultButton({
       className="h-auto w-full justify-start py-2 text-left whitespace-normal"
     >
       <span className="flex min-w-0 flex-col items-start">
-        <span className="font-medium">
+        <span style={{ fontVariationSettings: fontWeights.semibold }}>
           {t('itemName', { name: item.name, version: item.version })}
         </span>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-caption text-muted-foreground">
           {[author, item.review ? ta(`verdict.${item.review.verdict}`) : null]
             .filter(Boolean)
             .join(' · ')}
@@ -267,105 +275,116 @@ export function ResultReader({
       </p>
     );
 
+  const bodyClass = 'px-4 py-4 @3xl:min-h-0 @3xl:flex-1 @3xl:overflow-auto';
+  const content =
+    item.media && runId ? (
+      <GeneratedImage runId={runId} versionId={id} name={item.name} media={item.media} />
+    ) : text === undefined ? (
+      <p className="text-body text-muted-foreground">{failed ? t('unavailable') : ta('loading')}</p>
+    ) : format === 'source' ? (
+      <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">
+        {text}
+      </pre>
+    ) : format === 'preview' ? (
+      <iframe
+        title={t('previewOf', { label })}
+        sandbox=""
+        referrerPolicy="no-referrer"
+        {...(src ? { src } : { srcDoc: sandboxedSrcDoc(text) })}
+        className="h-full min-h-[60vh] w-full rounded border border-line bg-white"
+      />
+    ) : (
+      <div className="mx-auto max-w-3xl">
+        <SafeMarkdown text={text} size="reader" />
+      </div>
+    );
+
   return (
     <article aria-labelledby={headingId} className="flex min-w-0 flex-col @3xl:min-h-0 @3xl:flex-1">
-      <header className="flex flex-col gap-2 border-b border-line px-4 py-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id={headingId} className="text-lg font-semibold">
-            {label}
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            {[author, item.contract, t('bytes', { bytes: item.byteLength })]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
-        </div>
-        <ul aria-label={t('stateLabel')} className="flex flex-wrap gap-2 text-xs">
-          {embedded ? null : (
-            <li className="rounded fill-control px-2 py-0.5">
-              {t('runState', { status: ts(status) })}
-            </li>
-          )}
-          <li className="rounded fill-control px-2 py-0.5">
-            {item.review
-              ? t('reviewState', { verdict: ta(`verdict.${item.review.verdict}`) }) +
-                (item.review.stale ? ` · ${t('stale')}` : '')
-              : t('noReview')}
-          </li>
-          <li className="rounded fill-control px-2 py-0.5">
-            {item.submitted ? t('submitted') : t('notSubmitted')}
-          </li>
-        </ul>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {!item.media ? (
-            <>
-              <RadioGroup
-                aria-label={t('format')}
-                value={format}
-                onValueChange={(value) => setFormat(value as Format)}
-                size="compact"
-              >
-                {formats.map((value, index) => (
-                  <RadioItem
-                    key={value}
-                    value={value}
-                    index={index}
-                    label={t(`formats.${value}`)}
-                  />
-                ))}
-              </RadioGroup>
-              <Button
-                type="button"
-                disabled={text === undefined}
-                onClick={() => void copy()}
-                variant="tertiary"
-                size="compact"
-              >
-                {copied ? t('copied') : t('copy')}
-              </Button>
-              <Button
-                type="button"
-                disabled={text === undefined}
-                onClick={download}
-                variant="tertiary"
-                size="compact"
-              >
-                {t('download')}
-              </Button>
-            </>
-          ) : null}
-        </div>
-      </header>
-      <div
-        data-testid="result-body"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: the body scrolls and must be reachable by keyboard
-        tabIndex={0}
-        className="px-4 py-4 @3xl:min-h-0 @3xl:flex-1 @3xl:overflow-auto"
+      {/* The format tabs and the body they show share one tab root; the root itself adds no box. */}
+      <Tabs
+        value={format}
+        onValueChange={(value) => setFormat(value as Format)}
+        size="compact"
+        className="contents"
       >
-        {item.media && runId ? (
-          <GeneratedImage runId={runId} versionId={id} name={item.name} media={item.media} />
-        ) : text === undefined ? (
-          <p className="text-sm text-muted-foreground">
-            {failed ? t('unavailable') : ta('loading')}
-          </p>
-        ) : format === 'source' ? (
-          <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words font-mono text-ui">
-            {text}
-          </pre>
-        ) : format === 'preview' ? (
-          <iframe
-            title={t('previewOf', { label })}
-            sandbox=""
-            referrerPolicy="no-referrer"
-            {...(src ? { src } : { srcDoc: sandboxedSrcDoc(text) })}
-            className="h-full min-h-[60vh] w-full rounded border border-line bg-white"
-          />
-        ) : (
-          <div className="mx-auto max-w-3xl">
-            <SafeMarkdown text={text} size="reader" />
+        <header className="flex flex-col gap-2 border-b border-line px-4 py-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2
+              id={headingId}
+              className="text-title"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
+              {label}
+            </h2>
+            <span className="text-caption text-muted-foreground">
+              {[author, item.contract, t('bytes', { bytes: item.byteLength })]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
           </div>
+          <ul aria-label={t('stateLabel')} className="flex flex-wrap gap-2 text-caption">
+            {embedded ? null : (
+              <li className="rounded fill-control px-2 py-0.5">
+                {t('runState', { status: ts(status) })}
+              </li>
+            )}
+            <li className="rounded fill-control px-2 py-0.5">
+              {item.review
+                ? t('reviewState', { verdict: ta(`verdict.${item.review.verdict}`) }) +
+                  (item.review.stale ? ` · ${t('stale')}` : '')
+                : t('noReview')}
+            </li>
+            <li className="rounded fill-control px-2 py-0.5">
+              {item.submitted ? t('submitted') : t('notSubmitted')}
+            </li>
+          </ul>
+          <div className="flex flex-wrap items-center gap-2">
+            {!item.media ? (
+              <>
+                <TabsList aria-label={t('format')}>
+                  {formats.map((value) => (
+                    <TabItem key={value} value={value} label={t(`formats.${value}`)} />
+                  ))}
+                </TabsList>
+                <Button
+                  type="button"
+                  disabled={text === undefined}
+                  onClick={() => void copy()}
+                  variant="tertiary"
+                  size="compact"
+                >
+                  {copied ? t('copied') : t('copy')}
+                </Button>
+                <Button
+                  type="button"
+                  disabled={text === undefined}
+                  onClick={download}
+                  variant="tertiary"
+                  size="compact"
+                >
+                  {t('download')}
+                </Button>
+              </>
+            ) : null}
+          </div>
+        </header>
+        {item.media ? (
+          <div
+            data-testid="result-body"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: the body scrolls and must be reachable by keyboard
+            tabIndex={0}
+            className={bodyClass}
+          >
+            {content}
+          </div>
+        ) : (
+          // The panel of the chosen format; it scrolls and is reachable by keyboard.
+          <TabPanel value={format} data-testid="result-body" tabIndex={0} className={bodyClass}>
+            {content}
+          </TabPanel>
         )}
-      </div>
+      </Tabs>
     </article>
   );
 }
