@@ -45,7 +45,7 @@ Fields (use exactly these, no others):
 - criteria: 1 to 6 short checks the result must pass (each at most ${TEAM_LIMITS.criterion} characters)
 - roles: one entry for each role of the pattern, no more and no fewer: {"slot": role, "name": a short job title (at most ${TEAM_LIMITS.roleName} characters), "duty": what this role does, in one or two sentences (at most ${TEAM_LIMITS.duty} characters)}
 - reviewRounds: 1 to 3, only for ${quoted(REVIEW_LOOP_PATTERNS)}; leave it out for the other patterns
-- finalApproval: false unless the goal itself asks that a person approve the result before it is final
+- finalApproval: true or false; false unless the goal itself asks that a person approve the result before it is final
 
 Patterns:
 ${TEAM_PATTERNS.map((pattern) => `- "${pattern}": ${PATTERN_USE[pattern]} Roles: ${TEAM_SLOTS[pattern].join(', ')}`).join('\n')}
@@ -63,6 +63,11 @@ export function planFromAnswer(text: string): TeamPlan | null {
   } catch {
     return null;
   }
-  const parsed = TeamPlan.safeParse(value);
+  // An answer that leaves the approval out asks for none.
+  const parsed = TeamPlan.safeParse(
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? { finalApproval: false, ...value }
+      : value,
+  );
   return parsed.success ? parsed.data : null;
 }

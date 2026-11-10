@@ -40,6 +40,7 @@ describe('the draft prompt', () => {
     const line = DRAFT_SYSTEM_PROMPT.split('\n').find((text) =>
       text.startsWith('- finalApproval:'),
     );
+    expect(line).toContain('true or false');
     expect(line).toContain('false unless the goal itself asks');
     expect(DRAFT_SYSTEM_PROMPT).not.toContain('always true');
     expect(DRAFT_SYSTEM_PROMPT).not.toContain('to approve.');
@@ -53,6 +54,16 @@ describe('planFromAnswer', () => {
     expect(planFromAnswer(`Here it is:\n\`\`\`json\n${JSON.stringify(plan)}\n\`\`\``)).toEqual(
       plan,
     );
+  });
+
+  it('reads an answer that leaves the approval out as a plan without one', () => {
+    const { finalApproval: _left, ...bare } = answer('tech_decision');
+    expect(planFromAnswer(JSON.stringify(bare))).toEqual({ ...bare, finalApproval: false });
+    expect(planFromAnswer(JSON.stringify({ ...bare, finalApproval: true }))?.finalApproval).toBe(
+      true,
+    );
+    // Any other value for it is still not a plan.
+    expect(planFromAnswer(JSON.stringify({ ...bare, finalApproval: 'no' }))).toBeNull();
   });
 
   it('yields no plan for tools, edges, an unknown pattern or the wrong roles', () => {
