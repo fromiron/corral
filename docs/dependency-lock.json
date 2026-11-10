@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T23:23:44.040Z",
+  "generatedAt": "2026-11-10T07:41:19.610Z",
   "node": "v24.14.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -197,6 +197,21 @@
       "scope": "runtime",
       "usedBy": [
         "@corral/server"
+      ]
+    },
+    {
+      "name": "@fontsource-variable/inter",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "integrity": "sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==",
+      "published": "2026-07-19T03:50:25.793Z",
+      "repository": "git+https://github.com/fontsource/font-files.git",
+      "gitHead": "02b28c06b126c852a5b966b44aef777ca923f6f6",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
       ]
     },
     {

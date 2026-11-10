@@ -26,6 +26,28 @@ test('the kit themes preserve project creation and explicit theme choice', async
   );
 });
 
+test('the bundled Inter variable font renders the kit weights from the studio origin', async ({
+  page,
+}) => {
+  const fontRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fontRequests.push(request.url());
+  });
+  await page.goto('/projects');
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
+  const faces = await page.evaluate(async () => {
+    const loaded = await document.fonts.load('550 14px Inter');
+    return loaded.map((face) => ({ family: face.family, status: face.status }));
+  });
+  expect(faces.length).toBeGreaterThan(0);
+  expect(faces.every((face) => face.family.replaceAll('"', '') === 'Inter')).toBe(true);
+  expect(faces.every((face) => face.status === 'loaded')).toBe(true);
+  expect(await page.evaluate(() => document.fonts.check('550 14px Inter'))).toBe(true);
+  const origin = new URL(page.url()).origin;
+  expect(fontRequests.length).toBeGreaterThan(0);
+  expect(fontRequests.every((url) => new URL(url).origin === origin)).toBe(true);
+});
+
 test('narrow forms retain names, keyboard focus and reduced motion', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });

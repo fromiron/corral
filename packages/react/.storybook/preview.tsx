@@ -2,6 +2,7 @@ import type { Preview } from '@storybook/react-vite';
 import { IntlProvider } from 'use-intl';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { DesignKitProvider } from '../src/ui/index.ts';
+import '../src/fonts.css';
 import './preview.css';
 
 const preview: Preview = {

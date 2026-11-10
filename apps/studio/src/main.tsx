@@ -10,6 +10,7 @@ import { createStudioRouter } from './router.tsx';
 import { createStudioServices, ServicesProvider } from './services.tsx';
 import { applyTheme, preferences } from './workbench/preferences.ts';
 import { StudioDesignKit } from './workbench/StudioDesignKit.tsx';
+import '@corral/react/fonts.css';
 import './index.css';
 
 const root = document.getElementById('root');
