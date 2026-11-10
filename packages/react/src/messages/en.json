@@ -4969,7 +4969,7 @@
     "queuedIdle": "Send this message to continue the conversation.",
     "sendQueued": "Send now",
     "dropQueued": "Remove",
-    "empty": "Ask the participants a question or bring up a topic.",
+    "empty": "Bring up a topic",
     "loadFailed": "Could not load the meeting.",
     "retry": "Reload",
     "editQueued": "Edit queued message",

@@ -4969,7 +4969,7 @@
     "queuedIdle": "이 메시지를 보내 대화를 이어갑니다.",
     "sendQueued": "지금 보내기",
     "dropQueued": "대기 취소",
-    "empty": "참가자에게 질문하거나 안건을 꺼내 보세요.",
+    "empty": "안건을 꺼내 보세요",
     "loadFailed": "회의를 불러오지 못했습니다.",
     "retry": "다시 불러오기",
     "editQueued": "대기 메시지 수정",

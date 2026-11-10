@@ -34,7 +34,7 @@ import {
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Ellipsis, FileText, PanelRight, Plus, Square, Users, X } from '@corral/react/icons';
+import { Ellipsis, FileText, PanelRight, Plus, Square, X } from '@corral/react/icons';
 import { Link, useRouter } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
@@ -310,13 +310,13 @@ export function MeetingPage({ session }: { session: WorkSession }) {
             }
           >
             {view.rounds.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-5 text-center">
-                <Users size={28} strokeWidth={1.25} className="text-muted-foreground" aria-hidden />
-                <h3 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
-                  {session.title}
-                </h3>
-                <p className="max-w-md text-body text-muted-foreground">{t('empty')}</p>
-              </div>
+              // The path bar names the meeting; the empty room says only what to do next.
+              <h3
+                className="py-5 text-center text-title"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
+                {t('empty')}
+              </h3>
             ) : null}
           </ChatView>
         </div>
