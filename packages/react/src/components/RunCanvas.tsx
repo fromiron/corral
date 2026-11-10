@@ -1,5 +1,5 @@
 import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { pendingInteractions, type RunProjection } from '@corral/core';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   type ReactElement,
@@ -44,7 +44,7 @@ import {
 } from '../run/agent-graph-layout.ts';
 import { type AgentGraphRoute, openMidpoint, routeRelation } from '../run/agent-graph-routes.ts';
 import { type ObservedAgentModel, observedAgentModels } from '../run/agent-models.ts';
-import { useRunDisplay } from '../run/display.tsx';
+import { type RunDisplaySnapshot, useRunDisplay } from '../run/display.tsx';
 import type { NodeRunStatus } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { ArrowRight, X } from '../ui/icons.ts';
@@ -72,6 +72,12 @@ const relationStates: RelationState[] = ['call', 'data', 'ask', 'failed', 'settl
 export const RUN_GRAPH_FIT: FitRule = { padding: 40, maxZoom: 1.5 };
 /** Room above a mark for its breathing halo and selected scale. */
 const HALO = 8;
+
+const waitingWords = {
+  answer: 'waiting_answer',
+  approval: 'waiting_approval',
+  you: 'waiting',
+} as const satisfies Record<Awaited, string>;
 
 function kitStatus(status: NodeRunStatus): AgentStatus {
   if (['active', 'model', 'tool', 'finalizing'].includes(status)) return 'running';
@@ -112,10 +118,40 @@ function graphBounds(positions: Iterable<AgentGraphPosition>): Bounds | null {
   };
 }
 
+/** What an agent waiting on the person waits for: an answer, an approval, or both kinds. */
+type Awaited = 'answer' | 'approval' | 'you';
+
 interface GraphSnapshot {
   graph: RunAgentGraph;
   models: Record<string, ObservedAgentModel[]>;
   ended: boolean;
+  awaiting: Record<string, Awaited>;
+}
+
+/** For each waiting agent, what the person owes it, from the run's pending interactions. */
+function awaitingOf(
+  graph: RunAgentGraph,
+  projection: RunProjection | null,
+  events: RunDisplaySnapshot['events'],
+): Record<string, Awaited> {
+  const waiting = graph.nodes.filter((node) => node.summary.counts.waiting_approval);
+  if (!projection || !waiting.length) return {};
+  const kinds = new Map<string, Set<Awaited>>();
+  for (const item of pendingInteractions(events, projection)) {
+    const executionId =
+      item.kind === 'approval' ? item.approval.tool?.executionId : item.event.payload.executionId;
+    const nodeId = executionId ? projection.executions[executionId]?.nodeId : undefined;
+    if (!nodeId) continue;
+    const kind: Awaited =
+      item.kind === 'approval' ? 'approval' : item.kind === 'question' ? 'answer' : 'you';
+    kinds.set(nodeId, (kinds.get(nodeId) ?? new Set()).add(kind));
+  }
+  return Object.fromEntries(
+    waiting.map((node) => {
+      const own = kinds.get(node.id);
+      return [node.id, own?.size === 1 ? ([...own][0] as Awaited) : 'you'];
+    }),
+  );
 }
 
 interface Edge {
@@ -166,10 +202,12 @@ export function RunCanvas({
   };
   const readGraph = useMemo(() => {
     let previous: RunProjection | null | undefined;
+    let previousEvents: RunDisplaySnapshot['events'] | undefined;
     let serialized = '';
-    return ({ projection }: { projection: RunProjection | null }) => {
-      if (projection === previous && serialized) return serialized;
+    return ({ projection, events }: RunDisplaySnapshot) => {
+      if (projection === previous && events === previousEvents && serialized) return serialized;
       previous = projection;
+      previousEvents = events;
       const graph = buildRunAgentGraph(projection, definition);
       const models = Object.fromEntries(
         graph.nodes.map((node) => [node.id, observedAgentModels(projection, node.executionIds)]),
@@ -178,12 +216,13 @@ export function RunCanvas({
         graph,
         models,
         ended: !!projection && TERMINAL_RUN_STATUSES.has(projection.status),
+        awaiting: awaitingOf(graph, projection, events),
       });
       return serialized;
     };
   }, [definition]);
   const signature = useRunDisplay(session, readGraph);
-  const { graph, models, ended } = useMemo(
+  const { graph, models, ended, awaiting } = useMemo(
     () => JSON.parse(signature) as GraphSnapshot,
     [signature],
   );
@@ -292,10 +331,12 @@ export function RunCanvas({
           ? t('requested')
           : unsettled
             ? t('unsettled')
-            : statusText(summary.status),
+            : summary.status === 'waiting_approval'
+              ? statusText(waitingWords[awaiting[node.id] ?? 'you'])
+              : statusText(summary.status),
       };
     },
-    [models, ended, t, statusText],
+    [models, ended, awaiting, t, statusText],
   );
   const triggerFor = useCallback(
     (nodeId: string, button: ReactElement) => (

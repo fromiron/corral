@@ -10,7 +10,8 @@ import { pendingInteractions } from '@corral/core';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, fontWeights, Input, Select } from '../design-kit/index.ts';
+import { Check, Copy } from '../design-kit/icons.ts';
+import { Button, fontWeights, Input, Select, Tooltip } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 
 export function InteractionPanel({ session }: { session: RunSessionStore }) {
@@ -171,10 +172,11 @@ function ExtensionPrompt({
           {t('retryPrompt')}
         </Button>
       ) : null}
-      <p className="text-2xs text-muted-foreground">
-        {event.payload.executionId} · {t('attempt', { attempt: event.payload.attemptNo })} ·{' '}
-        {event.payload.requestId}
-      </p>
+      <ExecutionLine
+        session={session}
+        executionId={event.payload.executionId}
+        attemptNo={event.payload.attemptNo}
+      />
       <p className="text-xs text-muted-foreground">
         {t('expires', {
           time: format.dateTime(new Date(event.payload.deadline), {
@@ -416,9 +418,11 @@ function UserQuestionPrompt({
       <p role="status" className="text-xs font-medium text-muted-foreground">
         {t('userQuestions')}
       </p>
-      <p className="text-2xs text-muted-foreground">
-        {event.payload.executionId} · {t('attempt', { attempt: event.payload.attemptNo })}
-      </p>
+      <ExecutionLine
+        session={session}
+        executionId={event.payload.executionId}
+        attemptNo={event.payload.attemptNo}
+      />
       {!request ? (
         <>
           <p>{t(loadFailed || text !== undefined ? 'questionUnavailable' : 'loadingPrompt')}</p>
@@ -494,6 +498,60 @@ function UserQuestionPrompt({
         </p>
       ) : null}
     </form>
+  );
+}
+
+/**
+ * Who is asking, in the person's words: the agent, its round and attempt. The exact execution id
+ * stays one copy away for a report.
+ */
+function ExecutionLine({
+  session,
+  executionId,
+  attemptNo,
+}: {
+  session: RunSessionStore;
+  executionId: string;
+  attemptNo: number;
+}) {
+  const t = useTranslations('Harness');
+  const definition = useStore(session, (s) => s.definition);
+  const execution = useStore(session, (s) => s.projection?.executions[executionId]);
+  const round = useStore(session, (s) =>
+    execution?.iterationId ? s.projection?.iterations[execution.iterationId]?.no : undefined,
+  );
+  const [copied, setCopied] = useState(false);
+  const agent = execution
+    ? (definition?.nodes.find((node) => node.id === execution.nodeId)?.label ?? execution.nodeId)
+    : null;
+  const words = [
+    agent,
+    round ? t('round', { round }) : null,
+    t('attempt', { attempt: attemptNo }),
+  ].filter(Boolean);
+  return (
+    <p className="flex min-w-0 items-center gap-1 text-caption text-muted-foreground">
+      <span className="min-w-0 truncate">{words.join(' · ')}</span>
+      <Tooltip content={copied ? t('executionIdCopied') : executionId}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-compact"
+          aria-label={t('copyExecutionId')}
+          onClick={() =>
+            void navigator.clipboard?.writeText(executionId).then(
+              () => setCopied(true),
+              () => setCopied(false),
+            )
+          }
+        >
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      </Tooltip>
+      <span role="status" className="sr-only">
+        {copied ? t('executionIdCopied') : ''}
+      </span>
+    </p>
   );
 }
 

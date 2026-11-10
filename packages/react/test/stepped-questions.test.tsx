@@ -280,6 +280,19 @@ it('a composing Enter neither advances nor sends; a plain Enter in a text answer
   expect(sendCommand).not.toHaveBeenCalled();
 });
 
+it('names who asks by agent and attempt, and keeps the execution id one copy away', async () => {
+  setup();
+  expect(form()).toHaveTextContent('writer · Attempt 1');
+  expect(form()).not.toHaveTextContent('exec_1');
+  const writeText = vi.fn(async (_text: string) => {});
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  await act(async () =>
+    fireEvent.click(within(form()).getByRole('button', { name: 'Copy execution ID' })),
+  );
+  expect(writeText).toHaveBeenCalledWith('exec_1');
+  expect(form()).toHaveTextContent('Execution ID copied');
+});
+
 it('keeps a single question on one screen with no steps', () => {
   setup({ key: 'one', questions: [{ id: 'a', prompt: 'Only?', kind: 'text' }] });
   expect(within(form()).queryByRole('heading')).not.toBeInTheDocument();
