@@ -1,10 +1,4 @@
-import type {
-  AgentFindingsLabels,
-  AgentTaskStatus,
-  AgentTasksFilter,
-  AgentTasksLabels,
-  DiffReviewLabels,
-} from '@corral/react/design-kit';
+import type { AgentFindingsLabels, DiffReviewLabels } from '@corral/react/design-kit';
 import { useCallback, useMemo } from 'react';
 import { useFormatter, useLocale, useTranslations } from 'use-intl';
 import type { SampleText } from './fixture.ts';
@@ -16,61 +10,6 @@ import type { SampleText } from './fixture.ts';
 export function useSample() {
   const locale = useLocale();
   return useCallback((text: SampleText) => (locale.startsWith('ko') ? text.ko : text.en), [locale]);
-}
-
-const TASK_FILTERS = ['all', 'running', 'review', 'merged'] as const satisfies AgentTasksFilter[];
-
-export function useTaskLabels() {
-  const t = useTranslations('FeaturePreview.tasks');
-  return useMemo(() => {
-    const status = (value: AgentTaskStatus) => t(`status.${value}`);
-    const labels: Partial<AgentTasksLabels> = {
-      filterTasks: t('filterTasks'),
-      filterCount: (filter, count) => t('filterCount', { filter, count }),
-      empty: () => t('empty'),
-      tasks: t('list'),
-      status: {
-        queued: status('queued'),
-        running: status('running'),
-        ready: status('ready'),
-        merged: status('merged'),
-        failed: status('failed'),
-        cancelled: status('cancelled'),
-      },
-      change: {
-        added: t('change.added'),
-        modified: t('change.modified'),
-        deleted: t('change.deleted'),
-        renamed: t('change.renamed'),
-      },
-      checks: { passed: t('checks.passed'), failed: t('checks.failed') },
-      files: (count) => t('files', { count }),
-      lineStats: (added, removed) => t('lineStats', { added, removed }),
-      fileStats: (added, removed) => t('fileStats', { added, removed }),
-      cancel: t('cancel'),
-      retry: t('retry'),
-      pullRequest: (number, state) => t('pullRequest', { number, state: state ?? 'none' }),
-      pullRequestShort: (number, state) =>
-        t('pullRequestShort', { number, state: state ?? 'none' }),
-      steps: t('steps'),
-      noSteps: t('noSteps'),
-      changedFiles: t('changedFiles'),
-      noFiles: t('noFiles'),
-      stepFailed: t('stepFailed'),
-      stepActive: t('stepActive'),
-      started: (title) => t('started', { title }),
-      ready: (title) => t('ready', { title }),
-      failed: (title, error) =>
-        error ? t('failedWith', { title, error }) : t('failed', { title }),
-      cancelled: (title) => t('cancelled', { title }),
-      merged: (title) => t('merged', { title }),
-      pullRequestOpened: (number) => t('pullRequestOpened', { number }),
-    };
-    const filters = Object.fromEntries(
-      TASK_FILTERS.map((filter) => [filter, t(`filter.${filter}`)]),
-    ) as Record<AgentTasksFilter, string>;
-    return { labels, filters, status };
-  }, [t]);
 }
 
 /** DiffReview's text for a pull request: Reject asks for fixes and Approve approves. */

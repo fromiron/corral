@@ -17,14 +17,13 @@ import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { BrowserQaPreview } from '../feature-preview/BrowserQaPreview.tsx';
 import { PullReviewPreview } from '../feature-preview/PullReviewPreview.tsx';
-import { resetPreviews, selectPull, usePreview } from '../feature-preview/store.ts';
-import { TaskBoardPreview } from '../feature-preview/TaskBoardPreview.tsx';
+import { resetPreviews, usePreview } from '../feature-preview/store.ts';
 import { workHref } from '../workbench/navigation.ts';
 import { TopbarCrumb } from '../workbench/TopbarSlot.tsx';
 
 // Feature previews: sample flows with no real calls (docs/specs/features/feature-preview.md).
 
-export const PREVIEW_FEATURES = ['task-board', 'pr-review', 'browser-qa'] as const;
+export const PREVIEW_FEATURES = ['pr-review', 'browser-qa'] as const;
 export type PreviewFeature = (typeof PREVIEW_FEATURES)[number];
 
 /** A known preview, or undefined so the screen shows the list. */
@@ -43,7 +42,6 @@ export function validatePreviewSearch(search: Record<string, unknown>): PreviewS
 
 /** The catalog key of each preview's name and summary. */
 const FEATURE_KEY = {
-  'task-board': 'taskBoard',
   'pr-review': 'prReview',
   'browser-qa': 'browserQa',
 } as const satisfies Record<PreviewFeature, string>;
@@ -59,11 +57,7 @@ export function PreviewPage({ feature }: { feature?: string | undefined }) {
     <main data-preview-feature={current} className="flex min-h-0 flex-1 flex-col">
       <SampleBanner feature={current} returnTo={returnTo} />
       <div className="min-h-0 flex-1">
-        {current ? (
-          <FeaturePreviewView feature={current} returnTo={returnTo} />
-        ) : (
-          <PreviewList returnTo={returnTo} />
-        )}
+        {current ? <FeaturePreviewView feature={current} /> : <PreviewList returnTo={returnTo} />}
       </div>
     </main>
   );
@@ -166,16 +160,9 @@ function PreviewList({ returnTo }: { returnTo: string | undefined }) {
   );
 }
 
-function FeaturePreviewView({
-  feature,
-  returnTo,
-}: {
-  feature: PreviewFeature;
-  returnTo: string | undefined;
-}) {
+function FeaturePreviewView({ feature }: { feature: PreviewFeature }) {
   const t = useTranslations('FeaturePreview');
-  const navigate = useNavigate();
-  // Reset starts the flow over: its view state and its clock with the store.
+  // Reset starts the flow over: its view state with the store.
   const resets = usePreview((state) => state.resets);
   const name = t(`feature.${FEATURE_KEY[feature]}`);
   return (
@@ -193,22 +180,7 @@ function FeaturePreviewView({
         </span>
       </TopbarCrumb>
       <Page title={name} key={`${feature}:${resets}`}>
-        {feature === 'task-board' ? (
-          <TaskBoardPreview
-            onOpenPull={(number) => {
-              selectPull(number);
-              void navigate({
-                to: '/preview/$feature',
-                params: { feature: 'pr-review' },
-                search: returnTo ? { returnTo } : {},
-              });
-            }}
-          />
-        ) : feature === 'pr-review' ? (
-          <PullReviewPreview />
-        ) : (
-          <BrowserQaPreview />
-        )}
+        {feature === 'pr-review' ? <PullReviewPreview /> : <BrowserQaPreview />}
       </Page>
     </>
   );

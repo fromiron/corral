@@ -12,7 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { SAMPLE_TASKS } from '../feature-preview/fixture.ts';
+import { SAMPLE_PULLS } from '../feature-preview/fixture.ts';
 import { previewStore, resetPreviews } from '../feature-preview/store.ts';
 import { ServicesProvider, type StudioServices } from '../services.tsx';
 import {
@@ -176,10 +176,20 @@ function expectNoRequests() {
   expect(network.events).not.toHaveBeenCalled();
 }
 
-it('knows only the three sample flows', () => {
-  expect(PREVIEW_FEATURES).toEqual(['task-board', 'pr-review', 'browser-qa']);
+it('knows only the two sample flows', () => {
+  expect(PREVIEW_FEATURES).toEqual(['pr-review', 'browser-qa']);
   for (const feature of PREVIEW_FEATURES) expect(previewFeature(feature)).toBe(feature);
-  for (const other of ['', 'Task-Board', 'task-board ', 'settings', 'toString', undefined, 1])
+  // The task board preview was removed: its address is an unknown feature now.
+  for (const other of [
+    '',
+    'task-board',
+    'PR-Review',
+    'pr-review ',
+    'settings',
+    'toString',
+    undefined,
+    1,
+  ])
     expect(previewFeature(other)).toBeUndefined();
 });
 
@@ -192,7 +202,7 @@ it('keeps only an in-app return address', () => {
 });
 
 it('lists every preview with an Open link under the sample banner, also for an unknown feature', async () => {
-  for (const url of ['/preview', '/preview/unknown', '/preview/toString']) {
+  for (const url of ['/preview', '/preview/unknown', '/preview/toString', '/preview/task-board']) {
     const { container } = await render(url);
     expect(container.querySelector('h1')?.textContent).toBe('Feature previews');
     expect(container.querySelector('main')?.dataset.previewFeature).toBeUndefined();
@@ -201,48 +211,54 @@ it('lists every preview with an Open link under the sample banner, also for an u
       container.querySelector<HTMLAnchorElement>(`a[href="/preview/${feature}"]`),
     );
     expect(links.every((link) => link?.textContent === 'Open')).toBe(true);
+    // No sample screen is drawn, and nothing lists or links the removed task board.
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(PREVIEW_FEATURES.length);
+    expect(container.querySelector('a[href^="/preview/task-board"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/Task board|Tasks/);
+    expect(container.querySelector('[data-pull]')).toBeNull();
   }
   expectNoRequests();
 });
 
 it('goes back to an in-app return address, and offers no way back to an external one', async () => {
   const { container, router } = await render('/preview?returnTo=%2Fsessions%2Fsession_a');
-  const open = container.querySelector<HTMLAnchorElement>('a[href^="/preview/task-board"]');
-  expect(open?.getAttribute('href')).toBe('/preview/task-board?returnTo=%2Fsessions%2Fsession_a');
+  const open = container.querySelector<HTMLAnchorElement>('a[href^="/preview/pr-review"]');
+  expect(open?.getAttribute('href')).toBe('/preview/pr-review?returnTo=%2Fsessions%2Fsession_a');
   await click(button(container, 'Back'));
   expect(router.state.location.href).toBe('/sessions/session_a');
 
   for (const returnTo of ['https://example.org', '//example.org/sessions/x']) {
-    const outside = await render(`/preview/task-board?returnTo=${encodeURIComponent(returnTo)}`);
+    const outside = await render(`/preview/pr-review?returnTo=${encodeURIComponent(returnTo)}`);
     expect(() => button(outside.container, 'Back')).toThrow();
     expect(outside.container.querySelector(`a[href*="example.org"]`)).toBeNull();
   }
 });
 
-it('changes a task status as a simulation, with no request, and resets to the fixture', async () => {
-  const { container } = await render('/preview/task-board');
-  expect(container.querySelector('main')?.dataset.previewFeature).toBe('task-board');
+it('posts a comment on a pull request as a simulation, with no request, and resets to the fixture', async () => {
+  const { container } = await render('/preview/pr-review');
+  expect(container.querySelector('main')?.dataset.previewFeature).toBe('pr-review');
   expect(banner(container)).toBeDefined();
   expect(simulated(container)).toEqual([]);
-  const task = SAMPLE_TASKS.find((item) => item.id === previewStore.getState().board.selected);
-  if (!task) throw new Error('no task is open in the detail');
-  expect(task.status).not.toBe('merged');
+  const selected = previewStore.getState().review.selected;
+  expect(SAMPLE_PULLS.some((pull) => pull.number === selected)).toBe(true);
 
-  const status = all(container, 'fieldset').find(
-    (group) => group.querySelector('legend')?.textContent === 'Status',
-  );
-  if (!status) throw new Error('no status control');
-  await click(button(status, 'Done'));
-  expect(previewStore.getState().board.statuses[task.id]).toBe('merged');
-  expect(button(status, 'Done').getAttribute('aria-pressed')).toBe('true');
-  expect(simulated(container).length).toBeGreaterThan(0);
+  await click(button(container, /^Comments/));
+  const field = container.querySelector<HTMLTextAreaElement>('textarea');
+  if (!field) throw new Error('no comment field');
+  await type(field, 'Keep the rounding rule in one place.');
+  await click(button(container, 'Post comment'));
+  const comment = byText(container, 'li', /Keep the rounding rule in one place\./);
+  expect(comment?.textContent).toMatch(/Simulated/);
+  expect(previewStore.getState().review.comments[selected]).toHaveLength(1);
   expect(banner(container)).toBeDefined();
   expectNoRequests();
 
   await click(button(container, 'Reset'));
-  expect(previewStore.getState().board.statuses[task.id]).toBe(task.status);
+  expect(previewStore.getState().review.comments).toEqual({});
+  expect(byText(container, 'li', /Keep the rounding rule in one place\./)).toBeUndefined();
   expect(simulated(container)).toEqual([]);
   expect(banner(container)).toBeDefined();
+  expectNoRequests();
 });
 
 it('posts a comment and requests fixes on a pull request as a simulation, with no request', async () => {

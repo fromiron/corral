@@ -73,7 +73,7 @@ it.each([
   ['/inbox', 'Needs you'],
   ['/library/teams', 'Library'],
   ['/schedules', 'Automation'],
-  ['/preview/task-board', 'Feature previews'],
+  ['/preview/pr-review', 'Feature previews'],
   ['/projects', 'All projects'],
 ])(
   'starts the path on %s with the page name instead of the project placeholder',

@@ -627,7 +627,6 @@
     "newConversation": "New conversation",
     "newConversationMenu": "More ways to start a conversation",
     "detailsFirst": "Set name, purpose and team first…",
-    "taskBoardPreview": "Task board preview",
     "pending": "{count, plural, one {# pending} other {# pending}}",
     "folder": {
       "loading": "Checking the folder…",
@@ -651,8 +650,7 @@
       "noCopies": "No session working copies",
       "noCopiesText": "A session makes one when its work changes files.",
       "loading": "Loading…"
-    },
-    "previewBadge": "Preview"
+    }
   },
   "Editor": {
     "name": "Team name",
@@ -3905,74 +3903,12 @@
     "open": "Open",
     "openNamed": "Open {name}",
     "feature": {
-      "taskBoard": "Task board",
       "prReview": "PR review",
       "browserQa": "Browser QA"
     },
     "summary": {
-      "taskBoard": "Tasks with their steps, changed files and linked session; change a task's status.",
       "prReview": "A pull request's diff and checks; comment on it and request fixes.",
       "browserQa": "Open a page, snapshot it, act on it, read console errors, then attach a screenshot to the conversation."
-    },
-    "board": {
-      "detail": "Task details",
-      "session": "Linked session",
-      "noSession": "Not linked yet",
-      "branch": "Branch",
-      "status": "Status",
-      "moved": "Moved to {status}",
-      "none": "No task open",
-      "noneText": "Open a task in the list to see its details."
-    },
-    "tasks": {
-      "filterTasks": "Filter tasks",
-      "filterCount": "{filter}, {count, plural, one {# task} other {# tasks}}",
-      "empty": "Nothing in this view. Try another filter.",
-      "list": "Tasks",
-      "status": {
-        "queued": "Queued",
-        "running": "Running",
-        "ready": "Ready for review",
-        "merged": "Done",
-        "failed": "Failed",
-        "cancelled": "Cancelled"
-      },
-      "filter": {
-        "all": "All",
-        "running": "Running",
-        "review": "Ready for review",
-        "merged": "Done"
-      },
-      "change": {
-        "added": "Added",
-        "modified": "Modified",
-        "deleted": "Deleted",
-        "renamed": "Renamed"
-      },
-      "checks": {
-        "passed": "Checks passed",
-        "failed": "Checks failed"
-      },
-      "files": "{count, plural, one {# file} other {# files}}",
-      "lineStats": "{added, plural, one {# line} other {# lines}} added, {removed, plural, one {# line} other {# lines}} removed",
-      "fileStats": "{added} added, {removed} removed",
-      "cancel": "Cancel",
-      "retry": "Retry",
-      "pullRequest": "Pull request {number}{state, select, open {, open} draft {, draft} closed {, closed} other {}}",
-      "pullRequestShort": "PR #{number}{state, select, open { open} draft { draft} closed { closed} other {}}",
-      "steps": "Steps",
-      "noSteps": "Waiting for the agent to start.",
-      "changedFiles": "Changed files",
-      "noFiles": "No files changed yet.",
-      "stepFailed": " (failed)",
-      "stepActive": " (in progress)",
-      "started": "{title} started.",
-      "ready": "{title} is ready for review.",
-      "failed": "{title} failed.",
-      "failedWith": "{title} failed: {error}.",
-      "cancelled": "Cancelled {title}.",
-      "merged": "{title} is done.",
-      "pullRequestOpened": "Pull request {number} opened."
     },
     "pull": {
       "list": "Pull requests",

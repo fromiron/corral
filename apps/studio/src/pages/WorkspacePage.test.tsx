@@ -235,7 +235,7 @@ it('heads the project with its name, folder state, pending count and actions', a
   ).toBe(false);
 });
 
-it('keeps rename, archive, all projects and the task board preview in one more menu', async () => {
+it('keeps rename, archive and all projects in one more menu', async () => {
   const { container } = await render();
   const more = container.querySelector<HTMLButtonElement>('button[aria-label="Actions for Alpha"]');
   expect(more).toBeTruthy();
@@ -258,16 +258,13 @@ it('keeps rename, archive, all projects and the task board preview in one more m
   expect(menu).toBeTruthy();
   const items = [...(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
   // The kit item repeats its label for layout; each row is read by what it starts with.
-  const expected = ['Rename', 'Archive', 'All projects…', 'Task board preview'];
+  const expected = ['Rename', 'Archive', 'All projects…'];
   expect(items).toHaveLength(expected.length);
   for (const [index, item] of items.entries())
     expect(item.textContent).toMatch(new RegExp(`^${expected[index]}`));
-  // The preview says it shows sample data.
-  expect(items.at(-1)?.textContent).toContain('Preview');
-  const preview = items.at(-1)?.closest('a') ?? items.at(-1);
-  const href = new URL(preview?.getAttribute('href') ?? '', 'http://x');
-  expect(href.pathname).toBe('/preview/task-board');
-  expect(href.searchParams.get('returnTo')).toBe('/projects/alpha');
+  // The task board preview is gone: nothing in the menu leads to a sample screen.
+  expect(menu?.querySelector('a[href^="/preview"]')).toBeNull();
+  expect(menu?.textContent).not.toMatch(/Task board|Preview/);
 });
 
 it('says the pending count once, in the header', async () => {

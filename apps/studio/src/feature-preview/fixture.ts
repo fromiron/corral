@@ -1,11 +1,4 @@
-import type {
-  AgentStatus,
-  AgentTaskFileChange,
-  AgentTaskStatus,
-  AgentTaskStepState,
-  DiffFile,
-  FindingSeverity,
-} from '@corral/react/design-kit';
+import type { AgentStatus, DiffFile, FindingSeverity } from '@corral/react/design-kit';
 
 // The one sample set every feature preview draws (docs/specs/features/feature-preview.md): one
 // fictional project, its sessions, runs and files, seen at one fixed moment. Nothing here comes
@@ -24,12 +17,10 @@ const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const ago = (minutes: number) => PREVIEW_NOW - minutes * MINUTE;
 
-export const SAMPLE_PROJECT = { name: 'example-shop', repo: 'example/shop', base: 'main' } as const;
-export const SAMPLE_MODEL = 'Sample model';
+export const SAMPLE_PROJECT = { name: 'example-shop', base: 'main' } as const;
 
 export const SAMPLE_SESSIONS = {
   total: { title: { en: 'Fix the checkout total', ko: '결제 합계 고치기' } },
-  cart: { title: { en: 'Empty cart message', ko: '빈 장바구니 안내' } },
 } as const satisfies Record<string, { title: SampleText }>;
 export type SampleSessionKey = keyof typeof SAMPLE_SESSIONS;
 
@@ -42,196 +33,18 @@ export interface SampleRun {
 export const SAMPLE_FILES = {
   total: 'src/checkout/total.ts',
   totalTest: 'src/checkout/total.test.ts',
-  summary: 'src/checkout/OrderSummary.tsx',
   coupon: 'src/checkout/CouponField.tsx',
-  emptyCart: 'src/cart/EmptyCart.tsx',
   badge: 'src/cart/CartBadge.tsx',
   itemCount: 'src/cart/ItemCountBadge.tsx',
 } as const;
 
-// ─── Task board ──────────────────────────────────────────────────────────────
+// ─── Pull requests ───────────────────────────────────────────────────────────
 
 const TITLES = {
   total: { en: 'Round the checkout total to cents', ko: '결제 합계를 센트 단위로 반올림' },
   coupon: { en: 'Keep focus on the coupon field', ko: '쿠폰 입력란의 포커스 유지' },
   badge: { en: 'Rename the cart badge component', ko: '장바구니 배지 컴포넌트 이름 바꾸기' },
 } as const satisfies Record<string, SampleText>;
-
-export interface SampleTask {
-  readonly id: string;
-  readonly title: SampleText;
-  readonly status: AgentTaskStatus;
-  readonly branch: string;
-  readonly linked?: SampleRun;
-  /** Live tasks: when the run started. */
-  readonly startedAt?: number;
-  /** Finished tasks: how long the run took. */
-  readonly durationMs?: number;
-  readonly error?: SampleText;
-  readonly checks?: 'passed' | 'failed';
-  /** The sample pull request opened from this task. */
-  readonly pullRequest?: number;
-  readonly steps: readonly {
-    readonly text: SampleText;
-    readonly state: AgentTaskStepState;
-    readonly durationMs?: number;
-    readonly startedAt?: number;
-    readonly note?: string;
-  }[];
-  readonly files: readonly {
-    readonly path: string;
-    readonly change: AgentTaskFileChange;
-    readonly additions: number;
-    readonly deletions: number;
-  }[];
-}
-
-export const SAMPLE_TASKS: readonly SampleTask[] = [
-  {
-    id: 'task-total',
-    title: TITLES.total,
-    status: 'ready',
-    branch: 'example/round-total',
-    linked: { session: 'total', run: 3 },
-    durationMs: 6 * MINUTE + 12 * SECOND,
-    checks: 'failed',
-    pullRequest: 12,
-    steps: [
-      {
-        text: { en: `Read ${SAMPLE_FILES.total}`, ko: `${SAMPLE_FILES.total} 읽기` },
-        state: 'done',
-        durationMs: 4 * SECOND,
-      },
-      {
-        text: { en: 'Added a test for a half-cent total', ko: '반 센트 합계 테스트 추가' },
-        state: 'done',
-        durationMs: 48 * SECOND,
-      },
-      {
-        text: { en: 'Rounded once, after the discount', ko: '할인 뒤에 한 번만 반올림' },
-        state: 'done',
-        durationMs: 95 * SECOND,
-      },
-      {
-        text: { en: 'Ran the tests: 23 of 24 passed', ko: '테스트 실행: 24개 중 23개 통과' },
-        state: 'done',
-        durationMs: 31 * SECOND,
-        note: 'total.test.ts › rounds a 10% coupon on 19.95',
-      },
-    ],
-    files: [
-      { path: SAMPLE_FILES.total, change: 'modified', additions: 2, deletions: 2 },
-      { path: SAMPLE_FILES.totalTest, change: 'added', additions: 8, deletions: 0 },
-    ],
-  },
-  {
-    id: 'task-cart',
-    title: { en: 'Show a message for an empty cart', ko: '빈 장바구니에 안내 문구 보이기' },
-    status: 'running',
-    branch: 'example/empty-cart',
-    linked: { session: 'cart', run: 1 },
-    startedAt: ago(4),
-    steps: [
-      {
-        text: { en: 'Found the cart page', ko: '장바구니 화면 찾기' },
-        state: 'done',
-        durationMs: 6 * SECOND,
-      },
-      {
-        text: {
-          en: 'Added EmptyCart with a link back to the shop',
-          ko: '상점으로 돌아가는 링크가 있는 EmptyCart 추가',
-        },
-        state: 'done',
-        durationMs: 72 * SECOND,
-      },
-      {
-        text: { en: 'Running the cart tests', ko: '장바구니 테스트 실행 중' },
-        state: 'active',
-        startedAt: ago(1),
-      },
-    ],
-    files: [{ path: SAMPLE_FILES.emptyCart, change: 'added', additions: 31, deletions: 0 }],
-  },
-  {
-    id: 'task-summary',
-    title: { en: 'Tidy the order summary layout', ko: '주문 요약 배치 정리' },
-    status: 'queued',
-    branch: 'example/order-summary',
-    steps: [],
-    files: [],
-  },
-  {
-    id: 'task-coupon',
-    title: TITLES.coupon,
-    status: 'ready',
-    branch: 'example/coupon-focus',
-    linked: { session: 'total', run: 2 },
-    durationMs: 3 * MINUTE + 40 * SECOND,
-    checks: 'passed',
-    pullRequest: 11,
-    steps: [
-      {
-        text: { en: 'Kept focus after Apply', ko: '적용 뒤에도 포커스 유지' },
-        state: 'done',
-        durationMs: 64 * SECOND,
-      },
-      {
-        text: { en: 'Ran the tests: 24 passed', ko: '테스트 실행: 24개 통과' },
-        state: 'done',
-        durationMs: 29 * SECOND,
-      },
-    ],
-    files: [{ path: SAMPLE_FILES.coupon, change: 'modified', additions: 2, deletions: 0 }],
-  },
-  {
-    id: 'task-shipping',
-    title: { en: 'Show shipping in the order summary', ko: '주문 요약에 배송비 보이기' },
-    status: 'failed',
-    branch: 'example/summary-shipping',
-    linked: { session: 'cart', run: 2 },
-    durationMs: 2 * MINUTE + 18 * SECOND,
-    error: { en: 'The type check failed', ko: '타입 검사 실패' },
-    checks: 'failed',
-    steps: [
-      {
-        text: { en: 'Added a shipping row', ko: '배송비 행 추가' },
-        state: 'done',
-        durationMs: 51 * SECOND,
-      },
-      {
-        text: { en: 'Ran the type check', ko: '타입 검사 실행' },
-        state: 'failed',
-        durationMs: 12 * SECOND,
-        note: "OrderSummary.tsx:41 · Property 'shipping' does not exist on type 'Totals'",
-      },
-    ],
-    files: [{ path: SAMPLE_FILES.summary, change: 'modified', additions: 6, deletions: 0 }],
-  },
-  {
-    id: 'task-badge',
-    title: TITLES.badge,
-    status: 'merged',
-    branch: 'example/cart-badge',
-    linked: { session: 'total', run: 1 },
-    durationMs: 2 * MINUTE + 5 * SECOND,
-    checks: 'passed',
-    pullRequest: 10,
-    steps: [
-      {
-        text: {
-          en: 'Renamed CartBadge to ItemCountBadge',
-          ko: 'CartBadge 이름을 ItemCountBadge로 변경',
-        },
-        state: 'done',
-        durationMs: 38 * SECOND,
-      },
-    ],
-    files: [{ path: SAMPLE_FILES.itemCount, change: 'renamed', additions: 1, deletions: 1 }],
-  },
-];
-
-// ─── Pull requests ───────────────────────────────────────────────────────────
 
 export interface SampleCheck {
   readonly id: string;
@@ -266,7 +79,6 @@ export interface SamplePull {
   readonly description: SampleText;
   readonly branch: string;
   readonly state: 'open' | 'merged';
-  readonly task: string;
   readonly linked: SampleRun;
   readonly files: DiffFile[];
   readonly checks: readonly SampleCheck[];
@@ -286,7 +98,6 @@ export const SAMPLE_PULLS: readonly SamplePull[] = [
     },
     branch: 'example/round-total',
     state: 'open',
-    task: 'task-total',
     linked: { session: 'total', run: 3 },
     files: [
       {
@@ -413,7 +224,6 @@ export const SAMPLE_PULLS: readonly SamplePull[] = [
     },
     branch: 'example/coupon-focus',
     state: 'open',
-    task: 'task-coupon',
     linked: { session: 'total', run: 2 },
     files: [
       {
@@ -470,7 +280,6 @@ export const SAMPLE_PULLS: readonly SamplePull[] = [
     },
     branch: 'example/cart-badge',
     state: 'merged',
-    task: 'task-badge',
     linked: { session: 'total', run: 1 },
     files: [
       {

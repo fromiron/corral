@@ -177,11 +177,7 @@ export function WorkspacePage() {
                         </Button>
                       </>
                     )}
-                    <ProjectMenu
-                      project={project}
-                      returnTo={href}
-                      onError={(message) => setErrors([message])}
-                    />
+                    <ProjectMenu project={project} onError={(message) => setErrors([message])} />
                   </div>
                 </div>
                 {project.archivedAt ? (
@@ -383,21 +379,15 @@ function ProjectTabs({
   );
 }
 
-/**
- * The project's "more" menu: rename, archive or restore, the way to all projects, and the task
- * board preview, which shows sample data and comes back here (docs/specs/features/feature-preview.md).
- */
+/** The project's "more" menu: rename, archive or restore, and the way to all projects. */
 function ProjectMenu({
   project,
-  returnTo,
   onError,
 }: {
   project: ProjectSummary;
-  returnTo: string;
   onError: (message: string) => void;
 }) {
   const t = useTranslations('Projects');
-  const tw = useTranslations('Workspace');
   const { repository } = useServices();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -445,21 +435,6 @@ function ProjectMenu({
           )}
           <MenuSeparator />
           <MenuItem render={<Link to="/projects" />}>{t('allProjects')}</MenuItem>
-          <MenuSeparator />
-          <MenuItem
-            render={
-              <Link
-                to="/preview/$feature"
-                params={{ feature: 'task-board' }}
-                search={{ returnTo }}
-              />
-            }
-          >
-            {tw('taskBoardPreview')}
-            <KitBadge size="compact" color="gray" className="ml-auto">
-              {tw('previewBadge')}
-            </KitBadge>
-          </MenuItem>
         </MenuPopup>
       </Menu>
       <Dialog open={editing} onOpenChange={(open) => !open && setEditing(false)}>
