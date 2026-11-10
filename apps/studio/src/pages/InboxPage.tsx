@@ -158,6 +158,8 @@ export function InboxPage() {
   }, [loadAll]);
 
   const entries = (projects ?? []).flatMap((project) => inboxes[project.projectId]?.entries ?? []);
+  // A row names its project only when the list holds more than one.
+  const manyProjects = new Set(entries.map((entry) => entry.projectId)).size > 1;
   const groups = inboxGroups(entries);
   const ordered = groups.flatMap((group) => group.entries);
   const failures = (projects ?? []).filter((project) => inboxes[project.projectId]?.failed);
@@ -236,32 +238,27 @@ export function InboxPage() {
     return run ? runIdentity(run, runs, []).number : null;
   };
   /**
-   * What the item is, never its body. A decision's group already names its state, so its line is
-   * only the run (and it is not guessed as a question or an approval); other kinds name themselves.
+   * What the item is, never its body: the row's line, and the only place the item is named. A
+   * decision's group already names its state, so its line is only the run (and it is not guessed
+   * as a question or an approval). Other kinds say it as precisely as the server's summary
+   * allows, else by their kind.
    */
-  const kindLine = ({ item }: InboxEntry): string | null => {
+  const kindLine = (entry: InboxEntry): string | null => {
+    const { item } = entry;
     const number = runNumber(item.runId);
     const run = number ? tw('runNumber', { number }) : null;
     if (item.kind === 'decision') return run;
     const kind =
-      item.kind === 'recipe_stopped'
+      summaryLine(entry) ??
+      (item.kind === 'recipe_stopped'
         ? t('kind.recipe_stopped', {
             reason:
               item.detail && tr.has(`reasons.${item.detail}`) ? tr(`reasons.${item.detail}`) : '',
           })
-        : t(`kind.${item.kind}`);
+        : t(`kind.${item.kind}`));
     return run ? `${kind} · ${run}` : kind;
   };
   const joined = (...parts: (string | null)[]) => parts.filter(Boolean).join(' · ');
-  /**
-   * Under the detail's title: the row's line and the project. The item is named once: when the
-   * body's summary names it more precisely, this line keeps only the run and the project.
-   */
-  const detailLine = (entry: InboxEntry) => {
-    if (!summaryLine(entry)) return joined(kindLine(entry), projectLabel(entry.projectId));
-    const number = runNumber(entry.item.runId);
-    return joined(number ? tw('runNumber', { number }) : null, projectLabel(entry.projectId));
-  };
   /**
    * The server's one-line summary of a non-decision item: the failed check's name, how many writes
    * or proposals wait, or the applying state. What this screen cannot name is left out, and a
@@ -338,7 +335,6 @@ export function InboxPage() {
   const destination = current ? inboxDestination(current.item) : null;
   // A decision is answered here; every other kind is a link to its own screen.
   const respondsHere = current?.item.kind === 'decision' && current.item.runId !== null;
-  const summary = current && !respondsHere ? summaryLine(current) : null;
 
   return (
     <main ref={main} className="flex min-h-0 flex-1 flex-col">
@@ -403,7 +399,7 @@ export function InboxPage() {
                 <CardGroup orientation="inline" role="list" aria-labelledby={`${id}-${group.id}`}>
                   {group.entries.map((entry) => {
                     const line = kindLine(entry);
-                    const project = projectLabel(entry.projectId);
+                    const project = manyProjects ? projectLabel(entry.projectId) : null;
                     return (
                       <Card
                         key={entry.key}
@@ -422,11 +418,13 @@ export function InboxPage() {
                           </KitCardTitle>
                           {line ? <CardDescription>{line}</CardDescription> : null}
                         </CardHeader>
-                        <CardFooter className="max-w-1/3 min-w-0">
-                          <span className="truncate text-caption text-muted-foreground">
-                            {project}
-                          </span>
-                        </CardFooter>
+                        {project ? (
+                          <CardFooter className="max-w-1/3 min-w-0">
+                            <span className="truncate text-caption text-muted-foreground">
+                              {project}
+                            </span>
+                          </CardFooter>
+                        ) : null}
                       </Card>
                     );
                   })}
@@ -466,18 +464,14 @@ export function InboxPage() {
               ) : null}
               <header className="flex items-start justify-between gap-3">
                 {shown ? (
-                  <div className="grid min-w-0 gap-0.5">
-                    <h2
-                      id={`${id}-detail`}
-                      className="m-0 text-title text-foreground [overflow-wrap:anywhere]"
-                      style={{ fontVariationSettings: fontWeights.semibold }}
-                    >
-                      {shown.item.sessionTitle}
-                    </h2>
-                    <p className="m-0 text-caption text-muted-foreground [overflow-wrap:anywhere]">
-                      {detailLine(shown)}
-                    </p>
-                  </div>
+                  // The item's name heads it; its kind, run and project are on its row.
+                  <h2
+                    id={`${id}-detail`}
+                    className="m-0 min-w-0 text-title text-foreground [overflow-wrap:anywhere]"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {shown.item.sessionTitle}
+                  </h2>
                 ) : (
                   // An item known only by its address: the notice is all there is to say.
                   <p
@@ -519,29 +513,14 @@ export function InboxPage() {
                   onHandled={() => handled(current)}
                 />
               ) : destination ? (
-                // Every other kind: what the server says of it in one line, and the way to it.
-                <>
-                  {summary ? (
-                    <p className="m-0 text-body text-foreground [overflow-wrap:anywhere]">
-                      {summary}
-                    </p>
-                  ) : null}
-                  <Button className="justify-self-start" render={destinationLink(destination)}>
-                    {t(`open.${destinationKind(destination)}`)}
-                  </Button>
-                </>
+                // Every other kind: its row says what it is; the detail is the way to it.
+                <Button className="justify-self-start" render={destinationLink(destination)}>
+                  {t(`open.${destinationKind(destination)}`)}
+                </Button>
               ) : null}
             </section>
-          ) : entries.length > 0 ? (
-            // One quiet line where the detail opens, placed as the kit's empty state is: at the
-            // top of its column, centred across it, the same at every height.
-            <div
-              data-testid="inbox-no-selection"
-              className="px-6 py-10 text-center max-lg:hidden lg:sticky lg:top-6"
-            >
-              <p className="m-0 text-body text-muted-foreground">{t('noSelection')}</p>
-            </div>
           ) : null}
+          {/* Until an item is chosen the detail column stands empty (inbox.md). */}
         </div>
       </Page>
     </main>

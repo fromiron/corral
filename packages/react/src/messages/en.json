@@ -1004,7 +1004,6 @@
     "backToList": "Back to list",
     "handled": "This item was handled.",
     "empty": "Nothing needs you",
-    "noSelection": "Nothing selected",
     "loading": "Loading…",
     "loadFailed": "Couldn't load {project}.",
     "retry": "Try again",

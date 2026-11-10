@@ -305,10 +305,29 @@ it('names a decision whose run number is not known by its session alone, never b
   const { container, rowButton, detail, click } = await mount({ inbox: async () => [decisionA] });
   const row = container.querySelector('[role="listitem"]');
   expect(row?.querySelector('[data-slot="card-description"]')).toBeNull();
-  expect(rowButton('Fix login')?.getAttribute('aria-label')).toBe('Fix login · Alpha');
+  // Every item is in one project, so no row names it.
+  expect(rowButton('Fix login')?.getAttribute('aria-label')).toBe('Fix login');
+  expect(row?.textContent).not.toContain('Alpha');
   await click(rowButton('Fix login'));
-  expect(detail()?.querySelector('header p')?.textContent).toBe('Alpha');
+  expect(detail()?.querySelector('header p')).toBeNull();
   expect(container.textContent).not.toContain('Response needed');
+});
+
+it('names the project on each row only when the list spans more than one', async () => {
+  const one = await mount({ inbox: async () => [decisionA, queuedC] });
+  expect(one.container.querySelector('[role="list"]')?.textContent).not.toContain('Alpha');
+  expect(one.rowButton('Write docs')?.getAttribute('aria-label')).toBe(
+    'Write docs · Queued request',
+  );
+  const two = await mount({
+    projects: [ALPHA, BETA],
+    inbox: async (projectId) => (projectId === 'alpha' ? [decisionA] : [queuedC]),
+  });
+  const rows = [...two.container.querySelectorAll<HTMLElement>('[role="listitem"]')];
+  expect(rows.map((row) => row.querySelector('[data-slot="card-footer"]')?.textContent)).toEqual([
+    'Alpha',
+    'Beta',
+  ]);
 });
 
 it('opens one run store for the selected decision only and releases it when the selection moves', async () => {
@@ -392,7 +411,7 @@ it('treats Escape, close and choosing another item as neither a denial nor a can
   expect(rowButton('Fix login')).toBeDefined();
 });
 
-it('heads a decision’s response area with its session, run number and a link to that run', async () => {
+it('heads a decision’s response area with its session and a link to that run, and nothing its row says', async () => {
   const { rowButton, detail, click } = await mount({
     runs: [
       runSummary('run_old', 's_a', '2026-11-10T00:00:00Z'),
@@ -403,8 +422,10 @@ it('heads a decision’s response area with its session, run number and a link t
   await click(rowButton('Fix login'));
   const header = detail()?.querySelector('header');
   expect(header?.querySelector('h2')?.textContent).toBe('Fix login');
-  // The row already said a response is needed; the heading names the run it is for.
-  expect(header?.querySelector('p')?.textContent).toBe('Run #2 · Alpha');
+  // The chosen row stays beside it with the run number; the heading does not say it again.
+  expect(rowButton('Fix login')?.closest('[role="listitem"]')?.textContent).toContain('Run #2');
+  expect(header?.querySelector('p')).toBeNull();
+  expect(detail()?.textContent).not.toContain('Run #2');
   const links = [...(detail()?.querySelectorAll('a') ?? [])];
   expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
     ['Open run', '/sessions/s_a?panel=run&view=run&run=run_a&respond=true'],
@@ -422,22 +443,19 @@ it('heads a decision’s response area with its session, run number and a link t
   ).toBeTruthy();
 });
 
-it('keeps a quiet placeholder where the detail opens, and none once everything is clear', async () => {
-  const placeholder = (container: HTMLElement) =>
-    container.querySelector<HTMLElement>('[data-testid="inbox-no-selection"]');
+it('leaves the detail column empty until an item is chosen', async () => {
   const listed = await mount({ inbox: async () => [queuedC] });
-  // One quiet line, with no box and no second sentence.
-  expect(placeholder(listed.container)?.textContent).toBe('Nothing selected');
-  expect(placeholder(listed.container)?.querySelectorAll('p')).toHaveLength(1);
-  expect(placeholder(listed.container)?.querySelector('b, h2, h3, [class*="border"]')).toBeNull();
+  // Nothing stands where the detail opens: no line says that nothing is selected.
+  const list = listed.container.querySelector('[role="list"]')?.closest('section');
+  const columns = list?.parentElement?.parentElement;
+  expect(columns?.children).toHaveLength(1);
+  expect(listed.container.textContent).not.toContain('Nothing selected');
   expect(listed.detail()).toBeNull();
   await listed.click(listed.rowButton('Write docs'));
-  expect(placeholder(listed.container)).toBeNull();
   expect(listed.detail()).not.toBeNull();
 
   const clear = await mount({ inbox: async () => [] });
   expect(clear.container.textContent).toContain('Nothing needs you');
-  expect(placeholder(clear.container)).toBeNull();
 });
 
 it('never brings back a handled item from a reply that was already on its way', async () => {
@@ -500,7 +518,7 @@ it('shows a failed project’s retry in its own place and keeps the other projec
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
-it('sums up a non-decision item in one line from the server and leads to its screen with one button', async () => {
+it('names a non-decision item fully on its row, and its detail is only the way to its screen', async () => {
   const listed = [
     checkD,
     item('uncertain_write', 's_w', 'Unsure writes', { detail: '3' }),
@@ -516,76 +534,80 @@ it('sums up a non-decision item in one line from the server and leads to its scr
   ];
   const { container, rowButton, detail, click } = await mount({ inbox: async () => listed });
   /**
-   * Under the detail's title: its header line, the body's one line if any, and its one link.
-   * The item is named once: by the server's summary when there is one, else by its kind.
+   * The row's line under its title, and the chosen item's detail: its header and what else it
+   * holds. The item is named once, on its row: by the server's summary when there is one, else
+   * by its kind. The detail is its title and its one link, nothing the row already says.
    */
-  const body = async (title: string) => {
+  const shown = async (title: string) => {
+    const row = rowButton(title)?.closest('[role="listitem"]');
+    const line = row?.querySelector('[data-slot="card-description"]')?.textContent;
     await click(rowButton(title));
     const header = detail()?.querySelector('header');
-    const lines = [...(detail()?.children ?? [])]
-      .filter((element) => element !== header && element.tagName === 'P')
+    const rest = [...(detail()?.children ?? [])]
+      .filter((element) => element !== header && element.tagName !== 'BUTTON')
+      .filter((element) => element.tagName !== 'A')
       .map((element) => element.textContent);
     const links = [...(detail()?.querySelectorAll('a') ?? [])].map((link) => [
       link.textContent,
       link.getAttribute('href'),
     ]);
-    return { header: header?.querySelector('p')?.textContent, lines, links };
+    return { line, header: header?.querySelector('h2')?.textContent, rest, links };
   };
   // A failed check names the check and opens the session's Changes › Checks.
-  expect(await body('Tidy tests')).toEqual({
-    header: 'Alpha',
-    lines: ['Check failed: Types'],
+  expect(await shown('Tidy tests')).toEqual({
+    line: 'Check failed: Types',
+    header: 'Tidy tests',
+    rest: [],
     links: [['Open checks', '/sessions/s_d?panel=checks']],
   });
-  expect(await body('Unsure writes')).toEqual({
-    header: 'Alpha',
-    lines: ['3 file writes with unknown outcomes'],
+  expect(detail()?.querySelector('header p')).toBeNull();
+  expect(await shown('Unsure writes')).toMatchObject({
+    line: '3 file writes with unknown outcomes',
+    rest: [],
     links: [['Open changes', '/sessions/s_w/review']],
   });
-  expect(await body('Fresh writes')).toEqual({
-    header: 'Alpha',
-    lines: ['1 unreviewed file write'],
+  expect(await shown('Fresh writes')).toMatchObject({
+    line: '1 unreviewed file write',
+    rest: [],
     links: [['Open changes', '/sessions/s_u/review']],
   });
-  expect(await body('Rename proposals')).toEqual({
-    header: 'Alpha',
-    lines: ['2,400 language server proposals'],
+  expect(await shown('Rename proposals')).toMatchObject({
+    line: '2,400 language server proposals',
+    rest: [],
     links: [['Open changes', '/sessions/s_l/review']],
   });
-  expect(await body('Apply conflict')).toEqual({
-    header: 'Alpha',
-    lines: ['Not applied: conflicts'],
+  expect(await shown('Apply conflict')).toMatchObject({
+    line: 'Not applied: conflicts',
+    rest: [],
     links: [['Open changes', '/sessions/s_i/review']],
   });
   // What the server says but the screen cannot name is left out rather than shown raw; the
-  // header then names the kind.
-  expect(await body('Apply oddity')).toMatchObject({
-    header: 'Applying did not finish cleanly · Alpha',
-    lines: [],
+  // row then names the kind.
+  expect(await shown('Apply oddity')).toMatchObject({
+    line: 'Applying did not finish cleanly',
+    rest: [],
   });
-  expect(await body('Garbled count')).toMatchObject({
-    header: 'File writes with unknown outcome · Alpha',
-    lines: [],
+  expect(await shown('Garbled count')).toMatchObject({
+    line: 'File writes with unknown outcome',
+    rest: [],
   });
-  expect(await body('Zero count')).toMatchObject({
-    header: 'Unreviewed file writes · Alpha',
-    lines: [],
-  });
+  expect(await shown('Zero count')).toMatchObject({ line: 'Unreviewed file writes', rest: [] });
   expect(container.textContent).not.toContain('not_a_state');
-  expect(await body('Shell owner')).toEqual({
-    header: 'Terminal exit needs checking · Alpha',
-    lines: [],
+  expect(await shown('Shell owner')).toMatchObject({
+    line: 'Terminal exit needs checking',
+    rest: [],
     links: [['Open terminal', '/sessions/s_t?panel=terminal&terminal=pty_1']],
   });
-  expect(await body('Recipe review')).toEqual({
-    header: 'Review stopped: Generation attempt limit reached · Alpha',
-    lines: [],
+  expect(await shown('Recipe review')).toMatchObject({
+    line: 'Review stopped: Generation attempt limit reached',
+    rest: [],
     links: [['Open run', '/sessions/s_r?panel=run&view=run&run=run_r']],
   });
   // A queued request's body is never shown, in the row or the detail.
-  expect(await body('Write docs')).toEqual({
-    header: 'Queued request · Alpha',
-    lines: [],
+  expect(await shown('Write docs')).toMatchObject({
+    line: 'Queued request',
+    header: 'Write docs',
+    rest: [],
     links: [['Open session', '/sessions/s_c']],
   });
   expect(container.innerHTML).not.toContain('Private request body');
@@ -605,7 +627,7 @@ it('links a non-decision item to the exact screen a notification opens', async (
     inbox: async () => [checkD, terminal, stopped],
   };
   expect(rowButton('Recipe review')?.getAttribute('aria-label')).toBe(
-    'Recipe review · Review stopped: Generation attempt limit reached · Alpha',
+    'Recipe review · Review stopped: Generation attempt limit reached',
   );
   await click(rowButton('Recipe review'));
   expect(detail()?.querySelector('a')?.getAttribute('href')).toBe(
