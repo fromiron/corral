@@ -36,7 +36,9 @@ test('archiving keeps the draft and explains that explicit sending keeps the arc
 });
 
 test('project session list distinguishes and archives empty sessions', async ({ page }) => {
-  await page.goto('/projects/default?newSession=true');
+  // The project's New conversation starts an empty session at once.
+  await page.goto('/projects/default');
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\//);
   await page.goto('/projects/default');
   // Empty sessions have their own group, collapsed until opened.
