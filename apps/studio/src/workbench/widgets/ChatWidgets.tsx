@@ -4,40 +4,28 @@ import {
   BannerActions,
   BannerTitle,
   Button,
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   focusRing,
   fontWeights,
-  Popover,
-  PopoverPopup,
-  PopoverTitle,
-  PopoverTrigger,
   Select,
 } from '@corral/react/design-kit';
 import {
   ArrowRight,
-  Bot,
   ChevronDown,
   Circle,
   CircleAlert,
   CircleCheck,
   FileDiff,
   ListChecks,
-  Monitor,
   TriangleAlert,
   X,
 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
 import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
-import { actionCopy, actionTone, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
+import { actionCopy, actionTone, composerShowsRunStatus } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -80,15 +68,7 @@ export const compactNumber = (value: number, locale: string) =>
     short >= 1000 ? `${(short / 1000).toFixed(short < 10_000 ? 1 : 0)}k` : number(short),
   );
 
-function Chip({ chip, model }: { chip: WidgetChip; model: ChatWidgetModel }) {
-  if (chip === 'context') return <ContextUsageChip model={model} />;
-  if (chip === 'agents' && model.agents) return <AgentChip model={model} />;
-  if (chip === 'changes') return <ChangesChip model={model} />;
-  if (chip === 'environment' && model.environment) return <EnvironmentChip model={model} />;
-  return null;
-}
-
-/** The context chip's words, also the context widget's accessible summary. */
+/** The context widget's words, also its accessible summary. */
 export function contextLabel(
   context: ChatWidgetModel['context'],
   t: ReturnType<typeof useTranslations<'Widgets'>>,
@@ -105,24 +85,6 @@ export function contextLabel(
           : t('contextPending');
 }
 
-function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  const locale = useLocale();
-  const { context } = model;
-  const label = contextLabel(context, t, locale);
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="context-usage-chip" className={chipClass}>
-        <ContextGauge percent={context.barPercent} />
-        <span className="truncate">{label}</span>
-        <ChevronDown size={12} />
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="lg">
-        <ContextDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
 /** A detail's heading. Details open in Overview's own place, so none is a popover's title. */
 function DetailTitle({ children }: { children: ReactNode }) {
   return (
@@ -353,22 +315,6 @@ export function SegmentBar({
     </div>
   );
 }
-function AgentChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  if (!model.agents) return null;
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="agent-activity-chip" className={chipClass}>
-        <Bot size={14} />
-        <span className="truncate">{t('agents', model.agents)}</span>
-        <ChevronDown size={12} />
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="md">
-        <AgentsDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
 /** Agent states and the plan each agent owns. */
 export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
@@ -439,42 +385,6 @@ function ChangesChip({ model }: { model: ChatWidgetModel }) {
         <span className="text-micro">{t('changesLines', { count: model.changeLines })}</span>
       ) : null}
     </Link>
-  );
-}
-function EnvironmentChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="environment-chip" className={chipClass}>
-        <Monitor size={14} />
-        <span className="truncate">
-          {t(model.environment === 'simulated' ? 'environmentSimulated' : 'environmentRestricted')}
-        </span>
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="md">
-        <EnvironmentDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
-/** Why this run's environment differs from an ordinary local run. */
-export function EnvironmentDetail({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  return (
-    <>
-      <PopoverTitle>{t('environmentHeading')}</PopoverTitle>
-      <p className="mt-2 text-caption leading-relaxed text-muted-foreground">
-        {t(
-          model.environment === 'simulated'
-            ? 'environmentSimulationDetail'
-            : 'environmentRestrictedDetail',
-        )}
-      </p>
-      <RunLink model={model} className="mt-3 inline-flex items-center gap-2 text-caption">
-        {t('contextDetails')}
-        <ArrowRight size={14} />
-      </RunLink>
-    </>
   );
 }
 export function RunLink({
