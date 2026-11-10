@@ -531,9 +531,11 @@ describe('RunCanvas', () => {
     );
     await act(async () => {});
     const label = (id: string) => document.querySelector(`[data-agent-id="${id}"]`)?.textContent;
-    expect(label('write')).toContain('Waiting for your answer');
+    // An answer owed reads as the glossary's Waiting for you; an approval keeps its own word.
+    expect(label('write')).toContain(messages.Canvas.nodeStatus.waiting);
     expect(label('write')).not.toContain('approval');
-    expect(label('research')).toContain('Waiting for approval');
+    expect(label('research')).toContain(messages.Canvas.nodeStatus.waiting_approval);
+    expect(label('research')).not.toContain(messages.Canvas.nodeStatus.waiting);
   });
 
   it('shows an empty state instead of a definition graph when no agent work was observed', async () => {
