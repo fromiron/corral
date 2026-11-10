@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import type { ReviewCommentView } from '@corral/client';
 import type { RunSummary, WorkSession } from '@corral/core';
+import { Button } from '@corral/react/design-kit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ReviewSearch } from '../workbench/panels/routes.ts';
 import { parseCommentBody } from '../workbench/reviewComments.ts';
@@ -413,6 +415,54 @@ it.each([
     expect(
       [...view.container.querySelectorAll('button')].filter((item) => item.textContent === label),
     ).toHaveLength(1);
+});
+
+/** Whether a button draws as the kit's primary, told by the classes primary adds over tertiary. */
+function isPrimary(button: HTMLButtonElement | undefined) {
+  const classes = (variant: 'primary' | 'tertiary') => {
+    const host = document.createElement('div');
+    host.innerHTML = renderToStaticMarkup(
+      <Button size="compact" variant={variant}>
+        label
+      </Button>,
+    );
+    return new Set(host.querySelector('button')?.classList);
+  };
+  const tertiary = classes('tertiary');
+  const marks = [...classes('primary')].filter((name) => !tertiary.has(name));
+  if (!button) throw new Error('Missing the button');
+  return marks.every((name) => button.classList.contains(name));
+}
+
+it('while a comment is being written, adding it is the one primary action', async () => {
+  reviewWidth(1200);
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  const primaries = () =>
+    [...view.container.querySelectorAll<HTMLButtonElement>('button')]
+      .filter((button) => isPrimary(button))
+      .map((button) => button.textContent);
+  expect(primaries()).toEqual(['Review.approve']);
+
+  await view.click('pick line 1');
+  expect(primaries()).toEqual(['Review.addComment']);
+  expect(isPrimary(view.button('Review.approve', area))).toBe(false);
+  // Closing the form gives the decision its emphasis back.
+  await view.click('Review.cancel', area);
+  expect(primaries()).toEqual(['Review.approve']);
+
+  // With a draft waiting, sending it leads; a second comment being written leads over both.
+  await view.click('Review.addComment', area);
+  const note = area.querySelector<HTMLTextAreaElement>('form textarea');
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Name the run.'));
+  await view.click('Review.addComment', area);
+  expect(primaries()).toEqual(['Review.sendReview']);
+  await view.click('Review.addComment', area);
+  expect(primaries()).toEqual(['Review.addComment']);
+  await view.click('Review.cancel', area);
+  expect(primaries()).toEqual(['Review.sendReview']);
 });
 
 it('marks only files written outside Corral, with a badge whose tooltip names the source', async () => {

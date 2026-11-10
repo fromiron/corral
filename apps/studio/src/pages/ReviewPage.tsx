@@ -385,6 +385,8 @@ export function ReviewContent({
   const [sendSlot, setSendSlot] = useState<HTMLElement | null>(null);
   const active = runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
   const drafts = comments.filter((comment) => comment.state === 'draft').length;
+  // While a comment is being written, adding it is the review's one primary action.
+  const [composing, setComposing] = useState(false);
   // The empty view where the changes would be, whenever there is no diff to show.
   const noFiles = Boolean(changes) && (Boolean(changes?.unavailable) || !changes?.files.length);
   const idle = !changes
@@ -560,6 +562,7 @@ export function ReviewContent({
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
                   )}
                   commentSlot={commentSlot}
+                  onComposing={setComposing}
                   onComment={async (comment: NewComment) => {
                     await workspaces?.addComment(session.sessionId, {
                       ...comment,
@@ -603,7 +606,7 @@ export function ReviewContent({
                   linked={Boolean(binding)}
                   active={active}
                   // Draft comments make sending them the next step; approving waits its turn.
-                  primary={drafts === 0}
+                  primary={drafts === 0 && !composing}
                   barSlot={wide ? undefined : decisionSlot}
                   detailsClassName="@min-[640px]/review:col-start-2"
                 />
@@ -616,6 +619,7 @@ export function ReviewContent({
                 comments={comments}
                 current={changes}
                 composer={<div ref={setCommentSlot} className="empty:hidden" />}
+                stepBack={composing}
                 sendSlot={wide ? undefined : sendSlot}
                 className="@min-[640px]/review:col-start-1 @min-[640px]/review:row-span-2 @min-[640px]/review:row-start-1"
                 onChange={async () => {
@@ -732,6 +736,7 @@ export function FileDiff({
   comments = [],
   onComment,
   commentSlot,
+  onComposing,
   navigation,
   fill = false,
 }: {
@@ -745,6 +750,8 @@ export function FileDiff({
   onComment?: (comment: NewComment) => Promise<void>;
   /** Where the comment form shows (the decision area); under the toolbar without one. */
   commentSlot?: HTMLElement | null;
+  /** Told whether the comment form is open. */
+  onComposing?: ((open: boolean) => void) | undefined;
   /** Takes the shown diff's next/previous change moves (keyboard navigation). */
   navigation?: RefObject<HunkNavigation | null> | undefined;
   /** Fills a review column: a ruled toolbar, and a diff that takes the height left. */
@@ -828,6 +835,11 @@ export function FileDiff({
   };
   const anchor = sides ? reviewSelection(range, before ?? '', after ?? '') : null;
   const commentable = Boolean(onComment) && before !== null && after !== null;
+  const composing = commentable && Boolean(picked?.open);
+  useEffect(() => {
+    onComposing?.(composing);
+  }, [onComposing, composing]);
+  useEffect(() => () => onComposing?.(false), [onComposing]);
   const composer =
     onComment && commentable ? (
       picked?.open ? (
@@ -1176,6 +1188,7 @@ export function CommentsPanel({
   comments,
   current,
   composer,
+  stepBack = false,
   sendSlot,
   className,
   onChange,
@@ -1187,6 +1200,8 @@ export function CommentsPanel({
   current: ChangeSetView | null;
   /** The new-comment form's place, at the head of the list. */
   composer?: ReactNode;
+  /** True while another step leads the review (a comment being written). */
+  stepBack?: boolean;
   /** Where the send button shows (the pinned row); under the drafts without one. */
   sendSlot?: HTMLElement | null | undefined;
   className?: string;
@@ -1338,7 +1353,7 @@ export function CommentsPanel({
 
   const sendButton = (
     <Button
-      variant="primary"
+      variant={stepBack ? 'tertiary' : 'primary'}
       size="compact"
       type="button"
       disabled={busy || startBlocked || (!pending && Boolean(active) && !steerTo)}
@@ -1513,7 +1528,7 @@ export function DecisionPanel({
   changed: number;
   linked: boolean;
   active: boolean;
-  /** False while another step leads the review (draft comments waiting to be sent). */
+  /** False while another step leads the review (a comment being written, or drafts to send). */
   primary?: boolean;
   /** Where the decision shows (the pinned row); at the top of the area without one. */
   barSlot?: HTMLElement | null | undefined;
