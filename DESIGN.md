@@ -83,7 +83,7 @@ The design kit is copied into this repository. Building Corral does not read ano
 | `warning` | #92400E | #FCD34D | Warning state with an explanation |
 | `info` | #1D4ED8 | #93C5FD | Informational state |
 | `focus-ring` | #2563EB | #6B97FF | Keyboard focus |
-| `emphasis` | #3568D4 | #6B97FF | The kit's one accent: live, selected, in-progress and switch-on states |
+| `emphasis` | #2F5FC4 | #6B97FF | The kit's one accent: live, selected, in-progress and switch-on states |
 
 `border` mixes 12% foreground into transparency. `hover`, `active`, `tint` and `tint-hover` are surface-relative overlays from the kit. Dialogs use the kit's black scrim: 40% in light mode and 80% in dark mode through `dialog-scrim`. Never use the dark theme's white interactive overlay as a page mask. Do not substitute the muted background token for secondary text. Primary actions use foreground on background; focus blue is not a second CTA style, and `emphasis` marks state rather than actions. Status hues stay for outcomes and notices.
 
@@ -95,7 +95,7 @@ Theme choice supports light, dark and system. `light-dark()` resolves the palett
 
 ## Typography
 
-Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`; the supplied kit includes no font files, so Inter is used only where available and the system font is the fallback. Do not add a remote font request implicitly. Code, paths, diffs and the terminal retain a monospace family.
+Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font and serves it from its own origin; the system font is the fallback while it loads. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
 
 | Role | Size / line height | Typical use |
 |---|---|---|
@@ -106,7 +106,7 @@ Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`;
 | `caption` | 12 / 16px | Secondary labels and metadata |
 | `micro` | 11 / 14px | Sparse status annotations |
 
-Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs. The studio bundles the Inter variable font, so the kit's `font-variation-settings` weights render on every machine. Korean interface text uses one register: statements end in the 합니다 form ("저장했습니다", "세션이 없습니다"), and instructions use the 하세요 form ("모델을 연결하세요"). The 해요 form ("없어요", "열려요") is not used. Numbers are written in full with grouping (2,400, not 2.4천).
+Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs. Because Inter is bundled, the kit's `font-variation-settings` weights render on every machine. Korean interface text uses one register: statements end in the 합니다 form ("저장했습니다", "세션이 없습니다"), and instructions use the 하세요 form ("모델을 연결하세요"). The 해요 form ("없어요", "열려요") is not used. Numbers are written in full with grouping (2,400, not 2.4천).
 
 Editable fields use the 16px `--fs-field-touch` size on coarse pointers to prevent iOS focus zoom, preserving their existing line height.
 

@@ -12,7 +12,9 @@
   --warning: light-dark(#92400e, #fcd34d);
   --info: light-dark(#1d4ed8, #93c5fd);
   --focus-ring: light-dark(#2563eb, #6b97ff);
-  --emphasis: light-dark(#3568d4, #6b97ff);
+  /* Light emphasis text must also pass 4.5:1 on its own 14% fill (the timeline "Now" chip). */
+  --emphasis: light-dark(#2f5fc4, #6b97ff);
+  --emphasis-hover: light-dark(#2954b3, #5c89f2);
   --muted-foreground: light-dark(#666666, #b8b8b8);
 
   --primary: var(--foreground);
