@@ -154,9 +154,9 @@ export function RunMessage({
     [state.events, projection, label],
   );
   // Waiting questions are answered in the exact run's response area; the composer's notice
-  // names the first and carries the way there, so the turn does not repeat it.
+  // names the first and carries the way there, so the turn does not repeat it. A waiting
+  // approval is its card below, which says what it waits for.
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
-  const questions = interactions.filter((interaction) => interaction.kind !== 'approval');
   if (!projection)
     return (
       <div className="flex min-w-0 flex-col gap-3">
@@ -412,10 +412,11 @@ export function RunMessage({
           })}
         </ul>
       ) : null}
-      {/* An ended turn's reason is its notice's title; a waiting question is the composer notice's. */}
+      {/* An ended turn's reason is its notice's title; a waiting question is the composer
+          notice's, and a waiting approval is its card's. */}
       {projection.statusReason &&
       !unfinished &&
-      !(sessionId && questions.length) &&
+      !(sessionId && interactions.length) &&
       projection.status !== 'running' &&
       projection.status !== 'succeeded' ? (
         <p data-testid="run-reason" className="text-caption text-muted-foreground">

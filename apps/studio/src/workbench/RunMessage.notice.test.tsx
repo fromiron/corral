@@ -191,7 +191,28 @@ it('draws a waiting approval in the turn under no heading of its own', async () 
   ).not.toBeNull();
 });
 
-it('keeps the heading for a run outside a session', async () => {
+it('leaves why the run waits to the approval card, with no reason line under it', async () => {
+  fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
+  const container = await show();
+  expect(container.querySelector('[data-testid="approval-approval_1"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="run-reason"]')).toBeNull();
+  const visible = visibleLines(container).join('\n');
+  expect(visible).not.toContain(messages.Run.reasonPrefix);
+  expect(visible).not.toContain('Waiting for your decision');
+});
+
+it('keeps the reason line of a paused turn', async () => {
+  const projection = waitingRun();
+  projection.status = 'paused';
+  projection.statusReason = 'needs_user: exec_a';
+  fixture.store = sessionStore({ runId: 'run_chat', projection });
+  const container = await show();
+  expect(container.querySelector('[data-testid="run-reason"]')?.textContent).toContain(
+    messages.Run.reasonPrefix,
+  );
+});
+
+it('keeps the heading and the reason for a run outside a session', async () => {
   // The standalone turn's work log measures its panel.
   vi.stubGlobal(
     'ResizeObserver',
@@ -204,6 +225,9 @@ it('keeps the heading for a run outside a session', async () => {
   fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
   const container = await show(null);
   expect(container.querySelector('h3')?.textContent).toBe(messages.Approvals.heading);
+  expect(container.querySelector('[data-testid="run-reason"]')?.textContent).toContain(
+    'Waiting for your decision',
+  );
 });
 
 it('shows a thinking indicator where the answer will appear until observed output arrives', async () => {
