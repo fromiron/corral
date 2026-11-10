@@ -5,6 +5,7 @@ import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierr
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { type DiffLabels, localizeDiffLabels } from './diffLabels.ts';
 import { usePreferences } from './preferences.ts';
 import { CommentBody } from './ReviewCommentForm.tsx';
 import { prefersReducedMotion } from './reviewNavigation.ts';
@@ -118,6 +119,14 @@ export function DiffCode({
 }) {
   const t = useTranslations('Review');
   const { theme } = usePreferences();
+  const td = useTranslations('Review.diff');
+  const labels = useRef<DiffLabels | null>(null);
+  labels.current = {
+    unmodifiedLines: (count) => td('unmodifiedLines', { count }),
+    moreContext: td('moreContext'),
+    expandAll: td('expandAll'),
+    noNewline: td('noNewline'),
+  };
   const viewer = useRef<CodeViewHandle<ReviewCommentView, undefined>>(null);
   const annotations = useMemo(
     () =>
@@ -175,6 +184,11 @@ export function DiffCode({
           enableLineSelection: true,
           enableGutterUtility: Boolean(onPick),
           hunkSeparators: 'line-info',
+          // The renderer's own words come from the catalog (diffLabels.ts).
+          onPostRender: (node: HTMLElement, _diff: unknown, phase: string) => {
+            if (phase !== 'unmount' && labels.current)
+              localizeDiffLabels(node.shadowRoot ?? node, labels.current);
+          },
           ...(onPick
             ? {
                 onLineSelectionEnd: (range: SelectedLineRange | null) => {

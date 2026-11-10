@@ -2055,7 +2055,13 @@
     "rangeChanged": "Range changed",
     "more": "More",
     "previewBadge": "Preview",
-    "decisionArea": "Comments and decision"
+    "decisionArea": "Comments and decision",
+    "diff": {
+      "unmodifiedLines": "{count, plural, one {# unmodified line} other {# unmodified lines}}",
+      "moreContext": "More unchanged lines may be above or below",
+      "expandAll": "Expand all",
+      "noNewline": "No newline at end of file"
+    }
   },
   "Workbench": {
     "sidebar": "Projects and sessions",

@@ -2055,7 +2055,13 @@
     "rangeChanged": "범위 내용이 바뀜",
     "more": "더 보기",
     "previewBadge": "미리보기",
-    "decisionArea": "의견과 판단"
+    "decisionArea": "의견과 판단",
+    "diff": {
+      "unmodifiedLines": "{count, plural, other {변경 없는 줄 #개}}",
+      "moreContext": "위아래에 변경 없는 줄이 더 있을 수 있습니다",
+      "expandAll": "모두 펼치기",
+      "noNewline": "파일 끝에 줄바꿈 없음"
+    }
   },
   "Workbench": {
     "sidebar": "프로젝트와 세션",
