@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../../packages/react/src/stories/fixtures.tsx';
-import { EntryCard } from './SessionEntries.tsx';
+import { EntryCard, RunCard } from './SessionEntries.tsx';
 
 // One turn of the conversation: a plain bubble with a quiet icon row, then the run's one
 // process line, whose run part opens the run record.
@@ -262,4 +262,37 @@ it('the answer has its own icon row: copy and open in results, by accessible nam
   expect(open?.querySelector('svg')).not.toBeNull();
   await act(async () => copy?.click());
   expect(writeText).toHaveBeenCalledWith('The answer body');
+});
+
+it('a run no request names reads like any turn: its status is said once, by the line above the composer', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider
+        locale="en"
+        messages={messages}
+        timeZone="UTC"
+        now={new Date('2026-11-09T12:00:00Z')}
+      >
+        <RunCard
+          run={runs[1] as RunSummary}
+          number={2}
+          artifactMetadataVersion="run_turn"
+          onPanel={vi.fn()}
+        />
+      </IntlProvider>,
+    ),
+  );
+  const badges = [...container.querySelectorAll('[data-status="succeeded"]')];
+  // Assistive tech still hears the run's status with its turn; nothing shows it a second time.
+  expect(badges).toHaveLength(1);
+  expect(badges[0]?.closest('.sr-only')).not.toBeNull();
+  // The turn still opens its run record from its process line.
+  expect(container.querySelector('[data-testid="turn-run"]')?.textContent).toContain('Run #2');
 });
