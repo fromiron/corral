@@ -321,7 +321,7 @@ function RunWorkspace({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [listedNodeId, setListedNodeId] = useState<string | null>(null);
   // The graph view's display, kept with the other view state across view switches. Until the
-  // person picks one, a map whose fit would make the names unreadable starts as the list.
+  // person picks one, a stage too narrow for the map's names to read starts as the list.
   const [graphChoice, setGraphChoice] = useState<'map' | 'list' | null>(null);
   const [fittedDisplay, setFittedDisplay] = useState<'map' | 'list'>('map');
   const graphDisplay = graphChoice ?? fittedDisplay;
@@ -573,7 +573,7 @@ function RunWorkspace({
                           session={session}
                           definition={definition}
                           display={graphDisplay}
-                          onFitZoom={fitZoomed}
+                          onFitWidthZoom={fitZoomed}
                           selectedNodeId={highlightedNode}
                           onSelectNode={(id) => setSelectedNodeId(id)}
                           renderNodePreview={(nodeId, { close, trigger: origin }) =>

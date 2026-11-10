@@ -185,7 +185,7 @@ describe('run graph fit', () => {
 });
 
 describe('the fit it reports', () => {
-  it('reports the zoom of each fit it makes on its own, never of one the person asks for', async () => {
+  it('reports the zoom that fits the graph’s width for each fit it makes on its own, never for one the person asks for', async () => {
     const { definition } = researchTeamDraft();
     const session = sessionStore({
       runId: 'run_fit_report',
@@ -225,7 +225,7 @@ describe('the fit it reports', () => {
           definition={definition}
           selectedNodeId={null}
           onSelectNode={() => {}}
-          onFitZoom={(zoom) => reported.push(zoom)}
+          onFitWidthZoom={(zoom) => reported.push(zoom)}
         />
       </IntlProvider>,
     );
@@ -236,12 +236,20 @@ describe('the fit it reports', () => {
           document.querySelector<HTMLElement>('[data-graph-stage]')?.style.transform ?? '',
         )?.[1],
       );
+    const resize = async (width: number, height: number) => {
+      pane.width = width;
+      pane.height = height;
+      await act(async () => {
+        for (const callback of observers) callback();
+      });
+    };
     expect(reported.at(-1)).toBe(scale());
+    // A short but wide pane shrinks the map to fit its height; across, the names still read.
+    await resize(1100, 90);
+    expect(scale()).toBeLessThan(1);
+    expect(reported.at(-1)).toBe(RUN_GRAPH_FIT.maxZoom);
     // A narrow pane while the page settles: the automatic fit shrinks the map and says so.
-    pane.width = 160;
-    await act(async () => {
-      for (const callback of observers) callback();
-    });
+    await resize(160, 620);
     expect(reported.at(-1)).toBe(scale());
     expect(reported.at(-1)).toBeLessThan(1);
     const count = reported.length;

@@ -437,7 +437,14 @@ test('a long multiline request keeps graph, events and run information reachable
     await expect(eventsTab).toBeInViewport({ ratio: 1 });
     await expect(info).toBeInViewport({ ratio: 1 });
     const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
-    await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+    // Too narrow for the map's names to read, the graph view starts as its list.
+    if (viewport.width < 640) {
+      await expect(monitor.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(graph.getByRole('table', { name: 'Agents', exact: true })).toBeInViewport();
+    } else await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
     await eventsTab.click();
     await expect(monitor.locator('[data-run-workspace-view="events"]')).toBeVisible();
     await graphTab.click();

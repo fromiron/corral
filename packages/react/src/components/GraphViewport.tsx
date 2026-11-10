@@ -76,8 +76,11 @@ export interface GraphViewportOptions {
    * Omitted, the view refits with the pane until the person moves it.
    */
   fitOnce?: boolean;
-  /** Called with the view each fit the stage makes on its own chooses; a requested fit is not. */
-  onAutoFit?: (viewport: Viewport) => void;
+  /**
+   * Called with the view each fit the stage makes on its own chooses, and the zoom that would fit
+   * the content's width alone (what a narrow pane allows); a requested fit is not reported.
+   */
+  onAutoFit?: (viewport: Viewport, acrossZoom: number) => void;
 }
 
 export function useGraphViewport({
@@ -103,14 +106,19 @@ export function useGraphViewport({
     const element = pane.current;
     if (!element) return;
     moved.current = false;
+    const content = read.current.bounds();
     const next = fitBounds(
-      read.current.bounds(),
+      content,
       element.clientWidth,
       element.clientHeight,
       read.current.fitRule,
     );
     setViewport(next);
-    if (automatic) read.current.onAutoFit?.(next);
+    if (automatic)
+      read.current.onAutoFit?.(
+        next,
+        fitBounds(content, element.clientWidth, Number.POSITIVE_INFINITY, read.current.fitRule).k,
+      );
   }, []);
   /** A fit the person asked for. */
   const fit = useCallback(() => {

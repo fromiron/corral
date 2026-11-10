@@ -210,7 +210,7 @@ export function RunCanvas({
   selectedNodeId,
   onSelectNode,
   renderNodePreview,
-  onFitZoom,
+  onFitWidthZoom,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
@@ -226,10 +226,10 @@ export function RunCanvas({
     context: { close: () => void; trigger: HTMLElement | null },
   ) => ReactNode;
   /**
-   * The zoom of each fit the map makes on its own (its first display, as the page settles),
-   * before it is painted; a fit the person asks for is not reported.
+   * For each fit the map makes on its own (its first display, as the page settles), the zoom
+   * that fits the graph's width, before it is painted; a fit the person asks for is not reported.
    */
-  onFitZoom?: (zoom: number) => void;
+  onFitWidthZoom?: (zoom: number) => void;
 }) {
   const t = useTranslations('RunCanvas');
   const statusText = useTranslations('Canvas.nodeStatus');
@@ -287,7 +287,9 @@ export function RunCanvas({
     onMove: () => previewHandle.close(),
     // A press on the empty stage that did not pan dismisses the quick view.
     onTap: () => previewHandle.close(),
-    ...(onFitZoom ? { onAutoFit: (view: { k: number }) => onFitZoom(view.k) } : {}),
+    ...(onFitWidthZoom
+      ? { onAutoFit: (_view: unknown, across: number) => onFitWidthZoom(across) }
+      : {}),
   });
 
   // A quick view belongs to the display it opened from; switching displays closes it.

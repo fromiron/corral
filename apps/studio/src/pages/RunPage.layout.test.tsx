@@ -90,7 +90,7 @@ vi.mock('@corral/react', async (original) => {
       onSelectNode,
       selectedNodeId,
       renderNodePreview,
-      onFitZoom,
+      onFitWidthZoom,
     }: {
       definition: CorralDefinition;
       session: RunSessionStore;
@@ -101,15 +101,15 @@ vi.mock('@corral/react', async (original) => {
         nodeId: string,
         controls: { close: () => void; trigger: HTMLElement | null },
       ) => ReactNode;
-      onFitZoom?: (zoom: number) => void;
+      onFitWidthZoom?: (zoom: number) => void;
     }) => {
       const [preview, setPreview] = useState<{ id: string; trigger: HTMLElement } | null>(null);
       // Like the real stage, the map fits itself only while it shows, again as the page settles.
       const observed = useStore(session, (state) => state.projection);
       useLayoutEffect(() => {
         void observed;
-        if (display !== 'list' && fixture.fitZoom !== null) onFitZoom?.(fixture.fitZoom);
-      }, [display, observed, onFitZoom]);
+        if (display !== 'list' && fixture.fitZoom !== null) onFitWidthZoom?.(fixture.fitZoom);
+      }, [display, observed, onFitWidthZoom]);
       return (
         <div>
           <output data-testid="layout">
@@ -1944,7 +1944,7 @@ it('switches the graph between its map and list, keeping the choice across views
   expect(map?.getAttribute('aria-pressed')).toBe('true');
 });
 
-it('starts the graph as its list when fitting the map would make the names unreadable', async () => {
+it('starts the graph as its list when fitting the map across a narrow stage would make the names unreadable', async () => {
   fixture.fitZoom = 0.43;
   const { container } = await mount('inline_team', null, {});
   expect(container.querySelector('[data-testid="graph-display"]')?.textContent).toBe('list');
@@ -1968,7 +1968,7 @@ it('keeps the map once the person picks it on a narrow stage, across new events 
   expect(display()).toBe('map');
 });
 
-it('starts with the map when its fit keeps the names readable', async () => {
+it('starts with the map when fitting it across the stage keeps the names readable', async () => {
   fixture.fitZoom = 1;
   const { container, run } = await mount('inline_team', null, {});
   const display = () => container.querySelector('[data-testid="graph-display"]')?.textContent;
