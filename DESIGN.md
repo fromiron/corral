@@ -106,7 +106,7 @@ Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`;
 | `caption` | 12 / 16px | Secondary labels and metadata |
 | `micro` | 11 / 14px | Sparse status annotations |
 
-Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Long conversation output retains the established 15 / 28px reader role as an explicit reading-density exception. Preserve Korean and English labels without clipping or forced single-line paragraphs.
+Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs.
 
 Editable fields use the 16px `--fs-field-touch` size on coarse pointers to prevent iOS focus zoom, preserving their existing line height.
 
@@ -118,7 +118,7 @@ A session uses the supplied kit's default Tabs, TabsList, TabItem and TabPanel f
 
 Execution history follows the AgentRun separation of roles: the central workspace owns the graph (default), work flow, timeline, events and readable results; the right panel owns one selected execution/node, a pending decision or explicitly opened run information. Do not stack results, a global plan and execution details in the right panel. Keep view switches beside the run header, preserve hidden views' state, and open Reins explicitly in the central workspace without retargeting a draft on inspection. The interaction contract lives in [execution monitoring](docs/specs/features/execution-monitor.md).
 
-Use Tailwind's existing 4px spacing unit: 4–8px for related controls, 12–16px within components, and 24px between sections. Let the page own outer padding; avoid stacking page padding with another full-size wrapper. Preserve the established 640px settings and 1024px sidebar boundaries, task-specific workbench container queries, and the 46rem conversation measure. Narrow layouts must keep primary actions and recovery controls reachable.
+Use Tailwind's existing 4px spacing unit: 4–8px for related controls, 12–16px within components, and 24px between sections. Let the page own outer padding; avoid stacking page padding with another full-size wrapper. Preserve the established 640px settings and 1024px sidebar boundaries, task-specific workbench container queries, and the kit chat measure (a 680px conversation column and a 744px composer including gutters). Narrow layouts must keep primary actions and recovery controls reachable.
 
 Controls use an 8px radius; panels and popup containers use 12px. A menu item inset 4px inside a 12px popup uses 8px corners. Independent inputs inside a card keep their own 8px radius; do not treat them as concentric surfaces. Compact badges and keycaps may use 4px. Avatars, status dots and explicitly pill-shaped chips remain circular exceptions.
 
