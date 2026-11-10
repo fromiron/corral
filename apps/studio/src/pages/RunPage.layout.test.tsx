@@ -317,10 +317,10 @@ it('keeps Run info open while quickly checking an agent', async () => {
   expect(container.querySelector('[data-testid="node-preview"]')).not.toBeNull();
 });
 
-it.each(['Run info', 'Needs your input'] as const)(
+it.each(['Run info', 'Waiting for you'] as const)(
   'keeps %s open when a deep-linked execution arrives during history replay',
   async (label) => {
-    if (label === 'Needs your input') fixture.pending = 1;
+    if (label === 'Waiting for you') fixture.pending = 1;
     const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
     const control =
       label === 'Run info'
@@ -1636,13 +1636,17 @@ it('turns the waiting status into the one way to respond', async () => {
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
 });
 
-it('opens Needs your input once when a new decision arrives and the side is free', async () => {
+it('opens the response area once when a new decision arrives and the side is free', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run } = await mount('inline_team', null, {});
   const focused = document.activeElement;
   await waitFor(run, 1);
   expect(side(container)?.hidden).toBe(false);
-  expect(side(container)?.querySelector('h2')?.textContent).toBe('Needs your input');
+  // The panel is titled with the state's own name, as the run's status says it.
+  expect(side(container)?.querySelector('h2')?.textContent).toBe(messages.Status.awaiting_user);
+  expect(
+    side(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
+  ).toBe(messages.Status.awaiting_user);
   expect(document.activeElement).toBe(focused);
   // Closed by the person: the same decision does not bring it back.
   await act(async () =>

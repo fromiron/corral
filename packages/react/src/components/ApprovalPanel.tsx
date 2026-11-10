@@ -45,6 +45,7 @@ export function ApprovalPanel({
   compact = false,
   showPlan = true,
   showRelatedPanels = true,
+  headed = true,
   policySettingsAction,
 }: {
   session: RunSessionStore;
@@ -57,6 +58,11 @@ export function ApprovalPanel({
   showPlan?: boolean;
   /** Conversation turns already own their workflow and question surfaces. */
   showRelatedPanels?: boolean;
+  /**
+   * False when the host already titles this area (the Run page's panel, Needs you's detail):
+   * no visible heading is added, and the region keeps its name.
+   */
+  headed?: boolean;
   /** Navigation only: never grants broader permission to this call. */
   policySettingsAction?: ReactNode;
 }) {
@@ -243,10 +249,15 @@ export function ApprovalPanel({
       ) : null}
       {showRelatedPanels ? <InteractionPanel session={session} /> : null}
       {showPlan ? <WorkPlanPanel session={session} /> : null}
-      <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
-        <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
-          {t('heading')}
-        </h3>
+      <section
+        {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
+        className={`flex flex-col gap-2 ${className ?? ''}`}
+      >
+        {headed ? (
+          <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
+            {t('heading')}
+          </h3>
+        ) : null}
         {/* UX-11: decisions already made in this run stay in view, so the next one reads as a
           new step rather than a retry of the last. */}
         {(compact ? [] : done).map((approval) => (

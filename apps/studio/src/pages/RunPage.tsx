@@ -244,6 +244,7 @@ function RunWorkspace({
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
+  const status = useTranslations('Status');
   const { execution, artifact, result } = search;
   const resultOpen = search.view === 'results' || result !== undefined;
   const documentOpen = resultOpen || artifact !== undefined;
@@ -751,9 +752,12 @@ function RunWorkspace({
           <div className="grid gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <h2 className="truncate text-subtitle font-medium">
+                <h2
+                  className="truncate text-subtitle"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
                   {panel === 'approval'
-                    ? m('needsYou')
+                    ? status('awaiting_user')
                     : panel === 'run'
                       ? m('runInfo')
                       : (selectedTarget?.nodeLabel ??

@@ -5278,7 +5278,6 @@
       "now": "Now"
     },
     "activity": "Activity",
-    "needsYou": "Needs your input",
     "respond": "{count, plural, =1 {Respond} other {Respond · #}}",
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",

@@ -5278,7 +5278,6 @@
       "now": "지금"
     },
     "activity": "활동",
-    "needsYou": "확인 필요",
     "respond": "{count, plural, =1 {확인하기} other {확인하기 · #}}",
     "showPanel": "옆 패널 보기",
     "hidePanel": "옆 패널 숨기기",

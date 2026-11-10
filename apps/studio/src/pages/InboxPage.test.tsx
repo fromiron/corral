@@ -393,6 +393,11 @@ it('heads a decision’s response area with its session, run number and a link t
   expect(header?.contains(links[0] ?? null)).toBe(true);
   const area = detail()?.querySelector('[data-testid="run-needs-you"]');
   expect(area).toBeTruthy();
+  // One title above the card: the session's. The response area adds no state heading of its own.
+  expect(
+    [...(detail()?.querySelectorAll('h1, h2, h3, h4') ?? [])].map((h) => h.textContent),
+  ).toEqual(['Fix login']);
+  expect(area?.textContent).not.toContain(en.Approvals.heading);
   expect(
     header && area && header.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
