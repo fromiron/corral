@@ -10,6 +10,7 @@ import { emptyDraft } from '@corral/react';
 import { describe, expect, it } from 'vitest';
 import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import { templateForWorkspace } from './demo/templates.ts';
 import {
   createFromTemplate,
   roleSteps,
@@ -104,6 +105,46 @@ describe('library templates (docs/specs/features/library.md)', () => {
       'Review',
     ]);
   });
+
+  // The demo route keeps its English fixture; the workspace path writes these two in the
+  // screen language with the same structure.
+  it.each(['starter', 'research-team'] as const)(
+    '%s in English is the demo fixture under the workspace name',
+    (id) => {
+      expect(templateDefinition(id, 'x', english)).toEqual(
+        templateForWorkspace(id, 'x').definition,
+      );
+    },
+  );
+
+  it.each([
+    ['starter', '단일 에이전트', [['에이전트 1']]],
+    ['research-team', '조사 팀', [['조사자'], ['작성자'], ['검토자']]],
+  ] as const)(
+    '%s in Korean names its team, roles, nodes and sample brief in Korean',
+    (id, name, steps) => {
+      const definition = templateDefinition(id, 'x', korean);
+      expect(definition.name).toBe(name);
+      expect(roleSteps(definition)).toEqual(steps);
+      const hangul = /[가-힣]/;
+      const words = [
+        ...definition.roles.flatMap((role) => [role.name, role.prompt]),
+        ...definition.nodes.map((node) => node.label),
+        definition.input.brief,
+        ...definition.input.criteria,
+      ];
+      expect(words.filter((word) => !hangul.test(word))).toEqual([]);
+      // Only the wording differs from the English team.
+      const shape = (team: CorralDefinition) => ({
+        ...team,
+        name: '',
+        input: { brief: '', criteria: team.input.criteria.map(() => '') },
+        roles: team.roles.map((role) => ({ ...role, name: '', prompt: '' })),
+        nodes: team.nodes.map((node) => ({ ...node, label: '' })),
+      });
+      expect(shape(definition)).toEqual(shape(templateDefinition(id, 'x', english)));
+    },
+  );
 
   it.each([
     ['starter', [['Agent 1']]],

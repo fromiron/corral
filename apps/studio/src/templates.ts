@@ -7,6 +7,7 @@ import {
   type PlanStep,
   type RolePresetId,
   type RoleWording,
+  rolePrompt,
   TEAM_TEMPLATE_IDS,
   TEAM_TEMPLATE_ROLES,
   type TeamTemplateId,
@@ -37,6 +38,15 @@ export const WORKSPACE_TEMPLATES: readonly WorkspaceTemplateId[] = [
 const isTeamTemplate = (id: WorkspaceTemplateId): id is TeamTemplateId =>
   (TEAM_TEMPLATE_IDS as readonly string[]).includes(id);
 
+/** The wording of a template the demo also opens: every role and node, by id. */
+interface DemoWording {
+  name: string;
+  brief: string;
+  criteria: string[];
+  roles: Record<string, RoleWording>;
+  nodes: Record<string, string>;
+}
+
 /** The messages a template is written in: its name, and its roles' names and duties. */
 interface TemplateMessages {
   Workspace: { newName: string; template: Record<string, { name: string }> };
@@ -46,7 +56,16 @@ interface TemplateMessages {
     templates: Record<
       TeamTemplateId,
       { brief: string; criteria: Record<string, string>; roles?: Record<string, RoleWording> }
-    >;
+    > &
+      Record<
+        DemoTemplateId,
+        {
+          brief: string;
+          criteria: Record<string, string>;
+          roles: Record<string, RoleWording>;
+          nodes: Record<string, string>;
+        }
+      >;
   };
 }
 
@@ -56,6 +75,8 @@ export interface TemplateText {
   blankName: string;
   /** The wording of a template built from role presets. */
   wording: (id: TeamTemplateId) => TeamTemplateWording;
+  /** The wording of a template the demo also opens, which the demo keeps in English. */
+  demo: (id: DemoTemplateId) => DemoWording;
 }
 
 /** A template's own role wording, else its preset's. */
@@ -63,6 +84,16 @@ export function templateText(messages: unknown): TemplateText {
   const { Workspace, TeamTemplates } = messages as TemplateMessages;
   return {
     blankName: Workspace.newName,
+    demo: (id) => {
+      const own = TeamTemplates.templates[id];
+      return {
+        name: Workspace.template[id]?.name ?? id,
+        brief: own.brief,
+        criteria: Object.values(own.criteria),
+        roles: own.roles,
+        nodes: own.nodes,
+      };
+    },
     wording: (id) => {
       const own = TeamTemplates.templates[id];
       const presets: Readonly<Record<string, RolePresetId>> = TEAM_TEMPLATE_ROLES[id];
@@ -95,7 +126,35 @@ export function templateDefinition(
 ): CorralDefinition {
   if (id === 'blank') return emptyDraft('untitled', text.blankName).definition;
   if (isTeamTemplate(id)) return teamTemplate(id, corralId, text.wording(id));
-  return templateForWorkspace(id, corralId).definition;
+  return demoDefinition(id, corralId, text.demo(id));
+}
+
+/** The demo's team with the same structure, worded in the screen language. */
+function demoDefinition(
+  id: DemoTemplateId,
+  corralId: string,
+  wording: DemoWording,
+): CorralDefinition {
+  const { definition } = templateForWorkspace(id, corralId);
+  return {
+    ...definition,
+    name: wording.name,
+    input: { ...definition.input, brief: wording.brief, criteria: wording.criteria },
+    roles: definition.roles.map((role) => {
+      const own = wording.roles[role.id];
+      if (!own) return role;
+      // The single agent's prompt is its duty alone, as a new agent's is.
+      return {
+        ...role,
+        name: own.name,
+        prompt: id === 'starter' ? own.duty : rolePrompt(own.duty),
+      };
+    }),
+    nodes: definition.nodes.map((node) => ({
+      ...node,
+      label: wording.nodes[node.id] ?? node.label,
+    })),
+  };
 }
 
 /**

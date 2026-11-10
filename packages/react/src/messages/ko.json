@@ -1545,6 +1545,58 @@
       "output": "출력"
     },
     "templates": {
+      "starter": {
+        "brief": "1차 자료로 두 가지 안을 비교하세요.",
+        "criteria": {
+          "inputs": "어떤 입력을 썼는지 밝힙니다."
+        },
+        "roles": {
+          "agent_1_role": {
+            "name": "에이전트 1",
+            "duty": "브리프에 분명하게 답하고, 어떤 입력을 썼는지 밝히세요."
+          }
+        },
+        "nodes": {
+          "agent_1": "에이전트 1",
+          "output_1": "출력"
+        }
+      },
+      "research-team": {
+        "brief": "작은 팀의 사내 도구에 쓸 SQLite와 PostgreSQL을 비교하세요.",
+        "criteria": {
+          "sources": "주요 주장마다 근거 출처를 밝힙니다.",
+          "balance": "장점과 한계를 모두 다룹니다."
+        },
+        "roles": {
+          "researcher": {
+            "name": "조사자",
+            "duty": "조사 계획을 세워 보조에게 나눠 맡기고, 받은 노트를 하나로 합치세요."
+          },
+          "helper": {
+            "name": "조사 보조",
+            "duty": "브리프 중 맡은 부분의 출처를 모으세요."
+          },
+          "writer": {
+            "name": "작성자",
+            "duty": "조사 노트와 검토 의견을 바탕으로 비교 문서를 쓰세요."
+          },
+          "reviewer": {
+            "name": "검토자",
+            "duty": "받은 초안 그대로를 기준에 맞춰 검토하세요."
+          }
+        },
+        "nodes": {
+          "research": "조사",
+          "helper": "조사 보조",
+          "respond": "출처 응답자",
+          "review_loop": "검토 루프",
+          "write": "작성자",
+          "review": "검토자",
+          "review_decision": "검토 판정",
+          "approval": "최종 승인",
+          "output": "출력"
+        }
+      },
       "implement-review": {
         "brief": "가입 양식에 입력값 검증을 추가하세요.",
         "criteria": {

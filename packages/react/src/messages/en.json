@@ -1545,6 +1545,58 @@
       "output": "Output"
     },
     "templates": {
+      "starter": {
+        "brief": "Compare two options using primary sources.",
+        "criteria": {
+          "inputs": "Say which inputs were used."
+        },
+        "roles": {
+          "agent_1_role": {
+            "name": "Agent 1",
+            "duty": "Answer the brief clearly and say which inputs you used."
+          }
+        },
+        "nodes": {
+          "agent_1": "Agent 1",
+          "output_1": "Output"
+        }
+      },
+      "research-team": {
+        "brief": "Compare SQLite and PostgreSQL for a small team's internal tool.",
+        "criteria": {
+          "sources": "Name the source behind each main claim.",
+          "balance": "Cover both strengths and limits."
+        },
+        "roles": {
+          "researcher": {
+            "name": "Researcher",
+            "duty": "Plan the research, split it between helpers and merge their notes."
+          },
+          "helper": {
+            "name": "Research Helper",
+            "duty": "Collect sources for the part of the brief you were handed."
+          },
+          "writer": {
+            "name": "Writer",
+            "duty": "Write the comparison from the research notes and any review."
+          },
+          "reviewer": {
+            "name": "Reviewer",
+            "duty": "Review the exact draft you were given against the criteria."
+          }
+        },
+        "nodes": {
+          "research": "Research",
+          "helper": "Research Helper",
+          "respond": "Source Responder",
+          "review_loop": "Review loop",
+          "write": "Writer",
+          "review": "Reviewer",
+          "review_decision": "Review decision",
+          "approval": "Final approval",
+          "output": "Output"
+        }
+      },
       "implement-review": {
         "brief": "Add input validation to the sign-up form.",
         "criteria": {
