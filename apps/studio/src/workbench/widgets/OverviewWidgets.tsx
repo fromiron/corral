@@ -444,7 +444,9 @@ function ResultsWidget({ model }: { model: ChatWidgetModel }) {
           >
             <CardMedia icon={FileText} />
             <CardHeader>
-              <KitCardTitle>{result.label}</KitCardTitle>
+              {/* An inline title is trimmed to its baseline; unclipped, it keeps its descenders
+                  and wraps a long name instead of cutting it (as Needs you does). */}
+              <KitCardTitle className="[&>span]:overflow-visible">{result.label}</KitCardTitle>
               <CardAction aria-hidden="true">
                 <ChevronRight size={14} />
               </CardAction>
@@ -477,7 +479,7 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
       >
         <CardMedia icon={FileDiff} />
         <CardHeader>
-          <KitCardTitle>{t('changes')}</KitCardTitle>
+          <KitCardTitle className="[&>span]:overflow-visible">{t('changes')}</KitCardTitle>
           <CardDescription>
             {model.changesLabel === 'error' ? (
               <span className="text-body text-muted-foreground">{tw('changesError')}</span>
