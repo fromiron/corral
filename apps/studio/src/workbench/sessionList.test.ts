@@ -184,4 +184,73 @@ describe('sessionGroups', () => {
     expect(sessionListState(reviewed, runs, attention)).toBe('completed');
     expect(sessionListState(listed('F'), [], [item('uncertain_write', 'F')])).toBe('empty');
   });
+
+  // A row says only why it is in Needs attention; the group already says the rest.
+  const reasons = (
+    session: WorkSession,
+    sessionRuns: RunSummary[],
+    items: InboxItemView[] = [],
+  ) => {
+    const [group] = sessionGroups([session], sessionRuns, items);
+    return [group?.id, group?.rows[0]?.attention];
+  };
+
+  it('gives a Needs attention row the latest run state that put it there', () => {
+    for (const status of ['awaiting_user', 'failed', 'interrupted', 'paused'] as const)
+      expect(reasons(listed('A'), [run('A', status, '2026-11-01T00:00:00Z')])).toEqual([
+        'attention',
+        [status],
+      ]);
+    // The latest run decides; an older failure is not a reason.
+    const older = [
+      run('A', 'failed', '2026-11-01T00:00:00Z'),
+      run('A', 'paused', '2026-11-02T00:00:00Z'),
+    ];
+    expect(reasons(listed('A'), older)).toEqual(['attention', ['paused']]);
+  });
+
+  it('names the response item when no run puts the session in Needs attention', () => {
+    // No run at all: never "empty" or "no run yet", only the item.
+    expect(reasons(listed('F'), [], [item('uncertain_write', 'F')])).toEqual([
+      'attention',
+      ['uncertain_write'],
+    ]);
+    // A decision waits for the person, whatever the newest run is doing.
+    const running = [run('F', 'running', '2026-11-01T00:00:00Z')];
+    expect(reasons(listed('F'), running, [item('decision', 'F')])).toEqual([
+      'attention',
+      ['awaiting_user'],
+    ]);
+    const both = [item('decision', 'F'), item('uncertain_write', 'F'), item('unreviewed', 'F')];
+    expect(reasons(listed('F'), running, both)).toEqual([
+      'attention',
+      ['awaiting_user', 'uncertain_write'],
+    ]);
+    // A run that waits already says it; the items do not repeat it.
+    const failed = [run('F', 'failed', '2026-11-01T00:00:00Z')];
+    expect(reasons(listed('F'), failed, both)).toEqual(['attention', ['failed']]);
+  });
+
+  it('names a terminal to check, beside a run that needs the person', () => {
+    const done = [run('G', 'succeeded', '2026-11-01T00:00:00Z')];
+    expect(reasons(listed('G'), done, [item('uncertain_terminal', 'G')])).toEqual([
+      'attention',
+      ['uncertain_terminal'],
+    ]);
+    expect(reasons(listed('G'), [], [item('uncertain_terminal', 'G')])).toEqual([
+      'attention',
+      ['uncertain_terminal'],
+    ]);
+    const failed = [run('G', 'failed', '2026-11-01T00:00:00Z')];
+    expect(reasons(listed('G'), failed, [item('uncertain_terminal', 'G')])).toEqual([
+      'attention',
+      ['uncertain_terminal', 'failed'],
+    ]);
+  });
+
+  it('gives no reason to rows of any other group', () => {
+    const groups = sessionGroups(sessions, runs, attention);
+    for (const group of groups.filter((group) => group.id !== 'attention'))
+      for (const row of group.rows) expect(row.attention).toEqual([]);
+  });
 });
