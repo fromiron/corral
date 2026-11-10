@@ -47,6 +47,15 @@ function scheduleDraft(schedule: Schedule): ScheduleDraft {
 
 const message = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
+/** A session read on its own, so a title its runs gave it since the page opened shows. */
+const readTarget = (
+  repository: { getSession(id: string): Promise<WorkSession | null> },
+  sessionId: string,
+) =>
+  Promise.resolve()
+    .then(() => repository.getSession(sessionId))
+    .then((session) => ({ sessionId, session: session ?? null }));
+
 /**
  * Server-owned schedules; no renderer timer dispatches work. The list leads to one schedule's
  * details and its history, where each firing's result stays apart from its run's own status.
@@ -75,6 +84,10 @@ export function ScheduledPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  /** The shown schedule's session as last read: its current title, or null once it is gone. */
+  const [target, setTarget] = useState<{ sessionId: string; session: WorkSession | null } | null>(
+    null,
+  );
   // A second click lands before the disabled state renders; one action at a time.
   const inFlight = useRef(false);
   const manualCommand = useRef<{ scheduleId: string; revision: number; id: string } | null>(null);
@@ -82,6 +95,8 @@ export function ScheduledPage() {
   const shown = selected ? (schedules.find((s) => s.id === selected.id) ?? selected) : null;
   const selectedId = useRef<string | null>(null);
   selectedId.current = selected?.id ?? null;
+  const targetId = useRef<string | null>(null);
+  targetId.current = shown?.sessionId ?? null;
   const reads = useRef(0);
   /**
    * The list, the runs, and histories: every schedule's when `every`, else only the one shown.
@@ -90,7 +105,8 @@ export function ScheduledPage() {
   const readSchedules = async (every: boolean, current: () => boolean = () => true) => {
     const id = ++reads.current;
     const chosen = selectedId.current;
-    const [listed, latestRuns] = await Promise.allSettled([
+    const chosenTarget = targetId.current;
+    const [listed, latestRuns, session] = await Promise.allSettled([
       schedulesApi.list().then(async ({ schedules }) => ({
         schedules,
         histories: Object.fromEntries(
@@ -105,8 +121,11 @@ export function ScheduledPage() {
         ),
       })),
       transport.listRuns(),
+      chosenTarget ? readTarget(repository, chosenTarget) : Promise.resolve(null),
     ]);
     if (!current() || id !== reads.current) return;
+    // A failed read keeps the title shown before; only an answer says the session is gone.
+    if (session.status === 'fulfilled' && session.value) setTarget(session.value);
     if (listed.status === 'fulfilled') {
       setSchedules(listed.value.schedules);
       setHistories((known) =>
@@ -151,6 +170,21 @@ export function ScheduledPage() {
       active = false;
     };
   }, [repository, models, mode]);
+  // Choosing a schedule reads its session at once rather than at the next tick.
+  const shownTarget = shown?.sessionId;
+  useEffect(() => {
+    if (mode !== 'server' || !shownTarget) return;
+    let active = true;
+    readTarget(repository, shownTarget).then(
+      (read) => {
+        if (active) setTarget(read);
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [mode, shownTarget, repository]);
   useEffect(() => {
     if (mode !== 'server') return;
     // Opening, focus and reconnection read every history; the tick reads only the one shown.
@@ -273,17 +307,27 @@ export function ScheduledPage() {
   };
   const empty =
     mode !== 'server' ? t('serverOnly') : loaded && !sessions.length ? t('needsSession') : null;
+  /** The session's current name when it can be read, else the one listed when the page opened. */
+  const targetSession = (sessionId: string) =>
+    target?.sessionId === sessionId
+      ? target.session
+      : (sessions.find((session) => session.sessionId === sessionId) ?? undefined);
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <Page
         title={shell('automation')}
-        toolbar={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={mode !== 'server' || !sessions.length || busy} onClick={create}>
-              {t('new')}
-            </Button>
-          </div>
-        }
+        // Without the local server there is nothing to create; the empty state says why.
+        {...(mode === 'server'
+          ? {
+              toolbar: (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button disabled={!sessions.length || busy} onClick={create}>
+                    {t('new')}
+                  </Button>
+                </div>
+              ),
+            }
+          : {})}
       >
         {readError ? (
           <p role="alert" className="text-body text-destructive">
@@ -314,15 +358,16 @@ export function ScheduledPage() {
                     <TableRow
                       key={schedule.id}
                       index={index}
-                      className={current ? 'bg-[var(--tint)]' : undefined}
+                      data-selected={current}
+                      className={current ? 'bg-secondary [&>td]:text-foreground' : undefined}
                     >
-                      <TableCell>
+                      <TableCell className="w-1/3 max-w-0">
                         {/* The row's one control; it stretches over the row for the pointer. */}
                         <button
                           type="button"
                           aria-pressed={current}
                           onClick={() => select(schedule)}
-                          className="text-left text-foreground after:absolute after:inset-0 after:content-['']"
+                          className="block w-full truncate rounded-sm text-left text-foreground after:absolute after:inset-0 after:content-['']"
                           style={current ? semibold : undefined}
                         >
                           {schedule.title}
@@ -364,10 +409,7 @@ export function ScheduledPage() {
               projects.find((project) => project.projectId === shown.projectId),
               tp('defaultName'),
             )}
-            sessionLabel={
-              sessions.find((session) => session.sessionId === shown.sessionId)?.title ??
-              t('session')
-            }
+            session={targetSession(shown.sessionId)}
             busy={busy}
             savedEnabled={savedEnabled}
             onRun={() => runNow(shown)}
@@ -446,7 +488,7 @@ function ScheduleDetail({
   summary,
   nextRun,
   projectLabel,
-  sessionLabel,
+  session,
   busy,
   savedEnabled,
   onRun,
@@ -458,7 +500,8 @@ function ScheduleDetail({
   summary: string;
   nextRun: string;
   projectLabel: string;
-  sessionLabel: string;
+  /** Undefined until read; null when the session no longer exists. */
+  session: WorkSession | null | undefined;
   busy: boolean;
   savedEnabled: boolean | null;
   onRun(): void;
@@ -506,13 +549,19 @@ function ScheduleDetail({
             <span aria-hidden className="text-muted-foreground">
               /
             </span>
-            <Link
-              to="/sessions/$sessionId"
-              params={{ sessionId: schedule.sessionId }}
-              className="truncate rounded-sm text-foreground hover:underline"
-            >
-              {sessionLabel}
-            </Link>
+            {session ? (
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId: schedule.sessionId }}
+                className="truncate rounded-sm text-foreground hover:underline"
+              >
+                {session.title}
+              </Link>
+            ) : (
+              <span className="truncate text-muted-foreground">
+                {t(session === null ? 'targetMissing' : 'session')}
+              </span>
+            )}
           </dd>
         </div>
         <div className="flex min-w-0 flex-col gap-1">

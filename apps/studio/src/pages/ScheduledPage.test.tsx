@@ -25,6 +25,7 @@ const fixture = vi.hoisted(() => {
       listSessions: vi.fn(async () => [
         { sessionId: 'session_1', projectId: 'project_1', title: 'Daily notes', entries: [] },
       ]),
+      getSession: vi.fn(),
     },
     models: { profiles: vi.fn(async () => [{ profileId: 'model-a' }]) },
     transport: { listRuns: vi.fn(), sendCommand: vi.fn() },
@@ -104,6 +105,13 @@ beforeEach(() => {
   fixture.services.transport.listRuns.mockReset();
   fixture.services.transport.sendCommand.mockReset();
   fixture.services.cancelAuto.mockReset();
+  fixture.services.mode = 'server';
+  fixture.services.repository.getSession.mockReset();
+  fixture.services.repository.getSession.mockImplementation(async (sessionId: string) => ({
+    sessionId,
+    projectId: 'project_1',
+    title: 'Daily notes',
+  }));
   fixture.api.list.mockResolvedValue({ schedules: [] });
   fixture.api.history.mockResolvedValue({ occurrences: [] });
   fixture.services.transport.listRuns.mockResolvedValue([]);
@@ -327,4 +335,58 @@ it('Run now asks once for a double click and keeps its command ID for a retry', 
   expect(first?.[1]).toMatch(/^manual_/);
   expect(second?.[1]).toBe(first?.[1]);
   expect(history()?.textContent).toContain('Started');
+});
+
+/** The detail's Target value. */
+const target = () => {
+  const term = [...container.querySelectorAll('dt')].find((item) => item.textContent === 'Target');
+  return term?.nextElementSibling as HTMLElement | null | undefined;
+};
+
+it('names the target session by its current title, as it is after Run now, and links to it', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  // The session was listed as new when the page opened; its first run gives it a title.
+  fixture.services.repository.getSession.mockResolvedValue({
+    sessionId: 'session_1',
+    projectId: 'project_1',
+    title: 'New session',
+  });
+  await page();
+  await click(button(/Daily project review/));
+  await settle();
+  expect(target()?.querySelector('a')?.textContent).toBe('New session');
+  fixture.api.run.mockImplementationOnce(async () => {
+    fixture.services.repository.getSession.mockResolvedValue({
+      sessionId: 'session_1',
+      projectId: 'project_1',
+      title: 'Summarize the README',
+    });
+    fixture.api.history.mockResolvedValue({ occurrences: [started({ manual: true })] });
+    return { occurrences: [started({ manual: true })] };
+  });
+  await click(button('Run now'));
+  await settle();
+  expect(target()?.textContent).toContain('My project');
+  expect(target()?.querySelector('a')?.textContent).toBe('Summarize the README');
+  expect(target()?.textContent).not.toContain('New session');
+});
+
+it('says plainly when the target session cannot be found, without a link', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule({ sessionId: 'session_gone' })] });
+  fixture.services.repository.getSession.mockResolvedValue(null);
+  await page();
+  await click(button(/Daily project review/));
+  await settle();
+  expect(target()?.textContent).toContain('Session not found');
+  expect(target()?.querySelector('a')).toBeNull();
+});
+
+it('in the browser demo, the empty state gives the reason and there is no disabled New schedule', async () => {
+  fixture.services.mode = 'browser';
+  await page();
+  expect(container.textContent).toContain('No schedules');
+  expect(container.textContent).toContain('Available with the local server.');
+  expect(
+    [...container.querySelectorAll('button')].some((item) => item.textContent === 'New schedule'),
+  ).toBe(false);
 });
