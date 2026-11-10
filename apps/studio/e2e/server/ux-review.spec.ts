@@ -124,7 +124,11 @@ test.describe('live models', () => {
       notReady.getByRole('link', { name: 'Connect a model', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-    await expect(page.getByTestId('app-sidebar')).toContainText('Connect a model');
+    // The sidebar head's word is its way to connect one (workbench.md: "모델 미연결의 연결
+    // 진입점과 데모·시뮬레이션 표시는 머리의 연결 상태 낱말 하나가 맡고").
+    await expect(page.getByTestId('app-sidebar').getByTestId('sidebar-connection')).toHaveText(
+      'No model',
+    );
     await expect(page.getByRole('button', { name: 'Use simulated agents' })).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Use the live model');
     // /model shows each role's model and that it needs a sign-in.
