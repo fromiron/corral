@@ -185,13 +185,32 @@ test.describe('active work and credentials', () => {
       },
     ]);
     const subscriptions: string[] = [];
-    const sessionReads: string[] = [];
+    // Session reads and answered run-list polls, in order. The session screen re-reads its
+    // session after each run-list poll, every 1.5 s (workbench.md: "같은 서버 연결을 사용하는 세션
+    // 화면과 사이드바는 1.5초 주기의 실행 목록 조회와 최신 결과를 공유한다"), and once more
+    // through its route when the records changed. Any other read would be Settings' own.
+    const traffic: ('poll' | 'session')[] = [];
+    const isGet = (request: { method(): string }) => request.method() === 'GET';
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname;
       if (/\/runs\/[^/]+\/events$/.test(path)) subscriptions.push(path);
-      if (request.method() === 'GET' && /\/api\/v1\/sessions\/[^/]+$/.test(path))
-        sessionReads.push(path);
+      if (isGet(request) && /\/api\/v1\/sessions\/[^/]+$/.test(path)) traffic.push('session');
     });
+    page.on('requestfinished', (request) => {
+      if (isGet(request) && new URL(request.url()).pathname === '/api/v1/runs')
+        traffic.push('poll');
+    });
+    /** Session reads from `from` on that no run-list poll accounts for. */
+    const unexplainedReads = (from: number) => {
+      let allowed = 0;
+      let unexplained = 0;
+      traffic.forEach((item, index) => {
+        if (item === 'poll') allowed = 2;
+        else if (allowed > 0) allowed -= 1;
+        else if (index >= from) unexplained += 1;
+      });
+      return unexplained;
+    };
     try {
       await corral.open('/projects/default');
       await newConversation(page);
@@ -207,7 +226,7 @@ test.describe('active work and credentials', () => {
       await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(3, 3));
       const original = await input.elementHandle();
       const workUrl = page.url();
-      const reads = sessionReads.length;
+      const reads = traffic.length;
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
       await dialog.getByRole('link', { name: 'Models', exact: true }).click();
@@ -223,7 +242,7 @@ test.describe('active work and credentials', () => {
       await expect(key).toBeFocused();
       await expect(key).toHaveValue('fixture-secret');
       expect(await original?.evaluate((node) => node.isConnected)).toBe(true);
-      expect(sessionReads.length).toBe(reads);
+      expect(unexplainedReads(reads), traffic.slice(reads).join(' ')).toBe(0);
       expect(subscriptions.filter((path) => path.includes(runId))).toHaveLength(1);
       expect(corral.server.coordinator.listRuns()).toHaveLength(1);
       await dialog.getByRole('button', { name: 'Close settings' }).click();
