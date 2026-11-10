@@ -481,6 +481,7 @@ export function ComposerDock({
   const model = useChatWidget();
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
+  const tt = useTranslations('Turn');
   const run = model?.runId ? model : null;
   if (!run && !lead && !note) return null;
   const status = run?.plan.status ?? { state: 'hidden' as const };
@@ -492,10 +493,12 @@ export function ComposerDock({
     plan && run?.plan.selectedChoice?.live
       ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
       : null;
-  const tool =
+  const running =
     run?.live && run.plan.runStatus === 'running' && !run.action.visible
       ? (run.tools.find((row) => row.tone === 'running')?.name ?? null)
       : null;
+  // Named as the work log names it (Wait, not await_tasks); an unknown tool keeps its own name.
+  const tool = running && tt.has(`tool.${running}`) ? tt(`tool.${running}`) : running;
   // A failed run is told by its turn's card when that card is the latest turn; the notice
   // stays while another run or result is on screen, so the failure stays discoverable. A run
   // that completed with failed steps keeps it: the notice is the way to those steps. Approvals

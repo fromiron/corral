@@ -176,7 +176,8 @@ it('keeps the plan count, current step, activity, note and overview in one line'
   expect(toggle?.textContent).toContain('1/7 done');
   // Collapsed, the line names the step in progress.
   expect(toggle?.textContent).toContain('Plan item 2');
-  expect(line.querySelector('[data-testid="composer-activity"]')?.textContent).toBe('read_file');
+  // The tool is named as the work log names it, not by its identifier.
+  expect(line.querySelector('[data-testid="composer-activity"]')?.textContent).toBe('Read');
   // The top bar's pill owns the in-progress state; the line does not repeat it.
   expect(line.textContent).not.toContain(messages.Status.running);
   expect(line.querySelector('a')).toBeNull();
