@@ -8,8 +8,9 @@ import {
   Input,
   Select,
   Textarea,
+  Tooltip,
 } from '@corral/react/design-kit';
-import { Users } from '@corral/react/icons';
+import { Users, X } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -19,6 +20,9 @@ import { sessionRunMode } from './autoChoice.ts';
 import { useModelProfiles } from './useModels.ts';
 
 const TEMPLATE = ['architect', 'builder', 'tester'] as const;
+
+/** A field's persistent label, set like the kit's InputField label above its control. */
+const FIELD_LABEL = 'pl-2.5 text-muted-foreground';
 
 interface Draft {
   key: string;
@@ -190,25 +194,134 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
         if (!next && !saving) onClose();
       }}
     >
-      <DialogPopup className="flex max-h-[90dvh] w-[min(95vw,720px)] flex-col gap-4 overflow-auto p-6">
+      <DialogPopup size="lg" className="flex max-h-[90dvh] flex-col gap-4 overflow-auto">
         <DialogTitle>{t('newTitle')}</DialogTitle>
         <form id={formId} className="flex flex-col gap-4 text-body" onSubmit={create}>
           <label className="flex flex-col gap-1">
-            {t('title')}
+            <span className={FIELD_LABEL}>{t('title')}</span>
             <Input
               value={title}
               maxLength={120}
               onChange={(event) => setTitle(event.target.value)}
             />
           </label>
-          <fieldset className="flex flex-col gap-3">
-            <legend className="mb-1" style={{ fontVariationSettings: fontWeights.semibold }}>
-              {t('participants')}
-            </legend>
-            <p id={`${formId}-aliases`} className="text-muted-foreground">
-              {t('participantAliasesHint')}
-            </p>
-            <div>
+          {/* The numbered cards show this is the participant list; its name is for assistive technology. */}
+          <fieldset className="flex min-w-0 flex-col gap-3">
+            <legend className="sr-only">{t('participants')}</legend>
+            {participants.map((item, index) => {
+              const number = index + 1;
+              const heading = `${formId}-participant-${item.key}`;
+              return (
+                // Named by its heading rather than a legend, so the heading shares a row with
+                // the remove button without lending it its name.
+                <fieldset
+                  key={item.key}
+                  aria-labelledby={heading}
+                  className="@container flex min-w-0 flex-col gap-2 rounded fill-group p-3"
+                >
+                  <div className="flex min-h-7 items-center justify-between gap-2">
+                    <h3
+                      id={heading}
+                      className="text-body"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
+                      {t('participantDefault', { number })}
+                    </h3>
+                    {participants.length > 2 ? (
+                      <Tooltip content={t('removeParticipant', { number })}>
+                        <Button
+                          type="button"
+                          size="icon-compact"
+                          variant="ghost"
+                          aria-label={t('removeParticipant', { number })}
+                          onClick={() =>
+                            setParticipants((current) => current.filter((x) => x.key !== item.key))
+                          }
+                        >
+                          <X aria-hidden />
+                        </Button>
+                      </Tooltip>
+                    ) : null}
+                  </div>
+                  {/* The short visible labels read under the card's heading; each control's
+                      own name still says whose field it is. */}
+                  <div className="grid gap-2 @sm:grid-cols-2">
+                    <label className="flex min-w-0 flex-col gap-1">
+                      <span aria-hidden className={FIELD_LABEL}>
+                        {t('nameLabel')}
+                      </span>
+                      <Input
+                        aria-label={t('participantName', { number })}
+                        value={item.name}
+                        maxLength={40}
+                        required
+                        onChange={(event) => change(item.key, { name: event.target.value })}
+                      />
+                    </label>
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span aria-hidden className={FIELD_LABEL}>
+                        {t('modelLabel')}
+                      </span>
+                      <Select
+                        label={t('participantModel', { number })}
+                        value={item.modelProfile}
+                        options={options}
+                        onValueChange={(modelProfile) => change(item.key, { modelProfile })}
+                      />
+                    </div>
+                  </div>
+                  <label className="flex flex-col gap-1">
+                    <span aria-hidden className={FIELD_LABEL}>
+                      {t('aliasesLabel')}
+                    </span>
+                    <Input
+                      aria-label={t('participantAliases', { number })}
+                      placeholder={t('aliasesPlaceholder')}
+                      value={item.aliases}
+                      maxLength={340}
+                      onChange={(event) => change(item.key, { aliases: event.target.value })}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span aria-hidden className={FIELD_LABEL}>
+                      {t('roleLabel')}
+                    </span>
+                    {/* Two lines to start; the field grows with what is written. */}
+                    <Textarea
+                      size="sm"
+                      className="[&_textarea]:min-h-[calc(2lh+0.75rem)]"
+                      aria-label={t('participantRole', { number })}
+                      value={item.prompt}
+                      maxLength={4000}
+                      rows={2}
+                      onChange={(event) => change(item.key, { prompt: event.target.value })}
+                    />
+                  </label>
+                </fieldset>
+              );
+            })}
+            <div className="flex flex-wrap gap-2">
+              {participants.length < 6 ? (
+                <Button
+                  type="button"
+                  size="compact"
+                  variant="tertiary"
+                  onClick={() =>
+                    setParticipants((current) => [
+                      ...current,
+                      {
+                        key: `extra_${globalThis.crypto.randomUUID()}`,
+                        name: null,
+                        aliases: '',
+                        prompt: '',
+                        modelProfile: pick(current.length),
+                      },
+                    ])
+                  }
+                >
+                  {t('addParticipant')}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 size="compact"
@@ -231,84 +344,6 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
                 {t('applyDevelopmentRoles')}
               </Button>
             </div>
-            {participants.map((item, index) => (
-              <div key={item.key} className="flex flex-col gap-2 rounded fill-group p-3">
-                <div className="flex flex-wrap items-end gap-2">
-                  <label className="flex min-w-40 flex-1 flex-col gap-1">
-                    {t('participantName', { number: index + 1 })}
-                    <Input
-                      value={item.name}
-                      maxLength={40}
-                      required
-                      onChange={(event) => change(item.key, { name: event.target.value })}
-                    />
-                  </label>
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <span>{t('participantModel', { number: index + 1 })}</span>
-                    <Select
-                      label={t('participantModel', { number: index + 1 })}
-                      value={item.modelProfile}
-                      options={options}
-                      onValueChange={(modelProfile) => change(item.key, { modelProfile })}
-                    />
-                  </div>
-                  {participants.length > 2 ? (
-                    <Button
-                      type="button"
-                      size="compact"
-                      variant="ghost-destructive"
-                      onClick={() =>
-                        setParticipants((current) => current.filter((x) => x.key !== item.key))
-                      }
-                    >
-                      {t('removeParticipant', { number: index + 1 })}
-                    </Button>
-                  ) : null}
-                </div>
-                <label className="flex flex-col gap-1">
-                  {t('participantAliases', { number: index + 1 })}
-                  <Input
-                    value={item.aliases}
-                    maxLength={340}
-                    aria-describedby={`${formId}-aliases`}
-                    onChange={(event) => change(item.key, { aliases: event.target.value })}
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  {t('participantRole', { number: index + 1 })}
-                  <Textarea
-                    size="sm"
-                    value={item.prompt}
-                    maxLength={4000}
-                    rows={2}
-                    onChange={(event) => change(item.key, { prompt: event.target.value })}
-                  />
-                </label>
-              </div>
-            ))}
-            {participants.length < 6 ? (
-              <div>
-                <Button
-                  type="button"
-                  size="compact"
-                  variant="tertiary"
-                  onClick={() =>
-                    setParticipants((current) => [
-                      ...current,
-                      {
-                        key: `extra_${globalThis.crypto.randomUUID()}`,
-                        name: null,
-                        aliases: '',
-                        prompt: '',
-                        modelProfile: pick(current.length),
-                      },
-                    ])
-                  }
-                >
-                  {t('addParticipant')}
-                </Button>
-              </div>
-            ) : null}
           </fieldset>
           {liveModels && profiles === null ? (
             <p role="status" className="text-muted-foreground">
@@ -346,7 +381,9 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
             </div>
           ) : null}
           <div className="flex flex-col gap-1">
-            <span>{t('secretaryModel')}</span>
+            <span aria-hidden className={FIELD_LABEL}>
+              {t('secretaryModel')}
+            </span>
             <Select
               label={t('secretaryModel')}
               value={secretary}
