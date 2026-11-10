@@ -36,6 +36,9 @@ const codeOptions = {
   // GitHub's diff gutter red/green fails 4.5:1; text color keeps every line number readable.
   unsafeCSS: `${surfaceCSS}\n[data-line-number-content] { color: var(--diffs-fg); }`,
 };
+// The renderer hangs its line "+" past the number column into the code, over the line's first
+// character; it stays inside the gutter, over the hovered line's number.
+const gutterCSS = '[data-utility-button] { margin-right: 0; }';
 
 const viewerClass = 'h-[min(65vh,600px)] min-h-48 overflow-auto rounded fill-group';
 
@@ -181,6 +184,7 @@ export function DiffCode({
         }}
         options={{
           ...codeOptions,
+          unsafeCSS: `${codeOptions.unsafeCSS}\n${gutterCSS}`,
           overflow: 'wrap',
           themeType: theme,
           diffStyle: layout,
