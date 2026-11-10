@@ -98,7 +98,8 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
   };
 }
 
-const prompt = (duty: string) =>
+/** A drafted role's instructions: its duty, then the rules every role follows. */
+export const rolePrompt = (duty: string) =>
   `${duty} Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result. Do not hide tool failures or missing evidence.`;
 
 const CONTRACT: Record<TeamSlot, CorralDefinition['roles'][number]['outputContract']> = {
@@ -121,7 +122,7 @@ export function draftFromPlan(
     return {
       id: slot,
       name: planned.name,
-      prompt: prompt(planned.duty),
+      prompt: rolePrompt(planned.duty),
       modelProfile: slot === 'reviewer' ? 'model-b' : 'model-a',
       allowedWorkTools: ['write_artifact' as const],
       allowedCollaborationTools: ['read_artifact' as const, 'submit_result' as const],
