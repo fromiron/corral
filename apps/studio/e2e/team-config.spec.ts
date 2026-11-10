@@ -53,10 +53,7 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
   for (let team = 1; team <= 2; team++) {
     await page.goto(projectUrl);
     await openLibrary(page, 'Templates');
-    await page
-      .getByRole('button', { name: /^Edit a copy of / })
-      .first()
-      .click();
+    await page.getByRole('button', { name: 'Edit a copy of Research team', exact: true }).click();
     await page.getByRole('button', { name: 'Save copy and edit' }).click();
     await expect(page).toHaveURL(/\/edit$/);
     const name = `Saved research ${team}`;
