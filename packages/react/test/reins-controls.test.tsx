@@ -115,11 +115,34 @@ describe('run controls', () => {
     );
     for (const name of ['Pause run', 'Cancel whole run']) {
       const button = screen.getByRole('button', { name });
-      // Below the sm breakpoint the icon shows and the words leave the layout, not the name.
+      // The icon shows and the words leave the layout, not the name.
       expect(button.querySelector('svg')).not.toBeNull();
-      expect(button.querySelector('[data-run-action-label]')?.className).toContain(
-        'max-sm:sr-only',
-      );
+      expect(button.querySelector('[data-run-action-label]')?.className).toContain('sr-only');
+    }
+    // Icon-only, Cancel still asks before anything is sent.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel whole run' }));
+    expect(session.getState().sendCommand).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm whole run cancellation' }));
+    expect(session.getState().sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'cancel' }),
+    );
+  });
+
+  it('shows Pause and Cancel as words, without icons, where the bar has room', () => {
+    const session = createRunSession({} as never);
+    session.setState({
+      runId: 'run_controls',
+      projection: { ...emptyProjection('run_controls'), status: 'running' },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <RunActions session={session} compact />
+      </IntlProvider>,
+    );
+    for (const name of ['Pause run', 'Cancel whole run']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.querySelector('svg')).toBeNull();
+      expect(button.textContent).toBe(name);
     }
   });
 });

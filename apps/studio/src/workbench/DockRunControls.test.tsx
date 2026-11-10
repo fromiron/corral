@@ -8,12 +8,19 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
 import { DockRunControls } from './DockRunControls.tsx';
+import { topbarLayout } from './topbarTier.ts';
 
-const fixture = vi.hoisted(() => ({ services: {} }));
+const fixture = vi.hoisted(() => ({ services: {}, tier: 0 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+// The bar's tier is measured in the browser; here a test names the tier it is at.
+vi.mock('./TopbarSlot.tsx', async (original) => ({
+  ...(await original<typeof import('./TopbarSlot.tsx')>()),
+  useTopbarLayout: () => topbarLayout(fixture.tier),
+}));
 
 const cleanup: (() => Promise<void>)[] = [];
 beforeEach(() => {
+  fixture.tier = 0;
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
@@ -195,4 +202,77 @@ it('cancel from the session bar still goes through the existing confirmation', a
   expect(confirm).toBeDefined();
   await act(async () => confirm?.click());
   expect(sendCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'cancel' }));
+});
+
+const button = (container: Element, name: string) =>
+  [...container.querySelectorAll('button')].find(
+    (item) => (item.getAttribute('aria-label') ?? item.textContent) === name,
+  );
+
+it('a narrower bar turns Pause and Cancel into icons that keep their names and the confirmation', async () => {
+  fixture.tier = 1;
+  const sendCommand = vi.fn(async () => ({}) as never);
+  const session = sessionStore({ runId: 'active-run', projection: running(), sendCommand });
+  const view = await mount({ session });
+  for (const name of [messages.Reins.pause, messages.Reins.cancelRun]) {
+    const control = button(view.container, name);
+    expect(control?.querySelector('svg')).not.toBeNull();
+    // The words leave the layout, not the name.
+    expect(control?.querySelector('[data-run-action-label]')?.classList.contains('sr-only')).toBe(
+      true,
+    );
+  }
+  // The pill is untouched by this first step.
+  expect(view.pill()?.textContent).toContain('Running');
+  expect(view.pill()?.textContent).toContain('Run #1');
+  expect(view.pill()?.textContent).toMatch(/\d:\d\d/);
+  await act(async () => button(view.container, messages.Reins.cancelRun)?.click());
+  expect(sendCommand).not.toHaveBeenCalled();
+  const confirm = [...document.querySelectorAll('button')].find(
+    (item) => item.textContent === messages.Reins.confirmCancelRun,
+  );
+  expect(confirm).toBeDefined();
+  await act(async () => confirm?.click());
+  expect(sendCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'cancel' }));
+});
+
+it('the pill then drops its clock, then its words, keeping the state and the run number', async () => {
+  const session = sessionStore({ runId: 'active-run', projection: running() });
+  fixture.tier = 2;
+  const noClock = await mount({ session });
+  expect(noClock.pill()?.textContent).toContain('Running');
+  expect(noClock.pill()?.textContent).toContain('Run #1');
+  expect(noClock.pill()?.textContent).not.toMatch(/\d:\d\d/);
+  await cleanup.splice(0)[0]?.();
+
+  fixture.tier = 3;
+  const short = await mount({ session });
+  expect(short.pill()?.textContent).toBe('Run #1');
+  const root = short.container.querySelector('[data-testid="dock-open-active-run"]');
+  expect(root?.getAttribute('data-state')).toBe('running');
+  // What left the pill stays in its name.
+  expect(short.pill()?.getAttribute('aria-label')).toContain('Running');
+  expect(short.pill()?.getAttribute('aria-label')).toContain('Summarize the report');
+  await act(async () => short.pill()?.click());
+  expect(short.onOpen).toHaveBeenCalledWith('active-run');
+  await cleanup.splice(0)[0]?.();
+
+  fixture.tier = 7;
+  const number = await mount({ session });
+  expect(number.pill()?.textContent).toBe('#1');
+  expect(number.pill()?.getAttribute('aria-label')).toContain('Run #1');
+});
+
+it('a waiting run keeps Check now at every tier', async () => {
+  const projection = running();
+  pendingApproval(projection, 'approval_a');
+  pendingApproval(projection, 'approval_b');
+  const session = sessionStore({ runId: 'active-run', projection });
+  for (const tier of [3, 5, 7]) {
+    fixture.tier = tier;
+    const view = await mount({ session });
+    expect(view.pill()?.textContent).toBe('Check now (2)');
+    expect(view.pill()?.getAttribute('aria-label')).toContain('Run #1');
+    await cleanup.splice(0)[0]?.();
+  }
 });

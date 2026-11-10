@@ -13,6 +13,7 @@ import { useEffect, useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
+import { useTopbarLayout } from './TopbarSlot.tsx';
 
 /** The pill's colour and glyph; only actual active work breathes. */
 function pillState(status: RunStatus, waiting: boolean): AgentStatusPillState {
@@ -29,7 +30,9 @@ function pillState(status: RunStatus, waiting: boolean): AgentStatusPillState {
  * clock, opening its record (or its response area while it waits), and Pause/Resume/Cancel beside
  * it through the existing RunActions confirmation. It stays reachable while a historical result
  * or document has focus. The breadcrumb names the session; the request this run answers is the
- * pill's accessible name and tooltip (#72).
+ * pill's accessible name and tooltip (#72). As the bar narrows the buttons become icons, then
+ * the pill drops its clock, then its words: the state mark and the run number stay, and a
+ * waiting run keeps "Check now", which is the way in.
  */
 export function DockRunControls({
   runId,
@@ -57,6 +60,7 @@ export function DockRunControls({
   const events = useStore(session, (state) => state.events);
   const error = useStore(session, (state) => state.streamError);
   const describedBy = useId();
+  const { actions, pill } = useTopbarLayout();
   useEffect(() => {
     const release = retainRun(runId);
     void session.getState().open(runId);
@@ -67,6 +71,14 @@ export function DockRunControls({
   const target = request ? t('activeRunTarget', { request }) : undefined;
   const number = runs.findIndex((run) => run.runId === runId) + 1;
   const runLabel = number ? tw('runNumber', { number }) : undefined;
+  // What a narrow bar's pill says in place of the activity: the run, or just its number.
+  const brief = !number
+    ? undefined
+    : pill === 'number'
+      ? tw('runNumberShort', { number })
+      : pill === 'short'
+        ? runLabel
+        : undefined;
   const statusLabel = projection
     ? ts.has(projection.status)
       ? ts(projection.status)
@@ -87,7 +99,8 @@ export function DockRunControls({
     <section
       aria-label={t('activeRun')}
       aria-describedby={target ? describedBy : undefined}
-      className="order-first flex min-w-0 items-center gap-2"
+      data-run-pill={pill}
+      className="order-first flex shrink-0 items-center gap-2"
     >
       {target ? (
         <span id={describedBy} className="sr-only">
@@ -99,16 +112,16 @@ export function DockRunControls({
           <Tooltip content={target ?? t('activeRun')}>
             <AgentStatusPill
               data-testid="dock-open-active-run"
-              // In a narrow bar the pill gives up its words first.
-              className="min-w-0"
               size="compact"
               name={t('activeRun')}
               logo={Bot}
               state={pillState(projection.status, waiting > 0)}
-              label={label}
-              detail={runLabel}
-              startedAt={startedAt ? Date.parse(startedAt) : undefined}
-              endedAt={projection.endedAt ? Date.parse(projection.endedAt) : undefined}
+              label={brief && !waiting ? brief : label}
+              detail={brief ? undefined : runLabel}
+              startedAt={pill === 'full' && startedAt ? Date.parse(startedAt) : undefined}
+              endedAt={
+                pill === 'full' && projection.endedAt ? Date.parse(projection.endedAt) : undefined
+              }
               // The composer's region announces the run; the pill stays silent.
               announce={false}
               // The pill navigates, with no fold-out panel; no steps, progress or inline
@@ -142,7 +155,7 @@ export function DockRunControls({
         </span>
       ) : null}
       <div className="shrink-0">
-        <RunActions session={session} compact narrowIcons />
+        <RunActions session={session} compact narrowIcons={actions === 'icons'} />
       </div>
     </section>
   );

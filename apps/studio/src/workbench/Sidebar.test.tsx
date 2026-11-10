@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import type { InboxItemView } from '@corral/client';
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { SidebarProvider } from '@corral/react/design-kit';
+import { DesignKitProvider, SidebarProvider } from '@corral/react/design-kit';
 import { act, type ComponentProps, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { Sidebar } from './Sidebar.tsx';
+import { Sidebar, sidebarRowHeights } from './Sidebar.tsx';
 
 const fixture = vi.hoisted(() => ({
   collapsed: {} as Record<string, boolean>,
@@ -90,6 +90,7 @@ vi.mock('@tanstack/react-virtual', () => ({
             return item;
           });
         },
+        measure: () => {},
         scrollToIndex: (index: number) => {
           fixture.scrollToIndex(index);
           setStart(Math.max(0, index - 3));
@@ -173,7 +174,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount(overrides: Partial<Model> = {}) {
+async function mount(overrides: Partial<Model> = {}, density: 'default' | 'compact' = 'default') {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -184,9 +185,11 @@ async function mount(overrides: Partial<Model> = {}) {
   await act(async () => {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <SidebarProvider persist={false} shortcut={null} mobileBreakpoint={0}>
-          <Sidebar model={{ ...model, ...overrides }} />
-        </SidebarProvider>
+        <DesignKitProvider size={density}>
+          <SidebarProvider persist={false} shortcut={null} mobileBreakpoint={0}>
+            <Sidebar model={{ ...model, ...overrides }} />
+          </SidebarProvider>
+        </DesignKitProvider>
       </IntlProvider>,
     );
   });
@@ -438,25 +441,52 @@ function corralMenu(container: HTMLElement) {
 }
 
 it.each([
-  ['a demo', { mode: 'browser', live: false }, [], 'Demo · simulated'],
-  ['a simulated local server', { mode: 'server', live: false }, [], 'Local · simulated'],
-  ['a live server without a model', { mode: 'server', live: true }, [], 'No model connected'],
+  ['a demo', { mode: 'browser', live: false }, [], 'Demo · simulated', 'Demo'],
+  [
+    'a simulated local server',
+    { mode: 'server', live: false },
+    [],
+    'Local · simulated',
+    'Simulated',
+  ],
+  [
+    'a live server without a model',
+    { mode: 'server', live: true },
+    [],
+    'No model connected',
+    'No model',
+  ],
   [
     'a live server with a model',
     { mode: 'server', live: true },
     [{ available: true }],
     'Connected',
+    'Connected',
   ],
 ] as const)(
   'names the connection state of %s in the header',
-  async (_name, services, profiles, state) => {
+  async (_name, services, profiles, state, word) => {
     fixture.services = { repository: {}, ...services };
     fixture.profiles = [...profiles];
     const container = await mount();
     const menu = corralMenu(container);
-    expect(menu.textContent).toContain('Corral');
-    expect(menu.textContent).toContain(state);
+    // The row reads Corral and one whole word; the full state is the button's name and the
+    // first line of its menu, which is not a choice.
+    expect(visibleText(menu)).toBe(`Corral${word}`);
+    expect(menu.querySelector('[data-testid="sidebar-connection"]')?.textContent).toBe(word);
     expect(menu.getAttribute('aria-label')).toContain(state);
+    await act(async () => menu.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    const popup = document.querySelector('[role="menu"]');
+    const line = popup?.querySelector('[data-slot="menu-label"]');
+    expect(line?.textContent).toBe(state);
+    expect(line?.getAttribute('role')).not.toBe('menuitem');
+    expect(
+      [...(popup?.querySelectorAll('[role="menuitem"]') ?? [])].map((item) => visibleText(item)),
+    ).toEqual([messages.Shell.allProjects, messages.Shell.newProject]);
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
     // The footer card stays for every state that cannot reach a model.
     const card = container.querySelector('[data-testid="sidebar-status"]');
     if (state === 'Connected') expect(card).toBeNull();
@@ -483,4 +513,55 @@ it('opens the projects page at its new-project form from the Corral menu', async
   );
   expect(all).toBeDefined();
   expect(fixture.navigate).toHaveBeenLastCalledWith({ to: '/projects' });
+});
+
+it.each([
+  ['default', { project: 32, session: 44, empty: 28 }],
+  ['compact', { project: 28, session: 36, empty: 24 }],
+] as const)(
+  'lays the virtual list out at the %s density’s row heights, two full lines per session',
+  async (density, heights) => {
+    expect(sidebarRowHeights(density === 'compact')).toEqual(heights);
+    const container = await mount(
+      { projects: [project('alpha', 'Alpha'), project('beta', 'Beta'), project('empty', 'Empty')] },
+      density,
+    );
+    const row = container.querySelector<HTMLElement>('a[href="/sessions/session_0"]');
+    const item = row?.closest<HTMLElement>('[data-sidebar-index]');
+    expect(item?.style.height).toBe(`${heights.session}px`);
+    // The row is drawn at the height the list positions it by.
+    expect(row?.className).toContain(density === 'compact' ? 'h-9' : 'h-11');
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-sidebar="menu-sub-item"]')];
+    const tops = rows.map((entry) => Number.parseFloat(entry.style.top));
+    expect(tops.slice(1).map((top, index) => top - (tops[index] ?? 0))).toEqual(
+      rows.slice(1).map(() => heights.session),
+    );
+    // The list's whole height: three projects, 500 sessions, one empty project's line.
+    const list = container.querySelector<HTMLElement>('[data-sidebar-index]')?.parentElement;
+    expect(list?.style.height).toBe(
+      `${3 * heights.project + 500 * heights.session + heights.empty}px`,
+    );
+  },
+);
+
+it('puts a session’s title and its state line on full lines of their own, the state led by its dot', async () => {
+  const container = await mount({
+    runs: [run('session_0', 'awaiting_user', '2026-11-01T00:00:00Z')],
+  });
+  const waiting = container.querySelector('a[href="/sessions/session_0"]');
+  const lines = [...(waiting?.querySelectorAll('[data-session-line]') ?? [])];
+  expect(lines).toHaveLength(2);
+  expect(lines[0]?.textContent).toBe('Conversation 0');
+  expect(lines[1]?.textContent).toContain(messages.Status.awaiting_user);
+  expect(lines[1]?.querySelector('[data-status="awaiting_user"]')).not.toBeNull();
+  // Neither line borrows a tighter line height than its type role's.
+  for (const line of lines) expect(line?.className).not.toMatch(/leading-\d/);
+  // The row carries no separate badge: the state is said once.
+  expect(
+    waiting
+      ?.closest('[data-sidebar="menu-sub-item"]')
+      ?.querySelector('[data-sidebar="menu-badge"]'),
+  ).toBeNull();
+  const idle = container.querySelector('a[href="/sessions/session_1"]');
+  expect(idle?.querySelector('[data-status]')).toBeNull();
 });

@@ -123,7 +123,8 @@ test('500 conversations retain source project hierarchy and offscreen keyboard n
   ).toBe(true);
 
   await page.screenshot({ path: test.info().outputPath('sidebar-kit-overview.png') });
-  const last = sidebar.locator('a[href="/sessions/session_sidebar_499"]');
+  // A session link carries its opening search (`?compose=true`).
+  const last = sidebar.locator('a[href^="/sessions/session_sidebar_499"]');
   await expect(last).toHaveCount(0);
   const actions = sidebar.getByRole('button', {
     name: 'Actions for Pinned conversation',

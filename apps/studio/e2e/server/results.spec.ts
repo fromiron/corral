@@ -107,7 +107,7 @@ test('selected-run usage and unique result identities survive reload without cha
   const totals = await page.getByTestId('composer-stats').locator('summary').innerText();
   expect(totals).toContain('Session total');
   // The run segment of the top bar's path exists only in run history.
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await chooseRun(page, 1);
   await panelTab(page, 'Conversation');
   const selected = page.getByRole('link', { name: /Selected run · Run #1 of 2/ });

@@ -91,6 +91,8 @@ export interface DockWorkbenchProps {
   selectedPanel?: SessionPanel | null;
   selectionKey?: string;
   fileWorkAvailable?: boolean;
+  /** Files this session changed, shown as a count on the Changes view. */
+  changeCount?: number;
   renderContext(view: DockContextView, requestedView?: DockContextView): ReactNode;
   renderDocument(
     descriptor: DockDocumentDescriptor,
@@ -961,6 +963,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     useEffect(() => {
       current.current.onPanesHiddenChange?.(sessionView === 'chat');
     }, [sessionView]);
+    /** Choosing a session view, from its tab or from the top bar's folded view menu. */
+    const selectView = (value: string) => {
+      if (value === 'files') {
+        openContext('files');
+        current.current.onActiveContext?.('files');
+      } else openContext(value === 'run' || value === 'changes' ? value : 'chat', true);
+    };
     return (
       <RendererContext.Provider
         value={{
@@ -1040,18 +1049,11 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             });
           }}
         >
-          <Tabs
-            value={sessionView}
-            onValueChange={(value) => {
-              if (value === 'files') {
-                openContext('files');
-                current.current.onActiveContext?.('files');
-              } else openContext(value === 'run' || value === 'changes' ? value : 'chat', true);
-            }}
-            className="corral-dock-tabs"
-          >
+          <Tabs value={sessionView} onValueChange={selectView} className="corral-dock-tabs">
             <DockTopBar
               sessionView={sessionView}
+              changeCount={props.changeCount}
+              onSelectView={selectView}
               fileWork={Boolean(props.fileWorkAvailable) || hasFileWork}
               compact={compact}
               active={active}

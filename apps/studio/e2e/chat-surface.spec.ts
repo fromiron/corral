@@ -36,8 +36,8 @@ test('SURFACE-02 narrow summary stays accessible and opening details selects its
   await expect(page.getByTestId('session-summary-popup')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
-  await panelTab(page, 'Execution history');
-  await expect(page.getByRole('tab', { name: 'Execution history', exact: true })).toHaveAttribute(
+  await panelTab(page, 'Runs');
+  await expect(page.getByRole('tab', { name: 'Runs', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -48,7 +48,7 @@ test('SURFACE-02 narrow summary stays accessible and opening details selects its
 
 test('RESULT-03 default execution panel offers its actual results', async ({ page }) => {
   await completedConversation(page);
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   const monitor = page.getByTestId('run-monitor');
   await expect(monitor.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);

@@ -219,7 +219,7 @@ test.describe('viewed and active execution', () => {
       );
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
-      await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+      await page.getByRole('tab', { name: 'Runs', exact: true }).click();
       await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(first.runId);
 
       const cancellations: { runId: string; type: string }[] = [];

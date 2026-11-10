@@ -359,7 +359,8 @@ function WorkSessionPage() {
         session={session}
         corrals={corrals}
         team={team}
-        changes={changes}
+        // The Changes tab carries the count (DockTopBar); the bar does not repeat it as a chip.
+        changes={null}
         panel={panel}
         onPanel={(value) => showPanel({ panel: value })}
         fileViewerOpen={fileViewerOpen}
@@ -413,6 +414,7 @@ function WorkSessionPage() {
                 sessionId={session.sessionId}
                 selectedPanel={panel ?? null}
                 fileWorkAvailable={Boolean(binding)}
+                changeCount={changes?.length ?? 0}
                 selectionKey={`${session.sessionId}:${viewKey}`}
                 documentOwner={documents}
                 terminalStatus={<TerminalActivity sessionId={session.sessionId} />}

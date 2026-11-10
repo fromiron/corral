@@ -76,7 +76,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
     'aria-selected',
     'true',
   );
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   const graph = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(graph).toBeVisible();
   await panelTab(page, 'Conversation');
@@ -102,7 +102,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
     .toBe('succeeded');
   await expect(page.getByTestId('composer-status-pills')).toContainText('Run #2');
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await expect(page.getByRole('banner').getByRole('button', { name: /#2 · / })).toBeVisible();
   await expect(graph).toBeVisible();
   await expect
@@ -139,7 +139,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
   const preferred = await viewport.getAttribute('style');
   await panelTab(page, 'Conversation');
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   expect(corral.errors).toEqual([]);
@@ -189,7 +189,7 @@ test('switching workspace views and reading a result preserves selection, scroll
   await finishedRun(page, corral);
   const monitor = page.getByTestId('run-monitor');
   const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   const flow = monitor.locator('[data-run-workspace-view="flow"]');
   await expect(flow.getByRole('tree')).toBeVisible();
   const side = page.getByTestId('run-side');
@@ -245,7 +245,7 @@ test('switching workspace views and reading a result preserves selection, scroll
     'aria-selected',
     'true',
   );
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect.poll(() => flow.evaluate((element) => element.scrollTop)).toBe(flowTop);
   await expect(
     flow
@@ -366,7 +366,7 @@ test.describe('active graph preview', () => {
 test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
   await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await page
     .getByTestId('run-work-flow')
     .getByRole('button', { name: /^Research Helper · exec_/ })
@@ -388,7 +388,7 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
   await expect(reins).toContainText('Research Helper');
   await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
   await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(
     page
       .getByTestId('run-work-flow')
@@ -521,7 +521,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await route.continue();
   });
   try {
-    await panelTab(page, 'Execution history');
+    await panelTab(page, 'Runs');
     const posted = page.waitForRequest(
       (request) =>
         request.url().endsWith('/commands') && request.postDataJSON()?.type === 'resolve_approval',
@@ -570,7 +570,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   );
   await page.emulateMedia({ colorScheme: 'light' });
   await page.reload();
-  const historyTab = page.getByRole('tab', { name: 'Execution history', exact: true });
+  const historyTab = page.getByRole('tab', { name: 'Runs', exact: true });
   await expect(historyTab).toBeVisible();
   await historyTab.click();
   const flow = page.getByRole('group', { name: 'Run graph', exact: true });
@@ -598,7 +598,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
     localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' })),
   );
   await page.reload();
-  await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+  await page.getByRole('tab', { name: 'Runs', exact: true }).click();
   await expect(flow).toHaveCSS('color-scheme', 'light');
   const lightSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(lightSurface).not.toBe(darkSurface);

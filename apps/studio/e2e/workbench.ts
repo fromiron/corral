@@ -74,14 +74,36 @@ export async function slash(page: Page, command: string) {
 /** Opens an existing session view, or its contextual file pane through the command palette. */
 export async function panelTab(page: Page, name: string) {
   const views = page.getByRole('tablist', { name: 'Session views', exact: true });
-  await expect(views).toBeVisible();
-  const primary = name === 'Run' ? 'Execution history' : name;
-  if (['Conversation', 'Execution history', 'Changes'].includes(primary)) {
-    const tab = views.getByRole('tab', { name: primary, exact: true });
-    if (primary !== 'Changes' || (await tab.count())) {
-      await tab.click();
-      await expect(tab).toHaveAttribute('aria-selected', 'true');
-      return;
+  // A top bar too narrow for the tabs folds them into one menu of the same name.
+  const folded = page.getByRole('combobox', { name: 'Session views', exact: true });
+  await expect(views.or(folded).first()).toBeVisible();
+  const primary = name === 'Run' ? 'Runs' : name;
+  if (['Conversation', 'Runs', 'Changes'].includes(primary)) {
+    // The chosen view changes what the bar holds (a run view has no run pill), so the tabs may
+    // fold or return once it opens: either way the bar names it as the current view.
+    const chosen = folded
+      .filter({ hasText: primary })
+      .or(views.getByRole('tab', { name: primary, exact: true, selected: true }))
+      .first();
+    if (await folded.isVisible()) {
+      await folded.click();
+      // The menu always offers Conversation; once it is open, the wanted view is there or not.
+      await expect(page.getByRole('option', { name: /^Conversation\b/ })).toBeVisible();
+      // The Changes option may carry its count of changed files.
+      const option = page.getByRole('option', { name: new RegExp(`^${primary}\\b`) });
+      if (await option.count()) {
+        await option.click();
+        await expect(chosen).toBeVisible();
+        return;
+      }
+      await page.keyboard.press('Escape');
+    } else {
+      const tab = views.getByRole('tab', { name: primary, exact: true });
+      if (primary !== 'Changes' || (await tab.count())) {
+        await tab.click();
+        await expect(chosen).toBeVisible();
+        return;
+      }
     }
   }
   // File work may not have a primary tab until first opened. The palette is always reachable.

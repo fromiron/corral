@@ -110,7 +110,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   // A finished execution takes no new instructions; what it was sent is in its conversation.
   await expect(side.getByRole('heading', { name: 'Writer', exact: true })).toBeVisible();
   await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
-  await monitor.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await monitor.getByRole('tab', { name: 'Workflow', exact: true }).click();
   // The work flow card of the chosen execution is marked as the current one.
   const activity = page.getByTestId('run-work-flow');
   await expect(
@@ -120,7 +120,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
       .first(),
   ).toBeVisible();
 
-  // Work flow and graph are alternative views of the same explicit execution selection.
+  // Workflow and graph are alternative views of the same explicit execution selection.
   await activity
     .getByRole('button', { name: /^Research · exec_/ })
     .first()

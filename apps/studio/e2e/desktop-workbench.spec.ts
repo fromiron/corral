@@ -72,7 +72,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   await expect(
     page
       .getByRole('tablist', { name: 'Session views' })
-      .getByRole('tab', { name: 'Execution history', exact: true }),
+      .getByRole('tab', { name: 'Runs', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await expect(input).toHaveValue('Preserve this follow-up draft');
   expect(

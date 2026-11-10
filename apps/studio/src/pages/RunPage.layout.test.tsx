@@ -69,7 +69,7 @@ vi.mock('@corral/react', async (original) => {
         <textarea aria-label="Instruction" />
       </section>
     ),
-    RunFlowView: () => <output data-testid="run-flow">Work flow</output>,
+    RunFlowView: () => <output data-testid="run-flow">Workflow</output>,
     ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
       <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
         Approval evidence
@@ -1170,13 +1170,13 @@ it('primary views retain the graph when switching and keep the active view on a 
   };
   expect(tabs().map((el) => el.textContent)).toEqual([
     expect.stringContaining('Graph'),
-    expect.stringContaining('Work flow'),
+    expect.stringContaining('Workflow'),
     expect.stringContaining('Timeline'),
     expect.stringContaining('Events 0'),
     expect.stringContaining('Results'),
   ]);
   const graph = container.querySelector('[data-testid="layout"]');
-  await tab('Work flow');
+  await tab('Workflow');
   expect(container.querySelector('[data-testid="run-work-flow"]')?.closest('[hidden]')).toBeNull();
   await tab('Graph');
   expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
@@ -1204,7 +1204,7 @@ it('keeps the timeline view selection across primary workspace switches', async 
     el.textContent?.includes('By task'),
   );
   expect(taskTab?.getAttribute('aria-selected')).toBe('true');
-  await tab('Work flow');
+  await tab('Workflow');
   await tab('Timeline');
   expect(taskTab?.isConnected).toBe(true);
   expect(taskTab?.getAttribute('aria-selected')).toBe('true');
@@ -1697,7 +1697,7 @@ it('switches the graph between its map and list, keeping the choice across views
   const list = await chooseDisplay(container, 'List');
   expect(display()).toBe('list');
   expect(list?.getAttribute('aria-pressed')).toBe('true');
-  await act(async () => viewTab(container, 'Work flow')?.click());
+  await act(async () => viewTab(container, 'Workflow')?.click());
   await act(async () => viewTab(container, 'Graph')?.click());
   expect(display()).toBe('list');
   await populateGraph(run, [graphExecution('exec_worker', 'worker')]);

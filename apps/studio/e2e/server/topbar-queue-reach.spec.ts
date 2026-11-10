@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { requestBox, slash } from '../workbench.ts';
+import { panelTab, requestBox, slash } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // A held run keeps its controls in the top bar and its saved requests in the queue; both stay
@@ -19,7 +19,10 @@ async function shown(target: Locator) {
 
 async function holdRun(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page
+    .getByRole('main')
+    .getByRole('button', { name: 'New conversation', exact: true })
+    .click();
   await requestBox(page).fill('Read the notes and wait');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
@@ -71,6 +74,82 @@ test.describe('a held run', () => {
     await expect(
       page.getByRole('button', { name: 'Confirm whole run cancellation', exact: true }),
     ).toBeVisible();
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('gives way in order as the bar narrows and keeps the session name and Search', async ({
+    page,
+    corral,
+  }) => {
+    const tiers = [
+      'full',
+      'icons',
+      'no-clock',
+      'short-pill',
+      'view-menu',
+      'project-icon',
+      'two-rows',
+      'two-rows-menu',
+    ];
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await holdRun(page, corral);
+    const bar = page.getByRole('banner');
+    const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
+    const name = bar.getByRole('heading', { level: 2 });
+    const search = bar.getByRole('button', { name: 'Search', exact: true });
+    const tier = async () => tiers.indexOf((await bar.getAttribute('data-topbar-tier')) ?? '');
+    await expect(bar).toHaveAttribute('data-topbar-tier', 'full');
+    await expect(controls.getByRole('button', { name: 'Pause run', exact: true })).toHaveText(
+      'Pause run',
+    );
+    const title = (await name.innerText()).trim();
+    // The bar is fitted to its own width: beside the sidebar from 1024, full width below.
+    const seen: { bar: number; tier: number }[] = [];
+    for (const width of [1440, 1280, 1100, 1024, 900, 700, 520, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      // The bar settles on a tier that fits: nothing leaves it or the page.
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const node = document.querySelector<HTMLElement>('.app-topbar');
+            return node
+              ? Math.max(
+                  node.scrollWidth - node.clientWidth,
+                  document.documentElement.scrollWidth - window.innerWidth,
+                )
+              : -1;
+          }),
+        )
+        .toBe(0);
+      seen.push({ bar: (await bar.boundingBox())?.width ?? 0, tier: await tier() });
+      await expect(name, `${width}px`).toBeVisible();
+      await expect(name, `${width}px`).toContainText(title.slice(0, 8));
+      expect((await name.boundingBox())?.width ?? 0, `${width}px`).toBeGreaterThan(80);
+      await expect.poll(() => shown(search), { message: `${width}px` }).toBe(true);
+      await expect.poll(() => shown(page.getByTestId('dock-open-active-run'))).toBe(true);
+      await expect
+        .poll(() => shown(controls.getByRole('button', { name: 'Pause run', exact: true })))
+        .toBe(true);
+    }
+    // A narrower bar never brings back what a wider one had already given up.
+    const byWidth = [...seen].sort((a, b) => b.bar - a.bar).map((entry) => entry.tier);
+    expect(byWidth).toEqual([...byWidth].sort((a, b) => a - b));
+    expect(new Set(byWidth).size).toBeGreaterThan(3);
+    await expect(bar).toHaveAttribute('data-topbar-rows', '2');
+    // Folded into one menu, the views still switch, and each panel keeps its name.
+    const views = bar.getByRole('combobox', { name: 'Session views', exact: true });
+    await expect(views).toContainText('Conversation');
+    await panelTab(page, 'Runs');
+    await expect(page.getByRole('tabpanel', { name: 'Runs', exact: true })).toBeVisible();
+    await panelTab(page, 'Conversation');
+    await expect(page.getByRole('tabpanel', { name: 'Conversation', exact: true })).toBeVisible();
+    await expect(views).toContainText('Conversation');
+    // Room given back returns what was folded.
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await expect(bar).toHaveAttribute('data-topbar-tier', 'full');
+    await expect(
+      bar.getByRole('tablist', { name: 'Session views', exact: true }).getByRole('tab'),
+    ).toHaveCount(2);
     expect(corral.errors).toEqual([]);
   });
 

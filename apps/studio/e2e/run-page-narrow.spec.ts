@@ -28,12 +28,12 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   const side = monitor.getByRole('complementary', { name: 'Details', exact: true });
   await expect(side).toBeHidden();
   // The chosen workspace view replaces the graph; it is not a second dock below it.
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
-  const flow = monitor.getByRole('tabpanel', { name: 'Work flow', exact: true });
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
+  const flow = monitor.getByRole('tabpanel', { name: 'Workflow', exact: true });
   await expect(flow).toBeVisible();
   await expect(activity).toBeVisible();
   await expect(graph(page)).toBeHidden();
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(flow).toBeVisible();
 
   const selected = activity.getByRole('button', { name: / · exec_/ }).first();
@@ -95,7 +95,7 @@ test('the primary graph fits a short window and keeps its zoom across view and s
     .click();
   await expect(viewport).not.toHaveAttribute('style', initial ?? '');
   const preferred = await viewport.getAttribute('style');
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(graph(page)).toBeHidden();
   await views.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
@@ -125,7 +125,7 @@ test('the primary graph fits a short window and keeps its zoom across view and s
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   await views.getByRole('tab', { name: 'Graph', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
-  await expect(views.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
+  await expect(views.getByRole('tab', { name: 'Workflow', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );

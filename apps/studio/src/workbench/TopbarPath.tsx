@@ -10,15 +10,20 @@ import {
   MenuRadioItem,
   MenuSeparator,
   MenuTrigger,
+  Tooltip,
 } from '@corral/react/design-kit';
-import { ChevronDown } from '@corral/react/icons';
+import { ChevronDown, Folder } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { projectName } from '../projects.ts';
 import { SessionMenu } from './Breadcrumbs.tsx';
+import { useTopbarLayout } from './TopbarSlot.tsx';
 
 // The top bar's path: where the open screen sits. A project's screens start with the project
-// menu; screens that belong to no project start with their own name (workbench.md).
+// menu; screens that belong to no project start with their own name (workbench.md). The last
+// name is the one that stays as the bar narrows; the project before it folds to its icon. Each
+// item marks itself (`data-crumb`) and its truncating label so the bar can tell what the path
+// would take at full length (topbarTier.ts).
 
 type OutsidePage =
   | ['Shell', 'needsYou' | 'library' | 'automation' | 'featurePreviews' | 'allProjects']
@@ -68,7 +73,11 @@ export function TopbarPath({
   const outside = outsidePage(pathname);
   const known = project ?? projects.find((item) => item.projectId === projectId);
   return (
-    <nav aria-label={n('location')} className="flex min-w-0 items-center gap-1.5 text-ui">
+    <nav
+      aria-label={n('location')}
+      data-topbar-part="path"
+      className="flex min-w-0 items-center gap-1.5 text-ui"
+    >
       {outside ? (
         <PathCrumb>{outside[0] === 'Shell' ? shell(outside[1]) : n(outside[1])}</PathCrumb>
       ) : (
@@ -91,7 +100,12 @@ export function TopbarPath({
               onOpen={onOpenSession}
             />
           ) : (
-            <h2 className="truncate" style={{ fontVariationSettings: fontWeights.semibold }}>
+            <h2
+              data-crumb="current"
+              data-crumb-label=""
+              className="min-w-0 truncate px-2 text-foreground"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
               {pageTitle}
             </h2>
           )}
@@ -115,23 +129,46 @@ function ProjectSwitcher({
   const navigate = useNavigate();
   const options = projects.filter((p) => !p.archivedAt || p.projectId === projectId);
   const chosen = options.find((p) => p.projectId === projectId);
+  const name = chosen ? projectName(chosen, t('defaultName')) : t('allProjects');
+  const icon = useTopbarLayout().project === 'icon';
   return (
     <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="compact"
-            aria-label={n('switchProject')}
-            className="min-w-0 max-w-52 gap-1 px-2"
-          />
-        }
-      >
-        <span className="truncate" style={{ fontVariationSettings: fontWeights.semibold }}>
-          {chosen ? projectName(chosen, t('defaultName')) : t('allProjects')}
-        </span>
-        <ChevronDown className="size-3.5 text-muted-foreground" />
-      </MenuTrigger>
+      {icon ? (
+        // A narrow bar keeps the project as its icon; the name is the tooltip.
+        <Tooltip content={name}>
+          <MenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label={n('switchProject')}
+                data-crumb="project"
+                className="shrink-0"
+              />
+            }
+          >
+            <Folder />
+          </MenuTrigger>
+        </Tooltip>
+      ) : (
+        <MenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="compact"
+              aria-label={n('switchProject')}
+              data-crumb="project"
+              // A project name is never cut mid-word to make room: the session name gives first.
+              className="max-w-52 shrink-0 gap-1 px-2"
+            />
+          }
+        >
+          <span data-crumb-label="" className="truncate">
+            {name}
+          </span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </MenuTrigger>
+      )}
       <MenuPopup align="start" className="min-w-56">
         <MenuRadioGroup
           value={chosen ? projectId : ''}

@@ -2,6 +2,7 @@ import type { RunSummary, WorkSession } from '@corral/core';
 import { StatusDot } from '@corral/react';
 import {
   Button,
+  fontWeights,
   Menu,
   MenuItem,
   MenuPopup,
@@ -14,11 +15,12 @@ import { ChevronDown } from '@corral/react/icons';
 import { useTranslations } from 'use-intl';
 import { useRegisteredCommands } from '../commandRegistry.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
+import { useTopbarLayout } from './TopbarSlot.tsx';
 
 // Each segment of the top bar's path is the menu for its level (project / session / run), so
 // moving between siblings needs neither the sidebar nor a second row of controls.
 
-const crumb = 'min-w-0 max-w-64 gap-1 px-2 font-medium';
+const crumb = 'min-w-0 gap-1 px-2';
 
 // The open page registers its own session actions with their revision checks
 // (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those.
@@ -57,10 +59,25 @@ export function SessionMenu({
     (id) => registered.find((command) => command.id === id) ?? [],
   );
   return (
-    <h2 className="flex min-w-0">
+    // The name a narrowing bar keeps: it is the last thing to shorten (topbarTier.ts).
+    <h2 data-crumb="current" className="flex max-w-64 min-w-0">
       <Menu>
-        <MenuTrigger render={<Button variant="ghost" size="compact" className={crumb} />}>
-          <span className="truncate">{title}</span>
+        <MenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="compact"
+              className={`${crumb} max-w-full text-foreground`}
+            />
+          }
+        >
+          <span
+            data-crumb-label=""
+            className="truncate"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {title}
+          </span>
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         </MenuTrigger>
         <MenuPopup align="start" aria-label={n('switchSession')} className="max-w-96 min-w-64">
@@ -130,11 +147,25 @@ export function RunMenu({
       : tw('runNumber', { number: number(id) });
   };
   const chosen = runs.find((run) => run.runId === runId);
+  // Once the bar is too narrow for the whole path, the run is its number; its request stays
+  // in the menu. The session name before it keeps its length.
+  const short = useTopbarLayout().path !== 'full';
   return (
     <Menu>
-      <MenuTrigger render={<Button variant="ghost" size="compact" className={crumb} />}>
+      <MenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="compact"
+            data-crumb="extra"
+            className={`${crumb} max-w-64 text-foreground`}
+          />
+        }
+      >
         {chosen ? <StatusDot status={chosen.status} label={label(chosen)} /> : null}
-        <span className="truncate">{runName(runId)}</span>
+        <span data-crumb-label="" className="truncate">
+          {short ? tw('runNumber', { number: number(runId) }) : runName(runId)}
+        </span>
         <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
       </MenuTrigger>
       <MenuPopup align="start" aria-label={tw('chooseRun')} className="min-w-48 max-w-96">

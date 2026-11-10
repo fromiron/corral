@@ -9,7 +9,7 @@ const timeline = (page: Page) => page.getByTestId('chat-timeline');
 
 async function openResultsList(page: Page) {
   await panelTab(page, 'Results');
-  return page.getByRole('tabpanel', { name: 'Execution history', exact: true });
+  return page.getByRole('tabpanel', { name: 'Runs', exact: true });
 }
 
 async function session(page: Page, corral: Harness, definition = linearCorral(['writer'])) {

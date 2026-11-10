@@ -3,9 +3,12 @@ import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@co
 import { SidebarStatusCard, StatusDot } from '@corral/react';
 import {
   Button,
+  cn,
   fontWeights,
   Sidebar as KitSidebar,
   Menu,
+  MenuGroup,
+  MenuGroupLabel,
   MenuItem,
   MenuPopup,
   MenuTrigger,
@@ -238,6 +241,18 @@ export function useCorralSidebar() {
 
 const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
 
+/**
+ * Row heights of the project list, per density. A session row holds its title and one line of
+ * state and time, each at its type role's full line height, so neither line is clipped. The
+ * virtual list positions rows by these, so the rows are drawn at exactly these heights.
+ */
+export function sidebarRowHeights(compact: boolean) {
+  return compact
+    ? { project: 28, session: 36, empty: 24 }
+    : { project: 32, session: 44, empty: 28 };
+}
+const SESSION_ROW = { default: 'h-11', compact: 'h-9' } as const;
+
 /** Tab or Escape out of a row menu puts focus back on that row's trigger (workbench.md). */
 function returnFocusOnClose(
   event: KeyboardEvent<HTMLElement>,
@@ -289,9 +304,10 @@ export const Sidebar = memo(function Sidebar({
   const scroll = useRef<HTMLElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
-  const compact = useSize().variant === 'compact';
-  const projectHeight = compact ? 28 : 32;
-  const sessionHeight = compact ? 24 : 28;
+  const size = useSize();
+  const compact = size.variant === 'compact';
+  const heights = useMemo(() => sidebarRowHeights(compact), [compact]);
+  const projectHeight = heights.project;
   const waiting = useMemo(
     () => needsYouCount(model.sessions, model.runs, model.terminalAttention),
     [model.sessions, model.runs, model.terminalAttention],
@@ -335,17 +351,17 @@ export const Sidebar = memo(function Sidebar({
         groups.push({ project: row.project, index, start: offset, size: 0 });
       const group = groups.at(-1);
       if (!group) continue;
-      const height = row.kind === 'project' ? projectHeight : sessionHeight;
+      const height = heights[row.kind];
       group.size += height;
       byIndex[index] = group;
       offset += height;
     }
     return { groups, byIndex };
-  }, [rows, projectHeight, sessionHeight]);
+  }, [rows, heights]);
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroll.current,
-    estimateSize: (index) => (rows[index]?.kind === 'project' ? projectHeight : sessionHeight),
+    estimateSize: (index) => heights[rows[index]?.kind ?? 'session'],
     scrollMargin,
     overscan: 8,
     getItemKey: (index) => {
@@ -375,6 +391,13 @@ export const Sidebar = memo(function Sidebar({
     observer.observe(content ?? menu);
     return () => observer.disconnect();
   }, []);
+  // A density change resizes every row: the virtual list lays them out again.
+  const laidOut = useRef(heights);
+  useLayoutEffect(() => {
+    if (laidOut.current === heights) return;
+    laidOut.current = heights;
+    virtual.measure();
+  }, [heights, virtual]);
   const virtualItems = virtual.getVirtualItems();
   const visibleGroups = new Map<(typeof tree.groups)[number], typeof virtualItems>();
   for (const item of virtualItems) {
@@ -436,6 +459,16 @@ export const Sidebar = memo(function Sidebar({
         : connected
           ? shell('connected')
           : shell('noModel');
+  // One word for the header, shown only while the whole word fits.
+  const connectionWord =
+    mode !== 'server'
+      ? shell('stateDemo')
+      : !live
+        ? shell('stateSimulated')
+        : connected
+          ? shell('connected')
+          : shell('stateNoModel');
+  const connectionDot = blocked ? (connected ? 'bg-success' : 'bg-warning') : 'bg-muted-foreground';
   const statusCard =
     blocked && connected ? null : (
       <SidebarStatusCard
@@ -477,50 +510,61 @@ export const Sidebar = memo(function Sidebar({
       <SidebarHeader>
         <div className="flex min-w-0 items-center gap-1">
           <div className="min-w-0 flex-1">
-            <SidebarWorkspaceHeader
-              name={
-                <>
-                  Corral
-                  <span
-                    data-testid="sidebar-connection"
-                    className="text-muted-foreground"
-                    style={{ fontVariationSettings: fontWeights.normal }}
-                  >
-                    {' · '}
-                    {connection}
-                  </span>
-                </>
-              }
-              tile={
-                <span className="relative flex">
-                  <WorkspaceTile>c</WorkspaceTile>
-                  <span
-                    className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar ${
-                      blocked ? (connected ? 'bg-success' : 'bg-warning') : 'bg-muted-foreground'
-                    }`}
-                  />
-                </span>
-              }
-              labels={{
-                menu: shell('workspace'),
-                switchWorkspace: shell('workspaceMenuState', { state: connection }),
-                toggleSidebar: tw('expandSidebar'),
-              }}
-              menu={
-                <>
-                  <MenuItem index={0} onClick={() => void navigate({ to: '/projects' })}>
-                    {shell('allProjects')}
-                  </MenuItem>
-                  {/* The projects page focuses its new-project form for this hash. */}
-                  <MenuItem
-                    index={1}
-                    onClick={() => void navigate({ to: '/projects', hash: 'new-project' })}
-                  >
-                    {shell('newProject')}
-                  </MenuItem>
-                </>
-              }
-            />
+            <Tooltip content={connection} side="right">
+              <div>
+                <SidebarWorkspaceHeader
+                  name={
+                    // The state word wraps out of the one-line row, whole, when there is no room
+                    // for it: the name is never cut mid-word. The dot on the tile always says it.
+                    <span className="flex h-5 flex-wrap gap-x-1.5 overflow-hidden">
+                      <span>Corral</span>
+                      <span
+                        data-testid="sidebar-connection"
+                        className="whitespace-nowrap text-muted-foreground"
+                        style={{ fontVariationSettings: fontWeights.normal }}
+                      >
+                        {connectionWord}
+                      </span>
+                    </span>
+                  }
+                  tile={
+                    <span className="relative flex">
+                      <WorkspaceTile>c</WorkspaceTile>
+                      <span
+                        className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar ${connectionDot}`}
+                      />
+                    </span>
+                  }
+                  labels={{
+                    menu: shell('workspace'),
+                    switchWorkspace: shell('workspaceMenuState', { state: connection }),
+                    toggleSidebar: tw('expandSidebar'),
+                  }}
+                  menu={
+                    <MenuGroup>
+                      {/* The full state leads the menu as a line, not a choice. */}
+                      <MenuGroupLabel className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className={`size-2 shrink-0 rounded-full ${connectionDot}`}
+                        />
+                        {connection}
+                      </MenuGroupLabel>
+                      <MenuItem index={0} onClick={() => void navigate({ to: '/projects' })}>
+                        {shell('allProjects')}
+                      </MenuItem>
+                      {/* The projects page focuses its new-project form for this hash. */}
+                      <MenuItem
+                        index={1}
+                        onClick={() => void navigate({ to: '/projects', hash: 'new-project' })}
+                      >
+                        {shell('newProject')}
+                      </MenuItem>
+                    </MenuGroup>
+                  }
+                />
+              </div>
+            </Tooltip>
           </div>
           <Tooltip content={tw('collapseSidebar')} shortcut={shortcutLabel('view.sidebar')}>
             <Button
@@ -750,7 +794,10 @@ export const Sidebar = memo(function Sidebar({
                             <li
                               key={item.key}
                               style={position}
-                              className="px-2 text-caption text-muted-foreground"
+                              className={cn(
+                                size.type.caption,
+                                'flex items-center px-2 text-muted-foreground',
+                              )}
                             >
                               {tw('noSessions')}
                             </li>
@@ -789,6 +836,11 @@ export const Sidebar = memo(function Sidebar({
                               tabIndex={item.index === sessionTabIndex ? 0 : -1}
                               aria-describedby="session-list-keys"
                               isActive={active}
+                              // Two full lines: the icon sits on the title's line.
+                              className={cn(
+                                SESSION_ROW[size.variant],
+                                'items-start py-1 [&>svg]:mt-0.5',
+                              )}
                               icon={session.meeting ? Users : MessageCircle}
                               render={
                                 <Link
@@ -800,9 +852,33 @@ export const Sidebar = memo(function Sidebar({
                                 />
                               }
                             >
-                              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                <span className="truncate leading-3.5">{session.title}</span>
-                                <span className="truncate text-micro leading-3 text-muted-foreground">
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span
+                                  data-session-line="title"
+                                  className={cn(size.type.body, 'truncate')}
+                                  style={{
+                                    fontVariationSettings: active
+                                      ? fontWeights.semibold
+                                      : fontWeights.normal,
+                                  }}
+                                >
+                                  {session.title}
+                                </span>
+                                <span
+                                  data-session-line="state"
+                                  className={cn(
+                                    size.type.caption,
+                                    'truncate text-muted-foreground',
+                                  )}
+                                >
+                                  {/* The state's colour leads its word; the row needs no badge. */}
+                                  {run || terminal ? (
+                                    <span className="mr-1.5 inline-flex align-middle">
+                                      <StatusDot
+                                        status={terminal ? 'awaiting_user' : (run?.status ?? '')}
+                                      />
+                                    </span>
+                                  ) : null}
                                   {terminal ? `${ts('terminalNeedsAttention')} · ` : null}
                                   {run
                                     ? `${status(run.status)} · `
@@ -812,13 +888,10 @@ export const Sidebar = memo(function Sidebar({
                                   {ago(session.updatedAt)}
                                 </span>
                               </span>
-                              {session.pinned ? <Pin size={12} /> : null}
+                              {session.pinned ? (
+                                <Pin size={12} className="mt-1 shrink-0 text-muted-foreground" />
+                              ) : null}
                             </SidebarMenuSubButton>
-                            {run ? (
-                              <SidebarMenuBadge>
-                                <StatusDot status={run.status} label={status(run.status)} />
-                              </SidebarMenuBadge>
-                            ) : null}
                             <Menu
                               open={openMenu === session.sessionId}
                               onOpenChange={(open) => setOpenMenu(open ? session.sessionId : null)}
@@ -829,6 +902,7 @@ export const Sidebar = memo(function Sidebar({
                                     <SidebarMenuAction
                                       // The open conversation keeps its menu in view.
                                       showOnHover={!active}
+                                      className="top-1/2 -translate-y-1/2"
                                       data-session-menu
                                       aria-label={t('sessionActions', { title: session.title })}
                                     />

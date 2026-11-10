@@ -52,7 +52,7 @@ import {
 } from '../workbench/SettingsLifecycle.tsx';
 import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
 import { outsidePage, TopbarPath } from '../workbench/TopbarPath.tsx';
-import { TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
+import { TopbarBar, TopbarFit, TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
 
 export function RootLayout() {
   return (
@@ -300,119 +300,125 @@ function RootFrame() {
     <TooltipProvider>
       <SettingsNavigationContext.Provider value={settingsNavigation}>
         <TopbarSlotContext.Provider value={topbarSlots}>
-          <SidebarProvider
-            className="app-shell min-h-0"
-            data-sidebar-open={prefs.sidebarOpen}
-            persist={false}
-            shortcut={null}
-            mobileBreakpoint={0}
-            open={prefs.sidebarOpen}
-            onOpenChange={(sidebarOpen) => changePreferences({ sidebarOpen })}
-            width={`${prefs.sidebarWidth}px`}
-            onWidthChange={(width) => changePreferences({ sidebarWidth: Number.parseFloat(width) })}
-            minWidth={220}
-            maxWidth={420}
-          >
-            {narrow ? (
-              <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-                <DialogPopup
-                  className="mobile-sidebar-dialog"
-                  position="left"
-                  showCloseButton={false}
-                  bottomStickOnMobile={false}
-                  finalFocus={() => (handedOff.current ? false : sidebarTrigger.current)}
-                >
-                  <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
-                  <Sidebar model={sidebar} mobile />
-                </DialogPopup>
-              </Dialog>
-            ) : (
-              <Sidebar model={sidebar} railProps={railProps} />
-            )}
-            <div className="app-main">
-              {/* biome-ignore lint/a11y/noStaticElementInteractions: a title bar's double click is a pointer convenience; the window menu does the same */}
-              <header className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
-                <h1 className="sr-only">{t('title')}</h1>
-                <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
-                  <Button
-                    ref={sidebarTrigger}
-                    variant="ghost"
-                    size="icon-compact"
-                    aria-label={tw('expandSidebar')}
-                    className="app-sidebar-trigger"
-                    onClick={() => {
-                      changePreferences({ sidebarOpen: true });
-                      setMobileOpen((v) => !v);
-                    }}
+          <TopbarFit>
+            <SidebarProvider
+              className="app-shell min-h-0"
+              data-sidebar-open={prefs.sidebarOpen}
+              persist={false}
+              shortcut={null}
+              mobileBreakpoint={0}
+              open={prefs.sidebarOpen}
+              onOpenChange={(sidebarOpen) => changePreferences({ sidebarOpen })}
+              width={`${prefs.sidebarWidth}px`}
+              onWidthChange={(width) =>
+                changePreferences({ sidebarWidth: Number.parseFloat(width) })
+              }
+              minWidth={220}
+              maxWidth={420}
+            >
+              {narrow ? (
+                <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+                  <DialogPopup
+                    className="mobile-sidebar-dialog"
+                    position="left"
+                    showCloseButton={false}
+                    bottomStickOnMobile={false}
+                    finalFocus={() => (handedOff.current ? false : sidebarTrigger.current)}
                   >
-                    <PanelLeft />
-                  </Button>
-                </Tooltip>
-                <TopbarPath
-                  pathname={location.pathname}
-                  projects={sidebar.projects}
-                  projectId={projectId}
-                  project={project}
-                  pageTitle={pageTitle}
-                  sessions={sidebar.sessions}
-                  runs={sidebar.runs}
-                  sessionId={
-                    openSessionId && data?.session ? decodeURIComponent(openSessionId) : undefined
-                  }
-                  onOpenSession={(sessionId) =>
-                    void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-                  }
-                  crumbs={setCrumbsSlot}
+                    <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
+                    <Sidebar model={sidebar} mobile />
+                  </DialogPopup>
+                </Dialog>
+              ) : (
+                <Sidebar model={sidebar} railProps={railProps} />
+              )}
+              <div className="app-main">
+                {/* A title bar's double click is a pointer convenience; the window menu does the same. */}
+                <TopbarBar className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
+                  <h1 className="sr-only">{t('title')}</h1>
+                  <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
+                    <Button
+                      ref={sidebarTrigger}
+                      variant="ghost"
+                      size="icon-compact"
+                      aria-label={tw('expandSidebar')}
+                      className="app-sidebar-trigger"
+                      onClick={() => {
+                        changePreferences({ sidebarOpen: true });
+                        setMobileOpen((v) => !v);
+                      }}
+                    >
+                      <PanelLeft />
+                    </Button>
+                  </Tooltip>
+                  <TopbarPath
+                    pathname={location.pathname}
+                    projects={sidebar.projects}
+                    projectId={projectId}
+                    project={project}
+                    pageTitle={pageTitle}
+                    sessions={sidebar.sessions}
+                    runs={sidebar.runs}
+                    sessionId={
+                      openSessionId && data?.session ? decodeURIComponent(openSessionId) : undefined
+                    }
+                    onOpenSession={(sessionId) =>
+                      void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+                    }
+                    crumbs={setCrumbsSlot}
+                  />
+                  <div
+                    ref={setViewsSlot}
+                    data-topbar-part="views"
+                    className="app-topbar-views ml-auto flex shrink-0 items-center"
+                  />
+                  <div
+                    ref={setSlot}
+                    data-topbar-part="actions"
+                    className="app-topbar-actions flex shrink-0 items-center gap-1"
+                  />
+                  <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
+                    <Button
+                      variant="ghost"
+                      size="icon-compact"
+                      aria-label={tp('button')}
+                      onClick={() => window.dispatchEvent(new Event('corral:open-palette'))}
+                    >
+                      <Search />
+                    </Button>
+                  </Tooltip>
+                </TopbarBar>
+                <SettingsOperationStatus />
+                <ScheduledRunNotifications
+                  results={sidebar.scheduledResults}
+                  dismiss={sidebar.dismissScheduled}
                 />
-                <div
-                  ref={setViewsSlot}
-                  className="app-topbar-views ml-auto flex shrink-0 items-center"
-                />
-                <div
-                  ref={setSlot}
-                  className="app-topbar-actions flex min-w-0 shrink-0 items-center gap-1"
-                />
-                <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
-                  <Button
-                    variant="ghost"
-                    size="icon-compact"
-                    aria-label={tp('button')}
-                    onClick={() => window.dispatchEvent(new Event('corral:open-palette'))}
-                  >
-                    <Search />
-                  </Button>
-                </Tooltip>
-              </header>
-              <SettingsOperationStatus />
-              <ScheduledRunNotifications
-                results={sidebar.scheduledResults}
-                dismiss={sidebar.dismissScheduled}
-              />
-              {sessionMissing ? (
-                <Banner status="warning" size="compact">
-                  <BannerTitle>{t('sessionMissing')}</BannerTitle>
-                </Banner>
-              ) : null}
-              <div className="app-outlet">
-                <Outlet />
-                {!overlay ? <SettingsLeavePrompt /> : null}
+                {sessionMissing ? (
+                  <Banner status="warning" size="compact">
+                    <BannerTitle>{t('sessionMissing')}</BannerTitle>
+                  </Banner>
+                ) : null}
+                <div className="app-outlet">
+                  <Outlet />
+                  {!overlay ? <SettingsLeavePrompt /> : null}
+                </div>
               </div>
-            </div>
-            <CommandLayer
-              sessions={sidebar.sessions}
-              projects={sidebar.projects}
-              projectId={projectId}
-              fallbackFocus={sidebarTrigger}
-            />
-            <NewMeetingHost />
-            {overlay && overlaySearch.settings ? (
-              <SettingsDialog
-                section={overlaySearch.settings}
-                inbox={sidebar.inbox}
-                currentProject={sidebar.current}
+              <CommandLayer
+                sessions={sidebar.sessions}
+                projects={sidebar.projects}
+                projectId={projectId}
+                fallbackFocus={sidebarTrigger}
               />
-            ) : null}
-          </SidebarProvider>
+              <NewMeetingHost />
+              {overlay && overlaySearch.settings ? (
+                <SettingsDialog
+                  section={overlaySearch.settings}
+                  inbox={sidebar.inbox}
+                  currentProject={sidebar.current}
+                />
+              ) : null}
+            </SidebarProvider>
+          </TopbarFit>
         </TopbarSlotContext.Provider>
       </SettingsNavigationContext.Provider>
     </TooltipProvider>

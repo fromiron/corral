@@ -196,37 +196,41 @@
   }
 }
 /*
- * At phone width the bar wraps: the menu, path and search keep the first row, then the page's
- * views and its actions follow, the actions on a row of their own when they do not fit beside
- * the views. There the run's pill gives up its words before Pause and Cancel lose their place.
+ * The bar is fitted to its own width (workbench/topbarTier.ts). In its last tiers it wraps: the
+ * menu, path and search keep the first row; the page's views and its actions take the second.
  */
-@media (max-width: 639px) {
-  .app-topbar:has(> .app-topbar-views:not(:empty), > .app-topbar-actions:not(:empty)) {
-    flex-wrap: wrap;
-    height: auto;
-    min-height: var(--workspace-topbar-height);
-    padding-block: 6px;
-    row-gap: 6px;
-  }
-  .app-topbar:has(> .app-topbar-views:not(:empty), > .app-topbar-actions:not(:empty))::after {
-    content: "";
-    order: 1;
-    flex-basis: 100%;
-  }
-  .app-topbar > nav {
-    flex: 1 1 0;
-  }
-  .app-topbar-views,
-  .app-topbar-actions {
-    order: 2;
-  }
-  .app-topbar-views {
-    margin-left: 0;
-  }
-  .app-topbar-actions {
-    flex: 1 1 auto;
-    justify-content: flex-end;
-  }
+.app-topbar[data-topbar-rows="2"] {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--workspace-topbar-height);
+  padding-block: 6px;
+  row-gap: 6px;
+}
+.app-topbar[data-topbar-rows="2"]::after {
+  content: "";
+  order: 1;
+  flex-basis: 100%;
+}
+.app-topbar[data-topbar-rows="2"] > nav {
+  flex: 1 1 0;
+}
+.app-topbar[data-topbar-rows="2"] > .app-topbar-views,
+.app-topbar[data-topbar-rows="2"] > .app-topbar-actions {
+  order: 2;
+}
+.app-topbar[data-topbar-rows="2"] > .app-topbar-views {
+  margin-left: 0;
+}
+.app-topbar[data-topbar-rows="2"] > .app-topbar-actions {
+  margin-left: auto;
+}
+/* Past the last tier nothing more can fold: the actions wrap instead of leaving the bar. */
+.app-topbar[data-topbar-tier="two-rows-menu"] > .app-topbar-actions {
+  min-width: 0;
+  flex-shrink: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
 }
 @media (max-width: 640px) {
   .settings-row {
