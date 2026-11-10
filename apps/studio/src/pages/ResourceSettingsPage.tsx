@@ -1,9 +1,10 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryKey, HarnessEntryView, ManagedHook } from '@corral/contracts';
-import { Button, cn, EmptyState, fontWeights, Input, Switch } from '@corral/react/design-kit';
+import { EmptyView } from '@corral/react';
+import { Button, cn, fontWeights, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
@@ -111,8 +112,15 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       if (alive.current) setBusy(false);
     }
   }
-  // Nothing at all, archived included: one empty state under the Add action.
+  // Nothing at all, archived included: one empty state that carries the Add action.
   const none = loaded && entries.length === 0;
+  // The first saved item replaces the empty state and the Add focus went back to; focus moves on
+  // to the Add above the list.
+  const wasNone = useRef(none);
+  useLayoutEffect(() => {
+    if (wasNone.current && !none && document.activeElement === document.body) add.current?.focus();
+    wasNone.current = none;
+  }, [none]);
   return (
     <main className="settings-content">
       {/* Package management lives below the hook library; with a library above it the top of the
@@ -148,20 +156,26 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
             />
           </>
         )}
-        <Button ref={add} className="ml-auto" onClick={() => setEditor({})}>
-          <Plus size={16} />
-          {t('add')}
-        </Button>
+        {none ? (
+          <EmptyView
+            className="w-full"
+            title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')}
+            action={{ label: t('add'), onClick: () => setEditor({}), ref: add }}
+          />
+        ) : (
+          <Button ref={add} className="ml-auto" onClick={() => setEditor({})}>
+            <Plus size={16} />
+            {t('add')}
+          </Button>
+        )}
       </section>
       {error ? (
         <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
-      <div className="flex flex-col gap-6">
-        {none ? (
-          <EmptyState title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')} />
-        ) : (
+      <div className="flex flex-col gap-6 empty:hidden">
+        {none ? null : (
           <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('library')}>
             {!loaded ? (
               <p role="status" className="p-5 text-body text-muted-foreground">
