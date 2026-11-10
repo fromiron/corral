@@ -54,36 +54,45 @@
   /* The frame's heading above holds the top space (SettingsLayout). */
   padding: 0 24px 24px;
 }
-.settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  border-bottom: 1px solid var(--border);
-  padding-block: 16px;
-}
-.settings-row:last-child {
-  border-bottom: 0;
-}
-.settings-row h3 {
-  margin: 0 0 4px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  font-weight: 400;
-}
-.settings-row p {
-  margin: 0;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  color: var(--muted-foreground);
-}
-.settings-row .text-danger {
-  color: var(--danger);
-}
-.settings-row .text-warning {
-  color: var(--warning);
-}
+/* Layered like the surfaces below, so a row's own utilities (flex-col, items-start, gap-1)
+   take effect instead of losing to these defaults. */
 @layer components {
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-block: 16px;
+  }
+  .settings-row:last-child {
+    border-bottom: 0;
+  }
+  .settings-row h3 {
+    margin: 0 0 4px;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: 400;
+  }
+  .settings-row p {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--muted-foreground);
+  }
+  .settings-row .text-danger {
+    color: var(--danger);
+  }
+  .settings-row .text-warning {
+    color: var(--warning);
+  }
+  @media (max-width: 640px) {
+    .settings-row {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 12px;
+    }
+  }
   .settings-surface,
   .settings-list {
     border-radius: var(--panel-radius);
@@ -233,11 +242,6 @@
   row-gap: 6px;
 }
 @media (max-width: 640px) {
-  .settings-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-  }
   .settings-layout > nav {
     overflow-x: auto;
   }
