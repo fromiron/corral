@@ -64,8 +64,8 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/search | `SessionSearchRequest` | `SessionSearchResult`; 50개 접힌 결과 단위 페이지. 원문 `excerpt`, 원문 UTF-16 `excerptMatches`, 세션 기준 `runNumber`, 접힌 `sources`의 정확한 entry/run/artifact/sequence ID. 검색·동의·중복 기준은 [세션 목록과 검색](workbench.md#세션-목록과-검색)을 따른다. |
 | POST /sessions/search/rebuild | — | 파생 검색 캐시만 비움; 원문 기록 변경 없음 |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함 |
-| POST /sessions | `{projectId, title, objective?, corralId?, autoTitle?, meeting?:MeetingConfig}` | 새 세션. `meeting`이 있으면 회의, 없으면 기존 work 세션이며 이후 종류 변환은 하지 않는다. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다. |
-| GET·PATCH /sessions/:id | `{title?, objective?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
+| POST /sessions | `{projectId, title, objective?, criteria?, corralId?, autoTitle?, meeting?:MeetingConfig}` | 새 세션. `meeting`이 있으면 회의, 없으면 기존 work 세션이며 이후 종류 변환은 하지 않는다. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다. |
+| GET·PATCH /sessions/:id | `{title?, objective?, criteria?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `criteria`는 0~20줄(줄마다 1~200자)의 [세션 완료 기준](workbench.md#세션-완료-기준)이며 회의 세션에는 400이다. `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
 | POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
 | GET /sessions/:id/meeting | — | `MeetingView`: 저장된 메시지·답·사용량·대기 메시지·회의록·결정. 내부 `rounds`는 기존 기록/실행 소유권을 위한 응답 묶음이며 UI의 진행 단계가 아니다. 새 레코드의 `order`로 메시지·발언 순서를 표현하며 `replyTo`는 에이전트 멘션의 실제 출처다. 조회·재열기는 모델을 호출하지 않는다 |
