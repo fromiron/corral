@@ -1022,9 +1022,16 @@ function RunHeader({
   const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
   if (!projection) return null;
-  // A failed run says why beside its state, in Run info's words, and leads to what failed.
+  // A failed run says why beside its state, in Run info's words, and leads to what failed. With
+  // one agent, "{agent} failed" only restates the state chip, so it is left out.
   const failed = projection.status === 'failed';
   const failedExecution = failed ? failedExecutionId(projection) : null;
+  const soleAgent = definition.nodes.filter((node) => node.type === 'agent').length <= 1;
+  const endReason =
+    projection.statusReason &&
+    !(soleAgent && projection.statusReason.split(': ')[0] === 'execution_failed')
+      ? projection.statusReason
+      : null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
   const title = runNumber
@@ -1070,14 +1077,14 @@ function RunHeader({
             />
           </span>
         </div>
-        {failed && (projection.statusReason || (failedExecution && onOpenExecution)) ? (
+        {failed && (endReason || (failedExecution && onOpenExecution)) ? (
           <div className="flex min-w-0 items-center gap-2 @max-[44rem]/run-head:flex-1">
-            {projection.statusReason ? (
+            {endReason ? (
               <span
                 data-testid="run-end-reason"
                 className="min-w-0 truncate text-caption text-muted-foreground"
               >
-                <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+                <RunReason code={endReason} nodeLabel={labelOf} />
               </span>
             ) : null}
             {failedExecution && onOpenExecution ? (

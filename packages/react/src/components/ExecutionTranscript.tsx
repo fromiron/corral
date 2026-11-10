@@ -375,12 +375,14 @@ function Entry({
         </p>
       );
     case 'settled':
+      // The host's cause line above already says this execution failed: no second "Failed".
+      if (failureShown && entry.outcome === 'failed') return null;
       return (
         <div
           className={`text-center text-caption ${entry.outcome === 'succeeded' ? 'text-success' : 'text-danger'}`}
         >
           {t(`settled.${entry.outcome}`)}
-          {entry.error && !(failureShown && entry.outcome === 'failed') ? (
+          {entry.error ? (
             <FailureNotice message={entry.error} cancelled={entry.outcome === 'cancelled'} />
           ) : null}
         </div>

@@ -1023,9 +1023,12 @@ const failureEntry = (container: HTMLElement) =>
     (button) => button.textContent === 'Open the failed execution',
   );
 
-it('a failed run names its recorded end reason beside its state and opens the failed execution', async () => {
+it('a failed team run names which agent failed beside its state and opens the failed execution', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
-  const { container, run, navigations } = await mount('inline_team', null, {});
+  const { container, run, navigations } = await mount('inline_team', null, {}, undefined, false, [
+    'worker',
+    'reviewer',
+  ]);
   await failRun(run, {
     reason: 'execution_failed: worker',
     error: 'the model request failed: HTTP 500 (SERVER)',
@@ -1046,6 +1049,19 @@ it('a failed run names its recorded end reason beside its state and opens the fa
   );
   expect(failure?.querySelector('details')?.open).toBe(true);
   expect(failure?.textContent).toContain('the model request failed: HTTP 500 (SERVER)');
+});
+
+it('a failed one-agent run does not restate its state as that agent failing', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model request failed: HTTP 500 (SERVER)',
+  });
+  // The state chip says Failed and the entry opens what failed; worker failed adds nothing.
+  expect(endReason(container)).toBeNull();
+  expect(header(container)?.textContent).not.toContain('worker failed');
+  expect(failureEntry(container)).toBeDefined();
 });
 
 it('a failed execution of unknown cause keeps the recorded text verbatim under a localized label', async () => {

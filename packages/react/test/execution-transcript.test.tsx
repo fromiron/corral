@@ -253,3 +253,55 @@ describe('ExecutionTranscript (UX-A3)', () => {
       expect(button.textContent).not.toMatch(/\d(ms|\.\ds)\b/);
   });
 });
+
+describe('ExecutionTranscript end marker', () => {
+  const failedExecution = async (failureShown: boolean) => {
+    const { sessionStore, projectionWith } = await import('../src/stories/fixtures.tsx');
+    const session = sessionStore({
+      runId: 'run_failed',
+      projection: projectionWith({
+        status: 'failed',
+        executionOrder: ['exec_a'],
+        executions: {
+          exec_a: { executionId: 'exec_a', nodeId: 'assistant', status: 'failed' },
+        } as never,
+      }),
+      events: [
+        {
+          schemaVersion: '0.1',
+          eventId: 'e1',
+          runId: 'run_failed',
+          runSeq: 1,
+          recordedAt: '2026-11-10T00:00:00.000Z',
+          actor: { kind: 'runtime', id: 'runtime' },
+          causedByEventIds: [],
+          type: 'execution.settled',
+          payload: {
+            executionId: 'exec_a',
+            outcome: 'failed',
+            error: 'the model request failed: HTTP 500 (SERVER)',
+          },
+        },
+      ] as never,
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionTranscript session={session} executionId="exec_a" failureShown={failureShown} />
+      </IntlProvider>,
+    );
+  };
+
+  it('drops the trailing Failed when the host already leads with the cause line', async () => {
+    await failedExecution(true);
+    const log = screen.getByRole('log');
+    expect(within(log).queryByText(messages.Transcript.settled.failed)).toBeNull();
+    expect(log).not.toHaveTextContent('HTTP 500');
+  });
+
+  it('keeps the end marker and its cause when nothing above says it failed', async () => {
+    await failedExecution(false);
+    const log = screen.getByRole('log');
+    expect(within(log).getByText(messages.Transcript.settled.failed)).toBeInTheDocument();
+    expect(log).toHaveTextContent('HTTP 500');
+  });
+});
