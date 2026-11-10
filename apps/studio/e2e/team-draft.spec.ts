@@ -11,7 +11,11 @@ test('a local security review suggestion has specific roles and a short name bef
   const goal =
     'Review a pull request for security issues, then have a second agent double check the findings and write a summary for me to approve';
   await dialog.getByLabel('What should the team do?').fill(goal);
-  await expect(dialog).toContainText('No model call.');
+  // The local suggestion says on its own button that it calls no model.
+  await expect(dialog.getByRole('button', { name: /^Suggest a team/ })).toContainText(
+    'No model call',
+  );
+  await expect(dialog).not.toContainText('Picks a team shape');
   await dialog.getByRole('button', { name: 'Suggest a team' }).click();
   await expect(dialog.getByLabel('Team name', { exact: true })).toHaveValue('Security PR review');
   await expect(dialog.getByRole('textbox', { name: 'Brief', exact: true })).toHaveValue(goal);

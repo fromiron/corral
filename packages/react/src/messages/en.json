@@ -1382,7 +1382,6 @@
     "goalLabel": "What should the team do?",
     "goalPlaceholder": "e.g. Compare three help desk tools for a 20-person team",
     "suggest": "Suggest a team",
-    "suggestHint": "Picks a team shape from your words. No model call.",
     "ask": "Ask the model",
     "asking": "Asking the model…",
     "askHint": "Uses one model request with your sign-in.",
@@ -1457,7 +1456,8 @@
           "approval": "Provide a concise summary and suggested fixes for the user to approve."
         }
       }
-    }
+    },
+    "noModelCall": "No model call"
   },
   "ModelConfig": {
     "heading": "Edit models",
