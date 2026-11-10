@@ -137,7 +137,9 @@ test('a session works in its own copy, and its changes are reviewed and checked'
 
     await requestBox(page).fill('Write the notes');
     await page.getByRole('button', { name: 'Send' }).click();
-    // The turn's run card begins with its state.
+    // The turn's run card begins with its state, for screen readers: in a conversation the line
+    // above the composer is where a finished run's status shows. Not an exact text match: the
+    // card's process rows (Writer · Succeeded) carry the same word, so it finds more than one.
     const card = page
       .getByTestId('chat-timeline')
       .getByRole('region', { name: 'Run #1', exact: true });
@@ -151,11 +153,11 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     // With changes to read, the Changes view opens on its review (workbench.md: "변경 화면은
     // 검토 보기로 열린다").
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-    await expect(
-      page
-        .getByRole('tablist', { name: 'Changes views', exact: true })
-        .getByRole('tab', { name: 'Review', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
+    const views = page.getByRole('tablist', { name: 'Changes views', exact: true });
+    await expect(views.getByRole('tab', { name: 'Review', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await expect(page).toHaveURL(new URL(`${sessionPath}?panel=changes`, corral.server.url).href);
     const file = page.getByRole('button', { name: /notes\/team_writer_role\.md/ });
     await expect(file).toContainText('Added');
@@ -164,6 +166,9 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(
       page.getByTestId('file-diff').locator('[data-line-type="change-addition"]').first(),
     ).toBeVisible();
+    // Checks are a Changes view of their own beside the review (workbench.md: "보조 보기로
+    // Git·체크포인트·**검사**를 둔다").
+    await views.getByRole('tab', { name: 'Checks', exact: true }).click();
     await page.getByRole('button', { name: 'Run Notes exist' }).click();
     // A completed run shows its verdict alone.
     await expect(
@@ -177,6 +182,10 @@ test('a session works in its own copy, and its changes are reviewed and checked'
 
     // The linked folder itself was never written by the run.
     expect(existsSync(join(original, 'notes'))).toBe(false);
+    await views.getByRole('tab', { name: 'Review', exact: true }).click();
+    await expect(
+      page.getByTestId('file-diff').locator('[data-line-type="change-addition"]').first(),
+    ).toBeVisible();
 
     // a comment on a line goes out as a request for changes, as a new run.
     const decisionArea = page.getByRole('complementary', {
@@ -192,8 +201,14 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect
       .poll(async () => (await diff.boundingBox())?.width ?? 0)
       .toBeGreaterThanOrEqual(400);
-    await expect(file).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Run Notes exist' })).toBeVisible();
+    // Narrower than its three columns, the review puts the diff first: the file list folds into
+    // its head while a file is read and the decision area follows, keeping the draft
+    // (workbench.md: "중앙 diff를 우선하고 파일·검사·의견을 재배치하되 초안을 유지한다").
+    const fileList = page
+      .getByRole('navigation', { name: 'Review changes', exact: true })
+      .getByRole('button', { name: '1 file', exact: true });
+    await expect(fileList).toBeVisible();
+    await expect(decisionArea).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect
       .poll(() =>
@@ -202,7 +217,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
         ),
       )
       .toBe(0);
-    await expect(file).toBeVisible();
+    await expect(fileList).toBeVisible();
     await expect(diff).toBeVisible();
     await expect(draft).toHaveValue('Start with a title.');
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -226,7 +241,11 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await page.getByRole('button', { name: /^Apply \d+ files?$/ }).click();
     await expect(page.getByTestId('integration').first()).toContainText('Applied');
     expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(true);
-    await page.getByRole('button', { name: 'Revert' }).click();
+    await page
+      .getByTestId('integration')
+      .first()
+      .getByRole('button', { name: 'Revert', exact: true })
+      .click();
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Revert applied files', exact: true })
@@ -243,7 +262,9 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(parts).toContainText('Target: original folder');
     await parts.getByRole('button', { name: 'Approve and apply to the folder' }).click();
     await expect.poll(() => existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(true);
-    await page.getByRole('button', { name: 'Back to Git changes', exact: true }).click();
+    // Checkpoints are the Changes view beside the review (workbench.md: "보조 보기로
+    // Git·체크포인트·**검사**를 둔다").
+    await views.getByRole('tab', { name: 'Checkpoints', exact: true }).click();
     await expect(page).toHaveURL(new URL(`${sessionPath}?panel=changes`, corral.server.url).href);
     const checkpoints = page.getByRole('region', { name: 'File checkpoints', exact: true });
     await checkpoints.getByRole('button', { name: 'Refresh checkpoints', exact: true }).click();
