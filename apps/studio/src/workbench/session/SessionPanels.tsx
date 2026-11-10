@@ -284,8 +284,9 @@ export function ArtifactsPanel({
                 <FileText className="shrink-0 text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.label}</span>
-                  <span className="truncate text-2xs text-muted-foreground">
-                    {released ? `${source} · ${tv('notKept')}` : source}
+                  {/* A released body says so first, so a narrow row never cuts it off. */}
+                  <span className="truncate text-micro text-muted-foreground">
+                    {released ? `${tv('notKept')} · ${source}` : source}
                   </span>
                 </span>
                 <span className="shrink-0 text-caption text-muted-foreground">{tr(item.kind)}</span>
