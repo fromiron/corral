@@ -412,7 +412,7 @@ export function InspectorSheet({
   return (
     <aside
       aria-label={t('inspector')}
-      className="pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-[14px] border border-border bg-background shadow-lg"
+      className="pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-[14px] border border-border bg-card shadow-lg"
     >
       <header className="flex items-center gap-2 border-b border-border py-2 pr-2 pl-4">
         {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}

@@ -499,11 +499,10 @@ export const Sidebar = memo(function Sidebar({
   return (
     <KitSidebar
       data-testid="app-sidebar"
-      variant="sidebar"
+      variant="inset"
       collapsible={mobile ? 'none' : 'offcanvas'}
       rail={!mobile}
       railProps={railProps}
-      bordered={!mobile}
       style={mobile ? { width: '100%' } : undefined}
       className="h-full min-h-0"
     >

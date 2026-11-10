@@ -4,6 +4,7 @@ import {
   Banner,
   BannerTitle,
   Button,
+  cn,
   Dialog,
   DialogPopup,
   DialogTitle,
@@ -11,6 +12,7 @@ import {
   type SidebarRailProps,
   Tooltip,
   TooltipProvider,
+  useShape,
 } from '@corral/react/design-kit';
 import { PanelLeft, RefreshCw, Search } from '@corral/react/icons';
 import {
@@ -210,6 +212,7 @@ function RootFrame() {
     : (data?.session?.title ?? data?.definition?.name ?? (selectedRun ? tn('runDetails') : ''));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
+  const shape = useShape();
   useRegisterCommands('sidebar', [
     {
       id: 'view:sidebar',
@@ -332,7 +335,20 @@ function RootFrame() {
               ) : (
                 <Sidebar model={sidebar} railProps={railProps} />
               )}
-              <div className="app-main">
+              {/* The kit's SidebarInset recipe, on a div: each page renders its own <main>. Beside
+                  the inset sidebar the work sits one surface up; a narrow drawer leaves the floor. */}
+              <div
+                className={cn(
+                  'app-main relative overflow-hidden bg-background',
+                  'peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:peer-data-[side=left]:ml-0',
+                  'peer-data-[variant=inset]:peer-data-[state=collapsed]:peer-data-[side=left]:ml-2',
+                  'transition-[margin] duration-80',
+                  shape.bgRadius >= 20
+                    ? 'peer-data-[variant=inset]:rounded-3xl'
+                    : 'peer-data-[variant=inset]:rounded-xl',
+                  'peer-data-[variant=inset]:bg-surface-2 peer-data-[variant=inset]:shadow-surface-2',
+                )}
+              >
                 {/* A title bar's double click is a pointer convenience; the window menu does the same. */}
                 <TopbarBar className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
                   <h1 className="sr-only">{t('title')}</h1>

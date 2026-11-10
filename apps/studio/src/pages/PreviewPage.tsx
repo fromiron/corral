@@ -86,6 +86,9 @@ function SampleBanner({
       size="compact"
       icon={Eye}
       className="border-b border-border"
+      // Nothing scrolls under the bar, so it shows the surface it sits on (the kit inset beside
+      // the sidebar) rather than the fixed bar's floor-coloured base.
+      style={{ backgroundColor: 'transparent' }}
     >
       <BannerTitle>{t('sample')}</BannerTitle>
       <BannerActions>
