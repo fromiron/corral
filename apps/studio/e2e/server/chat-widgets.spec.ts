@@ -269,10 +269,7 @@ test('live plans, context, manual collapse and an answer use the primary session
       /Context about \d+%/,
     );
     await closeOverview(page);
-    await page
-      .getByTestId('action-required')
-      .getByText('Go to the request', { exact: true })
-      .click();
+    await page.getByTestId('action-required').getByText('Respond', { exact: true }).click();
     await page.getByTestId('run-respond').click();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);

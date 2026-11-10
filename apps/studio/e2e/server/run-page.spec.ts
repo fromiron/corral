@@ -484,7 +484,7 @@ test('the conversation’s request link opens the run’s response area, even in
   await corral.open(`/sessions/${started.sessionId}`);
   const notice = page.getByTestId('action-required');
   await expect(notice).toBeVisible({ timeout: 30_000 });
-  await notice.getByRole('link', { name: 'Go to the request', exact: true }).click();
+  await notice.getByRole('link', { name: 'Respond', exact: true }).click();
   const response = page.locator(`[data-run-response="${started.runId}"]`);
   await expect(response).toBeVisible();
   await expect(response).toBeFocused();
@@ -504,7 +504,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
   const action = page.getByTestId('dock-open-active-run');
-  await expect(action).toContainText('Check now');
+  await expect(action).toContainText('Respond');
   await action.click();
   // The waiting pill asks to respond: the response area opens and takes focus by itself.
   const response = page.locator('[data-run-response]');
@@ -556,7 +556,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),
     ).toHaveCount(1);
-    await expect(action).toContainText('Check now');
+    await expect(action).toContainText('Respond');
     await expect(input).toHaveValue('Keep typing while the run continues');
     await expect(input).toBeFocused();
   } finally {

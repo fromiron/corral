@@ -25,7 +25,7 @@ test('project settings share an explicit empty state and keep their target on na
     .click();
   await expect(page).toHaveURL(/settingsProject=default/);
   await expect(
-    page.getByRole('link', { name: 'Register commands in work folder settings', exact: true }),
+    page.getByRole('link', { name: 'Register commands in Folders & tools', exact: true }),
   ).toHaveCount(0);
   expect(corral.errors).toEqual([]);
 });

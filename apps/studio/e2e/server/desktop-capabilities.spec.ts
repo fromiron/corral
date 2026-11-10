@@ -560,7 +560,7 @@ test('a session writer and another session’s writer keep separate controls', a
   // The turn names the waiting question; the composer's notice goes to it.
   await page
     .getByTestId('action-required')
-    .getByRole('link', { name: 'Go to the request', exact: true })
+    .getByRole('link', { name: 'Respond', exact: true })
     .click();
   await expect(page.getByTestId('run-monitor')).toContainText(
     'Fixture A is waiting for your answer.',

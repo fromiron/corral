@@ -121,7 +121,7 @@ describe('causal execution interface', () => {
         onSelectExecution={vi.fn()}
       />,
     );
-    const list = screen.getByRole('region', { name: 'Created artifacts' });
+    const list = screen.getByRole('region', { name: 'Created results' });
     // Notes is the card of the research → writer relationship, so it is not repeated here.
     expect(within(list).queryByText('Notes')).toBeNull();
     expect(within(list).getByText('Report')).toBeInTheDocument();

@@ -318,7 +318,7 @@ it('shows the source folder and each working copy, saying where nothing is known
   expect(panel.textContent).toContain('Source folder');
   expect(panel.textContent).toContain('main');
   const settings = [...panel.querySelectorAll('a')].find(
-    (link) => link.textContent === 'Folder settings',
+    (link) => link.textContent === 'Open Folders & tools',
   );
   const href = new URL(settings?.getAttribute('href') ?? '', 'http://x');
   expect(href.searchParams.get('settings')).toBe('workspace');

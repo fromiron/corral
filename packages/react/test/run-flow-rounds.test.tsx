@@ -57,18 +57,18 @@ const evidence = () => screen.getByTestId('run-flow-decisions');
 describe('work flow rounds', () => {
   it('shows the decision of the round the selected execution ran in', () => {
     renderFlow('writer_1');
-    expect(evidence()).toHaveTextContent('Artifact · Draft round 1');
+    expect(evidence()).toHaveTextContent('Result · Draft round 1');
     expect(evidence()).not.toHaveTextContent('Draft round 3');
   });
 
   it('keeps a round chosen in the tree for the decisions through new rounds', async () => {
     const user = userEvent.setup();
     const { session } = renderFlow(null);
-    expect(evidence()).toHaveTextContent('Artifact · Draft round 3');
+    expect(evidence()).toHaveTextContent('Result · Draft round 3');
     await user.click(screen.getByRole('combobox', { name: 'Round for Review' }));
     await user.click(await screen.findByRole('option', { name: 'Round 2' }));
-    expect(evidence()).toHaveTextContent('Artifact · Draft round 2');
+    expect(evidence()).toHaveTextContent('Result · Draft round 2');
     act(() => session.setState({ projection: loopFlowFixture(4).projection }));
-    expect(evidence()).toHaveTextContent('Artifact · Draft round 2');
+    expect(evidence()).toHaveTextContent('Result · Draft round 2');
   });
 });

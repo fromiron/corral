@@ -107,7 +107,7 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   });
   await openSession(page);
   await panelTab(page, 'Files');
-  await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
+  await expect(page.getByText('Link a project source folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link the example folder', exact: true }).click();

@@ -65,7 +65,7 @@ it('keeps a Korean recovery action visible while retaining the safe diagnostic i
       <FailureNotice message="the model request failed: HTTP 401 (AUTH)" />
     </IntlProvider>,
   );
-  expect(screen.getByText('모델 제공자가 인증 정보를 거부했어요.')).toBeVisible();
+  expect(screen.getByText('모델 제공자가 인증 정보를 거부했습니다.')).toBeVisible();
   expect(
     screen.getByText('설정 → 모델에서 다시 연결하거나 API 키를 바꾼 뒤 재시도하세요.'),
   ).toBeVisible();

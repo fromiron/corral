@@ -198,9 +198,7 @@ export const HundredRounds: Story = {
     await expect(canvas.getAllByTestId('decision-detail')).toHaveLength(1);
     await expect(canvas.getByRole('combobox', { name: 'Round for Review' })).toBeVisible();
     await expect(
-      within(canvas.getByRole('region', { name: 'Created artifacts' })).queryByText(
-        'Draft round 1',
-      ),
+      within(canvas.getByRole('region', { name: 'Created results' })).queryByText('Draft round 1'),
     ).toBeNull();
   },
 };

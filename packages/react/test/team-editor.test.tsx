@@ -134,7 +134,7 @@ describe('team editor', () => {
     const add = screen.getByRole('button', { name: 'Add' });
     expect(add.hasAttribute('disabled') || add.getAttribute('aria-disabled') === 'true').toBe(true);
     await act(async () =>
-      fireEvent.change(screen.getByRole('textbox', { name: 'Artifact version' }), {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Result version' }), {
         target: { value: 'av_draft_2' },
       }),
     );
